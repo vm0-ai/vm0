@@ -284,6 +284,30 @@ describe("schedule list view - row click navigates to detail (SCHED-D-087)", () 
   });
 });
 
+describe("schedule list view - row renders as anchor link (SCHED-D-087b)", () => {
+  it("renders schedule rows as <a> elements with href so middle/right-click open in new tab works", async () => {
+    mockScheduleAPI();
+    detachedSetupPage({ context, path: "/schedules" });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByLabelText(
+          /Open schedule Summarize yesterday's threads/,
+        )[0],
+      ).toBeInTheDocument();
+    });
+
+    const link = screen.getAllByLabelText(
+      /Open schedule Summarize yesterday's threads/,
+    )[0];
+    expect(link.tagName).toBe("A");
+    expect(link).toHaveAttribute(
+      "href",
+      "/schedules/f0000001-0000-4000-a000-000000000001",
+    );
+  });
+});
+
 describe("schedule list view - toggle switch (SCHED-D-088)", () => {
   it("sends enable action when a disabled schedule toggle is clicked", async () => {
     const user = userEvent.setup();

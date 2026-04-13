@@ -1,1 +1,0 @@
-ALTER TABLE "chat_threads" ADD COLUMN "append_system_prompt" text;

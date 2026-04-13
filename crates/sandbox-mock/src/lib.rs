@@ -17,11 +17,25 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::*;
+
+/// Ignore mutex poisoning and take the lock anyway.
+///
+/// Callers here are test doubles; surfacing a poison error would appear as
+/// a spurious test failure rather than a real issue to propagate.
+trait LockIgnoringPoison<T> {
+    fn lock_ignoring_poison(&self) -> MutexGuard<'_, T>;
+}
+
+impl<T> LockIgnoringPoison<T> for Mutex<T> {
+    fn lock_ignoring_poison(&self) -> MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
 
 // ---------------------------------------------------------------------------
 // MockSandboxOverrides
@@ -100,10 +114,7 @@ impl MockSandboxOverrides {
 
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
-        self.exec_matchers
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(matcher);
+        self.exec_matchers.lock_ignoring_poison().push(matcher);
     }
 }
 
@@ -164,18 +175,14 @@ impl MockSandbox {
 
     /// Queue an exec result. Results are consumed in FIFO order.
     pub fn push_exec_result(&self, result: Result<ExecResult>) {
-        self.exec_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push_back(result);
+        self.exec_results.lock_ignoring_poison().push_back(result);
     }
 
     /// Queue a write_file result. Results are consumed in FIFO order.
     /// When the queue is empty, write_file returns `Ok(())`.
     pub fn push_write_file_result(&self, result: Result<()>) {
         self.write_file_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .lock_ignoring_poison()
             .push_back(result);
     }
 }
@@ -213,10 +220,7 @@ impl Sandbox for MockSandbox {
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
         // Check pattern matchers before the FIFO queue.
         if let Some(overrides) = &self.overrides {
-            let mut matchers = overrides
-                .exec_matchers
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let mut matchers = overrides.exec_matchers.lock_ignoring_poison();
             if let Some(idx) = matchers
                 .iter()
                 .position(|m| request.cmd.contains(&m.pattern))
@@ -230,16 +234,14 @@ impl Sandbox for MockSandbox {
             }
         }
         self.exec_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .lock_ignoring_poison()
             .pop_front()
             .unwrap_or_else(|| Ok(default_exec_result()))
     }
 
     async fn write_file(&self, _path: &str, _content: &[u8]) -> Result<()> {
         self.write_file_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .lock_ignoring_poison()
             .pop_front()
             .unwrap_or(Ok(()))
     }
@@ -257,7 +259,7 @@ impl Sandbox for MockSandbox {
             .as_ref()
             .is_some_and(|o| o.wait_exit_error.is_some())
         {
-            *self.stdout_tx.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+            *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
         Ok(SpawnHandle {
             pid: 1,
@@ -326,10 +328,7 @@ impl MockSandboxFactory {
     /// `Err(...)` makes `create` return that error.
     /// Results are consumed in FIFO order.
     pub fn push_create_result(&self, result: Result<()>) {
-        self.create_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push_back(result);
+        self.create_results.lock_ignoring_poison().push_back(result);
     }
 }
 
@@ -354,12 +353,7 @@ impl SandboxFactory for MockSandboxFactory {
     }
 
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>> {
-        if let Some(result) = self
-            .create_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .pop_front()
-        {
+        if let Some(result) = self.create_results.lock_ignoring_poison().pop_front() {
             result?;
         }
         let sandbox = match &self.overrides {
@@ -471,6 +465,7 @@ impl SnapshotProvider for MockSnapshotProvider {
 pub struct MockSandboxControl {
     base_dir: PathBuf,
     exec_results: Mutex<VecDeque<std::result::Result<RemoteExecResult, SandboxControlError>>>,
+    recorded_commands: Mutex<Vec<String>>,
 }
 
 impl MockSandboxControl {
@@ -478,6 +473,7 @@ impl MockSandboxControl {
         Self {
             base_dir: base_dir.into(),
             exec_results: Mutex::new(VecDeque::new()),
+            recorded_commands: Mutex::new(Vec::new()),
         }
     }
 
@@ -486,10 +482,12 @@ impl MockSandboxControl {
         &self,
         result: std::result::Result<RemoteExecResult, SandboxControlError>,
     ) {
-        self.exec_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push_back(result);
+        self.exec_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Return every command string passed to `exec_remote`, in call order.
+    pub fn recorded_commands(&self) -> Vec<String> {
+        self.recorded_commands.lock_ignoring_poison().clone()
     }
 }
 
@@ -498,13 +496,15 @@ impl SandboxControl for MockSandboxControl {
     async fn exec_remote(
         &self,
         _sandbox_id: &str,
-        _command: &str,
+        command: &str,
         _timeout: Duration,
         _sudo: bool,
     ) -> std::result::Result<RemoteExecResult, SandboxControlError> {
+        self.recorded_commands
+            .lock_ignoring_poison()
+            .push(command.to_string());
         self.exec_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .lock_ignoring_poison()
             .pop_front()
             .unwrap_or_else(|| {
                 Ok(RemoteExecResult {
@@ -683,6 +683,24 @@ mod tests {
             },
         };
         factory.create(config2).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sandbox_control_records_commands() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control
+            .exec_remote("sandbox-1", "echo one", Duration::from_secs(5), false)
+            .await
+            .unwrap();
+        control
+            .exec_remote("sandbox-1", "echo two", Duration::from_secs(5), true)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["echo one".to_string(), "echo two".to_string()],
+        );
     }
 
     #[tokio::test]

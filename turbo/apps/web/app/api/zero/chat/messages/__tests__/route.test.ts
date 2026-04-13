@@ -8,6 +8,7 @@ import {
   insertOrgDefaultModelProvider,
   findTestCallbacksByRunId,
   findTestRunRecord,
+  getTestRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { POST as createChatThreadPOST } from "../../../chat-threads/route";
 import {
@@ -223,6 +224,27 @@ describe("POST /api/zero/chat/messages", () => {
       const callbacks = await findTestCallbacksByRunId(data.runId);
       expect(callbacks.length).toBeGreaterThan(0);
       expect(callbacks[0]!.url).toContain("/api/internal/callbacks/chat");
+    });
+
+    it("should include web integration prompt in appendSystemPrompt", async () => {
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "test web integration prompt",
+          }),
+        }),
+      );
+      expect(response.status).toBe(201);
+      const data = await response.json();
+
+      const run = await getTestRun(data.runId);
+      expect(run.appendSystemPrompt).toContain(
+        "You are currently running inside: Web",
+      );
+      expect(run.appendSystemPrompt).toContain("web chat UI");
     });
 
     it("should skip title generation when hasTextContent is false (image-only message)", async () => {

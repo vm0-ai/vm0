@@ -12,6 +12,10 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { createZeroRun } from "../../../../src/lib/zero/zero-run-service";
 import { handleCreateRunError } from "../../../../src/lib/zero/zero-run-errors";
+import {
+  generateCallbackSecret,
+  getApiUrl,
+} from "../../../../src/lib/infra/callback";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { agentComposeVersions } from "../../../../src/db/schema/agent-compose";
@@ -106,14 +110,26 @@ const router = tsr.router(zeroRunsMainContract, {
         }
       }
 
+      const isAgentTriggered = !!authCtx.runId;
+      const agentCallbacks = isAgentTriggered
+        ? [
+            {
+              url: `${getApiUrl()}/api/internal/callbacks/agent`,
+              secret: generateCallbackSecret(),
+              payload: {},
+            },
+          ]
+        : [];
+
       const result = await createZeroRun({
         userId: authCtx.userId,
         prompt: body.prompt,
         agentId: agent.id,
         sessionId: body.sessionId,
         modelProvider: body.modelProvider,
-        triggerSource: authCtx.runId ? "agent" : "web",
+        triggerSource: isAgentTriggered ? "agent" : "web",
         triggerAgentId,
+        callbacks: agentCallbacks.length > 0 ? agentCallbacks : undefined,
       });
 
       return {

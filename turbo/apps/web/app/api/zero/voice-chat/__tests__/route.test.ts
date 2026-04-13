@@ -35,9 +35,13 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function tokenRequest() {
+function tokenRequest(body?: Record<string, unknown>) {
   return new Request("http://localhost:3000/api/zero/voice-chat/token", {
     method: "POST",
+    ...(body && {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   });
 }
 
@@ -125,5 +129,86 @@ describe("POST /api/zero/voice-chat/token", () => {
 
     expect(response.status).toBe(500);
     expect(body.error.code).toBe("INTERNAL_SERVER_ERROR");
+  });
+
+  it("should pass explicit model to OpenAI API", async () => {
+    const userId = uniqueId("zvc-model");
+    await setupOrg(userId);
+
+    let capturedModel: string | undefined;
+    server.use(
+      http.post(
+        "https://api.openai.com/v1/realtime/sessions",
+        async ({ request }) => {
+          const reqBody = (await request.json()) as { model?: string };
+          capturedModel = reqBody.model;
+          return HttpResponse.json({
+            client_secret: {
+              value: "eph_mini_token",
+              expires_at: 1700000000,
+            },
+          });
+        },
+      ),
+    );
+
+    const response = await POST(tokenRequest({ model: "gpt-realtime-mini" }));
+
+    expect(response.status).toBe(200);
+    expect(capturedModel).toBe("gpt-realtime-mini");
+  });
+
+  it("should default to gpt-realtime when no model is provided", async () => {
+    const userId = uniqueId("zvc-nomodel");
+    await setupOrg(userId);
+
+    let capturedModel: string | undefined;
+    server.use(
+      http.post(
+        "https://api.openai.com/v1/realtime/sessions",
+        async ({ request }) => {
+          const reqBody = (await request.json()) as { model?: string };
+          capturedModel = reqBody.model;
+          return HttpResponse.json({
+            client_secret: {
+              value: "eph_default_token",
+              expires_at: 1700000000,
+            },
+          });
+        },
+      ),
+    );
+
+    const response = await POST(tokenRequest());
+
+    expect(response.status).toBe(200);
+    expect(capturedModel).toBe("gpt-realtime");
+  });
+
+  it("should fall back to gpt-realtime for invalid model", async () => {
+    const userId = uniqueId("zvc-invalid");
+    await setupOrg(userId);
+
+    let capturedModel: string | undefined;
+    server.use(
+      http.post(
+        "https://api.openai.com/v1/realtime/sessions",
+        async ({ request }) => {
+          const reqBody = (await request.json()) as { model?: string };
+          capturedModel = reqBody.model;
+          return HttpResponse.json({
+            client_secret: {
+              value: "eph_fallback_token",
+              expires_at: 1700000000,
+            },
+          });
+        },
+      ),
+    );
+
+    const response = await POST(tokenRequest({ model: "invalid-model" }));
+
+    expect(response.status).toBe(200);
+    expect(capturedModel).toBe("gpt-realtime");
   });
 });

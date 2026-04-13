@@ -1,8 +1,8 @@
 import { command, computed, state } from "ccstate";
 import { toggleTaskList$ } from "./mission-control-panels.ts";
-import { setupTasksLoop$ } from "./mission-control-tasks.ts";
+import { archiveTask$, setupTasksLoop$ } from "./mission-control-tasks.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
-import { onRef } from "../utils.ts";
+import { onRef, throwIfNotAbort } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Task list container ref
@@ -95,7 +95,7 @@ export const setNewChatDialogOpen$ = command(({ set }, open: boolean) => {
 // ---------------------------------------------------------------------------
 
 export const setupMissionControlKeyboard$ = command(
-  ({ set }, signal: AbortSignal) => {
+  ({ get, set }, signal: AbortSignal) => {
     setupGlobalShortcut(
       {
         k: () => {
@@ -109,6 +109,20 @@ export const setupMissionControlKeyboard$ = command(
         },
         c: () => {
           set(setNewChatDialogOpen$, true);
+        },
+        y: () => {
+          const container = get(internalTaskListRef$);
+          if (!container) {
+            return;
+          }
+          const active = document.activeElement as HTMLElement | null;
+          if (!active) {
+            return;
+          }
+          const taskId = active.dataset.taskId;
+          if (taskId) {
+            void set(archiveTask$, taskId, signal).catch(throwIfNotAbort);
+          }
         },
       },
       signal,

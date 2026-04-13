@@ -175,6 +175,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the Usage page with per-member credit and token consumption",
     enabled: false,
   },
+  [FeatureSwitchKey.UsageAnalytics]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show admin-only daily credits chart and per-run records on Usage page",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ModelDetail]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the selected model name in activity details",
@@ -223,6 +230,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.VoiceChat]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable the Voice Chat feature and API endpoints",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.VoiceIO]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable voice input/output features in chat (TTS read-aloud, auto-read, voice input)",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

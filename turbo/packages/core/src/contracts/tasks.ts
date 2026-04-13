@@ -39,6 +39,17 @@ const taskItemSchema = z.object({
   updatedAt: z.string(),
 });
 
+const archiveTaskBodySchema = z.object({
+  taskId: z.string(),
+  taskType: taskTypeSchema,
+  runId: z.string().nullable(),
+});
+
+const unarchiveTaskBodySchema = z.object({
+  taskId: z.string(),
+  taskType: taskTypeSchema,
+});
+
 export const tasksContract = c.router({
   list: {
     method: "GET",
@@ -53,11 +64,37 @@ export const tasksContract = c.router({
     },
     summary: "List unified tasks across all sources",
   },
+
+  archive: {
+    method: "POST",
+    path: "/api/zero/tasks/archive",
+    headers: authHeadersSchema,
+    body: archiveTaskBodySchema,
+    responses: {
+      200: z.object({ ok: z.literal(true) }),
+      401: apiErrorSchema,
+    },
+    summary: "Archive a task (exclude from task list until new run arrives)",
+  },
+
+  unarchive: {
+    method: "POST",
+    path: "/api/zero/tasks/unarchive",
+    headers: authHeadersSchema,
+    body: unarchiveTaskBodySchema,
+    responses: {
+      200: z.object({ ok: z.literal(true) }),
+      401: apiErrorSchema,
+    },
+    summary: "Unarchive a task (restore to task list immediately)",
+  },
 });
 
 export type TasksContract = typeof tasksContract;
 export type TaskItem = z.infer<typeof taskItemSchema>;
 export type TaskType = z.infer<typeof taskTypeSchema>;
 export type TaskAgent = z.infer<typeof taskAgentSchema>;
+export type ArchiveTaskBody = z.infer<typeof archiveTaskBodySchema>;
+export type UnarchiveTaskBody = z.infer<typeof unarchiveTaskBodySchema>;
 
 export { taskItemSchema, taskTypeSchema, taskAgentSchema };

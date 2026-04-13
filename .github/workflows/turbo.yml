@@ -1627,7 +1627,7 @@ jobs:
             # Stop any existing service from a previous run (e.g., re-run after test failure).
             # Ignore errors if not running.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME}" 2>/dev/null || true
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME} --force" 2>/dev/null || true
 
             # Start as systemd transient service
             # shellcheck disable=SC2029

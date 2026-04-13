@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
 use crate::paths::{HomePaths, ImagePaths};
 use crate::profile;
 
@@ -48,7 +49,8 @@ pub struct SandboxConfig {
     pub max_concurrent: usize,
     /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
-    /// Idle timeout in seconds for reusable VMs (default: 300).
+    /// Idle timeout in seconds for reusable VMs
+    /// (default: [`DEFAULT_IDLE_TIMEOUT_SECS`]).
     pub idle_timeout_secs: u64,
     /// Maximum number of idle VMs to keep (0 = no limit, default: 0).
     pub max_idle: usize,
@@ -59,7 +61,7 @@ impl Default for SandboxConfig {
         Self {
             max_concurrent: DEFAULT_MAX_CONCURRENT,
             concurrency_factor: DEFAULT_CONCURRENCY_FACTOR,
-            idle_timeout_secs: 300,
+            idle_timeout_secs: DEFAULT_IDLE_TIMEOUT_SECS,
             max_idle: 0,
         }
     }
@@ -955,7 +957,7 @@ profiles:
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
         let config = load_with_home(&config_path, &home).await.unwrap();
-        assert_eq!(config.sandbox.idle_timeout_secs, 300);
+        assert_eq!(config.sandbox.idle_timeout_secs, DEFAULT_IDLE_TIMEOUT_SECS);
         assert_eq!(config.sandbox.max_idle, 0);
     }
 }

@@ -15,6 +15,7 @@ import {
   createZeroRunRecord,
   dispatchZeroRun,
 } from "../../../../../src/lib/zero/zero-run-service";
+import { buildWebChatPrompt } from "../../../../../src/lib/zero/integration-prompt";
 import { isApiError } from "../../../../../src/lib/shared/errors";
 import {
   createChatThread,
@@ -89,7 +90,7 @@ const router = tsr.router(chatMessagesContract, {
         [];
       // Seeded once on the first run of a thread started from a scheduled run.
       // Subsequent runs inherit the session context so we don't re-apply it.
-      let appendSystemPrompt: string | undefined;
+      let continueFromSchedulePrompt: string | undefined;
 
       if (body.threadId) {
         const thread = await getChatThread(body.threadId, authCtx.userId);
@@ -106,7 +107,7 @@ const router = tsr.router(chatMessagesContract, {
             )
             .where(eq(zeroRuns.id, thread.sourceScheduleRunId))
             .limit(1);
-          appendSystemPrompt = buildContinueFromScheduleSystemPrompt(
+          continueFromSchedulePrompt = buildContinueFromScheduleSystemPrompt(
             thread.sourceScheduleRunId,
             sourceSchedule?.name ?? null,
           );
@@ -162,7 +163,9 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
-        appendSystemPrompt,
+        appendSystemPrompt: continueFromSchedulePrompt
+          ? [buildWebChatPrompt(), continueFromSchedulePrompt].join("\n\n")
+          : buildWebChatPrompt(),
         callbacks: [chatCallback],
       });
 

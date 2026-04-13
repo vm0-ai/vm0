@@ -1297,6 +1297,90 @@ class TestResponseUsageReporting:
         assert body["runId"] == "run-int-002"
         assert body["usage"]["input_tokens"] == 80
 
+    def test_uses_flow_id_when_message_id_missing(self, tmp_path):
+        """Missing message_id in proxy_usage falls back to flow.id.
+
+        Without a stable per-flow key, server-side dedup of usage webhook
+        retries fails, which would double-charge.  flow.id is stable
+        across retries because _enqueue_usage copies the dict once.
+        """
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.id = "flow-uuid-xyz-123"
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-fallback"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["proxy_usage"] = {
+            "model": "claude-sonnet-4-6",
+            "input_tokens": 10,
+            # no message_id set
+        }
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "text/event-stream"}
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            mitm_addon._usage_executor.shutdown(wait=True)
+
+        mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="usage"
+        )
+
+        mock_opener.open.assert_called_once()
+        req = mock_opener.open.call_args[0][0]
+        body = json.loads(req.data)
+        assert body["usage"]["message_id"] == "flow-uuid-xyz-123"
+
+    def test_preserves_message_id_from_response(self, tmp_path):
+        """When proxy_usage already has a message_id, flow.id fallback
+        must not override it."""
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.id = "flow-should-not-win"
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-preserved"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["proxy_usage"] = {
+            "model": "claude-sonnet-4-6",
+            "message_id": "msg_real_anthropic_id",
+            "input_tokens": 10,
+        }
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "text/event-stream"}
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            mitm_addon._usage_executor.shutdown(wait=True)
+
+        mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="usage"
+        )
+
+        mock_opener.open.assert_called_once()
+        req = mock_opener.open.call_args[0][0]
+        body = json.loads(req.data)
+        assert body["usage"]["message_id"] == "msg_real_anthropic_id"
+
 
 class TestErrorHandler:
     def setup_method(self):

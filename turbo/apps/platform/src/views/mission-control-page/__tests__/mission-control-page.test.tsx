@@ -279,4 +279,118 @@ describe("mission control page", () => {
 
     expect(pathname()).toBe("/_/mission-control");
   });
+
+  it("should remove task from list when y key is pressed on focused card", async () => {
+    server.use(
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({
+          tasks: [
+            {
+              id: "task-key",
+              type: "chat",
+              title: "Keyboard Archive Task",
+              summary: null,
+              agent: createAgent(),
+              latestRunId: "run-key-1",
+              status: "completed",
+              chatThreadId: "thread-key",
+              createdAt: "2026-04-10T10:00:00Z",
+              updatedAt: "2026-04-10T10:00:00Z",
+            },
+          ],
+        });
+      }),
+      http.post("*/api/zero/tasks/archive", () => {
+        server.use(
+          http.get("*/api/zero/tasks", () => {
+            return HttpResponse.json({ tasks: [] });
+          }),
+        );
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Keyboard Archive Task");
+    });
+    const card = title.closest("[role=button]") as HTMLElement;
+
+    // Focus the card so its data-task-id is picked up by the y shortcut
+    await user.click(card);
+    card.focus();
+
+    await user.keyboard("y");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Keyboard Archive Task"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("should remove task from list when archive button is clicked", async () => {
+    let archiveRequestBody: unknown = null;
+
+    // Initially return the task
+    server.use(
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({
+          tasks: [
+            {
+              id: "task-arc",
+              type: "chat",
+              title: "Archivable Task",
+              summary: null,
+              agent: createAgent(),
+              latestRunId: "run-arc-1",
+              status: "completed",
+              chatThreadId: "thread-arc",
+              createdAt: "2026-04-10T10:00:00Z",
+              updatedAt: "2026-04-10T10:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    server.use(
+      http.post("*/api/zero/tasks/archive", async ({ request }) => {
+        archiveRequestBody = await request.json();
+        // After archive, update the tasks API to return empty list
+        server.use(
+          http.get("*/api/zero/tasks", () => {
+            return HttpResponse.json({ tasks: [] });
+          }),
+        );
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Archivable Task");
+    });
+    const card = title.closest("[role=button]") as HTMLElement;
+    await user.hover(card);
+
+    const archiveBtn = await waitFor(() => {
+      return screen.getByLabelText("Archive task");
+    });
+    await user.click(archiveBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Archivable Task")).not.toBeInTheDocument();
+    });
+
+    expect(archiveRequestBody).toMatchObject({
+      taskId: "task-arc",
+      taskType: "chat",
+      runId: "run-arc-1",
+    });
+  });
 });

@@ -1,5 +1,54 @@
 # Changelog
 
+## [12.224.0](https://github.com/vm0-ai/vm0/compare/web-v12.223.0...web-v12.224.0) (2026-04-13)
+
+
+### Features
+
+* add voice-io feature switch and tts backend endpoint ([#9088](https://github.com/vm0-ai/vm0/issues/9088)) ([c5e700a](https://github.com/vm0-ai/vm0/commit/c5e700ad22b92886495e030daf9e9dfd50ff2320)), closes [#9078](https://github.com/vm0-ai/vm0/issues/9078)
+* **usage:** add daily credits chart and per-run records ([#9047](https://github.com/vm0-ai/vm0/issues/9047)) ([589df8c](https://github.com/vm0-ai/vm0/commit/589df8cbf8b8d5ee495279a3f6e51aed47305daa))
+* **voice-chat:** add realtime model selector ([#9082](https://github.com/vm0-ai/vm0/issues/9082)) ([b296034](https://github.com/vm0-ai/vm0/commit/b29603432ca146738da80d3f346bf714eb53ad2b)), closes [#9074](https://github.com/vm0-ai/vm0/issues/9074)
+* **web:** add integration description for web chat runs ([#9090](https://github.com/vm0-ai/vm0/issues/9090)) ([7c0a09b](https://github.com/vm0-ai/vm0/commit/7c0a09bcf4e8c1066adef002e8ff3e877d1233cd))
+
+
+### Refactoring
+
+* drop proxy_credit_usage table now that billing uses credit_usage ([#9071](https://github.com/vm0-ai/vm0/issues/9071)) ([4920dc2](https://github.com/vm0-ai/vm0/commit/4920dc28d0913ed6238d94265b0725f2f12a4546))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.178.0
+
+## [12.223.0](https://github.com/vm0-ai/vm0/compare/web-v12.222.1...web-v12.223.0) (2026-04-13)
+
+
+### Features
+
+* add archive status to mission control task list ([#9063](https://github.com/vm0-ai/vm0/issues/9063)) ([ca4d008](https://github.com/vm0-ai/vm0/commit/ca4d00838afb45f957c5a8d5fbc4dcde58265382))
+
+
+### Refactoring
+
+* use proxy-reported usage as billing source of truth ([#9064](https://github.com/vm0-ai/vm0/issues/9064)) ([b655964](https://github.com/vm0-ai/vm0/commit/b65596423f8655117ebd67c38731eb5f35c332b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.177.0
+
+## [12.222.1](https://github.com/vm0-ai/vm0/compare/web-v12.222.0...web-v12.222.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* **web:** fall back to truncated prompt when task summary is missing ([#9058](https://github.com/vm0-ai/vm0/issues/9058)) ([3fff644](https://github.com/vm0-ai/vm0/commit/3fff644d1d36aba31af4d299c33b9d22d2abcf66))
+* **web:** persist zero_runs metadata before dispatch to fix activity source race ([#9045](https://github.com/vm0-ai/vm0/issues/9045)) ([bade6ac](https://github.com/vm0-ai/vm0/commit/bade6acb7a0b0759b1d28a460a622ee1c1ece381))
+
 ## [12.222.0](https://github.com/vm0-ai/vm0/compare/web-v12.221.0...web-v12.222.0) (2026-04-13)
 
 

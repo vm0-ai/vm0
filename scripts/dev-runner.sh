@@ -75,7 +75,7 @@ cmd_deploy() {
 
   # Stop old service before uploading (avoids "Text file busy")
   log "Stopping old service..."
-  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME 2>/dev/null || true"
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force 2>/dev/null || true"
 
   # Upload
   log "Deploying to $SSH_USER@$HOST..."
@@ -159,7 +159,7 @@ cmd_exec() {
 cmd_remove() {
   log "Removing runner $RUNNER_NAME from $HOST..."
 
-  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME 2>/dev/null || true"
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force 2>/dev/null || true"
   ssh_cmd "sudo rm -rf $REMOTE_BIN_DIR $RUNNER_DIR"
 
   log "Done! Runner $RUNNER_NAME removed from $HOST"

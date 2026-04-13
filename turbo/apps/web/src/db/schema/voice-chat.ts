@@ -14,8 +14,7 @@ import { agentComposes } from "./agent-compose";
  * Voice-chat sessions track active voice conversations.
  * Each session has one WebRTC connection (fast-brain) and one zero agent run (slow-brain).
  *
- * Modes: chat (default) — voice starts immediately; meeting — slow-brain prepares first;
- *        mission_control — slow-brain delegates all task execution to sub-agents via `zero run`.
+ * Modes: chat (default) — voice starts immediately; meeting — slow-brain prepares first.
  * Statuses: preparing → active → ended | timeout
  */
 export const voiceChatSessions = pgTable(
@@ -36,7 +35,7 @@ export const voiceChatSessions = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // Valid values: "chat" | "meeting" | "mission_control"
+    // Valid values: "chat" | "meeting"
     mode: varchar("mode", { length: 20 }).notNull().default("chat"),
     prompt: text("prompt"),
     status: varchar("status", { length: 20 }).notNull().default("active"),

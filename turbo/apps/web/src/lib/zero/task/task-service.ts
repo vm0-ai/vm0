@@ -12,6 +12,7 @@ import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { zeroRuns } from "../../../db/schema/zero-run";
 import { voiceChatSessions } from "../../../db/schema/voice-chat";
 import { zeroAgents } from "../../../db/schema/zero-agent";
+import { archivedTaskRuns } from "../../../db/schema/archived-task-runs";
 
 const TASKS_LIMIT = 25;
 const PROMPT_SUMMARY_MAX_LENGTH = 100;
@@ -56,6 +57,7 @@ export async function listTasks(
     inFlightEmailTasks,
     voiceChatTasks,
     agentTasks,
+    archiveSet,
   ] = await Promise.all([
     listChatTasks(db, userId, orgId, agentId),
     listScheduleTasks(db, userId, orgId, agentId),
@@ -64,6 +66,7 @@ export async function listTasks(
     listInFlightEmailTasks(db, userId, orgId, agentId),
     listVoiceChatTasks(db, userId, orgId, agentId),
     listAgentTasks(db, userId, orgId, agentId),
+    getArchiveSet(db, userId, orgId),
   ]);
 
   const allTasks = [
@@ -74,7 +77,12 @@ export async function listTasks(
     ...inFlightEmailTasks,
     ...voiceChatTasks,
     ...agentTasks,
-  ];
+  ].filter((t) => {
+    const key = `${t.id}:${t.type}`;
+    if (!archiveSet.has(key)) return true;
+    // Re-show if latestRunId has changed (new run arrived since archive)
+    return t.latestRunId !== archiveSet.get(key);
+  });
 
   // Batch-fetch run info for all tasks with a latestRunId
   const runIds = allTasks
@@ -166,9 +174,81 @@ export async function listTasks(
   });
 }
 
-// -- Per-source query functions --
+// -- Archive helpers --
 
 type DB = typeof globalThis.services.db;
+
+/**
+ * Returns a map of archived tasks: key = "taskId:taskType", value = archivedRunId (or null).
+ */
+async function getArchiveSet(
+  db: DB,
+  userId: string,
+  orgId: string,
+): Promise<Map<string, string | null>> {
+  const rows = await db
+    .select({
+      taskId: archivedTaskRuns.taskId,
+      taskType: archivedTaskRuns.taskType,
+      archivedRunId: archivedTaskRuns.archivedRunId,
+    })
+    .from(archivedTaskRuns)
+    .where(
+      and(
+        eq(archivedTaskRuns.userId, userId),
+        eq(archivedTaskRuns.orgId, orgId),
+      ),
+    );
+
+  const map = new Map<string, string | null>();
+  for (const row of rows) {
+    map.set(`${row.taskId}:${row.taskType}`, row.archivedRunId);
+  }
+  return map;
+}
+
+export async function archiveTask(
+  userId: string,
+  orgId: string,
+  taskId: string,
+  taskType: string,
+  runId: string | null,
+): Promise<void> {
+  const db = globalThis.services.db;
+  await db
+    .insert(archivedTaskRuns)
+    .values({ userId, orgId, taskId, taskType, archivedRunId: runId })
+    .onConflictDoUpdate({
+      target: [
+        archivedTaskRuns.userId,
+        archivedTaskRuns.orgId,
+        archivedTaskRuns.taskId,
+        archivedTaskRuns.taskType,
+      ],
+      set: { archivedRunId: runId, createdAt: new Date() },
+    });
+}
+
+export async function unarchiveTask(
+  userId: string,
+  orgId: string,
+  taskId: string,
+  taskType: string,
+): Promise<void> {
+  const db = globalThis.services.db;
+  await db
+    .delete(archivedTaskRuns)
+    .where(
+      and(
+        eq(archivedTaskRuns.userId, userId),
+        eq(archivedTaskRuns.orgId, orgId),
+        eq(archivedTaskRuns.taskId, taskId),
+        eq(archivedTaskRuns.taskType, taskType),
+      ),
+    );
+}
+
+// -- Per-source query functions --
 
 async function listChatTasks(
   db: DB,

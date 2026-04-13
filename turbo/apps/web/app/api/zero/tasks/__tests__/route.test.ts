@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GET } from "../route";
+import { GET, POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
@@ -312,5 +312,238 @@ describe("GET /api/zero/tasks", () => {
     expect(data.tasks[0].title).toBe("Thread 29");
     // Least recent in the 25 should be Thread 5
     expect(data.tasks[24].title).toBe("Thread 5");
+  });
+});
+
+describe("POST /api/zero/tasks/archive", () => {
+  let user: UserContext;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+  });
+
+  it("returns 401 for unauthenticated requests", async () => {
+    mockClerk({ userId: null });
+
+    const req = createTestRequest(
+      "http://localhost:3000/api/zero/tasks/archive",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: "x", taskType: "chat", runId: null }),
+      },
+    );
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+  });
+
+  it("archives a chat task and excludes it from the task list", async () => {
+    const { composeId } = await createTestCompose(uniqueId("arc-chat"));
+    const threadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "To Archive",
+    );
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      status: "completed",
+    });
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    // Confirm it appears before archiving
+    const listRes = await GET(
+      createTestRequest("http://localhost:3000/api/zero/tasks"),
+    );
+    const listData = (await listRes.json()) as { tasks: Array<{ id: string }> };
+    expect(
+      listData.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(true);
+
+    // Archive it
+    const archiveReq = createTestRequest(
+      "http://localhost:3000/api/zero/tasks/archive",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: threadId, taskType: "chat", runId }),
+      },
+    );
+    const archiveRes = await POST(archiveReq);
+    expect(archiveRes.status).toBe(200);
+
+    // Now it should be excluded
+    const listRes2 = await GET(
+      createTestRequest("http://localhost:3000/api/zero/tasks"),
+    );
+    const listData2 = (await listRes2.json()) as {
+      tasks: Array<{ id: string }>;
+    };
+    expect(
+      listData2.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(false);
+  });
+
+  it("archive is idempotent (double-archive returns 200 and keeps task hidden)", async () => {
+    const { composeId } = await createTestCompose(uniqueId("arc-idem"));
+    const threadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Idempotent",
+    );
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      status: "completed",
+    });
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    const archiveReq = () => {
+      return createTestRequest("http://localhost:3000/api/zero/tasks/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: threadId, taskType: "chat", runId }),
+      });
+    };
+
+    const res1 = await POST(archiveReq());
+    expect(res1.status).toBe(200);
+
+    const res2 = await POST(archiveReq());
+    expect(res2.status).toBe(200);
+
+    const listRes = await GET(
+      createTestRequest("http://localhost:3000/api/zero/tasks"),
+    );
+    const listData = (await listRes.json()) as { tasks: Array<{ id: string }> };
+    expect(
+      listData.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(false);
+  });
+
+  it("archived task reappears when a new run arrives", async () => {
+    const { composeId } = await createTestCompose(uniqueId("arc-restore"));
+    const threadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Restore Me",
+    );
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      status: "completed",
+    });
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    // Archive with current runId
+    await POST(
+      createTestRequest("http://localhost:3000/api/zero/tasks/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: threadId, taskType: "chat", runId }),
+      }),
+    );
+
+    // Add a new run (simulates new activity)
+    const { runId: newRunId } = await createTestRunInDb(
+      user.userId,
+      composeId,
+      {
+        status: "running",
+      },
+    );
+    await addTestRunToThread(threadId, newRunId, user.userId);
+
+    // Task should reappear because latestRunId changed
+    const listRes = await GET(
+      createTestRequest("http://localhost:3000/api/zero/tasks"),
+    );
+    const listData = (await listRes.json()) as { tasks: Array<{ id: string }> };
+    expect(
+      listData.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("POST /api/zero/tasks/unarchive", () => {
+  let user: UserContext;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+  });
+
+  it("returns 401 for unauthenticated requests", async () => {
+    mockClerk({ userId: null });
+
+    const req = createTestRequest(
+      "http://localhost:3000/api/zero/tasks/unarchive",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: "x", taskType: "chat" }),
+      },
+    );
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+  });
+
+  it("unarchiving a task restores it to the task list", async () => {
+    const { composeId } = await createTestCompose(uniqueId("unarc"));
+    const threadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Unarchive Me",
+    );
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      status: "completed",
+    });
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    // Archive first
+    await POST(
+      createTestRequest("http://localhost:3000/api/zero/tasks/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: threadId, taskType: "chat", runId }),
+      }),
+    );
+
+    // Verify hidden
+    const listRes = await GET(
+      createTestRequest("http://localhost:3000/api/zero/tasks"),
+    );
+    const listData = (await listRes.json()) as { tasks: Array<{ id: string }> };
+    expect(
+      listData.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(false);
+
+    // Unarchive
+    const unarchiveRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/tasks/unarchive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: threadId, taskType: "chat" }),
+      }),
+    );
+    expect(unarchiveRes.status).toBe(200);
+
+    // Should reappear
+    const listRes2 = await GET(
+      createTestRequest("http://localhost:3000/api/zero/tasks"),
+    );
+    const listData2 = (await listRes2.json()) as {
+      tasks: Array<{ id: string }>;
+    };
+    expect(
+      listData2.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(true);
   });
 });
