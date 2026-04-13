@@ -17,6 +17,9 @@ import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
 import { reloadAgents$ } from "../agent.ts";
 import { showAppSkeleton$ } from "../app-skeleton.ts";
+import { logger } from "../log.ts";
+
+const L = logger("OnboardingAddToSlack");
 
 // ---------------------------------------------------------------------------
 // Admin flag
@@ -235,18 +238,29 @@ const completeOnboarding$ = command(
 
 export const onboardingAddToSlack$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    L.info("[1] addToSlack invoked");
     set(showAppSkeleton$);
 
     const result = await set(completeOnboarding$, signal);
+    L.info("[2] completeOnboarding result", { agentId: result });
     if (!result) {
+      L.warn("[2a] no agentId returned, aborting before slack open");
       return;
     }
 
     const isAdmin = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
+    L.info("[3] vm0 admin?", { isAdmin });
     if (isAdmin) {
       const slackData = await get(slackOrgData$);
       signal.throwIfAborted();
+      L.info("[4] slackOrgData", {
+        isConnected: slackData.isConnected,
+        isInstalled: slackData.isInstalled,
+        isAdmin: slackData.isAdmin,
+        installUrl: slackData.installUrl,
+        connectUrl: slackData.connectUrl,
+      });
       if (slackData.installUrl) {
         const url = new URL(slackData.installUrl, window.location.origin);
         // Carry ?prompt= through the Slack OAuth state so the DM greeting can
@@ -256,9 +270,23 @@ export const onboardingAddToSlack$ = command(
           url.searchParams.set("prompt", prompt);
         }
         url.searchParams.set("_t", String(Date.now()));
-        window.open(url.toString(), "_blank");
+        const finalUrl = url.toString();
+        L.info("[5] window.open about to fire", { url: finalUrl });
+        const popup = window.open(finalUrl, "_blank");
+        L.info("[6] window.open returned", {
+          popupOpened: popup !== null,
+          popupClosed: popup?.closed,
+        });
+      } else {
+        L.warn("[4a] installUrl is null — backend says no install URL", {
+          isInstalled: slackData.isInstalled,
+          isAdmin: slackData.isAdmin,
+        });
       }
+    } else {
+      L.info("[3a] not vm0 admin, skipping slack open");
     }
+    L.info("[7] navigating to /works");
     set(detachedNavigateTo$, "/works");
   },
 );
