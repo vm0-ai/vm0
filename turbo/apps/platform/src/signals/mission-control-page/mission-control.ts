@@ -79,6 +79,17 @@ const navigateTaskList$ = command(({ get }, direction: "next" | "prev") => {
 });
 
 // ---------------------------------------------------------------------------
+// New chat dialog state
+// ---------------------------------------------------------------------------
+
+export const newChatDialogOpen$ = state(false);
+export const setNewChatDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(newChatDialogOpen$, open);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Keyboard shortcuts
 // ---------------------------------------------------------------------------
 
@@ -94,6 +105,9 @@ export const setupMissionControlKeyboard$ = command(
         },
         "mod+b": () => {
           set(toggleTaskList$);
+        },
+        c: () => {
+          set(setNewChatDialogOpen$, true);
         },
       },
       signal,

@@ -11,7 +11,16 @@ import {
   setTaskListPanelRef$,
   setTaskListCollapsed$,
 } from "../../signals/mission-control-page/mission-control-panels.ts";
-import { setTaskListRef$ } from "../../signals/mission-control-page/mission-control.ts";
+import {
+  setTaskListRef$,
+  newChatDialogOpen$,
+  setNewChatDialogOpen$,
+} from "../../signals/mission-control-page/mission-control.ts";
+import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
+import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { AgentListDialog } from "../zero-page/zero-sidebar-dialogs.tsx";
 import { TaskList } from "./task-list.tsx";
 import { TaskPanel } from "./task-panel.tsx";
 import { CollapsedTaskListBar } from "./collapsed-task-list-bar.tsx";
@@ -23,6 +32,17 @@ export function MissionControlPage() {
   const setCollapsed = useSet(setTaskListCollapsed$);
   const setPanelRef = useSet(setTaskListPanelRef$);
   const setListRef = useSet(setTaskListRef$);
+  const newChatOpen = useGet(newChatDialogOpen$);
+  const setNewChatOpen = useSet(setNewChatDialogOpen$);
+  const subagents = useLastResolved(subagents$) ?? [];
+  const displayName = useLastResolved(defaultAgentName$) ?? "Zero";
+  const createNewChat = useSet(createNewChatThread$);
+  const pageSignal = useGet(pageSignal$);
+
+  const onNewChat = (agentId: string | null) => {
+    detach(createNewChat(agentId, pageSignal), Reason.DomCallback);
+    setNewChatOpen(false);
+  };
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "mc-main",
@@ -80,6 +100,13 @@ export function MissionControlPage() {
           </Panel>
         </>
       )}
+      <AgentListDialog
+        open={newChatOpen}
+        onOpenChange={setNewChatOpen}
+        displayName={displayName}
+        subagents={subagents}
+        onNewChat={onNewChat}
+      />
     </Group>
   );
 }
