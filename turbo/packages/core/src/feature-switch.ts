@@ -236,7 +236,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SandboxReuse]: {
     maintainer: "liangyou@vm0.ai",
