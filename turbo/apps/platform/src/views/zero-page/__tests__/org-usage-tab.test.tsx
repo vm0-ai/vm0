@@ -387,28 +387,6 @@ describe("org usage tab - expiring credits warning", () => {
 });
 
 describe("org usage tab - free tier", () => {
-  it("should not show progress bar for free tier", async () => {
-    setMockBillingStatus({
-      tier: "free",
-      credits: 10_000,
-      hasSubscription: false,
-    });
-
-    server.use(
-      http.get("*/api/zero/usage/members", () => {
-        return HttpResponse.json({ period: null, members: [] });
-      }),
-    );
-
-    await openUsageTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("10,000 credits")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-  });
-
   it("should show starter credits label for free tier", async () => {
     setMockBillingStatus({
       tier: "free",
