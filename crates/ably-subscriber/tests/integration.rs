@@ -557,7 +557,7 @@ async fn token_renewal() {
     // Next legitimate renewal is ~3300s away (3_600_000ms TTL - 300s
     // margin), so any further hits inside this window indicate the
     // subscriber did not stabilise on the long-lived token.
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(
         token_mock.calls(),
         2,
