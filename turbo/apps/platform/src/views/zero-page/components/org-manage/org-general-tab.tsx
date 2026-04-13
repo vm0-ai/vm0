@@ -378,6 +378,9 @@ function DangerZoneSection({
   isAdmin: boolean;
 }) {
   const createClient = useGet(zeroClient$);
+  const clerkLoadable = useLoadable(clerk$);
+  const clerk =
+    clerkLoadable.state === "hasData" ? clerkLoadable.data : undefined;
   const canLeave = !isAdmin;
 
   const leaving = useGet(leaving$);
@@ -398,10 +401,14 @@ function DangerZoneSection({
     detach(
       client
         .leave({ body: {} })
-        .then((result) => {
+        .then(async (result) => {
           if (result.status === 200) {
+            // Clear the active organization before navigating so the session
+            // JWT no longer references an org the user is no longer a member
+            // of; otherwise Clerk may revoke the session and log the user out.
+            await clerk?.setActive({ organization: null });
             toast.success("You have left the workspace");
-            window.location.reload();
+            window.location.href = "/select-org";
           } else {
             toast.error(
               extractErrorMessage(result, `Failed to leave (${result.status})`),
@@ -424,8 +431,12 @@ function DangerZoneSection({
     detach(
       client
         .delete({ body: { slug: org.slug } })
-        .then((result) => {
+        .then(async (result) => {
           if (result.status === 200) {
+            // Clear the active organization before navigating so the session
+            // JWT no longer references the deleted org; otherwise Clerk may
+            // revoke the session and log the user out.
+            await clerk?.setActive({ organization: null });
             toast.success("Workspace deleted");
             window.location.href = "/select-org";
           } else {
