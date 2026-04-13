@@ -227,10 +227,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.VoiceIO]: {
+  [FeatureSwitchKey.AudioIO]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable voice input/output features in chat (TTS read-aloud, auto-read, voice input)",
+      "Enable audio input/output features in chat (TTS read-aloud, auto-read, voice input)",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

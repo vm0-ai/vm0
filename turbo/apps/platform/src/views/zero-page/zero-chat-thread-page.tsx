@@ -156,7 +156,7 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const displayName = useLastResolved(thread.agentDisplayName$);
   const features = useLastResolved(featureSwitch$);
-  const voiceIOEnabled = features?.[FeatureSwitchKey.VoiceIO] ?? false;
+  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
 
@@ -170,7 +170,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         <span className="font-semibold text-foreground">{displayName}</span>
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        {voiceIOEnabled && (
+        {audioIOEnabled && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -805,7 +805,7 @@ function AssistantMessageActions({
   const copyMessage = useSet(thread.copyMessage$);
 
   const features = useLastResolved(featureSwitch$);
-  const voiceIOEnabled = features?.[FeatureSwitchKey.VoiceIO] ?? false;
+  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
   const playingId = useGet(ttsPlayingMessageId$);
   const isPlayingThis = playingId === message.id;
   const playTts = useSet(playTts$);
@@ -872,7 +872,7 @@ function AssistantMessageActions({
             </Tooltip>
           </TooltipProvider>
         )}
-        {content && voiceIOEnabled && (
+        {content && audioIOEnabled && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>

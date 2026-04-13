@@ -89,7 +89,7 @@ import {
   setPopoverSortOrder$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
-  voiceIOAvailable$,
+  audioIOAvailable$,
   sttRecording$,
   sttTranscribing$,
   startRecording$,
@@ -444,7 +444,7 @@ function ConnectorsPopoverButton({
 // ---------------------------------------------------------------------------
 
 function MicButton({ onSend }: { onSend: (text: string) => void }) {
-  const available = useLastResolved(voiceIOAvailable$) ?? false;
+  const available = useLastResolved(audioIOAvailable$) ?? false;
   const recording = useGet(sttRecording$);
   const transcribing = useGet(sttTranscribing$);
   const startRec = useSet(startRecording$);

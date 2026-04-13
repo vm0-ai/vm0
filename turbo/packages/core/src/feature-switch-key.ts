@@ -39,7 +39,7 @@ export enum FeatureSwitchKey {
   AuditLink = "auditLink",
   PhoneIntegration = "phoneIntegration",
   VoiceChat = "voiceChat",
-  VoiceIO = "voiceIO",
+  AudioIO = "audioIO",
   MissionControlSidebar = "missionControlSidebar",
   AutoSkill = "autoSkill",
   SandboxReuse = "sandboxReuse",

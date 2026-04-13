@@ -28,14 +28,14 @@ export async function POST(request: Request): Promise<Response> {
     authCtx.orgId,
     authCtx.userId,
   );
-  const enabled = isFeatureEnabled(FeatureSwitchKey.VoiceIO, {
+  const enabled = isFeatureEnabled(FeatureSwitchKey.AudioIO, {
     orgId: authCtx.orgId,
     userId: authCtx.userId,
     overrides,
   });
   if (!enabled) {
     return NextResponse.json(
-      { error: { message: "Voice IO is not enabled", code: "FORBIDDEN" } },
+      { error: { message: "Audio I/O is not enabled", code: "FORBIDDEN" } },
       { status: 403 },
     );
   }
