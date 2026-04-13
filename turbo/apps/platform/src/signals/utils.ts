@@ -195,7 +195,7 @@ export async function setLoop(
         return;
       }
       fibIndex = 0;
-      await delay(IN_VITEST ? 0 : interval, { signal });
+      await (IN_VITEST ? Promise.resolve() : delay(interval, { signal }));
     } catch (error) {
       throwIfAbort(error);
       const backoff =
@@ -205,7 +205,7 @@ export async function setLoop(
         error,
       );
       fibIndex++;
-      await delay(IN_VITEST ? 0 : backoff, { signal });
+      await (IN_VITEST ? Promise.resolve() : delay(backoff, { signal }));
     }
   }
 }

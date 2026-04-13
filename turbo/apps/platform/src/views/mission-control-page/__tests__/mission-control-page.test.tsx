@@ -393,4 +393,58 @@ describe("mission control page", () => {
       runId: "run-arc-1",
     });
   });
+
+  it('should render voice_chat task type with Voice Chat label', async () => {
+    server.use(
+      http.get('*/api/zero/tasks', () => {
+        return HttpResponse.json({
+          tasks: [
+            {
+              id: 'task-vc',
+              type: 'voice_chat',
+              title: 'Voice session with Zero',
+              summary: null,
+              agent: createAgent(),
+              latestRunId: 'run-vc-1',
+              status: 'running',
+              // voice_chat tasks have no chatThreadId — omit optional fields
+              createdAt: '2026-04-13T10:00:00Z',
+              updatedAt: '2026-04-13T10:00:00Z',
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: '/_/mission-control' });
+
+    // Title renders
+    await waitFor(() => {
+      expect(screen.getByText('Voice session with Zero')).toBeInTheDocument();
+    });
+    // Microphone icon rendered (voice_chat maps to IconMicrophone)
+    const card = screen
+      .getByText('Voice session with Zero')
+      .closest('[role=button]') as HTMLElement;
+    expect(card.querySelector('.tabler-icon-microphone')).not.toBeNull();
+  });
+
+  it('should open new chat dialog when c key is pressed', async () => {
+    mockTasksAPI([]);
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: '/_/mission-control' });
+
+    await waitFor(() => {
+      expect(screen.getByText('No active tasks')).toBeInTheDocument();
+    });
+
+    // c shortcut is registered by setupMissionControlKeyboard$
+    await user.keyboard('c');
+
+    await waitFor(() => {
+      // AgentListDialog title
+      expect(screen.getByText('Talk to')).toBeInTheDocument();
+    });
+  });
 });
