@@ -437,7 +437,6 @@ describe("mission control page", () => {
           hasDefaultAgent: false,
           defaultAgentId: null,
           defaultAgentMetadata: null,
-          defaultAgentSkills: [],
         });
       }),
       http.get("*/api/zero/tasks", () => {

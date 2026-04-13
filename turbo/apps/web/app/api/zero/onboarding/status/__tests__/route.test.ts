@@ -48,7 +48,6 @@ describe("GET /api/zero/onboarding/status", () => {
       hasDefaultAgent: false,
       defaultAgentId: null,
       defaultAgentMetadata: null,
-      defaultAgentSkills: [],
     });
   });
 
@@ -87,7 +86,11 @@ describe("GET /api/zero/onboarding/status", () => {
     // Mark personal onboarding as done
     const completeRequest = createTestRequest(
       "http://localhost:3000/api/zero/onboarding/complete",
-      { method: "POST" },
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
+      },
     );
     const completeResponse = await completeOnboarding(completeRequest);
     expect(completeResponse.status).toBe(200);
@@ -106,7 +109,6 @@ describe("GET /api/zero/onboarding/status", () => {
       hasDefaultAgent: true,
       defaultAgentId: compose.composeId,
       defaultAgentMetadata: null,
-      defaultAgentSkills: [],
     });
   });
 
@@ -136,7 +138,11 @@ describe("GET /api/zero/onboarding/status", () => {
     // Mark personal onboarding as done
     const completeRequest = createTestRequest(
       "http://localhost:3000/api/zero/onboarding/complete",
-      { method: "POST" },
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
+      },
     );
     const completeResponse = await completeOnboarding(completeRequest);
     expect(completeResponse.status).toBe(200);
@@ -155,7 +161,6 @@ describe("GET /api/zero/onboarding/status", () => {
       hasDefaultAgent: true,
       defaultAgentId: compose.composeId,
       defaultAgentMetadata: { displayName: "My Agent", sound: "friendly" },
-      defaultAgentSkills: [],
     });
   });
 
@@ -238,7 +243,11 @@ describe("GET /api/zero/onboarding/status", () => {
     // Complete onboarding via POST /api/zero/onboarding/complete
     const completeRequest = createTestRequest(
       "http://localhost:3000/api/zero/onboarding/complete",
-      { method: "POST" },
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
+      },
     );
     const completeResponse = await completeOnboarding(completeRequest);
     expect(completeResponse.status).toBe(200);

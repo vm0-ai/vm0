@@ -7,8 +7,18 @@ import {
   onboardingDisplayName$,
   onboardingAddToSlack$,
   onboardingContinueWeb$,
+  onboardingEffectiveStep$,
+  onboardingVisibleSteps$,
+  onboardingStepBack$,
+  onboardingStepNext$,
 } from "../zero-onboarding-actions.ts";
-import { setZeroAgentName$, zeroOnboardingStep$ } from "../zero-onboarding.ts";
+import {
+  setZeroAgentName$,
+  setZeroStep$,
+  setZeroWorkspaceName$,
+  toggleZeroConnector$,
+  zeroOnboardingStep$,
+} from "../zero-onboarding.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../utils.ts";
 
@@ -27,7 +37,6 @@ function mockAdminOnboarding() {
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-        defaultAgentSkills: [],
       });
     }),
   );
@@ -43,7 +52,6 @@ function mockMemberOnboarding() {
         hasDefaultAgent: true,
         defaultAgentId: MOCK_MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "TeamBot" },
-        defaultAgentSkills: [],
       });
     }),
   );
@@ -110,7 +118,6 @@ describe("onboardingAddToSlack$", () => {
             hasDefaultAgent: false,
             defaultAgentId: null,
             defaultAgentMetadata: null,
-            defaultAgentSkills: [],
           });
         }
         return HttpResponse.json({
@@ -120,7 +127,6 @@ describe("onboardingAddToSlack$", () => {
           hasDefaultAgent: true,
           defaultAgentId: MOCK_AGENT_ID,
           defaultAgentMetadata: null,
-          defaultAgentSkills: [],
         });
       }),
     );
@@ -149,7 +155,6 @@ describe("onboardingAddToSlack$", () => {
             hasDefaultAgent: true,
             defaultAgentId: MOCK_MEMBER_AGENT_ID,
             defaultAgentMetadata: { displayName: "TeamBot" },
-            defaultAgentSkills: [],
           });
         }
         return HttpResponse.json({
@@ -159,7 +164,6 @@ describe("onboardingAddToSlack$", () => {
           hasDefaultAgent: true,
           defaultAgentId: MOCK_MEMBER_AGENT_ID,
           defaultAgentMetadata: { displayName: "TeamBot" },
-          defaultAgentSkills: [],
         });
       }),
     );
@@ -194,7 +198,6 @@ describe("onboardingContinueWeb$", () => {
             hasDefaultAgent: false,
             defaultAgentId: null,
             defaultAgentMetadata: null,
-            defaultAgentSkills: [],
           });
         }
         return HttpResponse.json({
@@ -204,7 +207,6 @@ describe("onboardingContinueWeb$", () => {
           hasDefaultAgent: true,
           defaultAgentId: MOCK_AGENT_ID,
           defaultAgentMetadata: null,
-          defaultAgentSkills: [],
         });
       }),
     );
@@ -235,7 +237,6 @@ describe("onboardingContinueWeb$", () => {
             hasDefaultAgent: true,
             defaultAgentId: MOCK_MEMBER_AGENT_ID,
             defaultAgentMetadata: { displayName: "TeamBot" },
-            defaultAgentSkills: [],
           });
         }
         return HttpResponse.json({
@@ -245,7 +246,6 @@ describe("onboardingContinueWeb$", () => {
           hasDefaultAgent: true,
           defaultAgentId: MOCK_MEMBER_AGENT_ID,
           defaultAgentMetadata: { displayName: "TeamBot" },
-          defaultAgentSkills: [],
         });
       }),
     );
@@ -282,7 +282,6 @@ describe("onboarding concurrent invocation", () => {
             hasDefaultAgent: false,
             defaultAgentId: null,
             defaultAgentMetadata: null,
-            defaultAgentSkills: [],
           });
         }
         return HttpResponse.json({
@@ -292,7 +291,6 @@ describe("onboarding concurrent invocation", () => {
           hasDefaultAgent: true,
           defaultAgentId: MOCK_AGENT_ID,
           defaultAgentMetadata: null,
-          defaultAgentSkills: [],
         });
       }),
       http.post("*/api/zero/onboarding/setup", async () => {
@@ -319,5 +317,207 @@ describe("onboarding concurrent invocation", () => {
 
     // Both invocations run (UI-level deduplication is handled by useLoadableSet)
     expect(requestCount).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unified member/admin step resolution (#9129)
+// ---------------------------------------------------------------------------
+
+describe("unified onboarding step resolution", () => {
+  it("member lands on step 2 on entry", async () => {
+    mockMemberOnboarding();
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("2");
+  });
+
+  it("member with no connectors selected has visible steps [2, 4]", async () => {
+    mockMemberOnboarding();
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    const steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["2", "4"]);
+  });
+
+  it("member advancing from step 2 with no selection jumps to step 4", async () => {
+    mockMemberOnboarding();
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    await context.store.set(onboardingStepNext$, context.signal);
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("4");
+  });
+
+  it("member toggling connectors transitions visible steps between [2, 4] and [2, 3, 4]", async () => {
+    mockMemberOnboarding();
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    context.store.set(toggleZeroConnector$, "github");
+    let steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["2", "3", "4"]);
+
+    context.store.set(toggleZeroConnector$, "github");
+    steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["2", "4"]);
+  });
+
+  it("admin with no connectors selected has visible steps [1, 2, 4]", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    const steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["1", "2", "4"]);
+  });
+
+  it("admin with one connector selected has visible steps [1, 2, 3, 4]", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    context.store.set(toggleZeroConnector$, "slack");
+
+    const steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["1", "2", "3", "4"]);
+  });
+
+  it("admin advancing from step 2 with no selection jumps to step 4", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    context.store.set(setZeroWorkspaceName$, "Acme");
+    context.store.set(setZeroStep$, "2");
+
+    await context.store.set(onboardingStepNext$, context.signal);
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("4");
+  });
+
+  it("back from step 4 returns to step 2 when no connectors are selected", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    context.store.set(setZeroStep$, "4");
+    await context.store.set(onboardingStepBack$, context.signal);
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("2");
+  });
+
+  it("back from step 4 returns to step 3 when a connector is selected", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    context.store.set(toggleZeroConnector$, "slack");
+    context.store.set(setZeroStep$, "4");
+
+    await context.store.set(onboardingStepBack$, context.signal);
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("3");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Member completion sends selectedConnectors to backend (#9129 Task 11)
+// ---------------------------------------------------------------------------
+
+describe("completeMemberOnboarding$ body", () => {
+  it("sends selectedConnectors in the body when member has selected connectors", async () => {
+    mockMemberOnboarding();
+
+    let memberStatusCalls = 0;
+    server.use(
+      http.get("*/api/zero/onboarding/status", () => {
+        memberStatusCalls++;
+        if (memberStatusCalls <= 1) {
+          return HttpResponse.json({
+            needsOnboarding: true,
+            isAdmin: false,
+            hasOrg: true,
+            hasDefaultAgent: true,
+            defaultAgentId: MOCK_MEMBER_AGENT_ID,
+            defaultAgentMetadata: { displayName: "TeamBot" },
+          });
+        }
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: false,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: MOCK_MEMBER_AGENT_ID,
+          defaultAgentMetadata: { displayName: "TeamBot" },
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    let receivedBody: unknown = null;
+    server.use(
+      http.post("*/api/zero/onboarding/complete", async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    context.store.set(toggleZeroConnector$, "slack");
+    context.store.set(toggleZeroConnector$, "github");
+
+    await context.store.set(onboardingContinueWeb$, context.signal);
+
+    expect(receivedBody).toStrictEqual({
+      selectedConnectors: ["slack", "github"],
+    });
+  });
+
+  it("sends an empty body when member has no selected connectors", async () => {
+    mockMemberOnboarding();
+
+    let memberStatusCalls = 0;
+    server.use(
+      http.get("*/api/zero/onboarding/status", () => {
+        memberStatusCalls++;
+        if (memberStatusCalls <= 1) {
+          return HttpResponse.json({
+            needsOnboarding: true,
+            isAdmin: false,
+            hasOrg: true,
+            hasDefaultAgent: true,
+            defaultAgentId: MOCK_MEMBER_AGENT_ID,
+            defaultAgentMetadata: { displayName: "TeamBot" },
+          });
+        }
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: false,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: MOCK_MEMBER_AGENT_ID,
+          defaultAgentMetadata: { displayName: "TeamBot" },
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    let receivedBody: unknown = null;
+    server.use(
+      http.post("*/api/zero/onboarding/complete", async ({ request }) => {
+        receivedBody = await request.json();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    await context.store.set(onboardingContinueWeb$, context.signal);
+
+    expect(receivedBody).toStrictEqual({});
   });
 });

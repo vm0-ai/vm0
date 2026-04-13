@@ -8,13 +8,9 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { isBadRequest, isNotFound } from "../../../../../src/lib/shared/errors";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
-import { agentComposeApiContentSchema } from "@vm0/core";
 import { orgMembersMetadata } from "../../../../../src/db/schema/org-members-metadata";
 import { orgMetadata as orgTable } from "../../../../../src/db/schema/org-metadata";
 
@@ -44,28 +40,21 @@ interface DefaultAgentInfo {
     description?: string;
     sound?: string;
   } | null;
-  skills: string[];
 }
 
 async function resolveDefaultAgent(
-  orgId: string,
   composeId: string,
 ): Promise<DefaultAgentInfo | null> {
-  // Single query: JOIN compose + zero_agents + head version
+  // Single query: JOIN compose + zero_agents
   const [row] = await globalThis.services.db
     .select({
       name: agentComposes.name,
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
-      content: agentComposeVersions.content,
     })
     .from(agentComposes)
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentComposes.headVersionId, agentComposeVersions.id),
-    )
     .where(eq(agentComposes.id, composeId))
     .limit(1);
 
@@ -82,19 +71,7 @@ async function resolveDefaultAgent(
         }
       : null;
 
-  let skills: string[] = [];
-  if (row.content) {
-    const parsed = agentComposeApiContentSchema.safeParse(row.content);
-    if (parsed.success) {
-      const agentKey = Object.keys(parsed.data.agents)[0];
-      const agentDef = agentKey ? parsed.data.agents[agentKey] : undefined;
-      if (agentDef) {
-        skills = agentDef.skills ?? [];
-      }
-    }
-  }
-
-  return { name: row.name, composeId, metadata, skills };
+  return { name: row.name, composeId, metadata };
 }
 
 const router = tsr.router(onboardingStatusContract, {
@@ -132,10 +109,7 @@ const router = tsr.router(onboardingStatusContract, {
 
       if (defaultAgentId) {
         // defaultAgentId IS the composeId (zero_agents.id = agent_composes.id)
-        defaultAgent = await resolveDefaultAgent(
-          resolvedOrg.orgId,
-          defaultAgentId,
-        );
+        defaultAgent = await resolveDefaultAgent(defaultAgentId);
       }
     } catch (error) {
       if (!isNotFound(error) && !isBadRequest(error)) {
@@ -170,7 +144,6 @@ const router = tsr.router(onboardingStatusContract, {
         hasDefaultAgent: defaultAgent !== null,
         defaultAgentId: defaultAgent?.composeId ?? null,
         defaultAgentMetadata: defaultAgent?.metadata ?? null,
-        defaultAgentSkills: defaultAgent?.skills ?? [],
       },
     };
   },

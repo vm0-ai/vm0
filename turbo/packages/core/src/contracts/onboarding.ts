@@ -20,7 +20,6 @@ export const onboardingStatusResponseSchema = z.object({
       sound: z.string().optional(),
     })
     .nullable(),
-  defaultAgentSkills: z.array(z.string()),
 });
 
 export type OnboardingStatusResponse = z.infer<
@@ -48,7 +47,9 @@ export const onboardingCompleteContract = c.router({
     method: "POST",
     path: "/api/zero/onboarding/complete",
     headers: authHeadersSchema,
-    body: c.noBody(),
+    body: z.object({
+      selectedConnectors: z.array(z.string()).optional(),
+    }),
     responses: {
       200: z.object({ ok: z.boolean() }),
       401: apiErrorSchema,

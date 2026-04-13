@@ -17,7 +17,11 @@ describe("POST /api/zero/onboarding/complete", () => {
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/onboarding/complete",
-      { method: "POST" },
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
+      },
     );
     const response = await POST(request);
     const data = await response.json();
@@ -54,7 +58,11 @@ describe("POST /api/zero/onboarding/complete", () => {
     // Complete onboarding
     const request = createTestRequest(
       "http://localhost:3000/api/zero/onboarding/complete",
-      { method: "POST" },
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" },
+      },
     );
     const response = await POST(request);
     const data = await response.json();
@@ -80,6 +88,8 @@ describe("POST /api/zero/onboarding/complete", () => {
           "http://localhost:3000/api/zero/onboarding/complete",
           {
             method: "POST",
+            body: JSON.stringify({}),
+            headers: { "Content-Type": "application/json" },
           },
         ),
       );

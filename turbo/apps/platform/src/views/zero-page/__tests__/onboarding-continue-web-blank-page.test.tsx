@@ -27,7 +27,6 @@ function mockMemberOnboardingDeferred() {
         hasDefaultAgent: true,
         defaultAgentId: MOCK_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
-        defaultAgentSkills: [],
       });
     }),
     http.post("*/api/zero/onboarding/complete", async () => {
@@ -49,6 +48,13 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
     const mock = mockMemberOnboardingDeferred();
 
     detachedSetupPage({ context, path: "/onboarding" });
+
+    // Member lands on step 2 (Choose your tools) under the unified flow
+    await waitFor(() => {
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+    });
+    // Advance without selecting a connector — skips step 3, lands on step 4
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -83,7 +89,6 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
           hasDefaultAgent: true,
           defaultAgentId: MOCK_AGENT_ID,
           defaultAgentMetadata: { displayName: "Zero" },
-          defaultAgentSkills: [],
         });
       }),
       http.get("*/api/zero/chat-threads", () => {

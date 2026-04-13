@@ -3,7 +3,6 @@ import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
   zeroOnboardingStep$,
-  zeroOnboardingStatus$,
   zeroAgentName$,
   zeroWorkspaceName$,
   zeroSelectedConnectors$,
@@ -12,13 +11,11 @@ import {
   completeMemberOnboarding$,
 } from "./zero-onboarding.ts";
 import { currentChatAgentDisplayName$ } from "../agent-chat.ts";
-import { allConnectorTypes$ } from "./settings/connectors.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
 import { reloadAgents$ } from "../agent.ts";
 import { showAppSkeleton$ } from "../app-skeleton.ts";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Admin flag
@@ -30,67 +27,49 @@ export const onboardingIsAdmin$ = zeroNeedsOnboarding$;
 // Step resolution (moved from TSX)
 // ---------------------------------------------------------------------------
 
-const ADMIN_STEPS = ["1", "2", "3", "4"] as const;
-
-/** Connector types the member should see, derived from default agent skills. */
-const onboardingMemberConnectors$ = computed(async (get) => {
-  const isAdmin = await get(zeroNeedsOnboarding$);
-  if (isAdmin) {
-    return [] as ConnectorType[];
-  }
-  const status = await get(zeroOnboardingStatus$);
-  const skillUrls = status.defaultAgentSkills ?? [];
-  const all = await get(allConnectorTypes$);
-  const typeSet = new Set(
-    all.map((c) => {
-      return c.type;
-    }),
-  );
-  return (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).filter((type) => {
-    const isInAgent = skillUrls.some((url) => {
-      return url.endsWith(`/${type}`);
-    });
-    return isInAgent && typeSet.has(type);
-  });
+/**
+ * Connectors shown in step 3 — just the current user selection, regardless of
+ * role. Members now drive the selection exactly like admins (#9129).
+ */
+export const onboardingEffectiveConnectors$ = computed((get) => {
+  return get(zeroSelectedConnectors$);
 });
 
-/** Connectors shown in step 3: admin's selection vs member's derived list. */
-export const onboardingEffectiveConnectors$ = computed(async (get) => {
-  const isAdmin = await get(zeroNeedsOnboarding$);
-  if (isAdmin) {
-    return get(zeroSelectedConnectors$);
-  }
-  return await get(onboardingMemberConnectors$);
-});
-
-/** The resolved step accounting for admin/member logic. */
+/**
+ * The resolved step after applying role + selection rules:
+ *   - Member never sees step 1 (admin-only workspace creation); step 1 → 2.
+ *   - Step 3 is hidden for both roles when no connector is selected; step 3 → 4.
+ */
 export const onboardingEffectiveStep$ = computed(async (get) => {
   const step = await get(zeroOnboardingStep$);
   if (!step || step === "done") {
     return undefined;
   }
   const isAdmin = await get(zeroNeedsOnboarding$);
-  if (isAdmin) {
-    return step;
+  if (!isAdmin && step === "1") {
+    return "2";
   }
-  const memberConnectors = await get(onboardingMemberConnectors$);
-  const hasMemberConnectors = memberConnectors.length > 0;
-  if (step === "1" || step === "2" || (step === "3" && !hasMemberConnectors)) {
-    return hasMemberConnectors ? "3" : "4";
+  const selected = get(zeroSelectedConnectors$);
+  if (step === "3" && selected.length === 0) {
+    return "4";
   }
   return step;
 });
 
-/** Steps shown in the progress bar. */
+/**
+ * Steps shown in the progress bar. Admin owns step 1; step 3 only appears
+ * when at least one connector is selected.
+ */
 export const onboardingVisibleSteps$ = computed(async (get) => {
   const isAdmin = await get(zeroNeedsOnboarding$);
+  const selected = get(zeroSelectedConnectors$);
+  const hasSelected = selected.length > 0;
   if (isAdmin) {
-    return ADMIN_STEPS as readonly string[];
+    return (
+      hasSelected ? ["1", "2", "3", "4"] : ["1", "2", "4"]
+    ) as readonly string[];
   }
-  const memberConnectors = await get(onboardingMemberConnectors$);
-  return (
-    memberConnectors.length > 0 ? ["3", "4"] : ["4"]
-  ) as readonly string[];
+  return (hasSelected ? ["2", "3", "4"] : ["2", "4"]) as readonly string[];
 });
 
 /** Current step index within visible steps. */
@@ -127,30 +106,14 @@ export const onboardingStepKey$ = computed(async (get) => {
 // Navigation
 // ---------------------------------------------------------------------------
 
+/** Show the back button on every step except the first visible one. */
 export const onboardingShowBack$ = computed(async (get) => {
   const step = await get(onboardingEffectiveStep$);
-  const isAdmin = await get(zeroNeedsOnboarding$);
-  switch (step) {
-    case "1": {
-      return false;
-    }
-    case "2": {
-      return true;
-    }
-    case "3": {
-      return isAdmin;
-    }
-    case "4": {
-      if (isAdmin) {
-        return true;
-      }
-      const memberConnectors = await get(onboardingMemberConnectors$);
-      return memberConnectors.length > 0;
-    }
-    default: {
-      return false;
-    }
+  if (!step) {
+    return false;
   }
+  const visibleSteps = await get(onboardingVisibleSteps$);
+  return visibleSteps.indexOf(step) > 0;
 });
 
 export const onboardingShowNext$ = computed(async (get) => {
@@ -169,6 +132,7 @@ export const onboardingNextDisabled$ = computed(async (get) => {
 export const onboardingStepBack$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const step = await get(onboardingEffectiveStep$);
+    const hasSelected = get(zeroSelectedConnectors$).length > 0;
     switch (step) {
       case "2": {
         set(setZeroStep$, "1");
@@ -179,7 +143,7 @@ export const onboardingStepBack$ = command(
         break;
       }
       case "4": {
-        set(setZeroStep$, "3");
+        set(setZeroStep$, hasSelected ? "3" : "2");
         break;
       }
     }
@@ -189,13 +153,14 @@ export const onboardingStepBack$ = command(
 export const onboardingStepNext$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const step = await get(onboardingEffectiveStep$);
+    const hasSelected = get(zeroSelectedConnectors$).length > 0;
     switch (step) {
       case "1": {
         set(setZeroStep$, "2");
         break;
       }
       case "2": {
-        set(setZeroStep$, "3");
+        set(setZeroStep$, hasSelected ? "3" : "4");
         break;
       }
       case "3": {

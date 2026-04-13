@@ -22,7 +22,6 @@ function mockAdminOnboarding() {
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-        defaultAgentSkills: [],
       });
     }),
     http.post("*/api/zero/onboarding/setup", () => {
@@ -41,7 +40,6 @@ function switchToAdminComplete() {
         hasDefaultAgent: true,
         defaultAgentId: MOCK_AGENT_ID,
         defaultAgentMetadata: null,
-        defaultAgentSkills: [],
       });
     }),
     http.get("*/api/zero/chat-threads", () => {
@@ -60,7 +58,6 @@ function mockMemberOnboarding() {
         hasDefaultAgent: true,
         defaultAgentId: MOCK_MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
-        defaultAgentSkills: [],
       });
     }),
     http.post("*/api/zero/onboarding/complete", () => {
@@ -79,7 +76,6 @@ function switchToMemberComplete() {
         hasDefaultAgent: true,
         defaultAgentId: MOCK_MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
-        defaultAgentSkills: [],
       });
     }),
     http.get("*/api/zero/chat-threads", () => {
@@ -100,6 +96,9 @@ async function walkAdminToWhereStep(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => {
     expect(screen.getByText("Choose your tools")).toBeInTheDocument();
   });
+  // Select a connector so step 3 is reachable (#9129 — step 3 is
+  // conditional on at least one selected connector)
+  await user.click(screen.getByTestId("connector-card-github"));
   await user.click(screen.getByText("Next"));
 
   await waitFor(() => {
@@ -137,7 +136,13 @@ describe("onboarding continue in web → agent chat page", () => {
 
     detachedSetupPage({ context, path: "/onboarding" });
 
-    // Member with no connectors skips directly to step 4
+    // Member lands on step 2 (Choose your tools) under the unified flow
+    await waitFor(() => {
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+    });
+    // Advance without selecting a connector — skips step 3, lands on step 4
+    await user.click(screen.getByText("Next"));
+
     await waitFor(() => {
       expect(
         screen.getByText(/Where would you like to work with/),
@@ -181,7 +186,13 @@ describe("onboarding add to Slack → works page", () => {
 
     detachedSetupPage({ context, path: "/onboarding" });
 
-    // Member with no connectors skips directly to step 4
+    // Member lands on step 2 (Choose your tools) under the unified flow
+    await waitFor(() => {
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+    });
+    // Advance without selecting a connector — skips step 3, lands on step 4
+    await user.click(screen.getByText("Next"));
+
     await waitFor(() => {
       expect(
         screen.getByText(/Where would you like to work with/),

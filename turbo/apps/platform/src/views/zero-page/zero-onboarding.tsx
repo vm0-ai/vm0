@@ -927,10 +927,11 @@ function OnboardingStepContent() {
 
   switch (effectiveStep) {
     case "1": {
+      // Step 1 is admin-only (workspace creation).
       return isAdmin ? <WorkspaceStepContent /> : null;
     }
     case "2": {
-      return isAdmin ? <SelectConnectorsContent /> : null;
+      return <SelectConnectorsContent />;
     }
     case "3": {
       return <ConnectStepContent />;
