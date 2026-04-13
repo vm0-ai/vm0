@@ -38,10 +38,10 @@ pub fn validate_or_err(name: &str) -> RunnerResult<()> {
 /// - does not start with `.` (rejects `.`, `..`, and hidden-file forms)
 /// - does not start with `-` (avoids being parsed as a flag downstream)
 ///
-/// Implicitly rejects `/` (not in charset), which means the name is always
-/// a single path segment. The dot allowance exists for production semver
-/// dirnames produced by `ansible/playbooks/deploy-runner.yml` (e.g.
-/// `v0.3.0`).
+/// Implicitly rejects `/` and `\` (neither is in the charset), keeping the
+/// name to a single path segment regardless of the host's separator
+/// conventions. The dot allowance exists for production semver dirnames
+/// produced by `ansible/playbooks/deploy-runner.yml` (e.g. `v0.3.0`).
 fn validate_name(name: &str) -> bool {
     if name.is_empty() || name.starts_with('.') || name.starts_with('-') {
         return false;
@@ -55,7 +55,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validate_name_accepts_real_world_values() {
+    fn validate_name_valid() {
         // All values currently in use across ansible/scripts/CI.
         assert!(validate_name("v0.3.0")); // ansible production semver
         assert!(validate_name("v1.10.1"));
@@ -73,7 +73,7 @@ mod tests {
     /// contract so future tightening is an explicit decision, not a silent
     /// regression.
     #[test]
-    fn validate_name_accepts_unusual_but_safe_shapes() {
+    fn validate_name_valid_unusual_shapes() {
         assert!(validate_name("foo-")); // trailing hyphen
         assert!(validate_name("foo.")); // trailing dot
         assert!(validate_name("foo--bar")); // consecutive hyphens
@@ -83,7 +83,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_name_rejects_empty_and_special_segments() {
+    fn validate_name_invalid_shape() {
         assert!(!validate_name(""));
         assert!(!validate_name("."));
         assert!(!validate_name(".."));
@@ -102,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_name_rejects_invalid_chars() {
+    fn validate_name_invalid_chars() {
         assert!(!validate_name("V0.3.0")); // uppercase
         assert!(!validate_name("v0.3.0_dev")); // underscore
         assert!(!validate_name("v0 3 0")); // space

@@ -20,7 +20,7 @@ mod provider;
 mod proxy;
 mod resource_budget;
 mod retry;
-mod runner_dir;
+mod runner_dirname;
 mod status;
 mod telemetry;
 mod types;

@@ -49,7 +49,7 @@ pub struct ConfigArgs {
 pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     // Pure-CPU validation first — fail fast before any filesystem I/O.
     crate::group::validate_or_err(&args.group)?;
-    crate::runner_dir::validate_or_err(&args.runner_dirname)?;
+    crate::runner_dirname::validate_or_err(&args.runner_dirname)?;
     if args.profile.len() != args.image_hash.len() {
         return Err(RunnerError::Config(
             "--profile and --image-hash must be specified the same number of times".into(),
