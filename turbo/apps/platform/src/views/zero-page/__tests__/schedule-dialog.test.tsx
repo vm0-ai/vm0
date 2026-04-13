@@ -558,3 +558,31 @@ describe("schedule dialog - unsaved continue (SCHED-D-066)", () => {
     });
   });
 });
+
+describe("schedule dialog - ESC with unsaved changes (SCHED-D-067)", () => {
+  it("shows confirm overlay when ESC is pressed with a dirty form", async () => {
+    const user = userEvent.setup();
+    await openCreateDialog(user);
+    await user.type(screen.getByLabelText("Prompt"), "Some text");
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    });
+    // Dialog must remain open behind the confirm overlay.
+    expect(
+      screen.getByRole("heading", { name: "Add schedule" }),
+    ).toBeInTheDocument();
+  });
+
+  it("closes dialog directly when ESC is pressed on a clean form", async () => {
+    const user = userEvent.setup();
+    await openCreateDialog(user);
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Add schedule" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+});
