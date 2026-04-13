@@ -83,3 +83,45 @@ export const voiceChatEvents = pgTable(
     ];
   },
 );
+
+/**
+ * Cached preparation results for voice-chat sessions.
+ * Decouples the "prepare directive" step so it can run independently and be reused.
+ *
+ * Statuses: preparing → ready | failed
+ * Modes: chat (default) — general chat prep; meeting — meeting-specific prep with prompt.
+ */
+export const voiceChatPreparations = pgTable(
+  "voice_chat_preparations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    agentId: uuid("agent_id").references(
+      () => {
+        return agentComposes.id;
+      },
+      { onDelete: "set null" },
+    ),
+    mode: varchar("mode", { length: 20 }).notNull().default("chat"),
+    prompt: text("prompt"),
+    runId: uuid("run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "set null" },
+    ),
+    directiveContent: text("directive_content"),
+    status: varchar("status", { length: 20 }).notNull().default("preparing"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_voice_chat_preparations_user_agent").on(
+        table.userId,
+        table.agentId,
+        table.mode,
+      ),
+    ];
+  },
+);
