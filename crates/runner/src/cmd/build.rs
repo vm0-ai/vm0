@@ -214,12 +214,15 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     // its own staging directory and atomic rename, so output_dir stays absent
     // on failure (no false-positive cache hits from partial unpack).
     //
-    // `r2_object_is_corrupt`: set when we observed a structurally-valid
-    // download (Ok(true)) whose extracted content failed `is_image_complete`.
-    // The next `upload` call would dedup-skip on `exists() = true` and leave
-    // the bad object in place, locking the entire fleet out of this hash —
-    // so we delete it before falling through to local rebuild.
-    let mut r2_object_is_corrupt = false;
+    // `force_reupload`: set when we observed a structurally-valid download
+    // (Ok(true)) whose extracted content failed `is_image_complete`. Without
+    // it the next `upload` call would dedup-skip on `exists() = true` and
+    // leave the bad object in place, locking the entire fleet out of this
+    // hash. We pass it through as `force` to `upload` rather than calling
+    // `delete` first — force-upload is a single atomic PUT that doesn't
+    // depend on `s3:DeleteObject` permission being healthy (a persistently
+    // failing delete would otherwise leave the corruption stuck forever).
+    let mut force_reupload = false;
     if let Some(cache) = &r2 {
         match cache.try_download(&hash, output_dir).await {
             Ok(true) => {
@@ -230,29 +233,15 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
                 }
                 tracing::warn!(
                     "R2 download for {hash} succeeded but image incomplete — \
-                     will evict bad object and rebuild locally"
+                     will rebuild locally and force-overwrite the bad object"
                 );
-                r2_object_is_corrupt = true;
+                force_reupload = true;
             }
             Ok(false) => tracing::info!("R2 cache miss for {hash} — building locally"),
             // Err is ambiguous (transient network vs. content corruption);
-            // we don't auto-evict here — false eviction on a network blip
-            // would force the whole fleet into a slow rebuild cycle.
+            // we don't force-overwrite here — false overwrite on a network
+            // blip would amplify load (every host re-uploads the same hash).
             Err(e) => tracing::warn!("R2 download failed: {e} — falling back to local build"),
-        }
-    }
-
-    // Evict the corrupt object BEFORE local build so re-upload (later) won't
-    // dedup-skip. Safe under concurrent fleet eviction (DeleteObject is
-    // idempotent). Failure here is non-fatal: worst case the upload step
-    // dedup-skips and we retry on the next deploy.
-    if r2_object_is_corrupt && let Some(cache) = &r2 {
-        match cache.delete(&hash).await {
-            Ok(()) => tracing::info!("evicted corrupt R2 object: {hash}"),
-            Err(e) => tracing::warn!(
-                "failed to evict corrupt R2 object {hash}: {e} — \
-                 next upload may dedup-skip and leave corruption in place"
-            ),
         }
     }
 
@@ -394,10 +383,12 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
 
     // Synchronous R2 upload after Phase 2. Failure is non-fatal — the image is
     // already on local disk; subsequent hosts just won't get a cache hit.
-    // exists() check inside upload() avoids same-deploy N-host duplicate uploads.
+    // `exists()` dedup inside `upload()` avoids same-deploy N-host duplicate
+    // uploads; `force_reupload` bypasses dedup so a previously-detected
+    // corrupt object gets atomically overwritten.
     if let Some(cache) = &r2 {
         let files = image.expected_files().to_vec();
-        match cache.upload(&hash, &files).await {
+        match cache.upload(&hash, &files, force_reupload).await {
             Ok(()) => tracing::info!("uploaded image to R2: {hash}"),
             Err(e) => tracing::warn!("R2 upload failed: {e} — image is on local disk"),
         }

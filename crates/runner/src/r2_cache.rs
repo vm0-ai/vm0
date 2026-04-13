@@ -88,9 +88,25 @@
 //! host downloads → unpacks → fails completeness → rebuilds locally →
 //! `upload`'s `exists()` dedup-skips → the bad object stays, forever.
 //!
-//! `cmd::build::run_build` defends by calling `delete(&hash)` whenever it
-//! observes "download Ok(true) but is_image_complete=false", clearing the
-//! way for a clean re-upload after the local rebuild.
+//! `cmd::build::run_build` defends by passing `force = true` to `upload`
+//! whenever it observes "download Ok(true) but is_image_complete=false".
+//! That bypasses the dedup check and atomically overwrites the bad object
+//! in a single PUT — robust against `s3:DeleteObject` permission being
+//! revoked or transiently failing (which a `delete + retry-upload`
+//! sequence would not be).
+//!
+//! ## Tar entry security boundary
+//!
+//! `tar::Archive::unpack` (0.4) silently drops entries with `..` path
+//! components but **accepts symlink and hardlink entries**. An attacker
+//! with R2 write access could craft a tar where each expected filename
+//! (`rootfs.ext4`, `snapshot.bin`, etc.) is a symlink to a host path
+//! (e.g. `/etc/passwd`); `is_image_complete` would pass and Firecracker
+//! would consume the linked content.
+//!
+//! Defense currently relies on the trust boundary at R2 IAM credentials.
+//! Hardening (rejecting non-regular-file tar entries) is tracked as a
+//! follow-up — out of scope for this PR.
 //!
 //! ## Security boundary: tar path traversal
 //!
@@ -220,22 +236,6 @@ impl R2ImageCache {
         Ok(Some(Self { client, bucket }))
     }
 
-    /// Delete `runner-images/{hash}.tar.zst`. Used to evict objects detected
-    /// as corrupt (download succeeded but `is_image_complete` failed) so the
-    /// next `upload` doesn't dedup-skip and leave the corruption in place.
-    /// `DeleteObject` on a missing key is a no-op success — safe under
-    /// concurrent fleet eviction of the same key.
-    pub async fn delete(&self, hash: &str) -> Result<(), R2Error> {
-        let key = key_for_hash(hash);
-        self.client
-            .delete_object()
-            .bucket(&self.bucket)
-            .key(&key)
-            .send()
-            .await?;
-        Ok(())
-    }
-
     /// Returns `Ok(true)` if `runner-images/{hash}.tar.zst` exists.
     pub async fn exists(&self, hash: &str) -> Result<bool, R2Error> {
         let key = key_for_hash(hash);
@@ -305,14 +305,25 @@ impl R2ImageCache {
     }
 
     /// Pack `files` into `tar.zst` and stream-upload to `runner-images/{hash}.tar.zst`.
-    /// Skips the upload if the object already exists (head_object dedup).
     /// No temp file: a tokio duplex pipe couples the synchronous tar+zstd
     /// producer (running on a blocking thread) to the async multipart consumer.
     ///
+    /// **`force = false`** (the common case): skip the upload if the object
+    /// already exists (head_object dedup) — saves bandwidth when peers have
+    /// already uploaded the same hash.
+    ///
+    /// **`force = true`**: skip the dedup check and always upload, atomically
+    /// replacing whatever is currently at the key. Used by `cmd::build` after
+    /// detecting a corrupt prior upload (download succeeded but
+    /// `is_image_complete` failed). Going through `delete + dedup-upload`
+    /// would deadlock the fleet's cache if `DeleteObject` permission is
+    /// missing or transiently failing — `force` is a single-round-trip atomic
+    /// overwrite that doesn't depend on `s3:DeleteObject`.
+    ///
     /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
     /// outer call sites (CI/systemd) bound total wall time.
-    pub async fn upload(&self, hash: &str, files: &[PathBuf]) -> Result<(), R2Error> {
-        if self.exists(hash).await? {
+    pub async fn upload(&self, hash: &str, files: &[PathBuf], force: bool) -> Result<(), R2Error> {
+        if !force && self.exists(hash).await? {
             tracing::info!("R2 already has {hash}, skipping upload");
             return Ok(());
         }
