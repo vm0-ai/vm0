@@ -5,18 +5,9 @@ import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getRunOutputText } from "../../../../../src/lib/infra/run/extract-run-output";
 import { saveRunSummary } from "../../../../../src/lib/zero/run-summary";
-import type { AgentCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("callback:agent");
-
-function parsePayload(payload: unknown): AgentCallbackPayload {
-  if (!payload || typeof payload !== "object") return {};
-  const p = payload as Record<string, unknown>;
-  return {
-    parentRunId: typeof p.parentRunId === "string" ? p.parentRunId : undefined,
-  };
-}
 
 /**
  * POST /api/internal/callbacks/agent
@@ -27,7 +18,7 @@ function parsePayload(payload: unknown): AgentCallbackPayload {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
-  const result = await verifyCallback<AgentCallbackPayload>(request, log);
+  const result = await verifyCallback(request, log);
   if (!result.ok) return result.response;
 
   const { runId, status } = result.data;
@@ -46,10 +37,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .limit(1);
 
     if (run) {
-      const resultText = await getRunOutputText(runId).catch((err: unknown) => {
-        log.warn("Failed to extract run output text", { runId, err });
-        return undefined;
-      });
+      const resultText = await getRunOutputText(runId);
       await saveRunSummary(runId, "agent", run.prompt, resultText ?? "");
     }
   }

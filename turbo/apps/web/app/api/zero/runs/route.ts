@@ -16,7 +16,6 @@ import {
   generateCallbackSecret,
   getApiUrl,
 } from "../../../../src/lib/infra/callback";
-import type { AgentCallbackPayload } from "../../../../src/lib/infra/callback/callback-payloads";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { agentComposeVersions } from "../../../../src/db/schema/agent-compose";
@@ -112,16 +111,12 @@ const router = tsr.router(zeroRunsMainContract, {
       }
 
       const isAgentTriggered = !!authCtx.runId;
-      const agentCallbacks: Array<{
-        url: string;
-        secret: string;
-        payload: AgentCallbackPayload;
-      }> = isAgentTriggered
+      const agentCallbacks = isAgentTriggered
         ? [
             {
               url: `${getApiUrl()}/api/internal/callbacks/agent`,
               secret: generateCallbackSecret(),
-              payload: { parentRunId: authCtx.runId },
+              payload: {},
             },
           ]
         : [];

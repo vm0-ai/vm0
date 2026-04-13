@@ -54,7 +54,6 @@ import {
   buildAgentPrompt,
   buildAutoSkillGuidance,
 } from "./agent-prompt";
-import type { CallbackPayload } from "../infra/callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
@@ -81,7 +80,7 @@ interface ZeroRunParams {
   sessionId?: string;
   appendSystemPrompt?: string;
   modelProvider?: string;
-  callbacks?: Array<{ url: string; secret: string; payload: CallbackPayload }>;
+  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   scheduleId?: string;
   triggerAgentId?: string;
   /** Extra user info fields merged into the base # Current User Info block. */

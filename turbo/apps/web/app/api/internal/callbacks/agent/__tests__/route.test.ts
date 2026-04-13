@@ -37,12 +37,12 @@ describe("POST /api/internal/callbacks/agent", () => {
       prompt: "Delegate this task to the other agent",
       triggerSource: "agent",
     });
-    const { callbackId, secret } = await createTestCallback({
+    const { secret } = await createTestCallback({
       runId,
       url: "http://localhost/api/internal/callbacks/agent",
-      payload: { parentRunId: "parent-run-id" },
+      payload: {},
     });
-    return { runId, callbackId, secret };
+    return { runId, secret };
   }
 
   describe("Signature Verification", () => {
@@ -54,7 +54,7 @@ describe("POST /api/internal/callbacks/agent", () => {
         {
           runId,
           status: "completed",
-          payload: { parentRunId: "parent-run-id" },
+          payload: {},
         },
         secret,
         { invalidSignature: true },
@@ -70,7 +70,7 @@ describe("POST /api/internal/callbacks/agent", () => {
         {
           runId: "00000000-0000-0000-0000-000000000000",
           status: "completed",
-          payload: { parentRunId: "parent-run-id" },
+          payload: {},
         },
         "fake-secret",
       );
@@ -89,7 +89,7 @@ describe("POST /api/internal/callbacks/agent", () => {
         {
           runId,
           status: "progress",
-          payload: { parentRunId: "parent-run-id" },
+          payload: {},
         },
         secret,
       );
@@ -134,7 +134,7 @@ describe("POST /api/internal/callbacks/agent", () => {
         {
           runId,
           status: "completed",
-          payload: { parentRunId: "parent-run-id" },
+          payload: {},
         },
         secret,
       );
@@ -150,31 +150,35 @@ describe("POST /api/internal/callbacks/agent", () => {
       expect(zeroRun?.summary).toBe("Agent delegated the task.");
     });
 
-    it("should return 200 gracefully when run is not found", async () => {
+    it("should return 200 without summary when OPENROUTER_API_KEY is absent", async () => {
       const { runId, secret } = await setupAgentRun();
 
-      // Use a valid but non-existent runId with correct secret lookup
-      // We create a callback with a known runId but post with a different runId
-      // Instead, just verify unknown runId returns 404 (handled in signature verification)
-      // For this test, we verify that if the run record doesn't exist in agent_runs,
-      // the handler returns 200 gracefully.
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventType: "result",
+          eventData: { result: "Task completed successfully." },
+        },
+      ]);
 
-      // Create a callback directly with a run that exists in zeroRuns but not agent_runs
-      // This is difficult to replicate so we test the behavior with a run that exists but has no prompt
-      // The simplest approach: use the runId from setupAgentRun and verify it returns 200
+      // Without OPENROUTER_API_KEY, saveRunSummary is a no-op and returns null
       const request = createSignedCallbackRequest(
         "http://localhost/api/internal/callbacks/agent",
         {
           runId,
           status: "completed",
-          payload: { parentRunId: "parent-run-id" },
+          payload: {},
         },
         secret,
       );
 
-      // Without OPENROUTER_API_KEY, summary generation will return null (no-op)
       const response = await POST(request);
       expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Summary should remain null — no API key means no LLM call
+      const zeroRun = await findTestZeroRun(runId);
+      expect(zeroRun?.summary).toBeNull();
     });
   });
 
@@ -188,7 +192,7 @@ describe("POST /api/internal/callbacks/agent", () => {
           runId,
           status: "failed",
           error: "Agent run failed",
-          payload: { parentRunId: "parent-run-id" },
+          payload: {},
         },
         secret,
       );
