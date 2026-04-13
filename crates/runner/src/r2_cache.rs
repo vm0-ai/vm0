@@ -296,16 +296,13 @@ impl R2ImageCache {
     /// Delete `runner-images/*` objects older than `max_age`. Returns
     /// `(deleted_count, freed_bytes)`. Idempotent under concurrent fleet
     /// execution: every host runs the same scan and `DeleteObjects` returns
-    /// success for already-absent keys. Each invocation costs ~1 LIST per 1000
-    /// objects + 1 batched DELETE per 1000 stale keys.
+    /// success for already-absent keys (S3 spec). Each invocation costs ~1
+    /// LIST + 1 batched DELETE per page (max 1000 objects/page).
+    ///
+    /// Per-key errors (e.g. AccessDenied — NOT NoSuchKey) are surfaced via
+    /// `tracing::warn!` and excluded from `deleted_count`.
     pub async fn gc_older_than(&self, max_age: std::time::Duration) -> Result<(u64, u64), R2Error> {
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| R2Error::Io(io_other(e)))?
-            .as_secs();
-        let cutoff_secs = now_secs.saturating_sub(max_age.as_secs());
-        let cutoff = i64::try_from(cutoff_secs)
-            .map_err(|_| R2Error::Io(io_other("system clock beyond i64 unix-seconds range")))?;
+        let cutoff = cutoff_unix_secs(std::time::SystemTime::now(), max_age)?;
 
         let mut continuation_token: Option<String> = None;
         let mut total_deleted = 0u64;
@@ -349,24 +346,54 @@ impl R2ImageCache {
                     .quiet(true)
                     .build()
                     .map_err(|e| R2Error::S3(format!("Delete build: {e:?}")))?;
-                self.client
+                let del_resp = self
+                    .client
                     .delete_objects()
                     .bucket(&self.bucket)
                     .delete(delete)
                     .send()
                     .await?;
-                total_deleted = total_deleted.saturating_add(count);
-                total_freed = total_freed.saturating_add(batch_freed);
+                // S3/R2 batch-delete returns per-key errors in `errors`; the
+                // request itself is 200 OK regardless. Quiet mode means
+                // successful deletes are NOT echoed, only failures are. Real
+                // failures here = AccessDenied / quota / etc. — never
+                // NoSuchKey, which the spec treats as success.
+                let err_count = del_resp.errors().len() as u64;
+                if err_count > 0 {
+                    tracing::warn!(
+                        "r2: delete_objects had {err_count} per-key failure(s); first: {:?}",
+                        del_resp.errors().first()
+                    );
+                }
+                let actual_deleted = count.saturating_sub(err_count);
+                total_deleted = total_deleted.saturating_add(actual_deleted);
+                // freed_bytes is best-effort: we don't know which specific
+                // keys failed, so attribute proportionally.
+                if count > 0 {
+                    let proportional = batch_freed
+                        .saturating_mul(actual_deleted)
+                        .checked_div(count)
+                        .unwrap_or(0);
+                    total_freed = total_freed.saturating_add(proportional);
+                }
             }
 
-            if resp.is_truncated().unwrap_or(false) {
-                match resp.next_continuation_token() {
-                    Some(t) => continuation_token = Some(t.to_string()),
-                    None => break, // truncated but no token — defensive exit
-                }
-            } else {
+            if !resp.is_truncated().unwrap_or(false) {
                 break;
             }
+            let next_token = match resp.next_continuation_token() {
+                Some(t) => t.to_string(),
+                None => break, // truncated but no token — defensive exit
+            };
+            // Defensive: detect a server returning the same token twice
+            // (would be an S3 bug, but cheap to guard against).
+            if continuation_token.as_deref() == Some(next_token.as_str()) {
+                tracing::warn!(
+                    "r2: list_objects_v2 returned identical continuation_token; aborting paginated scan"
+                );
+                break;
+            }
+            continuation_token = Some(next_token);
         }
         Ok((total_deleted, total_freed))
     }
@@ -521,6 +548,22 @@ impl R2ImageCache {
 
 fn key_for_hash(hash: &str) -> String {
     format!("{KEY_PREFIX}{hash}.tar.zst")
+}
+
+/// Compute the unix-seconds cutoff for "anything older than this is stale".
+/// Returns an i64 to match aws_smithy_types::DateTime::secs(). Saturates to
+/// 0 when `max_age` exceeds `now` (e.g. dev clock at epoch).
+fn cutoff_unix_secs(
+    now: std::time::SystemTime,
+    max_age: std::time::Duration,
+) -> Result<i64, R2Error> {
+    let now_secs = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| R2Error::Io(io_other(e)))?
+        .as_secs();
+    let cutoff_secs = now_secs.saturating_sub(max_age.as_secs());
+    i64::try_from(cutoff_secs)
+        .map_err(|_| R2Error::Io(io_other("system clock beyond i64 unix-seconds range")))
 }
 
 /// Pack `files` as a tar.zst stream into `writer`. Each file is appended under
@@ -688,6 +731,32 @@ mod tests {
     #[test]
     fn key_format() {
         assert_eq!(key_for_hash("abc123"), "runner-images/abc123.tar.zst");
+    }
+
+    // ---- cutoff math (gc_older_than helper) -----------------------------
+
+    #[test]
+    fn cutoff_subtracts_max_age_from_now() {
+        let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        let max_age = std::time::Duration::from_secs(1_000);
+        assert_eq!(cutoff_unix_secs(now, max_age).unwrap(), 999_000);
+    }
+
+    #[test]
+    fn cutoff_saturates_to_zero_when_age_exceeds_now() {
+        // Defensive: a dev/test clock near epoch shouldn't underflow.
+        let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(100);
+        let max_age = std::time::Duration::from_secs(1_000);
+        assert_eq!(cutoff_unix_secs(now, max_age).unwrap(), 0);
+    }
+
+    #[test]
+    fn cutoff_zero_max_age_equals_now() {
+        // `--r2-keep-days 0` is rejected at the CLI layer; this test exists
+        // so a future caller can't silently regress that contract here.
+        let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(42);
+        let zero = std::time::Duration::from_secs(0);
+        assert_eq!(cutoff_unix_secs(now, zero).unwrap(), 42);
     }
 
     #[test]
