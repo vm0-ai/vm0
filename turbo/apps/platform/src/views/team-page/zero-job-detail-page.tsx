@@ -407,7 +407,11 @@ function JobPermissionsTab({
   displayName: string;
   ownerId: string;
 }) {
-  const connectorsLoadable = useLoadable(zeroJobAddedConnectors$);
+  // Use useLastLoadable so the list keeps showing the previous data while the
+  // signal refetches after a toggle/save or a permission-policy reload. This
+  // prevents the entire list from flickering to the skeleton on each change
+  // (issue #9141).
+  const connectorsLoadable = useLastLoadable(zeroJobAddedConnectors$);
   const addedConnectors =
     connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
   const addConnector = useSet(addZeroJobConnector$);
