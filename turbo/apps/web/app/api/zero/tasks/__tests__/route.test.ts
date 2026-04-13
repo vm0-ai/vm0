@@ -313,6 +313,170 @@ describe("GET /api/zero/tasks", () => {
     // Least recent in the 25 should be Thread 5
     expect(data.tasks[24].title).toBe("Thread 5");
   });
+
+  it("should sort active tasks before terminal tasks even when terminal task is newer", async () => {
+    const { composeId } = await createTestCompose(uniqueId("tier-sort-test"));
+    const now = new Date("2025-06-01T00:00:00Z").getTime();
+
+    // Terminal task with a more recent timestamp (createdAt = now)
+    const terminalThreadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Terminal Task",
+    );
+    const { runId: terminalRunId } = await createTestRunInDb(
+      user.userId,
+      composeId,
+      { status: "completed", createdAt: new Date(now) },
+    );
+    await addTestRunToThread(terminalThreadId, terminalRunId, user.userId);
+
+    // Active task with an older timestamp (createdAt = 1 minute ago)
+    const activeThreadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Active Task",
+    );
+    const { runId: activeRunId } = await createTestRunInDb(
+      user.userId,
+      composeId,
+      { status: "running", createdAt: new Date(now - 60_000) },
+    );
+    await addTestRunToThread(activeThreadId, activeRunId, user.userId);
+
+    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const titles = data.tasks.map((t: Record<string, unknown>) => {
+      return t.title;
+    });
+    expect(titles.indexOf("Active Task")).toBeLessThan(
+      titles.indexOf("Terminal Task"),
+    );
+  });
+
+  it("should treat null-status tasks (no run) as active tier, appearing before terminal tasks", async () => {
+    const { composeId } = await createTestCompose(uniqueId("null-status-test"));
+    const now = new Date("2025-06-01T00:00:00Z").getTime();
+
+    // Terminal task with a very recent timestamp
+    const terminalThreadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Terminal Task",
+    );
+    const { runId: terminalRunId } = await createTestRunInDb(
+      user.userId,
+      composeId,
+      { status: "completed", createdAt: new Date(now) },
+    );
+    await addTestRunToThread(terminalThreadId, terminalRunId, user.userId);
+
+    // Schedule with no run (status = null), with an older source timestamp
+    const { composeId: composeId2 } = await createTestCompose(
+      uniqueId("null-status-agent"),
+    );
+    await createTestSchedule(composeId2, "null-status-schedule");
+
+    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const scheduleTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.type === "schedule";
+    });
+    const terminalTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.title === "Terminal Task";
+    });
+    expect(scheduleTasks).toHaveLength(1);
+    expect(terminalTasks).toHaveLength(1);
+    expect(data.tasks.indexOf(scheduleTasks[0])).toBeLessThan(
+      data.tasks.indexOf(terminalTasks[0]),
+    );
+  });
+
+  it("should preserve temporal order within each tier", async () => {
+    const { composeId } = await createTestCompose(
+      uniqueId("within-tier-sort-test"),
+    );
+    const now = new Date("2025-06-01T00:00:00Z").getTime();
+
+    // Two running tasks at different times
+    const runnerNewThreadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Runner New",
+    );
+    const { runId: runnerNewRunId } = await createTestRunInDb(
+      user.userId,
+      composeId,
+      { status: "running", createdAt: new Date(now) },
+    );
+    await addTestRunToThread(runnerNewThreadId, runnerNewRunId, user.userId);
+
+    const runnerOldThreadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Runner Old",
+    );
+    const { runId: runnerOldRunId } = await createTestRunInDb(
+      user.userId,
+      composeId,
+      { status: "running", createdAt: new Date(now - 10 * 60_000) },
+    );
+    await addTestRunToThread(runnerOldThreadId, runnerOldRunId, user.userId);
+
+    // Two completed tasks at different times
+    const doneNewThreadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Done New",
+    );
+    const { runId: doneNewRunId } = await createTestRunInDb(
+      user.userId,
+      composeId,
+      { status: "completed", createdAt: new Date(now - 5 * 60_000) },
+    );
+    await addTestRunToThread(doneNewThreadId, doneNewRunId, user.userId);
+
+    const doneOldThreadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Done Old",
+    );
+    const { runId: doneOldRunId } = await createTestRunInDb(
+      user.userId,
+      composeId,
+      { status: "completed", createdAt: new Date(now - 20 * 60_000) },
+    );
+    await addTestRunToThread(doneOldThreadId, doneOldRunId, user.userId);
+
+    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const titles = data.tasks.map((t: Record<string, unknown>) => {
+      return t.title;
+    });
+    const idxRunnerNew = titles.indexOf("Runner New");
+    const idxRunnerOld = titles.indexOf("Runner Old");
+    const idxDoneNew = titles.indexOf("Done New");
+    const idxDoneOld = titles.indexOf("Done Old");
+
+    // Active tier comes before terminal tier
+    expect(idxRunnerNew).toBeLessThan(idxDoneNew);
+    expect(idxRunnerOld).toBeLessThan(idxDoneNew);
+
+    // Within active tier: newer first
+    expect(idxRunnerNew).toBeLessThan(idxRunnerOld);
+
+    // Within terminal tier: newer first
+    expect(idxDoneNew).toBeLessThan(idxDoneOld);
+  });
 });
 
 describe("POST /api/zero/tasks/archive", () => {
