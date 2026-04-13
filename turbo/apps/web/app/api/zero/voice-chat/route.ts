@@ -84,6 +84,7 @@ export async function POST(request: Request) {
     });
 
     const preparation = await findFreshPreparation(
+      org.orgId,
       userId,
       agentId,
       mode,
@@ -95,12 +96,10 @@ export async function POST(request: Request) {
         session.id,
         preparation.directiveContent,
       );
-      const run = await dispatchObservationSlowBrain(
-        session,
-        org.orgId,
-        userId,
+      const run = await dispatchObservationSlowBrain({
+        ...session,
         agentId,
-      );
+      });
 
       return NextResponse.json({
         session: {

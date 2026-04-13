@@ -14,6 +14,7 @@ const log = logger("zero:voice-chat:preparation");
 const PREPARATION_FRESHNESS_MS = 60 * 60 * 1000; // 1 hour
 
 export async function findFreshPreparation(
+  orgId: string,
   userId: string,
   agentId: string,
   mode: string,
@@ -23,6 +24,7 @@ export async function findFreshPreparation(
   const threshold = new Date(Date.now() - PREPARATION_FRESHNESS_MS);
 
   const conditions = [
+    eq(voiceChatPreparations.orgId, orgId),
     eq(voiceChatPreparations.userId, userId),
     eq(voiceChatPreparations.agentId, agentId),
     eq(voiceChatPreparations.mode, mode),
@@ -95,6 +97,7 @@ export async function updatePreparationStatus(
 }
 
 export async function findInFlightPreparation(
+  orgId: string,
   userId: string,
   agentId: string,
   mode: string,
@@ -105,6 +108,7 @@ export async function findInFlightPreparation(
     .from(voiceChatPreparations)
     .where(
       and(
+        eq(voiceChatPreparations.orgId, orgId),
         eq(voiceChatPreparations.userId, userId),
         eq(voiceChatPreparations.agentId, agentId),
         eq(voiceChatPreparations.mode, mode),
@@ -122,7 +126,6 @@ export async function findInFlightPreparation(
 
 export async function dispatchPreparationRun(
   preparationId: string,
-  orgId: string,
   userId: string,
   agentId: string,
   options?: { mode?: "chat" | "meeting"; prompt?: string },

@@ -238,12 +238,11 @@ export async function writeCachedPreparationEvents(
 // Observation-Only Slow-Brain Dispatch
 // ---------------------------------------------------------------------------
 
-export async function dispatchObservationSlowBrain(
-  session: { id: string },
-  orgId: string,
-  userId: string,
-  agentId: string,
-) {
+export async function dispatchObservationSlowBrain(session: {
+  id: string;
+  userId: string;
+  agentId: string;
+}) {
   const db = globalThis.services.db;
   const appendSystemPrompt = buildVoiceChatObservationOnlyPrompt(session.id);
   const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Preparation is complete. Start observing the conversation.`;
@@ -253,8 +252,8 @@ export async function dispatchObservationSlowBrain(
   };
 
   const result = await createZeroRun({
-    userId,
-    agentId,
+    userId: session.userId,
+    agentId: session.agentId,
     prompt,
     appendSystemPrompt,
     triggerSource: "voice-chat",

@@ -4,7 +4,6 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { voiceChatPreparations } from "../../../../../../src/db/schema/voice-chat";
-import { updatePreparationStatus } from "../../../../../../src/lib/zero/voice-chat/preparation-service";
 import { logger } from "../../../../../../src/lib/shared/logger";
 
 const bodySchema = z.object({
@@ -55,50 +54,99 @@ export async function POST(request: Request) {
   }
   const { content } = parsed.data;
 
-  // Find the preparation associated with this run
-  const [preparation] = await globalThis.services.db
-    .select({
-      id: voiceChatPreparations.id,
-      status: voiceChatPreparations.status,
-    })
-    .from(voiceChatPreparations)
-    .where(eq(voiceChatPreparations.runId, runId))
-    .limit(1);
+  // Find, validate, and update preparation in a single transaction
+  const result = await globalThis.services.db.transaction(async (tx) => {
+    const [preparation] = await tx
+      .select({
+        id: voiceChatPreparations.id,
+        status: voiceChatPreparations.status,
+        orgId: voiceChatPreparations.orgId,
+      })
+      .from(voiceChatPreparations)
+      .where(eq(voiceChatPreparations.runId, runId))
+      .limit(1)
+      .for("update");
 
-  if (!preparation) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "No preparation found for this run",
-          code: "NOT_FOUND",
-        },
-      },
-      { status: 404 },
-    );
+    if (!preparation) {
+      return { error: "NOT_FOUND" } as const;
+    }
+
+    if (authCtx.orgId && preparation.orgId !== authCtx.orgId) {
+      return { error: "FORBIDDEN" } as const;
+    }
+
+    if (preparation.status !== "preparing") {
+      return { error: "BAD_STATUS" } as const;
+    }
+
+    const [updated] = await tx
+      .update(voiceChatPreparations)
+      .set({ status: "ready", directiveContent: content })
+      .where(eq(voiceChatPreparations.id, preparation.id))
+      .returning({
+        id: voiceChatPreparations.id,
+        status: voiceChatPreparations.status,
+      });
+
+    if (!updated) {
+      return { error: "UPDATE_FAILED" } as const;
+    }
+
+    return { updated } as const;
+  });
+
+  if ("error" in result) {
+    switch (result.error) {
+      case "NOT_FOUND":
+        return NextResponse.json(
+          {
+            error: {
+              message: "No preparation found for this run",
+              code: "NOT_FOUND",
+            },
+          },
+          { status: 404 },
+        );
+      case "FORBIDDEN":
+        return NextResponse.json(
+          {
+            error: {
+              message: "Preparation does not belong to this organization",
+              code: "FORBIDDEN",
+            },
+          },
+          { status: 403 },
+        );
+      case "BAD_STATUS":
+        return NextResponse.json(
+          {
+            error: {
+              message: "Preparation is not in preparing status",
+              code: "BAD_REQUEST",
+            },
+          },
+          { status: 400 },
+        );
+      case "UPDATE_FAILED":
+        return NextResponse.json(
+          {
+            error: {
+              message: "Failed to update preparation",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          },
+          { status: 500 },
+        );
+    }
   }
 
-  if (preparation.status !== "preparing") {
-    return NextResponse.json(
-      {
-        error: {
-          message: "Preparation is not in preparing status",
-          code: "BAD_REQUEST",
-        },
-      },
-      { status: 400 },
-    );
-  }
-
-  const updated = await updatePreparationStatus(
-    preparation.id,
-    "ready",
-    content,
-  );
-
-  log.info("Preparation completed", { preparationId: preparation.id, runId });
+  log.info("Preparation completed", {
+    preparationId: result.updated.id,
+    runId,
+  });
 
   return NextResponse.json({
-    id: updated!.id,
-    status: updated!.status,
+    id: result.updated.id,
+    status: result.updated.status,
   });
 }

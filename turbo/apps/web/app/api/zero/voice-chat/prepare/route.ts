@@ -77,7 +77,13 @@ export async function POST(request: Request) {
   const { agentId, mode, prompt } = parsed.data;
 
   // Check for a fresh cached preparation (cache hit)
-  const fresh = await findFreshPreparation(userId, agentId, mode, prompt);
+  const fresh = await findFreshPreparation(
+    org.orgId,
+    userId,
+    agentId,
+    mode,
+    prompt,
+  );
   if (fresh) {
     return NextResponse.json({
       preparation: { id: fresh.id, status: "ready" },
@@ -85,7 +91,12 @@ export async function POST(request: Request) {
   }
 
   // Check for an in-flight preparation (dedup)
-  const inflight = await findInFlightPreparation(userId, agentId, mode);
+  const inflight = await findInFlightPreparation(
+    org.orgId,
+    userId,
+    agentId,
+    mode,
+  );
   if (inflight) {
     return NextResponse.json({
       preparation: { id: inflight.id, status: "preparing" },
@@ -101,13 +112,10 @@ export async function POST(request: Request) {
       mode,
       prompt,
     );
-    const run = await dispatchPreparationRun(
-      preparation.id,
-      org.orgId,
-      userId,
-      agentId,
-      { mode: mode as "chat" | "meeting", prompt },
-    );
+    const run = await dispatchPreparationRun(preparation.id, userId, agentId, {
+      mode: mode as "chat" | "meeting",
+      prompt,
+    });
 
     return NextResponse.json({
       preparation: {
