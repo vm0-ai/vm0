@@ -460,7 +460,7 @@ describe("mission control page", () => {
     const signalsBefore = await context.store.get(taskSignals$);
     expect(
       signalsBefore.some((ts) => {
-        return ts.task.id === "stale-thread-ttl";
+        return ts.taskId === "stale-thread-ttl";
       }),
     ).toBeTruthy();
 
@@ -473,7 +473,7 @@ describe("mission control page", () => {
       const signals = await context.store.get(taskSignals$);
       expect(
         signals.some((ts) => {
-          return ts.task.id === "stale-thread-ttl";
+          return ts.taskId === "stale-thread-ttl";
         }),
       ).toBeFalsy();
     });
@@ -897,5 +897,219 @@ describe("mission control page", () => {
       // AgentListDialog title
       expect(screen.getByText("Talk to")).toBeInTheDocument();
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Unread tracking tests
+  // ---------------------------------------------------------------------------
+
+  it("should show Read all button when a task has an unseen latestRunId", async () => {
+    mockTasksAPI([
+      {
+        id: "task-unread",
+        type: "schedule",
+        title: "Unread Task",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: "run-new-1",
+        status: "completed",
+        scheduleId: "sched-u1",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Unread Task")).toBeInTheDocument();
+    });
+
+    // latestRunId is set and not in localStorage → task is unread → button shown
+    expect(screen.getByText("Read all")).toBeInTheDocument();
+  });
+
+  it("should not show Read all button when task has no latestRunId", async () => {
+    mockTasksAPI([
+      {
+        id: "task-no-run",
+        type: "chat",
+        title: "Chat Without Run",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: null,
+        status: null,
+        chatThreadId: "thread-no-run",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Chat Without Run")).toBeInTheDocument();
+    });
+
+    // latestRunId is null → unread$ returns false → no "Read all" button
+    expect(screen.queryByText("Read all")).not.toBeInTheDocument();
+  });
+
+  it("should hide Read all button after clicking it", async () => {
+    mockTasksAPI([
+      {
+        id: "task-mark-all",
+        type: "schedule",
+        title: "Mark All Read Task",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: "run-mark-all-1",
+        status: "completed",
+        scheduleId: "sched-mark-all",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const readAllBtn = await waitFor(() => {
+      return screen.getByText("Read all");
+    });
+
+    await user.click(readAllBtn);
+
+    // After marking all read, the button should disappear
+    await waitFor(() => {
+      expect(screen.queryByText("Read all")).not.toBeInTheDocument();
+    });
+  });
+
+  it("should mark task as read when its panel is opened", async () => {
+    mockTasksAPI([
+      {
+        id: "task-open-read",
+        type: "schedule",
+        title: "Open To Read Task",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: "run-open-read-1",
+        status: "completed",
+        scheduleId: "sched-open-read",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    mockActivityAPIs("run-open-read-1");
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    // Confirm task is unread before opening
+    await waitFor(() => {
+      expect(screen.getByText("Read all")).toBeInTheDocument();
+    });
+
+    // Open the task panel
+    const title = await waitFor(() => {
+      return screen.getByText("Open To Read Task");
+    });
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
+    });
+
+    // Opening the panel calls markRead$ → hasUnreadTasks$ becomes false → button hidden
+    await waitFor(() => {
+      expect(screen.queryByText("Read all")).not.toBeInTheDocument();
+    });
+  });
+
+  it("should mark open task as read on next poll loop iteration", async () => {
+    // First poll: task has latestRunId "run-v1" (unread)
+    let pollCount = 0;
+    server.use(
+      http.get("*/api/zero/tasks", () => {
+        pollCount++;
+        const latestRunId = pollCount === 1 ? "run-v1" : "run-v2";
+        return HttpResponse.json({
+          tasks: [
+            {
+              id: "task-poll-read",
+              type: "schedule",
+              title: "Poll Read Task",
+              summary: null,
+              agent: createAgent(),
+              latestRunId,
+              status: "completed",
+              scheduleId: "sched-poll-read",
+              createdAt: "2026-04-10T10:00:00Z",
+              updatedAt: "2026-04-10T10:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    mockActivityAPIs("run-v1");
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    // Wait for unread indicator
+    await waitFor(() => {
+      expect(screen.getByText("Read all")).toBeInTheDocument();
+    });
+
+    // Open the panel — markRead$ records run-v1 as seen
+    const title = screen.getByText("Poll Read Task");
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
+    });
+
+    // run-v1 is now seen → no unread
+    await waitFor(() => {
+      expect(screen.queryByText("Read all")).not.toBeInTheDocument();
+    });
+  });
+
+  it("should compute hasUnreadTasks$ as false when all tasks are read", async () => {
+    mockTasksAPI([
+      {
+        id: "task-all-read",
+        type: "schedule",
+        title: "Already Read Task",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: "run-already-read-1",
+        status: "completed",
+        scheduleId: "sched-all-read",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    // Initially unread
+    const readAllBtn = await waitFor(() => {
+      return screen.getByText("Read all");
+    });
+
+    // Mark all read
+    await user.click(readAllBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Read all")).not.toBeInTheDocument();
+    });
+
+    // Task card still renders (the task itself is still in the list)
+    expect(screen.getByText("Already Read Task")).toBeInTheDocument();
   });
 });

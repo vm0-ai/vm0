@@ -5,7 +5,11 @@ import {
   Separator,
   useDefaultLayout,
 } from "react-resizable-panels";
-import { missionControlPanelVisible$ } from "../../signals/mission-control-page/mission-control-tasks.ts";
+import {
+  missionControlPanelVisible$,
+  markAllTasksRead$,
+  hasUnreadTasks$,
+} from "../../signals/mission-control-page/mission-control-tasks.ts";
 import {
   taskListCollapsed$,
   setTaskListPanelRef$,
@@ -38,6 +42,8 @@ export function MissionControlPage() {
   const displayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const createAndShowChatTask = useSet(createAndShowChatTask$);
   const pageSignal = useGet(pageSignal$);
+  const markAllRead = useSet(markAllTasksRead$);
+  const hasUnread = useLastResolved(hasUnreadTasks$) ?? false;
 
   const onNewChat = (agentId: string | null) => {
     setNewChatOpen(false);
@@ -81,7 +87,20 @@ export function MissionControlPage() {
                     Active tasks across all channels
                   </p>
                 </div>
-                <VoiceButton />
+                <div className="flex items-center gap-2">
+                  {hasUnread && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        markAllRead();
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Read all
+                    </button>
+                  )}
+                  <VoiceButton />
+                </div>
               </div>
             </div>
             <VoiceBanner />
