@@ -4279,6 +4279,12 @@
           "notNull": true,
           "default": 0
         },
+        "message_id": {
+          "name": "message_id",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -4320,6 +4326,27 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_proxy_credit_usage_run_id_message_id": {
+          "name": "idx_proxy_credit_usage_run_id_message_id",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -7411,6 +7438,12 @@
         "selected_model": {
           "name": "selected_model",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
