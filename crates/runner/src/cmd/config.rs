@@ -57,6 +57,9 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     for profile_name in &args.profile {
         profile::validate_or_err(profile_name)?;
     }
+    for image_hash in &args.image_hash {
+        crate::image_hash::validate_or_err(image_hash)?;
+    }
 
     let paths = HomePaths::new()?;
 

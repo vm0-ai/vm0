@@ -9,6 +9,7 @@ mod group;
 mod host;
 mod http;
 mod idle_pool;
+mod image_hash;
 mod kmsg_log;
 mod lock;
 mod network_logs;
