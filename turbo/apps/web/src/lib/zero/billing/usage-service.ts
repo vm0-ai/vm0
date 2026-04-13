@@ -1,4 +1,4 @@
-import { sql, and, eq, gte, lt, lte, inArray, desc, count } from "drizzle-orm";
+import { sql, and, eq, gte, lt, inArray, desc, count } from "drizzle-orm";
 import {
   type MemberUsage,
   type UsageMembersResponse,
@@ -401,7 +401,7 @@ export async function getUsageRuns(
     conditions.push(gte(agentRuns.createdAt, new Date(options.dateFrom)));
   }
   if (options.dateTo) {
-    conditions.push(lte(agentRuns.createdAt, new Date(options.dateTo)));
+    conditions.push(lt(agentRuns.createdAt, new Date(options.dateTo)));
   }
 
   // Count query
