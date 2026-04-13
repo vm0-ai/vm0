@@ -1,4 +1,4 @@
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -139,7 +139,9 @@ function SlackCardActions({
 }
 
 function SlackCard({ displayName }: { displayName: string }) {
-  const slackDataLoadable = useLoadable(slackOrgData$);
+  // useLastLoadable keeps the prior resolved value during the polling refetch
+  // so the card text doesn't flicker back to defaults on every poll cycle.
+  const slackDataLoadable = useLastLoadable(slackOrgData$);
   const slackData =
     slackDataLoadable.state === "hasData" ? slackDataLoadable.data : null;
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectSlackOrg$);
