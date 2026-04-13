@@ -216,8 +216,7 @@ pub async fn create_snapshot(
     // Step 6: Upload to S3
     log_info!(LOG_TAG, "Uploading archive to S3...");
     let s3_start = std::time::Instant::now();
-    let archive_data = tokio::fs::read(&archive_path).await?;
-    if let Err(e) = http::put_presigned(&archive_url, archive_data.into(), "application/gzip").await
+    if let Err(e) = http::put_presigned_file(&archive_url, &archive_path, "application/gzip").await
     {
         record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), false, None);
         return Err(e);

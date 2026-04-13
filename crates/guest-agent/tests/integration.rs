@@ -322,6 +322,146 @@ async fn put_presigned_429_retries() {
 }
 
 // =========================================================================
+// Group 3c: put_presigned_file (streaming upload)
+// =========================================================================
+
+#[tokio::test]
+async fn put_presigned_file_success() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("test.bin");
+    std::fs::write(&file_path, b"streaming test data").unwrap();
+
+    let mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/put-file-success")
+            .header("Content-Type", "application/gzip")
+            .body("streaming test data");
+        then.status(200);
+    });
+
+    let url = format!("{}/test/put-file-success", server.base_url());
+    let result = guest_agent::http::put_presigned_file(&url, &file_path, "application/gzip").await;
+
+    mock.assert_calls_async(1).await;
+    assert!(result.is_ok());
+    mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn put_presigned_file_sets_content_length() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("sized.bin");
+    let data = vec![0xABu8; 1024];
+    std::fs::write(&file_path, &data).unwrap();
+
+    let mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/put-file-content-length")
+            .header("Content-Length", "1024");
+        then.status(200);
+    });
+
+    let url = format!("{}/test/put-file-content-length", server.base_url());
+    let result = guest_agent::http::put_presigned_file(&url, &file_path, "application/gzip").await;
+
+    mock.assert_calls_async(1).await;
+    assert!(result.is_ok());
+    mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn put_presigned_file_retry_then_succeed() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("retry.bin");
+    std::fs::write(&file_path, b"retry file data").unwrap();
+
+    let fail_mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-file-retry");
+        then.status(500);
+    });
+    let success_mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-file-retry");
+        then.status(200);
+    });
+
+    let url = format!("{}/test/put-file-retry", server.base_url());
+    let path = file_path.clone();
+    let handle = tokio::spawn(async move {
+        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+    });
+
+    loop {
+        if fail_mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    fail_mock.delete_async().await;
+
+    let result = handle.await.unwrap();
+    assert!(result.is_ok());
+    success_mock.assert_calls_async(1).await;
+    success_mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn put_presigned_file_large_multi_chunk() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("large.bin");
+    // 40000 bytes — 2 full 16384-byte chunks + 1 short 7232-byte chunk
+    let data = vec![0x42u8; 40000];
+    std::fs::write(&file_path, &data).unwrap();
+
+    let mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/put-file-large")
+            .header("Content-Length", "40000");
+        then.status(200);
+    });
+
+    let url = format!("{}/test/put-file-large", server.base_url());
+    let result = guest_agent::http::put_presigned_file(&url, &file_path, "application/gzip").await;
+
+    mock.assert_calls_async(1).await;
+    assert!(result.is_ok());
+    mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn put_presigned_file_4xx_no_retry() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("forbidden.bin");
+    std::fs::write(&file_path, b"forbidden data").unwrap();
+
+    let mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-file-403");
+        then.status(403);
+    });
+
+    let url = format!("{}/test/put-file-403", server.base_url());
+    let result = guest_agent::http::put_presigned_file(&url, &file_path, "application/gzip").await;
+
+    mock.assert_calls_async(1).await;
+    assert!(result.is_err());
+    mock.delete_async().await;
+}
+
+// =========================================================================
 // Group 4: Heartbeat
 // =========================================================================
 

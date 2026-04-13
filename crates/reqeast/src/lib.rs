@@ -27,4 +27,4 @@ pub async fn get<U: reqwest::IntoUrl>(url: U) -> reqwest::Result<reqwest::Respon
 }
 
 // Re-export commonly used types.
-pub use reqwest::{Client, Error, IntoUrl, Method, RequestBuilder, Response, StatusCode};
+pub use reqwest::{Body, Client, Error, IntoUrl, Method, RequestBuilder, Response, StatusCode};
