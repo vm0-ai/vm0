@@ -80,50 +80,11 @@ export async function getUsageMembers(
     };
   }
 
-  // Resolve user emails from user_cache
+  // Resolve user emails
   const userIds = rows.map((r) => {
     return r.userId;
   });
-  const cachedUsers = await db
-    .select({ userId: userCache.userId, email: userCache.email })
-    .from(userCache)
-    .where(inArray(userCache.userId, userIds));
-
-  const emailMap = new Map(
-    cachedUsers.map((u) => {
-      return [u.userId, u.email];
-    }),
-  );
-
-  // Find missing users and fetch from Clerk
-  const missingIds = userIds.filter((id) => {
-    return !emailMap.has(id);
-  });
-  if (missingIds.length > 0) {
-    const client = await clerkClient();
-    const clerkUsers = await client.users.getUserList({
-      userId: missingIds,
-      limit: missingIds.length,
-    });
-
-    const now = new Date();
-    for (const user of clerkUsers.data) {
-      const primaryEmail = user.emailAddresses.find((e) => {
-        return e.id === user.primaryEmailAddressId;
-      });
-      const email = primaryEmail?.emailAddress ?? "unknown";
-      emailMap.set(user.id, email);
-
-      // Upsert into user_cache
-      await db
-        .insert(userCache)
-        .values({ userId: user.id, email, cachedAt: now })
-        .onConflictDoUpdate({
-          target: userCache.userId,
-          set: { email, cachedAt: now },
-        });
-    }
-  }
+  const emailMap = await resolveEmails(userIds);
 
   // Fetch credit caps for all members in one query
   const capRows = await db
@@ -175,7 +136,9 @@ export async function getUsageMembers(
  * Resolve emails for a set of user IDs using user_cache + Clerk fallback.
  */
 async function resolveEmails(userIds: string[]): Promise<Map<string, string>> {
-  if (userIds.length === 0) return new Map();
+  if (userIds.length === 0) {
+    return new Map();
+  }
 
   const db = globalThis.services.db;
   const cachedUsers = await db
