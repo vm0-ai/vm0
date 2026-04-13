@@ -128,9 +128,13 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
     }
   };
 
-  const archive = (e?: React.MouseEvent) => {
-    e?.stopPropagation();
+  const archiveTask = () => {
     detach(archiveAndFocusNext(task.id, pageSignal), Reason.DomCallback);
+  };
+
+  const archiveOnClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    archiveTask();
   };
 
   return (
@@ -138,7 +142,7 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
       binding={{
         enter: openOrFocusInput,
         " ": toggle,
-        y: archive,
+        y: archiveTask,
       }}
     >
       <Card
@@ -165,7 +169,7 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
               {task.status && <StatusBadge status={task.status} zeroStyle />}
               <button
                 aria-label="Archive task"
-                onClick={archive}
+                onClick={archiveOnClick}
                 className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground shrink-0"
               >
                 <IconArchive size={14} stroke={1.5} />

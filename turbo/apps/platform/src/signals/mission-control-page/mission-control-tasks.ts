@@ -259,6 +259,30 @@ export const setupTasksLoop$ = command(
 
         set(internalTaskSignals$, taskSignals);
 
+        // Reconcile optimistic archived run IDs: once the server no longer
+        // returns a task with a given runId, the archive has been confirmed and
+        // the ID can be removed from the client-side filter set.
+        const serverRunIds = new Set(
+          tasks
+            .map((t) => {
+              return t.latestRunId;
+            })
+            .filter((id): id is string => {
+              return id !== null;
+            }),
+        );
+        const currentArchived = get(internalArchivedRunIds$);
+        if (currentArchived.size > 0) {
+          const stillPending = new Set(
+            [...currentArchived].filter((id) => {
+              return serverRunIds.has(id);
+            }),
+          );
+          if (stillPending.size !== currentArchived.size) {
+            set(internalArchivedRunIds$, stillPending);
+          }
+        }
+
         return false;
       },
       10_000,
@@ -418,11 +442,14 @@ export const closeAndFocusNextInput$ = command(
 
 /**
  * Optimistically archive a task by its latestRunId and focus the next card.
- * The card disappears immediately without waiting for any HTTP request.
+ * The card disappears immediately from the UI, and the archive request is sent
+ * to the server in the background. The optimistic filter is cleared once the
+ * server confirms the task is gone (reconciliation in setupTasksLoop$).
  */
 export const archiveAndFocusNext$ = command(
-  async ({ get, set }, taskId: string, _signal: AbortSignal) => {
+  async ({ get, set }, taskId: string, signal: AbortSignal) => {
     const allTasks = await get(taskSignals$);
+    signal.throwIfAborted();
     const currentIndex = allTasks.findIndex((ts) => {
       return ts.task.id === taskId;
     });
@@ -449,15 +476,18 @@ export const archiveAndFocusNext$ = command(
       nextTask = allTasks[currentIndex - 1];
     }
 
-    // Optimistic archive — card disappears immediately
+    // Optimistic archive — card disappears immediately from the UI
     const archived = new Set(get(internalArchivedRunIds$));
     archived.add(runId);
     set(internalArchivedRunIds$, archived);
 
-    // Focus next card (DOM still has the old layout at this point)
+    // Focus next card after optimistic removal
     if (nextTask) {
       set(nextTask.focusCard$);
     }
+
+    // Persist the archive to the server
+    await set(archiveTask$, taskId, signal);
   },
 );
 

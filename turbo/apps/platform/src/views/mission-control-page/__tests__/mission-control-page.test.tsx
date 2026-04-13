@@ -288,6 +288,8 @@ describe("mission control page", () => {
   });
 
   it("should remove task from list when y key is pressed on focused card", async () => {
+    let archiveRequestBody: unknown = null;
+
     server.use(
       http.get("*/api/zero/tasks", () => {
         return HttpResponse.json({
@@ -307,7 +309,8 @@ describe("mission control page", () => {
           ],
         });
       }),
-      http.post("*/api/zero/tasks/archive", () => {
+      http.post("*/api/zero/tasks/archive", async ({ request }) => {
+        archiveRequestBody = await request.json();
         server.use(
           http.get("*/api/zero/tasks", () => {
             return HttpResponse.json({ tasks: [] });
@@ -336,6 +339,59 @@ describe("mission control page", () => {
         screen.queryByText("Keyboard Archive Task"),
       ).not.toBeInTheDocument();
     });
+
+    // Archive request must have been sent to the server
+    expect(archiveRequestBody).toMatchObject({
+      taskId: "task-key",
+      taskType: "chat",
+      runId: "run-key-1",
+    });
+  });
+
+  it("should not archive when y key is pressed on a card with no latestRunId", async () => {
+    let archiveCalled = false;
+
+    server.use(
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({
+          tasks: [
+            {
+              id: "task-no-run",
+              type: "chat",
+              title: "No Run Task",
+              summary: null,
+              agent: createAgent(),
+              latestRunId: null,
+              status: null,
+              chatThreadId: "thread-no-run",
+              createdAt: "2026-04-10T10:00:00Z",
+              updatedAt: "2026-04-10T10:00:00Z",
+            },
+          ],
+        });
+      }),
+      http.post("*/api/zero/tasks/archive", () => {
+        archiveCalled = true;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("No Run Task");
+    });
+    const card = title.closest("[role=button]") as HTMLElement;
+
+    await user.click(card);
+    card.focus();
+
+    await user.keyboard("y");
+
+    // Card must still be visible — no-op when latestRunId is null
+    expect(screen.getByText("No Run Task")).toBeInTheDocument();
+    expect(archiveCalled).toBeFalsy();
   });
 
   it("should show task card immediately after creating a new chat via the c shortcut", async () => {
