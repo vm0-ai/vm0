@@ -21,7 +21,10 @@ const DEFLATE_HYSTERESIS_MIB: i64 = 64;
 /// guest when a large amount of free memory is detected on the first tick.
 const MAX_INFLATE_PER_TICK_MIB: u32 = 256;
 /// Minimum guaranteed guest memory — never inflate beyond `memory_mb - MIN_GUEST_MIB`.
-const MIN_GUEST_MIB: u32 = 512;
+///
+/// Exposed to the rest of the crate so that idle-park logic in `sandbox.rs`
+/// can use the same lower bound when one-shot inflating on idle transitions.
+pub(crate) const MIN_GUEST_MIB: u32 = 512;
 /// Poll interval for balloon stats.
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 /// How often to emit status + host memory logs (in ticks).

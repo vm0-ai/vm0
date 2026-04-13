@@ -68,6 +68,16 @@ pub struct MockSandboxOverrides {
     /// to simulate timeout or crash. The stdout channel sender is also kept
     /// alive in `MockSandbox` so the drain task would block without the fix.
     wait_exit_error: Option<String>,
+    /// FIFO queue of park results consumed by every sandbox built with
+    /// these overrides. Empty queue → default Ok(()).
+    park_results: Mutex<VecDeque<Result<()>>>,
+    /// FIFO queue of unpark results consumed by every sandbox built with
+    /// these overrides. Empty queue → default Ok(()).
+    unpark_results: Mutex<VecDeque<Result<()>>>,
+    /// Total `park()` calls across all sandboxes built from this override set.
+    park_calls: Mutex<u32>,
+    /// Total `unpark()` calls across all sandboxes built from this override set.
+    unpark_calls: Mutex<u32>,
 }
 
 impl MockSandboxOverrides {
@@ -77,26 +87,26 @@ impl MockSandboxOverrides {
             wait_exit_code: None,
             wait_exit_gate: None,
             wait_exit_error: None,
+            park_results: Mutex::new(VecDeque::new()),
+            unpark_results: Mutex::new(VecDeque::new()),
+            park_calls: Mutex::new(0),
+            unpark_calls: Mutex::new(0),
         }
     }
 
     /// Create overrides that make `wait_exit` return a custom exit code.
     pub fn with_wait_exit_code(code: i32) -> Self {
         Self {
-            exec_matchers: Mutex::new(Vec::new()),
             wait_exit_code: Some(code),
-            wait_exit_gate: None,
-            wait_exit_error: None,
+            ..Self::new()
         }
     }
 
     /// Create overrides that block `wait_exit` until the gate is notified.
     pub fn with_wait_exit_gate(gate: Arc<tokio::sync::Notify>) -> Self {
         Self {
-            exec_matchers: Mutex::new(Vec::new()),
-            wait_exit_code: None,
             wait_exit_gate: Some(gate),
-            wait_exit_error: None,
+            ..Self::new()
         }
     }
 
@@ -105,16 +115,36 @@ impl MockSandboxOverrides {
     /// drain task blocks unless the caller aborts it.
     pub fn with_wait_exit_error(msg: impl Into<String>) -> Self {
         Self {
-            exec_matchers: Mutex::new(Vec::new()),
-            wait_exit_code: None,
-            wait_exit_gate: None,
             wait_exit_error: Some(msg.into()),
+            ..Self::new()
         }
     }
 
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec_matchers.lock_ignoring_poison().push(matcher);
+    }
+
+    /// Queue a `park()` result applied to the next factory-created sandbox.
+    /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
+    pub fn push_park_result(&self, result: Result<()>) {
+        self.park_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Queue an `unpark()` result applied to the next factory-created sandbox.
+    /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
+    pub fn push_unpark_result(&self, result: Result<()>) {
+        self.unpark_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Total `park()` calls across all sandboxes built from this override set.
+    pub fn park_call_count(&self) -> u32 {
+        *self.park_calls.lock_ignoring_poison()
+    }
+
+    /// Total `unpark()` calls across all sandboxes built from this override set.
+    pub fn unpark_call_count(&self) -> u32 {
+        *self.unpark_calls.lock_ignoring_poison()
     }
 }
 
@@ -215,6 +245,38 @@ impl Sandbox for MockSandbox {
 
     async fn kill(&mut self) -> Result<()> {
         Ok(())
+    }
+
+    /// Mock park: bumps the override `park_calls` counter on every call (so
+    /// tests can assert exact invocation counts) and consumes one queued
+    /// result (FIFO). Empty queue → `Ok(())`. The trait's idempotency
+    /// requirement is satisfied in practice because the default-Ok behavior
+    /// is side-effect-free; tests that need to exercise non-idempotent
+    /// scenarios queue explicit results.
+    async fn park(&mut self) -> Result<()> {
+        let Some(o) = &self.overrides else {
+            return Ok(());
+        };
+        *o.park_calls.lock_ignoring_poison() += 1;
+        o.park_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(()))
+    }
+
+    /// Mock unpark: counter + queued-result semantics mirror [`park`]
+    /// exactly. See [`park`] for details.
+    ///
+    /// [`park`]: Self::park
+    async fn unpark(&mut self) -> Result<()> {
+        let Some(o) = &self.overrides else {
+            return Ok(());
+        };
+        *o.unpark_calls.lock_ignoring_poison() += 1;
+        o.unpark_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(()))
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {

@@ -12,6 +12,9 @@ pub enum SandboxError {
     #[error("execution failed: {0}")]
     ExecFailed(String),
 
+    #[error("idle transition failed: {0}")]
+    IdleTransition(String),
+
     #[error("invalid configuration: {0}")]
     InvalidConfig(String),
 
