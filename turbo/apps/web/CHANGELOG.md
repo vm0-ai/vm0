@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.228.0](https://github.com/vm0-ai/vm0/compare/web-v12.227.0...web-v12.228.0) (2026-04-13)
+
+
+### Features
+
+* **web:** complete i18n coverage for marketing site ([#9148](https://github.com/vm0-ai/vm0/issues/9148)) ([572ceb9](https://github.com/vm0-ai/vm0/commit/572ceb9131b51e01a432a1f43bfd8f0e200de430))
+
 ## [12.227.0](https://github.com/vm0-ai/vm0/compare/web-v12.226.1...web-v12.227.0) (2026-04-13)
 
 

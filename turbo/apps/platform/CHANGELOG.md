@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.231.0](https://github.com/vm0-ai/vm0/compare/app-v0.230.0...app-v0.231.0) (2026-04-13)
+
+
+### Features
+
+* **platform:** add unread tracking for mission control tasks ([#9166](https://github.com/vm0-ai/vm0/issues/9166)) ([543d94e](https://github.com/vm0-ai/vm0/commit/543d94eba0b92a390477f8e4fc9171f8ede96541))
+* **web:** reorder voice chat model tabs to put default first ([#9179](https://github.com/vm0-ai/vm0/issues/9179)) ([f72be97](https://github.com/vm0-ai/vm0/commit/f72be970efa55447dde3bfad71a4e475efc7c2a0))
+
+
+### Bug Fixes
+
+* **platform:** center voice-chat footer controls on desktop ([#9180](https://github.com/vm0-ai/vm0/issues/9180)) ([c152fa6](https://github.com/vm0-ai/vm0/commit/c152fa6dc27c067d725bfc3d56c29fe1facdc3b2))
+
 ## [0.230.0](https://github.com/vm0-ai/vm0/compare/app-v0.229.0...app-v0.230.0) (2026-04-13)
 
 

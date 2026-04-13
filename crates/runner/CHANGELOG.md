@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.78.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.78.0...runner-rs-v0.78.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* **runner:** validate image_hash to prevent path traversal ([#9178](https://github.com/vm0-ai/vm0/issues/9178)) ([2e4d3e2](https://github.com/vm0-ai/vm0/commit/2e4d3e2adce1076161346f244ad00b8f8d308353))
+
 ## [0.78.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.77.1...runner-rs-v0.78.0) (2026-04-13)
 
 
