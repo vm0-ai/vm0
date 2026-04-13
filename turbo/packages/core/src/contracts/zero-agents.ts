@@ -326,6 +326,29 @@ export const zeroAgentSkillListResponseSchema = z.array(
 );
 
 /**
+ * Maximum byte length of SKILL.md content for the PATCH skill-md endpoint.
+ * Mirrors the per-archive 5MB limit so a single SKILL.md cannot blow past it
+ * even before the merged-file validation runs.
+ */
+const SKILL_MD_MAX_BYTES = SKILL_FILES_MAX_BYTES;
+
+/**
+ * Request schema for PATCH /api/zero/skills/:name/skill-md.
+ * Edits ONLY the SKILL.md file (and optionally the displayName/description
+ * metadata) while preserving every other file in the skill.
+ */
+export const zeroAgentSkillMdRequestSchema = z.object({
+  content: z.string().refine(
+    (s) => {
+      return new TextEncoder().encode(s).length <= SKILL_MD_MAX_BYTES;
+    },
+    { message: "SKILL.md content must not exceed 5MB" },
+  ),
+  displayName: z.string().max(256).nullable().optional(),
+  description: z.string().max(1024).nullable().optional(),
+});
+
+/**
  * Contract for GET/POST /api/zero/skills (list + create org-level skills)
  */
 export const zeroSkillsCollectionContract = c.router({
@@ -404,6 +427,29 @@ export const zeroSkillsDetailContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Delete custom skill from the organization",
+  },
+});
+
+/**
+ * Contract for PATCH /api/zero/skills/:name/skill-md
+ * Lives in its own router so the handler can be a sibling Next.js route file.
+ */
+export const zeroSkillsSkillMdContract = c.router({
+  patchSkillMd: {
+    method: "PATCH",
+    path: "/api/zero/skills/:name/skill-md",
+    headers: authHeadersSchema,
+    pathParams: z.object({ name: zeroAgentCustomSkillNameSchema }),
+    body: zeroAgentSkillMdRequestSchema,
+    responses: {
+      200: zeroAgentSkillContentResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary:
+      "Replace SKILL.md content (and optional metadata), preserving other files",
   },
 });
 
@@ -556,8 +602,12 @@ export type ZeroAgentSkillFilesRequest = z.infer<
 export type ZeroAgentSkillContentResponse = z.infer<
   typeof zeroAgentSkillContentResponseSchema
 >;
+export type ZeroAgentSkillMdRequest = z.infer<
+  typeof zeroAgentSkillMdRequestSchema
+>;
 export type ZeroSkillsCollectionContract = typeof zeroSkillsCollectionContract;
 export type ZeroSkillsDetailContract = typeof zeroSkillsDetailContract;
+export type ZeroSkillsSkillMdContract = typeof zeroSkillsSkillMdContract;
 export type PermissionAccessRequestResponse = z.infer<
   typeof permissionAccessRequestResponseSchema
 >;

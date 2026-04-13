@@ -70,6 +70,40 @@ export function extractFileFromTar(
   tarBuffer: Buffer,
   targetPath: string,
 ): Buffer | null {
+  for (const entry of iterateTarEntries(tarBuffer)) {
+    if (entry.path === targetPath || entry.path === `./${targetPath}`) {
+      return entry.content;
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract every regular file from a tar archive.
+ * Paths are normalized to drop the leading `./` if present.
+ * Directory entries and other non-regular entries are skipped.
+ */
+export function extractAllFilesFromTar(
+  tarBuffer: Buffer,
+): { path: string; content: Buffer }[] {
+  const result: { path: string; content: Buffer }[] = [];
+  for (const entry of iterateTarEntries(tarBuffer)) {
+    if (!entry.isRegularFile) continue;
+    const normalized = entry.path.startsWith("./")
+      ? entry.path.slice(2)
+      : entry.path;
+    result.push({ path: normalized, content: entry.content });
+  }
+  return result;
+}
+
+interface TarEntry {
+  path: string;
+  content: Buffer;
+  isRegularFile: boolean;
+}
+
+function* iterateTarEntries(tarBuffer: Buffer): Generator<TarEntry> {
   let offset = 0;
   while (offset + BLOCK_SIZE <= tarBuffer.length) {
     const header = tarBuffer.subarray(offset, offset + BLOCK_SIZE);
@@ -80,7 +114,7 @@ export function extractFileFromTar(
         return b === 0;
       })
     )
-      break;
+      return;
 
     // File name: bytes 0-99, null-terminated
     const nameEnd = header.indexOf(0);
@@ -92,14 +126,14 @@ export function extractFileFromTar(
     const sizeStr = header.subarray(124, 136).toString("utf-8").trim();
     const size = parseInt(sizeStr, 8) || 0;
 
+    // Type flag (byte 156): '0' or '\0' = regular file, '5' = directory, etc.
+    const typeFlag = String.fromCharCode(header[156] ?? 0);
+    const isRegularFile = typeFlag === "0" || typeFlag === "\0";
+
     offset += BLOCK_SIZE; // Move past header
-
-    if (name === targetPath || name === `./${targetPath}`) {
-      return tarBuffer.subarray(offset, offset + size);
-    }
-
-    // Skip file data (padded to 512-byte boundary)
+    const content = tarBuffer.subarray(offset, offset + size);
     offset += Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
+
+    yield { path: name, content, isRegularFile };
   }
-  return null;
 }

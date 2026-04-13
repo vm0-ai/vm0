@@ -20,6 +20,7 @@ import {
   IconX,
   IconMessageCircle,
   IconWand,
+  IconSparkles,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -41,6 +42,9 @@ import {
 } from "@vm0/ui";
 import { ZeroScheduleTab } from "../zero-page/zero-schedule-tab.tsx";
 import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
+import { ZeroSkillsTab } from "../zero-page/zero-skills-tab.tsx";
+import { FeatureSwitchKey } from "@vm0/core";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
 
@@ -225,7 +229,11 @@ const TAB_TRIGGER_CLASS =
 function resolveVisibleTab(
   rawTab: string,
   hideProfileAndInstructions: boolean,
+  showSkillsTab: boolean,
 ): string {
+  if (rawTab === "skills" && !showSkillsTab) {
+    return "authorization";
+  }
   if (
     hideProfileAndInstructions &&
     rawTab !== "authorization" &&
@@ -240,10 +248,12 @@ function AgentTabNav({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
+  showSkillsTab,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
+  showSkillsTab: boolean;
 }) {
   return (
     <Tabs
@@ -266,6 +276,7 @@ function AgentTabNav({
             {showProfileAndInstructions && (
               <SelectItem value="instructions">Instructions</SelectItem>
             )}
+            {showSkillsTab && <SelectItem value="skills">Skills</SelectItem>}
           </SelectContent>
         </Select>
       </div>
@@ -289,6 +300,12 @@ function AgentTabNav({
           <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
             <IconFileText size={14} stroke={1.5} />
             Instructions
+          </TabsTrigger>
+        )}
+        {showSkillsTab && (
+          <TabsTrigger value="skills" className={TAB_TRIGGER_CLASS}>
+            <IconSparkles size={14} stroke={1.5} />
+            Skills
           </TabsTrigger>
         )}
       </TabsList>
@@ -725,6 +742,7 @@ function AgentHeader({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
+  showSkillsTab,
 }: {
   displayName: string;
   description: string;
@@ -732,6 +750,7 @@ function AgentHeader({
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
+  showSkillsTab: boolean;
 }) {
   const nav = useSet(detachedNavigateTo$);
   const openMaker = useSet(openAvatarMaker$);
@@ -784,6 +803,7 @@ function AgentHeader({
             activeTab={activeTab}
             onTabChange={onTabChange}
             showProfileAndInstructions={showProfileAndInstructions}
+            showSkillsTab={showSkillsTab}
           />
           <Button
             variant="outline"
@@ -864,6 +884,9 @@ function AgentTabContent({
     case "instructions": {
       return <JobInstructionsTab />;
     }
+    case "skills": {
+      return <ZeroSkillsTab />;
+    }
     default: {
       return null;
     }
@@ -901,14 +924,24 @@ function useTabVisibility(agentId: string, ownerId: string) {
     userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
   const isOwner = currentUserId === ownerId;
 
+  const features = useLastResolved(featureSwitch$);
+  const customSkillUIEnabled =
+    features?.[FeatureSwitchKey.CustomSkillUI] ?? false;
+
   const rawTab = useGet(zeroJobActiveTab$);
   const setActiveTab = useSet(setZeroJobActiveTab$);
   const hideProfileAndInstructions = !isAdmin && !isOwner;
-  const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
+  const showSkillsTab = customSkillUIEnabled && !hideProfileAndInstructions;
+  const activeTab = resolveVisibleTab(
+    rawTab,
+    hideProfileAndInstructions,
+    showSkillsTab,
+  );
 
   return {
     isDefaultAgent,
     hideProfileAndInstructions,
+    showSkillsTab,
     activeTab,
     setActiveTab,
   };
@@ -921,6 +954,7 @@ export function ZeroJobDetailPage() {
   const {
     isDefaultAgent,
     hideProfileAndInstructions,
+    showSkillsTab,
     activeTab,
     setActiveTab,
   } = useTabVisibility(fields.agentId, fields.ownerId);
@@ -943,6 +977,7 @@ export function ZeroJobDetailPage() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}
+        showSkillsTab={showSkillsTab}
       />
       <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
         <AgentTabContent

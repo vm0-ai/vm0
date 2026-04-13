@@ -3,6 +3,7 @@ import { command } from "ccstate";
 import { setZeroJobAgentName$, resetActiveTab$ } from "./agent-name.ts";
 import { discardZeroJobEdit$ } from "./instructions.ts";
 import { discardZeroJobConnectors$ } from "./connectors.ts";
+import { resetSkillToggleState$ } from "./skills.ts";
 
 // ---------------------------------------------------------------------------
 // Public re-exports
@@ -44,6 +45,13 @@ export { zeroJobPermissionPolicies$ } from "./permissions.ts";
 
 export { deleteZeroJobAgent$ } from "./delete.ts";
 
+export {
+  orgSkills$,
+  boundCustomSkills$,
+  pendingSkillNames$,
+  toggleAgentSkill$,
+} from "./skills.ts";
+
 // ---------------------------------------------------------------------------
 // Set active agent — sets the agent name and resets draft states.
 // All async data (detail, instructions, schedule, connectors, permissions) will
@@ -55,4 +63,6 @@ export const setActiveAgent$ = command(({ set }, agentName: string) => {
   set(resetActiveTab$);
   set(discardZeroJobEdit$);
   set(discardZeroJobConnectors$);
+  // Reset the skills toggle queue across the entire app on agent switch.
+  set(resetSkillToggleState$, null);
 });

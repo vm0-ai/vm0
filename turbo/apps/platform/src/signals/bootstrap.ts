@@ -31,6 +31,7 @@ import { setupInternalConnectorLogos$ } from "./internal-connector-logos-setup.t
 import { setupOnboardingPage$ } from "./onboarding-page/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
+import { setupSkillsPage$ } from "./skills-page/skills-page-setup.ts";
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
@@ -117,6 +118,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.connectors,
     setup: setupAuthPageWrapper(setupConnectorsPage$),
+  },
+  {
+    path: ROUTES.skills,
+    setup: setupAuthPageWrapper(setupSkillsPage$),
   },
   {
     path: ROUTES.agentIdeas,

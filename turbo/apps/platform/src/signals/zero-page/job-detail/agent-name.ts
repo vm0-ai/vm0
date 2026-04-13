@@ -24,7 +24,8 @@ function isValidTab(tab: string): boolean {
     tab === "authorization" ||
     tab === "schedule" ||
     tab === "profile" ||
-    tab === "instructions"
+    tab === "instructions" ||
+    tab === "skills"
   );
 }
 

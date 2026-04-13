@@ -19,6 +19,7 @@ export const ROUTES = {
   connectors: "/connectors",
   directedConnect: "/connectors/:type/connect",
   directedAuthorize: "/connectors/:type/authorize",
+  skills: "/skills",
   settings: "/settings",
   settingsUsage: "/settings/usage",
   settingsSlack: "/settings/slack",

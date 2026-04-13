@@ -8,6 +8,7 @@ export interface AgentDetail {
   sound: string | null;
   avatarUrl: string | null;
   permissionPolicies: FirewallPolicies | null;
+  customSkills: string[];
 }
 
 export interface AgentInstructions {
