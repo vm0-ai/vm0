@@ -164,6 +164,10 @@ export const toggleAgentSkill$ = command(
           desired.delete(name);
         }
       }
+      // Snapshot which keys we are about to commit so we can clear only those
+      // on success — overrides added by toggles fired during this in-flight
+      // PUT must be preserved for the next queue slot to commit.
+      const committedKeys = [...overrides.keys()];
 
       const client = get(zeroClient$)(zeroAgentsByIdContract);
       // On rejection, propagates to the queue tracker which reverts the override.
@@ -174,9 +178,15 @@ export const toggleAgentSkill$ = command(
         }),
         [200],
       );
-      // Persisted — clear overrides; the reload will pull authoritative state.
+      // Persisted — clear only the overrides we just committed. The reload
+      // pulls authoritative state for those skills; any overrides added during
+      // the PUT remain queued for the next slot.
       set(internalOverrides$, (prev) => {
-        return clearAllOverridesFor(prev, agentId);
+        let nextMap = prev;
+        for (const key of committedKeys) {
+          nextMap = clearOverride(nextMap, agentId, key);
+        }
+        return nextMap;
       });
       set(reloadJobDetail$);
     });
