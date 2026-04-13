@@ -9,7 +9,8 @@ type IntegrationPlatform =
   | "Schedule"
   | "Slack"
   | "Telegram"
-  | "Voice-Chat";
+  | "Voice-Chat"
+  | "Web";
 
 /**
  * Build the integration prompt header prepended to agent run prompts.
@@ -407,4 +408,18 @@ export function buildTelegramPrompt(threadContext: string): string {
 export function buildGitHubPrompt(issueContext: string): string {
   const header = buildIntegrationPrompt("GitHub");
   return [header, issueContext].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Build the full appendSystemPrompt for Web Chat integration.
+ *
+ * The user is interacting through the web chat UI, so the final result of the
+ * run will be rendered directly to them. Keep this in mind when producing
+ * output — there is no separate delivery step.
+ */
+export function buildWebChatPrompt(): string {
+  const header = buildIntegrationPrompt("Web");
+  const description =
+    "You are communicating with the user through the web chat UI. The final result you return will be displayed to the user directly in the chat.";
+  return [header, description].join("\n\n");
 }
