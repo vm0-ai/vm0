@@ -1748,16 +1748,16 @@ mod tests {
         let name = src.path().join("rootfs.ext4");
         tokio::fs::write(&name, b"hello").await.unwrap();
         let files = vec![name];
-        let bytes = tokio::task::spawn_blocking(move || {
+        // `src` lives until this fn returns, which happens after the await
+        // resolves — by which point `pack_to_writer` has finished reading
+        // the file. Natural drop at end-of-scope is sufficient.
+        tokio::task::spawn_blocking(move || {
             let mut buf: Vec<u8> = Vec::new();
             pack_to_writer(&mut buf, &files).unwrap();
             buf
         })
         .await
-        .unwrap();
-        // Keep `src` alive until after pack finishes (file reads completed).
-        drop(src);
-        bytes
+        .unwrap()
     }
 
     /// Download body is not a valid zstd stream → unpack fails → the
