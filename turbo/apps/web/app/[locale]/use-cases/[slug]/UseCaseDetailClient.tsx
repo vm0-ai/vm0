@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { IconArrowUpRight } from "@tabler/icons-react";
 import { useTranslations } from "next-intl";
 import { Link } from "../../../../navigation";
 import Footer from "../../../components/Footer";
 import Particles from "../../../components/Particles";
+import { getAppUrl } from "../../../../src/lib/zero/url";
+import { buildTryItHref } from "../data";
 import type { UseCase, ConnectorRef } from "../data";
 
 interface PromptVariant {
@@ -73,6 +76,7 @@ function PromptVariants({ variants }: { variants: PromptVariant[] }) {
 export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
   const t = useTranslations("useCases");
   const slug = useCase.slug;
+  const platformUrl = getAppUrl();
 
   const promptVariants = t.raw(
     `content.${slug}.promptVariants`,
@@ -117,6 +121,20 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
               {useCase.connectors.map((c) => {
                 return <ConnectorBadge key={c.id} connector={c} />;
               })}
+            </div>
+
+            {/* Persistent CTA into the platform with this use case's prompt + connectors pre-wired. */}
+            {/* TODO(analytics): emit try-it-click event with useCase.slug */}
+            <div className="mt-6">
+              <a
+                href={buildTryItHref(useCase, platformUrl)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#ed4e01] px-5 py-2.5 text-[15px] font-semibold text-white transition-colors hover:bg-[#d94301]"
+              >
+                {t("tryItButton")}
+                <IconArrowUpRight size={16} />
+              </a>
             </div>
           </header>
 
