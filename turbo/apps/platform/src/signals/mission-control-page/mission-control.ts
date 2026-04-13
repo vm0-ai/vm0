@@ -153,6 +153,7 @@ export const createAndShowChatTask$ = command(
     // Step 1: Create (or reuse) chat thread
     const threadId = await set(createNewChatThread$, agentId, signal);
     signal.throwIfAborted();
+    // If null, createNewChatThread$ already showed a toast (e.g. "No agent available")
     if (!threadId) {
       return;
     }
@@ -163,8 +164,11 @@ export const createAndShowChatTask$ = command(
     const resolvedAgentId =
       agentId ??
       (await get(zeroOnboardingStatus$)).defaultAgentId ??
-      allAgents[0]?.id ??
-      "";
+      allAgents[0]?.id;
+    if (!resolvedAgentId) {
+      // No agent available — cannot create a meaningful optimistic entry
+      return;
+    }
     const agentInfo = allAgents.find((a) => {
       return a.id === resolvedAgentId;
     });
