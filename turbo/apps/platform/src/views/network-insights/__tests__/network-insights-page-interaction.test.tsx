@@ -169,6 +169,83 @@ describe("network insights page - data rendering", () => {
     });
   });
 
+  it("should abbreviate credit amounts >= 1,000 with K suffix", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        creditsUsed: 12_400,
+        creditBalance: 9500,
+        teamUsage: [
+          {
+            userId: "user-alice",
+            name: "alice",
+            credits: 12_400,
+            agentNames: ["Alpha Bot"],
+            agentCredits: { "Alpha Bot": 12_400 },
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("12.4 K").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByText("9.5 K")).toBeInTheDocument();
+  });
+
+  it("should abbreviate credit amounts >= 1,000,000 with M suffix", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        creditsUsed: 2_300_000,
+        creditBalance: 5_000_000,
+        teamUsage: [
+          {
+            userId: "user-alice",
+            name: "alice",
+            credits: 2_300_000,
+            agentNames: ["Alpha Bot"],
+            agentCredits: { "Alpha Bot": 2_300_000 },
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("2.3 M").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByText("5.0 M")).toBeInTheDocument();
+  });
+
+  it("should expose exact credit value via title attribute on hover", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        creditsUsed: 12_400,
+        creditBalance: 9500,
+        teamUsage: [
+          {
+            userId: "user-alice",
+            name: "alice",
+            credits: 12_400,
+            agentNames: ["Alpha Bot"],
+            agentCredits: { "Alpha Bot": 12_400 },
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("12.4 K").length).toBeGreaterThan(0);
+    });
+    // Hover tooltip via native title attribute exposes the exact value.
+    const abbreviated = screen.getAllByText("12.4 K");
+    expect(abbreviated[0]).toHaveAttribute("title", "12,400");
+  });
+
   it("should display most-used service with proper connector label", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
@@ -479,7 +556,7 @@ describe("network insights page - team credit usage card", () => {
     detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
-      expect(screen.getByText("9,800")).toBeInTheDocument();
+      expect(screen.getByText("9.8 K")).toBeInTheDocument();
     });
   });
 
