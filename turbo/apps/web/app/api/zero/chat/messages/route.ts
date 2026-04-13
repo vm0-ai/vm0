@@ -49,7 +49,7 @@ function buildContinueFromScheduleSystemPrompt(
 ): string {
   const scheduleSuffix = scheduleName ? `(scheduleName: ${scheduleName})` : "";
   return (
-    `You are continuing a previously scheduled runs${scheduleSuffix}. ` +
+    `You are continuing a previously scheduled run${scheduleSuffix}. ` +
     `Before replying, run \`zero logs ${runId}\` inside your sandbox to ` +
     `fetch the full record of that run, then continue the conversation with ` +
     `the user based on that context.`

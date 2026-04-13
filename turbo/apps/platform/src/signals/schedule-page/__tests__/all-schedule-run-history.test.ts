@@ -165,10 +165,7 @@ describe("all-schedule-run-history signals", () => {
 
     it("preserves the active tab param when changing status filter", () => {
       const { store, signal } = context;
-      mockLocation(
-        { pathname: "/schedules", search: "?tab=history" },
-        signal,
-      );
+      mockLocation({ pathname: "/schedules", search: "?tab=history" }, signal);
       const pushState = createPushStateMock(signal);
 
       mockLogsEndpoint(emptyLogsResponse());

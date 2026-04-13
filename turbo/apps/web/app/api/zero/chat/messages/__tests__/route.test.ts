@@ -277,12 +277,8 @@ describe("POST /api/zero/chat/messages", () => {
     });
 
     it("includes the schedule name in the continue-from-schedule prompt when the source run references a real schedule", async () => {
-      const {
-        createTestSchedule,
-        createTestRunInDb,
-      } = await import(
-        "../../../../../../src/__tests__/api-test-helpers"
-      );
+      const { createTestSchedule, createTestRunInDb } =
+        await import("../../../../../../src/__tests__/api-test-helpers");
 
       const schedule = await createTestSchedule(
         agentId,
@@ -328,7 +324,9 @@ describe("POST /api/zero/chat/messages", () => {
 
       const run = await findTestRunRecord(runId);
       expect(run?.appendSystemPrompt).toContain(sourceRunId);
-      expect(run?.appendSystemPrompt).toContain(`scheduleName: ${schedule.name}`);
+      expect(run?.appendSystemPrompt).toContain(
+        `scheduleName: ${schedule.name}`,
+      );
       expect(run?.appendSystemPrompt).toContain("zero logs");
       // Web chat UI context is always still present.
       expect(run?.appendSystemPrompt).toContain(

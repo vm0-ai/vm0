@@ -22,10 +22,7 @@ describe("schedule-list-tab", () => {
 
     it("reads history tab from URL search params", () => {
       const { store, signal } = context;
-      mockLocation(
-        { pathname: "/schedules", search: "?tab=history" },
-        signal,
-      );
+      mockLocation({ pathname: "/schedules", search: "?tab=history" }, signal);
 
       store.set(initScheduleListTab$);
 
@@ -34,10 +31,7 @@ describe("schedule-list-tab", () => {
 
     it("reads calendar tab from URL search params", () => {
       const { store, signal } = context;
-      mockLocation(
-        { pathname: "/schedules", search: "?tab=calendar" },
-        signal,
-      );
+      mockLocation({ pathname: "/schedules", search: "?tab=calendar" }, signal);
 
       store.set(initScheduleListTab$);
 
@@ -46,10 +40,7 @@ describe("schedule-list-tab", () => {
 
     it("falls back to list for invalid tab value", () => {
       const { store, signal } = context;
-      mockLocation(
-        { pathname: "/schedules", search: "?tab=bogus" },
-        signal,
-      );
+      mockLocation({ pathname: "/schedules", search: "?tab=bogus" }, signal);
 
       store.set(initScheduleListTab$);
 
@@ -89,10 +80,7 @@ describe("schedule-list-tab", () => {
 
     it("removes tab param from URL when switching back to default (list)", () => {
       const { store, signal } = context;
-      mockLocation(
-        { pathname: "/schedules", search: "?tab=history" },
-        signal,
-      );
+      mockLocation({ pathname: "/schedules", search: "?tab=history" }, signal);
 
       const calls: string[] = [];
       mockReplaceState(
