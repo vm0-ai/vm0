@@ -169,12 +169,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the appended system prompt in activity detail steps",
     enabled: false,
   },
-  [FeatureSwitchKey.Usage]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Usage page with per-member credit and token consumption",
-    enabled: false,
-  },
   [FeatureSwitchKey.UsageAnalytics]: {
     maintainer: "ethan@vm0.ai",
     description:

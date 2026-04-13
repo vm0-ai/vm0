@@ -11,7 +11,6 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconChartBar,
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
@@ -141,15 +140,6 @@ const FOOTER_NAV = [
     icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
     featureGate: undefined,
-  },
-  {
-    id: "settingsUsage",
-    activeKeys: ["settingsUsage"],
-    pathname: "/settings/usage",
-    label: "Usage",
-    icon: IconChartBar as NavIcon,
-    iconImg: undefined,
-    featureGate: FeatureSwitchKey.Usage,
   },
   {
     id: "phone",
