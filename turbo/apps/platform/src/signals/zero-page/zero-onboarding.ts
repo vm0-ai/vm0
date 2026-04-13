@@ -69,6 +69,21 @@ const internalWorkspaceName$ = state("");
 
 const internalSelectedConnectors$ = state<ConnectorType[]>([]);
 
+/**
+ * True when the current onboarding session received its connectors via the
+ * `?connector=` URL param (deep link). When set, step 2 (the connector picker)
+ * is skipped — the user already chose, so we jump straight to step 3 (connect).
+ */
+const internalConnectorsFromUrl$ = state(false);
+
+export const connectorsFromUrl$ = computed((get) => {
+  return get(internalConnectorsFromUrl$);
+});
+
+export const markConnectorsFromUrl$ = command(({ set }) => {
+  set(internalConnectorsFromUrl$, true);
+});
+
 export const zeroOnboardingStep$ = computed(async (get) => {
   const userStep = get(userStep$);
   if (userStep !== null) {
@@ -137,6 +152,7 @@ export const toggleZeroConnector$ = command(
  */
 export const resetOnboardingStep$ = command(({ set }) => {
   set(userStep$, null);
+  set(internalConnectorsFromUrl$, false);
 });
 
 /**
