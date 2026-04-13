@@ -90,6 +90,10 @@ export interface PhoneCallbackPayload {
   existingSessionId: string | null;
 }
 
+export interface AgentCallbackPayload {
+  parentRunId?: string;
+}
+
 export type CallbackPayload =
   | TelegramCallbackPayload
   | SlackOrgCallbackPayload
@@ -100,4 +104,5 @@ export type CallbackPayload =
   | GitHubIssuesCallbackPayload
   | ChatCallbackPayload
   | PhoneCallbackPayload
-  | VoiceChatCallbackPayload;
+  | VoiceChatCallbackPayload
+  | AgentCallbackPayload;
