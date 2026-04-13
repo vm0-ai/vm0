@@ -49,6 +49,7 @@ pub struct ConfigArgs {
 pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     // Pure-CPU validation first — fail fast before any filesystem I/O.
     crate::group::validate_or_err(&args.group)?;
+    crate::runner_dir::validate_or_err(&args.runner_dirname)?;
     if args.profile.len() != args.image_hash.len() {
         return Err(RunnerError::Config(
             "--profile and --image-hash must be specified the same number of times".into(),
@@ -120,4 +121,40 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     tracing::info!("config written to {}", config_path.display());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args_with_dirname(dirname: &str) -> ConfigArgs {
+        ConfigArgs {
+            profile: vec!["vm0/default".into()],
+            image_hash: vec!["dummy".into()],
+            name: "test".into(),
+            group: "vm0/test".into(),
+            runner_dirname: dirname.into(),
+            max_concurrent: 0,
+            concurrency_factor: 1.0,
+            api_url: "http://localhost".into(),
+            token: "x".into(),
+        }
+    }
+
+    /// Asserts that `--runner-dirname` validation is wired into `run_config`.
+    /// Without the validator call at the top, a malicious dirname would
+    /// reach `paths.runners_dir().join(...)` and escape the base dir.
+    #[tokio::test]
+    async fn run_config_rejects_traversal_runner_dirname() {
+        let err = run_config(args_with_dirname("../etc")).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_absolute_runner_dirname() {
+        let err = run_config(args_with_dirname("/etc")).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+    }
 }
