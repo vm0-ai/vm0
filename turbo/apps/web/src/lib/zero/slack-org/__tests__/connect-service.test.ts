@@ -251,6 +251,90 @@ describe("connect-service", () => {
       );
     });
 
+    it("sends pending prompt DM when pendingPrompt is provided", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+
+      const { installation } = await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      await notifyConnectSuccess({
+        installation,
+        slackUserId,
+        orgId: user.orgId,
+        pendingPrompt: "summarize my inbox",
+      });
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof import("vitest").vi.fn
+      >;
+      // Should send: connect DM, welcome thread, and pending prompt DM
+      expect(postMessageFn.mock.calls.length).toBeGreaterThanOrEqual(3);
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes("summarize my inbox")
+        );
+      });
+      expect(promptCall).toBeDefined();
+      // Verify the prompt is wrapped in a code block (mrkdwn sanitization)
+      const promptText = (promptCall![0] as { text: string }).text;
+      expect(promptText).toContain("```");
+    });
+
+    it("does not send pending prompt DM when pendingPrompt is null", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+
+      const { installation } = await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      await notifyConnectSuccess({
+        installation,
+        slackUserId,
+        orgId: user.orgId,
+        pendingPrompt: null,
+      });
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof import("vitest").vi.fn
+      >;
+      // Should send only connect DM and welcome thread (2 calls), no prompt DM
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes(
+            "would you like me to run",
+          )
+        );
+      });
+      expect(promptCall).toBeUndefined();
+    });
+
     it("sends DM with welcome thread when no channelId", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");

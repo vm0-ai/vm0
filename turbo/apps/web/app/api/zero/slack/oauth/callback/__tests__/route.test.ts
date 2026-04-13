@@ -520,6 +520,102 @@ describe("/api/zero/slack/oauth/callback", () => {
     );
   });
 
+  it("should forward prompt from state to notifyConnectSuccess DM", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    mockOAuthSuccess({ teamId: workspaceId, authedUserId: "U-prompt-admin" });
+
+    const state = JSON.stringify({
+      orgId,
+      vm0UserId: adminUserId,
+      prompt: "summarize my inbox",
+    });
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("Location")).toContain(
+      "/slack/connect?status=connected",
+    );
+
+    // Allow fire-and-forget notifyConnectSuccess to complete
+    await vi.waitFor(async () => {
+      const mockClient = vi.mocked(new WebClient(), true);
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof vi.fn
+      >;
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes("summarize my inbox")
+        );
+      });
+      expect(promptCall).toBeDefined();
+    });
+  });
+
+  it("should not send prompt DM when state has no prompt", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-noprompt-admin",
+    });
+
+    const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("Location")).toContain(
+      "/slack/connect?status=connected",
+    );
+
+    // Allow fire-and-forget notifyConnectSuccess to complete
+    await vi.waitFor(async () => {
+      const mockClient = vi.mocked(new WebClient(), true);
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof vi.fn
+      >;
+      // Verify no "would you like me to run" prompt DM was sent
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes(
+            "would you like me to run",
+          )
+        );
+      });
+      expect(promptCall).toBeUndefined();
+    });
+  });
+
   it("should redirect to /?tab=works&updated=1 when reinstall flag is set", async () => {
     const adminUserId = uniqueId("admin");
     const orgId = uniqueId("org");
