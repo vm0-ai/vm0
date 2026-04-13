@@ -847,17 +847,43 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
   if (!("wakeLock" in navigator)) {
     return;
   }
-  let lock: WakeLockSentinel | undefined;
-  // eslint-disable-next-line no-restricted-syntax -- wakeLock.request can fail if document is not visible
-  try {
-    lock = await navigator.wakeLock.request("screen");
-  } catch {
-    // Wake lock request failed — non-critical, ignore
-  }
-  signal.throwIfAborted();
-  if (lock) {
+
+  const requestAndTrack = async (): Promise<void> => {
+    if (document.visibilityState !== "visible") return;
+    let lock: WakeLockSentinel | undefined;
+    // eslint-disable-next-line no-restricted-syntax -- wakeLock.request can fail if document is not visible
+    try {
+      lock = await navigator.wakeLock.request("screen");
+    } catch {
+      // Wake lock request failed — non-critical, ignore
+      return;
+    }
+    if (signal.aborted) {
+      lock.release().catch(() => undefined);
+      return;
+    }
     set(internalWakeLock$, lock);
-  }
+    // Re-acquire when the browser releases the lock (e.g. tab becomes hidden)
+    lock.addEventListener("release", () => {
+      if (!signal.aborted) {
+        void requestAndTrack();
+      }
+    });
+  };
+
+  // Re-acquire when the page becomes visible again after being hidden
+  const onVisibilityChange = (): void => {
+    if (document.visibilityState === "visible" && !signal.aborted) {
+      void requestAndTrack();
+    }
+  };
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  signal.addEventListener("abort", () => {
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+  });
+
+  signal.throwIfAborted();
+  await requestAndTrack();
 });
 
 const releaseWakeLock$ = command(({ get, set }) => {
