@@ -60,6 +60,25 @@
 //! peers with correct clocks). Mitigation: keep NTP healthy. A clock behind
 //! R2 is the safe direction (under-deletes, no data loss).
 //!
+//! ## Cancellation safety
+//!
+//! All operations in this module are safe to cancel (drop the future) at any
+//! await point — no permanent state is left in an inconsistent way:
+//!
+//! - **Local staging directory**: a hard-killed `try_download` may leave
+//!   `images/{hash}.tmp/` on disk. The next `try_download` removes it as
+//!   the first action, so the leak is bounded to one stale dir per hash
+//!   and self-heals on next attempt.
+//! - **R2 multipart upload session**: a cancelled `upload` after
+//!   `create_multipart_upload` returned but before `Complete` runs leaks
+//!   the `upload_id` server-side (Drop can't `.await` to call
+//!   `abort_multipart_upload`). R2's default 7-day lifecycle cleans
+//!   abandoned segments, capping the wasted storage cost.
+//! - **`spawn_blocking` pack / unpack tasks**: tokio cannot cancel
+//!   blocking tasks. After parent cancellation, the producer/consumer
+//!   thread runs until it hits BrokenPipe or natural EOF — wasted CPU for
+//!   a few seconds, no resource leak.
+//!
 //! ## Corrupt-object eviction
 //!
 //! A structurally-valid archive whose extracted content fails
