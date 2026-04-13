@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.78.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.77.1...runner-rs-v0.78.0) (2026-04-13)
+
+
+### Features
+
+* **runner:** inflate sandbox balloon when parked in idle pool ([#9118](https://github.com/vm0-ai/vm0/issues/9118)) ([628032d](https://github.com/vm0-ai/vm0/commit/628032dbf3543d3387b6559263c31ee273f24986))
+
+
+### Bug Fixes
+
+* **runner:** validate --runner-dirname to prevent path traversal ([#9134](https://github.com/vm0-ai/vm0/issues/9134)) ([b511508](https://github.com/vm0-ai/vm0/commit/b51150884503ecc81e3180737ea11ca12b46f127))
+
+
+### Performance Improvements
+
+* **runner:** cache built images on r2 ([#9120](https://github.com/vm0-ai/vm0/issues/9120)) ([bf2f2cd](https://github.com/vm0-ai/vm0/commit/bf2f2cdeb2956cee5fc5f7466e147d1c4351d3d0))
+
 ## [0.77.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.77.0...runner-rs-v0.77.1) (2026-04-13)
 
 

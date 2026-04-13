@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.180.1](https://github.com/vm0-ai/vm0/compare/core-v8.180.0...core-v8.180.1) (2026-04-13)
+
+
+### Refactoring
+
+* **platform:** remove usage tab from sidebar and its feature switch ([#9160](https://github.com/vm0-ai/vm0/issues/9160)) ([08d922d](https://github.com/vm0-ai/vm0/commit/08d922d28c76f83633ed6d9884ac2591ad188521))
+
 ## [8.180.0](https://github.com/vm0-ai/vm0/compare/core-v8.179.0...core-v8.180.0) (2026-04-13)
 
 

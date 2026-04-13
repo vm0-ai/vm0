@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.10.0...sandbox-v0.11.0) (2026-04-13)
+
+
+### Features
+
+* **runner:** inflate sandbox balloon when parked in idle pool ([#9118](https://github.com/vm0-ai/vm0/issues/9118)) ([628032d](https://github.com/vm0-ai/vm0/commit/628032dbf3543d3387b6559263c31ee273f24986))
+
 ## [0.10.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.9.0...sandbox-v0.10.0) (2026-04-09)
 
 

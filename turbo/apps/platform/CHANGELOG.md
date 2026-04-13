@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.230.0](https://github.com/vm0-ai/vm0/compare/app-v0.229.0...app-v0.230.0) (2026-04-13)
+
+
+### Features
+
+* upgrade stt model from whisper-1 to gpt-4o-mini-transcribe ([#9167](https://github.com/vm0-ai/vm0/issues/9167)) ([18a84b1](https://github.com/vm0-ai/vm0/commit/18a84b120760ab8c21eb56cc9c3c8b14ca0b52df)), closes [#9164](https://github.com/vm0-ai/vm0/issues/9164)
+
+
+### Refactoring
+
+* **platform:** remove usage tab from sidebar and its feature switch ([#9160](https://github.com/vm0-ai/vm0/issues/9160)) ([08d922d](https://github.com/vm0-ai/vm0/commit/08d922d28c76f83633ed6d9884ac2591ad188521))
+
+
+### Performance Improvements
+
+* **voice-io:** stream tts audio for faster time-to-first-sound ([#9161](https://github.com/vm0-ai/vm0/issues/9161)) ([812b4d5](https://github.com/vm0-ai/vm0/commit/812b4d5f7abe9cc78cba4723730cfb22ea01c755)), closes [#9154](https://github.com/vm0-ai/vm0/issues/9154)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.180.1
+
 ## [0.229.0](https://github.com/vm0-ai/vm0/compare/app-v0.228.0...app-v0.229.0) (2026-04-13)
 
 
