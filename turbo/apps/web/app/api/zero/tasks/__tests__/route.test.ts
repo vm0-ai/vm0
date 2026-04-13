@@ -355,7 +355,11 @@ describe("POST /api/zero/tasks/archive", () => {
       createTestRequest("http://localhost:3000/api/zero/tasks"),
     );
     const listData = (await listRes.json()) as { tasks: Array<{ id: string }> };
-    expect(listData.tasks.some((t) => t.id === threadId)).toBe(true);
+    expect(
+      listData.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(true);
 
     // Archive it
     const archiveReq = createTestRequest(
@@ -376,7 +380,11 @@ describe("POST /api/zero/tasks/archive", () => {
     const listData2 = (await listRes2.json()) as {
       tasks: Array<{ id: string }>;
     };
-    expect(listData2.tasks.some((t) => t.id === threadId)).toBe(false);
+    expect(
+      listData2.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(false);
   });
 
   it("archive is idempotent (double-archive returns 200 and keeps task hidden)", async () => {
@@ -391,12 +399,13 @@ describe("POST /api/zero/tasks/archive", () => {
     });
     await addTestRunToThread(threadId, runId, user.userId);
 
-    const archiveReq = () =>
-      createTestRequest("http://localhost:3000/api/zero/tasks/archive", {
+    const archiveReq = () => {
+      return createTestRequest("http://localhost:3000/api/zero/tasks/archive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: threadId, taskType: "chat", runId }),
       });
+    };
 
     const res1 = await POST(archiveReq());
     expect(res1.status).toBe(200);
@@ -408,7 +417,11 @@ describe("POST /api/zero/tasks/archive", () => {
       createTestRequest("http://localhost:3000/api/zero/tasks"),
     );
     const listData = (await listRes.json()) as { tasks: Array<{ id: string }> };
-    expect(listData.tasks.some((t) => t.id === threadId)).toBe(false);
+    expect(
+      listData.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(false);
   });
 
   it("archived task reappears when a new run arrives", async () => {
@@ -447,7 +460,11 @@ describe("POST /api/zero/tasks/archive", () => {
       createTestRequest("http://localhost:3000/api/zero/tasks"),
     );
     const listData = (await listRes.json()) as { tasks: Array<{ id: string }> };
-    expect(listData.tasks.some((t) => t.id === threadId)).toBe(true);
+    expect(
+      listData.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(true);
   });
 });
 
@@ -500,7 +517,11 @@ describe("POST /api/zero/tasks/unarchive", () => {
       createTestRequest("http://localhost:3000/api/zero/tasks"),
     );
     const listData = (await listRes.json()) as { tasks: Array<{ id: string }> };
-    expect(listData.tasks.some((t) => t.id === threadId)).toBe(false);
+    expect(
+      listData.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(false);
 
     // Unarchive
     const unarchiveRes = await POST(
@@ -519,6 +540,10 @@ describe("POST /api/zero/tasks/unarchive", () => {
     const listData2 = (await listRes2.json()) as {
       tasks: Array<{ id: string }>;
     };
-    expect(listData2.tasks.some((t) => t.id === threadId)).toBe(true);
+    expect(
+      listData2.tasks.some((t) => {
+        return t.id === threadId;
+      }),
+    ).toBe(true);
   });
 });
