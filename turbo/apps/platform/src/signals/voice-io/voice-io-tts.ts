@@ -82,9 +82,11 @@ const fetchAndPlay$ = command(
     signal: AbortSignal,
   ) => {
     set(cleanupAudio$);
+    set(internalPlayingMessageId$, messageId);
 
     const plainText = stripMarkdown(text);
     if (!plainText) {
+      set(internalPlayingMessageId$, null);
       return;
     }
 
@@ -96,11 +98,13 @@ const fetchAndPlay$ = command(
       blob = await fetchTtsAudio(fetchFn, plainText, signal);
     } catch (error) {
       L.error("TTS fetch failed", error);
+      set(internalPlayingMessageId$, null);
       return;
     }
 
     if (!blob) {
       L.error("TTS API returned error");
+      set(internalPlayingMessageId$, null);
       return;
     }
 
@@ -131,7 +135,6 @@ const fetchAndPlay$ = command(
 
     set(internalBlobUrl$, blobUrl);
     set(internalAudioElement$, audio);
-    set(internalPlayingMessageId$, messageId);
 
     // eslint-disable-next-line no-restricted-syntax -- audio.play() rejects on browser autoplay restrictions
     try {
@@ -152,7 +155,15 @@ export const stopTts$ = command(({ set }) => {
 });
 
 export const playTts$ = command(
-  async ({ set }, messageId: string, text: string, signal: AbortSignal) => {
+  async (
+    { get, set },
+    messageId: string,
+    text: string,
+    signal: AbortSignal,
+  ) => {
+    if (get(internalPlayingMessageId$) === messageId) {
+      return;
+    }
     await set(fetchAndPlay$, messageId, text, signal);
   },
 );
