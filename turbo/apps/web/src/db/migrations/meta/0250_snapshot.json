@@ -1,6 +1,6 @@
 {
-  "id": "3fd83209-cb2a-4a2f-b082-169921b894e2",
-  "prevId": "9706e331-a337-4dd2-a265-7d192e384225",
+  "id": "31062128-5a8c-46de-becf-8802f8b4ff73",
+  "prevId": "3fd83209-cb2a-4a2f-b082-169921b894e2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1028,6 +1028,12 @@
         "session_id": {
           "name": "session_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "append_system_prompt": {
+          "name": "append_system_prompt",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
