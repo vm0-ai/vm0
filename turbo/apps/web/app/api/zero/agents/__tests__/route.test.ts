@@ -32,6 +32,7 @@ import {
   insertOrgMembersCacheEntry,
   getTestComposeVersionContent,
   createTestTarFile,
+  createTestZeroSkill,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { getInstructionsStorageName } from "@vm0/core";
 import {
@@ -208,6 +209,9 @@ describe("Zero Agents API", () => {
     });
 
     it("should create an agent with custom skills and include them in response and compose", async () => {
+      await createTestZeroSkill(user.orgId, "my-skill");
+      await createTestZeroSkill(user.orgId, "data-tool");
+
       const response = await postAgent(
         { customSkills: ["my-skill", "data-tool"] },
         testCliToken,
@@ -230,6 +234,30 @@ describe("Zero Agents API", () => {
         name: "custom-skill@data-tool",
         version: "latest",
       });
+    });
+
+    it("should reject non-existent custom skill names", async () => {
+      const response = await postAgent(
+        { customSkills: ["does-not-exist"] },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("does-not-exist");
+      expect(data.error.message).toContain("not found");
+    });
+
+    it("should reject connector type names as custom skills", async () => {
+      const response = await postAgent(
+        { customSkills: ["github"] },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("github");
+      expect(data.error.message).toContain("connector");
     });
 
     it("should return 401 without auth", async () => {
@@ -356,6 +384,9 @@ describe("Zero Agents API", () => {
     });
 
     it("should update custom skills and reflect in compose volumes", async () => {
+      await createTestZeroSkill(user.orgId, "my-skill");
+      await createTestZeroSkill(user.orgId, "data-tool");
+
       const created = await (await postAgent({}, testCliToken)).json();
 
       const response = await putAgent(
@@ -382,6 +413,8 @@ describe("Zero Agents API", () => {
     });
 
     it("should preserve existing custom skills when not provided in update", async () => {
+      await createTestZeroSkill(user.orgId, "my-skill");
+
       // Create with custom skills
       const created = await (
         await postAgent({ customSkills: ["my-skill"] }, testCliToken)
@@ -399,6 +432,36 @@ describe("Zero Agents API", () => {
       const getRes = await getAgent(created.agentId, testCliToken);
       const fetched = await getRes.json();
       expect(fetched.customSkills).toEqual(["my-skill"]);
+    });
+
+    it("should reject non-existent custom skill names on update", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        { customSkills: ["does-not-exist"] },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("does-not-exist");
+      expect(data.error.message).toContain("not found");
+    });
+
+    it("should reject connector type names as custom skills on update", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        { customSkills: ["github"] },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("github");
+      expect(data.error.message).toContain("connector");
     });
 
     it("should return 404 for unknown agent", async () => {
@@ -482,6 +545,8 @@ describe("Zero Agents API", () => {
     });
 
     it("should preserve custom skill volumes after instructions update", async () => {
+      await createTestZeroSkill(user.orgId, "my-skill");
+
       const createResponse = await postAgent(
         { customSkills: ["my-skill"] },
         testCliToken,

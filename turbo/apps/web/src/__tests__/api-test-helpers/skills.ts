@@ -4,6 +4,7 @@ import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core";
 import { initServices } from "../../lib/init-services";
 import { skills } from "../../db/schema/skill";
 import { zeroAgents } from "../../db/schema/zero-agent";
+import { zeroSkills } from "../../db/schema/zero-skill";
 import { storages, storageVersions } from "../../db/schema/storage";
 import { buildSeedSkillValues } from "../../lib/zero/seed-skills";
 
@@ -150,4 +151,22 @@ export async function getAgentCustomSkills(agentId: string): Promise<string[]> {
     .limit(1);
   if (!agent) throw new Error(`Agent not found: ${agentId}`);
   return agent.customSkills;
+}
+
+/**
+ * Create a custom skill record in the zero_skills table for testing.
+ */
+export async function createTestZeroSkill(
+  orgId: string,
+  name: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(zeroSkills)
+    .values({
+      orgId,
+      name,
+      createdBy: "test",
+    })
+    .onConflictDoNothing();
 }

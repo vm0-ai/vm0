@@ -15,6 +15,7 @@ import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq, desc } from "drizzle-orm";
 import { buildComposeContent } from "../../../../src/lib/zero/build-compose-content";
+import { validateCustomSkills } from "../../../../src/lib/zero/validate-custom-skills";
 import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents");
@@ -35,6 +36,10 @@ const router = tsr.router(zeroAgentsMainContract, {
     const agentName = crypto.randomUUID();
 
     const customSkills = body.customSkills ?? [];
+
+    // Validate custom skill names exist in the org
+    const validation = await validateCustomSkills(customSkills, org.orgId);
+    if (!validation.valid) return validation.error;
 
     // Build compose content (always includes all connector skills)
     const content = buildComposeContent(

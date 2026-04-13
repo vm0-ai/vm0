@@ -15,6 +15,7 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
+import { validateCustomSkills } from "../../../../../src/lib/zero/validate-custom-skills";
 import {
   requireAgentPermission,
   requireAdminPermission,
@@ -142,6 +143,12 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     // Use provided customSkills if present, otherwise keep existing
     const customSkills = body.customSkills ?? existing.customSkills ?? [];
+
+    // Validate custom skill names when explicitly provided
+    if (body.customSkills) {
+      const validation = await validateCustomSkills(customSkills, org.orgId);
+      if (!validation.valid) return validation.error;
+    }
 
     // Build compose content (all connector skills included, plus custom skills)
     const content = buildComposeContent(
