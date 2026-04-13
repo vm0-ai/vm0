@@ -80,17 +80,12 @@ vi.mock("next/image", () => {
   };
 });
 
-// External: platform URL comes from validated env — stub it to keep the test hermetic.
-vi.mock("../../../../src/lib/zero/url", () => {
-  return {
-    getAppUrl: () => {
-      return "https://app.example.com";
-    },
-  };
-});
-
 describe("UseCasesGalleryClient try-it CTA", () => {
   it("renders a try-it CTA for every use case, each pointing at the platform with connector ids", () => {
+    // NEXT_PUBLIC_APP_URL is stubbed to http://localhost:3001 in the global
+    // test setup (src/__tests__/setup.ts), which is what getAppUrl() returns here.
+    const platformUrl = "http://localhost:3001";
+
     const html = renderToStaticMarkup(
       <ThemeProvider>
         <UseCasesGalleryClient />
@@ -103,7 +98,7 @@ describe("UseCasesGalleryClient try-it CTA", () => {
 
     // Every use case's computed href appears in the rendered markup.
     for (const uc of USE_CASES) {
-      const href = buildTryItHref(uc, "https://app.example.com");
+      const href = buildTryItHref(uc, platformUrl);
       // Hrefs get HTML-escaped (& -> &amp;), so compare against the escaped form.
       const escaped = href.replace(/&/g, "&amp;");
       expect(html).toContain(escaped);
