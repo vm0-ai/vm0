@@ -11,6 +11,13 @@ use crate::cmd::service;
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, LogPaths};
+use crate::r2_cache::R2ImageCache;
+
+/// Default TTL for completed R2 image objects. Older objects are deleted by
+/// `gc_r2`. 30 days easily covers any sane release cadence; a stale image
+/// staying around an extra week is harmless, but losing a still-referenced
+/// one would force a full rebuild.
+const R2_DEFAULT_KEEP_DAYS: u64 = 30;
 
 /// Artifacts younger than this are unconditionally kept, regardless of lock
 /// status or `--keep-latest`. This prevents races between `runner build`
@@ -28,6 +35,10 @@ pub struct GcArgs {
     /// Keep the N most recent unused versions (by modification time)
     #[arg(long)]
     keep_latest: Option<usize>,
+    /// TTL for R2 image cache objects (in days). Objects older than this
+    /// are deleted from `runner-images/` on R2. Default: 30 days.
+    #[arg(long, default_value_t = R2_DEFAULT_KEEP_DAYS)]
+    r2_keep_days: u64,
 }
 
 pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
@@ -55,13 +66,16 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
 
     let debootstrap_freed = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
 
-    let total = images_freed + job_logs_freed + debootstrap_freed + workspace_freed;
+    let (r2_deleted, r2_freed) = gc_r2(args.r2_keep_days, args.dry_run).await;
+
+    let total = images_freed + job_logs_freed + debootstrap_freed + workspace_freed + r2_freed;
     if total == 0
         && locks_removed == 0
         && job_logs_removed == 0
         && versions_removed.is_empty()
         && nbd_orphans == 0
         && workspace_orphans == 0
+        && r2_deleted == 0
     {
         info!("nothing to clean up");
     } else {
@@ -82,6 +96,54 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     }
 
     Ok(())
+}
+
+/// Delete R2 image cache objects older than `keep_days`. Errors (R2 not
+/// configured, network blip, etc.) are logged and swallowed: GC must not
+/// fail the deploy because the cache layer is misconfigured. Returns
+/// `(deleted_count, freed_bytes)`.
+///
+/// Idempotent across the fleet — every host runs the same scan; DELETE on
+/// already-absent keys is a no-op success.
+async fn gc_r2(keep_days: u64, dry_run: bool) -> (u64, u64) {
+    let cache = match R2ImageCache::from_env().await {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            info!("r2: cache not configured, skipping R2 GC");
+            return (0, 0);
+        }
+        Err(e) => {
+            warn!("r2: init failed ({e}), skipping R2 GC");
+            return (0, 0);
+        }
+    };
+
+    if dry_run {
+        // No safe dry-run: list_objects_v2 + counting age would still cost
+        // R2 reads, and we can't filter without making the call. Surface the
+        // intent and skip the destructive part.
+        info!("[dry-run] would delete R2 image objects older than {keep_days} days");
+        return (0, 0);
+    }
+
+    let max_age = std::time::Duration::from_secs(keep_days.saturating_mul(86_400));
+    match cache.gc_older_than(max_age).await {
+        Ok((0, _)) => {
+            info!("r2: no objects older than {keep_days} days");
+            (0, 0)
+        }
+        Ok((count, bytes)) => {
+            info!(
+                "r2: deleted {count} object(s) older than {keep_days} days ({})",
+                human_bytes(bytes)
+            );
+            (count, bytes)
+        }
+        Err(e) => {
+            warn!("r2: GC failed ({e}); will retry on next gc invocation");
+            (0, 0)
+        }
+    }
 }
 
 /// An unused artifact directory whose exclusive lock is held to prevent races.

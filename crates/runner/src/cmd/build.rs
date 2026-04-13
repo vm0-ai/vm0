@@ -19,9 +19,8 @@ const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
 /// Affects both the local cache directory and the R2 object key (since the
 /// version seeds the hash that names both).
 ///
-/// Bumping leaves the previous-hash R2 objects orphaned — they're never
-/// referenced again. Cleanup relies on the bucket's lifecycle rule on the
-/// `runner-images/` prefix (see `r2_cache` module docs).
+/// Bumping leaves the previous-hash R2 objects orphaned; they're swept by
+/// `runner gc` after the configured TTL (see `r2_cache::gc_older_than`).
 const IMAGE_CACHE_VERSION: u32 = 1;
 
 #[cfg(bundled_guests)]

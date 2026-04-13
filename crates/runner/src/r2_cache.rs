@@ -37,16 +37,21 @@
 //! Image size limit: `PART_SIZE * 10000 ≈ 160 GiB` (S3 multipart hard limit).
 //! Current images are well under 30 GiB; revisit if `PART_SIZE` decreases.
 //!
-//! ## R2-side cleanup (operator responsibility)
+//! ## R2-side cleanup
 //!
-//! Completed objects (`runner-images/{hash}.tar.zst`) are **never deleted by
-//! this code**. Each `IMAGE_CACHE_VERSION` bump, build-script change, guest
+//! Completed objects (`runner-images/{hash}.tar.zst`) are **never deleted on
+//! upload**. Each `IMAGE_CACHE_VERSION` bump, build-script change, guest
 //! binary rebuild, or firecracker/kernel upgrade produces a new hash and
 //! orphans the previous object.
 //!
-//! Mitigation: configure an R2 bucket lifecycle rule on the `runner-images/`
-//! prefix to delete objects older than ~30 days. R2's default 7-day rule only
-//! cleans abandoned multipart segments, not completed objects.
+//! Cleanup happens via `gc_older_than`, called from `runner gc` (which the
+//! deploy playbook runs after every release). Default TTL is 30 days. Each
+//! host runs the same scan independently — `DeleteObjects` is idempotent for
+//! already-absent keys, so concurrent fleet execution is safe and costs
+//! ~1 LIST + 1 batched DELETE per host per gc cycle.
+//!
+//! R2's default 7-day lifecycle rule only cleans abandoned multipart
+//! segments, **not** completed objects — which is why we need our own scan.
 //!
 //! ## Security boundary: tar path traversal
 //!
@@ -67,7 +72,7 @@ use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region, SharedCredentials
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, Delete, ObjectIdentifier};
 use tokio::io::AsyncReadExt;
 
 const KEY_PREFIX: &str = "runner-images/";
@@ -286,6 +291,84 @@ impl R2ImageCache {
                 .await;
         }
         result
+    }
+
+    /// Delete `runner-images/*` objects older than `max_age`. Returns
+    /// `(deleted_count, freed_bytes)`. Idempotent under concurrent fleet
+    /// execution: every host runs the same scan and `DeleteObjects` returns
+    /// success for already-absent keys. Each invocation costs ~1 LIST per 1000
+    /// objects + 1 batched DELETE per 1000 stale keys.
+    pub async fn gc_older_than(&self, max_age: std::time::Duration) -> Result<(u64, u64), R2Error> {
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| R2Error::Io(io_other(e)))?
+            .as_secs();
+        let cutoff_secs = now_secs.saturating_sub(max_age.as_secs());
+        let cutoff = i64::try_from(cutoff_secs)
+            .map_err(|_| R2Error::Io(io_other("system clock beyond i64 unix-seconds range")))?;
+
+        let mut continuation_token: Option<String> = None;
+        let mut total_deleted = 0u64;
+        let mut total_freed = 0u64;
+        loop {
+            let mut req = self
+                .client
+                .list_objects_v2()
+                .bucket(&self.bucket)
+                .prefix(KEY_PREFIX);
+            if let Some(token) = continuation_token.as_ref() {
+                req = req.continuation_token(token);
+            }
+            let resp = req.send().await?;
+
+            // Filter expired objects in this page; build an ObjectIdentifier
+            // batch for a single DeleteObjects call (S3/R2 hard limit: 1000).
+            let mut to_delete: Vec<ObjectIdentifier> = Vec::new();
+            let mut batch_freed = 0u64;
+            for obj in resp.contents() {
+                let Some(last_modified) = obj.last_modified() else {
+                    continue;
+                };
+                if last_modified.secs() >= cutoff {
+                    continue;
+                }
+                let Some(key) = obj.key() else { continue };
+                let size = u64::try_from(obj.size().unwrap_or(0).max(0)).unwrap_or(0);
+                let oid = ObjectIdentifier::builder()
+                    .key(key)
+                    .build()
+                    .map_err(|e| R2Error::S3(format!("ObjectIdentifier build: {e:?}")))?;
+                to_delete.push(oid);
+                batch_freed = batch_freed.saturating_add(size);
+            }
+
+            if !to_delete.is_empty() {
+                let count = to_delete.len() as u64;
+                let delete = Delete::builder()
+                    .set_objects(Some(to_delete))
+                    .quiet(true)
+                    .build()
+                    .map_err(|e| R2Error::S3(format!("Delete build: {e:?}")))?;
+                self.client
+                    .delete_objects()
+                    .bucket(&self.bucket)
+                    .delete(delete)
+                    .send()
+                    .await?;
+                total_deleted = total_deleted.saturating_add(count);
+                total_freed = total_freed.saturating_add(batch_freed);
+            }
+
+            if resp.is_truncated().unwrap_or(false) {
+                match resp.next_continuation_token() {
+                    Some(t) => continuation_token = Some(t.to_string()),
+                    None => break, // truncated but no token — defensive exit
+                }
+            } else {
+                break;
+            }
+        }
+        Ok((total_deleted, total_freed))
     }
 
     async fn do_multipart_upload(
