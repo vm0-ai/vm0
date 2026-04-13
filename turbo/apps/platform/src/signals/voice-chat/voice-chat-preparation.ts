@@ -47,7 +47,7 @@ export const triggerPreparation$ = command(
     set(internalPrepPrompt$, prompt);
     set(internalPrepStartTime$, Date.now());
 
-    let initialStatus: string;
+    let initialStatus: "preparing" | "ready" | "failed";
     // eslint-disable-next-line no-restricted-syntax -- accept() throws on non-200; must catch to transition to "failed" state instead of leaving "preparing" forever
     try {
       const res = await accept(
@@ -68,6 +68,11 @@ export const triggerPreparation$ = command(
 
     if (initialStatus === "ready") {
       set(internalPrepStatus$, "ready");
+      return;
+    }
+
+    if (initialStatus === "failed") {
+      set(internalPrepStatus$, "failed");
       return;
     }
 

@@ -13,7 +13,7 @@ const prepareTriggerBodySchema = z.object({
 const prepareTriggerResponseSchema = z.object({
   preparation: z.object({
     id: z.string(),
-    status: z.string(),
+    status: z.enum(["preparing", "ready", "failed"]),
     runId: z.string().optional(),
   }),
 });
@@ -40,7 +40,7 @@ const prepareCompleteBodySchema = z.object({
 
 const prepareCompleteResponseSchema = z.object({
   id: z.string(),
-  status: z.string(),
+  status: z.enum(["preparing", "ready", "failed"]),
 });
 
 export const zeroVoiceChatPrepareCompleteContract = c.router({
