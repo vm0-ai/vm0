@@ -560,7 +560,51 @@ jobs:
           [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
           echo "PASS: prefix matching"
 
-          # Test 4: verify pre-installed language runtimes and databases
+          # Test 4: argv boundary preservation — regression guard for #9019.
+          # NOTE: each assertion relies on the surrounding bash (this
+          # heredoc, running on the metal runner) to tokenise quoted
+          # arguments and pass them to runner as separate argv entries.
+          # For example `echo "hello world"` reaches runner as
+          # ["echo", "hello world"] (two tokens); runner then shell-quotes
+          # each before sending to the guest sh.
+          echo "--- Test: argv boundary preservation ---"
+          # Space in an argument is preserved as one token
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo "hello world")
+          [ "$OUTPUT" = "hello world" ] || fail "space in arg: got '$OUTPUT'"
+          # Single quote in an argument is escaped correctly
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo "it's working")
+          [ "$OUTPUT" = "it's working" ] || fail "single quote in arg: got '$OUTPUT'"
+          # Shell metachars must NOT be expanded by the guest shell
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo '$HOME')
+          [ "$OUTPUT" = '$HOME' ] || fail "variable expanded: got '$OUTPUT'"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo '*.nonexistent')
+          [ "$OUTPUT" = '*.nonexistent' ] || fail "glob expanded: got '$OUTPUT'"
+          # Backtick command substitution must NOT be executed (injection guard)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo '`date`')
+          [ "$OUTPUT" = '`date`' ] || fail "backtick expanded: got '$OUTPUT'"
+          # Double quote inside an argument survives the round-trip
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo 'say "hi"')
+          [ "$OUTPUT" = 'say "hi"' ] || fail "double quote in arg: got '$OUTPUT'"
+          # Non-ASCII UTF-8 in an argument
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo "你好")
+          [ "$OUTPUT" = "你好" ] || fail "utf-8 arg: got '$OUTPUT'"
+          # Explicit shell: pipes and redirects work through `sh -c`
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c 'printf abc | wc -c')
+          [ "$(echo "$OUTPUT" | tr -d ' ')" = '3' ] || fail "sh -c pipe: got '$OUTPUT'"
+          # env VAR=val PROG: env (not shell) sets the variable for PROG
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- env FOO=bar printenv FOO)
+          [ "$OUTPUT" = 'bar' ] || fail "env VAR=val: got '$OUTPUT'"
+          # Path containing a space — the original issue case
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c 'echo content > "/tmp/spaced file.txt"'
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- cat "/tmp/spaced file.txt")
+          [ "$OUTPUT" = 'content' ] || fail "space in path: got '$OUTPUT'"
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- rm "/tmp/spaced file.txt"
+          # --sudo flag must not bypass argv quoting
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" --sudo -- echo "root with space")
+          [ "$OUTPUT" = "root with space" ] || fail "--sudo quoting: got '$OUTPUT'"
+          echo "PASS: argv boundary preservation"
+
+          # Test 5: verify pre-installed language runtimes and databases
           echo "--- Test: runtime availability ---"
           for cmd in \
             "node --version" \
@@ -590,12 +634,12 @@ jobs:
           done
           # Verify PostgreSQL can actually start (not just psql --version).
           # Test with TCP on localhost — users will connect via localhost:5432.
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "mkdir -p /tmp/pgdata && /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -A trust && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata -l /tmp/pgdata/log -o \"-c listen_addresses='localhost'\" start && pg_isready -h localhost && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata stop" \
-            || { sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "cat /tmp/pgdata/log" 2>&1 || true; fail "PostgreSQL start"; }
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c "mkdir -p /tmp/pgdata && /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -A trust && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata -l /tmp/pgdata/log -o \"-c listen_addresses='localhost'\" start && pg_isready -h localhost && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata stop" \
+            || { sudo "$BIN_DIR/runner" exec "$RUN_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL start"; }
           echo "  PostgreSQL start/stop: ok"
           echo "PASS: runtime availability"
 
-          # Test 5: verify /etc/environment is loaded for both user and root
+          # Test 6: verify /etc/environment is loaded for both user and root
           # [sync:etc-environment] Keep in sync with: crates/runner/scripts/build-rootfs.sh
           echo "--- Test: environment variables ---"
           EXPECTED_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -626,13 +670,13 @@ jobs:
           check_env "root" "--sudo"
           echo "PASS: environment variables"
 
-          # Test 6: verify HTTPS works through proxy for each runtime
+          # Test 7: verify HTTPS works through proxy for each runtime
           # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
           echo "--- Test: HTTPS through proxy ---"
           TLS_URL="https://www.vm0.ai"
           tls_check() {
             local label=$1 cmd=$2 t=${3:-15}
-            OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "timeout $t $cmd" 2>&1) \
+            OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c "timeout $t $cmd" 2>&1) \
               || fail "HTTPS $label: $OUTPUT"
             echo "  HTTPS $label: ok"
           }
@@ -647,19 +691,19 @@ jobs:
           tls_check "chromium"  "chromium --headless --disable-gpu --no-sandbox --dump-dom $TLS_URL 2>/dev/null | head -1" 30
 
           # Java and Go need multi-line scripts — write temp files then run
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "printf '%s\n' 'import java.net.*;import java.net.http.*;' 'var c=HttpClient.newHttpClient();' 'var r=HttpRequest.newBuilder(URI.create(\"$TLS_URL\")).build();' 'c.send(r,HttpResponse.BodyHandlers.discarding());' '/exit' | timeout 30 jshell -" \
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c "printf '%s\n' 'import java.net.*;import java.net.http.*;' 'var c=HttpClient.newHttpClient();' 'var r=HttpRequest.newBuilder(URI.create(\"$TLS_URL\")).build();' 'c.send(r,HttpResponse.BodyHandlers.discarding());' '/exit' | timeout 30 jshell -" \
             || fail "HTTPS java"
           echo "  HTTPS java: ok"
 
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "cd /tmp && printf '%s\n' 'package main' 'import (' '\"net/http\"' '\"os\"' ')' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && timeout 30 go run tls.go $TLS_URL" \
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c "cd /tmp && printf '%s\n' 'package main' 'import (' '\"net/http\"' '\"os\"' ')' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && timeout 30 go run tls.go $TLS_URL" \
             || fail "HTTPS go"
           echo "  HTTPS go: ok"
           echo "PASS: HTTPS through proxy"
 
-          # Test 7: verify DNS resolution works inside sandbox
+          # Test 8: verify DNS resolution works inside sandbox
           # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
           echo "--- Test: DNS resolution ---"
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "getent hosts localhost" 2>&1) \
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- getent hosts localhost 2>&1) \
             || fail "localhost resolution failed: $OUTPUT"
           echo "  localhost: $OUTPUT"
           OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- getent hosts github.com 2>&1) \
@@ -928,12 +972,10 @@ jobs:
           # in the guest to push available below deflate threshold (192 MiB).
           # After inflate stabilizes (~1438 MiB), guest has ~476 MiB available.
           # 300 MiB alloc drops available to ~176 MiB < 192 MiB threshold.
-          # Write script via base64 to avoid quoting issues with runner exec.
+          # Trailing `# BALLOON_ALLOC_MARKER` is a unique string pkill can
+          # match on to terminate the guest-side allocator below.
           echo "--- Test 2: balloon deflate under memory pressure ---"
-          ALLOC_B64=$(printf 'import ctypes,time\nb=bytearray(300*1024*1024)\nctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b))\ntime.sleep(120)\n' | base64 -w0)
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "echo $ALLOC_B64 | base64 -d > /tmp/alloc.py"
-          # Run allocator in guest foreground, host background
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- python3 /tmp/alloc.py &
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- python3 -c 'import ctypes,time; b=bytearray(300*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(120)  # BALLOON_ALLOC_MARKER' &
           ALLOC_PID=$!
 
           # Wait for balloon to deflate (actual_mib decreases)
@@ -963,7 +1005,7 @@ jobs:
 
           # Kill guest-side allocator — balloon has already deflated (Test 2
           # passed), so guest has ~250 MiB available, enough for pkill exec.
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "pkill -f alloc.py" 2>/dev/null || true
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- pkill -f BALLOON_ALLOC_MARKER 2>/dev/null || true
 
           # Wait for balloon to re-inflate past midpoint between deflate and original inflate
           MIDPOINT=$(( (INFLATE_MIB + DEFLATE_MIB) / 2 ))

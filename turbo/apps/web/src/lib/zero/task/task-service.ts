@@ -15,6 +15,12 @@ import { zeroAgents } from "../../../db/schema/zero-agent";
 import { archivedTaskRuns } from "../../../db/schema/archived-task-runs";
 
 const TASKS_LIMIT = 25;
+const PROMPT_SUMMARY_MAX_LENGTH = 100;
+
+function truncatePrompt(prompt: string): string {
+  if (prompt.length <= PROMPT_SUMMARY_MAX_LENGTH) return prompt;
+  return prompt.slice(0, PROMPT_SUMMARY_MAX_LENGTH) + "…";
+}
 
 interface AgentInfo {
   id: string;
@@ -99,6 +105,7 @@ export async function listTasks(
         status: agentRuns.status,
         createdAt: agentRuns.createdAt,
         summary: zeroRuns.summary,
+        prompt: agentRuns.prompt,
       })
       .from(agentRuns)
       .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
@@ -108,7 +115,7 @@ export async function listTasks(
       runInfoMap.set(run.id, {
         status: run.status,
         createdAt: run.createdAt,
-        summary: run.summary,
+        summary: run.summary ?? truncatePrompt(run.prompt),
       });
     }
   }

@@ -89,15 +89,3 @@ export interface PhoneCallbackPayload {
   agentId: string;
   existingSessionId: string | null;
 }
-
-export type CallbackPayload =
-  | TelegramCallbackPayload
-  | SlackOrgCallbackPayload
-  | EmailTriggerCallbackPayload
-  | EmailReplyCallbackPayload
-  | ScheduleLoopCallbackPayload
-  | ScheduleCronCallbackPayload
-  | GitHubIssuesCallbackPayload
-  | ChatCallbackPayload
-  | PhoneCallbackPayload
-  | VoiceChatCallbackPayload;

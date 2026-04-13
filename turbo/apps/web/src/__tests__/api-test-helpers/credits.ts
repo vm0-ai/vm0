@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { creditUsage } from "../../db/schema/credit-usage";
+import { clientCreditUsage } from "../../db/schema/client-credit-usage";
 import { creditPricing } from "../../db/schema/credit-pricing";
 import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
 import { usageDaily } from "../../db/schema/usage-daily";
@@ -198,6 +199,7 @@ export async function insertTestCreditUsage(
     webSearchRequests?: number;
     costUsd?: string;
     resultUuid?: string;
+    messageId?: string;
     status?: string;
     creditsCharged?: number;
     processedAt?: Date | null;
@@ -247,6 +249,7 @@ export async function insertTestCreditUsage(
     .values({
       runId: run!.id,
       resultUuid: options.resultUuid ?? null,
+      messageId: options.messageId ?? null,
       orgId,
       userId,
       model: options.model ?? "gpt-4",
@@ -264,6 +267,121 @@ export async function insertTestCreditUsage(
     .returning();
 
   return record!.id;
+}
+
+/**
+ * Insert a client_credit_usage record for testing.
+ * Creates the required compose, version, and run records as FK dependencies
+ * unless a runId is provided.
+ */
+export async function insertTestClientCreditUsage(
+  orgId: string,
+  options: {
+    userId?: string;
+    runId?: string;
+    resultUuid?: string;
+    model?: string;
+    modelProvider?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+    webSearchRequests?: number;
+    costUsd?: string;
+  },
+): Promise<string> {
+  initServices();
+  const userId = options.userId ?? "test-user";
+
+  let runId = options.runId;
+  if (!runId) {
+    const composeName = `compose-${randomBytes(4).toString("hex")}`;
+    const [compose] = await globalThis.services.db
+      .insert(agentComposes)
+      .values({ userId, orgId, name: composeName })
+      .returning();
+
+    const versionId = randomBytes(32).toString("hex");
+    await globalThis.services.db.insert(agentComposeVersions).values({
+      id: versionId,
+      composeId: compose!.id,
+      content: {},
+      createdBy: userId,
+    });
+
+    const [run] = await globalThis.services.db
+      .insert(agentRuns)
+      .values({
+        userId,
+        orgId,
+        agentComposeVersionId: versionId,
+        prompt: "test",
+        status: "completed",
+      })
+      .returning();
+    runId = run!.id;
+  }
+
+  const [record] = await globalThis.services.db
+    .insert(clientCreditUsage)
+    .values({
+      runId,
+      resultUuid: options.resultUuid ?? null,
+      orgId,
+      userId,
+      model: options.model ?? "claude-3-5-sonnet-20241022",
+      modelProvider: options.modelProvider ?? "anthropic",
+      inputTokens: options.inputTokens ?? 100,
+      outputTokens: options.outputTokens ?? 50,
+      cacheReadInputTokens: options.cacheReadInputTokens ?? 0,
+      cacheCreationInputTokens: options.cacheCreationInputTokens ?? 0,
+      webSearchRequests: options.webSearchRequests ?? 0,
+      costUsd: options.costUsd ?? null,
+    })
+    .returning();
+
+  return record!.id;
+}
+
+/**
+ * Find client_credit_usage records by runId.
+ */
+export async function findTestClientCreditUsagesByRunId(runId: string): Promise<
+  Array<{
+    id: string;
+    runId: string | null;
+    resultUuid: string | null;
+    orgId: string;
+    userId: string;
+    model: string;
+    modelProvider: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreationInputTokens: number;
+    webSearchRequests: number;
+    costUsd: string | null;
+  }>
+> {
+  initServices();
+  return globalThis.services.db
+    .select({
+      id: clientCreditUsage.id,
+      runId: clientCreditUsage.runId,
+      resultUuid: clientCreditUsage.resultUuid,
+      orgId: clientCreditUsage.orgId,
+      userId: clientCreditUsage.userId,
+      model: clientCreditUsage.model,
+      modelProvider: clientCreditUsage.modelProvider,
+      inputTokens: clientCreditUsage.inputTokens,
+      outputTokens: clientCreditUsage.outputTokens,
+      cacheReadInputTokens: clientCreditUsage.cacheReadInputTokens,
+      cacheCreationInputTokens: clientCreditUsage.cacheCreationInputTokens,
+      webSearchRequests: clientCreditUsage.webSearchRequests,
+      costUsd: clientCreditUsage.costUsd,
+    })
+    .from(clientCreditUsage)
+    .where(eq(clientCreditUsage.runId, runId));
 }
 
 /**
@@ -342,6 +460,12 @@ export async function insertTestCreditUsageForRun(params: {
   runId: string;
   orgId: string;
   userId: string;
+  messageId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  webSearchRequests?: number;
   status?: string;
   creditsCharged?: number;
   processedAt?: Date | null;
@@ -361,8 +485,12 @@ export async function insertTestCreditUsageForRun(params: {
       userId: params.userId,
       model: "claude-3-5-sonnet-20241022",
       modelProvider: "anthropic",
-      inputTokens: 100,
-      outputTokens: 50,
+      messageId: params.messageId ?? null,
+      inputTokens: params.inputTokens ?? 100,
+      outputTokens: params.outputTokens ?? 50,
+      cacheReadInputTokens: params.cacheReadInputTokens ?? 0,
+      cacheCreationInputTokens: params.cacheCreationInputTokens ?? 0,
+      webSearchRequests: params.webSearchRequests ?? 0,
       status: params.status ?? "pending",
       creditsCharged: params.creditsCharged ?? null,
       processedAt,

@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.222.1](https://github.com/vm0-ai/vm0/compare/web-v12.222.0...web-v12.222.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* **web:** fall back to truncated prompt when task summary is missing ([#9058](https://github.com/vm0-ai/vm0/issues/9058)) ([3fff644](https://github.com/vm0-ai/vm0/commit/3fff644d1d36aba31af4d299c33b9d22d2abcf66))
+* **web:** persist zero_runs metadata before dispatch to fix activity source race ([#9045](https://github.com/vm0-ai/vm0/issues/9045)) ([bade6ac](https://github.com/vm0-ai/vm0/commit/bade6acb7a0b0759b1d28a460a622ee1c1ece381))
+
 ## [12.222.0](https://github.com/vm0-ai/vm0/compare/web-v12.221.0...web-v12.222.0) (2026-04-13)
 
 
