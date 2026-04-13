@@ -1,9 +1,10 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { currentChatAgent$ } from "./agent-chat.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
-import { resetSignal, bestEffort, setLoop } from "./utils.ts";
+import { resetSignal, bestEffort, setLoop, throwIfNotAbort } from "./utils.ts";
 import { agents$ } from "./agent.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
+import { rootSignal$ } from "./root-signal.ts";
 
 // ---------------------------------------------------------------------------
 // Visibility
@@ -84,8 +85,20 @@ export const appSkeletonVisible$ = computed((get) => {
   return get(internalVisible$);
 });
 
-export const showAppSkeleton$ = command(({ set }) => {
+/**
+ * Reveal the skeleton and (re)start the message-cycling loop so the
+ * typewriter animation plays again. `hideAppSkeleton$` aborts the cycling
+ * loop via `resetSkeletonCycling$`, so any subsequent show — for example
+ * the brief skeleton between onboarding completion and the chat page — must
+ * restart it. We also reset `skeletonFirstCycle$` so the first frame after
+ * showing replays the static → typewriter intro instead of jumping straight
+ * to the cursor-only state the previous run ended on.
+ */
+export const showAppSkeleton$ = command(({ get, set }) => {
   set(internalVisible$, true);
+  set(skeletonFirstCycle$, true);
+  const { signal } = get(rootSignal$);
+  void set(startSkeletonCycling$, signal).catch(throwIfNotAbort);
 });
 
 const prefetch$ = command(
