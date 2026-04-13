@@ -8,6 +8,7 @@ import { cancelRun } from "../zero-run-cancel";
 import {
   buildVoiceChatQuickPrepPrompt,
   buildVoiceChatMeetingPrompt,
+  buildVoiceChatObservationOnlyPrompt,
 } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
 import { logger } from "../../shared/logger";
@@ -194,6 +195,83 @@ export async function dispatchSlowBrain(
     .where(eq(voiceChatSessions.id, session.id));
 
   // Write session-start event
+  await db.insert(voiceChatEvents).values({
+    sessionId: session.id,
+    source: "system",
+    type: "session-start",
+  });
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Cached Preparation Events
+// ---------------------------------------------------------------------------
+
+export async function writeCachedPreparationEvents(
+  sessionId: string,
+  directiveContent: string,
+) {
+  const db = globalThis.services.db;
+  await db.insert(voiceChatEvents).values([
+    {
+      sessionId,
+      source: "slow-brain",
+      type: "thinking",
+      content: "Reviewing agent context and preparing initial guidance...",
+    },
+    {
+      sessionId,
+      source: "slow-brain",
+      type: "directive",
+      content: directiveContent,
+    },
+    {
+      sessionId,
+      source: "slow-brain",
+      type: "preparation-ready",
+    },
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Observation-Only Slow-Brain Dispatch
+// ---------------------------------------------------------------------------
+
+export async function dispatchObservationSlowBrain(
+  session: { id: string },
+  orgId: string,
+  userId: string,
+  agentId: string,
+) {
+  const db = globalThis.services.db;
+  const appendSystemPrompt = buildVoiceChatObservationOnlyPrompt(session.id);
+  const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Preparation is complete. Start observing the conversation.`;
+
+  const callbackPayload: VoiceChatCallbackPayload = {
+    sessionId: session.id,
+  };
+
+  const result = await createZeroRun({
+    userId,
+    agentId,
+    prompt,
+    appendSystemPrompt,
+    triggerSource: "voice-chat",
+    callbacks: [
+      {
+        url: `${getApiUrl()}/api/internal/callbacks/voice-chat`,
+        secret: generateCallbackSecret(),
+        payload: callbackPayload,
+      },
+    ],
+  });
+
+  await db
+    .update(voiceChatSessions)
+    .set({ runId: result.runId })
+    .where(eq(voiceChatSessions.id, session.id));
+
   await db.insert(voiceChatEvents).values({
     sessionId: session.id,
     source: "system",

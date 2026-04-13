@@ -1083,18 +1083,39 @@ export const startVoiceChat$ = command(
     }
 
     const { session } = (await sessionRes.json()) as {
-      session: { id: string };
+      session: { id: string; prepared?: boolean };
     };
     signal.throwIfAborted();
     set(internalSessionId$, session.id);
 
-    await set(
-      prepareActivateConnect$,
-      session.id,
-      sessionSignal,
-      PREP_TIMEOUT_CHAT_MS,
-      signal,
-    );
+    if (session.prepared) {
+      const heartbeatPromise = set(startHeartbeat$, sessionSignal);
+
+      const activateRes = await fetchFn(
+        `/api/zero/voice-chat/${session.id}/activate`,
+        { method: "POST" },
+      );
+      signal.throwIfAborted();
+
+      if (!activateRes.ok) {
+        set(internalError$, "Failed to activate session");
+        set(internalStatus$, "error");
+        return;
+      }
+
+      await Promise.allSettled([
+        heartbeatPromise,
+        set(connectVoiceSession$, sessionSignal),
+      ]);
+    } else {
+      await set(
+        prepareActivateConnect$,
+        session.id,
+        sessionSignal,
+        PREP_TIMEOUT_CHAT_MS,
+        signal,
+      );
+    }
   },
 );
 
@@ -1151,18 +1172,39 @@ export const startVoiceMeeting$ = command(
     }
 
     const { session } = (await sessionRes.json()) as {
-      session: { id: string };
+      session: { id: string; prepared?: boolean };
     };
     signal.throwIfAborted();
     set(internalSessionId$, session.id);
 
-    await set(
-      prepareActivateConnect$,
-      session.id,
-      sessionSignal,
-      PREP_TIMEOUT_MEETING_MS,
-      signal,
-    );
+    if (session.prepared) {
+      const heartbeatPromise = set(startHeartbeat$, sessionSignal);
+
+      const activateRes = await fetchFn(
+        `/api/zero/voice-chat/${session.id}/activate`,
+        { method: "POST" },
+      );
+      signal.throwIfAborted();
+
+      if (!activateRes.ok) {
+        set(internalError$, "Failed to activate session");
+        set(internalStatus$, "error");
+        return;
+      }
+
+      await Promise.allSettled([
+        heartbeatPromise,
+        set(connectVoiceSession$, sessionSignal),
+      ]);
+    } else {
+      await set(
+        prepareActivateConnect$,
+        session.id,
+        sessionSignal,
+        PREP_TIMEOUT_MEETING_MS,
+        signal,
+      );
+    }
   },
 );
 

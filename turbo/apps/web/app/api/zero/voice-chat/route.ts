@@ -7,7 +7,10 @@ import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import {
   createSession,
   dispatchSlowBrain,
+  dispatchObservationSlowBrain,
+  writeCachedPreparationEvents,
 } from "../../../../src/lib/zero/voice-chat/session-service";
+import { findFreshPreparation } from "../../../../src/lib/zero/voice-chat/preparation-service";
 import { isApiError } from "../../../../src/lib/shared/errors";
 import { logger } from "../../../../src/lib/shared/logger";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
@@ -79,6 +82,38 @@ export async function POST(request: Request) {
       mode,
       prompt,
     });
+
+    const preparation = await findFreshPreparation(
+      userId,
+      agentId,
+      mode,
+      prompt,
+    );
+
+    if (preparation) {
+      await writeCachedPreparationEvents(
+        session.id,
+        preparation.directiveContent,
+      );
+      const run = await dispatchObservationSlowBrain(
+        session,
+        org.orgId,
+        userId,
+        agentId,
+      );
+
+      return NextResponse.json({
+        session: {
+          id: session.id,
+          mode: session.mode,
+          status: session.status,
+          runId: run.runId,
+          createdAt: session.createdAt,
+          prepared: true,
+        },
+      });
+    }
+
     const run = await dispatchSlowBrain(session, org.orgId, userId, agentId, {
       mode,
       prompt,
@@ -91,6 +126,7 @@ export async function POST(request: Request) {
         status: session.status,
         runId: run.runId,
         createdAt: session.createdAt,
+        prepared: false,
       },
     });
   } catch (error) {

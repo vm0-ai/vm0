@@ -187,6 +187,25 @@ Write events:
 - **preparation-ready**: Signal that preparation is complete (no content needed).
 ${SHARED_OBSERVATION_PROMPT}`.trim();
 
+const VOICE_CHAT_OBSERVATION_ONLY_PROMPT = `
+# Zero — Slow-Brain Observation Mode
+
+You are Zero's slow-brain. Preparation was already completed from a cached run. The fast-brain has initial context. Start observing the conversation immediately.
+${SHARED_OBSERVATION_PROMPT}`.trim();
+
+/**
+ * Build the full appendSystemPrompt for Voice-Chat observation-only mode.
+ * Used when a cached preparation exists — skips Phase 1 entirely.
+ */
+export function buildVoiceChatObservationOnlyPrompt(sessionId: string): string {
+  const header = buildIntegrationPrompt("Voice-Chat");
+  const prompt = VOICE_CHAT_OBSERVATION_ONLY_PROMPT.replaceAll(
+    "<SESSION_ID>",
+    sessionId,
+  );
+  return [header, prompt].join("\n\n");
+}
+
 /**
  * Build the full appendSystemPrompt for Voice-Chat quick preparation mode.
  * Combines the integration header with the quick preparation prompt.
