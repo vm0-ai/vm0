@@ -512,12 +512,12 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
           }
           trap cleanup EXIT
 
           # Clean up any residual transient unit from a previous CI run
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -671,7 +671,7 @@ jobs:
           echo "PASS: DNS resolution"
 
           # Stop transient service (kills sandbox, submit terminates naturally)
-          sudo "$BIN_DIR/runner" service stop --name "$SVC"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
           trap - EXIT
 
           echo "=== Exec test passed ==="
@@ -726,12 +726,12 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
           }
           trap cleanup EXIT
 
           # Clean up any residual transient unit from a previous CI run
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -774,7 +774,7 @@ jobs:
           echo "PASS: submit exited with non-zero after cancel (${ELAPSED}s)"
 
           # Stop transient service
-          sudo "$BIN_DIR/runner" service stop --name "$SVC"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
           trap - EXIT
 
           echo "=== Cancel test passed ==="
@@ -838,12 +838,12 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
           }
           trap cleanup EXIT
 
           # Clean up any residual transient unit from a previous CI run
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -980,7 +980,7 @@ jobs:
           echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${ACTUAL} MiB (midpoint=${MIDPOINT})"
 
           # Stop transient service
-          sudo "$BIN_DIR/runner" service stop --name "$SVC"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
           trap - EXIT
 
           echo "=== Balloon test passed ==="
@@ -1040,8 +1040,8 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup: uninstalling services ---"
-            sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
-            sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force 2>/dev/null || true
             if [ "$FAILED" -ne 0 ]; then
               echo "--- Cleanup: dumping logs (test failed) ---"
               journalctl --unit "vm0-runner-${SVC_A}" --lines 50 --no-pager 2>/dev/null || true
@@ -1051,8 +1051,8 @@ jobs:
           trap cleanup EXIT
 
           # Pre-cleanup: uninstall leftover services from previous CI runs
-          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
-          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force 2>/dev/null || true
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force 2>/dev/null || true
 
           # 1. Install runner A
           echo "--- Installing runner A ---"
@@ -1086,7 +1086,7 @@ jobs:
 
           # 7. Uninstall A (systemctl stop blocks until drain finishes)
           echo "--- Uninstalling runner A ---"
-          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A"
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force
 
           # 8. Submit job 3 → only B is left
           echo "--- Submit job 3 (only B) ---"
@@ -1096,7 +1096,7 @@ jobs:
           echo "--- Draining runner B ---"
           sudo "$BIN_DIR/runner" service drain --name "$SVC_B"
           echo "--- Uninstalling runner B ---"
-          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B"
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force
           trap - EXIT
 
           echo "=== Upgrade test passed ==="
@@ -1152,12 +1152,12 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
           }
           trap cleanup EXIT
 
           # Clean up any residual transient unit from a previous CI run
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -1194,7 +1194,7 @@ jobs:
           echo "PASS: Turn 3 completed (new VM for different session)"
 
           # Stop transient service (drains idle pool)
-          sudo "$BIN_DIR/runner" service stop --name "$SVC"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
           trap - EXIT
 
           echo "=== Keep-alive test passed ==="
