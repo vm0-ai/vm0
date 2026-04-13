@@ -9,6 +9,7 @@ import {
   setZeroStep$,
   completeZeroOnboarding$,
   completeMemberOnboarding$,
+  connectorsFromUrl$,
 } from "./zero-onboarding.ts";
 import { currentChatAgentDisplayName$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
@@ -38,6 +39,8 @@ export const onboardingEffectiveConnectors$ = computed((get) => {
 /**
  * The resolved step after applying role + selection rules:
  *   - Member never sees step 1 (admin-only workspace creation); step 1 → 2.
+ *   - Step 2 is skipped when connectors arrive via `?connector=` deep link
+ *     (the user already chose); step 2 → 3.
  *   - Step 3 is hidden for both roles when no connector is selected; step 3 → 4.
  */
 export const onboardingEffectiveStep$ = computed(async (get) => {
@@ -46,8 +49,12 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
     return undefined;
   }
   const isAdmin = await get(zeroNeedsOnboarding$);
+  const fromUrl = get(connectorsFromUrl$);
   if (!isAdmin && step === "1") {
-    return "2";
+    return fromUrl ? "3" : "2";
+  }
+  if (fromUrl && step === "2") {
+    return "3";
   }
   const selected = get(zeroSelectedConnectors$);
   if (step === "3" && selected.length === 0) {
@@ -58,16 +65,24 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
 
 /**
  * Steps shown in the progress bar. Admin owns step 1; step 3 only appears
- * when at least one connector is selected.
+ * when at least one connector is selected. Step 2 (the picker) is omitted
+ * when connectors arrived via `?connector=` deep link.
  */
 export const onboardingVisibleSteps$ = computed(async (get) => {
   const isAdmin = await get(zeroNeedsOnboarding$);
   const selected = get(zeroSelectedConnectors$);
   const hasSelected = selected.length > 0;
+  const fromUrl = get(connectorsFromUrl$);
   if (isAdmin) {
+    if (fromUrl) {
+      return (hasSelected ? ["1", "3", "4"] : ["1", "4"]) as readonly string[];
+    }
     return (
       hasSelected ? ["1", "2", "3", "4"] : ["1", "2", "4"]
     ) as readonly string[];
+  }
+  if (fromUrl) {
+    return (hasSelected ? ["3", "4"] : ["4"]) as readonly string[];
   }
   return (hasSelected ? ["2", "3", "4"] : ["2", "4"]) as readonly string[];
 });
@@ -133,17 +148,22 @@ export const onboardingStepBack$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const step = await get(onboardingEffectiveStep$);
     const hasSelected = get(zeroSelectedConnectors$).length > 0;
+    const fromUrl = get(connectorsFromUrl$);
     switch (step) {
       case "2": {
         set(setZeroStep$, "1");
         break;
       }
       case "3": {
-        set(setZeroStep$, "2");
+        set(setZeroStep$, fromUrl ? "1" : "2");
         break;
       }
       case "4": {
-        set(setZeroStep$, hasSelected ? "3" : "2");
+        if (fromUrl) {
+          set(setZeroStep$, hasSelected ? "3" : "1");
+        } else {
+          set(setZeroStep$, hasSelected ? "3" : "2");
+        }
         break;
       }
     }
@@ -154,9 +174,10 @@ export const onboardingStepNext$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const step = await get(onboardingEffectiveStep$);
     const hasSelected = get(zeroSelectedConnectors$).length > 0;
+    const fromUrl = get(connectorsFromUrl$);
     switch (step) {
       case "1": {
-        set(setZeroStep$, "2");
+        set(setZeroStep$, fromUrl ? (hasSelected ? "3" : "4") : "2");
         break;
       }
       case "2": {

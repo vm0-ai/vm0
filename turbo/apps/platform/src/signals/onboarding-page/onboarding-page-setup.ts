@@ -10,6 +10,7 @@ import {
   searchParams$,
 } from "../route.ts";
 import {
+  markConnectorsFromUrl$,
   resetOnboardingStep$,
   toggleZeroConnector$,
   zeroNeedsOnboarding$,
@@ -61,6 +62,11 @@ export const setupOnboardingPage$ = command(
           set(toggleZeroConnector$, id);
           alreadySelected.add(id);
         }
+      }
+      // Mark the deep-link source so the picker step (step 2) is skipped —
+      // the user already chose connectors via the URL.
+      if (unique.length > 0) {
+        set(markConnectorsFromUrl$);
       }
       const next = new URLSearchParams(params);
       next.delete("connector");

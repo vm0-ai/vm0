@@ -19,6 +19,7 @@ import {
   toggleZeroConnector$,
   zeroOnboardingStep$,
 } from "../zero-onboarding.ts";
+import { setupOnboardingPage$ } from "../../onboarding-page/onboarding-page-setup.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../utils.ts";
 
@@ -549,6 +550,86 @@ describe("unified onboarding step resolution", () => {
 
     const step = await context.store.get(onboardingEffectiveStep$);
     expect(step).toBe("3");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Skip step 2 when connectors arrive via ?connector= deep link
+// ---------------------------------------------------------------------------
+
+describe("connectors via URL skip step 2", () => {
+  it("admin: visible steps omit '2' when connectors arrive via URL", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=slack",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    const steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["1", "3", "4"]);
+  });
+
+  it("member: lands directly on step 3 when connectors arrive via URL", async () => {
+    mockMemberOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=github",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("3");
+
+    const steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["3", "4"]);
+  });
+
+  it("admin: next from step 1 jumps to step 3 when connectors arrive via URL", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=slack",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    context.store.set(setZeroWorkspaceName$, "Acme");
+    await context.store.set(onboardingStepNext$, context.signal);
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("3");
+  });
+
+  it("admin: back from step 3 returns to step 1 when connectors arrive via URL", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=slack",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    context.store.set(setZeroStep$, "3");
+    await context.store.set(onboardingStepBack$, context.signal);
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("1");
+  });
+
+  it("falls back to normal flow (step 2 visible) when no valid URL connectors", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=unknown_only",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    const steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["1", "2", "4"]);
   });
 });
 
