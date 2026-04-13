@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
+import { connectorTypeSchema } from "./connectors";
 
 const c = initContract();
 
@@ -48,7 +49,7 @@ export const onboardingCompleteContract = c.router({
     path: "/api/zero/onboarding/complete",
     headers: authHeadersSchema,
     body: z.object({
-      selectedConnectors: z.array(z.string()).optional(),
+      selectedConnectors: z.array(connectorTypeSchema).optional(),
     }),
     responses: {
       200: z.object({ ok: z.boolean() }),
@@ -68,7 +69,7 @@ export const onboardingSetupContract = c.router({
       workspaceName: z.string().optional(),
       sound: z.string().optional(),
       avatarUrl: z.string().optional(),
-      selectedConnectors: z.array(z.string()).optional(),
+      selectedConnectors: z.array(connectorTypeSchema).optional(),
       timezone: z.string().optional(),
     }),
     responses: {
