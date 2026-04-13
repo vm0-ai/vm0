@@ -113,6 +113,13 @@
 
     - name: Garbage collect old artifacts
       command: "{{ bin_dir }}/runner gc --keep-latest 6"
+      environment:
+        # R2 credentials so `runner gc` can sweep stale image cache objects.
+        # Without these, R2-side cleanup is skipped (objects accumulate forever).
+        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
+        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
+        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
+        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
 
     # ========================================
     # Phase 6: Final health check

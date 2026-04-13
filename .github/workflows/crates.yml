@@ -390,9 +390,16 @@ jobs:
           # shellcheck disable=SC2029
           < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"
 
-          # Clean up old rootfs/snapshots, keep the 3 most recent deploys
+          # Clean up old rootfs/snapshots, keep the 3 most recent deploys.
+          # R2_* env vars are inlined so `runner gc` can also sweep stale R2 image
+          # objects — without them, R2-side cleanup is silently skipped.
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "sudo ${BIN_DIR}/runner gc --keep-latest 3"
+          ssh "$REMOTE" "sudo \
+            R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
+            R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
+            R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
+            R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
+            ${BIN_DIR}/runner gc --keep-latest 3"
 
           # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
           echo "=== Running setup ==="
