@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.77.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.4...runner-rs-v0.77.0) (2026-04-13)
+
+
+### Features
+
+* **runner:** require --force for service stop/uninstall with active jobs ([#9093](https://github.com/vm0-ai/vm0/issues/9093)) ([399164e](https://github.com/vm0-ai/vm0/commit/399164e015d366fec791f1df7542387bb4c7c703))
+
 ## [0.76.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.3...runner-rs-v0.76.4) (2026-04-13)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.178.0](https://github.com/vm0-ai/vm0/compare/core-v8.177.0...core-v8.178.0) (2026-04-13)
+
+
+### Features
+
+* add voice-io feature switch and tts backend endpoint ([#9088](https://github.com/vm0-ai/vm0/issues/9088)) ([c5e700a](https://github.com/vm0-ai/vm0/commit/c5e700ad22b92886495e030daf9e9dfd50ff2320)), closes [#9078](https://github.com/vm0-ai/vm0/issues/9078)
+* **usage:** add daily credits chart and per-run records ([#9047](https://github.com/vm0-ai/vm0/issues/9047)) ([589df8c](https://github.com/vm0-ai/vm0/commit/589df8cbf8b8d5ee495279a3f6e51aed47305daa))
+
 ## [8.177.0](https://github.com/vm0-ai/vm0/compare/core-v8.176.0...core-v8.177.0) (2026-04-13)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.224.0](https://github.com/vm0-ai/vm0/compare/web-v12.223.0...web-v12.224.0) (2026-04-13)
+
+
+### Features
+
+* add voice-io feature switch and tts backend endpoint ([#9088](https://github.com/vm0-ai/vm0/issues/9088)) ([c5e700a](https://github.com/vm0-ai/vm0/commit/c5e700ad22b92886495e030daf9e9dfd50ff2320)), closes [#9078](https://github.com/vm0-ai/vm0/issues/9078)
+* **usage:** add daily credits chart and per-run records ([#9047](https://github.com/vm0-ai/vm0/issues/9047)) ([589df8c](https://github.com/vm0-ai/vm0/commit/589df8cbf8b8d5ee495279a3f6e51aed47305daa))
+* **voice-chat:** add realtime model selector ([#9082](https://github.com/vm0-ai/vm0/issues/9082)) ([b296034](https://github.com/vm0-ai/vm0/commit/b29603432ca146738da80d3f346bf714eb53ad2b)), closes [#9074](https://github.com/vm0-ai/vm0/issues/9074)
+* **web:** add integration description for web chat runs ([#9090](https://github.com/vm0-ai/vm0/issues/9090)) ([7c0a09b](https://github.com/vm0-ai/vm0/commit/7c0a09bcf4e8c1066adef002e8ff3e877d1233cd))
+
+
+### Refactoring
+
+* drop proxy_credit_usage table now that billing uses credit_usage ([#9071](https://github.com/vm0-ai/vm0/issues/9071)) ([4920dc2](https://github.com/vm0-ai/vm0/commit/4920dc28d0913ed6238d94265b0725f2f12a4546))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.178.0
+
 ## [12.223.0](https://github.com/vm0-ai/vm0/compare/web-v12.222.1...web-v12.223.0) (2026-04-13)
 
 

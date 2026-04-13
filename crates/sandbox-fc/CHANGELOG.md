@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.23.3...sandbox-fc-v0.23.4) (2026-04-13)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** skip plain namespace pre-warm when proxy is configured ([#9098](https://github.com/vm0-ai/vm0/issues/9098)) ([9e06657](https://github.com/vm0-ai/vm0/commit/9e066579779edf8af5242b3bfd0d83b5d2294584)), closes [#9065](https://github.com/vm0-ai/vm0/issues/9065)
+
 ## [0.23.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.23.2...sandbox-fc-v0.23.3) (2026-04-12)
 
 ## [0.23.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.23.1...sandbox-fc-v0.23.2) (2026-04-11)
