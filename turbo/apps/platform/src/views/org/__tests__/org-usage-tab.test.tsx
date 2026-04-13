@@ -1,4 +1,4 @@
-import { describe, it, test, expect } from "vitest";
+import { test, expect } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -115,13 +115,6 @@ async function openUsageTab() {
   });
   await waitFor(() => {
     expect(screen.getByTestId("tab-description")).toBeInTheDocument();
-  });
-}
-
-async function openUsagePage() {
-  detachedSetupPage({ context, path: "/settings/usage" });
-  await waitFor(() => {
-    expect(screen.getByRole("heading", { name: "Usage" })).toBeInTheDocument();
   });
 }
 
@@ -328,90 +321,5 @@ test("shows error state when usage API fails in usage tab", async () => {
   await openUsageTab();
   await waitFor(() => {
     expect(screen.getByTestId("usage-tab-error")).toBeInTheDocument();
-  });
-});
-
-// ORG-D-115
-test("shows formatted period start and end dates in usage page header", async () => {
-  mockAPIs({
-    period: { start: "2026-03-01", end: "2026-03-31" },
-    members: [],
-  });
-  await openUsagePage();
-  await waitFor(() => {
-    const allText = document.body.textContent ?? "";
-    // Formatted dates should appear (e.g. "Mar 1, 2026") not ISO strings
-    expect(allText).toContain("Mar");
-    expect(allText).not.toContain("2026-03-01");
-    expect(allText).not.toContain("2026-03-31");
-  });
-});
-
-// ORG-D-116
-test("shows email and formatted token counts in usage page member table", async () => {
-  mockAPIs({
-    period: { start: "2026-03-01", end: "2026-03-31" },
-    members: [
-      {
-        userId: "user-a",
-        email: "alice@example.com",
-        inputTokens: 1000,
-        outputTokens: 500,
-        cacheReadInputTokens: 200,
-        cacheCreationInputTokens: 300,
-        creditsCharged: 75,
-        creditCap: null,
-      },
-    ],
-  });
-  await openUsagePage();
-  await waitFor(() => {
-    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
-    expect(screen.getByText("1,000")).toBeInTheDocument();
-    // outputTokens (500) and cacheTokens (200+300=500) both display as "500"
-    expect(screen.getAllByText("500").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("75")).toBeInTheDocument();
-  });
-});
-
-// ORG-C-117
-describe("usage page states", () => {
-  it("shows error state when API fails", async () => {
-    mockAPIs({ errorUsage: true });
-    await openUsagePage();
-    await waitFor(() => {
-      expect(screen.getByTestId("usage-page-error")).toBeInTheDocument();
-    });
-  });
-
-  it("shows no-period empty state", async () => {
-    mockAPIs({ period: null, members: [] });
-    await openUsagePage();
-    await waitFor(() => {
-      expect(screen.getByTestId("usage-page-no-period")).toBeInTheDocument();
-    });
-  });
-
-  it("shows no-members empty state", async () => {
-    mockAPIs({
-      period: { start: "2026-03-01", end: "2026-03-31" },
-      members: [],
-    });
-    await openUsagePage();
-    await waitFor(() => {
-      expect(screen.getByTestId("usage-page-no-members")).toBeInTheDocument();
-    });
-  });
-
-  it("shows data table when members exist", async () => {
-    mockAPIs({
-      period: { start: "2026-03-01", end: "2026-03-31" },
-      members: [makeMember("user-a", "alice@example.com", 100)],
-    });
-    await openUsagePage();
-    await waitFor(() => {
-      expect(screen.getByText("alice@example.com")).toBeInTheDocument();
-    });
-    expect(screen.getByRole("table")).toBeInTheDocument();
   });
 });

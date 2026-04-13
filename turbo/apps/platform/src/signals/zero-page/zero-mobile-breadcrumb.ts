@@ -198,7 +198,6 @@ export const mobileBreadcrumb$ = computed(
       Record<string, { label: string; path: RoutePath }>
     > = {
       works: { label: "Works", path: ROUTES.works },
-      settingsUsage: { label: "Usage", path: ROUTES.settingsUsage },
       settings: { label: "Settings", path: ROUTES.settings },
       queues: { label: "Queue", path: ROUTES.queues },
       connectors: { label: "Connectors", path: ROUTES.connectors },
