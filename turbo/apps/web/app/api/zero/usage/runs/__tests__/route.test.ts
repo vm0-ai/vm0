@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   createTestRequest,
   insertTestCreditUsage,
-  updateOrgStripeFields,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -10,17 +9,12 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 
+// Only the subscriptions/invoices retrieve methods can be reached transitively
+// via getOrgBillingPeriod() when an org has a stripeSubscriptionId.
 const stripeMocks = vi.hoisted(() => {
   return {
     subscriptionsRetrieve: vi.fn(),
-    subscriptionsUpdate: vi.fn(),
-    subscriptionsCancel: vi.fn(),
     invoicesRetrieve: vi.fn(),
-    invoicesList: vi.fn(),
-    customersCreate: vi.fn(),
-    checkoutSessionsCreate: vi.fn(),
-    billingPortalSessionsCreate: vi.fn(),
-    constructEvent: vi.fn(),
   };
 });
 
@@ -28,21 +22,8 @@ vi.mock("stripe", () => {
   return {
     default: function MockStripe() {
       return {
-        subscriptions: {
-          retrieve: stripeMocks.subscriptionsRetrieve,
-          update: stripeMocks.subscriptionsUpdate,
-          cancel: stripeMocks.subscriptionsCancel,
-        },
-        invoices: {
-          retrieve: stripeMocks.invoicesRetrieve,
-          list: stripeMocks.invoicesList,
-        },
-        customers: { create: stripeMocks.customersCreate },
-        checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
-        billingPortal: {
-          sessions: { create: stripeMocks.billingPortalSessionsCreate },
-        },
-        webhooks: { constructEvent: stripeMocks.constructEvent },
+        subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+        invoices: { retrieve: stripeMocks.invoicesRetrieve },
       };
     },
   };
@@ -183,7 +164,7 @@ describe("GET /api/zero/usage/runs", () => {
     });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/zero/usage/runs?userId=${user1}`,
+      `http://localhost:3000/api/zero/usage/runs?userIds=${user1}`,
     );
     const response = await GET(request);
 
