@@ -36,6 +36,30 @@
 //!
 //! Image size limit: `PART_SIZE * 10000 ≈ 160 GiB` (S3 multipart hard limit).
 //! Current images are well under 30 GiB; revisit if `PART_SIZE` decreases.
+//!
+//! ## R2-side cleanup (operator responsibility)
+//!
+//! Completed objects (`runner-images/{hash}.tar.zst`) are **never deleted by
+//! this code**. Each `IMAGE_CACHE_VERSION` bump, build-script change, guest
+//! binary rebuild, or firecracker/kernel upgrade produces a new hash and
+//! orphans the previous object.
+//!
+//! Mitigation: configure an R2 bucket lifecycle rule on the `runner-images/`
+//! prefix to delete objects older than ~30 days. R2's default 7-day rule only
+//! cleans abandoned multipart segments, not completed objects.
+//!
+//! ## Security boundary: tar path traversal
+//!
+//! `tar` 0.4 silently drops entries with `..` path components from
+//! `Archive::unpack` (verified by `unpack_rejects_path_traversal`). The
+//! defense chain that turns this into a safe failure mode:
+//! 1. unpack drops the malicious entry → staging dir ends up incomplete
+//! 2. `is_image_complete()` (in `cmd::build`) rejects the partial result
+//! 3. caller falls back to a local build
+//!
+//! **If you add a new file to the image, you MUST also extend
+//! `is_image_complete()` — otherwise an attacker-controlled tar that omits
+//! the new file would still pass the completeness check.**
 
 use std::path::{Path, PathBuf};
 
@@ -391,7 +415,7 @@ impl R2ImageCache {
                 });
                 part_number = part_number
                     .checked_add(1)
-                    .ok_or_else(|| R2Error::S3("part_number overflow".into()))?;
+                    .ok_or_else(|| R2Error::Io(io_other("part_number overflow")))?;
                 if n < PART_SIZE {
                     eof = true;
                     break;
@@ -484,8 +508,7 @@ async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Erro
     if let Ok(meta) = tokio::fs::metadata(&cow).await {
         let len = meta.len();
         if len > 0 {
-            let cow_clone = cow.clone();
-            let result = tokio::task::spawn_blocking(move || punch_hole(&cow_clone, len))
+            let result = tokio::task::spawn_blocking(move || punch_hole(&cow, len))
                 .await
                 .map_err(|e| R2Error::Io(io_other(e)))?;
             if let Err(e) = result {
@@ -531,14 +554,14 @@ async fn read_full<R: tokio::io::AsyncRead + Unpin>(
     while total < buf.len() {
         let slice = buf
             .get_mut(total..)
-            .ok_or_else(|| R2Error::S3("buf overrun".into()))?;
+            .ok_or_else(|| R2Error::Io(io_other("buf overrun")))?;
         let n = reader.read(slice).await?;
         if n == 0 {
             break;
         }
         total = total
             .checked_add(n)
-            .ok_or_else(|| R2Error::S3("read overflow".into()))?;
+            .ok_or_else(|| R2Error::Io(io_other("read offset overflow")))?;
     }
     Ok(total)
 }
@@ -598,7 +621,8 @@ mod tests {
 
     /// `from_env` requires all-or-nothing on the four env vars.
     /// Tests use a single var with each scenario via temporary process env;
-    /// they share the global env so must run with --test-threads=1.
+    /// concurrent execution is safe — `with_clean_r2_env` serializes via
+    /// `ENV_LOCK` so the snapshot/mutate/restore window is exclusive.
     #[tokio::test]
     async fn from_env_returns_none_when_all_missing() {
         with_clean_r2_env(|| async {
@@ -611,7 +635,7 @@ mod tests {
     #[tokio::test]
     async fn from_env_returns_some_when_all_present() {
         with_clean_r2_env(|| async {
-            // SAFETY: tests are serialized via --test-threads=1.
+            // SAFETY: env mutation is serialized by ENV_LOCK in with_clean_r2_env.
             unsafe {
                 std::env::set_var("R2_ACCOUNT_ID", "test-account");
                 std::env::set_var("R2_ACCESS_KEY_ID", "test-key");
@@ -666,15 +690,24 @@ mod tests {
         .await;
     }
 
+    /// Process-wide lock that serializes env-mutating tests in this module so
+    /// they're correct even when the test harness runs threads in parallel
+    /// (CI uses `cargo llvm-cov` without `--test-threads=1`). Held across the
+    /// inner `tokio::spawn(...).await` because env vars are process-global —
+    /// without the lock, two concurrent tests would clobber each other's
+    /// snapshot/restore. Async-aware so holding across await is sound.
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     /// Helper: snapshot and clear all R2 env vars before running, restore after.
     /// Panic-safe: the closure runs in a `tokio::spawn` task so a panic doesn't
-    /// skip the restore. SAFETY of `set_var` / `remove_var`: callers must run
-    /// with `--test-threads=1` to avoid concurrent env mutation.
+    /// skip the restore. SAFETY of `set_var` / `remove_var`: serialized by
+    /// `ENV_LOCK` above, so no concurrent env mutation can occur.
     async fn with_clean_r2_env<F, Fut>(f: F)
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: std::future::Future<Output = ()> + Send + 'static,
     {
+        let _guard = ENV_LOCK.lock().await;
         let saved: Vec<(&str, Option<String>)> = ENV_VARS
             .iter()
             .map(|v| (*v, std::env::var(v).ok()))

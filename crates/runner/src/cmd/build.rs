@@ -18,6 +18,10 @@ const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
 /// Bump this to invalidate all cached images without changing any input files.
 /// Affects both the local cache directory and the R2 object key (since the
 /// version seeds the hash that names both).
+///
+/// Bumping leaves the previous-hash R2 objects orphaned — they're never
+/// referenced again. Cleanup relies on the bucket's lifecycle rule on the
+/// `runner-images/` prefix (see `r2_cache` module docs).
 const IMAGE_CACHE_VERSION: u32 = 1;
 
 #[cfg(bundled_guests)]
@@ -193,7 +197,8 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         .await
         .map_err(|e| RunnerError::Internal(format!("R2 cache init: {e}")))?;
     if r2.is_none() {
-        tracing::warn!("R2 cache disabled (R2_* env vars not set) — skipping download and upload");
+        // Info, not warn — dev environments routinely run without R2 configured.
+        tracing::info!("R2 cache disabled (R2_* env vars not set) — skipping download and upload");
     }
 
     // Acquire exclusive lock to prevent concurrent builds with the same hash.
