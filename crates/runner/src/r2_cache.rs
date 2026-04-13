@@ -1695,4 +1695,143 @@ mod tests {
             other => panic!("expected R2Error::S3 with pinned part_number, got {other:?}"),
         }
     }
+
+    // ---- exists + try_download error mapping and staging cleanup -------
+
+    /// `exists()` MUST map `HeadObjectError::NotFound` to `Ok(false)` — that's
+    /// what distinguishes a genuine cache miss from an error the caller
+    /// should log and back off on. Flip the mapping and operators get silent
+    /// re-uploads on AccessDenied.
+    #[tokio::test]
+    async fn exists_returns_false_on_not_found() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectError;
+        use aws_sdk_s3::types::error::NotFound;
+
+        let head = mock!(Client::head_object)
+            .then_error(|| HeadObjectError::NotFound(NotFound::builder().build()));
+        let cache = mock_cache("test-bucket", &[&head]);
+        assert!(!cache.exists("any").await.unwrap());
+        assert_eq!(head.num_calls(), 1);
+    }
+
+    /// `try_download()` MUST map `GetObjectError::NoSuchKey` to `Ok(false)`
+    /// (symmetric to `exists_returns_false_on_not_found`). It also MUST NOT
+    /// create a staging directory for a miss — the caller falls back to
+    /// local build and expects `final_dir` absent.
+    #[tokio::test]
+    async fn try_download_returns_false_on_no_such_key() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectError;
+        use aws_sdk_s3::types::error::NoSuchKey;
+
+        let get = mock!(Client::get_object)
+            .then_error(|| GetObjectError::NoSuchKey(NoSuchKey::builder().build()));
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let final_dir = dst.path().join("hash");
+        let result = cache.try_download("hash", &final_dir).await.unwrap();
+
+        assert!(!result, "NoSuchKey → Ok(false)");
+        assert!(!final_dir.exists(), "final_dir MUST remain absent on miss");
+        assert!(
+            !staging_dir(&final_dir).exists(),
+            "no staging dir on miss (short-circuit before staging creation)"
+        );
+    }
+
+    /// Pack a tar.zst archive from a test file in-memory. Used to synthesize
+    /// a valid body for a mocked `get_object` response.
+    async fn build_test_archive_bytes() -> Vec<u8> {
+        let src = tempfile::tempdir().unwrap();
+        let name = src.path().join("rootfs.ext4");
+        tokio::fs::write(&name, b"hello").await.unwrap();
+        let files = vec![name];
+        let bytes = tokio::task::spawn_blocking(move || {
+            let mut buf: Vec<u8> = Vec::new();
+            pack_to_writer(&mut buf, &files).unwrap();
+            buf
+        })
+        .await
+        .unwrap();
+        // Keep `src` alive until after pack finishes (file reads completed).
+        drop(src);
+        bytes
+    }
+
+    /// Download body is not a valid zstd stream → unpack fails → the
+    /// cleanup-on-error branch wipes staging AND leaves `final_dir` absent.
+    /// Without cleanup, a failed download + local rebuild could fill the
+    /// disk with staging residue.
+    #[tokio::test]
+    async fn try_download_wipes_staging_on_unpack_error() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let get = mock!(Client::get_object).then_output(|| {
+            GetObjectOutput::builder()
+                .body(ByteStream::from_static(b"not a valid zstd stream"))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let final_dir = dst.path().join("hash");
+        let result = cache.try_download("hash", &final_dir).await;
+
+        assert!(result.is_err(), "bad body → Err");
+        assert!(!final_dir.exists(), "final_dir MUST remain absent");
+        assert!(
+            !staging_dir(&final_dir).exists(),
+            "staging MUST be wiped — this is the disk-leak guard"
+        );
+    }
+
+    /// A staging dir from a prior crashed run MUST be wiped before the next
+    /// `try_download` unpacks fresh content. Otherwise old junk would leak
+    /// into `final_dir` via the rename.
+    #[tokio::test]
+    async fn try_download_wipes_prior_crashed_staging_dir() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_test_archive_bytes().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let final_dir = dst.path().join("hash");
+        let staging = staging_dir(&final_dir);
+
+        // Simulate a prior crashed run: populate staging with junk the
+        // fresh download must overwrite.
+        tokio::fs::create_dir_all(&staging).await.unwrap();
+        tokio::fs::write(staging.join("stale.txt"), b"old crash residue")
+            .await
+            .unwrap();
+
+        let result = cache.try_download("hash", &final_dir).await.unwrap();
+
+        assert!(result, "valid body → Ok(true)");
+        assert!(final_dir.exists(), "final_dir populated");
+        assert!(
+            final_dir.join("rootfs.ext4").exists(),
+            "fresh content arrived"
+        );
+        assert!(
+            !final_dir.join("stale.txt").exists(),
+            "stale staging content MUST NOT survive into final_dir"
+        );
+        assert!(!staging.exists(), "staging consumed by rename");
+    }
 }
