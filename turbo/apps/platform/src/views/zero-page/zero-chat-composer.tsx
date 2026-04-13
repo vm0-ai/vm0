@@ -565,6 +565,85 @@ function useResolvedComposerSignals(
 }
 
 // ---------------------------------------------------------------------------
+// Mic button (voice input)
+// ---------------------------------------------------------------------------
+
+function MicButton({ onSend }: { onSend: (text: string) => void }) {
+  const available = useLastResolved(voiceIOAvailable$) ?? false;
+  const recording = useGet(sttRecording$);
+  const transcribing = useGet(sttTranscribing$);
+  const startRec = useSet(startRecording$);
+  const stopAndTranscribe = useSet(stopAndTranscribe$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (!available) {
+    return null;
+  }
+
+  const handleClick = () => {
+    if (transcribing) {
+      return;
+    }
+    if (recording) {
+      detach(
+        stopAndTranscribe(pageSignal).then((text) => {
+          if (text) {
+            onSend(text);
+          }
+        }),
+        Reason.DomCallback,
+      );
+    } else {
+      detach(startRec(pageSignal), Reason.DomCallback);
+    }
+  };
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "inline-flex shrink-0 items-center justify-center rounded-lg h-9 w-9 transition-colors",
+              recording
+                ? "bg-red-500/15 text-red-500 hover:bg-red-500/25"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+            onClick={handleClick}
+            disabled={transcribing}
+            aria-label={
+              recording
+                ? "Stop recording"
+                : transcribing
+                  ? "Transcribing"
+                  : "Voice input"
+            }
+          >
+            {transcribing ? (
+              <IconLoader2 size={18} stroke={1.5} className="animate-spin" />
+            ) : (
+              <IconMicrophone
+                size={18}
+                stroke={1.5}
+                className={recording ? "animate-pulse" : undefined}
+              />
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {recording
+            ? "Stop recording"
+            : transcribing
+              ? "Transcribing..."
+              : "Voice input"}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
 
