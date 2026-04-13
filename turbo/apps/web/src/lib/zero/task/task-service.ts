@@ -340,26 +340,22 @@ async function listScheduleTasks(
     .innerJoin(zeroAgents, eq(zeroAgentSchedules.agentId, zeroAgents.id))
     .where(and(...conditions));
 
-  return rows
-    .filter((r) => {
-      return r.lastRunId !== null;
-    })
-    .map((r) => {
-      return {
-        id: r.id,
-        type: "schedule" as const,
-        title: r.name,
-        agent: {
-          id: r.agentId,
-          name: r.agentName,
-          displayName: r.agentDisplayName,
-          avatarUrl: r.agentAvatarUrl,
-        },
-        latestRunId: r.lastRunId,
-        sourceUpdatedAt: r.updatedAt,
-        fallbackSummary: truncatePrompt(r.prompt),
-      };
-    });
+  return rows.map((r) => {
+    return {
+      id: r.id,
+      type: "schedule" as const,
+      title: r.name,
+      agent: {
+        id: r.agentId,
+        name: r.agentName,
+        displayName: r.agentDisplayName,
+        avatarUrl: r.agentAvatarUrl,
+      },
+      latestRunId: r.lastRunId,
+      sourceUpdatedAt: r.updatedAt,
+      fallbackSummary: truncatePrompt(r.prompt),
+    };
+  });
 }
 
 async function listSlackTasks(
