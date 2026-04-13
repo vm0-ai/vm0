@@ -1488,6 +1488,7 @@
       "normal": "Normal",
       "hyped": "Hyped"
     },
-    "back": "← Back"
+    "back": "← Back",
+    "tryItButton": "Try it"
   }
 }

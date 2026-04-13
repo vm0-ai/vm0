@@ -987,6 +987,7 @@
       "normal": "ノーマル",
       "hyped": "ハイテンション"
     },
-    "back": "← 戻る"
+    "back": "← 戻る",
+    "tryItButton": "Try it"
   }
 }

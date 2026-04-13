@@ -987,6 +987,7 @@
       "normal": "Normal",
       "hyped": "Animado"
     },
-    "back": "← Atrás"
+    "back": "← Atrás",
+    "tryItButton": "Try it"
   }
 }
