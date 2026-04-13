@@ -1,16 +1,17 @@
 import { eq, and, inArray, sum, lte, gte } from "drizzle-orm";
 import { creditUsage } from "../../../db/schema/credit-usage";
-import { proxyCreditUsage } from "../../../db/schema/proxy-credit-usage";
+import { clientCreditUsage } from "../../../db/schema/client-credit-usage";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:proxy-usage-comparison");
 
 /**
- * Compare proxy-observed usage against client-reported usage for recently
- * completed runs.  Designed to run as a standalone cron job, decoupled from
- * credit processing so proxy usage reports have time to arrive (mitmproxy
- * sends them asynchronously via a ThreadPoolExecutor).
+ * Compare proxy-observed usage (now in `credit_usage`) against
+ * client-reported usage (in `client_credit_usage`) for recently
+ * completed runs.  Designed to run as a standalone cron job, decoupled
+ * from credit processing so proxy usage reports have time to arrive
+ * (mitmproxy sends them asynchronously via a ThreadPoolExecutor).
  *
  * The 30-second floor gives mitmproxy time to deliver all reports.
  * The 5m30s ceiling matches the cron interval (5 min) plus the floor so
@@ -60,11 +61,15 @@ export async function compareRecentRunsProxyUsage(): Promise<void> {
 }
 
 /**
- * Compare client-reported credit_usage against proxy-observed proxy_credit_usage
- * for a set of runs.  Logs an error for each run where the token totals diverge.
+ * Compare proxy-sourced credit_usage against client-reported
+ * client_credit_usage for a set of runs.  Aggregates by runId because
+ * the two tables have different granularity (API-call-level vs
+ * result-event-level).
  *
- * Comparison is by-run aggregate (sum of all records per runId) because the two
- * tables have different granularity (result-level vs API-call-level).
+ * Proxy sees all API calls (main + subagents) while client sees only
+ * main-thread result events, so proxy >= client is the expected
+ * invariant.  Any run where proxy < client suggests mitmproxy dropped
+ * reports and is logged as an error.
  */
 async function compareProxyUsage(
   runIds: string[],
@@ -73,8 +78,8 @@ async function compareProxyUsage(
   const db = globalThis.services.db;
   if (runIds.length === 0) return;
 
-  // Client-reported totals (from credit_usage, already processed)
-  const clientRows = await db
+  // Proxy-observed totals (from credit_usage, the billing source)
+  const proxyRows = await db
     .select({
       runId: creditUsage.runId,
       inputTokens: sum(creditUsage.inputTokens).mapWith(Number),
@@ -93,65 +98,96 @@ async function compareProxyUsage(
     )
     .groupBy(creditUsage.runId);
 
-  // Proxy-observed totals (from proxy_credit_usage)
-  const proxyRows = await db
+  // Client-reported totals (from client_credit_usage audit table)
+  const clientRows = await db
     .select({
-      runId: proxyCreditUsage.runId,
-      inputTokens: sum(proxyCreditUsage.inputTokens).mapWith(Number),
-      outputTokens: sum(proxyCreditUsage.outputTokens).mapWith(Number),
-      cacheReadInputTokens: sum(proxyCreditUsage.cacheReadInputTokens).mapWith(
+      runId: clientCreditUsage.runId,
+      inputTokens: sum(clientCreditUsage.inputTokens).mapWith(Number),
+      outputTokens: sum(clientCreditUsage.outputTokens).mapWith(Number),
+      cacheReadInputTokens: sum(clientCreditUsage.cacheReadInputTokens).mapWith(
         Number,
       ),
       cacheCreationInputTokens: sum(
-        proxyCreditUsage.cacheCreationInputTokens,
+        clientCreditUsage.cacheCreationInputTokens,
       ).mapWith(Number),
-      webSearchRequests: sum(proxyCreditUsage.webSearchRequests).mapWith(
+      webSearchRequests: sum(clientCreditUsage.webSearchRequests).mapWith(
         Number,
       ),
     })
-    .from(proxyCreditUsage)
+    .from(clientCreditUsage)
     .where(
       and(
-        eq(proxyCreditUsage.orgId, orgId),
-        inArray(proxyCreditUsage.runId, runIds),
+        eq(clientCreditUsage.orgId, orgId),
+        inArray(clientCreditUsage.runId, runIds),
       ),
     )
-    .groupBy(proxyCreditUsage.runId);
+    .groupBy(clientCreditUsage.runId);
 
   const proxyByRun = new Map(
-    proxyRows.map((r) => {
-      return [r.runId, r];
-    }),
+    proxyRows
+      .filter((r): r is typeof r & { runId: string } => {
+        return r.runId !== null;
+      })
+      .map((r) => {
+        return [r.runId, r];
+      }),
+  );
+  const clientByRun = new Map(
+    clientRows
+      .filter((r): r is typeof r & { runId: string } => {
+        return r.runId !== null;
+      })
+      .map((r) => {
+        return [r.runId, r];
+      }),
   );
 
-  for (const client of clientRows) {
-    if (!client.runId) continue;
-    const proxy = proxyByRun.get(client.runId);
+  // Walk the union of runIds.  Any asymmetry is an error:
+  //   proxy missing entirely → mitmproxy lost all reports for this run
+  //   client missing entirely → events webhook never delivered result events
+  //   both present but proxy < client on any field → partial proxy data loss
+  const allRunIds = new Set<string>([
+    ...proxyByRun.keys(),
+    ...clientByRun.keys(),
+  ]);
+
+  const fields = [
+    "inputTokens",
+    "outputTokens",
+    "cacheReadInputTokens",
+    "cacheCreationInputTokens",
+    "webSearchRequests",
+  ] as const;
+
+  for (const runId of allRunIds) {
+    const proxy = proxyByRun.get(runId);
+    const client = clientByRun.get(runId);
+
     if (!proxy) {
-      // No proxy data yet — might arrive later, not an error
+      log.error("Proxy usage missing for run with client data", {
+        orgId,
+        runId,
+      });
+      continue;
+    }
+    if (!client) {
+      log.error("Client usage missing for run with proxy data", {
+        orgId,
+        runId,
+      });
       continue;
     }
 
-    const fields = [
-      "inputTokens",
-      "outputTokens",
-      "cacheReadInputTokens",
-      "cacheCreationInputTokens",
-      "webSearchRequests",
-    ] as const;
-
     for (const field of fields) {
-      const clientVal = client[field] ?? 0;
       const proxyVal = proxy[field] ?? 0;
-      // Only flag undercounts. Proxy sees all API calls (main + subagents)
-      // while client reports main thread only, so proxy >= client is normal.
+      const clientVal = client[field] ?? 0;
       if (proxyVal < clientVal) {
         log.error("Proxy usage undercount", {
           orgId,
-          runId: client.runId,
+          runId,
           field,
-          clientValue: clientVal,
           proxyValue: proxyVal,
+          clientValue: clientVal,
         });
       }
     }

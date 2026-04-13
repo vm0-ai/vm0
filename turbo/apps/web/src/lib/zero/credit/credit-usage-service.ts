@@ -1,4 +1,4 @@
-import { creditUsage } from "../../../db/schema/credit-usage";
+import { clientCreditUsage } from "../../../db/schema/client-credit-usage";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:credit-usage");
@@ -59,7 +59,11 @@ function extractAllResults(events: EventData[]): ResultEventData[] {
 }
 
 /**
- * Upsert credit_usage records from an events webhook batch.
+ * Upsert client-reported credit usage records from an events webhook batch.
+ *
+ * Writes to `client_credit_usage` — the audit trail of client-reported
+ * result events.  Billing itself is driven by the proxy-sourced
+ * `credit_usage` table; this function does not touch billing fields.
  *
  * - Only creates rows for result events (one row per result)
  * - Each row is keyed by (runId, resultUuid) for deduplication
@@ -85,7 +89,7 @@ export async function upsertCreditUsage(
 
   for (const result of results) {
     if (!result.uuid) {
-      log.error(
+      log.warn(
         "Result event missing uuid — deduplication disabled for this row",
         {
           runId,
@@ -96,7 +100,7 @@ export async function upsertCreditUsage(
     }
 
     await db
-      .insert(creditUsage)
+      .insert(clientCreditUsage)
       .values({
         runId,
         resultUuid: result.uuid ?? null,
@@ -112,7 +116,7 @@ export async function upsertCreditUsage(
         costUsd: result.costUsd,
       })
       .onConflictDoUpdate({
-        target: [creditUsage.runId, creditUsage.resultUuid],
+        target: [clientCreditUsage.runId, clientCreditUsage.resultUuid],
         set: {
           model,
           modelProvider: modelProvider ?? "",
@@ -125,7 +129,7 @@ export async function upsertCreditUsage(
         },
       });
 
-    log.debug("Upserted credit usage", {
+    log.debug("Upserted client credit usage", {
       runId,
       resultUuid: result.uuid,
       model,

@@ -94,9 +94,11 @@ const router = tsr.router(webhookEventsContract, {
       `Ingested events ${firstSequence}-${lastSequence} to Axiom for run ${body.runId}`,
     );
 
-    // Upsert credit_usage record for billing.
-    // Errors are caught so the webhook still returns 200 after Axiom ingestion
-    // succeeds. Missed credit records are picked up by processStaleCredits cron.
+    // Upsert client_credit_usage (audit trail of client-reported result
+    // events). Not a billing source — proxy-observed API calls in
+    // credit_usage drive charges. Errors are swallowed so a failed audit
+    // write doesn't cause guest-agent to retry this batch (which would
+    // double-ingest Axiom events).
     try {
       await upsertCreditUsage(
         body.runId,
@@ -107,7 +109,7 @@ const router = tsr.router(webhookEventsContract, {
         run.selectedModel ?? undefined,
       );
     } catch (err) {
-      log.error("Failed to upsert credit usage", {
+      log.error("Failed to upsert client credit usage", {
         runId: body.runId,
         error: err instanceof Error ? err.message : String(err),
       });
