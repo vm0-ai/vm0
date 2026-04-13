@@ -246,7 +246,7 @@ export const taskSignals$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 
 export const archiveTask$ = command(
-  async ({ get, set }, taskId: string, _signal: AbortSignal): Promise<void> => {
+  async ({ get, set }, taskId: string): Promise<void> => {
     const taskSignals = get(internalTaskSignals$);
     const ts = taskSignals.get(taskId);
     if (!ts) {
@@ -256,17 +256,16 @@ export const archiveTask$ = command(
     const { task } = ts;
     const client = get(zeroClient$)(tasksContract);
 
-    const result = await client.archive({
-      body: {
-        taskId: task.id,
-        taskType: task.type,
-        runId: task.latestRunId,
-      },
-    });
-
-    if (result.status !== 200) {
-      return;
-    }
+    await accept(
+      client.archive({
+        body: {
+          taskId: task.id,
+          taskType: task.type,
+          runId: task.latestRunId,
+        },
+      }),
+      [200],
+    );
 
     // Optimistic removal: close panel and remove from cache immediately
     set(ts.closeTask$);

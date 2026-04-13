@@ -280,6 +280,57 @@ describe("mission control page", () => {
     expect(pathname()).toBe("/_/mission-control");
   });
 
+  it("should remove task from list when y key is pressed on focused card", async () => {
+    server.use(
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({
+          tasks: [
+            {
+              id: "task-key",
+              type: "chat",
+              title: "Keyboard Archive Task",
+              summary: null,
+              agent: createAgent(),
+              latestRunId: "run-key-1",
+              status: "completed",
+              chatThreadId: "thread-key",
+              createdAt: "2026-04-10T10:00:00Z",
+              updatedAt: "2026-04-10T10:00:00Z",
+            },
+          ],
+        });
+      }),
+      http.post("*/api/zero/tasks/archive", () => {
+        server.use(
+          http.get("*/api/zero/tasks", () => {
+            return HttpResponse.json({ tasks: [] });
+          }),
+        );
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Keyboard Archive Task");
+    });
+    const card = title.closest("[role=button]") as HTMLElement;
+
+    // Focus the card so its data-task-id is picked up by the y shortcut
+    await user.click(card);
+    card.focus();
+
+    await user.keyboard("y");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Keyboard Archive Task"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("should remove task from list when archive button is clicked", async () => {
     let archiveRequestBody: unknown = null;
 
@@ -321,13 +372,15 @@ describe("mission control page", () => {
     const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
-    const title = await waitFor(() => screen.getByText("Archivable Task"));
+    const title = await waitFor(() => {
+      return screen.getByText("Archivable Task");
+    });
     const card = title.closest("[role=button]") as HTMLElement;
     await user.hover(card);
 
-    const archiveBtn = await waitFor(() =>
-      screen.getByLabelText("Archive task"),
-    );
+    const archiveBtn = await waitFor(() => {
+      return screen.getByLabelText("Archive task");
+    });
     await user.click(archiveBtn);
 
     await waitFor(() => {
