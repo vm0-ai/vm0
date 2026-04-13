@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.225.0](https://github.com/vm0-ai/vm0/compare/web-v12.224.0...web-v12.225.0) (2026-04-13)
+
+
+### Features
+
+* add voice_chat_preparations table and preparation service ([#9092](https://github.com/vm0-ai/vm0/issues/9092)) ([a171c51](https://github.com/vm0-ai/vm0/commit/a171c51031a1718aa1d64a4161a17e12839d8639))
+* **voice-chat:** integrate preparation cache into session creation ([#9112](https://github.com/vm0-ai/vm0/issues/9112)) ([856c342](https://github.com/vm0-ai/vm0/commit/856c3421897a2a3019d496b67ef7506760e33baa)), closes [#9086](https://github.com/vm0-ai/vm0/issues/9086)
+
 ## [12.224.0](https://github.com/vm0-ai/vm0/compare/web-v12.223.0...web-v12.224.0) (2026-04-13)
 
 

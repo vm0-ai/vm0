@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.227.0](https://github.com/vm0-ai/vm0/compare/app-v0.226.0...app-v0.227.0) (2026-04-13)
+
+
+### Features
+
+* **mission-control:** optimistic task signal for instant chat thread visibility ([#9095](https://github.com/vm0-ai/vm0/issues/9095)) ([bd6ec8d](https://github.com/vm0-ai/vm0/commit/bd6ec8d1496a69d41c4bc78189494208cdc78fa2))
+* **platform:** add tts read-aloud button and auto-read toggle ([#9105](https://github.com/vm0-ai/vm0/issues/9105)) ([faa2c12](https://github.com/vm0-ai/vm0/commit/faa2c12a089887a5736265e8851adf328fd2f72e)), closes [#9080](https://github.com/vm0-ai/vm0/issues/9080)
+* **voice-chat:** integrate preparation cache into session creation ([#9112](https://github.com/vm0-ai/vm0/issues/9112)) ([856c342](https://github.com/vm0-ai/vm0/commit/856c3421897a2a3019d496b67ef7506760e33baa)), closes [#9086](https://github.com/vm0-ai/vm0/issues/9086)
+* **voice-io:** add microphone button to chat composer for voice input ([#9108](https://github.com/vm0-ai/vm0/issues/9108)) ([01dce7e](https://github.com/vm0-ai/vm0/commit/01dce7e1e61a38f00b945ff8865263e9f78115ab)), closes [#9081](https://github.com/vm0-ai/vm0/issues/9081)
+
+
+### Bug Fixes
+
+* **web:** refresh token and retry once before redirecting on 401 ([#9096](https://github.com/vm0-ai/vm0/issues/9096)) ([127e744](https://github.com/vm0-ai/vm0/commit/127e7443d7a66b08f6ed623876d1e4fc858ad451))
+
 ## [0.226.0](https://github.com/vm0-ai/vm0/compare/app-v0.225.0...app-v0.226.0) (2026-04-13)
 
 
