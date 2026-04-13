@@ -3,13 +3,13 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { setChatAgentId$ } from "../../agent-chat.ts";
 import { setupVoiceChatPage$ } from "../voice-chat-setup.ts";
 import { startVoiceChat$, vcStatus$, vcError$ } from "../voice-chat-session.ts";
 
 const context = testContext();
 
-const TEST_AGENT_ID = "agent-prep-123";
+// Must match the defaultAgentId from the onboarding mock (api-onboarding.ts)
+const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function setup() {
   detachedSetupPage({
@@ -17,7 +17,6 @@ function setup() {
     path: "/voice-chat",
     withoutRender: true,
   });
-  context.store.set(setChatAgentId$, TEST_AGENT_ID);
 }
 
 function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
@@ -78,7 +77,7 @@ describe("chat mode preparation cache", () => {
       });
 
       expect(calls[0]).toStrictEqual({
-        agentId: TEST_AGENT_ID,
+        agentId: DEFAULT_AGENT_ID,
         mode: "chat",
       });
     });
@@ -123,7 +122,7 @@ describe("chat mode preparation cache", () => {
       // Preparation was called
       expect(prepCalls).toHaveLength(1);
       expect(prepCalls[0]).toStrictEqual({
-        agentId: TEST_AGENT_ID,
+        agentId: DEFAULT_AGENT_ID,
         mode: "chat",
       });
 
