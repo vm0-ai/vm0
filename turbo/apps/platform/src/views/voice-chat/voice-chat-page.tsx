@@ -368,11 +368,11 @@ export function VoiceChatPage() {
           }}
         >
           <TabsList>
-            <TabsTrigger value="gpt-realtime" className="text-xs px-3">
-              GPT Realtime
-            </TabsTrigger>
             <TabsTrigger value="gpt-realtime-mini" className="text-xs px-3">
               GPT Realtime Mini
+            </TabsTrigger>
+            <TabsTrigger value="gpt-realtime" className="text-xs px-3">
+              GPT Realtime
             </TabsTrigger>
           </TabsList>
         </Tabs>
