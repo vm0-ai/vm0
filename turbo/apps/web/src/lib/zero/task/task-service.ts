@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, sql, desc } from "drizzle-orm";
-import type { TaskItem } from "@vm0/core";
+import type { TaskItem, RunStatus } from "@vm0/core";
 import { chatThreads, chatThreadRuns } from "../../../db/schema/chat-thread";
 import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
 import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
@@ -16,7 +16,7 @@ import { archivedTaskRuns } from "../../../db/schema/archived-task-runs";
 
 const TASKS_LIMIT = 25;
 const PROMPT_SUMMARY_MAX_LENGTH = 100;
-const TERMINAL_STATUSES = new Set<string>([
+const TERMINAL_STATUSES = new Set<RunStatus>([
   "completed",
   "failed",
   "timeout",
@@ -487,7 +487,7 @@ async function listInFlightEmailTasks(
   orgId: string,
   agentId?: string,
 ): Promise<RawTask[]> {
-  const activeStatuses = ["pending", "running", "paused"];
+  const activeStatuses: RunStatus[] = ["pending", "running"];
   const conditions = [
     eq(agentRuns.userId, userId),
     eq(agentRuns.orgId, orgId),
