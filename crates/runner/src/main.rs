@@ -5,6 +5,7 @@ mod deps;
 mod dns;
 mod error;
 mod executor;
+mod group;
 mod host;
 mod http;
 mod idle_pool;

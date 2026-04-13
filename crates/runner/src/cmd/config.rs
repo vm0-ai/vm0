@@ -47,24 +47,22 @@ pub struct ConfigArgs {
 }
 
 pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
-    // Validate parallel arrays have same length.
+    // Pure-CPU validation first — fail fast before any filesystem I/O.
+    crate::group::validate_or_err(&args.group)?;
     if args.profile.len() != args.image_hash.len() {
         return Err(RunnerError::Config(
             "--profile and --image-hash must be specified the same number of times".into(),
         ));
     }
+    for profile_name in &args.profile {
+        profile::validate_or_err(profile_name)?;
+    }
 
     let paths = HomePaths::new()?;
 
-    // Build profiles map, validating each entry.
+    // Build profiles map.
     let mut profiles = BTreeMap::new();
     for (i, profile_name) in args.profile.iter().enumerate() {
-        if !profile::validate_name(profile_name) {
-            return Err(RunnerError::Config(format!(
-                "invalid profile name: {profile_name}"
-            )));
-        }
-
         let def = profile::get(profile_name)?;
         // Length equality is validated above, so this index is safe.
         let image_hash = args

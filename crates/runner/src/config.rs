@@ -125,19 +125,20 @@ async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
 }
 
 async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
+    // Pure-CPU checks first — fail fast before any filesystem I/O.
+    crate::group::validate_or_err(&config.group)?;
+    if config.profiles.is_empty() {
+        return Err(RunnerError::Config("profiles must not be empty".into()));
+    }
+    for name in config.profiles.keys() {
+        profile::validate_or_err(name)?;
+    }
+
     check_path_exists(&config.ca_dir, "ca_dir").await?;
     check_path_exists(&config.firecracker.binary, "firecracker binary").await?;
     check_path_exists(&config.firecracker.kernel, "kernel").await?;
 
-    if config.profiles.is_empty() {
-        return Err(RunnerError::Config("profiles must not be empty".into()));
-    }
     for (name, profile) in &config.profiles {
-        if !profile::validate_name(name) {
-            return Err(RunnerError::Config(format!(
-                "invalid profile name: {name} (must be org/name format, lowercase alphanumeric + hyphens)"
-            )));
-        }
         if profile.vcpu == 0 || profile.memory_mb == 0 || profile.disk_mb == 0 {
             return Err(RunnerError::Config(format!(
                 "profile {name}: vcpu, memory_mb, and disk_mb must be non-zero"
