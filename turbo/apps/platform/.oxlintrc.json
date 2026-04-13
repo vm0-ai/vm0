@@ -118,7 +118,8 @@
         "src/signals/zero-page/zero-chat.ts",
         "src/signals/zero-page/chat-draft.ts",
         "src/signals/voice-chat/voice-chat-session.ts",
-        "src/signals/voice-io/voice-io-tts.ts"
+        "src/signals/voice-io/voice-io-tts.ts",
+        "src/signals/voice-io/voice-io-stt.ts"
       ],
       "rules": {
         "no-restricted-imports": [

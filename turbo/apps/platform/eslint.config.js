@@ -130,6 +130,7 @@ export default [
       "src/signals/__tests__/fetch.test.ts",
       "src/signals/voice-chat/voice-chat-session.ts",
       "src/signals/voice-io/voice-io-tts.ts",
+      "src/signals/voice-io/voice-io-stt.ts",
       "src/views/zero-page/components/org-manage/org-general-tab.tsx",
       "src/views/agents-page/agents-page.tsx",
       "src/views/zero-page/zero-settings-tab.tsx",

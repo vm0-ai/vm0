@@ -2,11 +2,17 @@
 // oxlint-disable max-lines-per-function
 import type React from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import { ensurePushSubscription } from "../../lib/push-notifications.ts";
 import {
   IconArrowUp,
   IconLoader2,
+  IconMicrophone,
   IconPaperclip,
   IconPlayerStop,
   IconPlug,
@@ -82,6 +88,13 @@ import {
   popoverSortOrder$,
   setPopoverSortOrder$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
+import {
+  voiceIOAvailable$,
+  sttRecording$,
+  sttTranscribing$,
+  startRecording$,
+  stopAndTranscribe$,
+} from "../../signals/voice-io/voice-io-stt.ts";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -427,6 +440,85 @@ function ConnectorsPopoverButton({
 }
 
 // ---------------------------------------------------------------------------
+// Voice input mic button
+// ---------------------------------------------------------------------------
+
+function MicButton({ onSend }: { onSend: (text: string) => void }) {
+  const available = useLastResolved(voiceIOAvailable$) ?? false;
+  const recording = useGet(sttRecording$);
+  const transcribing = useGet(sttTranscribing$);
+  const startRec = useSet(startRecording$);
+  const stopAndTranscribe = useSet(stopAndTranscribe$);
+  const signal = useGet(pageSignal$);
+
+  if (!available) {
+    return null;
+  }
+
+  const handleClick = () => {
+    if (transcribing) {
+      return;
+    }
+    if (recording) {
+      detach(
+        stopAndTranscribe(signal).then((text) => {
+          if (text) {
+            onSend(text);
+          }
+        }),
+        Reason.DomCallback,
+      );
+    } else {
+      detach(startRec(signal), Reason.DomCallback);
+    }
+  };
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "inline-flex shrink-0 items-center justify-center rounded-lg h-9 w-9 transition-colors",
+              recording
+                ? "bg-red-500/15 text-red-500 hover:bg-red-500/25"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+            onClick={handleClick}
+            disabled={transcribing}
+            aria-label={
+              recording
+                ? "Stop recording"
+                : transcribing
+                  ? "Transcribing"
+                  : "Voice input"
+            }
+          >
+            {transcribing ? (
+              <IconLoader2 size={18} stroke={1.5} className="animate-spin" />
+            ) : (
+              <IconMicrophone
+                size={18}
+                stroke={1.5}
+                className={recording ? "animate-pulse" : undefined}
+              />
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {recording
+            ? "Stop recording"
+            : transcribing
+              ? "Transcribing..."
+              : "Voice input"}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Signal resolution — resolves draft/file-input with singleton fallback
 // ---------------------------------------------------------------------------
 
@@ -748,6 +840,7 @@ export function ZeroChatComposer({
                 />
               </div>
               <div className="flex items-center gap-2">
+                <MicButton onSend={onSend} />
                 {sending && onCancel ? (
                   <Button
                     size="sm"
