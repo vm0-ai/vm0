@@ -142,7 +142,6 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
       binding={{
         enter: openOrFocusInput,
         " ": toggle,
-        y: archiveTask,
       }}
     >
       <Card
