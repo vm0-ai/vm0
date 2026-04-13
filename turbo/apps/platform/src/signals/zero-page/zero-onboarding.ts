@@ -3,6 +3,7 @@ import {
   onboardingStatusContract,
   onboardingCompleteContract,
   onboardingSetupContract,
+  type ConnectorType,
 } from "@vm0/core";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -66,7 +67,7 @@ const initialOnboardingStep$ = computed(async (get) => {
 const internalAgentName$ = state("Zero");
 const internalWorkspaceName$ = state("");
 
-const internalSelectedConnectors$ = state<string[]>([]);
+const internalSelectedConnectors$ = state<ConnectorType[]>([]);
 
 export const zeroOnboardingStep$ = computed(async (get) => {
   const userStep = get(userStep$);
@@ -115,7 +116,7 @@ export const setConnectorSearch$ = command(({ set }, value: string) => {
 });
 
 export const toggleZeroConnector$ = command(
-  ({ set }, connectorValue: string) => {
+  ({ set }, connectorValue: ConnectorType) => {
     set(internalSelectedConnectors$, (prev) => {
       return prev.includes(connectorValue)
         ? prev.filter((s) => {
