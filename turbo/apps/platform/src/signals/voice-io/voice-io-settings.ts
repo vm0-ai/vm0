@@ -1,7 +1,7 @@
 import { command, computed } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
 
-const { get$, set$ } = localStorageSignals("voiceIO.autoRead");
+const { get$, set$ } = localStorageSignals("audioIO.autoRead");
 
 export const autoReadEnabled$ = computed((get) => {
   return get(get$) === "true";
