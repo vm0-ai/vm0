@@ -12,7 +12,7 @@ function resolveModel(input?: string): RealtimeModel {
   if (input && ALLOWED_MODELS.includes(input as RealtimeModel)) {
     return input as RealtimeModel;
   }
-  return "gpt-realtime";
+  return "gpt-realtime-mini";
 }
 
 interface EphemeralTokenResponse {
