@@ -1,16 +1,16 @@
 import { eq, and, desc } from "drizzle-orm";
-import {
-  chatThreads,
-  chatThreadRuns,
-  type PersistedAttachment,
-} from "../../../db/schema/chat-thread";
+import { chatThreads, chatThreadRuns } from "../../../db/schema/chat-thread";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { notFound } from "../../shared/errors";
 import {
   getChatMessagesForSession,
   type StoredChatMessage,
 } from "../zero-session-service";
-import type { SummaryEntry } from "@vm0/core";
+import {
+  type SummaryEntry,
+  type PersistedAttachment,
+  persistedAttachmentSchema,
+} from "@vm0/core";
 import type { TitleContextMessage } from "../ai/lightweight-model";
 
 /**
@@ -112,8 +112,10 @@ export async function getChatThread(
     sessionId: thread.sessionId ?? null,
     sourceScheduleRunId: thread.sourceScheduleRunId ?? null,
     draftContent: thread.draftContent ?? null,
-    draftAttachments:
-      (thread.draftAttachments as PersistedAttachment[] | null) ?? null,
+    draftAttachments: persistedAttachmentSchema
+      .array()
+      .nullable()
+      .parse(thread.draftAttachments ?? null),
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };

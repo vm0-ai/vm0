@@ -7,21 +7,10 @@ import {
   uniqueIndex,
   jsonb,
 } from "drizzle-orm/pg-core";
+import type { PersistedAttachment } from "@vm0/core";
 import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
 import { agentSessions } from "./agent-session";
-
-/**
- * Persisted attachment metadata stored with a chat thread draft.
- * Only completed uploads (with resolved fileInfo) are persisted.
- */
-export interface PersistedAttachment {
-  id: string;
-  url: string;
-  filename: string;
-  contentType: string;
-  size: number;
-}
 
 /**
  * Chat Threads table

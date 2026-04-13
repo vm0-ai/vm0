@@ -75,10 +75,18 @@ export const setupChatPage$ = command(
 
     // Watch for draft changes and schedule debounced sync to server.
     // Only thread-page drafts are persisted (talk-page drafts are not).
+    // Skip the first invocation: ccstate fires the watcher immediately on
+    // registration with the current values, which would trigger a spurious
+    // PATCH before the user has made any change.
+    let initialized = false;
     appStore.watch(
       (watchGet) => {
         watchGet(thread.draft.input$);
         watchGet(thread.draft.attachments$);
+        if (!initialized) {
+          initialized = true;
+          return;
+        }
         appStore.set(thread.scheduleDraftSync$, signal);
       },
       { signal },

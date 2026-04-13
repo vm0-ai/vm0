@@ -1,4 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
+import { delay } from "signal-timers";
 import { onRef, setLoop, resetSignal, throwIfNotAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import {
@@ -680,12 +681,7 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
   const debouncedSyncDraft$ = command(
     async ({ get, set }, signal: AbortSignal) => {
       // Wait 500ms — abort if a newer change comes in
-      await new Promise<void>((resolve) => {
-        const timerId = window.setTimeout(resolve, 500);
-        signal.addEventListener("abort", () => {
-          window.clearTimeout(timerId);
-        });
-      });
+      await delay(500, { signal });
       signal.throwIfAborted();
 
       const input = get(draft.input$);
