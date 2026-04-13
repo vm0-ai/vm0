@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -6,6 +6,13 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import {
+  addOptimisticTask$,
+  setupTasksLoop$,
+  taskSignals$,
+} from "../../../signals/mission-control-page/mission-control-tasks.ts";
+import { createAndShowChatTask$ } from "../../../signals/mission-control-page/mission-control.ts";
+import { detach, Reason } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -365,6 +372,90 @@ describe("mission control page", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Close task")).toBeInTheDocument();
     });
+  });
+
+  it("should prune stale optimistic entry after TTL expires", async () => {
+    // Tasks API always returns empty — no server confirmation arrives
+    server.use(
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({ tasks: [] });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/_/mission-control",
+      withoutRender: true,
+    });
+
+    // Insert optimistic entry with optimisticInsertedAt set 31 seconds in the past
+    const staleInsertedAt = Date.now() - 31_000;
+    const dateSpy = vi.spyOn(Date, "now").mockReturnValue(staleInsertedAt);
+    context.store.set(
+      addOptimisticTask$,
+      "agent-1",
+      "stale-thread-ttl",
+      "Test Agent",
+      null,
+    );
+    dateSpy.mockRestore();
+
+    // Entry must exist before the loop runs
+    const signalsBefore = await context.store.get(taskSignals$);
+    expect(
+      signalsBefore.some((ts) => {
+        return ts.task.id === "stale-thread-ttl";
+      }),
+    ).toBeTruthy();
+
+    // Run the loop with the test-scoped signal — Date.now() returns real time
+    // (31s after staleInsertedAt), so the TTL check fires and prunes the entry.
+    // The loop is aborted by afterEach when the test context signal is aborted.
+    detach(context.store.set(setupTasksLoop$, context.signal), Reason.Daemon);
+
+    await waitFor(async () => {
+      const signals = await context.store.get(taskSignals$);
+      expect(
+        signals.some((ts) => {
+          return ts.task.id === "stale-thread-ttl";
+        }),
+      ).toBeFalsy();
+    });
+  });
+
+  it("should return early from createAndShowChatTask$ when no agent is available", async () => {
+    // Return empty agent list and no defaultAgentId so resolvedAgentId is undefined
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([]);
+      }),
+      http.get("*/api/zero/onboarding/status", () => {
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: false,
+          defaultAgentId: null,
+          defaultAgentMetadata: null,
+          defaultAgentSkills: [],
+        });
+      }),
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({ tasks: [] });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/_/mission-control",
+      withoutRender: true,
+    });
+
+    // createAndShowChatTask$ should return early without inserting any optimistic entry
+    await context.store.set(createAndShowChatTask$, null, context.signal);
+
+    const signals = await context.store.get(taskSignals$);
+    expect(signals).toHaveLength(0);
   });
 
   it("should remove task from list when archive button is clicked", async () => {
