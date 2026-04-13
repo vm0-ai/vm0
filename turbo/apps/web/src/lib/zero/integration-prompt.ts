@@ -277,6 +277,85 @@ export function buildVoiceChatMeetingPrompt(
   return [header, meetingPrompt].join("\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// Prepare-only prompt templates (no Phase 2 observation, no session ID)
+// ---------------------------------------------------------------------------
+
+const VOICE_CHAT_PREPARE_ONLY_PROMPT = `
+# Zero — Preparation-Only Mode
+
+You are Zero's slow-brain. Your job is to do a quick warm-up — review the agent context and user identity, then output an initial directive. There is no live conversation to observe.
+
+## Steps
+
+1. **Review context** — Read the agent's system prompt, instructions, and memory. Note the user's identity (name, role, timezone).
+2. **Write a directive** — Summarize the key context:
+   - Who the user is (name, role if known)
+   - What the agent specializes in
+   - Any relevant recent context from memory
+3. **Output the directive** — When done, run:
+   \`zero voice-chat context prepare --content "<YOUR_DIRECTIVE>"\`
+
+Replace \`<YOUR_DIRECTIVE>\` with your actual directive text. This is the only output mechanism — do not write to shared context or session events.
+
+## Important
+
+- Keep the directive concise but complete — it will be used as initial context for the fast-brain.
+- You have full tool access. Use your sandbox, CLI, and APIs to gather information.
+- This should only take a few seconds. Do NOT do deep research.
+`.trim();
+
+const VOICE_CHAT_MEETING_PREPARE_ONLY_PROMPT = `
+# Zero — Meeting Preparation-Only Mode
+
+You are Zero's slow-brain. A meeting has been requested. Your job is to research and prepare a comprehensive briefing. There is no live conversation to observe.
+
+## The User's Meeting Prompt
+
+<MEETING_PROMPT>
+
+## Steps
+
+1. **Research context** — Based on the meeting prompt above, look up everything relevant: code, PRs, issues, documentation, recent changes, deployment status, etc.
+2. **Plan the meeting flow** — Organize your findings into a suggested agenda or list of talking points.
+3. **Output the directive** — When preparation is complete, run:
+   \`zero voice-chat context prepare --content "<YOUR_DIRECTIVE>"\`
+
+Replace \`<YOUR_DIRECTIVE>\` with your actual directive text containing:
+- Summary of what you found
+- Suggested meeting flow / talking points
+- Key data and references the fast-brain should mention
+
+This is the only output mechanism — do not write to shared context or session events.
+
+## Important
+
+- You have full tool access. Use your sandbox, CLI, and APIs to get real answers.
+- Keep the directive concise but complete — it will be used as initial context for the fast-brain.
+`.trim();
+
+/**
+ * Build the full appendSystemPrompt for Voice-Chat prepare-only mode (chat).
+ * Contains Phase 1 only with CLI output instruction. No session ID needed.
+ */
+export function buildVoiceChatPrepareOnlyPrompt(): string {
+  const header = buildIntegrationPrompt("Voice-Chat");
+  return [header, VOICE_CHAT_PREPARE_ONLY_PROMPT].join("\n\n");
+}
+
+/**
+ * Build the full appendSystemPrompt for Voice-Chat meeting prepare-only mode.
+ * Contains meeting research with CLI output instruction. No session ID needed.
+ */
+export function buildVoiceChatMeetingPreparePrompt(prompt: string): string {
+  const header = buildIntegrationPrompt("Voice-Chat");
+  const meetingPrompt = VOICE_CHAT_MEETING_PREPARE_ONLY_PROMPT.replaceAll(
+    "<MEETING_PROMPT>",
+    prompt,
+  );
+  return [header, meetingPrompt].join("\n\n");
+}
+
 /**
  * Build the full appendSystemPrompt for Slack integration.
  */

@@ -82,6 +82,10 @@ export interface VoiceChatCallbackPayload {
   sessionId: string;
 }
 
+export interface VoiceChatPrepareCallbackPayload {
+  preparationId: string;
+}
+
 export interface PhoneCallbackPayload {
   callId: string;
   userId: string;

@@ -54,12 +54,42 @@ export const zeroVoiceChatContextAppendContract = c.router({
   },
 });
 
+const prepareCompleteBodySchema = z.object({
+  content: z.string().min(1),
+});
+
+const prepareCompleteResponseSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+});
+
+export const zeroVoiceChatPrepareCompleteContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/voice-chat/prepare/complete",
+    headers: authHeadersSchema,
+    body: prepareCompleteBodySchema,
+    responses: {
+      200: prepareCompleteResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Write voice-chat preparation output from sandbox CLI",
+  },
+});
+
 export type ZeroVoiceChatContextGetContract =
   typeof zeroVoiceChatContextGetContract;
 export type ZeroVoiceChatContextAppendContract =
   typeof zeroVoiceChatContextAppendContract;
+export type ZeroVoiceChatPrepareCompleteContract =
+  typeof zeroVoiceChatPrepareCompleteContract;
 export type ContextEvent = z.infer<typeof contextEventSchema>;
 export type ContextEventsResponse = z.infer<typeof contextEventsResponseSchema>;
 export type AppendContextEventBody = z.infer<
   typeof appendContextEventBodySchema
+>;
+export type PrepareCompleteBody = z.infer<typeof prepareCompleteBodySchema>;
+export type PrepareCompleteResponse = z.infer<
+  typeof prepareCompleteResponseSchema
 >;

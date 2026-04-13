@@ -801,11 +801,15 @@ export {
 export {
   zeroVoiceChatContextGetContract,
   zeroVoiceChatContextAppendContract,
+  zeroVoiceChatPrepareCompleteContract,
   type ZeroVoiceChatContextGetContract,
   type ZeroVoiceChatContextAppendContract,
+  type ZeroVoiceChatPrepareCompleteContract,
   type ContextEvent,
   type ContextEventsResponse,
   type AppendContextEventBody,
+  type PrepareCompleteBody,
+  type PrepareCompleteResponse,
 } from "./zero-voice-chat-context";
 export {
   tasksContract,

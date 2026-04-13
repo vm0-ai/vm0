@@ -1,0 +1,134 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { initServices } from "../../../../../src/lib/init-services";
+import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
+import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
+import {
+  findFreshPreparation,
+  findInFlightPreparation,
+  createPreparation,
+  dispatchPreparationRun,
+} from "../../../../../src/lib/zero/voice-chat/preparation-service";
+import { isApiError } from "../../../../../src/lib/shared/errors";
+import { logger } from "../../../../../src/lib/shared/logger";
+import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
+
+const bodySchema = z
+  .object({
+    agentId: z.string().min(1),
+    mode: z.enum(["chat", "meeting"]).default("chat"),
+    prompt: z.string().min(1).optional(),
+  })
+  .refine(
+    (data) => {
+      return data.mode !== "meeting" || data.prompt;
+    },
+    {
+      message: "prompt is required for meeting mode",
+      path: ["prompt"],
+    },
+  );
+
+const log = logger("api:zero:voice-chat:prepare");
+
+export async function POST(request: Request) {
+  initServices();
+
+  const authCtx = await getAuthContext(
+    request.headers.get("authorization") ?? undefined,
+  );
+  if (!authCtx?.orgId) {
+    return NextResponse.json(
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
+  }
+
+  const { org } = await resolveOrg(authCtx);
+  const { userId } = authCtx;
+
+  const overrides = await loadFeatureSwitchOverrides(org.orgId, userId);
+  const enabled = isFeatureEnabled(FeatureSwitchKey.VoiceChat, {
+    orgId: org.orgId,
+    userId,
+    overrides,
+  });
+  if (!enabled) {
+    return NextResponse.json(
+      { error: { message: "Voice chat is not enabled", code: "FORBIDDEN" } },
+      { status: 403 },
+    );
+  }
+
+  const parsed = bodySchema.safeParse(await request.json());
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return NextResponse.json(
+      {
+        error: {
+          message: issue?.message ?? "Invalid request body",
+          code: "BAD_REQUEST",
+        },
+      },
+      { status: 400 },
+    );
+  }
+  const { agentId, mode, prompt } = parsed.data;
+
+  try {
+    // Cache hit: return existing fresh preparation
+    const fresh = await findFreshPreparation(userId, agentId, mode, prompt);
+    if (fresh) {
+      log.debug("Preparation cache hit", { preparationId: fresh.id });
+      return NextResponse.json({
+        preparation: { id: fresh.id, status: "ready" },
+      });
+    }
+
+    // Dedup: return existing in-flight preparation
+    const inFlight = await findInFlightPreparation(userId, agentId, mode);
+    if (inFlight) {
+      log.debug("Preparation already in-flight", {
+        preparationId: inFlight.id,
+      });
+      return NextResponse.json({
+        preparation: { id: inFlight.id, status: "preparing" },
+      });
+    }
+
+    // Create new preparation and dispatch
+    const preparation = await createPreparation(
+      org.orgId,
+      userId,
+      agentId,
+      mode,
+      prompt,
+    );
+
+    const result = await dispatchPreparationRun(
+      preparation.id,
+      org.orgId,
+      userId,
+      agentId,
+      { mode, prompt },
+    );
+
+    return NextResponse.json({
+      preparation: {
+        id: preparation.id,
+        status: preparation.status,
+        runId: result.runId,
+      },
+    });
+  } catch (error) {
+    if (isApiError(error)) {
+      return NextResponse.json(
+        { error: { message: error.message, code: error.code } },
+        { status: error.statusCode },
+      );
+    }
+    log.error("Failed to create voice-chat preparation", error);
+    throw error;
+  }
+}
