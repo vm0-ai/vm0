@@ -128,7 +128,9 @@ export const setupMissionControlKeyboard$ = command(
           }
           const taskId = active.dataset.taskId;
           if (taskId) {
-            void set(archiveAndFocusNext$, taskId, signal).catch(throwIfNotAbort);
+            void set(archiveAndFocusNext$, taskId, signal).catch(
+              throwIfNotAbort,
+            );
           }
         },
       },
