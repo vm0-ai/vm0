@@ -26,7 +26,14 @@ pub struct ExecArgs {
     #[arg(long)]
     sudo: bool,
 
-    /// Command to execute (after --)
+    /// Command to execute inside the VM (after `--`).
+    ///
+    /// Arguments are preserved as argv — pipes, redirects, globs, and
+    /// variable expansion must be invoked explicitly via a shell:
+    ///
+    /// ```text
+    /// runner exec <id> -- sh -c 'ls /tmp | wc -l'
+    /// ```
     #[arg(last = true, required = true)]
     command: Vec<String>,
 }
@@ -35,11 +42,27 @@ pub struct ExecArgs {
 // Entry point
 // ---------------------------------------------------------------------------
 
-/// POSIX shell-quote a single argument by wrapping it in single quotes and
-/// escaping any embedded `'` as `'\''`. This preserves argument boundaries
-/// when the resulting string is re-interpreted by `sh -c` on the guest.
+/// POSIX shell-quote a single argument so its boundary is preserved when the
+/// resulting command string is re-parsed by `sh -c` on the guest.
+///
+/// Arguments consisting entirely of alphanumerics and a small safe punctuation
+/// set (`_-./:+@%`) pass through unquoted for readability. Anything else is
+/// wrapped in single quotes, with embedded `'` escaped as `'\''`.
+///
+/// Note: `=` is intentionally excluded so that an argv like `["FOO=bar", ...]`
+/// is emitted as `'FOO=bar' ...` and the guest shell treats it as a command
+/// name rather than a variable assignment.
 fn shell_quote(arg: &str) -> String {
-    format!("'{}'", arg.replace('\'', "'\\''"))
+    let is_safe = !arg.is_empty()
+        && arg.bytes().all(|b| {
+            b.is_ascii_alphanumeric()
+                || matches!(b, b'_' | b'-' | b'.' | b'/' | b':' | b'+' | b'@' | b'%')
+        });
+    if is_safe {
+        arg.to_string()
+    } else {
+        format!("'{}'", arg.replace('\'', "'\\''"))
+    }
 }
 
 pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerResult<ExitCode> {
@@ -86,6 +109,15 @@ mod tests {
             timeout: 5,
             sudo: false,
             command: command.split_whitespace().map(String::from).collect(),
+        }
+    }
+
+    fn make_args_vec(command: Vec<&str>) -> ExecArgs {
+        ExecArgs {
+            run_id: "id".into(),
+            timeout: 5,
+            sudo: false,
+            command: command.into_iter().map(String::from).collect(),
         }
     }
 
@@ -144,60 +176,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn arg_with_space_is_quoted_as_single_token() {
-        let control = MockSandboxControl::new("/tmp");
-        let args = ExecArgs {
-            run_id: "test-id".into(),
-            timeout: 5,
-            sudo: false,
-            command: vec!["cat".into(), "/var/log/some file.log".into()],
-        };
-
-        run_exec(args, &control).await.unwrap();
-
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'cat' '/var/log/some file.log'".to_string()],
-        );
-    }
-
-    #[tokio::test]
-    async fn arg_with_single_quote_is_escaped() {
-        let control = MockSandboxControl::new("/tmp");
-        let args = ExecArgs {
-            run_id: "id".into(),
-            timeout: 5,
-            sudo: false,
-            command: vec!["echo".into(), "it's".into()],
-        };
-
-        run_exec(args, &control).await.unwrap();
-
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'echo' 'it'\\''s'".to_string()],
-        );
-    }
-
-    #[tokio::test]
-    async fn pipeline_inside_quoted_arg_is_preserved() {
-        let control = MockSandboxControl::new("/tmp");
-        let args = ExecArgs {
-            run_id: "id".into(),
-            timeout: 5,
-            sudo: false,
-            command: vec!["bash".into(), "-c".into(), "echo a | tr a b".into()],
-        };
-
-        run_exec(args, &control).await.unwrap();
-
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'bash' '-c' 'echo a | tr a b'".to_string()],
-        );
-    }
-
-    #[tokio::test]
     async fn exit_code_truncated_to_u8() {
         let control = MockSandboxControl::new("/tmp");
         // 256 truncates to 0 via `as u8`
@@ -218,5 +196,105 @@ mod tests {
 
         let r2 = run_exec(make_args("id", "test"), &control).await.unwrap();
         assert_eq!(r2, ExitCode::from(255));
+    }
+
+    // ---- argument quoting -------------------------------------------------
+
+    #[tokio::test]
+    async fn safe_ascii_args_pass_through_unquoted() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(make_args_vec(vec!["ls", "-la", "/var/log"]), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["ls -la /var/log".to_string()],
+        );
+    }
+
+    #[tokio::test]
+    async fn arg_with_space_is_quoted_as_single_token() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(
+            make_args_vec(vec!["cat", "/var/log/some file.log"]),
+            &control,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["cat '/var/log/some file.log'".to_string()],
+        );
+    }
+
+    #[tokio::test]
+    async fn arg_with_single_quote_is_escaped() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(make_args_vec(vec!["echo", "it's"]), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["echo 'it'\\''s'".to_string()],
+        );
+    }
+
+    #[tokio::test]
+    async fn pipeline_inside_quoted_arg_is_preserved() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(
+            make_args_vec(vec!["bash", "-c", "echo a | tr a b"]),
+            &control,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["bash -c 'echo a | tr a b'".to_string()],
+        );
+    }
+
+    #[tokio::test]
+    async fn shell_metachar_in_arg_is_quoted() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(make_args_vec(vec!["echo", "$HOME"]), &control)
+            .await
+            .unwrap();
+
+        // `$` must be quoted so the guest shell does not expand it.
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["echo '$HOME'".to_string()],
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_arg_is_quoted() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(make_args_vec(vec!["echo", ""]), &control)
+            .await
+            .unwrap();
+
+        assert_eq!(control.recorded_commands(), vec!["echo ''".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn assignment_syntax_arg_is_quoted() {
+        let control = MockSandboxControl::new("/tmp");
+        run_exec(make_args_vec(vec!["FOO=bar", "env"]), &control)
+            .await
+            .unwrap();
+
+        // `=` is not in the safe set, so `FOO=bar` is quoted. This prevents
+        // the guest shell from interpreting it as a variable assignment —
+        // it is treated as a command name, matching argv semantics.
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["'FOO=bar' env".to_string()],
+        );
     }
 }
