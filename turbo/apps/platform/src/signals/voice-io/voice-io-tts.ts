@@ -13,6 +13,7 @@ const L = logger("VoiceIO:TTS");
 const internalPlayingMessageId$ = state<string | null>(null);
 const internalAudioElement$ = state<HTMLAudioElement | null>(null);
 const internalBlobUrl$ = state<string | null>(null);
+const internalCleanupFn$ = state<(() => void) | null>(null);
 
 // Auto-read tracking
 const internalSeenLoading$ = state<Set<string>>(new Set());
@@ -55,6 +56,11 @@ function stripMarkdown(text: string): string {
 // ---------------------------------------------------------------------------
 
 const cleanupAudio$ = command(({ get, set }) => {
+  const cleanupFn = get(internalCleanupFn$);
+  if (cleanupFn) {
+    cleanupFn();
+  }
+
   const audio = get(internalAudioElement$);
   if (audio) {
     audio.pause();
@@ -62,14 +68,10 @@ const cleanupAudio$ = command(({ get, set }) => {
     audio.load();
   }
 
-  const blobUrl = get(internalBlobUrl$);
-  if (blobUrl) {
-    URL.revokeObjectURL(blobUrl);
-  }
-
   set(internalPlayingMessageId$, null);
   set(internalAudioElement$, null);
   set(internalBlobUrl$, null);
+  set(internalCleanupFn$, null);
 });
 
 const fetchAndPlay$ = command(
@@ -77,7 +79,7 @@ const fetchAndPlay$ = command(
     { get, set },
     messageId: string,
     text: string,
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ) => {
     set(cleanupAudio$);
 
@@ -91,7 +93,7 @@ const fetchAndPlay$ = command(
     let blob: Blob | null;
     // eslint-disable-next-line no-restricted-syntax -- raw fetch for binary audio (not a ts-rest contract)
     try {
-      blob = await fetchTtsAudio(fetchFn, plainText);
+      blob = await fetchTtsAudio(fetchFn, plainText, signal);
     } catch (error) {
       L.error("TTS fetch failed", error);
       return;
@@ -105,29 +107,38 @@ const fetchAndPlay$ = command(
     const blobUrl = URL.createObjectURL(blob);
     const audio = new Audio(blobUrl);
 
-    set(internalBlobUrl$, blobUrl);
-    set(internalAudioElement$, audio);
-    set(internalPlayingMessageId$, messageId);
-
-    const cleanup = () => {
+    const onEnded = () => {
       URL.revokeObjectURL(blobUrl);
       set(internalPlayingMessageId$, null);
       set(internalAudioElement$, null);
       set(internalBlobUrl$, null);
+      set(internalCleanupFn$, null);
     };
 
-    audio.addEventListener("ended", cleanup);
-    audio.addEventListener("error", () => {
+    const onError = () => {
       L.error("Audio playback error");
-      cleanup();
+      onEnded();
+    };
+
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+
+    set(internalCleanupFn$, () => {
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+      URL.revokeObjectURL(blobUrl);
     });
+
+    set(internalBlobUrl$, blobUrl);
+    set(internalAudioElement$, audio);
+    set(internalPlayingMessageId$, messageId);
 
     // eslint-disable-next-line no-restricted-syntax -- audio.play() rejects on browser autoplay restrictions
     try {
       await audio.play();
     } catch (error) {
       L.error("Audio play failed", error);
-      cleanup();
+      onEnded();
     }
   },
 );

@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@vm0/core";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { fetch$ } from "../fetch.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { stopTts$ } from "./voice-io-tts.ts";
 
 // ── Private state ──
 
@@ -59,11 +60,14 @@ function stopAllTracks(stream: MediaStream | null) {
 // ── Commands ──
 
 export const startRecording$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     // Guard: if already recording or transcribing, return
     if (get(internalRecording$) || get(internalTranscribing$)) {
       return;
     }
+
+    // Stop any ongoing TTS playback to prevent recording AI voice
+    set(stopTts$);
 
     const stream = await navigator.mediaDevices
       .getUserMedia({
@@ -76,6 +80,7 @@ export const startRecording$ = command(
       .catch(() => {
         return null;
       });
+    signal.throwIfAborted();
 
     if (!stream) {
       toast.error("Microphone access denied");
@@ -104,7 +109,7 @@ export const startRecording$ = command(
 );
 
 export const stopAndTranscribe$ = command(
-  async ({ get, set }, _signal: AbortSignal): Promise<string> => {
+  async ({ get, set }, signal: AbortSignal): Promise<string> => {
     if (!get(internalRecording$)) {
       return "";
     }
@@ -156,9 +161,11 @@ export const stopAndTranscribe$ = command(
     const response = await fetchFn("/api/zero/voice-io/stt", {
       method: "POST",
       body: formData,
+      signal,
     }).catch(() => {
       return null;
     });
+    signal.throwIfAborted();
 
     if (!response || !response.ok) {
       const errorBody = response
