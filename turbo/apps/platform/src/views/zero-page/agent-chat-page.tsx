@@ -191,11 +191,13 @@ export function AgentChatPage() {
     startNewSession();
     const talkSignal = resetTalkSendSignal();
     detach(
-      sendNewThread(currentChatAgentId, message, talkSignal).then((threadId) => {
-        if (threadId) {
-          navigateToChatFn(threadId);
-        }
-      }),
+      sendNewThread(currentChatAgentId, message, talkSignal).then(
+        (threadId) => {
+          if (threadId) {
+            navigateToChatFn(threadId);
+          }
+        },
+      ),
       Reason.DomCallback,
     );
   };
