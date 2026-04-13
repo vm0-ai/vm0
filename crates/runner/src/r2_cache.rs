@@ -373,26 +373,7 @@ impl R2ImageCache {
             }
             let resp = req.send().await?;
 
-            // Filter expired objects in this page; build an ObjectIdentifier
-            // batch for a single DeleteObjects call (S3/R2 hard limit: 1000).
-            let mut to_delete: Vec<ObjectIdentifier> = Vec::new();
-            let mut batch_freed = 0u64;
-            for obj in resp.contents() {
-                let Some(last_modified) = obj.last_modified() else {
-                    continue;
-                };
-                if last_modified.secs() >= cutoff {
-                    continue;
-                }
-                let Some(key) = obj.key() else { continue };
-                let size = u64::try_from(obj.size().unwrap_or(0).max(0)).unwrap_or(0);
-                let oid = ObjectIdentifier::builder()
-                    .key(key)
-                    .build()
-                    .map_err(|e| R2Error::S3(format!("ObjectIdentifier build: {e:?}")))?;
-                to_delete.push(oid);
-                batch_freed = batch_freed.saturating_add(size);
-            }
+            let (to_delete, batch_freed) = select_expired_in_page(resp.contents(), cutoff)?;
 
             if !to_delete.is_empty() {
                 let count = to_delete.len() as u64;
@@ -605,6 +586,39 @@ fn key_for_hash(hash: &str) -> String {
     format!("{KEY_PREFIX}{hash}.tar.zst")
 }
 
+/// Filter a single ListObjectsV2 page down to the keys that should be
+/// deleted (`last_modified < cutoff`), and sum their reported sizes.
+/// Skips entries with no `last_modified` or no `key` (defensive — shouldn't
+/// happen for real R2 responses but the SDK type makes them Optional).
+/// Negative `size` values are clamped to 0 before being summed.
+///
+/// Boundary: an object whose `last_modified == cutoff` is **kept**
+/// (`>= cutoff` is the skip condition). This biases toward retention.
+fn select_expired_in_page(
+    objects: &[aws_sdk_s3::types::Object],
+    cutoff: i64,
+) -> Result<(Vec<ObjectIdentifier>, u64), R2Error> {
+    let mut to_delete: Vec<ObjectIdentifier> = Vec::new();
+    let mut batch_freed = 0u64;
+    for obj in objects {
+        let Some(last_modified) = obj.last_modified() else {
+            continue;
+        };
+        if last_modified.secs() >= cutoff {
+            continue;
+        }
+        let Some(key) = obj.key() else { continue };
+        let size = u64::try_from(obj.size().unwrap_or(0).max(0)).unwrap_or(0);
+        let oid = ObjectIdentifier::builder()
+            .key(key)
+            .build()
+            .map_err(|e| R2Error::S3(format!("ObjectIdentifier build: {e:?}")))?;
+        to_delete.push(oid);
+        batch_freed = batch_freed.saturating_add(size);
+    }
+    Ok((to_delete, batch_freed))
+}
+
 /// Compute the unix-seconds cutoff for "anything older than this is stale".
 /// Returns an i64 to match aws_smithy_types::DateTime::secs(). Saturates to
 /// 0 when `max_age` exceeds `now` (e.g. dev clock at epoch).
@@ -812,6 +826,92 @@ mod tests {
         let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(42);
         let zero = std::time::Duration::from_secs(0);
         assert_eq!(cutoff_unix_secs(now, zero).unwrap(), 42);
+    }
+
+    #[test]
+    fn cutoff_with_duration_max_saturates_to_zero() {
+        // Pathological input shouldn't underflow into a huge positive cutoff.
+        let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        assert_eq!(cutoff_unix_secs(now, std::time::Duration::MAX).unwrap(), 0);
+    }
+
+    // ---- select_expired_in_page (gc_older_than filter) ------------------
+
+    fn obj(key: &str, last_modified_secs: i64, size: i64) -> aws_sdk_s3::types::Object {
+        aws_sdk_s3::types::Object::builder()
+            .key(key)
+            .last_modified(aws_sdk_s3::primitives::DateTime::from_secs(
+                last_modified_secs,
+            ))
+            .size(size)
+            .build()
+    }
+
+    #[test]
+    fn select_expired_filters_by_cutoff() {
+        let objects = [
+            obj("old1", 100, 10),
+            obj("fresh", 200, 20),
+            obj("old2", 50, 30),
+        ];
+        let (selected, freed) = select_expired_in_page(&objects, 150).unwrap();
+        let keys: Vec<&str> = selected.iter().map(|o| o.key.as_str()).collect();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&"old1"));
+        assert!(keys.contains(&"old2"));
+        assert!(!keys.contains(&"fresh"));
+        assert_eq!(freed, 40); // 10 + 30
+    }
+
+    #[test]
+    fn select_expired_keeps_object_at_exact_cutoff() {
+        // `>=` is the skip predicate, so equality biases toward retention.
+        // Important contract: an upload that just happened "right at" the
+        // GC cycle's cutoff isn't aggressively swept.
+        let objects = [obj("boundary", 100, 1)];
+        let (selected, freed) = select_expired_in_page(&objects, 100).unwrap();
+        assert_eq!(selected.len(), 0);
+        assert_eq!(freed, 0);
+    }
+
+    #[test]
+    fn select_expired_skips_object_without_last_modified() {
+        // ListObjectsV2 always sets last_modified for real R2 responses,
+        // but the SDK type is Option — guard the None branch.
+        let objects = [aws_sdk_s3::types::Object::builder()
+            .key("orphan")
+            .size(10)
+            .build()];
+        let (selected, freed) = select_expired_in_page(&objects, 100).unwrap();
+        assert_eq!(selected.len(), 0);
+        assert_eq!(freed, 0);
+    }
+
+    #[test]
+    fn select_expired_skips_object_without_key() {
+        let objects = [aws_sdk_s3::types::Object::builder()
+            .last_modified(aws_sdk_s3::primitives::DateTime::from_secs(50))
+            .size(10)
+            .build()];
+        let (selected, freed) = select_expired_in_page(&objects, 100).unwrap();
+        assert_eq!(selected.len(), 0);
+        assert_eq!(freed, 0);
+    }
+
+    #[test]
+    fn select_expired_clamps_negative_size_to_zero() {
+        // Defensive against a pathological SDK / R2 response.
+        let objects = [obj("weird", 50, -1)];
+        let (selected, freed) = select_expired_in_page(&objects, 100).unwrap();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(freed, 0);
+    }
+
+    #[test]
+    fn select_expired_empty_page_returns_empty() {
+        let (selected, freed) = select_expired_in_page(&[], 100).unwrap();
+        assert!(selected.is_empty());
+        assert_eq!(freed, 0);
     }
 
     #[test]
@@ -1203,6 +1303,30 @@ mod tests {
         );
     }
 
+    /// `finalize_staging` skips `punch_hole` when `cow.img` is empty (size=0).
+    /// Different branch from `finalize_works_without_cow_img` — there the
+    /// file is absent; here it exists with zero length. Both must succeed
+    /// without invoking the fallocate syscall (which is undefined for len=0).
+    #[tokio::test]
+    async fn finalize_skips_punch_hole_on_zero_byte_cow() {
+        let dst_root = tempfile::tempdir().unwrap();
+        let final_dir = dst_root.path().join("hash");
+        let staging = staging_dir(&final_dir);
+        tokio::fs::create_dir_all(&staging).await.unwrap();
+        tokio::fs::write(staging.join("cow.img"), b"")
+            .await
+            .unwrap();
+        tokio::fs::write(staging.join("rootfs.ext4"), b"data")
+            .await
+            .unwrap();
+
+        finalize_staging(&staging, &final_dir).await.unwrap();
+
+        let cow_meta = std::fs::metadata(final_dir.join("cow.img")).unwrap();
+        assert_eq!(cow_meta.len(), 0, "0-byte cow.img preserved as-is");
+        assert!(!staging.exists(), "staging consumed by rename");
+    }
+
     /// `finalize_staging` skips `punch_hole` cleanly when `cow.img` is absent.
     /// Defends against future producers that ship without cow.img.
     #[tokio::test]
@@ -1267,6 +1391,41 @@ mod tests {
             Err(R2Error::Io(_)) => {} // expected
             other => panic!("expected R2Error::Io for missing source, got {other:?}"),
         }
+    }
+
+    /// `R2ImageCache::Debug` must not leak credentials — if logs ever capture
+    /// `{:?}` on a cache (e.g. via `tracing` instrumentation), only the
+    /// bucket name should appear, not account_id / access_key / secret.
+    #[tokio::test]
+    async fn debug_format_does_not_leak_credentials() {
+        with_clean_r2_env(|| async {
+            // SAFETY: env mutation is serialized by ENV_LOCK in with_clean_r2_env.
+            unsafe {
+                std::env::set_var("R2_ACCOUNT_ID", "secret-account-id-do-not-leak");
+                std::env::set_var("R2_ACCESS_KEY_ID", "AKIAEXAMPLEDONOTLEAK");
+                std::env::set_var("R2_SECRET_ACCESS_KEY", "secret-key-MUST-NOT-appear-in-logs");
+                std::env::set_var("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
+            }
+            let cache = R2ImageCache::from_env().await.unwrap().unwrap();
+            let dbg = format!("{cache:?}");
+            assert!(
+                !dbg.contains("secret-account-id-do-not-leak"),
+                "Debug leaked account_id: {dbg}"
+            );
+            assert!(
+                !dbg.contains("AKIAEXAMPLEDONOTLEAK"),
+                "Debug leaked access_key_id: {dbg}"
+            );
+            assert!(
+                !dbg.contains("secret-key-MUST-NOT-appear-in-logs"),
+                "Debug leaked secret_key: {dbg}"
+            );
+            assert!(
+                dbg.contains("test-bucket"),
+                "Debug should still expose bucket for diagnostic value: {dbg}"
+            );
+        })
+        .await;
     }
 
     /// Empty file list: pack succeeds and produces a valid (empty) tar.zst.
