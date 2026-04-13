@@ -462,6 +462,44 @@ describe("prompt param forwarding", () => {
     expect(pathname()).toBe("/works");
     expect(new URLSearchParams(search()).get("prompt")).toBe("hello world");
   });
+
+  it("onboardingAddToSlack$ forwards ?prompt= to /works on the member connect path", async () => {
+    mockMemberOnboarding();
+    mockMemberCompletionApis();
+    mockSlackConnectReady();
+
+    vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=summarize%20inbox",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(pathname()).toBe("/works");
+    expect(new URLSearchParams(search()).get("prompt")).toBe("summarize inbox");
+  });
+
+  it("onboardingAddToSlack$ navigates to /works without prompt when absent", async () => {
+    mockAdminOnboarding();
+    mockAdminCompletionApis();
+    mockSlackInstallReady();
+
+    vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(pathname()).toBe("/works");
+    expect(search()).toBe("");
+  });
 });
 
 // ---------------------------------------------------------------------------
