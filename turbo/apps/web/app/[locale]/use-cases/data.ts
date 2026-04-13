@@ -2,11 +2,17 @@
 // Use Cases – types & static data
 // ---------------------------------------------------------------------------
 
+import type { ConnectorType } from "@vm0/core";
+
 export type Role = "engineering" | "product" | "ops" | "everyone";
 export type Capability = "multi-tool" | "scheduled" | "instant";
 
 export interface ConnectorRef {
-  id: string;
+  /**
+   * Must match a key in `@vm0/core` `CONNECTOR_TYPES` so the platform can
+   * resolve `?connector=<id>` deep-links to a real connector config.
+   */
+  id: ConnectorType;
   label: string;
   icon: string;
   darkIcon?: string;
@@ -36,6 +42,12 @@ export interface UseCase {
   videoId?: string;
   connectors: ConnectorRef[];
   integrations: IntegrationData[];
+  /**
+   * Concise prompt used for the one-click "Try it" CTA.
+   * Falls back to `promptVariants[0].prompt` when unset.
+   * Keep ≤ 200 characters — very long prompts risk URL truncation.
+   */
+  ctaPrompt?: string;
   relatedSlugs: string[];
   stepCount: number;
   nextActionCount: number;
