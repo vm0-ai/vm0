@@ -60,8 +60,10 @@ export const setupChatPage$ = command(
     // Local-first: if the user already has local state, we do NOT overwrite it.
     if (
       isNew &&
-      threadData &&
-      (threadData.draftContent || threadData.draftAttachments?.length)
+      threadData !== null &&
+      (threadData.draftContent !== null ||
+        (threadData.draftAttachments !== null &&
+          threadData.draftAttachments.length > 0))
     ) {
       const restoredAttachments = (threadData.draftAttachments ?? []).map(
         createRestoredAttachment,
@@ -75,9 +77,10 @@ export const setupChatPage$ = command(
 
     // Watch for draft changes and schedule debounced sync to server.
     // Only thread-page drafts are persisted (talk-page drafts are not).
-    // Skip the first invocation: ccstate fires the watcher immediately on
-    // registration with the current values, which would trigger a spurious
-    // PATCH before the user has made any change.
+    // `initialized` guards against the spurious first invocation: ccstate
+    // fires every watcher synchronously at registration time with the current
+    // signal values, before the user has made any change. We skip that first
+    // call so a PATCH is not sent on page load.
     let initialized = false;
     appStore.watch(
       (watchGet) => {

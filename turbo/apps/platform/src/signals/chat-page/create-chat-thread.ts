@@ -649,6 +649,9 @@ function createThreadUIState() {
 // Sub-factory: draft server sync (debounced PATCH)
 // ---------------------------------------------------------------------------
 
+/** Milliseconds to wait before persisting a draft change to the server. */
+const DRAFT_SYNC_DEBOUNCE_MS = 500;
+
 function createDraftSync(threadId: string, draft: DraftSignals) {
   // A reset signal is used to abort any in-flight debounced sync when a new
   // change comes in or when the draft is cleared on send.
@@ -680,8 +683,8 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
    */
   const debouncedSyncDraft$ = command(
     async ({ get, set }, signal: AbortSignal) => {
-      // Wait 500ms — abort if a newer change comes in
-      await delay(500, { signal });
+      // Wait for the debounce window — abort if a newer change comes in
+      await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
       signal.throwIfAborted();
 
       const input = get(draft.input$);
