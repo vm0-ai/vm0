@@ -25,6 +25,7 @@ import {
 import {
   groupEventsIntoMessages,
   groupedMessageMatchesSearch,
+  type GroupingEventData,
 } from "../zero-page/components/log-views/log-detail-utils.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
@@ -233,7 +234,7 @@ function ActivityChatLayout({
       <ActivityUserBubble prompt={prompt} />
       {isTerminal ? (
         resultMessages.map((msg) => {
-          const data = msg.eventData as { result?: string | null };
+          const data = msg.eventData as GroupingEventData;
           return (
             <ActivityAssistantBubble
               key={msg.sequenceNumber}
