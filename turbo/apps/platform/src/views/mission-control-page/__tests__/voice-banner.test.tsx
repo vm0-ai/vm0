@@ -36,7 +36,7 @@ function mockEmptyTaskList() {
 // VoiceButton visibility
 // ---------------------------------------------------------------------------
 
-describe("voiceButton — feature switch off (MC-VC-001)", () => {
+describe("VoiceButton — feature switch off (MC-VC-001)", () => {
   it("is not rendered when voiceChat feature switch is disabled", async () => {
     mockEmptyTaskList();
     detachedSetupPage({ context, path: "/_/mission-control" });
@@ -45,11 +45,15 @@ describe("voiceButton — feature switch off (MC-VC-001)", () => {
       expect(screen.getByText("No active tasks")).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("button", { name: /Voice On/i })).toBeNull();
+    expect(
+      screen.queryAllByRole("button").find((el) => {
+        return /Voice On/i.test(el.textContent ?? "");
+      }),
+    ).toBeUndefined();
   });
 });
 
-describe("voiceButton — feature switch on, idle status (MC-VC-002)", () => {
+describe("VoiceButton — feature switch on, idle status (MC-VC-002)", () => {
   it("renders 'Voice On' button when voiceChat feature switch is enabled", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockEmptyTaskList();
@@ -57,8 +61,10 @@ describe("voiceButton — feature switch on, idle status (MC-VC-002)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Voice On/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Voice On/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
   });
 });
@@ -67,24 +73,23 @@ describe("voiceButton — feature switch on, idle status (MC-VC-002)", () => {
 // VoiceBanner — preparing state
 // ---------------------------------------------------------------------------
 
-describe("voiceBanner — preparing state (MC-VC-003)", () => {
+describe("VoiceBanner — preparing state (MC-VC-003)", () => {
   it("shows 'Enabling...' while session is being prepared", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     const hangDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
-      http.get("*/api/zero/tasks", () => HttpResponse.json({ tasks: [] })),
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({ tasks: [] });
+      }),
       http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json({ session: { id: "vc-prep-session" } });
       }),
       // Hang the context poll so status stays "preparing"
-      http.get(
-        "*/api/zero/voice-chat/vc-prep-session/context",
-        async () => {
-          await hangDeferred.promise;
-          return HttpResponse.json({ events: [] });
-        },
-      ),
+      http.get("*/api/zero/voice-chat/vc-prep-session/context", async () => {
+        await hangDeferred.promise;
+        return HttpResponse.json({ events: [] });
+      }),
     );
 
     const user = userEvent.setup();
@@ -92,11 +97,17 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Voice On/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Voice On/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: /Voice On/i }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return /Voice On/i.test(el.textContent ?? "");
+      })!,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Enabling...")).toBeInTheDocument();
@@ -110,12 +121,14 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
 // VoiceBanner — error state
 // ---------------------------------------------------------------------------
 
-describe("voiceBanner — error on session creation (MC-VC-004)", () => {
+describe("VoiceBanner — error on session creation (MC-VC-004)", () => {
   it("shows 'Voice error' and Dismiss when the POST /api/zero/voice-chat fails", async () => {
     setMockFeatureSwitches({ voiceChat: true });
 
     server.use(
-      http.get("*/api/zero/tasks", () => HttpResponse.json({ tasks: [] })),
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({ tasks: [] });
+      }),
       http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json(
           { error: { message: "Service unavailable" } },
@@ -129,27 +142,37 @@ describe("voiceBanner — error on session creation (MC-VC-004)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Voice On/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Voice On/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: /Voice On/i }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return /Voice On/i.test(el.textContent ?? "");
+      })!,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Voice error")).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("button", { name: "Dismiss" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent === "Dismiss";
+      }),
+    ).toBeDefined();
   });
 });
 
-describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
+describe("VoiceBanner — dismiss error restores idle (MC-VC-005)", () => {
   it("hides error banner and shows Voice On again when Dismiss is clicked", async () => {
     setMockFeatureSwitches({ voiceChat: true });
 
     server.use(
-      http.get("*/api/zero/tasks", () => HttpResponse.json({ tasks: [] })),
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({ tasks: [] });
+      }),
       http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json(
           { error: { message: "fail" } },
@@ -167,15 +190,28 @@ describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Voice On/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Voice On/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: /Voice On/i }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return /Voice On/i.test(el.textContent ?? "");
+      })!,
+    );
 
-    const dismiss = await waitFor(() => {
-      return screen.getByRole("button", { name: "Dismiss" });
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent === "Dismiss";
+        }),
+      ).toBeDefined();
     });
+    const dismiss = screen.getAllByRole("button").find((el) => {
+      return el.textContent === "Dismiss";
+    })!;
     await user.click(dismiss);
 
     await waitFor(() => {
@@ -183,7 +219,9 @@ describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
     });
     // Button restored to idle state
     expect(
-      screen.getByRole("button", { name: /Voice On/i }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button").find((el) => {
+        return /Voice On/i.test(el.textContent ?? "");
+      }),
+    ).toBeDefined();
   });
 });
