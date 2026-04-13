@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.76.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.3...runner-rs-v0.76.4) (2026-04-13)
+
+
+### Bug Fixes
+
+* **runner:** shell-quote exec arguments before joining ([#9052](https://github.com/vm0-ai/vm0/issues/9052)) ([44e0d4d](https://github.com/vm0-ai/vm0/commit/44e0d4d0c29146259acce856c3d6642a90441f6c))
+
+
+### Refactoring
+
+* use proxy-reported usage as billing source of truth ([#9064](https://github.com/vm0-ai/vm0/issues/9064)) ([b655964](https://github.com/vm0-ai/vm0/commit/b65596423f8655117ebd67c38731eb5f35c332b7))
+
 ## [0.76.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.2...runner-rs-v0.76.3) (2026-04-13)
 
 ## [0.76.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.1...runner-rs-v0.76.2) (2026-04-12)

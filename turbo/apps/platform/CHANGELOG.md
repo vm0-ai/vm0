@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.225.0](https://github.com/vm0-ai/vm0/compare/app-v0.224.0...app-v0.225.0) (2026-04-13)
+
+
+### Features
+
+* add archive status to mission control task list ([#9063](https://github.com/vm0-ai/vm0/issues/9063)) ([ca4d008](https://github.com/vm0-ai/vm0/commit/ca4d00838afb45f957c5a8d5fbc4dcde58265382))
+* **web:** group feature-gated sidebar footer items into more menu ([#9055](https://github.com/vm0-ai/vm0/issues/9055)) ([bfecba3](https://github.com/vm0-ai/vm0/commit/bfecba3b2c56267e129e8b645ed43b541568b1fd))
+
+
+### Bug Fixes
+
+* render schedule list items as real anchor links ([#8690](https://github.com/vm0-ai/vm0/issues/8690)) ([#9072](https://github.com/vm0-ai/vm0/issues/9072)) ([5dea27d](https://github.com/vm0-ai/vm0/commit/5dea27d5cc27223a1699f915f5dd3c51c697544d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.177.0
+
 ## [0.224.0](https://github.com/vm0-ai/vm0/compare/app-v0.223.0...app-v0.224.0) (2026-04-13)
 
 

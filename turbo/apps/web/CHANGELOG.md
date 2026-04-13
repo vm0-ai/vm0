@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.223.0](https://github.com/vm0-ai/vm0/compare/web-v12.222.1...web-v12.223.0) (2026-04-13)
+
+
+### Features
+
+* add archive status to mission control task list ([#9063](https://github.com/vm0-ai/vm0/issues/9063)) ([ca4d008](https://github.com/vm0-ai/vm0/commit/ca4d00838afb45f957c5a8d5fbc4dcde58265382))
+
+
+### Refactoring
+
+* use proxy-reported usage as billing source of truth ([#9064](https://github.com/vm0-ai/vm0/issues/9064)) ([b655964](https://github.com/vm0-ai/vm0/commit/b65596423f8655117ebd67c38731eb5f35c332b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.177.0
+
 ## [12.222.1](https://github.com/vm0-ai/vm0/compare/web-v12.222.0...web-v12.222.1) (2026-04-13)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.177.0](https://github.com/vm0-ai/vm0/compare/core-v8.176.0...core-v8.177.0) (2026-04-13)
+
+
+### Features
+
+* add archive status to mission control task list ([#9063](https://github.com/vm0-ai/vm0/issues/9063)) ([ca4d008](https://github.com/vm0-ai/vm0/commit/ca4d00838afb45f957c5a8d5fbc4dcde58265382))
+
 ## [8.176.0](https://github.com/vm0-ai/vm0/compare/core-v8.175.0...core-v8.176.0) (2026-04-13)
 
 
