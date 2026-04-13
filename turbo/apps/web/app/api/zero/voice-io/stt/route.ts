@@ -91,12 +91,13 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 6. Validate file type
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+  // 6. Validate file type (strip codec suffix, e.g. "audio/webm;codecs=opus" → "audio/webm")
+  const baseMimeType = file.type.split(";")[0] ?? file.type;
+  if (!ALLOWED_MIME_TYPES.has(baseMimeType)) {
     return NextResponse.json(
       {
         error: {
-          message: `Unsupported audio format: ${file.type}. Supported: webm, wav, mp3, m4a, mp4, mpeg, mpga`,
+          message: `Unsupported audio format: ${baseMimeType}. Supported: webm, wav, mp3, m4a, mp4, mpeg, mpga`,
           code: "BAD_REQUEST",
         },
       },

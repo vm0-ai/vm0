@@ -120,6 +120,27 @@ describe("POST /api/zero/voice-io/stt", () => {
     expect(body.error.code).toBe("BAD_REQUEST");
   });
 
+  it("should accept MIME types with codec suffix", async () => {
+    const userId = uniqueId("stt-codec");
+    await setupOrg(userId);
+
+    server.use(
+      http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+        return HttpResponse.json({ text: "Hello from codec test" });
+      }),
+    );
+
+    const file = createAudioFile(
+      1024,
+      "audio/webm;codecs=opus",
+      "recording.webm",
+    );
+    const response = await POST(createSttRequest(file));
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.text).toBe("Hello from codec test");
+  });
+
   it("should return transcribed text on success", async () => {
     const userId = uniqueId("stt-ok");
     await setupOrg(userId);
