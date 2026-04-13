@@ -871,6 +871,8 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
     });
   };
 
+  signal.throwIfAborted();
+
   // Re-acquire when the page becomes visible again after being hidden
   const onVisibilityChange = (): void => {
     if (document.visibilityState === "visible" && !signal.aborted) {
@@ -882,7 +884,6 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
     document.removeEventListener("visibilitychange", onVisibilityChange);
   });
 
-  signal.throwIfAborted();
   await requestAndTrack();
 });
 
