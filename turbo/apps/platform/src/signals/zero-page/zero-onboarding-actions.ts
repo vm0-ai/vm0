@@ -17,7 +17,6 @@ import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
 import { reloadAgents$ } from "../agent.ts";
 import { showAppSkeleton$ } from "../app-skeleton.ts";
-import { clerk$ } from "../auth.ts";
 import { logger } from "../log.ts";
 
 const L = logger("OnboardingAddToSlack");
@@ -239,69 +238,44 @@ const completeOnboarding$ = command(
 
 export const onboardingAddToSlack$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    L.info("[1] addToSlack invoked");
     set(showAppSkeleton$);
 
     const result = await set(completeOnboarding$, signal);
-    L.info("[2] completeOnboarding result", { agentId: result });
     if (!result) {
-      L.warn("[2a] no agentId returned, aborting before slack open");
       return;
     }
 
-    // Read admin role straight from Clerk — completeZeroOnboarding$ already
-    // refreshed the JWT and reloaded the organization, so the membership
-    // list reflects the freshly-created org.
-    const clerk = await get(clerk$);
+    const slackData = await get(slackOrgData$);
     signal.throwIfAborted();
-    const activeOrgId = clerk.organization?.id;
-    const membership = clerk.user?.organizationMemberships?.find((m) => {
-      return m.organization?.id === activeOrgId;
-    });
-    const isAdmin = membership?.role === "org:admin";
-    L.info("[3] clerk admin?", {
-      activeOrgId,
-      role: membership?.role,
-      isAdmin,
-    });
 
-    if (isAdmin) {
-      const slackData = await get(slackOrgData$);
-      signal.throwIfAborted();
-      L.info("[4] slackOrgData", {
-        isConnected: slackData.isConnected,
+    // The backend returns installUrl for admins on a brand-new workspace and
+    // connectUrl for everyone else (members, or admins where the workspace
+    // app is already installed). Either one continues the onboarding flow in
+    // Slack — open whichever the backend offered.
+    const targetUrl = slackData.installUrl ?? slackData.connectUrl;
+    const prompt = get(searchParams$).get("prompt");
+
+    if (targetUrl) {
+      const url = new URL(targetUrl, window.location.origin);
+      // Carry ?prompt= through the OAuth state so the DM greeting can
+      // reference it once install/connect completes.
+      if (prompt) {
+        url.searchParams.set("prompt", prompt);
+      }
+      url.searchParams.set("_t", String(Date.now()));
+      window.open(url.toString(), "_blank");
+    } else {
+      L.warn("no slack install or connect URL returned, skipping popup", {
         isInstalled: slackData.isInstalled,
         isAdmin: slackData.isAdmin,
-        installUrl: slackData.installUrl,
-        connectUrl: slackData.connectUrl,
       });
-      if (slackData.installUrl) {
-        const url = new URL(slackData.installUrl, window.location.origin);
-        // Carry ?prompt= through the Slack OAuth state so the DM greeting can
-        // reference it once install completes.
-        const prompt = get(searchParams$).get("prompt");
-        if (prompt) {
-          url.searchParams.set("prompt", prompt);
-        }
-        url.searchParams.set("_t", String(Date.now()));
-        const finalUrl = url.toString();
-        L.info("[5] window.open about to fire", { url: finalUrl });
-        const popup = window.open(finalUrl, "_blank");
-        L.info("[6] window.open returned", {
-          popupOpened: popup !== null,
-          popupClosed: popup?.closed,
-        });
-      } else {
-        L.warn("[4a] installUrl is null — backend says no install URL", {
-          isInstalled: slackData.isInstalled,
-          isAdmin: slackData.isAdmin,
-        });
-      }
-    } else {
-      L.info("[3a] not vm0 admin, skipping slack open");
     }
-    L.info("[7] navigating to /works");
-    set(detachedNavigateTo$, "/works");
+
+    // Forward ?prompt= to /works so the page can keep the same context (e.g.
+    // re-opening the DM) once the OAuth tab returns.
+    set(detachedNavigateTo$, "/works", {
+      searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
+    });
   },
 );
 
