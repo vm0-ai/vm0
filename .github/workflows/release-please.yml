@@ -908,6 +908,11 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          # R2 credentials for runner build image cache (read by runner via env)
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
         run: |
           cd ansible
           ansible-playbook \
@@ -934,6 +939,10 @@ jobs:
             -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
             -e "api_url=https://www.vm0.ai" \
             -e "runner_version=${RUNNER_VERSION}" \
+            -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
+            -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
+            -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
+            -e "r2_bucket=${R2_USER_STORAGES_BUCKET_NAME:-}" \
             -v
 
       - name: Global health check (non-blocking)
