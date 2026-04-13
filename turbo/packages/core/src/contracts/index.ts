@@ -805,6 +805,8 @@ export {
   type TaskItem,
   type TaskType,
   type TaskAgent,
+  type ArchiveTaskBody,
+  type UnarchiveTaskBody,
 } from "./tasks";
 export {
   zeroPhoneStatusContract,

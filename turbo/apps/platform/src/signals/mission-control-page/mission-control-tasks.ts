@@ -242,6 +242,41 @@ export const taskSignals$ = computed(async (get) => {
 });
 
 // ---------------------------------------------------------------------------
+// Archive command
+// ---------------------------------------------------------------------------
+
+export const archiveTask$ = command(
+  async ({ get, set }, taskId: string, _signal: AbortSignal): Promise<void> => {
+    const taskSignals = get(internalTaskSignals$);
+    const ts = taskSignals.get(taskId);
+    if (!ts) {
+      return;
+    }
+
+    const { task } = ts;
+    const client = get(zeroClient$)(tasksContract);
+
+    const result = await client.archive({
+      body: {
+        taskId: task.id,
+        taskType: task.type,
+        runId: task.latestRunId,
+      },
+    });
+
+    if (result.status !== 200) {
+      return;
+    }
+
+    // Optimistic removal: close panel and remove from cache immediately
+    set(ts.closeTask$);
+    const updated = new Map(get(internalTaskSignals$));
+    updated.delete(taskId);
+    set(internalTaskSignals$, updated);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Cross-task commands
 // ---------------------------------------------------------------------------
 
