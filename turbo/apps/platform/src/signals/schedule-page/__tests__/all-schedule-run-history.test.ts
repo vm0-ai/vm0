@@ -115,7 +115,7 @@ describe("all-schedule-run-history signals", () => {
       await context.store.get(allScheduleRunData$);
 
       const url = new URL(captured.urls[0]!);
-      expect(url.searchParams.has("status")).toBe(false);
+      expect(url.searchParams.has("status")).toBeFalsy();
     });
   });
 
