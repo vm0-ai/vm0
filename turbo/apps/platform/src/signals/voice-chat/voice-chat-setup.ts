@@ -7,6 +7,7 @@ import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { endVoiceChat$, vcStatus$ } from "./voice-chat-session.ts";
+import { clearPreparation$ } from "./voice-chat-preparation.ts";
 
 export const setupVoiceChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -22,12 +23,13 @@ export const setupVoiceChatPage$ = command(
 
     await set(hideAppSkeleton$, signal);
 
-    // End voice chat session when navigating away
+    // End voice chat session and clear preparation when navigating away
     signal.addEventListener("abort", () => {
       const status = get(vcStatus$);
       if (status === "connecting" || status === "connected") {
         set(endVoiceChat$);
       }
+      set(clearPreparation$);
     });
   },
 );

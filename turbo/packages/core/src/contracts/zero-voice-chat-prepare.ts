@@ -4,6 +4,36 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+const prepareTriggerBodySchema = z.object({
+  agentId: z.string().min(1),
+  mode: z.enum(["chat", "meeting"]).default("chat"),
+  prompt: z.string().min(1).optional(),
+});
+
+const prepareTriggerResponseSchema = z.object({
+  preparation: z.object({
+    id: z.string(),
+    status: z.string(),
+    runId: z.string().optional(),
+  }),
+});
+
+export const zeroVoiceChatPrepareTriggerContract = c.router({
+  trigger: {
+    method: "POST",
+    path: "/api/zero/voice-chat/prepare",
+    headers: authHeadersSchema,
+    body: prepareTriggerBodySchema,
+    responses: {
+      200: prepareTriggerResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Trigger a voice-chat preparation run (with dedup and cache)",
+  },
+});
+
 const prepareCompleteBodySchema = z.object({
   content: z.string().min(1),
 });
