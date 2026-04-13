@@ -94,7 +94,7 @@ GO_VERSION="1.26.2"
 CLAUDE_CODE_VERSION="2.1.104"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"
-AGENT_BROWSER_VERSION="0.25.3"
+AGENT_BROWSER_VERSION="0.25.4"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
