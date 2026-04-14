@@ -1,9 +1,10 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, count } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 
 export async function findTestSlackOrgInstallation(workspaceId: string) {
+  initServices();
   const [row] = await globalThis.services.db
     .select()
     .from(slackOrgInstallations)
@@ -16,6 +17,7 @@ export async function findTestSlackOrgConnections(
   slackUserId: string,
   workspaceId: string,
 ) {
+  initServices();
   return globalThis.services.db
     .select()
     .from(slackOrgConnections)
@@ -31,6 +33,7 @@ export async function findTestSlackOrgConnection(
   slackUserId: string,
   workspaceId: string,
 ) {
+  initServices();
   const [row] = await globalThis.services.db
     .select()
     .from(slackOrgConnections)
@@ -46,6 +49,7 @@ export async function findTestSlackOrgConnection(
 export async function findTestSlackOrgConnectionsByVm0UserId(
   vm0UserId: string,
 ) {
+  initServices();
   return globalThis.services.db
     .select()
     .from(slackOrgConnections)
@@ -86,8 +90,10 @@ export async function countSlackOrgConnections(
 export async function countSlackConnectionRows(
   vm0UserId: string,
 ): Promise<number> {
-  const rows = await globalThis.services.db.execute(
-    sql`SELECT COUNT(*)::int AS count FROM slack_org_connections WHERE vm0_user_id = ${vm0UserId}`,
-  );
-  return (rows.rows[0] as { count: number }).count;
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ count: count() })
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.vm0UserId, vm0UserId));
+  return row?.count ?? 0;
 }
