@@ -6,8 +6,9 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { IconMenu2, IconUserPlus } from "@tabler/icons-react";
+import { IconMenu2, IconUserPlus, IconVolume2 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
+import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import {
   currentChatAgent$,
@@ -39,6 +40,10 @@ import {
 } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import {
+  autoReadEnabled$,
+  toggleAutoRead$,
+} from "../../signals/voice-io/voice-io-settings.ts";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 
 function AgentAvatarInTopBar() {
@@ -77,6 +82,9 @@ function MobileTopBar() {
   const features = useLastResolved(featureSwitch$);
   const mobileChatListEnabled =
     features?.[FeatureSwitchKey.MobileChatListPage] ?? false;
+  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
+  const autoRead = useGet(autoReadEnabled$);
+  const toggleAutoReadFn = useSet(toggleAutoRead$);
 
   const showInvite = isChatRoute(activeId) && isAdmin;
 
@@ -128,6 +136,23 @@ function MobileTopBar() {
         </div>
       )}
       {!breadcrumb && <div className="flex-1" />}
+      {audioIOEnabled && (
+        <button
+          type="button"
+          onClick={() => {
+            toggleAutoReadFn();
+          }}
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+            autoRead
+              ? "text-primary bg-primary/10"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+          )}
+          aria-label="Toggle auto-read"
+        >
+          <IconVolume2 size={16} stroke={1.5} />
+        </button>
+      )}
       {showInvite && (
         <button
           type="button"

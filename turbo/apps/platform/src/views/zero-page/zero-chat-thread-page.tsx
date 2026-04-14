@@ -833,7 +833,7 @@ function AssistantMessageActions({
   return (
     <div className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
       <div className="hidden @[900px]:block" />
-      <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-150">
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>

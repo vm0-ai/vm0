@@ -5,6 +5,7 @@
 @import "@vm0/ui/styles/globals.css";
 
 @plugin "@tailwindcss/typography";
+@custom-variant pointer-coarse (@media (pointer: coarse));
 
 /* Include @vm0/ui components in Tailwind's content scanning */
 @source "../../../../../packages/ui/src/**/*.tsx";
