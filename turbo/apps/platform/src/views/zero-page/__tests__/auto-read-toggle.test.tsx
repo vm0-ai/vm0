@@ -71,11 +71,10 @@ describe("auto-read toggle - initial state is off (AR-003)", () => {
     mockSubagentThread(THREAD_ID);
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const toggleBtn = await waitFor(() => {
-      return screen.getAllByLabelText("Toggle auto-read")[0];
+    await waitFor(() => {
+      const toggleBtn = screen.getAllByLabelText("Toggle auto-read")[0];
+      expect(toggleBtn).toHaveAttribute("aria-pressed", "false");
     });
-
-    expect(toggleBtn).toHaveAttribute("aria-pressed", "false");
   });
 });
 
