@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.228.3](https://github.com/vm0-ai/vm0/compare/web-v12.228.2...web-v12.228.3) (2026-04-14)
+
+
+### Bug Fixes
+
+* **web:** resolve hreflang, html lang, sitemap and title seo issues ([#9206](https://github.com/vm0-ai/vm0/issues/9206)) ([98698a0](https://github.com/vm0-ai/vm0/commit/98698a0c7e4b27ef72384b4ffb1f0b10ea5f4f5e))
+
 ## [12.228.2](https://github.com/vm0-ai/vm0/compare/web-v12.228.1...web-v12.228.2) (2026-04-13)
 
 
