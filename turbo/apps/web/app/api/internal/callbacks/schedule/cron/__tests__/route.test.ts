@@ -6,7 +6,6 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRunInDb,
   createTestCallback,
   createTestSchedule,
   enableTestSchedule,
@@ -17,6 +16,7 @@ import {
   createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../../../../../src/__tests__/db-test-seeders/agents";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -45,7 +45,7 @@ describe("POST /api/internal/callbacks/schedule/cron", () => {
       timezone: "UTC",
     });
     await enableTestSchedule(composeId, schedule.name);
-    const { runId } = await createTestRunInDb(userId, composeId, {
+    const { runId } = await seedTestRun(userId, composeId, {
       prompt: "Cron task",
     });
     const { callbackId, secret } = await createTestCallback({

@@ -8,7 +8,6 @@ import {
 import {
   createTestCompose,
   createTestCallback,
-  createTestRunInDb,
   createTestRequest,
   createTestAgentSession,
   createTestPushSubscription,
@@ -23,6 +22,7 @@ import { POST } from "../route";
 import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
 import webpush, { WebPushError } from "web-push";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 vi.mock("web-push", async (importActual) => {
   const actual = await importActual<{ WebPushError: typeof WebPushError }>();
@@ -83,7 +83,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     const threadId: string = threadData.id;
 
     // Create a run in DB
-    const { runId } = await createTestRunInDb(user.userId, agentId, {
+    const { runId } = await seedTestRun(user.userId, agentId, {
       status,
     });
 

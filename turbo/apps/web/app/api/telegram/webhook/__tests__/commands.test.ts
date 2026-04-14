@@ -7,7 +7,6 @@ import {
 import {
   createTestCompose,
   createTestAgentSession,
-  createTestRunInDb,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   createTelegramCallbackInstallation,
@@ -19,6 +18,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 // Mock Next.js after() to execute synchronously
 const afterPromises: Promise<unknown>[] = [];
@@ -518,7 +518,7 @@ describe("Telegram bot commands", () => {
       const { composeId: fillerComposeId } = await createTestCompose(
         uniqueId("filler"),
       );
-      await createTestRunInDb(userId, fillerComposeId, {
+      await seedTestRun(userId, fillerComposeId, {
         status: "running",
         startedAt: new Date(),
       });

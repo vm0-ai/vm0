@@ -4,7 +4,6 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestRunInDb,
   createTestSandboxToken,
   findTestCreditUsagesByRunId,
   findTestClientCreditUsagesByRunId,
@@ -18,6 +17,7 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -239,7 +239,7 @@ describe("POST /api/webhooks/agent/usage", () => {
 
   describe("Model precedence", () => {
     it("prefers run.selectedModel over u.model", async () => {
-      const { runId: zeroRunId } = await createTestRunInDb(
+      const { runId: zeroRunId } = await seedTestRun(
         user.userId,
         testComposeId,
       );

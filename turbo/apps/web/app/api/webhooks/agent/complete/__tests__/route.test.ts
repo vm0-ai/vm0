@@ -7,7 +7,6 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestRunInDb,
   createTestSandboxToken,
   completeTestRun,
   createTestSchedule,
@@ -32,6 +31,7 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -357,7 +357,7 @@ describe("POST /api/webhooks/agent/complete", () => {
 
     it("should store error with report URL on failed completion", async () => {
       // Create run directly in DB in running state to avoid runner_job_queue issues
-      const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
         status: "running",
         prompt: "Test prompt",
       });
@@ -392,7 +392,7 @@ describe("POST /api/webhooks/agent/complete", () => {
 
     it("should ignore body.error and always use report URL", async () => {
       // Create run directly in DB in running state to avoid runner_job_queue issues
-      const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
         status: "running",
         prompt: "Test prompt",
       });

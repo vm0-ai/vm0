@@ -7,13 +7,13 @@ import {
 import {
   createTestCompose,
   createTestCallback,
-  createTestRunInDb,
   createSignedCallbackRequest,
   insertTestVoiceChatPreparation,
   getTestVoiceChatPreparation,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { POST } from "../route";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -35,7 +35,7 @@ describe("POST /api/internal/callbacks/voice-chat-prepare", () => {
     const { preparationStatus = "preparing", runStatus = "completed" } =
       options ?? {};
 
-    const { runId } = await createTestRunInDb(user.userId, agentId, {
+    const { runId } = await seedTestRun(user.userId, agentId, {
       status: runStatus,
     });
 

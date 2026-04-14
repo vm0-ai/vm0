@@ -6,7 +6,6 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRunInDb,
   createTestCallback,
   createTestSlackOrgInstallation,
   createTestRequest,
@@ -15,6 +14,7 @@ import {
   createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { POST } from "../route";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 // The staff org ID whose FNV-1a hash (afce210e) is listed in STAFF_ORG_ID_HASHES,
 // enabling the AuditLink feature switch for that org.
@@ -56,7 +56,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
 
   it("rejects request with invalid payload (missing required fields)", async () => {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
 
@@ -90,7 +90,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
 
   it("verifyCallback returns correct payload for valid request", async () => {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
 
@@ -135,7 +135,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   it("handles progress status by setting thinking status", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
 
@@ -176,7 +176,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   it("posts completion message to Slack thread", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
     await completeTestRun(user.userId, runId);
@@ -224,7 +224,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   it("posts error message for failed status", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
 
@@ -269,7 +269,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
 
   it("returns 404 when installation is not found (non-progress)", async () => {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
 
@@ -308,7 +308,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   it("clears thread status after posting completion", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
     await completeTestRun(user.userId, runId);
@@ -358,7 +358,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
     // Use a non-staff orgId so the AuditLink feature switch is disabled
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
     await completeTestRun(user.userId, runId);
@@ -401,7 +401,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
     // Use the staff orgId whose hash is in STAFF_ORG_ID_HASHES, enabling AuditLink
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
       orgId: STAFF_ORG_ID,
     });

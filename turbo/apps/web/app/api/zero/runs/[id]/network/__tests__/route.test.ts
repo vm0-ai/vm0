@@ -5,13 +5,13 @@ import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
-  createTestRunInDb,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -55,7 +55,7 @@ describe("GET /api/zero/runs/:id/network", () => {
     const userId = uniqueId("znet-get");
     await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("znet")}`);
-    const { runId } = await createTestRunInDb(userId, compose.composeId, {
+    const { runId } = await seedTestRun(userId, compose.composeId, {
       status: "completed",
     });
 
@@ -95,7 +95,7 @@ describe("GET /api/zero/runs/:id/network", () => {
     const userId = uniqueId("znet-empty");
     await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("znet")}`);
-    const { runId } = await createTestRunInDb(userId, compose.composeId, {
+    const { runId } = await seedTestRun(userId, compose.composeId, {
       status: "completed",
     });
 
@@ -133,7 +133,7 @@ describe("GET /api/zero/runs/:id/network", () => {
     const userId = uniqueId("znet-more");
     await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("znet")}`);
-    const { runId } = await createTestRunInDb(userId, compose.composeId, {
+    const { runId } = await seedTestRun(userId, compose.composeId, {
       status: "completed",
     });
 

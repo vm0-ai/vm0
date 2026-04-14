@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRunInDb,
   createTestSecret,
   createTestVariable,
   createTestAgentSession,
@@ -36,6 +35,7 @@ import {
 } from "../../../../__tests__/api-test-helpers";
 import { insertTestComposeJob } from "../../../../__tests__/db-test-seeders/agents";
 import { deleteUserData } from "../user-deletion-service";
+import { seedTestRun } from "../../../../__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -54,17 +54,17 @@ describe("deleteUserData", () => {
     const { userId } = await context.setupUser();
 
     const { composeId } = await createTestCompose("cancel-test");
-    const { runId: queuedRunId } = await createTestRunInDb(userId, composeId, {
+    const { runId: queuedRunId } = await seedTestRun(userId, composeId, {
       status: "queued",
     });
-    const { runId: pendingRunId } = await createTestRunInDb(userId, composeId, {
+    const { runId: pendingRunId } = await seedTestRun(userId, composeId, {
       status: "pending",
     });
-    const { runId: runningRunId } = await createTestRunInDb(userId, composeId, {
+    const { runId: runningRunId } = await seedTestRun(userId, composeId, {
       status: "running",
       startedAt: new Date(),
     });
-    await createTestRunInDb(userId, composeId, {
+    await seedTestRun(userId, composeId, {
       status: "completed",
       completedAt: new Date(),
     });
@@ -96,7 +96,7 @@ describe("deleteUserData", () => {
     const { userId, orgId } = await context.setupUser();
 
     const { composeId } = await createTestCompose("cascade-run-test");
-    const { runId } = await createTestRunInDb(userId, composeId, {
+    const { runId } = await seedTestRun(userId, composeId, {
       status: "completed",
       completedAt: new Date(),
     });
@@ -264,7 +264,7 @@ describe("deleteUserData", () => {
     // Composes, sessions, runs
     const { composeId, agentId } = await createTestCompose("full-user-test");
     const session = await createTestAgentSession(userId, composeId);
-    const { runId } = await createTestRunInDb(userId, composeId, {
+    const { runId } = await seedTestRun(userId, composeId, {
       status: "running",
       startedAt: new Date(),
     });
@@ -369,7 +369,7 @@ describe("deleteUserData", () => {
     const { userId } = await context.setupUser();
 
     const { composeId } = await createTestCompose("idempotent-test");
-    await createTestRunInDb(userId, composeId, {
+    await seedTestRun(userId, composeId, {
       status: "running",
       startedAt: new Date(),
     });

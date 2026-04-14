@@ -6,9 +6,9 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  createCompletedTestRun,
   findUsageDaily,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { seedCompletedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../src/env";
 
 vi.hoisted(() => {
@@ -80,7 +80,7 @@ describe("GET /api/cron/aggregate-usage", () => {
     const { date, dateStr } = yesterdayDate();
 
     // Run 1: 5 seconds
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -90,7 +90,7 @@ describe("GET /api/cron/aggregate-usage", () => {
 
     // Run 2: 8 seconds (1 min after run 1)
     const run2Start = new Date(date.getTime() + 60000);
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: run2Start,
@@ -110,7 +110,7 @@ describe("GET /api/cron/aggregate-usage", () => {
   it("should be idempotent on rerun", async () => {
     const { date, dateStr } = yesterdayDate();
 
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,

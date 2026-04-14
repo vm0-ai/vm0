@@ -7,7 +7,6 @@ import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
-  createTestRunInDb,
   findTestOutboxItems,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -18,6 +17,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { reloadEnv } from "../../../../../src/env";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
@@ -34,7 +34,7 @@ async function setupFailedRun(
   },
 ) {
   const compose = await createTestCompose(`agent-${uniqueId("rpt")}`);
-  const { runId } = await createTestRunInDb(userId, compose.composeId, {
+  const { runId } = await seedTestRun(userId, compose.composeId, {
     status: "failed",
     ...options,
   });
@@ -97,7 +97,7 @@ describe("POST /api/zero/report-error", () => {
 
   it("should return 400 for non-failed run", async () => {
     const compose = await createTestCompose(`agent-${uniqueId("rpt")}`);
-    const { runId } = await createTestRunInDb(userId, compose.composeId, {
+    const { runId } = await seedTestRun(userId, compose.composeId, {
       status: "completed",
     });
 
@@ -427,7 +427,7 @@ describe("POST /api/zero/report-error", () => {
 
     // First run (completed)
     const compose1 = await createTestCompose(`agent-${uniqueId("rpt")}`);
-    const { runId: firstRunId } = await createTestRunInDb(
+    const { runId: firstRunId } = await seedTestRun(
       userId,
       compose1.composeId,
       {
@@ -444,7 +444,7 @@ describe("POST /api/zero/report-error", () => {
 
     // Continuation run (failed)
     const compose2 = await createTestCompose(`agent-${uniqueId("rpt")}`);
-    const { runId: failedRunId } = await createTestRunInDb(
+    const { runId: failedRunId } = await seedTestRun(
       userId,
       compose2.composeId,
       {

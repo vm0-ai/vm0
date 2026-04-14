@@ -5,7 +5,6 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestRunInDb,
   insertOrgMembersCacheEntry,
   findTestOutboxItems,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -19,6 +18,7 @@ import { generateZeroToken } from "../../../../../src/lib/auth/sandbox-token";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { reloadEnv } from "../../../../../src/env";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
@@ -35,7 +35,7 @@ async function setupRunContext(
       ? crypto.randomUUID()
       : options.continuedFromSessionId;
   const { composeId } = await createTestCompose(uniqueId("agent"));
-  const { runId } = await createTestRunInDb(user.userId, composeId, {
+  const { runId } = await seedTestRun(user.userId, composeId, {
     status: "running",
     ...(sessionId ? { continuedFromSessionId: sessionId } : {}),
   });
@@ -112,11 +112,11 @@ describe("POST /api/zero/developer-support", () => {
     const { composeId: composeId2 } = await createTestCompose(
       uniqueId("agent"),
     );
-    const { runId: runId1 } = await createTestRunInDb(user.userId, composeId1, {
+    const { runId: runId1 } = await seedTestRun(user.userId, composeId1, {
       status: "running",
       continuedFromSessionId: sessionId,
     });
-    const { runId: runId2 } = await createTestRunInDb(user.userId, composeId2, {
+    const { runId: runId2 } = await seedTestRun(user.userId, composeId2, {
       status: "running",
       continuedFromSessionId: sessionId,
     });
@@ -151,11 +151,11 @@ describe("POST /api/zero/developer-support", () => {
     const { composeId: composeId2 } = await createTestCompose(
       uniqueId("agent"),
     );
-    const { runId: runId1 } = await createTestRunInDb(user.userId, composeId1, {
+    const { runId: runId1 } = await seedTestRun(user.userId, composeId1, {
       status: "running",
       continuedFromSessionId: sessionId,
     });
-    const { runId: runId2 } = await createTestRunInDb(user.userId, composeId2, {
+    const { runId: runId2 } = await seedTestRun(user.userId, composeId2, {
       status: "running",
       continuedFromSessionId: sessionId,
     });
@@ -312,31 +312,23 @@ describe("POST /api/zero/developer-support", () => {
     const { composeId: composeId1 } = await createTestCompose(
       uniqueId("agent"),
     );
-    const { runId: firstRunId } = await createTestRunInDb(
-      user.userId,
-      composeId1,
-      {
-        status: "completed",
-        result: {
-          agentSessionId: sessionId,
-          checkpointId: "cp-1",
-          conversationId: "cv-1",
-        },
+    const { runId: firstRunId } = await seedTestRun(user.userId, composeId1, {
+      status: "completed",
+      result: {
+        agentSessionId: sessionId,
+        checkpointId: "cp-1",
+        conversationId: "cv-1",
       },
-    );
+    });
 
     // Create continuation run (the current run)
     const { composeId: composeId2 } = await createTestCompose(
       uniqueId("agent"),
     );
-    const { runId: currentRunId } = await createTestRunInDb(
-      user.userId,
-      composeId2,
-      {
-        status: "running",
-        continuedFromSessionId: sessionId,
-      },
-    );
+    const { runId: currentRunId } = await seedTestRun(user.userId, composeId2, {
+      status: "running",
+      continuedFromSessionId: sessionId,
+    });
 
     await insertOrgMembersCacheEntry({
       orgId: user.orgId,
@@ -394,7 +386,7 @@ describe("POST /api/zero/developer-support", () => {
   });
 
   it("includes user prompts as user_prompt events in chat-history.jsonl", async () => {
-    const prompt = "test prompt"; // default prompt from createTestRunInDb
+    const prompt = "test prompt"; // default prompt from seedTestRun
     const { token } = await setupRunContext(user);
 
     // Step 1: Get consent code
@@ -460,35 +452,27 @@ describe("POST /api/zero/developer-support", () => {
     const { composeId: composeId1 } = await createTestCompose(
       uniqueId("agent"),
     );
-    const { runId: firstRunId } = await createTestRunInDb(
-      user.userId,
-      composeId1,
-      {
-        status: "completed",
-        prompt: firstPrompt,
-        createdAt: new Date("2024-01-01T00:00:00Z"),
-        result: {
-          agentSessionId: sessionId,
-          checkpointId: "cp-1",
-          conversationId: "cv-1",
-        },
+    const { runId: firstRunId } = await seedTestRun(user.userId, composeId1, {
+      status: "completed",
+      prompt: firstPrompt,
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+      result: {
+        agentSessionId: sessionId,
+        checkpointId: "cp-1",
+        conversationId: "cv-1",
       },
-    );
+    });
 
     // Create continuation run (current, later createdAt)
     const { composeId: composeId2 } = await createTestCompose(
       uniqueId("agent"),
     );
-    const { runId: currentRunId } = await createTestRunInDb(
-      user.userId,
-      composeId2,
-      {
-        status: "running",
-        prompt: secondPrompt,
-        createdAt: new Date("2024-01-01T01:00:00Z"),
-        continuedFromSessionId: sessionId,
-      },
-    );
+    const { runId: currentRunId } = await seedTestRun(user.userId, composeId2, {
+      status: "running",
+      prompt: secondPrompt,
+      createdAt: new Date("2024-01-01T01:00:00Z"),
+      continuedFromSessionId: sessionId,
+    });
 
     await insertOrgMembersCacheEntry({
       orgId: user.orgId,

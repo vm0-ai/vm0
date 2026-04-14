@@ -10,7 +10,6 @@ import { server } from "../../../../../src/mocks/server";
 import { reloadEnv } from "../../../../../src/env";
 import {
   createTestCompose,
-  createTestRunInDb,
   createTestSecret,
   createTestVariable,
   createTestAgentSession,
@@ -78,6 +77,7 @@ vi.mock("stripe", () => {
 
 // Import route handler AFTER mocks are set up
 import { POST } from "../route";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -252,7 +252,7 @@ describe("organization.deleted e2e cleanup", () => {
     // Composes + sessions + runs
     const { composeId, agentId } = await createTestCompose("e2e-org-test");
     const session = await createTestAgentSession(userId, composeId);
-    await createTestRunInDb(userId, composeId, {
+    await seedTestRun(userId, composeId, {
       status: "running",
       startedAt: new Date(),
     });
@@ -415,7 +415,7 @@ describe("user.deleted e2e cleanup", () => {
     // Composes + sessions + runs
     const { composeId, agentId } = await createTestCompose("e2e-user-test");
     const session = await createTestAgentSession(userId, composeId);
-    await createTestRunInDb(userId, composeId, {
+    await seedTestRun(userId, composeId, {
       status: "running",
       startedAt: new Date(),
     });

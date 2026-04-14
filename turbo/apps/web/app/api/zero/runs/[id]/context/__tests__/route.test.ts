@@ -5,7 +5,6 @@ import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
-  createTestRunInDb,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -13,6 +12,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import type { RunContextSnapshot } from "../../../../../../../src/lib/shared/axiom/client";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -85,7 +85,7 @@ describe("GET /api/zero/runs/:id/context", () => {
     const userId = uniqueId("zctx-get");
     await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zctx")}`);
-    const { runId } = await createTestRunInDb(userId, compose.composeId, {
+    const { runId } = await seedTestRun(userId, compose.composeId, {
       status: "running",
       prompt: "test prompt",
     });
@@ -128,7 +128,7 @@ describe("GET /api/zero/runs/:id/context", () => {
     const userId = uniqueId("zctx-nc");
     await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zctx")}`);
-    const { runId } = await createTestRunInDb(userId, compose.composeId, {
+    const { runId } = await seedTestRun(userId, compose.composeId, {
       status: "running",
     });
 

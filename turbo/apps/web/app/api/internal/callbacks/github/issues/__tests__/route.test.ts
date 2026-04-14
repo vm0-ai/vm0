@@ -10,7 +10,6 @@ import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
-  createTestRunInDb,
   createTestCallback,
   createTestAgentSession,
   insertTestGitHubInstallation,
@@ -19,6 +18,7 @@ import {
   createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -85,7 +85,7 @@ async function givenGitHubCallbackSetup(overrides?: {
   await createTestOrg(uniqueId("gh-cb-org"));
   const { composeId } = await createTestCompose("gh-callback-agent");
 
-  const { runId } = await createTestRunInDb(userId, composeId, {
+  const { runId } = await seedTestRun(userId, composeId, {
     prompt: "Test GitHub prompt",
   });
   const installation = await insertTestGitHubInstallation(composeId);
@@ -295,7 +295,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       await createTestOrg(uniqueId("gh-missing-org"));
       const { composeId } = await createTestCompose("gh-missing-agent");
 
-      const { runId } = await createTestRunInDb(userId, composeId, {
+      const { runId } = await seedTestRun(userId, composeId, {
         prompt: "Test prompt",
       });
 

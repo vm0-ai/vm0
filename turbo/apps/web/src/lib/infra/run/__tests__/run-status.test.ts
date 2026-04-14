@@ -6,10 +6,10 @@ import {
 } from "../../../../__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRunInDb,
   findTestRunRecord,
 } from "../../../../__tests__/api-test-helpers";
 import { transitionRunStatus } from "../run-status";
+import { seedTestRun } from "../../../../__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -25,7 +25,7 @@ describe("transitionRunStatus", () => {
   });
 
   it("should transition from valid status", async () => {
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "pending",
     });
 
@@ -41,7 +41,7 @@ describe("transitionRunStatus", () => {
   });
 
   it("should reject transition from terminal status", async () => {
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
 
@@ -57,7 +57,7 @@ describe("transitionRunStatus", () => {
   });
 
   it("should reject transition when status not in allowed list", async () => {
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "running",
     });
 
@@ -73,7 +73,7 @@ describe("transitionRunStatus", () => {
   });
 
   it("should ensure only one concurrent transition wins", async () => {
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "running",
     });
 

@@ -3,7 +3,6 @@ import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
-  createTestRunInDb,
   insertTestVoiceChatSession,
   getTestVoiceChatSessionStatus,
   getTestVoiceChatEvents,
@@ -14,6 +13,7 @@ import {
   uniqueId,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const { POST } = await import("../route");
 
@@ -139,7 +139,7 @@ describe("POST /api/zero/voice-chat/[id]/end", () => {
   it("should end active session, write event, and cancel run", async () => {
     // Create a run record for FK constraint
     const compose = await createTestCompose(uniqueId("vc-agent"));
-    const testRun = await createTestRunInDb(userId, compose.composeId);
+    const testRun = await seedTestRun(userId, compose.composeId);
 
     const sessionId = await insertTestVoiceChatSession({
       orgId,

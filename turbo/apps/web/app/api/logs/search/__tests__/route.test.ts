@@ -4,10 +4,10 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestRunInDb,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 // Only mock external services
 vi.mock("@clerk/nextjs/server");
@@ -242,7 +242,7 @@ describe("GET /api/logs/search", () => {
 
     // Create a compose + run in a different org
     const otherOrg = await context.createAgentCompose(user.userId);
-    const { runId: otherOrgRunId } = await createTestRunInDb(
+    const { runId: otherOrgRunId } = await seedTestRun(
       user.userId,
       otherOrg.id,
     );
@@ -275,7 +275,7 @@ describe("GET /api/logs/search", () => {
 
     // Create a run in a different org
     const otherOrg = await context.createAgentCompose(user.userId);
-    const { runId: otherOrgRunId } = await createTestRunInDb(
+    const { runId: otherOrgRunId } = await seedTestRun(
       user.userId,
       otherOrg.id,
     );

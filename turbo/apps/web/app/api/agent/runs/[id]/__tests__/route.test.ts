@@ -5,7 +5,6 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestRunInDb,
   completeTestRun,
   insertOrgCacheEntry,
   insertOrgMembersCacheEntry,
@@ -21,6 +20,7 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -135,7 +135,7 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
     it("should return 404 for run from a different org", async () => {
       // Create a compose + run in a different org
       const otherOrg = await context.createAgentCompose(user.userId);
-      const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+      const { runId } = await seedTestRun(user.userId, otherOrg.id, {
         status: "running",
         prompt: "Other org run",
       });
@@ -154,7 +154,7 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
     it("should return run when switching to the correct org", async () => {
       // Create a compose + run in a different org
       const otherOrg = await context.createAgentCompose(user.userId);
-      const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+      const { runId } = await seedTestRun(user.userId, otherOrg.id, {
         status: "running",
         prompt: "Other org run",
       });

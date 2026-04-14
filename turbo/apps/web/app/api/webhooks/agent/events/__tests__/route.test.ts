@@ -11,7 +11,6 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestRunInDb,
   createTestSandboxToken,
   findTestClientCreditUsagesByRunId,
   findTestCreditUsagesByRunId,
@@ -26,6 +25,7 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import * as axiomModule from "../../../../../../src/lib/shared/axiom";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 // Only mock external services
 
@@ -697,7 +697,7 @@ describe("POST /api/webhooks/agent/events", () => {
 
     it("should store modelProvider and selectedModel from agent run in credit_usage", async () => {
       // Create a run with zeroRuns record (needed for modelProvider/selectedModel storage)
-      const { runId: zeroRunId } = await createTestRunInDb(
+      const { runId: zeroRunId } = await seedTestRun(
         user.userId,
         testComposeId,
       );
@@ -746,7 +746,7 @@ describe("POST /api/webhooks/agent/events", () => {
 
     it("should prefer run.selectedModel over system.init model", async () => {
       // Create a run with zeroRuns record (needed for selectedModel storage)
-      const { runId: zeroRunId } = await createTestRunInDb(
+      const { runId: zeroRunId } = await seedTestRun(
         user.userId,
         testComposeId,
       );

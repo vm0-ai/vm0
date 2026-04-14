@@ -3,7 +3,6 @@ import { GET, POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestRunInDb,
   addTestRunToThread,
   insertTestChatThread,
   getTestAgentComposeName,
@@ -18,6 +17,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -64,7 +64,7 @@ describe("GET /api/zero/tasks", () => {
     );
 
     // Create a run and link it to the thread
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
     await addTestRunToThread(threadId, runId, user.userId);
@@ -95,7 +95,7 @@ describe("GET /api/zero/tasks", () => {
     });
 
     // Link a run to the schedule so it becomes actionable
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
     await updateTestScheduleState(schedule.id, { lastRunId: runId });
@@ -141,7 +141,7 @@ describe("GET /api/zero/tasks", () => {
     const { composeId } = await createTestCompose(uniqueId("voice-chat-task"));
 
     // Create a run so the voice chat session is actionable
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
 
@@ -196,7 +196,7 @@ describe("GET /api/zero/tasks", () => {
       agent1,
       "Agent 1 Thread",
     );
-    const { runId: run1 } = await createTestRunInDb(user.userId, agent1, {
+    const { runId: run1 } = await seedTestRun(user.userId, agent1, {
       status: "completed",
     });
     await addTestRunToThread(thread1, run1, user.userId);
@@ -206,7 +206,7 @@ describe("GET /api/zero/tasks", () => {
       agent2,
       "Agent 2 Thread",
     );
-    const { runId: run2 } = await createTestRunInDb(user.userId, agent2, {
+    const { runId: run2 } = await seedTestRun(user.userId, agent2, {
       status: "completed",
     });
     await addTestRunToThread(thread2, run2, user.userId);
@@ -242,7 +242,7 @@ describe("GET /api/zero/tasks", () => {
       composeId,
       "User1 Thread",
     );
-    const { runId: run1 } = await createTestRunInDb(user.userId, composeId, {
+    const { runId: run1 } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
     await addTestRunToThread(thread1, run1, user.userId);
@@ -256,7 +256,7 @@ describe("GET /api/zero/tasks", () => {
       otherComposeId,
       "User2 Thread",
     );
-    const { runId: run2 } = await createTestRunInDb(
+    const { runId: run2 } = await seedTestRun(
       otherUser.userId,
       otherComposeId,
       { status: "completed" },
@@ -294,11 +294,11 @@ describe("GET /api/zero/tasks", () => {
     const sched2 = await createTestSchedule(agent2, "agent2-schedule");
 
     // Link runs so schedules are actionable
-    const { runId: run1 } = await createTestRunInDb(user.userId, agent1, {
+    const { runId: run1 } = await seedTestRun(user.userId, agent1, {
       status: "completed",
     });
     await updateTestScheduleState(sched1.id, { lastRunId: run1 });
-    const { runId: run2 } = await createTestRunInDb(user.userId, agent2, {
+    const { runId: run2 } = await seedTestRun(user.userId, agent2, {
       status: "completed",
     });
     await updateTestScheduleState(sched2.id, { lastRunId: run2 });
@@ -329,7 +329,7 @@ describe("GET /api/zero/tasks", () => {
         `Thread ${i}`,
       );
 
-      const { runId } = await createTestRunInDb(user.userId, composeId, {
+      const { runId } = await seedTestRun(user.userId, composeId, {
         status: "completed",
         createdAt: new Date(baseTime + i * 60_000),
       });
@@ -358,11 +358,10 @@ describe("GET /api/zero/tasks", () => {
       composeId,
       "Terminal Task",
     );
-    const { runId: terminalRunId } = await createTestRunInDb(
-      user.userId,
-      composeId,
-      { status: "completed", createdAt: new Date(now) },
-    );
+    const { runId: terminalRunId } = await seedTestRun(user.userId, composeId, {
+      status: "completed",
+      createdAt: new Date(now),
+    });
     await addTestRunToThread(terminalThreadId, terminalRunId, user.userId);
 
     // Active task with an older timestamp (createdAt = 1 minute ago)
@@ -371,11 +370,10 @@ describe("GET /api/zero/tasks", () => {
       composeId,
       "Active Task",
     );
-    const { runId: activeRunId } = await createTestRunInDb(
-      user.userId,
-      composeId,
-      { status: "running", createdAt: new Date(now - 60_000) },
-    );
+    const { runId: activeRunId } = await seedTestRun(user.userId, composeId, {
+      status: "running",
+      createdAt: new Date(now - 60_000),
+    });
     await addTestRunToThread(activeThreadId, activeRunId, user.userId);
 
     const request = createTestRequest("http://localhost:3000/api/zero/tasks");
@@ -401,11 +399,10 @@ describe("GET /api/zero/tasks", () => {
       composeId,
       "Terminal Task",
     );
-    const { runId: terminalRunId } = await createTestRunInDb(
-      user.userId,
-      composeId,
-      { status: "completed", createdAt: new Date(now) },
-    );
+    const { runId: terminalRunId } = await seedTestRun(user.userId, composeId, {
+      status: "completed",
+      createdAt: new Date(now),
+    });
     await addTestRunToThread(terminalThreadId, terminalRunId, user.userId);
 
     // Chat thread with no run (status = null) — chat tasks are allowed without runs
@@ -441,7 +438,7 @@ describe("GET /api/zero/tasks", () => {
       composeId,
       "Runner New",
     );
-    const { runId: runnerNewRunId } = await createTestRunInDb(
+    const { runId: runnerNewRunId } = await seedTestRun(
       user.userId,
       composeId,
       { status: "running", createdAt: new Date(now) },
@@ -453,7 +450,7 @@ describe("GET /api/zero/tasks", () => {
       composeId,
       "Runner Old",
     );
-    const { runId: runnerOldRunId } = await createTestRunInDb(
+    const { runId: runnerOldRunId } = await seedTestRun(
       user.userId,
       composeId,
       { status: "running", createdAt: new Date(now - 10 * 60_000) },
@@ -466,11 +463,10 @@ describe("GET /api/zero/tasks", () => {
       composeId,
       "Done New",
     );
-    const { runId: doneNewRunId } = await createTestRunInDb(
-      user.userId,
-      composeId,
-      { status: "completed", createdAt: new Date(now - 5 * 60_000) },
-    );
+    const { runId: doneNewRunId } = await seedTestRun(user.userId, composeId, {
+      status: "completed",
+      createdAt: new Date(now - 5 * 60_000),
+    });
     await addTestRunToThread(doneNewThreadId, doneNewRunId, user.userId);
 
     const doneOldThreadId = await insertTestChatThread(
@@ -478,11 +474,10 @@ describe("GET /api/zero/tasks", () => {
       composeId,
       "Done Old",
     );
-    const { runId: doneOldRunId } = await createTestRunInDb(
-      user.userId,
-      composeId,
-      { status: "completed", createdAt: new Date(now - 20 * 60_000) },
-    );
+    const { runId: doneOldRunId } = await seedTestRun(user.userId, composeId, {
+      status: "completed",
+      createdAt: new Date(now - 20 * 60_000),
+    });
     await addTestRunToThread(doneOldThreadId, doneOldRunId, user.userId);
 
     const request = createTestRequest("http://localhost:3000/api/zero/tasks");
@@ -540,7 +535,7 @@ describe("POST /api/zero/tasks/archive", () => {
       composeId,
       "To Archive",
     );
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
     await addTestRunToThread(threadId, runId, user.userId);
@@ -589,7 +584,7 @@ describe("POST /api/zero/tasks/archive", () => {
       composeId,
       "Idempotent",
     );
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
     await addTestRunToThread(threadId, runId, user.userId);
@@ -626,7 +621,7 @@ describe("POST /api/zero/tasks/archive", () => {
       composeId,
       "Restore Me",
     );
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
     await addTestRunToThread(threadId, runId, user.userId);
@@ -641,13 +636,9 @@ describe("POST /api/zero/tasks/archive", () => {
     );
 
     // Add a new run (simulates new activity)
-    const { runId: newRunId } = await createTestRunInDb(
-      user.userId,
-      composeId,
-      {
-        status: "running",
-      },
-    );
+    const { runId: newRunId } = await seedTestRun(user.userId, composeId, {
+      status: "running",
+    });
     await addTestRunToThread(threadId, newRunId, user.userId);
 
     // Task should reappear because latestRunId changed
@@ -667,7 +658,7 @@ describe("POST /api/zero/tasks/archive", () => {
     const schedule = await createTestSchedule(composeId, "Scheduled Task");
 
     // Link a run so the schedule is actionable
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
     await updateTestScheduleState(schedule.id, { lastRunId: runId });
@@ -742,7 +733,7 @@ describe("POST /api/zero/tasks/unarchive", () => {
       composeId,
       "Unarchive Me",
     );
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       status: "completed",
     });
     await addTestRunToThread(threadId, runId, user.userId);

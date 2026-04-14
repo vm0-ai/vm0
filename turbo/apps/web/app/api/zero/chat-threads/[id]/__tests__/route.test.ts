@@ -5,7 +5,6 @@ import {
   createTestRequest,
   createTestCompose,
   createTestSessionWithConversation,
-  createTestRunInDb,
   appendTestChatMessages,
   addTestRunToThread,
   updateTestChatThreadTitle,
@@ -15,6 +14,7 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -110,7 +110,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     );
 
     // 3. Create a completed run whose result references the session
-    const { runId } = await createTestRunInDb(userId, testComposeId, {
+    const { runId } = await seedTestRun(userId, testComposeId, {
       status: "completed",
       prompt: "What files changed?",
       result: { agentSessionId: session.id },
@@ -269,7 +269,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const { id: threadId } = await createRes.json();
 
     // Create a cancelled run (no agentSessionId in result)
-    const { runId } = await createTestRunInDb(testUserId, testComposeId, {
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
       status: "cancelled",
       prompt: "This was cancelled",
     });

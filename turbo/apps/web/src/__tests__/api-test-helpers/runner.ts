@@ -5,7 +5,7 @@ import { runnerJobQueue } from "../../db/schema/runner-job-queue";
 import { runnerState } from "../../db/schema/runner-state";
 import { agentRuns } from "../../db/schema/agent-run";
 import { encryptSecretsMap } from "../../lib/shared/crypto/secrets-encryption";
-import { getOrgIdFromVersion } from "./runs";
+import { getOrgIdFromVersion } from "../db-test-seeders/runs";
 
 /**
  * Create a runner job queue entry with an associated agent run.

@@ -4,7 +4,6 @@ import {
   createTestRequest,
   createTestCompose,
   createTestSessionWithConversation,
-  createTestRunInDb,
   findTestZeroRun,
   insertOrgDefaultModelProvider,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -20,6 +19,7 @@ import {
   generateZeroToken,
 } from "../../../../../src/lib/auth/sandbox-token";
 import { reloadEnv } from "../../../../../src/env";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -186,7 +186,7 @@ describe("POST /api/zero/runs", () => {
       // Create a parent agent compose and a run for it (simulates the parent agent)
       // Must happen before mockClerk({ userId: null }) since createTestCompose needs auth
       const parentCompose = await createTestCompose(uniqueId("parent-agent"));
-      const parentRun = await createTestRunInDb(
+      const parentRun = await seedTestRun(
         user.userId,
         parentCompose.composeId,
         { status: "running" },

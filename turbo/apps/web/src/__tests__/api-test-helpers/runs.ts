@@ -6,10 +6,6 @@ import { zeroRuns } from "../../db/schema/zero-run";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
 import { conversations } from "../../db/schema/conversation";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../db/schema/agent-compose";
 import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
 import { usageDaily } from "../../db/schema/usage-daily";
 import { initServices } from "../../lib/init-services";
@@ -40,156 +36,6 @@ import { createTestRequest } from "./core";
 
 export type { CreateRunResult };
 
-/**
- * Resolve orgId from a compose version ID.
- * Shared by test helpers that insert agent_runs records directly.
- */
-export async function getOrgIdFromVersion(versionId: string): Promise<string> {
-  const [row] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId })
-    .from(agentComposeVersions)
-    .innerJoin(
-      agentComposes,
-      eq(agentComposes.id, agentComposeVersions.composeId),
-    )
-    .where(eq(agentComposeVersions.id, versionId))
-    .limit(1);
-  if (!row) {
-    throw new Error(`Compose version ${versionId} not found`);
-  }
-  return row.orgId;
-}
-
-/**
- * Create a run record directly in the database.
- * Internal helper - use createTestRunInDb or createOrphanTestRun.
- */
-async function createTestRunDirect(
-  userId: string,
-  versionId: string,
-  orgId: string,
-  options?: {
-    status?: string;
-    prompt?: string;
-    continuedFromSessionId?: string;
-    scheduleId?: string;
-    triggerSource?: string;
-    createdAt?: Date;
-    startedAt?: Date;
-    completedAt?: Date;
-    result?: Record<string, unknown>;
-  },
-): Promise<{ id: string }> {
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId,
-      orgId,
-      agentComposeVersionId: versionId,
-      status: options?.status ?? "running",
-      prompt: options?.prompt ?? "test prompt",
-      continuedFromSessionId: options?.continuedFromSessionId,
-      ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
-      ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
-      ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
-      ...(options?.result ? { result: options.result } : {}),
-    })
-    .returning({ id: agentRuns.id });
-
-  await globalThis.services.db.insert(zeroRuns).values({
-    id: run!.id,
-    triggerSource: options?.triggerSource ?? "cli",
-    scheduleId: options?.scheduleId ?? null,
-  });
-
-  return run!;
-}
-
-/**
- * Create a run with no compose version (simulates deleted compose).
- * Useful for testing that endpoints handle orphan runs gracefully.
- */
-export async function createOrphanTestRun(
-  userId: string,
-  orgId: string,
-  options?: { status?: string; prompt?: string },
-): Promise<{ runId: string }> {
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId,
-      orgId,
-      agentComposeVersionId: null,
-      status: options?.status ?? "completed",
-      prompt: options?.prompt ?? "orphan run prompt",
-    })
-    .returning({ id: agentRuns.id });
-  return { runId: run!.id };
-}
-
-/**
- * Create a run record directly in the database, bypassing the API route and dispatch.
- * Use this when you need a run in a specific status without triggering dispatch logic
- * (e.g., for cron cleanup tests that need runs in pending/running state).
- */
-export async function createTestRunInDb(
-  userId: string,
-  agentComposeId: string,
-  options?: {
-    status?: string;
-    prompt?: string;
-    continuedFromSessionId?: string;
-    scheduleId?: string;
-    triggerSource?: string;
-    createdAt?: Date;
-    orgId?: string;
-    startedAt?: Date;
-    completedAt?: Date;
-    result?: Record<string, unknown>;
-  },
-): Promise<{ runId: string }> {
-  // Look up orgId from compose
-  const [compose] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentComposeId))
-    .limit(1);
-  if (!compose) {
-    throw new Error(`Compose ${agentComposeId} not found`);
-  }
-  // Create a version for the run
-  const versionId = uniqueId("version");
-  await globalThis.services.db.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId: agentComposeId,
-    content: { name: "test-agent", model: "claude-3-5-sonnet-20241022" },
-    createdBy: userId,
-  });
-  await globalThis.services.db
-    .update(agentComposes)
-    .set({ headVersionId: versionId })
-    .where(eq(agentComposes.id, agentComposeId));
-
-  // Create run directly (use provided orgId or fall back to compose orgId)
-  const run = await createTestRunDirect(
-    userId,
-    versionId,
-    options?.orgId ?? compose.orgId,
-    {
-      status: options?.status ?? "pending",
-      prompt: options?.prompt ?? "test prompt",
-      continuedFromSessionId: options?.continuedFromSessionId,
-      scheduleId: options?.scheduleId,
-      triggerSource: options?.triggerSource,
-      createdAt: options?.createdAt,
-      startedAt: options?.startedAt,
-      completedAt: options?.completedAt,
-      result: options?.result,
-    },
-  );
-  return { runId: run.id };
-}
-
 export async function createTestRun(
   agentComposeId: string,
   prompt: string,
@@ -201,6 +47,7 @@ export async function createTestRun(
     memoryName?: string;
     appendSystemPrompt?: string;
     permissionPolicies?: Record<string, Record<string, string>>;
+    triggerSource?: string;
   },
 ): Promise<{ runId: string; status: string }> {
   const request = createTestRequest("http://localhost:3000/api/agent/runs", {
@@ -485,78 +332,6 @@ export async function failTestRun(
       `Failed to fail run: ${(errorBody as { error?: { message?: string } }).error?.message || response.status}`,
     );
   }
-}
-
-/**
- * Create a completed agent run with controlled timestamps.
- *
- * Direct DB insert is required because createdAt uses PostgreSQL defaultNow()
- * which cannot be controlled via the API or JavaScript fake timers. Tests for
- * date-range logic (cron aggregation, usage API boundaries) need runs placed
- * at specific historical dates.
- */
-export async function createCompletedTestRun(options: {
-  composeVersionId: string;
-  userId: string;
-  createdAt: Date;
-  startedAt: Date;
-  completedAt: Date;
-}): Promise<string> {
-  const orgId = await getOrgIdFromVersion(options.composeVersionId);
-
-  const [row] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId: options.userId,
-      orgId,
-      agentComposeVersionId: options.composeVersionId,
-      status: "completed",
-      prompt: "test",
-      createdAt: options.createdAt,
-      startedAt: options.startedAt,
-      completedAt: options.completedAt,
-    })
-    .returning({ id: agentRuns.id });
-  return row!.id;
-}
-
-/**
- * Insert a stale pending run directly into the database.
- * This simulates a run stuck in "pending" state past the cleanup TTL,
- * which cannot be reproduced through normal API flows since the route
- * handler immediately transitions runs to "running" or "failed".
- *
- * @param userId - The user ID who owns the run
- * @param agentComposeVersionId - The compose version ID
- * @param ageMs - How old the run should be in milliseconds (default: 20 minutes)
- * @returns The inserted run ID
- */
-export async function insertStalePendingRun(
-  userId: string,
-  agentComposeVersionId: string,
-  ageMs: number = 20 * 60 * 1000,
-): Promise<string> {
-  const orgId = await getOrgIdFromVersion(agentComposeVersionId);
-
-  const staleCreatedAt = new Date(Date.now() - ageMs);
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId,
-      orgId,
-      agentComposeVersionId,
-      status: "pending",
-      prompt: "Stale pending run",
-      createdAt: staleCreatedAt,
-      lastHeartbeatAt: staleCreatedAt,
-    })
-    .returning({ id: agentRuns.id });
-
-  if (!run) {
-    throw new Error("Failed to insert stale pending run");
-  }
-
-  return run.id;
 }
 
 export async function markRunningRunsAsCompleted(userId: string) {

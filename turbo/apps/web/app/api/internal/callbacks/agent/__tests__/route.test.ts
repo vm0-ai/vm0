@@ -6,7 +6,6 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRunInDb,
   createTestCallback,
   createSignedCallbackRequest,
   findTestZeroRun,
@@ -16,6 +15,7 @@ import { reloadEnv } from "../../../../../../src/env";
 import { POST } from "../route";
 import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -33,7 +33,7 @@ describe("POST /api/internal/callbacks/agent", () => {
   });
 
   async function setupAgentRun() {
-    const { runId } = await createTestRunInDb(userId, composeId, {
+    const { runId } = await seedTestRun(userId, composeId, {
       prompt: "Delegate this task to the other agent",
       triggerSource: "agent",
     });

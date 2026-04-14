@@ -9,12 +9,12 @@ import {
   createTestArtifact,
   createTestMemory,
   createTestCompose,
-  createTestRunInDb,
   createTestCliToken,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
+import { seedTestRun } from "../../../../src/__tests__/db-test-seeders/runs";
 
 vi.hoisted(() => {
   vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");
@@ -37,7 +37,7 @@ describe("Storage capability enforcement", () => {
 
     // Create a compose and run so sandbox tokens can resolve org
     const { composeId } = await createTestCompose("test-agent");
-    const result = await createTestRunInDb(userId, composeId);
+    const result = await seedTestRun(userId, composeId);
     runId = result.runId;
   });
 

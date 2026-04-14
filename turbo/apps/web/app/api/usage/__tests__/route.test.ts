@@ -5,9 +5,9 @@ import {
   createTestCompose,
   createTestRun,
   completeTestRun,
-  createCompletedTestRun,
   findUsageDaily,
 } from "../../../../src/__tests__/api-test-helpers";
+import { seedCompletedTestRun } from "../../../../src/__tests__/db-test-seeders/runs";
 import {
   testContext,
   uniqueId,
@@ -172,7 +172,7 @@ describe("GET /api/usage", () => {
   });
 
   it("should calculate run times correctly with explicit timestamps", async () => {
-    // Use createCompletedTestRun to insert runs with explicit startedAt/completedAt.
+    // Use seedCompletedTestRun to insert runs with explicit startedAt/completedAt.
     // Runs created via createTestRun have startedAt=null (set later by runner claim),
     // so we must insert directly to test run_time_ms calculation.
 
@@ -180,7 +180,7 @@ describe("GET /api/usage", () => {
 
     // Run 1: 1 minute duration
     const startTime1 = new Date(now.getTime() - 3600000); // 1 hour ago
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId: testVersionId,
       userId: user.userId,
       createdAt: startTime1,
@@ -190,7 +190,7 @@ describe("GET /api/usage", () => {
 
     // Run 2: 2 minute duration
     const startTime2 = new Date(now.getTime() - 1800000); // 30 min ago
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId: testVersionId,
       userId: user.userId,
       createdAt: startTime2,
@@ -230,7 +230,7 @@ describe("GET /api/usage", () => {
 
       // Create runs on 2 different historical days
       const day1Run = new Date(fourDaysAgo.getTime() + 10 * 3600000);
-      await createCompletedTestRun({
+      await seedCompletedTestRun({
         composeVersionId,
         userId: user.userId,
         createdAt: day1Run,
@@ -239,7 +239,7 @@ describe("GET /api/usage", () => {
       });
 
       const day2Run = new Date(threeDaysAgo.getTime() + 10 * 3600000);
-      await createCompletedTestRun({
+      await seedCompletedTestRun({
         composeVersionId,
         userId: user.userId,
         createdAt: day2Run,
@@ -267,7 +267,7 @@ describe("GET /api/usage", () => {
 
       // Create a run 2 days ago at 14:00
       const partialDayStart = new Date(twoDaysAgo.getTime() + 14 * 3600000);
-      await createCompletedTestRun({
+      await seedCompletedTestRun({
         composeVersionId,
         userId: user.userId,
         createdAt: partialDayStart,
@@ -277,7 +277,7 @@ describe("GET /api/usage", () => {
 
       // Create another run 2 days ago at 08:00 (before partial boundary)
       const earlyRun = new Date(twoDaysAgo.getTime() + 8 * 3600000);
-      await createCompletedTestRun({
+      await seedCompletedTestRun({
         composeVersionId,
         userId: user.userId,
         createdAt: earlyRun,
@@ -313,7 +313,7 @@ describe("GET /api/usage", () => {
       );
 
       const runTime = new Date(fourDaysAgo.getTime() + 10 * 3600000);
-      await createCompletedTestRun({
+      await seedCompletedTestRun({
         composeVersionId,
         userId: user.userId,
         createdAt: runTime,
@@ -357,7 +357,7 @@ describe("GET /api/usage", () => {
       const runTime = new Date(now.getTime() - 3600000);
 
       // Create run in default user's org
-      await createCompletedTestRun({
+      await seedCompletedTestRun({
         composeVersionId: testVersionId,
         userId: user.userId,
         createdAt: runTime,
@@ -371,7 +371,7 @@ describe("GET /api/usage", () => {
       const { versionId: otherVersionId } = await createTestCompose(
         uniqueId("other-usage"),
       );
-      await createCompletedTestRun({
+      await seedCompletedTestRun({
         composeVersionId: otherVersionId,
         userId: otherUser.userId,
         createdAt: runTime,

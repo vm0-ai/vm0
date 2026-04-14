@@ -5,7 +5,6 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestRunInDb,
   createTestCallback,
   findTestQueueEntry,
   findTestRunRecord,
@@ -21,6 +20,7 @@ import {
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -59,7 +59,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
     it("should cancel a queued run and remove queue entry", async () => {
       // Create a queued run directly (queueing is a zero-layer concern,
       // so we set up the state manually instead of going through the CLI route)
-      const { runId: queuedRunId } = await createTestRunInDb(
+      const { runId: queuedRunId } = await seedTestRun(
         user.userId,
         testComposeId,
         { status: "queued" },
@@ -92,7 +92,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       expect(running.status).toBe("pending");
 
       // Create a queued run directly (queueing is a zero-layer concern)
-      const { runId: queuedRunId } = await createTestRunInDb(
+      const { runId: queuedRunId } = await seedTestRun(
         user.userId,
         testComposeId,
         { status: "queued" },
@@ -153,7 +153,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
   describe("Org-Scoped Filtering", () => {
     it("should return 404 for run from a different org", async () => {
       const otherOrg = await context.createAgentCompose(user.userId);
-      const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+      const { runId } = await seedTestRun(user.userId, otherOrg.id, {
         status: "running",
         prompt: "Other org run",
       });
@@ -171,7 +171,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
     it("should cancel run when switching to the correct org", async () => {
       const otherOrg = await context.createAgentCompose(user.userId);
-      const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+      const { runId } = await seedTestRun(user.userId, otherOrg.id, {
         status: "running",
         prompt: "Other org run",
       });

@@ -4,7 +4,6 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestRunInDb,
   insertTestQueueEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -13,6 +12,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -64,7 +64,7 @@ describe("GET /api/zero/queue-position", () => {
   });
 
   it("should return position 0 when run is not in queue", async () => {
-    const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+    const { runId } = await seedTestRun(user.userId, testComposeId, {
       status: "running",
     });
 
@@ -84,7 +84,7 @@ describe("GET /api/zero/queue-position", () => {
     const otherOrg = await context.createAgentCompose(user.userId);
 
     // Create run in the other org
-    const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+    const { runId } = await seedTestRun(user.userId, otherOrg.id, {
       status: "running",
     });
 
@@ -100,7 +100,7 @@ describe("GET /api/zero/queue-position", () => {
   });
 
   it("should return position when run is queued", async () => {
-    const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+    const { runId } = await seedTestRun(user.userId, testComposeId, {
       status: "queued",
     });
 

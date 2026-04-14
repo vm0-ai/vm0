@@ -6,13 +6,13 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRunInDb,
   createTestSandboxToken,
   insertTestVoiceChatPreparation,
   getTestVoiceChatPreparation,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 import { POST } from "../route";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -46,7 +46,7 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
   }) {
     const { preparationStatus = "preparing" } = options ?? {};
 
-    const { runId } = await createTestRunInDb(user.userId, agentId, {
+    const { runId } = await seedTestRun(user.userId, agentId, {
       status: "running",
     });
 
@@ -90,7 +90,7 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
 
   it("should return 404 when no preparation found for run", async () => {
     // Create a run with no linked preparation
-    const { runId } = await createTestRunInDb(user.userId, agentId, {
+    const { runId } = await seedTestRun(user.userId, agentId, {
       status: "running",
     });
     const token = await createTestSandboxToken(user.userId, runId);

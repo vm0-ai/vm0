@@ -5,7 +5,6 @@ import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
-  createTestRunInDb,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -13,6 +12,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -37,7 +37,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const userId = uniqueId("zcanc-ok");
     await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
-    const { runId } = await createTestRunInDb(userId, compose.composeId, {
+    const { runId } = await seedTestRun(userId, compose.composeId, {
       status: "running",
     });
 
@@ -55,7 +55,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const userId = uniqueId("zcanc-done");
     await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
-    const { runId } = await createTestRunInDb(userId, compose.composeId, {
+    const { runId } = await seedTestRun(userId, compose.composeId, {
       status: "completed",
       completedAt: new Date(),
     });

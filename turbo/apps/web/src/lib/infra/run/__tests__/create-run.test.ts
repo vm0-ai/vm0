@@ -13,13 +13,13 @@ import {
   createTestRun,
   createCliRun,
   type CliRunParams,
-  insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
   findTestStorage,
   findTestRunnerJobEntry,
   updateOrgTier,
 } from "../../../../__tests__/api-test-helpers";
+import { seedStalePendingRun } from "../../../../__tests__/db-test-seeders/runs";
 import { POST as checkpointWebhook } from "../../../../../app/api/webhooks/agent/checkpoints/route";
 import type { AgentComposeYaml } from "../../agent-compose/types";
 import { reloadEnv } from "../../../../env";
@@ -217,7 +217,7 @@ describe("createCliRun()", () => {
 
     it("should not count stale pending runs", async () => {
       // Free tier limit is 1; stale pending run should not count
-      await insertStalePendingRun(user.userId, versionId);
+      await seedStalePendingRun(user.userId, versionId);
 
       const result = await createCliRun(baseParams());
       expect(result.status).toBe("pending");

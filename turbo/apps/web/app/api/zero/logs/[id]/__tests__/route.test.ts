@@ -4,11 +4,9 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestRunInDb,
   createTestSchedule,
   completeTestRun,
   failTestRun,
-  createOrphanTestRun,
   insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
@@ -22,6 +20,10 @@ import {
   generateZeroToken,
   generateSandboxToken,
 } from "../../../../../../src/lib/auth/sandbox-token";
+import {
+  seedTestRun,
+  seedOrphanTestRun,
+} from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 vi.mock("@e2b/code-interpreter", () => {
   return {
@@ -219,7 +221,7 @@ describe("GET /api/zero/logs/[id]", () => {
       `sched-detail-${randomUUID().slice(0, 8)}`,
     );
 
-    const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+    const { runId } = await seedTestRun(user.userId, testComposeId, {
       status: "completed",
       scheduleId: schedule.id,
       triggerSource: "schedule",
@@ -255,7 +257,7 @@ describe("GET /api/zero/logs/[id]", () => {
   });
 
   it("should return run details when compose version has been deleted", async () => {
-    const { runId } = await createOrphanTestRun(user.userId, user.orgId, {
+    const { runId } = await seedOrphanTestRun(user.userId, user.orgId, {
       prompt: "Orphan run prompt",
     });
 

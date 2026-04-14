@@ -6,12 +6,12 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  createCompletedTestRun,
   ensureOrgRow,
   findInsightsDaily,
   seedCreditUsageRecord,
   seedUserCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { seedCompletedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../src/env";
 
 vi.hoisted(() => {
@@ -96,7 +96,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should aggregate previous day agent runs", async () => {
     const { date } = recentDate();
 
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -106,7 +106,7 @@ describe("GET /api/cron/aggregate-insights", () => {
 
     // Second run
     const run2Start = new Date(date.getTime() + 60000);
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: run2Start,
@@ -133,7 +133,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should aggregate credit usage per member", async () => {
     const { date } = recentDate();
 
-    const runId = await createCompletedTestRun({
+    const runId = await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -171,7 +171,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should include credit balance from org metadata", async () => {
     const { date } = recentDate();
 
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -191,7 +191,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should include Axiom network data when available", async () => {
     const { date } = recentDate();
 
-    const runId = await createCompletedTestRun({
+    const runId = await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -271,7 +271,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should record denied requests with empty firewall_permission", async () => {
     const { date } = recentDate();
 
-    const runId = await createCompletedTestRun({
+    const runId = await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -339,7 +339,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should continue without network data when Axiom fails", async () => {
     const { date } = recentDate();
 
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -370,7 +370,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should include userId in teamUsage entries", async () => {
     const { date } = recentDate();
 
-    const runId = await createCompletedTestRun({
+    const runId = await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -406,7 +406,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should use cached name when available in user_cache", async () => {
     const { date } = recentDate();
 
-    const runId = await createCompletedTestRun({
+    const runId = await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -441,7 +441,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should fall back to email prefix when name is null in user_cache", async () => {
     const { date } = recentDate();
 
-    const runId = await createCompletedTestRun({
+    const runId = await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,
@@ -477,7 +477,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   it("should be idempotent on rerun", async () => {
     const { date } = recentDate();
 
-    await createCompletedTestRun({
+    await seedCompletedTestRun({
       composeVersionId,
       userId,
       createdAt: date,

@@ -21,6 +21,7 @@ import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-tok
 import { reloadEnv } from "../../../../../../src/env";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -277,7 +278,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
 
     it("includes the schedule name in the continue-from-schedule prompt when the source run references a real schedule", async () => {
-      const { createTestSchedule, createTestRunInDb } =
+      const { createTestSchedule } =
         await import("../../../../../../src/__tests__/api-test-helpers");
 
       const schedule = await createTestSchedule(
@@ -285,15 +286,11 @@ describe("POST /api/zero/chat/messages", () => {
         `sched-${crypto.randomUUID().slice(0, 8)}`,
         { prompt: "daily run" },
       );
-      const { runId: sourceRunId } = await createTestRunInDb(
-        user.userId,
-        agentId,
-        {
-          status: "completed",
-          scheduleId: schedule.id,
-          triggerSource: "schedule",
-        },
-      );
+      const { runId: sourceRunId } = await seedTestRun(user.userId, agentId, {
+        status: "completed",
+        scheduleId: schedule.id,
+        triggerSource: "schedule",
+      });
 
       const createThreadResponse = await createChatThreadPOST(
         createTestRequest("http://localhost:3000/api/zero/chat-threads", {

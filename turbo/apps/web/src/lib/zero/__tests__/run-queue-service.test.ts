@@ -6,7 +6,6 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRunInDb,
   findTestRunRecord,
   findTestRunCallbacks,
   findTestQueueEntry,
@@ -24,6 +23,7 @@ import {
   cleanupExpiredQueueEntries,
   dispatchQueuedZeroRun,
 } from "../zero-run-queue-service";
+import { seedTestRun } from "../../../__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -99,7 +99,7 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Create a running run and a queued run
-      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
@@ -120,7 +120,7 @@ describe("run-queue-service", () => {
 
     it("should register callbacks for queued zero runs on dispatch", async () => {
       // Create a run directly (simulates what dequeueNextAtomic produces)
-      const { runId } = await createTestRunInDb(user.userId, composeId, {
+      const { runId } = await seedTestRun(user.userId, composeId, {
         prompt: "With callback",
       });
 
@@ -159,7 +159,7 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Alice creates a run → pending
-      await createTestRunInDb(user.userId, composeId, { prompt: "Alice run" });
+      await seedTestRun(user.userId, composeId, { prompt: "Alice run" });
 
       // Bob is a different user in the same org
       const bob = await context.setupUser({ prefix: "test-bob" });
@@ -199,7 +199,7 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Create a running run and a queued run
-      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
@@ -274,7 +274,7 @@ describe("run-queue-service", () => {
       await updateOrgTier(user.orgId, "pro");
 
       // Create 1 running run — fills free limit but not pro limit
-      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
 
       // With pro tier (limit=2), drain should succeed despite 1 active run
@@ -358,7 +358,7 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
-      await createTestRunInDb(user.userId, composeId, {
+      await seedTestRun(user.userId, composeId, {
         prompt: "User1 running",
       });
 
@@ -392,7 +392,7 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
-      await createTestRunInDb(user.userId, composeId, {
+      await seedTestRun(user.userId, composeId, {
         prompt: "User1 running",
       });
 

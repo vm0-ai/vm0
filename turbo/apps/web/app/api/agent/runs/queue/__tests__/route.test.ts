@@ -3,7 +3,6 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestRunInDb,
   insertUserCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -12,6 +11,7 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -58,10 +58,10 @@ describe("GET /api/agent/runs/queue", () => {
 
   it("counts active runs (running + fresh pending)", async () => {
     // Create running and pending runs
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "running",
     });
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "pending",
     });
 
@@ -78,12 +78,12 @@ describe("GET /api/agent/runs/queue", () => {
   it("returns queued runs in FIFO order with correct positions", async () => {
     // Create queued runs with explicit timestamps to ensure deterministic ordering
     const now = Date.now();
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "queued",
       prompt: "first queued",
       createdAt: new Date(now - 1000),
     });
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "queued",
       prompt: "second queued",
       createdAt: new Date(now),
@@ -115,11 +115,11 @@ describe("GET /api/agent/runs/queue", () => {
     const otherUserId = uniqueId("other-user");
 
     // Both users' runs use the same compose (same org)
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "queued",
     });
     // Insert run for other user using same compose (orgId comes from compose)
-    await createTestRunInDb(otherUserId, testComposeId, {
+    await seedTestRun(otherUserId, testComposeId, {
       status: "queued",
     });
 
@@ -161,11 +161,11 @@ describe("GET /api/agent/runs/queue", () => {
   it("exposes prompt only for own runs, hides for others", async () => {
     const otherUserId = uniqueId("other-user");
 
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "queued",
       prompt: "my-prompt-content",
     });
-    await createTestRunInDb(otherUserId, testComposeId, {
+    await seedTestRun(otherUserId, testComposeId, {
       status: "queued",
       prompt: "secret-prompt-content",
     });
@@ -210,7 +210,7 @@ describe("GET /api/agent/runs/queue", () => {
 
   it("only shows runs from the requested org", async () => {
     // Create runs in the default org
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "queued",
     });
 
@@ -234,7 +234,7 @@ describe("GET /api/agent/runs/queue", () => {
   });
 
   it("resolves user emails correctly", async () => {
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "queued",
     });
 
@@ -254,10 +254,10 @@ describe("GET /api/agent/runs/queue", () => {
   });
 
   it("does not count completed or failed runs as active", async () => {
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "completed",
     });
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "failed",
     });
 
@@ -274,10 +274,10 @@ describe("GET /api/agent/runs/queue", () => {
   it("returns running tasks with privacy filtering", async () => {
     const otherUserId = uniqueId("other-user");
 
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "running",
     });
-    await createTestRunInDb(otherUserId, testComposeId, {
+    await seedTestRun(otherUserId, testComposeId, {
       status: "running",
     });
 
@@ -339,13 +339,13 @@ describe("GET /api/agent/runs/queue", () => {
     const now = Date.now();
 
     // Create two completed runs with known durations (60s and 120s)
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "completed",
       startedAt: new Date(now - 120_000),
       completedAt: new Date(now - 60_000),
     });
 
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "completed",
       startedAt: new Date(now - 180_000),
       completedAt: new Date(now - 60_000),
@@ -365,7 +365,7 @@ describe("GET /api/agent/runs/queue", () => {
   it("produces sessionLink without /zero prefix for own runs with continuedFromSessionId", async () => {
     const sessionId = crypto.randomUUID();
 
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "queued",
       continuedFromSessionId: sessionId,
     });
@@ -390,7 +390,7 @@ describe("GET /api/agent/runs/queue", () => {
   it("truncates long prompts at 200 characters for own runs", async () => {
     const longPrompt = "a".repeat(250);
 
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "queued",
       prompt: longPrompt,
     });

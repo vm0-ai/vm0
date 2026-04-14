@@ -4,7 +4,6 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestRunInDb,
   createTestSlackOrgInstallation,
   insertOrgMembersCacheEntry,
   createTestSchedule,
@@ -21,6 +20,7 @@ import {
   generateSandboxToken,
   generateZeroToken,
 } from "../../../../../../../src/lib/auth/sandbox-token";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const URL = "http://localhost:3000/api/zero/integrations/slack/message";
 
@@ -37,7 +37,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
   /** Helper: create a run and return a sandbox token */
   async function sandboxTokenWithRun() {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRunInDb(user.userId, composeId);
+    const { runId } = await seedTestRun(user.userId, composeId);
     mockClerk({ userId: null });
     const token = await generateSandboxToken(user.userId, runId);
     return { token, runId };
@@ -261,7 +261,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     await createTestZeroAgent(user.orgId, agentName, {
       displayName: "My Assistant",
     });
-    const { runId } = await createTestRunInDb(user.userId, composeId);
+    const { runId } = await seedTestRun(user.userId, composeId);
 
     mockClerk({ userId: null });
     await insertOrgMembersCacheEntry({
@@ -316,7 +316,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     });
 
     // Create run linked to the schedule
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
+    const { runId } = await seedTestRun(user.userId, composeId, {
       scheduleId: schedule.id,
       triggerSource: "schedule",
     });
@@ -373,7 +373,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     await createTestZeroAgent(user.orgId, agentName, {
       displayName: "My Assistant",
     });
-    const { runId } = await createTestRunInDb(user.userId, composeId);
+    const { runId } = await seedTestRun(user.userId, composeId);
 
     // Seed a Slack connection for the user so resolveUserLabel can find the Slack user ID
     const slackUserId = uniqueId("U-slack");

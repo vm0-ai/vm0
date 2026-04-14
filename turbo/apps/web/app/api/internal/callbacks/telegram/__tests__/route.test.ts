@@ -6,7 +6,6 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import {
-  createTestRunInDb,
   createTestCallback,
   createTestAgentSession,
   createTestRequest,
@@ -18,6 +17,7 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -93,7 +93,7 @@ async function setupTelegramCallback() {
     await createTelegramCallbackInstallation(composeId, userId, TEST_BOT_TOKEN);
 
   // Create run and callback (direct DB insert — avoids full API resolution)
-  const { runId } = await createTestRunInDb(userId, composeId, {
+  const { runId } = await seedTestRun(userId, composeId, {
     prompt: "Test prompt",
   });
   const chatId = `chat-${Date.now()}`;

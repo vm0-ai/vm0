@@ -11,7 +11,6 @@ import {
   createTestCliToken,
   createTestCompose,
   createTestRun,
-  createTestRunInDb,
   createTestOrgModelProvider,
   createTestSandboxToken,
   createTestVolume,
@@ -42,6 +41,7 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { generateZeroToken } from "../../../../../src/lib/auth/sandbox-token";
 import { POST as runSchedule } from "../../schedules/run/route";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -1012,7 +1012,7 @@ describe("Zero Agents API", () => {
       const created = await (await postAgent({}, testCliToken)).json();
 
       // Create a running run for this agent
-      await createTestRunInDb(user.userId, created.agentId, {
+      await seedTestRun(user.userId, created.agentId, {
         status: "running",
       });
 
@@ -1026,7 +1026,7 @@ describe("Zero Agents API", () => {
     it("should delete runs and preserve credit_usage on agent deletion", async () => {
       const created = await (await postAgent({}, testCliToken)).json();
 
-      const { runId } = await createTestRunInDb(user.userId, created.agentId, {
+      const { runId } = await seedTestRun(user.userId, created.agentId, {
         status: "completed",
       });
 
@@ -1053,7 +1053,7 @@ describe("Zero Agents API", () => {
     it("should cascade-delete run data when agent is deleted", async () => {
       const created = await (await postAgent({}, testCliToken)).json();
 
-      const { runId } = await createTestRunInDb(user.userId, created.agentId, {
+      const { runId } = await seedTestRun(user.userId, created.agentId, {
         status: "completed",
       });
 

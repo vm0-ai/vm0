@@ -5,7 +5,6 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import {
-  createTestRunInDb,
   createTestCallback,
   createTestAgentSession,
   createTestOrg,
@@ -13,6 +12,7 @@ import {
   createSignedCallbackRequest,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
@@ -36,7 +36,7 @@ async function setupPhoneCallback() {
   await createTestOrg(uniqueId("org"));
   const { composeId } = await createTestCompose("phone-test-agent");
 
-  const { runId } = await createTestRunInDb(userId, composeId, {
+  const { runId } = await seedTestRun(userId, composeId, {
     prompt: "Phone call transcript",
   });
 

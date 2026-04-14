@@ -4,7 +4,6 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestRunInDb,
   insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -12,6 +11,7 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
   generateZeroToken,
   generateSandboxToken,
@@ -266,7 +266,7 @@ describe("GET /api/zero/logs/search", () => {
 
     // Create a compose + run in a different org
     const otherOrg = await context.createAgentCompose(currentUser.userId);
-    const { runId: otherOrgRunId } = await createTestRunInDb(
+    const { runId: otherOrgRunId } = await seedTestRun(
       currentUser.userId,
       otherOrg.id,
     );
@@ -307,7 +307,7 @@ describe("GET /api/zero/logs/search", () => {
 
     // Create a run in a different org
     const otherOrg = await context.createAgentCompose(currentUser.userId);
-    const { runId: otherOrgRunId } = await createTestRunInDb(
+    const { runId: otherOrgRunId } = await seedTestRun(
       currentUser.userId,
       otherOrg.id,
     );

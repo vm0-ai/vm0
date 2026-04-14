@@ -6,7 +6,6 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRunInDb,
   findTestRunsByUserAndPrompt,
   findTestRunRecord,
   findTestQueueEntry,
@@ -28,6 +27,7 @@ import {
   dispatchQueuedZeroRun,
 } from "../zero-run-queue-service";
 import type { TriggerSource } from "@vm0/core";
+import { seedTestRun } from "../../../__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -243,7 +243,7 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run + a queued VM0 run
-      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(
         queueBaseParams({ prompt: "Queued VM0", modelProvider: "vm0" }),
       );
@@ -273,7 +273,7 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run + a queued non-VM0 run
-      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(
         queueBaseParams({
           prompt: "Queued Anthropic",
@@ -301,7 +301,7 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run
-      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
 
       // Enqueue two runs: first VM0, then non-VM0
       const vm0Run = await enqueueRun(
@@ -350,7 +350,7 @@ describe("credit check (infra queue path)", () => {
       });
 
       // Create a running run + a queued VM0 run
-      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(
         queueBaseParams({
           prompt: "Queued VM0 member cap",
@@ -384,7 +384,7 @@ describe("credit check (infra queue path)", () => {
       });
 
       // Create a running run + a queued non-VM0 run
-      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(
         queueBaseParams({
           prompt: "Queued Anthropic member cap",
@@ -430,7 +430,7 @@ describe("model provider check (queue dispatch path)", () => {
     // No org-level model provider configured — checkModelProviderConfigured will throw
 
     // Create a running run to force the next one into the queue
-    await createTestRunInDb(user.userId, compose.composeId, {
+    await seedTestRun(user.userId, compose.composeId, {
       prompt: "Running",
     });
 

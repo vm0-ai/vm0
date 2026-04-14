@@ -6,7 +6,6 @@ import {
   createTestRun,
   completeTestRun,
   insertOrgCacheEntry,
-  createTestRunInDb,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -15,6 +14,7 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -129,7 +129,7 @@ describe("GET /api/agent/sessions/:id", () => {
     await insertOrgCacheEntry({ orgId: orgBId, slug: orgBSlug });
 
     // Create a run under org-B (bypassing API to set custom orgId)
-    const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+    const { runId } = await seedTestRun(user.userId, testComposeId, {
       orgId: orgBId,
     });
     const { agentSessionId } = await completeTestRun(user.userId, runId);

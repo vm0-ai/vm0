@@ -13,10 +13,8 @@ import {
   createTestOrgMultiAuthModelProvider,
   createTestConnector,
   createTestRun,
-  createTestRunInDb,
   getTestRun,
   completeTestRun,
-  insertStalePendingRun,
   insertOrgCacheEntry,
   insertOrgMembersCacheEntry,
   getOrgCacheEntry,
@@ -33,6 +31,10 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import {
+  seedTestRun,
+  seedStalePendingRun,
+} from "../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
@@ -575,7 +577,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       // Insert a stale "pending" run (20 minutes old, past the 15-min TTL)
       // This simulates a run stuck in pending state that the cron job missed
-      await insertStalePendingRun(user.userId, versionId);
+      await seedStalePendingRun(user.userId, versionId);
 
       // New run should succeed because the stale pending run (>15min) is excluded
       const run = await createTestRun(testComposeId, "Should not be blocked");
@@ -1207,7 +1209,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
 
       // Create a run via DB (needs Clerk mock for compose lookup)
-      const { runId } = await createTestRunInDb(user.userId, testComposeId);
+      const { runId } = await seedTestRun(user.userId, testComposeId);
 
       // Now switch to sandbox auth (no Clerk session)
       mockClerk({ userId: null });
@@ -1312,7 +1314,7 @@ describe("GET /api/agent/runs - List Runs", () => {
   });
 
   it("should return runs belonging to the user's org", async () => {
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "running",
       prompt: "Org A run",
     });
@@ -1334,14 +1336,14 @@ describe("GET /api/agent/runs - List Runs", () => {
 
   it("should not return runs from a different org", async () => {
     // Create a run in the user's default org
-    await createTestRunInDb(user.userId, testComposeId, {
+    await seedTestRun(user.userId, testComposeId, {
       status: "running",
       prompt: "Default org run",
     });
 
     // Create a compose + run in a different org
     const otherOrg = await context.createAgentCompose(user.userId);
-    await createTestRunInDb(user.userId, otherOrg.id, {
+    await seedTestRun(user.userId, otherOrg.id, {
       status: "running",
       prompt: "Other org run",
     });
@@ -1364,7 +1366,7 @@ describe("GET /api/agent/runs - List Runs", () => {
   it("should filter runs by org context", async () => {
     // Create a compose + run in a different org
     const otherOrg = await context.createAgentCompose(user.userId);
-    await createTestRunInDb(user.userId, otherOrg.id, {
+    await seedTestRun(user.userId, otherOrg.id, {
       status: "running",
       prompt: "Target org run",
     });

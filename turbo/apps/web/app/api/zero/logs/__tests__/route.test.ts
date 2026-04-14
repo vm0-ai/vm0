@@ -4,7 +4,6 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestRunInDb,
   createTestSchedule,
   createTestRun,
   completeTestRun,
@@ -20,6 +19,7 @@ import {
   generateZeroToken,
   generateSandboxToken,
 } from "../../../../../src/lib/auth/sandbox-token";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -398,7 +398,7 @@ describe("GET /api/zero/logs", () => {
     });
 
     it("should return explicit trigger source when set on run", async () => {
-      await createTestRunInDb(user.userId, testComposeId, {
+      await seedTestRun(user.userId, testComposeId, {
         status: "completed",
         triggerSource: "slack",
         startedAt: new Date(),
@@ -423,7 +423,7 @@ describe("GET /api/zero/logs", () => {
         `sched-${randomUUID().slice(0, 8)}`,
       );
 
-      await createTestRunInDb(user.userId, testComposeId, {
+      await seedTestRun(user.userId, testComposeId, {
         status: "completed",
         scheduleId: schedule.id,
         triggerSource: "schedule",
@@ -445,7 +445,7 @@ describe("GET /api/zero/logs", () => {
     });
 
     it("should return null scheduleId for non-schedule runs", async () => {
-      await createTestRunInDb(user.userId, testComposeId, {
+      await seedTestRun(user.userId, testComposeId, {
         status: "completed",
         triggerSource: "web",
         startedAt: new Date(),
@@ -465,7 +465,7 @@ describe("GET /api/zero/logs", () => {
     });
 
     it("should return 'web' for runs with triggerSource set to web", async () => {
-      await createTestRunInDb(user.userId, testComposeId, {
+      await seedTestRun(user.userId, testComposeId, {
         status: "completed",
         triggerSource: "web",
         continuedFromSessionId: randomUUID(),
@@ -486,7 +486,7 @@ describe("GET /api/zero/logs", () => {
     });
 
     it("should default to 'cli' for runs without explicit triggerSource", async () => {
-      await createTestRunInDb(user.userId, testComposeId, {
+      await seedTestRun(user.userId, testComposeId, {
         status: "completed",
         startedAt: new Date(),
         completedAt: new Date(),
@@ -513,7 +513,7 @@ describe("GET /api/zero/logs", () => {
 
       // Create runs with different trigger sources
       for (const source of ["web", "cli", "slack", "schedule"]) {
-        await createTestRunInDb(user.userId, testComposeId, {
+        await seedTestRun(user.userId, testComposeId, {
           status: "completed",
           triggerSource: source,
           startedAt: new Date(),
@@ -556,7 +556,7 @@ describe("GET /api/zero/logs", () => {
 
     it("should combine triggerSource with status filter", async () => {
       // Add a failed web run
-      await createTestRunInDb(user.userId, testComposeId, {
+      await seedTestRun(user.userId, testComposeId, {
         status: "failed",
         triggerSource: "web",
         startedAt: new Date(),
@@ -580,7 +580,7 @@ describe("GET /api/zero/logs", () => {
       // Create a second agent with a slack run
       const otherName = `other-agent-${randomUUID().slice(0, 8)}`;
       const { composeId: otherComposeId } = await createTestCompose(otherName);
-      await createTestRunInDb(user.userId, otherComposeId, {
+      await seedTestRun(user.userId, otherComposeId, {
         status: "completed",
         triggerSource: "slack",
         startedAt: new Date(),
@@ -632,12 +632,12 @@ describe("GET /api/zero/logs", () => {
         `filter-status-${randomUUID().slice(0, 8)}`,
       );
 
-      await createTestRunInDb(user.userId, composeId, {
+      await seedTestRun(user.userId, composeId, {
         status: "completed",
         startedAt: new Date(),
         completedAt: new Date(),
       });
-      await createTestRunInDb(user.userId, composeId, {
+      await seedTestRun(user.userId, composeId, {
         status: "failed",
         startedAt: new Date(),
         completedAt: new Date(),
@@ -657,13 +657,13 @@ describe("GET /api/zero/logs", () => {
         `filter-source-${randomUUID().slice(0, 8)}`,
       );
 
-      await createTestRunInDb(user.userId, composeId, {
+      await seedTestRun(user.userId, composeId, {
         status: "completed",
         triggerSource: "slack",
         startedAt: new Date(),
         completedAt: new Date(),
       });
-      await createTestRunInDb(user.userId, composeId, {
+      await seedTestRun(user.userId, composeId, {
         status: "completed",
         triggerSource: "web",
         startedAt: new Date(),
@@ -685,12 +685,12 @@ describe("GET /api/zero/logs", () => {
       const { composeId: composeA } = await createTestCompose(agentA);
       const { composeId: composeB } = await createTestCompose(agentB);
 
-      await createTestRunInDb(user.userId, composeA, {
+      await seedTestRun(user.userId, composeA, {
         status: "completed",
         startedAt: new Date(),
         completedAt: new Date(),
       });
-      await createTestRunInDb(user.userId, composeB, {
+      await seedTestRun(user.userId, composeB, {
         status: "completed",
         startedAt: new Date(),
         completedAt: new Date(),
@@ -711,7 +711,7 @@ describe("GET /api/zero/logs", () => {
       );
 
       // Create a run without triggerSource (will be null in DB)
-      await createTestRunInDb(user.userId, composeId, {
+      await seedTestRun(user.userId, composeId, {
         status: "completed",
         startedAt: new Date(),
         completedAt: new Date(),
@@ -733,13 +733,13 @@ describe("GET /api/zero/logs", () => {
         `filter-independent-${randomUUID().slice(0, 8)}`,
       );
 
-      await createTestRunInDb(user.userId, composeId, {
+      await seedTestRun(user.userId, composeId, {
         status: "completed",
         triggerSource: "slack",
         startedAt: new Date(),
         completedAt: new Date(),
       });
-      await createTestRunInDb(user.userId, composeId, {
+      await seedTestRun(user.userId, composeId, {
         status: "failed",
         triggerSource: "web",
         startedAt: new Date(),
@@ -781,7 +781,7 @@ describe("GET /api/zero/logs", () => {
       scheduleId = schedule.id;
 
       // Create a run linked to the schedule
-      await createTestRunInDb(user.userId, testComposeId, {
+      await seedTestRun(user.userId, testComposeId, {
         status: "completed",
         scheduleId,
         startedAt: new Date(),
@@ -789,7 +789,7 @@ describe("GET /api/zero/logs", () => {
       });
 
       // Create a run NOT linked to any schedule
-      await createTestRunInDb(user.userId, testComposeId, {
+      await seedTestRun(user.userId, testComposeId, {
         status: "completed",
         startedAt: new Date(),
         completedAt: new Date(),
