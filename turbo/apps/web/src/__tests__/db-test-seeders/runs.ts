@@ -1,12 +1,36 @@
-import { eq } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
+import type { OrgTier } from "@vm0/core";
 import { agentRuns } from "../../db/schema/agent-run";
 import { zeroRuns } from "../../db/schema/zero-run";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
+import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
+import { agentRunQueue } from "../../db/schema/agent-run-queue";
+import { conversations } from "../../db/schema/conversation";
+import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
+import { usageDaily } from "../../db/schema/usage-daily";
 import { initServices } from "../../lib/init-services";
 import { uniqueId } from "../test-helpers";
+import { generateSandboxToken } from "../../lib/auth/sandbox-token";
+import { resolveStartRunCompose } from "../../lib/zero/zero-run-validation";
+import {
+  authorizeCompose,
+  validateComposeRequirements,
+  checkRunConcurrencyLimit,
+} from "../../lib/zero/zero-run-policy";
+import { buildInfraExecutionContext } from "../../lib/infra/run/context/build-context";
+import {
+  loadCompose,
+  insertRunRecord,
+  buildAndDispatchRun,
+  markRunFailed,
+  registerCallbacks,
+  type CreateRunResult,
+} from "../../lib/infra/run/run-service";
+import { generateCallbackSecret } from "../../lib/infra/callback/hmac";
+import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 
 /**
  * Resolve orgId from a compose version ID.
@@ -245,4 +269,378 @@ export async function seedOrphanTestRun(
     })
     .returning({ id: agentRuns.id });
   return { runId: run!.id };
+}
+
+// ---------------------------------------------------------------------------
+// Functions migrated from api-test-helpers/runs.ts (Part 2 — #9375)
+// ---------------------------------------------------------------------------
+
+/**
+ * Test helper that mirrors the CLI API route pipeline (resolve → authorize →
+ * validate → concurrency check → insert → token → context → dispatch).
+ *
+ * @why-db-direct Full CLI run pipeline with DB transaction for advisory lock +
+ * record insert; no CLI API route handler exists (CLI uses direct service calls).
+ */
+export interface CliRunParams {
+  userId: string;
+  agentComposeVersionId: string;
+  prompt: string;
+  orgTier: OrgTier;
+  appendSystemPrompt?: string;
+  vars?: Record<string, string>;
+  secrets?: Record<string, string>;
+  checkpointId?: string;
+  sessionId?: string;
+  conversationId?: string;
+  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
+  memoryName?: string;
+  artifactName?: string;
+  artifactVersion?: string;
+  volumeVersions?: Record<string, string>;
+  debugNoMockClaude?: boolean;
+  captureNetworkBodies?: boolean;
+}
+
+export async function createCliRun(
+  params: CliRunParams,
+): Promise<CreateRunResult> {
+  initServices();
+  const composeMeta = await resolveStartRunCompose(params);
+
+  const apiStartTime = Date.now();
+  const { composeContent, compose } = await loadCompose(
+    composeMeta.agentComposeVersionId,
+    composeMeta.composeId,
+  );
+  authorizeCompose(params.userId, compose.orgId, compose);
+  const authorizeTime = Date.now();
+
+  if (!params.checkpointId && !params.sessionId) {
+    await validateComposeRequirements(composeContent);
+  }
+
+  const orgId = compose.orgId;
+  const run = await globalThis.services.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
+    await checkRunConcurrencyLimit(orgId, params.orgTier, tx);
+    return insertRunRecord(tx, {
+      userId: params.userId,
+      orgId,
+      agentComposeVersionId: composeMeta.agentComposeVersionId,
+      prompt: params.prompt,
+      appendSystemPrompt: params.appendSystemPrompt,
+      vars: params.vars,
+      secrets: params.secrets,
+      resumedFromCheckpointId: params.checkpointId,
+      sessionId: params.sessionId,
+    });
+  });
+  const transactionTime = Date.now();
+
+  const sandboxToken = await generateSandboxToken(params.userId, run.id);
+  const tokenTime = Date.now();
+
+  try {
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(run.id, params.callbacks);
+    }
+
+    const { context } = buildInfraExecutionContext({
+      runId: run.id,
+      userId: params.userId,
+      orgId,
+      agentComposeVersionId: composeMeta.agentComposeVersionId,
+      agentCompose: composeContent,
+      prompt: params.prompt,
+      sandboxToken,
+      appendSystemPrompt: params.appendSystemPrompt,
+      vars: params.vars,
+      secrets: params.secrets,
+      artifactName: params.artifactName,
+      artifactVersion: params.artifactVersion,
+      memoryName: params.memoryName,
+      volumeVersions: params.volumeVersions,
+      agentName: composeMeta.agentName,
+      resumedFromCheckpointId: params.checkpointId,
+      continuedFromSessionId: params.sessionId,
+      debugNoMockClaude: params.debugNoMockClaude,
+      captureNetworkBodies: params.captureNetworkBodies,
+    });
+
+    const result = await buildAndDispatchRun({
+      runId: run.id,
+      context,
+      timings: {
+        apiStart: apiStartTime,
+        authorize: authorizeTime,
+        transaction: transactionTime,
+        token: tokenTime,
+      },
+    });
+
+    return {
+      runId: run.id,
+      status: result.status,
+      sandboxId: result.sandboxId,
+      createdAt: run.createdAt,
+    };
+  } catch (error) {
+    await markRunFailed(run.id, error);
+    throw error;
+  }
+}
+
+/**
+ * Mark all running/pending runs as completed for a user.
+ *
+ * @why-db-direct Bulk status update for cleanup; no API endpoint exists for
+ * bulk run completion — runs are completed individually via webhooks.
+ */
+export async function markRunningRunsAsCompleted(userId: string) {
+  initServices();
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(
+      and(
+        eq(agentRuns.userId, userId),
+        or(eq(agentRuns.status, "running"), eq(agentRuns.status, "pending")),
+      ),
+    );
+}
+
+/**
+ * Set an arbitrary status on a run.
+ *
+ * @why-db-direct Sets arbitrary run status; API only supports complete/fail
+ * transitions via webhooks. Tests need runs in specific states (e.g., "running",
+ * "timeout") without going through the full lifecycle.
+ */
+export async function setTestRunStatus(
+  runId: string,
+  status: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({
+      status,
+      ...(["completed", "failed", "timeout", "cancelled"].includes(status)
+        ? { completedAt: new Date() }
+        : {}),
+    })
+    .where(eq(agentRuns.id, runId));
+}
+
+/**
+ * Set model provider on a zero_runs record.
+ *
+ * @why-db-direct Sets model provider on zero_runs; no API for this field —
+ * it is set during dispatch pipeline.
+ */
+export async function setTestRunModelProvider(
+  runId: string,
+  modelProvider: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroRuns)
+    .set({ modelProvider })
+    .where(eq(zeroRuns.id, runId));
+}
+
+/**
+ * Set selected model on a zero_runs record.
+ *
+ * @why-db-direct Sets selected model on zero_runs; no API for this field —
+ * it is set during dispatch pipeline.
+ */
+export async function setTestRunSelectedModel(
+  runId: string,
+  selectedModel: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroRuns)
+    .set({ selectedModel })
+    .where(eq(zeroRuns.id, runId));
+}
+
+/**
+ * Insert a zero_runs record for a run that already exists in agent_runs.
+ *
+ * @why-db-direct Creates zero_runs record; enqueueRun() does not create this
+ * row, and tests need to set model provider metadata for credit-check scenarios.
+ */
+export async function insertTestZeroRun(
+  runId: string,
+  options?: {
+    triggerSource?: string;
+    modelProvider?: string | null;
+    selectedModel?: string | null;
+  },
+): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(zeroRuns).values({
+    id: runId,
+    triggerSource: options?.triggerSource ?? "cli",
+    modelProvider: options?.modelProvider ?? null,
+    selectedModel: options?.selectedModel ?? null,
+  });
+}
+
+/**
+ * Set expiresAt to past on a queue entry.
+ *
+ * @why-db-direct Sets expiresAt to past; no API for queue expiry manipulation.
+ * Tests for queue expiry logic need entries with controlled timestamps.
+ */
+export async function expireQueueEntry(runId: string) {
+  initServices();
+  // Set expiresAt far enough in the past to avoid any timing issues in CI
+  await globalThis.services.db
+    .update(agentRunQueue)
+    .set({ expiresAt: new Date(Date.now() - 60_000) })
+    .where(eq(agentRunQueue.runId, runId));
+}
+
+/**
+ * Insert a queue entry for a run that is in "queued" status.
+ * Looks up the run's userId and orgId from the agent_runs table.
+ *
+ * @why-db-direct Inserts queue entry with controlled timestamps; no API for
+ * direct queue manipulation — queue entries are created by the dispatch pipeline.
+ *
+ * @param runId - The run ID to enqueue
+ * @param options - Optional overrides for createdAt and expiresAt
+ */
+export async function insertTestQueueEntry(
+  runId: string,
+  options?: {
+    createdAt?: Date;
+    expiresAt?: Date;
+  },
+) {
+  initServices();
+  const [run] = await globalThis.services.db
+    .select({ userId: agentRuns.userId, orgId: agentRuns.orgId })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  if (!run) {
+    throw new Error(`Run ${runId} not found`);
+  }
+  await globalThis.services.db.insert(agentRunQueue).values({
+    runId,
+    userId: run.userId,
+    orgId: run.orgId,
+    createdAt: options?.createdAt,
+    expiresAt: options?.expiresAt ?? new Date(Date.now() + 60 * 60 * 1000),
+  });
+}
+
+/**
+ * Create a test callback record for agent run completion.
+ * Returns the callback ID and the plaintext secret for signing test requests.
+ *
+ * @why-db-direct Creates callback with encrypted secret; no standalone API for
+ * callback creation — callbacks are registered during run dispatch.
+ */
+export async function createTestCallback(params: {
+  runId: string;
+  url: string;
+  payload?: Record<string, unknown>;
+}): Promise<{ callbackId: string; secret: string }> {
+  initServices();
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const secret = generateCallbackSecret();
+  const encryptedSecret = encryptSecretValue(secret, SECRETS_ENCRYPTION_KEY);
+
+  const [callback] = await globalThis.services.db
+    .insert(agentRunCallbacks)
+    .values({
+      runId: params.runId,
+      url: params.url,
+      encryptedSecret,
+      payload: params.payload ?? null,
+    })
+    .returning({ id: agentRunCallbacks.id });
+
+  return { callbackId: callback!.id, secret };
+}
+
+/**
+ * Link an existing run to a schedule by setting its scheduleId.
+ *
+ * @why-db-direct Sets scheduleId on zero_runs; no API for run-schedule
+ * linking — this is done during scheduled execution dispatch.
+ */
+export async function linkRunToSchedule(
+  runId: string,
+  scheduleId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroRuns)
+    .set({ scheduleId })
+    .where(eq(zeroRuns.id, runId));
+}
+
+/**
+ * Insert a test conversation record.
+ *
+ * @why-db-direct Creates conversation record; conversations are created by
+ * the checkpoint webhook, not a standalone API endpoint.
+ */
+export async function insertTestConversation(params: {
+  runId: string;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(conversations).values({
+    runId: params.runId,
+    cliAgentType: "claude-code",
+    cliAgentSessionId: uniqueId("session"),
+  });
+}
+
+/**
+ * Insert sandbox telemetry record for testing.
+ *
+ * @why-db-direct Creates telemetry record; telemetry is created by the
+ * sandbox runtime, not a user API endpoint.
+ */
+export async function insertTestSandboxTelemetry(params: {
+  runId: string;
+}): Promise<{ id: string }> {
+  initServices();
+  const [record] = await globalThis.services.db
+    .insert(sandboxTelemetry)
+    .values({
+      runId: params.runId,
+      data: { systemLog: "test log", metrics: [] },
+    })
+    .returning({ id: sandboxTelemetry.id });
+
+  return { id: record!.id };
+}
+
+/**
+ * Insert a test usage_daily record.
+ *
+ * @why-db-direct Creates usage_daily record; usage records are created by
+ * cron aggregation, not a user API endpoint.
+ */
+export async function insertTestUsageDaily(params: {
+  userId: string;
+  orgId: string;
+  date: string;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(usageDaily).values({
+    userId: params.userId,
+    orgId: params.orgId,
+    date: params.date,
+    runCount: 5,
+  });
 }
