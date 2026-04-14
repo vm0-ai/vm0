@@ -397,7 +397,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             profile_config,
             &home,
         );
-        let use_snapshot = factory_config.snapshot.is_some();
+        let restore_guest_state = factory_config.snapshot.is_some();
         let factory_result = runtime.create_factory(factory_config).await;
         let factory = match factory_result {
             Ok(f) => f,
@@ -406,7 +406,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 return Err(e.into());
             }
         };
-        factories.insert(profile_name.clone(), (Arc::new(factory), use_snapshot));
+        factories.insert(
+            profile_name.clone(),
+            (Arc::new(factory), restore_guest_state),
+        );
         info!(profile = %profile_name, "factory started");
     }
 
@@ -572,7 +575,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let job_vcpu = profile_config.vcpu;
                 let job_memory = profile_config.memory_mb;
                 // Look up factory for this profile.
-                let Some((factory, use_snapshot)) = factories.get(&profile_name) else {
+                let Some((factory, restore_guest_state)) = factories.get(&profile_name) else {
                     warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
                     continue;
                 };
@@ -680,7 +683,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     profile_name: profile_name.clone(),
                     vcpu: job_vcpu,
                     memory_mb: job_memory,
-                    use_snapshot: *use_snapshot,
+                    restore_guest_state: *restore_guest_state,
                     factory: Arc::clone(factory),
                     cancel: job_cancel,
                 };
@@ -849,7 +852,7 @@ struct JobProfile {
     profile_name: String,
     vcpu: u32,
     memory_mb: u32,
-    use_snapshot: bool,
+    restore_guest_state: bool,
     factory: SharedFactory,
     cancel: CancellationToken,
 }
@@ -915,7 +918,7 @@ fn spawn_job(
     let params = executor::JobParams {
         vcpu,
         memory_mb,
-        use_snapshot: job_profile.use_snapshot,
+        restore_guest_state: job_profile.restore_guest_state,
     };
 
     let storage_fingerprints = context

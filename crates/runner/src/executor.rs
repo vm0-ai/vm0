@@ -38,7 +38,7 @@ pub struct ExecutorConfig {
 pub struct JobParams {
     pub vcpu: u32,
     pub memory_mb: u32,
-    pub use_snapshot: bool,
+    pub restore_guest_state: bool,
 }
 
 /// Outcome of a job execution, including the sandbox for possible reuse.
@@ -203,7 +203,7 @@ async fn execute_new_sandbox(
         sandbox.as_ref(),
         context,
         config,
-        params.use_snapshot,
+        params.restore_guest_state,
         None,
         telemetry,
         cancel,
@@ -2258,7 +2258,7 @@ mod tests {
         JobParams {
             vcpu: 2,
             memory_mb: 2048,
-            use_snapshot: false,
+            restore_guest_state: false,
         }
     }
 
@@ -2306,7 +2306,7 @@ mod tests {
         factory.startup().await.unwrap();
 
         let params = JobParams {
-            use_snapshot: true,
+            restore_guest_state: true,
             ..default_params()
         };
         let (exit_code, _) = run_execute_inner(&factory, &minimal_context(), &config, &params)
