@@ -36,6 +36,12 @@ pub trait Sandbox: Send + Sync + Any {
     /// shutdown and go straight to force-kill, since vCPUs cannot process
     /// vsock messages).
     ///
+    /// Note: after a partial `unpark()` failure (e.g. vCPU resume
+    /// succeeded but balloon deflate failed), the sandbox is flagged as
+    /// "still parked" even though vCPUs may actually be running. `stop()`
+    /// implementations must tolerate this — skipping graceful shutdown is
+    /// still correct because the sandbox was idle with no user workload.
+    ///
     /// Must be idempotent: calling `park()` on an already-parked sandbox
     /// returns `Ok(())` without side effects.
     ///

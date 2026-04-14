@@ -807,6 +807,7 @@ const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
 /// proceed to pause.
 async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str) {
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
+    let mut last_actual: Option<u32> = None;
     loop {
         match client.get_balloon_statistics().await {
             Ok(stats) if stats.actual_mib >= target_mib => {
@@ -819,6 +820,7 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                 return;
             }
             Ok(stats) => {
+                last_actual = Some(stats.actual_mib);
                 trace!(
                     id = %log_id,
                     actual = stats.actual_mib,
@@ -830,6 +832,8 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
                 warn!(
                     id = %log_id,
                     %e,
+                    actual = ?last_actual,
+                    target = target_mib,
                     "balloon stats unavailable, proceeding to pause"
                 );
                 return;
@@ -838,6 +842,7 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
         if tokio::time::Instant::now() >= deadline {
             warn!(
                 id = %log_id,
+                actual = ?last_actual,
                 target = target_mib,
                 "balloon inflate incomplete after {}s, pausing anyway",
                 BALLOON_SETTLE_TIMEOUT.as_secs()
@@ -1153,9 +1158,9 @@ mod tests {
                     });
 
                     // Route response by method + path.
-                    // GET /balloon/statistics is handled separately (always
-                    // 200 with configurable stats). All other requests
-                    // consume the next entry from the FIFO response queue.
+                    // GET /balloon/statistics: always 200 with configurable stats.
+                    // PATCH: consume next entry from the FIFO response queue.
+                    // Other methods: 204 (no queue consumption).
                     if method == "GET" && path == "/balloon/statistics" {
                         let actual = balloon_actual
                             .as_ref()
@@ -1168,7 +1173,7 @@ mod tests {
                             stats.len()
                         );
                         let _ = stream.write_all(resp.as_bytes()).await;
-                    } else {
+                    } else if method == "PATCH" {
                         let status = responses.lock().await.pop_front().unwrap_or(204);
                         let (reason, resp_body) = if status == 204 {
                             ("No Content", String::new())
@@ -1179,6 +1184,10 @@ mod tests {
                             "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\n\r\n{resp_body}",
                             resp_body.len()
                         );
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                    } else {
+                        // Unknown method — return 204 without consuming the queue.
+                        let resp = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
                         let _ = stream.write_all(resp.as_bytes()).await;
                     }
                 });
@@ -1810,9 +1819,11 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn park_waits_for_balloon_before_pause() {
-        // Mock returns increasing actual_mib: 0 → 0 → 1536 (target reached).
+        // Mock returns actual_mib = 0 initially, then 1536 after we advance
+        // time past the first poll interval. Using `start_paused = true` for
+        // deterministic timing — no wall-clock dependencies.
         let balloon_actual = Arc::new(AtomicU32::new(0));
         let (sock, reqs, _dir) = spawn_mock_fc_api(
             std::collections::VecDeque::new(),
@@ -1820,12 +1831,12 @@ mod tests {
         )
         .await;
 
-        // Bump actual_mib to target after a short delay (simulates guest
-        // balloon driver working). The poll interval is 500ms; we set it
-        // after 200ms so the second poll sees it.
+        // After the first poll sees actual=0 and sleeps 500ms, the auto-advance
+        // fires. Set actual to target so the second poll succeeds.
         let actual_clone = Arc::clone(&balloon_actual);
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            // Wait for one poll cycle (the 500ms sleep auto-advances).
+            tokio::time::sleep(Duration::from_millis(250)).await;
             actual_clone.store(1536, Ordering::Relaxed);
         });
 
