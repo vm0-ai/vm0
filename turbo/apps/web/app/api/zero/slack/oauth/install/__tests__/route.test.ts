@@ -119,6 +119,25 @@ describe("/api/zero/slack/oauth/install", () => {
     expect(state.prompt).toBe("x".repeat(500));
   });
 
+  it("should truncate prompts with unicode characters without splitting codepoints", async () => {
+    // Each emoji is one codepoint but multiple UTF-16 code units
+    const emojiPrompt = "\u{1F600}".repeat(600);
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/install?prompt=${encodeURIComponent(emojiPrompt)}`,
+    );
+    const response = await GET(request);
+
+    const locationHeader = response.headers.get("Location");
+    const redirectUrl = new URL(locationHeader!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!);
+
+    // Should have exactly 500 codepoints, not split surrogate pairs
+    expect([...state.prompt].length).toBe(500);
+    for (const char of state.prompt) {
+      expect(char).toBe("\u{1F600}");
+    }
+  });
+
   it("should omit prompt from state when absent", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/zero/slack/oauth/install?orgId=org_123&vm0UserId=user_456",

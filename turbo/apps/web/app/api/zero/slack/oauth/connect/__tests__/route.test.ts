@@ -114,6 +114,90 @@ describe("/api/zero/slack/oauth/connect", () => {
     expect(data.error).toBe("Slack integration is not configured");
   });
 
+  it("should include prompt in state when present in query", async () => {
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    await createTestSlackOrgInstallation({ workspaceId, orgId });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/connect?orgId=${orgId}&vm0UserId=user_123&prompt=summarize%20my%20inbox`,
+    );
+    const response = await GET(request);
+
+    const locationHeader = response.headers.get("Location");
+    const redirectUrl = new URL(locationHeader!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!);
+
+    expect(state.prompt).toBe("summarize my inbox");
+    expect(state.flow).toBe("connect");
+    expect(state.orgId).toBe(orgId);
+  });
+
+  it("should truncate long prompts to protect OAuth state length", async () => {
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    await createTestSlackOrgInstallation({ workspaceId, orgId });
+
+    const longPrompt = "x".repeat(1200);
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/connect?orgId=${orgId}&vm0UserId=user_123&prompt=${encodeURIComponent(longPrompt)}`,
+    );
+    const response = await GET(request);
+
+    const locationHeader = response.headers.get("Location");
+    const redirectUrl = new URL(locationHeader!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!);
+
+    expect(typeof state.prompt).toBe("string");
+    expect(state.prompt.length).toBe(500);
+    expect(state.prompt).toBe("x".repeat(500));
+  });
+
+  it("should truncate prompts with unicode characters without splitting codepoints", async () => {
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    await createTestSlackOrgInstallation({ workspaceId, orgId });
+
+    // Each emoji is one codepoint but multiple UTF-16 code units
+    const emojiPrompt = "\u{1F600}".repeat(600);
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/connect?orgId=${orgId}&vm0UserId=user_123&prompt=${encodeURIComponent(emojiPrompt)}`,
+    );
+    const response = await GET(request);
+
+    const locationHeader = response.headers.get("Location");
+    const redirectUrl = new URL(locationHeader!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!);
+
+    // Should have exactly 500 codepoints, not split surrogate pairs
+    expect([...state.prompt].length).toBe(500);
+    // Every character should be a complete emoji, not a broken surrogate
+    for (const char of state.prompt) {
+      expect(char).toBe("\u{1F600}");
+    }
+  });
+
+  it("should omit prompt from state when absent", async () => {
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    await createTestSlackOrgInstallation({ workspaceId, orgId });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/connect?orgId=${orgId}&vm0UserId=user_123`,
+    );
+    const response = await GET(request);
+
+    const locationHeader = response.headers.get("Location");
+    const redirectUrl = new URL(locationHeader!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!);
+
+    expect(state.prompt).toBeUndefined();
+  });
+
   it("should use VM0_API_URL for redirect_uri when configured", async () => {
     vi.stubEnv("VM0_API_URL", "https://tunnel.example.com");
     reloadEnv();

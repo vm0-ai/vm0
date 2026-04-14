@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -336,6 +336,132 @@ describe("connect-service", () => {
         typeof import("vitest").vi.fn
       >;
       // Should send only connect DM and welcome thread (2 calls), no prompt DM
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes(
+            "would you like me to run",
+          )
+        );
+      });
+      expect(promptCall).toBeUndefined();
+    });
+
+    it("falls back to DM when postEphemeral fails (bot not in channel)", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      const channelId = uniqueId("C-ch");
+
+      const { installation } = await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      // Make postEphemeral fail (simulates bot not in channel)
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      const ephemeralFn = mockClient.chat.postEphemeral as ReturnType<
+        typeof vi.fn
+      >;
+      ephemeralFn.mockRejectedValueOnce(new Error("channel_not_found"));
+
+      await notifyConnectSuccess({
+        installation,
+        slackUserId,
+        orgId: user.orgId,
+        channelId,
+      });
+
+      // Should have attempted ephemeral first
+      expect(ephemeralFn).toHaveBeenCalledOnce();
+
+      // Then fallen back to DM via postMessage
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof vi.fn
+      >;
+      expect(postMessageFn.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("sanitizes backticks in pendingPrompt to prevent mrkdwn injection", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+
+      const { installation } = await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      await notifyConnectSuccess({
+        installation,
+        slackUserId,
+        orgId: user.orgId,
+        pendingPrompt: "run `rm -rf /` please",
+      });
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof vi.fn
+      >;
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes(
+            "would you like me to run",
+          )
+        );
+      });
+      expect(promptCall).toBeDefined();
+      const promptText = (promptCall![0] as { text: string }).text;
+      // Backticks in user input should be replaced with smart quotes
+      expect(promptText).not.toContain("`rm -rf /`");
+      // The prompt should still be wrapped in a code block
+      expect(promptText).toContain("```");
+    });
+
+    it("does not send pending prompt DM when pendingPrompt is empty string", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+
+      const { installation } = await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      await notifyConnectSuccess({
+        installation,
+        slackUserId,
+        orgId: user.orgId,
+        pendingPrompt: "",
+      });
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof vi.fn
+      >;
+      // Empty string is falsy, so no prompt DM should be sent
       const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
         return (
           typeof call[0] === "object" &&
