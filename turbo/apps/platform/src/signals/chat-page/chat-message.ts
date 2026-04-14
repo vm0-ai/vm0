@@ -6,6 +6,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
 import {
   currentDraft$,
+  type DraftSignals,
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
 import { createRunLoop, type PagedRunEvents } from "../zero-page/polling.ts";
@@ -751,10 +752,14 @@ export const createNewChatThread$ = command(
 
 const prepareUserMessage$ = command(
   async (
-    { get, set },
+    { get },
     prompt: string,
     signal: AbortSignal,
-  ): Promise<{ fullPrompt: string } | null> => {
+  ): Promise<{
+    fullPrompt: string;
+    userMessage: UserChatMessage;
+    draft: DraftSignals | null;
+  } | null> => {
     const draft = get(currentDraft$);
     const allAttachments = draft ? get(draft.attachments$) : [];
     const allInfos = await Promise.all(
@@ -812,16 +817,7 @@ const prepareUserMessage$ = command(
             })
           : undefined,
     };
-    set(internalLocalMessages$, (prev) => {
-      return [...prev, userMessage];
-    });
-
-    // Clear the draft after preparing the message
-    if (draft) {
-      set(draft.clear$);
-    }
-
-    return { fullPrompt };
+    return { fullPrompt, userMessage, draft };
   },
 );
 
@@ -844,6 +840,15 @@ const prepareChatMessage$ = command(
       return null;
     }
     signal.throwIfAborted();
+
+    set(internalLocalMessages$, (prev) => {
+      return [...prev, result.userMessage];
+    });
+
+    // Clear the draft after preparing the message
+    if (result.draft) {
+      set(result.draft.clear$);
+    }
 
     const trimmedPrompt = prompt.trim();
     return {

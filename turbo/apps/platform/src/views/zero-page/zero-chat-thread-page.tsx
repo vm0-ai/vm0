@@ -236,16 +236,15 @@ export function ZeroChatThreadPageInner({
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       <ChatThreadHeader thread={thread} />
 
-      {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div
         ref={setScrollContainer}
         data-scroll-container
-        className="flex-1 overflow-y-auto [scrollbar-gutter:stable] flex flex-col min-h-0"
+        className="flex-1 overflow-y-auto [scrollbar-gutter:stable] min-h-0"
       >
-        <main className="flex-1 px-4 sm:px-6 py-4 items-center @container">
+        <main className="px-4 sm:px-6 py-4 items-center @container">
           <div
             data-message-container
-            className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible"
+            className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
           >
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
@@ -272,10 +271,9 @@ export function ZeroChatThreadPageInner({
             })}
           </div>
         </main>
-
-        {/* Composer — sticky inside the scroll container so it aligns with messages */}
-        <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
       </div>
+
+      <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
     </div>
   );
 }
@@ -313,7 +311,7 @@ function ChatThreadComposer({
   return (
     <footer
       data-chat-composer
-      className="relative sticky bottom-0 z-10 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]"
+      className="relative shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="mx-auto max-w-[900px]">

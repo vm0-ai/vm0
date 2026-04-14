@@ -49,17 +49,13 @@ const L = logger("ChatThread");
 export interface ChatThreadSignals {
   // ── Data signals ──────────────────────────────────────────────────────────
   threadData$: Computed<Promise<ChatThread | null>>;
-  reloadThread$: Command<void, []>;
   messages$: Computed<Promise<ZeroChatMessage[]>>;
   allFinished$: Computed<Promise<boolean>>;
   thinkingMessage$: Computed<string>;
   loadMessages$: Command<Promise<void>, [AbortSignal]>;
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
-  resetLocalMessages$: Command<void, []>;
   setScrollContainer$: Command<void, [HTMLElement | null]>;
-  autoScroll$: Command<void, []>;
-  forceScrollToBottom$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<void, [HTMLElement | null]>;
@@ -78,10 +74,6 @@ export interface ChatThreadSignals {
   // ── Draft sync ────────────────────────────────────────────────────────────
   /** Schedule a 500ms debounced PATCH to persist the current draft to the server. */
   scheduleDraftSync$: Command<void, [AbortSignal]>;
-  /** Cancel any pending debounced draft sync. */
-  cancelDraftSync$: Command<void, []>;
-  /** Immediately PATCH null draft values (called after message send). */
-  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,10 +119,6 @@ function createThreadData(threadId: string) {
 
 function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
   const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
-
-  const resetLocalMessages$ = command(({ set }) => {
-    set(internalLocalMessages$, []);
-  });
 
   const currentChatMessages$ = computed(
     async (get): Promise<ZeroChatMessage[]> => {
@@ -227,7 +215,6 @@ function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
 
   return {
     internalLocalMessages$,
-    resetLocalMessages$,
     chatMessages$,
     messages$,
     allFinished$,
@@ -271,9 +258,7 @@ function scrollToMessages(scrollEl: HTMLElement) {
     return;
   }
 
-  const composer = scrollEl.querySelector<HTMLElement>("[data-chat-composer]");
-  const composerHeight = composer ? composer.offsetHeight : 0;
-  const visibleHeight = scrollEl.clientHeight - composerHeight;
+  const visibleHeight = scrollEl.clientHeight;
   const userTop = lastUser.offsetTop - container.offsetTop;
 
   if (lastAssistant && lastAssistant.offsetTop > lastUser.offsetTop) {
@@ -294,17 +279,15 @@ function scrollToMessages(scrollEl: HTMLElement) {
 function createScrollSignals() {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
 
-  const setScrollContainer$ = command(({ set }, el: HTMLElement | null) => {
-    set(internalScrollContainer$, el);
-  });
+  const setScrollContainer$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      set(internalScrollContainer$, el);
 
-  const forceScrollToBottom$ = command(({ get }) => {
-    const scrollEl = get(internalScrollContainer$);
-    if (!scrollEl) {
-      return;
-    }
-    scrollToMessages(scrollEl);
-  });
+      signal.addEventListener("abort", () => {
+        set(internalScrollContainer$, null);
+      });
+    }),
+  );
 
   const autoScroll$ = command(({ get }) => {
     const scrollEl = get(internalScrollContainer$);
@@ -319,7 +302,7 @@ function createScrollSignals() {
     scrollToMessages(scrollEl);
   });
 
-  return { setScrollContainer$, autoScroll$, forceScrollToBottom$ };
+  return { setScrollContainer$, autoScroll$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -337,11 +320,10 @@ function createComposerFileInput() {
   return { composerFileInput$, setComposerFileInput$ };
 }
 
-// ---------------------------------------------------------------------------
-// Sub-factory: message commands (send, load, cancel)
-// ---------------------------------------------------------------------------
-
-interface MessageCommandsDeps {
+// This is an internal scope used to maintain an internal message closure.
+// This scope should only be used within the current file to help decouple specific creator factory command functions.
+// This interface should never be exposed for external use.
+interface MessageCommandsInternalScope {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
   reloadThread$: Command<void, []>;
@@ -351,15 +333,16 @@ interface MessageCommandsDeps {
   reloadThinkingMessage$: Command<void, []>;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  autoScroll$: Command<void, []>;
 }
 
-function createPrepareUserMessage(deps: MessageCommandsDeps) {
-  return command(
+function createMessageCommands(deps: MessageCommandsInternalScope) {
+  const prepareUserMessage$ = command(
     async (
-      { get, set },
+      { get },
       prompt: string,
       signal: AbortSignal,
-    ): Promise<{ fullPrompt: string } | null> => {
+    ): Promise<{ fullPrompt: string; userMessage: UserChatMessage } | null> => {
       const allAttachments = get(deps.draft.attachments$);
       const allInfos = await Promise.all(
         allAttachments.map((a) => {
@@ -414,20 +397,9 @@ function createPrepareUserMessage(deps: MessageCommandsDeps) {
               })
             : undefined,
       };
-      set(deps.internalLocalMessages$, (prev) => {
-        return [...prev, userMessage];
-      });
-      set(deps.cancelDraftSync$);
-      set(deps.draft.clear$);
-      await set(deps.flushDraftClear$, signal);
-      signal.throwIfAborted();
-      return { fullPrompt };
+      return { fullPrompt, userMessage };
     },
   );
-}
-
-function createMessageCommands(deps: MessageCommandsDeps) {
-  const prepareUserMessage$ = createPrepareUserMessage(deps);
 
   const sendMessage$ = command(
     async ({ get, set }, prompt: string, signal: AbortSignal) => {
@@ -442,6 +414,14 @@ function createMessageCommands(deps: MessageCommandsDeps) {
       if (!result) {
         return;
       }
+      signal.throwIfAborted();
+
+      set(deps.internalLocalMessages$, (prev) => {
+        return [...prev, result.userMessage];
+      });
+      set(deps.cancelDraftSync$);
+      set(deps.draft.clear$);
+      await set(deps.flushDraftClear$, signal);
       signal.throwIfAborted();
 
       const client = get(zeroClient$)(chatMessagesContract);
@@ -478,10 +458,12 @@ function createMessageCommands(deps: MessageCommandsDeps) {
       }
 
       await setLoop(
-        (sig) => {
+        async (sig) => {
           set(reloadChatThreads$);
           set(deps.reloadThread$);
-          return set(runLoop.checkFinished$, sig);
+          const finished = await set(runLoop.checkFinished$, sig);
+          set(deps.autoScroll$);
+          return finished;
         },
         3000,
         signal,
@@ -840,15 +822,9 @@ export function createChatThreadSignals(
   draft: DraftSignals,
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const {
-    internalLocalMessages$,
-    resetLocalMessages$,
-    messages$,
-    chatMessages$,
-    allFinished$,
-  } = createMessageState(threadData$);
-  const { setScrollContainer$, autoScroll$, forceScrollToBottom$ } =
-    createScrollSignals();
+  const { internalLocalMessages$, messages$, chatMessages$, allFinished$ } =
+    createMessageState(threadData$);
+  const { setScrollContainer$, autoScroll$ } = createScrollSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, agentPinned$ } =
@@ -899,21 +875,18 @@ export function createChatThreadSignals(
     reloadThinkingMessage$,
     cancelDraftSync$,
     flushDraftClear$,
+    autoScroll$,
   });
 
   return {
     threadData$,
-    reloadThread$,
     messages$,
     allFinished$,
     thinkingMessage$,
     loadMessages$,
     sendMessage$,
     cancelRun$,
-    resetLocalMessages$,
     setScrollContainer$,
-    autoScroll$,
-    forceScrollToBottom$,
     draft,
     composerFileInput$,
     setComposerFileInput$,
@@ -927,8 +900,6 @@ export function createChatThreadSignals(
     setInputRef$,
     focusInput$,
     scheduleDraftSync$,
-    cancelDraftSync$,
-    flushDraftClear$,
   };
 }
 
