@@ -45,7 +45,7 @@ const OPTIMISTIC_TTL_MS = 30_000;
 
 export type TaskPanelEntry =
   | { kind: "chat"; signals: ChatThreadSignals }
-  | { kind: "activity"; signals: ActivitySignals; runId: string };
+  | { kind: "activity"; signals: ActivitySignals };
 
 // ---------------------------------------------------------------------------
 // TaskSignals — per-task signal bundle
@@ -131,18 +131,17 @@ function createCardSignals() {
 }
 
 interface PanelSignals {
-  internalOpen$: ReturnType<typeof state<boolean>>;
-  internalOpenedAt$: ReturnType<typeof state<number | null>>;
-  internalPanelEntry$: ReturnType<typeof state<TaskPanelEntry | null>>;
-  resetPanelPolling$: ReturnType<typeof resetSignal>;
   open$: Computed<boolean>;
   openedAt$: Computed<number | null>;
   panelEntry$: Computed<TaskPanelEntry | null>;
+  openTask$: Command<Promise<void>, [AbortSignal]>;
   closeTask$: Command<void, []>;
   refreshPanel$: Command<void, [AbortSignal]>;
+  focusInput$: Command<void, []>;
 }
 
 function createPanelSignals(
+  taskId: string,
   internalTask$: ReturnType<typeof state<TaskItem>>,
   setInputFocused$: Command<void, [boolean]>,
 ): PanelSignals {
@@ -175,31 +174,59 @@ function createPanelSignals(
       return;
     }
     const task = get(internalTask$);
-    if (!task.latestRunId || entry.runId === task.latestRunId) {
+    if (!task.latestRunId || entry.signals.runId === task.latestRunId) {
       return;
     }
     const panelSignal = set(resetPanelPolling$, signal);
     const signals = createActivitySignals(task.latestRunId);
-    set(internalPanelEntry$, {
-      kind: "activity",
-      signals,
-      runId: task.latestRunId,
-    });
+    set(internalPanelEntry$, { kind: "activity", signals });
     // Polling lifecycle is managed by resetPanelPolling$ — aborted on next
     // refresh or panel close. throwIfNotAbort swallows the expected AbortError.
     set(signals.startPolling$, panelSignal).catch(throwIfNotAbort);
   });
 
+  const openTask$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      if (get(internalOpen$)) {
+        return;
+      }
+      const task = get(internalTask$);
+      set(markRead$, taskId, task.latestRunId);
+      if (task.type === "chat" && task.chatThreadId) {
+        const { draft } = set(ensureDraft$, task.chatThreadId);
+        const signals = createChatThreadSignals(task.chatThreadId, draft);
+        set(internalPanelEntry$, { kind: "chat", signals });
+        set(internalOpenedAt$, Date.now());
+        set(internalOpen$, true);
+        await set(signals.loadMessages$, signal);
+        return;
+      }
+      if (task.latestRunId) {
+        const panelSignal = set(resetPanelPolling$, signal);
+        const signals = createActivitySignals(task.latestRunId);
+        set(internalPanelEntry$, { kind: "activity", signals });
+        set(internalOpenedAt$, Date.now());
+        set(internalOpen$, true);
+        await set(signals.startPolling$, panelSignal);
+      }
+    },
+  );
+
+  const focusInput$ = command(({ get, set }) => {
+    const entry = get(internalPanelEntry$);
+    if (entry) {
+      set(entry.signals.focusInput$);
+    }
+  });
+
   return {
-    internalOpen$,
-    internalOpenedAt$,
-    internalPanelEntry$,
-    resetPanelPolling$,
     open$,
     openedAt$,
     panelEntry$,
+    openTask$,
     closeTask$,
     refreshPanel$,
+    focusInput$,
   };
 }
 
@@ -232,57 +259,17 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
   } = createCardSignals();
 
   const {
-    internalOpen$,
-    internalOpenedAt$,
-    internalPanelEntry$,
-    resetPanelPolling$,
     open$,
     openedAt$,
     panelEntry$,
+    openTask$,
     closeTask$,
     refreshPanel$,
-  } = createPanelSignals(internalTask$, setInputFocused$);
+    focusInput$,
+  } = createPanelSignals(initialTask.id, internalTask$, setInputFocused$);
 
   const optimisticRef = { value: false };
   const optimisticInsertedAtRef = { value: null as number | null };
-
-  const openTask$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      if (get(internalOpen$)) {
-        return;
-      }
-      const task = get(internalTask$);
-      set(markRead$, initialTask.id, task.latestRunId);
-      if (task.type === "chat" && task.chatThreadId) {
-        const { draft } = set(ensureDraft$, task.chatThreadId);
-        const signals = createChatThreadSignals(task.chatThreadId, draft);
-        set(internalPanelEntry$, { kind: "chat", signals });
-        set(internalOpenedAt$, Date.now());
-        set(internalOpen$, true);
-        await set(signals.loadMessages$, signal);
-        return;
-      }
-      if (task.latestRunId) {
-        const panelSignal = set(resetPanelPolling$, signal);
-        const signals = createActivitySignals(task.latestRunId);
-        set(internalPanelEntry$, {
-          kind: "activity",
-          signals,
-          runId: task.latestRunId,
-        });
-        set(internalOpenedAt$, Date.now());
-        set(internalOpen$, true);
-        await set(signals.startPolling$, panelSignal);
-      }
-    },
-  );
-
-  const focusInput$ = command(({ get, set }) => {
-    const entry = get(internalPanelEntry$);
-    if (entry) {
-      set(entry.signals.focusInput$);
-    }
-  });
 
   return {
     taskId: initialTask.id,

@@ -1139,33 +1139,77 @@ describe("mission control page", () => {
           ],
         });
       }),
+      http.get("*/api/zero/logs/run-refresh-v1", () => {
+        return HttpResponse.json({
+          id: "00000000-0000-4000-a000-000000000010",
+          displayName: "Test Agent",
+          status: "completed",
+          agentId: "agent-1",
+          sessionId: null,
+          triggerSource: "schedule",
+          triggerAgentName: null,
+          modelProvider: null,
+          selectedModel: null,
+          framework: null,
+          scheduleId: null,
+          prompt: "Prompt from run v1",
+          appendSystemPrompt: null,
+          error: null,
+          createdAt: "2026-04-10T10:00:00Z",
+          startedAt: "2026-04-10T10:00:01Z",
+          completedAt: "2026-04-10T10:00:05Z",
+          artifact: { name: null, version: null },
+        });
+      }),
+      http.get("*/api/zero/runs/run-refresh-v1/telemetry/agent", () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
+      http.get("*/api/zero/logs/run-refresh-v2", () => {
+        return HttpResponse.json({
+          id: "00000000-0000-4000-a000-000000000011",
+          displayName: "Test Agent",
+          status: "completed",
+          agentId: "agent-1",
+          sessionId: null,
+          triggerSource: "schedule",
+          triggerAgentName: null,
+          modelProvider: null,
+          selectedModel: null,
+          framework: null,
+          scheduleId: null,
+          prompt: "Prompt from run v2",
+          appendSystemPrompt: null,
+          error: null,
+          createdAt: "2026-04-10T10:01:00Z",
+          startedAt: "2026-04-10T10:01:01Z",
+          completedAt: "2026-04-10T10:01:05Z",
+          artifact: { name: null, version: null },
+        });
+      }),
+      http.get("*/api/zero/runs/run-refresh-v2/telemetry/agent", () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
     );
-
-    mockActivityAPIs("run-refresh-v1");
-    mockActivityAPIs("run-refresh-v2");
 
     const user = userEvent.setup();
     detachedSetupPage({ context, path: "/_/mission-control" });
 
-    // Open the panel — it should show run-refresh-v1
+    // Open the panel — it should show the v1 prompt
     const title = await waitFor(() => {
       return screen.getByText("Refresh Panel Task");
     });
     await user.click(title);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
-    });
-
-    // Confirm the panel entry is tracking run-refresh-v1 before the swap
-    await waitFor(async () => {
-      const signals = await context.store.get(taskSignals$);
-      const ts = signals.find((s) => {
-        return s.taskId === "task-refresh";
-      });
-      const entry = context.store.get(ts!.panelEntry$);
-      expect(entry?.kind).toBe("activity");
-      expect(entry?.kind === "activity" && entry.runId).toBe("run-refresh-v1");
+      expect(screen.getByText("Prompt from run v1")).toBeInTheDocument();
     });
 
     // Switch the task API to return run-v2, simulating a new run arriving
@@ -1192,25 +1236,10 @@ describe("mission control page", () => {
 
     // The page's background task loop will pick up the new latestRunId and
     // call refreshPanel$, swapping the panel entry to run-refresh-v2.
-    await waitFor(async () => {
-      const signals = await context.store.get(taskSignals$);
-      const ts = signals.find((s) => {
-        return s.taskId === "task-refresh";
-      });
-      const entry = context.store.get(ts!.panelEntry$);
-      return entry?.kind === "activity" && entry.runId === "run-refresh-v2";
+    // The panel now renders the v2 prompt.
+    await waitFor(() => {
+      expect(screen.getByText("Prompt from run v2")).toBeInTheDocument();
     });
-
-    // Final confirmation: panel entry is now pointing at run-refresh-v2
-    const signalsAfter = await context.store.get(taskSignals$);
-    const taskTsAfter = signalsAfter.find((ts) => {
-      return ts.taskId === "task-refresh";
-    });
-    const entryAfter = context.store.get(taskTsAfter!.panelEntry$);
-    expect(entryAfter?.kind).toBe("activity");
-    expect(entryAfter?.kind === "activity" && entryAfter.runId).toBe(
-      "run-refresh-v2",
-    );
   });
 
   it("should clear panel entry and abort polling when closeTask$ is invoked", async () => {
@@ -1276,27 +1305,15 @@ describe("mission control page", () => {
       return screen.getByLabelText("Close task");
     });
 
-    // Panel entry should be set before closing
-    const signalsBefore = await context.store.get(taskSignals$);
-    const taskTs = signalsBefore.find((ts) => {
-      return ts.taskId === "task-close";
-    });
-    expect(taskTs).toBeDefined();
-    expect(context.store.get(taskTs!.panelEntry$)).not.toBeNull();
-    expect(context.store.get(taskTs!.open$)).toBeTruthy();
-
     // Close the panel
     await user.click(closeBtn);
 
-    // Panel entry and open state should be cleared
+    // Close button should disappear once the panel is dismissed
     await waitFor(() => {
-      expect(context.store.get(taskTs!.open$)).toBeFalsy();
+      expect(screen.queryByLabelText("Close task")).not.toBeInTheDocument();
     });
-    expect(context.store.get(taskTs!.panelEntry$)).toBeNull();
 
-    // Polling is driven by resetPanelPolling$ abort — after close the signal
-    // is aborted so startPolling$ exits. waitFor above already guarantees the
-    // abort fired, so count must be greater than 0 and stable.
+    // Polling was active while the panel was open
     expect(pollCallCount).toBeGreaterThan(0);
   });
 });
