@@ -281,6 +281,9 @@ describe("compareRecentRunsProxyUsage", () => {
       userId,
       inputTokens: 0,
       outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      webSearchRequests: 0,
     });
 
     await compareRecentRunsProxyUsage();
