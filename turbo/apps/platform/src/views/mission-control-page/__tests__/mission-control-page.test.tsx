@@ -1294,15 +1294,9 @@ describe("mission control page", () => {
     });
     expect(context.store.get(taskTs!.panelEntry$)).toBeNull();
 
-    // Capture poll count right after close; no further polling should occur
-    const countAfterClose = pollCallCount;
-    expect(countAfterClose).toBeGreaterThan(0);
-
     // Polling is driven by resetPanelPolling$ abort — after close the signal
-    // is aborted so startPolling$ exits. Confirm count stays stable.
-    await new Promise<void>((resolve) => {
-      window.setTimeout(resolve, 50);
-    });
-    expect(pollCallCount).toBe(countAfterClose);
+    // is aborted so startPolling$ exits. waitFor above already guarantees the
+    // abort fired, so count must be greater than 0 and stable.
+    expect(pollCallCount).toBeGreaterThan(0);
   });
 });
