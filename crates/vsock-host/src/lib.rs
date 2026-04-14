@@ -513,6 +513,13 @@ impl VsockHost {
     /// [`vsock_proto::MAX_MESSAGE_SIZE`] for the path and frame overhead.
     const WRITE_FILE_CHUNK_LIMIT: usize = 15 * 1024 * 1024;
 
+    /// Timeout (ms) for short helper commands (mv, rm) used during chunked writes.
+    const HELPER_EXEC_TIMEOUT_MS: u32 = 5000;
+
+    /// Shorter timeout (ms) for best-effort cleanup when the connection may
+    /// already be broken.  Avoids blocking for a full 5 s on a dead socket.
+    const CLEANUP_EXEC_TIMEOUT_MS: u32 = 1000;
+
     /// Write a file on the guest.
     ///
     /// Content larger than 15 MB is automatically split into multiple
@@ -540,25 +547,34 @@ impl VsockHost {
 
         if result.is_err() {
             // Best-effort cleanup of the temp file.
-            let _ = self.exec(&rm_tmp, 5000, &[], sudo).await;
+            let _ = self
+                .exec(&rm_tmp, Self::CLEANUP_EXEC_TIMEOUT_MS, &[], sudo)
+                .await;
             return result;
         }
 
         // Atomic rename temp → target.
         let escaped_path = path.replace('\'', "'\\''");
         let mv_cmd = format!("mv -f '{escaped_tmp}' '{escaped_path}'");
-        match self.exec(&mv_cmd, 5000, &[], sudo).await {
+        match self
+            .exec(&mv_cmd, Self::HELPER_EXEC_TIMEOUT_MS, &[], sudo)
+            .await
+        {
             Ok(r) if r.exit_code == 0 => Ok(()),
             Ok(r) => {
-                let _ = self.exec(&rm_tmp, 5000, &[], sudo).await;
+                let _ = self
+                    .exec(&rm_tmp, Self::CLEANUP_EXEC_TIMEOUT_MS, &[], sudo)
+                    .await;
                 Err(io::Error::other(format!(
                     "failed to rename temp file to {path}: {}",
                     String::from_utf8_lossy(&r.stderr),
                 )))
             }
             Err(e) => {
-                // Connection may be broken, but try cleanup anyway.
-                let _ = self.exec(&rm_tmp, 5000, &[], sudo).await;
+                // Connection likely broken — short timeout to avoid blocking.
+                let _ = self
+                    .exec(&rm_tmp, Self::CLEANUP_EXEC_TIMEOUT_MS, &[], sudo)
+                    .await;
                 Err(e)
             }
         }
