@@ -22,7 +22,6 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 
 const context = testContext();
-const user = userEvent.setup();
 
 /**
  * Mock voice-chat preparation endpoints called fire-and-forget from
@@ -111,7 +110,10 @@ describe("voice-chat page - idle state quick chat box (VC-003)", () => {
     detachedSetupPage({ context, path: "/voice-chat" });
 
     const btn = await waitFor(() => {
-      const el = screen.getByRole("button", { name: /start voice chat/i });
+      const el = screen
+        .getAllByRole("button")
+        .find((b) => /start voice chat/i.test(b.textContent ?? ""));
+      expect(el).toBeDefined();
       expect(el).not.toBeDisabled();
       return el;
     });
@@ -130,7 +132,11 @@ describe("voice-chat page - idle state meeting box (VC-004)", () => {
     detachedSetupPage({ context, path: "/voice-chat" });
 
     const btn = await waitFor(() => {
-      return screen.getByRole("button", { name: /start meeting/i });
+      const el = screen
+        .getAllByRole("button")
+        .find((b) => /start meeting/i.test(b.textContent ?? ""));
+      expect(el).toBeDefined();
+      return el;
     });
     expect(btn).toBeDisabled();
   });
@@ -153,6 +159,7 @@ describe("voice-chat page - meeting box prepare button (VC-005)", () => {
   });
 
   it("prepare button is enabled after typing a meeting topic", async () => {
+    const user = userEvent.setup();
     setMockFeatureSwitches({ voiceChat: true });
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
