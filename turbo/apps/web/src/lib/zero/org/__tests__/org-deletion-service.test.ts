@@ -10,9 +10,6 @@ import {
   findTestQueueEntry,
   insertOrgDefaultModelProvider,
   insertTestQueueEntry,
-  insertTestSlackOrgInstallation,
-  insertTestSlackOrgConnection,
-  insertTestSlackOrgThreadSession,
   insertTestCreditUsageForRun,
   insertTestConversation,
   insertTestStorage,
@@ -21,12 +18,17 @@ import {
   insertTestExportJob,
   insertOrgMembersCacheEntry,
   insertOrgMembersEntry,
-  findTestSlackOrgInstallation,
   countOrgRows,
   insertTestOrgSentinelSecret,
   insertTestOrgSentinelVariable,
   createTestSchedule,
 } from "../../../../__tests__/api-test-helpers";
+import {
+  insertTestSlackOrgInstallation,
+  insertTestSlackOrgConnection,
+  insertTestSlackOrgThreadSession,
+} from "../../../../__tests__/db-test-seeders/slack";
+import { findTestSlackOrgInstallation } from "../../../../__tests__/db-test-assertions/slack";
 import { createTestZeroAgent } from "../../../../__tests__/db-test-seeders/agents";
 import { deleteOrgData } from "../org-deletion-service";
 import { seedTestRun } from "../../../../__tests__/db-test-seeders/runs";

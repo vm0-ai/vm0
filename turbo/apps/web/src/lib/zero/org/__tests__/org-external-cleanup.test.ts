@@ -8,9 +8,9 @@ import { reloadEnv } from "../../../../env";
 import {
   updateOrgStripeSubscription,
   createTelegramInstallationForCompose,
-  createSlackInstallationForOrg,
-  findTestSlackOrgInstallation,
 } from "../../../../__tests__/api-test-helpers";
+import { createSlackInstallationForOrg } from "../../../../__tests__/db-test-seeders/slack";
+import { findTestSlackOrgInstallation } from "../../../../__tests__/db-test-assertions/slack";
 import { updateAgentComposeOrg } from "../../../../__tests__/db-test-seeders/agents";
 import { cleanupOrgExternalServices } from "../org-external-cleanup";
 

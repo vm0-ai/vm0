@@ -7,12 +7,16 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
+  updateOrgDefaultAgent,
+} from "../../../../../../src/__tests__/api-test-helpers";
+import {
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
-  updateOrgDefaultAgent,
+} from "../../../../../../src/__tests__/db-test-seeders/slack";
+import {
   countSlackOrgInstallations,
   countSlackOrgConnections,
-} from "../../../../../../src/__tests__/api-test-helpers";
+} from "../../../../../../src/__tests__/db-test-assertions/slack";
 import {
   seedOrphanCompose,
   clearComposeHeadVersion,

@@ -7,12 +7,14 @@ import {
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import {
   createTestOrg,
-  createTestSlackOrgInstallation,
-  createTestSlackOrgConnection,
   createTestRequest,
-  findTestSlackOrgConnection,
   insertOrgCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestSlackOrgInstallation,
+  createTestSlackOrgConnection,
+} from "../../../../../../../src/__tests__/db-test-seeders/slack";
+import { findTestSlackOrgConnection } from "../../../../../../../src/__tests__/db-test-assertions/slack";
 
 const context = testContext();
 

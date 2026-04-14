@@ -8,8 +8,8 @@ import {
 import {
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
-  countSlackOrgConnections,
-} from "../../../../../../src/__tests__/api-test-helpers";
+} from "../../../../../../src/__tests__/db-test-seeders/slack";
+import { countSlackOrgConnections } from "../../../../../../src/__tests__/db-test-assertions/slack";
 import { reloadEnv } from "../../../../../../src/env";
 
 import { POST } from "../route";

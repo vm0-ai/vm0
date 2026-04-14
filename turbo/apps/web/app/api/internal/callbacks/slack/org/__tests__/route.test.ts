@@ -7,12 +7,14 @@ import {
 import {
   createTestCompose,
   createTestCallback,
-  createTestSlackOrgInstallation,
   createTestRequest,
-  seedTestSlackOrgConnection,
   completeTestRun,
   createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestSlackOrgInstallation,
+  seedTestSlackOrgConnection,
+} from "../../../../../../../src/__tests__/db-test-seeders/slack";
 import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 

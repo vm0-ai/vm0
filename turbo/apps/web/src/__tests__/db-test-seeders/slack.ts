@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
@@ -6,13 +6,12 @@ import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../db/schema/slack-org-thread-session";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 import { uniqueId } from "../test-helpers";
-export { SLACK_BOT_SCOPES } from "../../lib/zero/slack-org/scopes";
 
 /**
- * Create an org-aware Slack installation for testing.
+ * @why-db-direct Slack OAuth callback requires real API interaction to exchange
+ * authorization code for bot token; no test-friendly API endpoint exists.
  *
- * Direct DB insert is required because the org Slack OAuth callback
- * requires real Slack API interaction that cannot be easily mocked.
+ * Creates an org-aware Slack installation with encrypted bot token.
  */
 export async function createTestSlackOrgInstallation(opts: {
   workspaceId?: string;
@@ -59,10 +58,10 @@ export async function createTestSlackOrgInstallation(opts: {
 }
 
 /**
- * Create an org-aware Slack connection for testing.
+ * @why-db-direct Connect API calls Slack to send DM notifications; test setup
+ * needs connections without Slack API side effects.
  *
- * Direct DB insert is required because the connect API requires
- * Slack workspace context that is only available during real OAuth.
+ * Creates an org-aware Slack connection, validating the installation has an orgId.
  */
 export async function createTestSlackOrgConnection(opts: {
   slackUserId?: string;
@@ -97,51 +96,9 @@ export async function createTestSlackOrgConnection(opts: {
   return { slackUserId, connectionId: connection!.id };
 }
 
-export async function findTestSlackOrgInstallation(workspaceId: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId))
-    .limit(1);
-  return row;
-}
-
-export async function findTestSlackOrgConnections(
-  slackUserId: string,
-  workspaceId: string,
-) {
-  return globalThis.services.db
-    .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.slackUserId, slackUserId),
-        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
-      ),
-    );
-}
-
-export async function findTestSlackOrgConnection(
-  slackUserId: string,
-  workspaceId: string,
-) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.slackUserId, slackUserId),
-        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
-      ),
-    );
-  return row;
-}
-
 /**
- * Seed a Slack org connection directly for testing cleanup scenarios.
- *
- * Unlike createTestSlackOrgConnection, this does not require the
- * installation to have an orgId.
+ * @why-db-direct Direct insert without installation-orgId validation; needed
+ * for cleanup/disconnect tests where installation may lack orgId.
  */
 export async function seedTestSlackOrgConnection(opts: {
   slackUserId: string;
@@ -164,7 +121,8 @@ export async function seedTestSlackOrgConnection(opts: {
 }
 
 /**
- * Create a Slack org installation for a specific org.
+ * @why-db-direct Minimal installation for external cleanup tests; no API path
+ * creates installations without real OAuth.
  */
 export async function createSlackInstallationForOrg(
   orgId: string,
@@ -183,6 +141,10 @@ export async function createSlackInstallationForOrg(
     .onConflictDoNothing();
 }
 
+/**
+ * @why-db-direct Simple installation without encrypted tokens for
+ * deletion/cascade tests.
+ */
 export async function insertTestSlackOrgInstallation(params: {
   slackWorkspaceId: string;
   slackWorkspaceName: string;
@@ -199,6 +161,9 @@ export async function insertTestSlackOrgInstallation(params: {
   });
 }
 
+/**
+ * @why-db-direct Direct connection insert for deletion/cascade tests.
+ */
 export async function insertTestSlackOrgConnection(params: {
   slackUserId: string;
   slackWorkspaceId: string;
@@ -215,6 +180,10 @@ export async function insertTestSlackOrgConnection(params: {
   return row!;
 }
 
+/**
+ * @why-db-direct Thread session requires pre-existing connection ID; no API
+ * creates thread sessions directly.
+ */
 export async function insertTestSlackOrgThreadSession(params: {
   connectionId: string;
   agentSessionId?: string;
@@ -229,53 +198,4 @@ export async function insertTestSlackOrgThreadSession(params: {
     })
     .returning({ id: slackOrgThreadSessions.id });
   return row!;
-}
-
-/**
- * Count Slack org installations for a workspace.
- */
-export async function countSlackOrgInstallations(
-  workspaceId: string,
-): Promise<number> {
-  initServices();
-  const rows = await globalThis.services.db
-    .select({ id: slackOrgInstallations.slackWorkspaceId })
-    .from(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
-  return rows.length;
-}
-
-/**
- * Count Slack org connections for a workspace.
- */
-export async function countSlackOrgConnections(
-  workspaceId: string,
-): Promise<number> {
-  initServices();
-  const rows = await globalThis.services.db
-    .select({ id: slackOrgConnections.id })
-    .from(slackOrgConnections)
-    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
-  return rows.length;
-}
-
-/**
- * Count rows in slack_org_connections where vm0_user_id matches.
- */
-export async function countSlackConnectionRows(
-  vm0UserId: string,
-): Promise<number> {
-  const rows = await globalThis.services.db.execute(
-    sql`SELECT COUNT(*)::int AS count FROM slack_org_connections WHERE vm0_user_id = ${vm0UserId}`,
-  );
-  return (rows.rows[0] as { count: number }).count;
-}
-
-export async function findTestSlackOrgConnectionsByVm0UserId(
-  vm0UserId: string,
-) {
-  return globalThis.services.db
-    .select()
-    .from(slackOrgConnections)
-    .where(eq(slackOrgConnections.vm0UserId, vm0UserId));
 }

@@ -6,14 +6,16 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { createTestOrg } from "../../../../../../src/__tests__/api-test-helpers";
 import {
-  createTestOrg,
   createTestSlackOrgInstallation,
   createTestSlackOrgConnection,
+} from "../../../../../../src/__tests__/db-test-seeders/slack";
+import {
   findTestSlackOrgConnection,
   findTestSlackOrgInstallation,
-  SLACK_BOT_SCOPES,
-} from "../../../../../../src/__tests__/api-test-helpers";
+} from "../../../../../../src/__tests__/db-test-assertions/slack";
+import { SLACK_BOT_SCOPES } from "../../../../../../src/lib/zero/slack-org/scopes";
 
 const context = testContext();
 

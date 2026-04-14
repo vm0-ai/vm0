@@ -21,11 +21,8 @@ import {
   insertTestExportJob,
   insertOrgMembersCacheEntry,
   insertOrgMembersEntry,
-  insertTestSlackOrgInstallation,
-  insertTestSlackOrgConnection,
   countOrgRows,
   countUserRows,
-  countSlackConnectionRows,
   countGithubUserLinkRows,
   countTelegramUserLinkRows,
   updateOrgStripeSubscription,
@@ -39,8 +36,13 @@ import {
   insertTestTelegramUserLink,
   insertUserCacheEntry,
   insertOrgCacheEntry,
-  insertTestSlackOrgThreadSession,
 } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  insertTestSlackOrgInstallation,
+  insertTestSlackOrgConnection,
+  insertTestSlackOrgThreadSession,
+} from "../../../../../src/__tests__/db-test-seeders/slack";
+import { countSlackConnectionRows } from "../../../../../src/__tests__/db-test-assertions/slack";
 import {
   createTestZeroAgent,
   updateAgentComposeOrg,

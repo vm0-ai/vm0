@@ -4,13 +4,15 @@ import {
   insertTestGitHubUserLink,
   insertTestGitHubInstallation,
   createTestTelegramInstallation,
+  findTestGitHubUserLinksByVm0UserId,
+  findTestTelegramUserLinksByVm0UserId,
+} from "../../../../__tests__/api-test-helpers";
+import {
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,
   insertTestSlackOrgThreadSession,
-  findTestGitHubUserLinksByVm0UserId,
-  findTestTelegramUserLinksByVm0UserId,
-  findTestSlackOrgConnectionsByVm0UserId,
-} from "../../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/db-test-seeders/slack";
+import { findTestSlackOrgConnectionsByVm0UserId } from "../../../../__tests__/db-test-assertions/slack";
 import { cleanupUserExternalServices } from "../user-external-cleanup";
 
 const context = testContext();

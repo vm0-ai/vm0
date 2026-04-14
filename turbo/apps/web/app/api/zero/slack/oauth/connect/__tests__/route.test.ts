@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET } from "../route";
-import {
-  createTestRequest,
-  createTestSlackOrgInstallation,
-} from "../../../../../../../src/__tests__/api-test-helpers";
+import { createTestRequest } from "../../../../../../../src/__tests__/api-test-helpers";
+import { createTestSlackOrgInstallation } from "../../../../../../../src/__tests__/db-test-seeders/slack";
 import {
   testContext,
   uniqueId,

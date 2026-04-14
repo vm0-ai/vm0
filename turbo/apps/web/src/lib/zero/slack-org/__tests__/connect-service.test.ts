@@ -7,9 +7,11 @@ import {
 import {
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
+} from "../../../../__tests__/db-test-seeders/slack";
+import {
   countSlackOrgInstallations,
   countSlackOrgConnections,
-} from "../../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/db-test-assertions/slack";
 import {
   adminConnect,
   memberConnect,

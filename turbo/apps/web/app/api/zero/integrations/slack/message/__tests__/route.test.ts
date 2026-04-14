@@ -4,11 +4,13 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestSlackOrgInstallation,
   insertOrgMembersCacheEntry,
   createTestSchedule,
-  seedTestSlackOrgConnection,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestSlackOrgInstallation,
+  seedTestSlackOrgConnection,
+} from "../../../../../../../src/__tests__/db-test-seeders/slack";
 import { createTestZeroAgent } from "../../../../../../../src/__tests__/db-test-seeders/agents";
 import {
   testContext,

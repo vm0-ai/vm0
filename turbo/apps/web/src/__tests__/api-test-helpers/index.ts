@@ -11,7 +11,6 @@ export * from "./secrets";
 export * from "./connectors";
 export * from "./callbacks";
 export * from "./email";
-export * from "./slack";
 export * from "./github";
 export * from "./telegram";
 export * from "./phone";

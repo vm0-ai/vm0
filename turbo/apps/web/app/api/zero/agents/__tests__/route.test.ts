@@ -23,15 +23,17 @@ import {
   createTestSchedule,
   enableTestSchedule,
   createTestSessionWithConversation,
-  insertTestSlackOrgInstallation,
-  insertTestSlackOrgConnection,
-  insertTestSlackOrgThreadSession,
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
   insertOrgMembersCacheEntry,
   createTestTarFile,
   createTestZeroSkill,
 } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  insertTestSlackOrgInstallation,
+  insertTestSlackOrgConnection,
+  insertTestSlackOrgThreadSession,
+} from "../../../../../src/__tests__/db-test-seeders/slack";
 import { getTestComposeVersionContent } from "../../../../../src/__tests__/db-test-assertions/agents";
 import { getInstructionsStorageName } from "@vm0/core";
 import {

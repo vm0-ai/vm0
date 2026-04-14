@@ -4,10 +4,12 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestOrg,
+} from "../../../../../../../src/__tests__/api-test-helpers";
+import {
   findTestSlackOrgInstallation,
   findTestSlackOrgConnection,
   findTestSlackOrgConnections,
-} from "../../../../../../../src/__tests__/api-test-helpers";
+} from "../../../../../../../src/__tests__/db-test-assertions/slack";
 import {
   testContext,
   uniqueId,

@@ -6,10 +6,8 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import {
-  createTestOrg,
-  createTestSlackOrgInstallation,
-} from "../../../../../../src/__tests__/api-test-helpers";
+import { createTestOrg } from "../../../../../../src/__tests__/api-test-helpers";
+import { createTestSlackOrgInstallation } from "../../../../../../src/__tests__/db-test-seeders/slack";
 
 const context = testContext();
 
