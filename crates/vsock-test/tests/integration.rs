@@ -798,6 +798,33 @@ async fn test_write_file_large() {
     h.finish();
 }
 
+// ── write_file (chunked — exceeds single-message limit) ────────────
+
+#[tokio::test]
+async fn test_write_file_chunked() {
+    let h = Harness::new().await;
+
+    let file_path = h.dir.join("chunked.bin");
+    let file_path_str = file_path.to_string_lossy().to_string();
+    // 16 MB content — exceeds the 15 MB chunk limit, triggers 2-chunk path + atomic rename
+    let content = vec![0xABu8; 16 * 1024 * 1024];
+
+    h.write_file(&file_path_str, &content, false)
+        .await
+        .expect("chunked write_file failed");
+
+    let written = std::fs::read(&file_path).expect("failed to read written file");
+    assert_eq!(written.len(), content.len());
+    assert_eq!(written, content);
+
+    // Temp file should not remain
+    assert!(
+        !std::path::Path::new(&format!("{file_path_str}.vm0tmp")).exists(),
+        "temp file was not cleaned up"
+    );
+    h.finish();
+}
+
 // ── shutdown ─────────────────────────────────────────────────────────
 
 #[tokio::test]
