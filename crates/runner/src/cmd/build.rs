@@ -411,6 +411,37 @@ async fn is_image_complete(image: &ImagePaths) -> RunnerResult<bool> {
     Ok(true)
 }
 
+/// Read a sysfs file, trimming whitespace. Returns empty string on failure.
+fn read_sysfs_trimmed(path: &str) -> String {
+    std::fs::read_to_string(path)
+        .map(|s| s.trim().to_owned())
+        .unwrap_or_default()
+}
+
+/// Read CPU microcode/revision version.
+///
+/// On x86_64: `/sys/devices/system/cpu/cpu0/microcode/version`
+/// On ARM64: `/sys/devices/system/cpu/cpu0/regs/identification/revidr_el1`
+fn read_cpu_microcode() -> Option<String> {
+    // x86_64
+    let x86_path = "/sys/devices/system/cpu/cpu0/microcode/version";
+    if let Ok(v) = std::fs::read_to_string(x86_path) {
+        let v = v.trim();
+        if !v.is_empty() {
+            return Some(v.to_owned());
+        }
+    }
+    // ARM64
+    let arm_path = "/sys/devices/system/cpu/cpu0/regs/identification/revidr_el1";
+    if let Ok(v) = std::fs::read_to_string(arm_path) {
+        let v = v.trim();
+        if !v.is_empty() {
+            return Some(v.to_owned());
+        }
+    }
+    None
+}
+
 /// Read a stable CPU model identifier from `/proc/cpuinfo`.
 ///
 /// On ARM64 this extracts `CPU implementer`, `CPU part`, and `CPU variant`
@@ -504,6 +535,16 @@ async fn compute_image_hash(
     hasher.update(b"cpu_model:");
     let cpu_id = read_cpu_model().unwrap_or_default();
     hasher.update(cpu_id.as_bytes());
+
+    // CPU microcode/revision — microcode updates can change available MSRs (x86)
+    // or CPU behavior (ARM). Gracefully defaults to empty if not available.
+    hasher.update(b"cpu_microcode:");
+    hasher.update(read_cpu_microcode().unwrap_or_default().as_bytes());
+
+    // BIOS/firmware version — firmware updates can change ACPI tables, CPU feature
+    // advertisement, and memory map, affecting KVM register state in snapshots.
+    hasher.update(b"bios_version:");
+    hasher.update(read_sysfs_trimmed("/sys/devices/virtual/dmi/id/bios_version").as_bytes());
 
     Ok(hex::encode(hasher.finalize()))
 }
