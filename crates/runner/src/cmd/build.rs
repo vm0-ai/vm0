@@ -21,7 +21,7 @@ const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
 ///
 /// Bumping leaves the previous-hash R2 objects orphaned; they're swept by
 /// `runner gc` after the configured TTL (see `r2_cache::gc_older_than`).
-const IMAGE_CACHE_VERSION: u32 = 1;
+const IMAGE_CACHE_VERSION: u32 = 2;
 
 #[cfg(bundled_guests)]
 mod embedded {
@@ -537,7 +537,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            hash, "7f3e8b2be83ded0550351739cb12774c0147567eddba5db1e86b5ef3d13ac92a",
+            hash, "b56330c45192dadb0ce8cc46b0a437a04dee118ca3d29ef7ae32d164ab242871",
             "image hash changed — this invalidates ALL cached images on ALL hosts"
         );
     }
