@@ -112,7 +112,9 @@ describe("voice-chat page - idle state quick chat box (VC-003)", () => {
     const btn = await waitFor(() => {
       const el = screen
         .getAllByRole("button")
-        .find((b) => /start voice chat/i.test(b.textContent ?? ""));
+        .find((b) => {
+          return /start voice chat/i.test(b.textContent ?? "");
+        });
       expect(el).toBeDefined();
       expect(el).not.toBeDisabled();
       return el;
@@ -134,7 +136,9 @@ describe("voice-chat page - idle state meeting box (VC-004)", () => {
     const btn = await waitFor(() => {
       const el = screen
         .getAllByRole("button")
-        .find((b) => /start meeting/i.test(b.textContent ?? ""));
+        .find((b) => {
+          return /start meeting/i.test(b.textContent ?? "");
+        });
       expect(el).toBeDefined();
       return el;
     });
