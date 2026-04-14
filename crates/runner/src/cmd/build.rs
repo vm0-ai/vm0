@@ -497,6 +497,10 @@ fn read_cpu_model() -> Option<String> {
 ///   - `provider.config_hash()` — boot args, guest network config
 ///   - `FIRECRACKER_VERSION` / `KERNEL_VERSION` — binary versions
 ///   - `vcpu` / `memory_mb` — VM resource settings
+///   - host kernel version (`uname -r`)
+///   - CPU model (implementer:part:variant on ARM, model name on x86)
+///   - CPU microcode/revision version
+///   - BIOS version and release
 ///
 /// **Changing this function invalidates all cached images.**
 async fn compute_image_hash(

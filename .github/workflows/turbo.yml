@@ -1566,7 +1566,7 @@ jobs:
               rm -rf "$LOG_DIR"
               exit 1
             fi
-            HASH_MAP=$(echo "$HASH_MAP" | jq --arg h "$HOST" --arg v "$HASH" '. + {($h): $v}')
+            HASH_MAP=$(echo "$HASH_MAP" | jq -c --arg h "$HOST" --arg v "$HASH" '. + {($h): $v}')
           done
           rm -rf "$LOG_DIR"
           echo "image-hash-map=${HASH_MAP}" >> "$GITHUB_OUTPUT"
