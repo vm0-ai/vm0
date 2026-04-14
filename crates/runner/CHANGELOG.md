@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.79.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.1...runner-rs-v0.79.2) (2026-04-14)
+
+
+### Bug Fixes
+
+* **runner:** add --protect-version flag to prevent gc from deleting deployed version ([#9260](https://github.com/vm0-ai/vm0/issues/9260)) ([40de60a](https://github.com/vm0-ai/vm0/commit/40de60afd78b0806d08650f80a5b2269b86df661))
+
 ## [0.79.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.0...runner-rs-v0.79.1) (2026-04-14)
 
 
