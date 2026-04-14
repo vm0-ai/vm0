@@ -13,7 +13,6 @@ import {
   createTestSecret,
   createTestVariable,
   createTestAgentSession,
-  createTestEmailThreadSession,
   insertOrgDefaultModelProvider,
   insertTestStorage,
   insertTestStorageVersion,
@@ -37,6 +36,7 @@ import {
   insertUserCacheEntry,
   insertOrgCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { createTestEmailThreadSession } from "../../../../../src/__tests__/db-test-seeders/email";
 import {
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,

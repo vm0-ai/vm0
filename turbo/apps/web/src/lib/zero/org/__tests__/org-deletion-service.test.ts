@@ -5,7 +5,6 @@ import {
   createTestSecret,
   createTestVariable,
   createTestAgentSession,
-  createTestEmailThreadSession,
   findTestRunRecord,
   findTestQueueEntry,
   insertOrgDefaultModelProvider,
@@ -23,6 +22,7 @@ import {
   insertTestOrgSentinelVariable,
   createTestSchedule,
 } from "../../../../__tests__/api-test-helpers";
+import { createTestEmailThreadSession } from "../../../../__tests__/db-test-seeders/email";
 import {
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,

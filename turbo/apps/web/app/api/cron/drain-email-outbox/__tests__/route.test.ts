@@ -1,11 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Resend } from "resend";
 import { GET } from "../route";
-import {
-  createTestRequest,
-  insertTestOutboxItem,
-  findTestOutboxItemById,
-} from "../../../../../src/__tests__/api-test-helpers";
+import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+import { insertTestOutboxItem } from "../../../../../src/__tests__/db-test-seeders/email";
+import { findTestOutboxItemById } from "../../../../../src/__tests__/db-test-assertions/email";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 

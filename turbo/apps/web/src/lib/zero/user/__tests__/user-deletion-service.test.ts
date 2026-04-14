@@ -5,7 +5,6 @@ import {
   createTestSecret,
   createTestVariable,
   createTestAgentSession,
-  createTestEmailThreadSession,
   createTestCliToken,
   createTestDeviceCode,
   createTestConnectorSession,
@@ -29,6 +28,7 @@ import {
   insertTestTelegramInstallation,
   insertTestTelegramUserLink,
 } from "../../../../__tests__/api-test-helpers";
+import { createTestEmailThreadSession } from "../../../../__tests__/db-test-seeders/email";
 import {
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,

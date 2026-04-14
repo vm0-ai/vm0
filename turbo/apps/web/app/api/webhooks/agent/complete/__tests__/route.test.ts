@@ -12,15 +12,15 @@ import {
   createTestSchedule,
   linkRunToSchedule,
   createTestAgentSession,
-  createTestEmailThreadSession,
   createTestCallback,
   findTestCallbacksByRunId,
   findTestRunRecord,
   findTestQueueEntry,
   enqueueTestRun,
   getTestAgentSessionWithConversation,
-  generateTestReplyToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { createTestEmailThreadSession } from "../../../../../../src/__tests__/db-test-seeders/email";
+import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
 import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
 import {
@@ -678,7 +678,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         emailUser.userId,
         composeId,
       );
-      const replyToken = generateTestReplyToken(agentSession.id);
+      const replyToken = generateReplyToken(agentSession.id);
 
       const emailSession = await createTestEmailThreadSession({
         userId: emailUser.userId,

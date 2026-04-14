@@ -1,15 +1,17 @@
-import { eq } from "drizzle-orm";
 import type { EmailTemplate, PostSendAction } from "../../lib/zero/email/types";
 import { emailThreadSessions } from "../../db/schema/email-thread-session";
 import { emailOutbox } from "../../db/schema/email-outbox";
-import { generateReplyToken } from "../../lib/zero/email/handlers/shared";
+import { initServices } from "../../lib/init-services";
 
 // ============================================================================
-// Email Thread Session Test Helpers
+// Email Thread Session Seeders
 // ============================================================================
 
 /**
  * Create an email thread session directly in the database for test setup.
+ *
+ * @why-db-direct No API route creates thread sessions directly; sessions are
+ * created internally during email callback processing.
  */
 export async function createTestEmailThreadSession(params: {
   userId: string;
@@ -18,6 +20,7 @@ export async function createTestEmailThreadSession(params: {
   replyToToken: string;
   lastEmailMessageId?: string | null;
 }): Promise<{ id: string }> {
+  initServices();
   const [row] = await globalThis.services.db
     .insert(emailThreadSessions)
     .values({
@@ -31,24 +34,15 @@ export async function createTestEmailThreadSession(params: {
   return row!;
 }
 
-/**
- * Find an email thread session by its reply-to token.
- */
-export async function findTestEmailThreadSession(replyToToken: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(emailThreadSessions)
-    .where(eq(emailThreadSessions.replyToToken, replyToToken))
-    .limit(1);
-  return row ?? null;
-}
-
 // ============================================================================
-// Email Outbox Helpers
+// Email Outbox Seeders
 // ============================================================================
 
 /**
  * Insert a raw email outbox item (bypasses enqueueEmail for direct state testing).
+ *
+ * @why-db-direct Bypasses enqueueEmail() to test specific outbox states
+ * (e.g., pre-set attempts, status, createdAt) that cannot be reached through the API.
  */
 export async function insertTestOutboxItem(values: {
   fromAddress: string;
@@ -61,6 +55,7 @@ export async function insertTestOutboxItem(values: {
   createdAt?: Date;
   resendId?: string;
 }) {
+  initServices();
   const [row] = await globalThis.services.db
     .insert(emailOutbox)
     .values({
@@ -76,37 +71,4 @@ export async function insertTestOutboxItem(values: {
     })
     .returning({ id: emailOutbox.id });
   return row!;
-}
-
-/**
- * Find email outbox items by status.
- */
-export async function findTestOutboxItems(status?: string) {
-  if (status) {
-    return globalThis.services.db
-      .select()
-      .from(emailOutbox)
-      .where(eq(emailOutbox.status, status));
-  }
-  return globalThis.services.db.select().from(emailOutbox);
-}
-
-/**
- * Find a single email outbox item by ID.
- */
-export async function findTestOutboxItemById(id: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(emailOutbox)
-    .where(eq(emailOutbox.id, id))
-    .limit(1);
-  return row ?? null;
-}
-
-/**
- * Generate a reply token for testing email thread sessions.
- * Re-exports generateReplyToken from the email handler shared module.
- */
-export function generateTestReplyToken(sessionId: string): string {
-  return generateReplyToken(sessionId);
 }

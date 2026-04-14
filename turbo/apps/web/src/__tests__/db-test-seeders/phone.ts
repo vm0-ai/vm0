@@ -3,16 +3,19 @@ import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { phoneUserLinks } from "../../db/schema/phone-user-link";
 import { uniqueId } from "../test-helpers";
-import { createTestCompose } from "./agents";
-import { ensureOrgRow } from "./org";
+import { createTestCompose } from "../api-test-helpers/agents";
+import { ensureOrgRow } from "../api-test-helpers/org";
 
 // ============================================================================
-// Phone Helpers
+// Phone Seeders
 // ============================================================================
 
 /**
  * Set the AgentPhone number ID on org_metadata.
  * Used when a test needs a number ID attached to the org for outbound call tests.
+ *
+ * @why-db-direct Updates a single metadata field; no API endpoint exists for
+ * partial org_metadata updates.
  */
 export async function setOrgAgentphoneNumberId(
   orgId: string,
@@ -26,36 +29,6 @@ export async function setOrgAgentphoneNumberId(
 }
 
 /**
- * Get the AgentPhone provisioning config for an org from org_metadata.
- * Used to verify that setup correctly saved the agent/number IDs.
- */
-export async function getOrgAgentphoneConfig(orgId: string): Promise<{
-  agentphoneAgentId: string | null;
-  agentphoneNumberId: string | null;
-  agentphoneNumber: string | null;
-}> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({
-      agentphoneAgentId: orgMetadata.agentphoneAgentId,
-      agentphoneNumberId: orgMetadata.agentphoneNumberId,
-      agentphoneNumber: orgMetadata.agentphoneNumber,
-    })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return {
-    agentphoneAgentId: row?.agentphoneAgentId ?? null,
-    agentphoneNumberId: row?.agentphoneNumberId ?? null,
-    agentphoneNumber: row?.agentphoneNumber ?? null,
-  };
-}
-
-// ============================================================================
-// Absorbed from lib/zero/phone/__tests__/helpers.ts
-// ============================================================================
-
-/**
  * Create an org configured with an AgentPhone agent ID and a default agent compose.
  * Sets up org_metadata with agentphoneAgentId + defaultAgentId.
  *
@@ -64,6 +37,10 @@ export async function getOrgAgentphoneConfig(orgId: string): Promise<{
  *
  * Callers must have the Clerk mock set up (e.g., via context.setupUser()) so
  * the compose is owned by the correct user/org context.
+ *
+ * @why-db-direct Combines ensureOrgRow() + createTestCompose() + DB update to
+ * set up impossible test state (agentphoneAgentId + defaultAgentId) that cannot
+ * be reached through any single API.
  */
 export async function createPhoneOrg(orgId: string): Promise<{
   orgId: string;
@@ -98,6 +75,9 @@ export async function createPhoneOrg(orgId: string): Promise<{
 
 /**
  * Link a phone number to a user in an org for testing.
+ *
+ * @why-db-direct No API endpoint for directly linking phone numbers; the setup
+ * route has different semantics.
  */
 export async function linkPhoneNumber(
   phoneNumber: string,

@@ -4,14 +4,18 @@ import type { CreateEmailOptions } from "resend";
 import { Resend } from "resend";
 import { testContext } from "../../../../__tests__/test-helpers";
 import {
-  insertTestOutboxItem,
-  findTestOutboxItems,
-  findTestOutboxItemById,
   createTestCompose,
   createTestAgentSession,
-  createTestEmailThreadSession,
-  findTestEmailThreadSession,
 } from "../../../../__tests__/api-test-helpers";
+import {
+  createTestEmailThreadSession,
+  insertTestOutboxItem,
+} from "../../../../__tests__/db-test-seeders/email";
+import {
+  findTestEmailThreadSession,
+  findTestOutboxItems,
+  findTestOutboxItemById,
+} from "../../../../__tests__/db-test-assertions/email";
 import { uniqueId } from "../../../../__tests__/test-helpers";
 import { generateReplyToken } from "../handlers/shared";
 import {

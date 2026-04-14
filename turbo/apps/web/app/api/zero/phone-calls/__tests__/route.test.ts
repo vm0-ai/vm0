@@ -10,7 +10,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   createPhoneOrg,
   setOrgAgentphoneNumberId,
-} from "../../../../../src/__tests__/api-test-helpers/phone";
+} from "../../../../../src/__tests__/db-test-seeders/phone";
 import { server } from "../../../../../src/mocks/server";
 import { reloadEnv } from "../../../../../src/env";
 

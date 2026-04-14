@@ -11,10 +11,10 @@ import {
   createTestRun,
   createTestCallback,
   completeTestRun,
-  findTestEmailThreadSession,
   createSignedCallbackRequest,
-  generateTestReplyToken,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import { findTestEmailThreadSession } from "../../../../../../../src/__tests__/db-test-assertions/email";
+import { generateReplyToken } from "../../../../../../../src/lib/zero/email/handlers/shared";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
@@ -48,7 +48,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       );
       const { runId } = await createTestRun(composeId, "Test prompt");
 
-      const replyToken = generateTestReplyToken(crypto.randomUUID());
+      const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "sender@example.com",
         agentId,
@@ -82,7 +82,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       );
       const { runId } = await createTestRun(composeId, "Test prompt");
 
-      const replyToken = generateTestReplyToken(crypto.randomUUID());
+      const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "sender@example.com",
         agentId,
@@ -118,7 +118,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
-      const replyToken = generateTestReplyToken(crypto.randomUUID());
+      const replyToken = generateReplyToken(crypto.randomUUID());
       const senderEmail = "sender@example.com";
       const payload: TriggerCallbackPayload = {
         senderEmail,
@@ -173,7 +173,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
-      const replyToken = generateTestReplyToken(crypto.randomUUID());
+      const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "sender@example.com",
         agentId,
@@ -215,7 +215,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
-      const replyToken = generateTestReplyToken(crypto.randomUUID());
+      const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "user-a@example.com",
         agentId,
@@ -259,7 +259,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
-      const replyToken = generateTestReplyToken(crypto.randomUUID());
+      const replyToken = generateReplyToken(crypto.randomUUID());
       const senderEmail = "sender@example.com";
       const payload: TriggerCallbackPayload = {
         senderEmail,
@@ -300,7 +300,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       const { composeId, agentId } = await createTestCompose(agentName);
       const { runId } = await createTestRun(composeId, "Test prompt");
 
-      const replyToken = generateTestReplyToken(crypto.randomUUID());
+      const replyToken = generateReplyToken(crypto.randomUUID());
       const senderEmail = "sender@example.com";
       const payload: TriggerCallbackPayload = {
         senderEmail,
@@ -341,7 +341,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       const { composeId, agentId } = await createTestCompose(agentName);
       const { runId } = await createTestRun(composeId, "Test prompt");
 
-      const replyToken = generateTestReplyToken(crypto.randomUUID());
+      const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "sender@example.com",
         agentId,
@@ -381,7 +381,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
-      const replyToken = generateTestReplyToken(crypto.randomUUID());
+      const replyToken = generateReplyToken(crypto.randomUUID());
       const senderEmail = "sender@example.com";
       const payload: TriggerCallbackPayload = {
         senderEmail,

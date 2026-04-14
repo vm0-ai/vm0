@@ -4,7 +4,7 @@ import { GET } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { createPhoneOrg } from "../../../../../../src/__tests__/api-test-helpers/phone";
+import { createPhoneOrg } from "../../../../../../src/__tests__/db-test-seeders/phone";
 import { server } from "../../../../../../src/mocks/server";
 import { reloadEnv } from "../../../../../../src/env";
 
