@@ -21,7 +21,6 @@ import { mockSubagentThread } from "./chat-test-helpers.ts";
 import { autoReadEnabled$ } from "../../../signals/voice-io/voice-io-settings.ts";
 
 const context = testContext();
-const user = userEvent.setup();
 
 const THREAD_ID = "thread-auto-read-test";
 
@@ -87,6 +86,7 @@ describe("auto-read toggle - initial state is off (AR-003)", () => {
 
 describe("auto-read toggle - click enables auto-read (AR-004)", () => {
   it("sets autoReadEnabled$ to true after clicking the toggle once", async () => {
+    const user = userEvent.setup();
     setMockFeatureSwitches({ audioIO: true });
     mockSubagentThread(THREAD_ID);
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
@@ -107,6 +107,7 @@ describe("auto-read toggle - click enables auto-read (AR-004)", () => {
 
 describe("auto-read toggle - double-click returns to off (AR-005)", () => {
   it("returns autoReadEnabled$ to false after clicking toggle twice", async () => {
+    const user = userEvent.setup();
     setMockFeatureSwitches({ audioIO: true });
     mockSubagentThread(THREAD_ID);
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
