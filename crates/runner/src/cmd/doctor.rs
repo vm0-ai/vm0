@@ -1439,6 +1439,7 @@ mod tests {
         assert!(is_test_tld("https://not-a-real-server.test/api"));
         assert!(is_test_tld("https://sub.domain.test"));
         assert!(is_test_tld("https://test"));
+        assert!(is_test_tld("https://server.test:8080/api"));
     }
 
     #[test]
