@@ -69,6 +69,10 @@ runs:
           "  UserKnownHostsFile /dev/null" \
           "  ConnectTimeout 10" \
           "  ConnectionAttempts 3" \
+          "  ServerAliveInterval 15" \
+          "  ServerAliveCountMax 4" \
+          "  TCPKeepAlive yes" \
+          "  IPQoS throughput" \
           "  IdentityFile $HOME/.ssh/runner.pem" \
           "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h")"
 
