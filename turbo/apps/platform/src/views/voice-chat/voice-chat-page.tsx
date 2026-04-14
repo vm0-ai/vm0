@@ -11,7 +11,6 @@ import {
   IconUsers,
   IconCheck,
 } from "@tabler/icons-react";
-import type { TouchEvent as ReactTouchEvent } from "react";
 import { defaultAgentName$ } from "../../signals/agent.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -176,28 +175,16 @@ function VoiceChatFooter({
           variant={muted ? "secondary" : "default"}
           className="h-12 w-full rounded-full select-none md:w-auto md:px-6"
           disabled={status !== "connected"}
-          onMouseDown={() => {
-            pttStart();
-          }}
-          onMouseUp={() => {
-            pttStop();
-          }}
-          onMouseLeave={() => {
-            if (!muted) {
+          onClick={() => {
+            if (muted) {
+              pttStart();
+            } else {
               pttStop();
             }
           }}
-          onTouchStart={(e: ReactTouchEvent) => {
-            e.preventDefault();
-            pttStart();
-          }}
-          onTouchEnd={(e: ReactTouchEvent) => {
-            e.preventDefault();
-            pttStop();
-          }}
         >
           <IconMicrophone size={20} className="mr-2" />
-          {muted ? "Hold to Talk" : "Recording..."}
+          {muted ? "Push to Talk" : "Recording..."}
         </Button>
       ) : (
         <Button
