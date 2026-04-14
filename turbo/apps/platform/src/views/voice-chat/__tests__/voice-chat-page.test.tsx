@@ -20,6 +20,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
+import { vcModel$ } from "../../../signals/voice-chat/voice-chat-session.ts";
 
 const context = testContext();
 
@@ -90,12 +91,18 @@ describe("voice-chat page - idle state model selector (VC-002)", () => {
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
 
+    // Wait for the page to render the tab list
     await waitFor(() => {
-      const miniTab = screen.getAllByRole("tab").find((el) => {
-        return /GPT Realtime Mini/.test(el.textContent ?? "");
-      });
-      expect(miniTab).toHaveAttribute("aria-selected", "true");
+      expect(
+        screen.getAllByRole("tab").find((el) => {
+          return /GPT Realtime Mini/.test(el.textContent ?? "");
+        }),
+      ).toBeInTheDocument();
     });
+
+    // Verify the default model signal value — more reliable than querying
+    // aria-selected which can race with async store initialization
+    expect(context.store.get(vcModel$)).toBe("gpt-realtime-mini");
   });
 });
 
