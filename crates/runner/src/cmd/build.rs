@@ -153,8 +153,7 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         resolve_guest(args.guest_mock_claude, "guest-mock-claude", tmp_dir.path()).await?;
     let guest_reseed = resolve_guest(args.guest_reseed, "guest-reseed", tmp_dir.path()).await?;
 
-    // Fixed order for deterministic hashing — do NOT reorder without
-    // updating the expected value in `image_hash_is_stable`.
+    // Fixed order for deterministic hashing — do NOT reorder.
     let bins: [(&Path, &str); 5] = [
         (guest_agent.as_path(), "/usr/local/bin/guest-agent"),
         (guest_download.as_path(), "/usr/local/bin/guest-download"),
@@ -413,9 +412,14 @@ async fn is_image_complete(image: &ImagePaths) -> RunnerResult<bool> {
 
 /// Read a sysfs file, trimming whitespace. Returns empty string on failure.
 fn read_sysfs_trimmed(path: &str) -> String {
-    std::fs::read_to_string(path)
-        .map(|s| s.trim().to_owned())
-        .unwrap_or_default()
+    match std::fs::read_to_string(path) {
+        Ok(s) => s.trim().to_owned(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            tracing::warn!("failed to read {path}: {e}");
+            String::new()
+        }
+    }
 }
 
 /// Read CPU microcode/revision version.
@@ -423,22 +427,23 @@ fn read_sysfs_trimmed(path: &str) -> String {
 /// On x86_64: `/sys/devices/system/cpu/cpu0/microcode/version`
 /// On ARM64: `/sys/devices/system/cpu/cpu0/regs/identification/revidr_el1`
 fn read_cpu_microcode() -> Option<String> {
-    // x86_64
-    let x86_path = "/sys/devices/system/cpu/cpu0/microcode/version";
-    if let Ok(v) = std::fs::read_to_string(x86_path) {
-        let v = v.trim();
-        if !v.is_empty() {
-            return Some(v.to_owned());
+    let paths = [
+        "/sys/devices/system/cpu/cpu0/microcode/version",
+        "/sys/devices/system/cpu/cpu0/regs/identification/revidr_el1",
+    ];
+    for path in paths {
+        match std::fs::read_to_string(path) {
+            Ok(v) => {
+                let v = v.trim();
+                if !v.is_empty() {
+                    return Some(v.to_owned());
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => tracing::warn!("failed to read {path}: {e}"),
         }
     }
-    // ARM64
-    let arm_path = "/sys/devices/system/cpu/cpu0/regs/identification/revidr_el1";
-    if let Ok(v) = std::fs::read_to_string(arm_path) {
-        let v = v.trim();
-        if !v.is_empty() {
-            return Some(v.to_owned());
-        }
-    }
+    tracing::warn!("could not determine CPU microcode/revision version");
     None
 }
 
@@ -448,7 +453,13 @@ fn read_cpu_microcode() -> Option<String> {
 /// (e.g. "0x41:0xd40:0x1" for Neoverse V1 / Graviton 3).
 /// On x86_64 this extracts the `model name` line.
 fn read_cpu_model() -> Option<String> {
-    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").ok()?;
+    let cpuinfo = match std::fs::read_to_string("/proc/cpuinfo") {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("failed to read /proc/cpuinfo: {e}");
+            return None;
+        }
+    };
 
     // ARM64: combine implementer + part + variant
     let get = |key: &str| -> Option<&str> {
@@ -468,7 +479,12 @@ fn read_cpu_model() -> Option<String> {
     }
 
     // x86_64: use model name
-    get("model name").map(String::from)
+    if let Some(model) = get("model name") {
+        return Some(model.to_owned());
+    }
+
+    tracing::warn!("could not determine CPU model from /proc/cpuinfo");
+    None
 }
 
 /// Compute a unified hash from all rootfs + snapshot inputs.

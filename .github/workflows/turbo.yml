@@ -1558,8 +1558,7 @@ jobs:
 
           # Extract per-host build hashes — they may differ across hosts
           # because the image hash includes the host kernel version and CPU model.
-          HASH_MAP="{"
-          FIRST=true
+          HASH_MAP=$(jq -n '{}')
           for HOST in "${HOSTS[@]}"; do
             HASH=$(grep '^image_hash=' "${LOG_DIR}/${HOST}.log" | cut -d= -f2)
             if [ -z "$HASH" ]; then
@@ -1567,14 +1566,8 @@ jobs:
               rm -rf "$LOG_DIR"
               exit 1
             fi
-            if [ "$FIRST" = true ]; then
-              FIRST=false
-            else
-              HASH_MAP+=","
-            fi
-            HASH_MAP+="\"${HOST}\":\"${HASH}\""
+            HASH_MAP=$(echo "$HASH_MAP" | jq --arg h "$HOST" --arg v "$HASH" '. + {($h): $v}')
           done
-          HASH_MAP+="}"
           rm -rf "$LOG_DIR"
           echo "image-hash-map=${HASH_MAP}" >> "$GITHUB_OUTPUT"
 
