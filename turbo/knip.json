@@ -13,7 +13,8 @@
         "scripts/**/*.ts",
         "**/__tests__/**/*.{test,spec}.{ts,tsx}",
         "**/*.{test,spec}.{ts,tsx}",
-        "src/__tests__/api-test-helpers/index.ts"
+        "src/__tests__/api-test-helpers/index.ts",
+        "src/__tests__/webhook-simulators/index.ts"
       ],
       "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
       "ignoreDependencies": [
