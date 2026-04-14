@@ -7,9 +7,9 @@ import {
   insertTestChatThread,
   getTestAgentComposeName,
   createTestSchedule,
-  updateTestScheduleState,
   insertTestVoiceChatSession,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { updateTestScheduleState } from "../../../../../src/__tests__/db-test-seeders/schedules";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import {
   testContext,

@@ -18,11 +18,13 @@ import {
   insertOrgMembersCacheEntry,
   insertOrgMembersEntry,
   countOrgRows,
-  insertTestOrgSentinelSecret,
-  insertTestOrgSentinelVariable,
   createTestSchedule,
 } from "../../../../__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../__tests__/db-test-seeders/email";
+import {
+  insertTestOrgSentinelSecret,
+  insertTestOrgSentinelVariable,
+} from "../../../../__tests__/db-test-seeders/secrets";
 import {
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,

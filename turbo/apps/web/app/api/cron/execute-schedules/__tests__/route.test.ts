@@ -9,9 +9,11 @@ import {
   getTestSchedule,
   getTestScheduleRuns,
   getTestRun,
+} from "../../../../../src/__tests__/api-test-helpers";
+import {
   disableAllSchedules,
   setScheduleConsecutiveFailures,
-} from "../../../../../src/__tests__/api-test-helpers";
+} from "../../../../../src/__tests__/db-test-seeders/schedules";
 import {
   createTestZeroAgent,
   clearComposeHeadVersion,

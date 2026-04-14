@@ -11,10 +11,10 @@ import {
   enableTestSchedule,
   disableTestSchedule,
   deleteTestSchedule,
-  updateTestScheduleState,
-  findTestScheduleById,
   createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import { updateTestScheduleState } from "../../../../../../../src/__tests__/db-test-seeders/schedules";
+import { findTestScheduleById } from "../../../../../../../src/__tests__/db-test-assertions/schedules";
 import { createTestZeroAgent } from "../../../../../../../src/__tests__/db-test-seeders/agents";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 

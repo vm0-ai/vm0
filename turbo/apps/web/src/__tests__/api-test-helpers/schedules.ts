@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import type { ScheduleResponse } from "../../lib/zero/schedule/schedule-service";
@@ -181,82 +180,4 @@ export async function getTestScheduleRuns(
     limit ?? 5,
   );
   return { runs };
-}
-
-/**
- * Update internal schedule state for testing edge cases.
- *
- * Direct DB write is required because the schedule API does not expose
- * an endpoint to set internal fields like consecutiveFailures or lastRunId —
- * these are managed by the callback system, not user actions.
- */
-export async function updateTestScheduleState(
-  scheduleId: string,
-  state: {
-    consecutiveFailures?: number;
-    enabled?: boolean;
-    nextRunAt?: Date | null;
-    lastRunId?: string;
-    intervalSeconds?: number;
-  },
-): Promise<void> {
-  await globalThis.services.db
-    .update(zeroAgentSchedules)
-    .set(state)
-    .where(eq(zeroAgentSchedules.id, scheduleId));
-}
-
-/**
- * Get internal schedule state by ID for verifying callback side-effects.
- *
- * Direct DB read is required because the schedule GET API requires
- * composeId + name, but callback tests only have the schedule ID from
- * the payload. Also exposes internal fields not in the API response.
- */
-export async function findTestScheduleById(scheduleId: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(zeroAgentSchedules)
-    .where(eq(zeroAgentSchedules.id, scheduleId))
-    .limit(1);
-  return row;
-}
-
-/**
- * Disable enabled schedules for a specific org.
- * Prevents stale schedules from other test files consuming the limit(10)
- * batch in executeDueSchedules, which can cause test flakiness.
- *
- * Scoped to orgId so dev-server schedules are not affected.
- */
-export async function disableAllSchedules(orgId: string): Promise<void> {
-  await globalThis.services.db
-    .update(zeroAgentSchedules)
-    .set({ enabled: false })
-    .where(
-      and(
-        eq(zeroAgentSchedules.enabled, true),
-        eq(zeroAgentSchedules.orgId, orgId),
-      ),
-    );
-}
-
-/**
- * Set the consecutiveFailures count on a schedule.
- * Useful for testing auto-disable after N failures.
- */
-export async function setScheduleConsecutiveFailures(
-  composeId: string,
-  name: string,
-  failures: number,
-): Promise<void> {
-  await globalThis.services.db
-    .update(zeroAgentSchedules)
-    .set({ consecutiveFailures: failures })
-    .where(
-      and(
-        eq(zeroAgentSchedules.agentId, composeId),
-        eq(zeroAgentSchedules.name, name),
-      ),
-    );
 }
