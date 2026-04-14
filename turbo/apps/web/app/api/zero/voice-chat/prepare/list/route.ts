@@ -12,17 +12,30 @@ export async function GET(request: Request) {
   const authCtx = await getAuthContext(
     request.headers.get("authorization") ?? undefined,
   );
-  const org = await resolveOrg(authCtx);
-
-  const overrides = await loadFeatureSwitchOverrides(authCtx.userId);
-  if (!isFeatureEnabled(FeatureSwitchKey.VOICE_CHAT, overrides)) {
+  if (!authCtx?.orgId) {
     return NextResponse.json(
-      { error: { message: "Voice chat is not enabled" } },
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
+  }
+
+  const { org } = await resolveOrg(authCtx);
+  const { userId } = authCtx;
+
+  const overrides = await loadFeatureSwitchOverrides(org.orgId, userId);
+  const enabled = isFeatureEnabled(FeatureSwitchKey.VoiceChat, {
+    orgId: org.orgId,
+    userId,
+    overrides,
+  });
+  if (!enabled) {
+    return NextResponse.json(
+      { error: { message: "Voice chat is not enabled", code: "FORBIDDEN" } },
       { status: 403 },
     );
   }
 
-  const preparations = await listFreshPreparations(org.id, authCtx.userId);
+  const preparations = await listFreshPreparations(org.orgId, userId);
 
   return NextResponse.json({
     preparations: preparations.map((p) => {
