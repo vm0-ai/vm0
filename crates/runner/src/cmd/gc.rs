@@ -719,13 +719,20 @@ fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<PathBuf> {
     let entries = match std::fs::read_dir(locks_dir) {
         Ok(rd) => rd,
         Err(e) => {
-            tracing::debug!("workspace gc: cannot read {}: {e}", locks_dir.display());
+            warn!("workspace gc: cannot read {}: {e}", locks_dir.display());
             return Vec::new();
         }
     };
 
     let mut base_dirs = Vec::new();
-    for entry in entries.flatten() {
+    for result in entries {
+        let entry = match result {
+            Ok(entry) => entry,
+            Err(e) => {
+                warn!("workspace gc: read entry in {}: {e}", locks_dir.display());
+                continue;
+            }
+        };
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if !name.starts_with("base-dir-") || !name.ends_with(".lock") {

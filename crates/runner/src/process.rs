@@ -199,9 +199,20 @@ async fn scan_proc_cmdlines() -> Vec<(u32, String)> {
     let mut result = Vec::new();
     let mut entries = match tokio::fs::read_dir("/proc").await {
         Ok(e) => e,
-        Err(_) => return result,
+        Err(e) => {
+            tracing::warn!("scan_proc_cmdlines: cannot read /proc: {e}");
+            return result;
+        }
     };
-    while let Ok(Some(entry)) = entries.next_entry().await {
+    loop {
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(e) => {
+                tracing::warn!("scan_proc_cmdlines: read entry in /proc: {e}");
+                break;
+            }
+        };
         let name = entry.file_name();
         let Some(name_str) = name.to_str() else {
             continue;

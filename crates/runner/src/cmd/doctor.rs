@@ -565,9 +565,20 @@ async fn find_installed_services() -> Vec<InstalledService> {
     let mut services = Vec::new();
     let mut entries = match tokio::fs::read_dir("/etc/systemd/system").await {
         Ok(e) => e,
-        Err(_) => return services,
+        Err(e) => {
+            tracing::warn!("find_installed_services: cannot read /etc/systemd/system: {e}");
+            return services;
+        }
     };
-    while let Ok(Some(entry)) = entries.next_entry().await {
+    loop {
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(e) => {
+                tracing::warn!("find_installed_services: read entry in /etc/systemd/system: {e}");
+                break;
+            }
+        };
         let name = entry.file_name();
         let Some(name_str) = name.to_str() else {
             continue;
