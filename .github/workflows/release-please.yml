@@ -72,7 +72,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260404
     permissions:
       contents: read
     environment: production
@@ -170,7 +170,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260404
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
@@ -403,7 +403,7 @@ jobs:
       needs.release-please.outputs.app_release_created == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260404
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
@@ -847,7 +847,7 @@ jobs:
       needs.release-please.outputs.runner_rs_release_created == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260404
     permissions:
       contents: write
     environment: production
@@ -1102,7 +1102,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260404
     permissions:
       contents: read
     environment: production
@@ -1126,7 +1126,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260404
     permissions:
       contents: read
     steps:
