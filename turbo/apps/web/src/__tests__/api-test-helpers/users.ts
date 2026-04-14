@@ -294,6 +294,7 @@ export async function createTestVoiceChatSession(
 export async function insertTestVoiceChatSession(overrides: {
   orgId: string;
   userId: string;
+  agentId?: string;
   status?: string;
   runId?: string;
   createdAt?: Date;
@@ -306,6 +307,7 @@ export async function insertTestVoiceChatSession(overrides: {
     .values({
       orgId: overrides.orgId,
       userId: overrides.userId,
+      agentId: overrides.agentId,
       status: overrides.status ?? "active",
       runId: overrides.runId,
       createdAt: overrides.createdAt ?? now,

@@ -293,12 +293,14 @@ export {
   chatThreadListItemSchema,
   chatThreadDetailSchema,
   summaryEntrySchema,
+  persistedAttachmentSchema,
   type SummaryEntry,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
   type ChatMessagesContract,
   type ChatThreadListItem,
   type ChatThreadDetail,
+  type PersistedAttachment,
 } from "./chat-threads";
 export {
   runnersPollContract,
@@ -810,9 +812,11 @@ export {
 export {
   zeroVoiceChatPrepareTriggerContract,
   zeroVoiceChatPrepareCompleteContract,
+  zeroVoiceChatPrepareListContract,
   type ZeroVoiceChatPrepareCompleteContract,
   type PrepareCompleteBody,
   type PrepareCompleteResponse,
+  type FreshPreparation,
 } from "./zero-voice-chat-prepare";
 export {
   tasksContract,

@@ -112,7 +112,7 @@
       ignore_errors: true
 
     - name: Garbage collect old artifacts
-      command: "{{ bin_dir }}/runner gc --keep-latest 6"
+      command: "{{ bin_dir }}/runner gc --keep-latest 6 --protect-version {{ runner_name }}"
       environment:
         # R2 credentials so `runner gc` can sweep stale image cache objects.
         # Without these, R2-side cleanup is skipped (objects accumulate forever).

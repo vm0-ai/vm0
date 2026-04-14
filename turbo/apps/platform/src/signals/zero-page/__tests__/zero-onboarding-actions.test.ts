@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -19,7 +19,8 @@ import {
   toggleZeroConnector$,
   zeroOnboardingStep$,
 } from "../zero-onboarding.ts";
-import { pathname } from "../../../signals/location.ts";
+import { setupOnboardingPage$ } from "../../onboarding-page/onboarding-page-setup.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../utils.ts";
 
 const context = testContext();
@@ -259,6 +260,249 @@ describe("onboardingContinueWeb$", () => {
 });
 
 // ---------------------------------------------------------------------------
+// ?prompt= forwarding
+// ---------------------------------------------------------------------------
+
+function mockAdminCompletes() {
+  let adminStatusCalls = 0;
+  server.use(
+    http.get("*/api/zero/onboarding/status", () => {
+      adminStatusCalls++;
+      if (adminStatusCalls <= 1) {
+        return HttpResponse.json({
+          needsOnboarding: true,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: false,
+          defaultAgentId: null,
+          defaultAgentMetadata: null,
+          defaultAgentSkills: [],
+        });
+      }
+      return HttpResponse.json({
+        needsOnboarding: false,
+        isAdmin: true,
+        hasOrg: true,
+        hasDefaultAgent: true,
+        defaultAgentId: MOCK_AGENT_ID,
+        defaultAgentMetadata: null,
+        defaultAgentSkills: [],
+      });
+    }),
+  );
+}
+
+function mockSlackInstallReady() {
+  server.use(
+    http.get("*/api/zero/integrations/slack", () => {
+      return HttpResponse.json({
+        isConnected: false,
+        isInstalled: false,
+        isAdmin: true,
+        installUrl: "https://example.com/api/zero/slack/oauth/install?orgId=o1",
+        connectUrl: null,
+        reinstallUrl: null,
+        scopeMismatch: false,
+        workspaceName: null,
+        defaultAgentId: null,
+        agentOrgSlug: null,
+        environment: {
+          requiredSecrets: [],
+          requiredVars: [],
+          missingSecrets: [],
+          missingVars: [],
+        },
+      });
+    }),
+  );
+}
+
+function mockSlackConnectReady() {
+  server.use(
+    http.get("*/api/zero/integrations/slack", () => {
+      return HttpResponse.json({
+        isConnected: false,
+        isInstalled: true,
+        isAdmin: false,
+        installUrl: null,
+        connectUrl: "https://example.com/api/zero/slack/oauth/connect?orgId=o1",
+        reinstallUrl: null,
+        scopeMismatch: false,
+        workspaceName: "Acme",
+        defaultAgentId: null,
+        agentOrgSlug: null,
+        environment: {
+          requiredSecrets: [],
+          requiredVars: [],
+          missingSecrets: [],
+          missingVars: [],
+        },
+      });
+    }),
+  );
+}
+
+describe("prompt param forwarding", () => {
+  it("onboardingContinueWeb$ forwards ?prompt= to the chat page", async () => {
+    mockAdminCompletes();
+    mockAdminCompletionApis();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=hello%20world",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingContinueWeb$, context.signal);
+
+    expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
+    const forwarded = new URLSearchParams(search());
+    expect(forwarded.get("prompt")).toBe("hello world");
+  });
+
+  it("onboardingContinueWeb$ navigates without ?prompt= when absent", async () => {
+    mockAdminCompletes();
+    mockAdminCompletionApis();
+
+    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
+
+    await context.store.set(onboardingContinueWeb$, context.signal);
+
+    expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
+    expect(search()).toBe("");
+  });
+
+  it("onboardingAddToSlack$ appends ?prompt= to the Slack install URL", async () => {
+    mockAdminOnboarding();
+    mockAdminCompletionApis();
+    mockSlackInstallReady();
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=summarize%20inbox",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const installed = openSpy.mock.calls[0]?.[0];
+    expect(typeof installed).toBe("string");
+    const openedUrl = new URL(installed as string);
+    expect(openedUrl.searchParams.get("prompt")).toBe("summarize inbox");
+    openSpy.mockRestore();
+  });
+
+  it("onboardingAddToSlack$ omits prompt param when absent", async () => {
+    mockAdminOnboarding();
+    mockAdminCompletionApis();
+    mockSlackInstallReady();
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const openedUrl = new URL(openSpy.mock.calls[0]?.[0] as string);
+    expect(openedUrl.searchParams.get("prompt")).toBeNull();
+    openSpy.mockRestore();
+  });
+
+  it("onboardingAddToSlack$ opens the connect URL for members when the workspace is already installed", async () => {
+    mockMemberOnboarding();
+    mockMemberCompletionApis();
+    mockSlackConnectReady();
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=summarize%20inbox",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const opened = openSpy.mock.calls[0]?.[0];
+    expect(typeof opened).toBe("string");
+    const openedUrl = new URL(opened as string);
+    expect(openedUrl.pathname).toBe("/api/zero/slack/oauth/connect");
+    expect(openedUrl.searchParams.get("prompt")).toBe("summarize inbox");
+    openSpy.mockRestore();
+  });
+
+  it("onboardingAddToSlack$ forwards ?prompt= to /works", async () => {
+    mockAdminOnboarding();
+    mockAdminCompletionApis();
+    mockSlackInstallReady();
+
+    vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=hello%20world",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(pathname()).toBe("/works");
+    expect(new URLSearchParams(search()).get("prompt")).toBe("hello world");
+  });
+
+  it("onboardingAddToSlack$ forwards ?prompt= to /works on the member connect path", async () => {
+    mockMemberOnboarding();
+    mockMemberCompletionApis();
+    mockSlackConnectReady();
+
+    vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=summarize%20inbox",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(pathname()).toBe("/works");
+    expect(new URLSearchParams(search()).get("prompt")).toBe("summarize inbox");
+  });
+
+  it("onboardingAddToSlack$ navigates to /works without prompt when absent", async () => {
+    mockAdminOnboarding();
+    mockAdminCompletionApis();
+    mockSlackInstallReady();
+
+    vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(pathname()).toBe("/works");
+    expect(search()).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Concurrent invocation
 // ---------------------------------------------------------------------------
 
@@ -416,6 +660,86 @@ describe("unified onboarding step resolution", () => {
 
     const step = await context.store.get(onboardingEffectiveStep$);
     expect(step).toBe("3");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Skip step 2 when connectors arrive via ?connector= deep link
+// ---------------------------------------------------------------------------
+
+describe("connectors via URL skip step 2", () => {
+  it("admin: visible steps omit '2' when connectors arrive via URL", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=slack",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    const steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["1", "3", "4"]);
+  });
+
+  it("member: lands directly on step 3 when connectors arrive via URL", async () => {
+    mockMemberOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=github",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("3");
+
+    const steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["3", "4"]);
+  });
+
+  it("admin: next from step 1 jumps to step 3 when connectors arrive via URL", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=slack",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    context.store.set(setZeroWorkspaceName$, "Acme");
+    await context.store.set(onboardingStepNext$, context.signal);
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("3");
+  });
+
+  it("admin: back from step 3 returns to step 1 when connectors arrive via URL", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=slack",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    context.store.set(setZeroStep$, "3");
+    await context.store.set(onboardingStepBack$, context.signal);
+
+    const step = await context.store.get(onboardingEffectiveStep$);
+    expect(step).toBe("1");
+  });
+
+  it("falls back to normal flow (step 2 visible) when no valid URL connectors", async () => {
+    mockAdminOnboarding();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=unknown_only",
+      withoutRender: true,
+    });
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    const steps = await context.store.get(onboardingVisibleSteps$);
+    expect([...steps]).toStrictEqual(["1", "2", "4"]);
   });
 });
 

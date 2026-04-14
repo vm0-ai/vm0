@@ -1,6 +1,6 @@
 /**
  * Display tests for router.tsx, error-boundary.tsx, default-error-boundary.tsx,
- * main.tsx, and select-org-page.tsx.
+ * and main.tsx.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -23,8 +23,7 @@ describe("main - toaster", () => {
   it("toast notification container renders with top-center position (INFRA-D-001)", async () => {
     detachedSetupPage({
       context,
-      path: "/select-org",
-      org: { activeOrg: null, memberships: [{ id: "org_1" }] },
+      path: "/_/error",
     });
 
     // Trigger a toast so the <ol data-sonner-toaster> element renders.
@@ -42,26 +41,11 @@ describe("main - toaster", () => {
   });
 });
 
-describe("router - page signal rendering", () => {
-  it("dynamic page content renders from page$ signal (INFRA-D-002)", async () => {
-    detachedSetupPage({
-      context,
-      path: "/select-org",
-      org: { activeOrg: null, memberships: [{ id: "org_1" }] },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Select an Organization")).toBeInTheDocument();
-    });
-  });
-});
-
 describe("router - app skeleton", () => {
   it("appSkeleton shows when skeletonVisible is true (INFRA-D-003)", async () => {
     detachedSetupPage({
       context,
-      path: "/select-org",
-      org: { activeOrg: null, memberships: [{ id: "org_1" }] },
+      path: "/_/error",
     });
 
     context.store.set(showAppSkeleton$);
@@ -75,8 +59,7 @@ describe("router - app skeleton", () => {
   it("appSkeleton hides once page loads (INFRA-D-004)", async () => {
     detachedSetupPage({
       context,
-      path: "/select-org",
-      org: { activeOrg: null, memberships: [{ id: "org_1" }] },
+      path: "/_/error",
     });
 
     await waitFor(() => {
@@ -241,22 +224,5 @@ describe("error boundary", () => {
       ).toBeInTheDocument();
     });
     unmount();
-  });
-});
-
-describe("select org page", () => {
-  it("organization list renders with Clerk component and correct props (INFRA-D-028)", async () => {
-    detachedSetupPage({
-      context,
-      path: "/select-org",
-      org: { activeOrg: null, memberships: [{ id: "org_1" }] },
-    });
-
-    await waitFor(() => {
-      const orgList = screen.getByTestId("organization-list");
-      expect(orgList).toBeInTheDocument();
-      expect(orgList).toHaveAttribute("data-hide-personal", "true");
-      expect(orgList).toHaveAttribute("data-skip-invitation-screen", "true");
-    });
   });
 });

@@ -75,7 +75,7 @@ export async function setupPage(options: {
     },
   );
 
-  // Default active org so needsOrgSelection$ doesn't redirect to /select-org.
+  // Default active org so needsOrgSelection$ doesn't redirect to choose-organization.
   // Tests that explicitly configure org state before calling setupPage can pass
   // `org` to override this default (or call mockOrganization() before setupPage).
   if (options.org) {

@@ -5,7 +5,9 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
+import type { PersistedAttachment } from "@vm0/core";
 import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
 import { agentSessions } from "./agent-session";
@@ -45,6 +47,16 @@ export const chatThreads = pgTable(
      * session context, so the prompt is only applied once.
      */
     sourceScheduleRunId: uuid("source_schedule_run_id"),
+    /**
+     * Draft text content for the thread's composer. Null when no draft is saved.
+     * Persisted with local-first sync: local state takes precedence on first visit.
+     */
+    draftContent: text("draft_content"),
+    /**
+     * Draft attachment metadata for the thread's composer. Only completed uploads.
+     * Null when no draft attachments are saved.
+     */
+    draftAttachments: jsonb("draft_attachments").$type<PersistedAttachment[]>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

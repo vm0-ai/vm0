@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.235.2](https://github.com/vm0-ai/vm0/compare/app-v0.235.1...app-v0.235.2) (2026-04-14)
+
+
+### Refactoring
+
+* **platform:** clean up chat thread signals and move composer out of scroll container ([#9277](https://github.com/vm0-ai/vm0/issues/9277)) ([42f47c1](https://github.com/vm0-ai/vm0/commit/42f47c140479410d94403e58e1594479866e82ce))
+
+## [0.235.1](https://github.com/vm0-ai/vm0/compare/app-v0.235.0...app-v0.235.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* **voice-io:** move audio context creation before async fetch for gesture activation ([#9272](https://github.com/vm0-ai/vm0/issues/9272)) ([42ab356](https://github.com/vm0-ai/vm0/commit/42ab35694d2a68f96f13dc8570f11e3056c5fd7d)), closes [#9252](https://github.com/vm0-ai/vm0/issues/9252)
+
+## [0.235.0](https://github.com/vm0-ai/vm0/compare/app-v0.234.0...app-v0.235.0) (2026-04-14)
+
+
+### Features
+
+* **voice-chat:** show prepared meetings list on voice chat page ([#9253](https://github.com/vm0-ai/vm0/issues/9253)) ([4b87a4f](https://github.com/vm0-ai/vm0/commit/4b87a4faebff29642789e2085b694477a398df42))
+
+
+### Refactoring
+
+* **platform:** move auto-read tts logic from react hooks to signal commands ([#9258](https://github.com/vm0-ai/vm0/issues/9258)) ([f36ecce](https://github.com/vm0-ai/vm0/commit/f36ecceb8fdc7933886d3c02bcdf7b5349f1c050))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.182.0
+
+## [0.234.0](https://github.com/vm0-ai/vm0/compare/app-v0.233.0...app-v0.234.0) (2026-04-14)
+
+
+### Features
+
+* **voice-chat:** change push-to-talk from hold to toggle mode ([#9249](https://github.com/vm0-ai/vm0/issues/9249)) ([8d57c45](https://github.com/vm0-ai/vm0/commit/8d57c45b6f74c97d4d1291116a23c2128502be98)), closes [#9245](https://github.com/vm0-ai/vm0/issues/9245)
+
+
+### Bug Fixes
+
+* harden voice-chat preparation with enum status and failed early exit ([#9170](https://github.com/vm0-ai/vm0/issues/9170)) ([#9173](https://github.com/vm0-ai/vm0/issues/9173)) ([9a2b34f](https://github.com/vm0-ai/vm0/commit/9a2b34f3883d0d96c4c1014b2413c0adb3517ec1))
+
+
+### Refactoring
+
+* **platform:** improve voice-io stt signals and add mic button tests ([#9115](https://github.com/vm0-ai/vm0/issues/9115)) ([45e6090](https://github.com/vm0-ai/vm0/commit/45e6090607901acce5e226144f4b6fc566bfeb15))
+* **platform:** redirect to web choose-organization instead of /select-org ([#9235](https://github.com/vm0-ai/vm0/issues/9235)) ([d9b9647](https://github.com/vm0-ai/vm0/commit/d9b9647b22d67bc041e5378176bf26d9f23e7ccd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.181.1
+
+## [0.233.0](https://github.com/vm0-ai/vm0/compare/app-v0.232.2...app-v0.233.0) (2026-04-14)
+
+
+### Features
+
+* persist chat thread drafts to database with local-first sync ([#9202](https://github.com/vm0-ai/vm0/issues/9202)) ([a5a0c1d](https://github.com/vm0-ai/vm0/commit/a5a0c1dfb7deff0632f57cdd84f2a1a4dad1a700))
+
+
+### Bug Fixes
+
+* **voice-io:** show tts controls on mobile touch devices ([#9226](https://github.com/vm0-ai/vm0/issues/9226)) ([#9229](https://github.com/vm0-ai/vm0/issues/9229)) ([f65ef35](https://github.com/vm0-ai/vm0/commit/f65ef35a93bad5aa63abcf7c10cea2c4a0f2c586))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.181.0
+
 ## [0.232.2](https://github.com/vm0-ai/vm0/compare/app-v0.232.1...app-v0.232.2) (2026-04-13)
 
 

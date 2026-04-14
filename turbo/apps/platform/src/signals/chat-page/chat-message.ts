@@ -6,9 +6,14 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
 import {
   currentDraft$,
+  type DraftSignals,
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
 import { createRunLoop, type PagedRunEvents } from "../zero-page/polling.ts";
+import {
+  markMessageLoading$,
+  checkAutoRead$,
+} from "../voice-io/voice-io-tts.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import {
@@ -645,6 +650,8 @@ export const loadChatMessages$ = command(
           return;
         }
 
+        set(markMessageLoading$, message.id);
+
         await setLoop(
           (sig) => {
             set(reloadThinkingMessage$, (x) => {
@@ -655,6 +662,12 @@ export const loadChatMessages$ = command(
           3000,
           signal,
         );
+
+        const content = await get(message.result$);
+        signal.throwIfAborted();
+        if (content) {
+          await set(checkAutoRead$, message.id, content, signal);
+        }
 
         set(reloadChatThreads$);
         set(reloadCurrentChatThread$);
@@ -739,10 +752,14 @@ export const createNewChatThread$ = command(
 
 const prepareUserMessage$ = command(
   async (
-    { get, set },
+    { get },
     prompt: string,
     signal: AbortSignal,
-  ): Promise<{ fullPrompt: string } | null> => {
+  ): Promise<{
+    fullPrompt: string;
+    userMessage: UserChatMessage;
+    draft: DraftSignals | null;
+  } | null> => {
     const draft = get(currentDraft$);
     const allAttachments = draft ? get(draft.attachments$) : [];
     const allInfos = await Promise.all(
@@ -800,16 +817,7 @@ const prepareUserMessage$ = command(
             })
           : undefined,
     };
-    set(internalLocalMessages$, (prev) => {
-      return [...prev, userMessage];
-    });
-
-    // Clear the draft after preparing the message
-    if (draft) {
-      set(draft.clear$);
-    }
-
-    return { fullPrompt };
+    return { fullPrompt, userMessage, draft };
   },
 );
 
@@ -832,6 +840,15 @@ const prepareChatMessage$ = command(
       return null;
     }
     signal.throwIfAborted();
+
+    set(internalLocalMessages$, (prev) => {
+      return [...prev, result.userMessage];
+    });
+
+    // Clear the draft after preparing the message
+    if (result.draft) {
+      set(result.draft.clear$);
+    }
 
     const trimmedPrompt = prompt.trim();
     return {
@@ -910,6 +927,8 @@ export const sendExistingThreadMessage$ = command(
       return [...prev, assistantMessage];
     });
 
+    set(markMessageLoading$, assistantMessage.id);
+
     const runLoop = assistantMessage.runLoop;
     if (!runLoop) {
       return;
@@ -924,6 +943,12 @@ export const sendExistingThreadMessage$ = command(
       3000,
       signal,
     );
+
+    const content = await get(assistantMessage.result$);
+    signal.throwIfAborted();
+    if (content) {
+      await set(checkAutoRead$, assistantMessage.id, content, signal);
+    }
   },
 );
 

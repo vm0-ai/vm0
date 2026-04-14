@@ -187,8 +187,8 @@ export async function getTestScheduleRuns(
  * Update internal schedule state for testing edge cases.
  *
  * Direct DB write is required because the schedule API does not expose
- * an endpoint to set internal fields like consecutiveFailures — these
- * are managed by the callback system, not user actions.
+ * an endpoint to set internal fields like consecutiveFailures or lastRunId —
+ * these are managed by the callback system, not user actions.
  */
 export async function updateTestScheduleState(
   scheduleId: string,
@@ -196,6 +196,7 @@ export async function updateTestScheduleState(
     consecutiveFailures?: number;
     enabled?: boolean;
     nextRunAt?: Date | null;
+    lastRunId?: string;
   },
 ): Promise<void> {
   await globalThis.services.db

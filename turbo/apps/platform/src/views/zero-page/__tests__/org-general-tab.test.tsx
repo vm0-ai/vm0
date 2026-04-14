@@ -276,15 +276,17 @@ describe("org general tab - profile section", () => {
 });
 
 describe("org general tab - danger zone", () => {
+  const CHOOSE_ORG_PATH = "/sign-in/tasks/choose-organization";
+
   afterEach(() => {
-    // These tests intentionally navigate to /select-org, so always reset the
-    // pathname before the next test runs.
+    // These tests intentionally navigate to choose-organization, so always
+    // reset the location before the next test runs.
     if (window.location.pathname !== "/") {
       window.location.href = "http://localhost/";
     }
   });
 
-  it("leaves workspace: clears active org then navigates to /select-org", async () => {
+  it("leaves workspace: clears active org then navigates to choose-organization", async () => {
     const user = userEvent.setup();
     const leaveCalled = vi.fn();
     mockAPIs({ role: "member", slug: "my-org" });
@@ -329,11 +331,11 @@ describe("org general tab - danger zone", () => {
     });
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/select-org");
+      expect(window.location.href).toContain(CHOOSE_ORG_PATH);
     });
   });
 
-  it("deletes workspace: clears active org then navigates to /select-org", async () => {
+  it("deletes workspace: clears active org then navigates to choose-organization", async () => {
     const user = userEvent.setup();
     const deleteCalled = vi.fn();
     mockAPIs({ role: "admin", slug: "my-org" });
@@ -380,7 +382,7 @@ describe("org general tab - danger zone", () => {
     });
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe("/select-org");
+      expect(window.location.href).toContain(CHOOSE_ORG_PATH);
     });
   });
 
@@ -428,6 +430,6 @@ describe("org general tab - danger zone", () => {
     // Session must not be touched on failure — otherwise a transient 5xx
     // could silently log the user out of their current workspace.
     expect(mockedClerk.setActive).not.toHaveBeenCalled();
-    expect(window.location.pathname).not.toBe("/select-org");
+    expect(window.location.href).not.toContain(CHOOSE_ORG_PATH);
   });
 });

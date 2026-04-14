@@ -259,7 +259,7 @@ describe("POST /api/zero/voice-chat (create session)", () => {
       mode: "chat",
       status: "ready",
       directiveContent: "Old cached directive.",
-      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+      createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000), // 25 hours ago
     });
 
     const response = await POST(createRequest({ agentId }));

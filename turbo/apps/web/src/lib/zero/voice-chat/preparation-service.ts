@@ -11,7 +11,7 @@ import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat:preparation");
 
-const PREPARATION_FRESHNESS_MS = 60 * 60 * 1000; // 1 hour
+const PREPARATION_FRESHNESS_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export async function findFreshPreparation(
   orgId: string,
@@ -50,6 +50,43 @@ export async function findFreshPreparation(
 
   if (!result?.directiveContent) return null;
   return { id: result.id, directiveContent: result.directiveContent };
+}
+
+export async function listFreshPreparations(
+  orgId: string,
+  userId: string,
+): Promise<
+  {
+    id: string;
+    mode: string;
+    prompt: string | null;
+    agentId: string | null;
+    createdAt: Date;
+  }[]
+> {
+  const db = globalThis.services.db;
+  const threshold = new Date(Date.now() - PREPARATION_FRESHNESS_MS);
+
+  return db
+    .select({
+      id: voiceChatPreparations.id,
+      mode: voiceChatPreparations.mode,
+      prompt: voiceChatPreparations.prompt,
+      agentId: voiceChatPreparations.agentId,
+      createdAt: voiceChatPreparations.createdAt,
+    })
+    .from(voiceChatPreparations)
+    .where(
+      and(
+        eq(voiceChatPreparations.orgId, orgId),
+        eq(voiceChatPreparations.userId, userId),
+        eq(voiceChatPreparations.status, "ready"),
+        eq(voiceChatPreparations.mode, "meeting"),
+        gt(voiceChatPreparations.createdAt, threshold),
+      ),
+    )
+    .orderBy(desc(voiceChatPreparations.createdAt))
+    .limit(5);
 }
 
 // ---------------------------------------------------------------------------

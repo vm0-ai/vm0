@@ -97,7 +97,7 @@
 //!
 //! ## Tar entry security
 //!
-//! `tar::Archive::unpack` (0.4) has two relevant behaviors when consuming an
+//! The `tar` crate (0.4) has two relevant behaviors when consuming an
 //! attacker-influenced archive:
 //!
 //! 1. **Path traversal (`..` components) is silently dropped**. Verified by
@@ -106,13 +106,14 @@
 //!    `is_image_complete()` (in `cmd::build`) rejects the partial result; the
 //!    caller falls back to local build. Safe.
 //!
-//! 2. **Symlink and hardlink entries are accepted**. An attacker with R2
-//!    write access could craft a tar where each expected filename is a
-//!    symlink to a host path (e.g. `rootfs.ext4 -> /etc/shadow`);
-//!    `is_image_complete` would pass and Firecracker would consume the
-//!    linked content. Currently relies on the R2 IAM trust boundary;
-//!    defense-in-depth (rejecting non-regular-file entries) is tracked as a
-//!    follow-up — out of scope for this PR.
+//! 2. **Symlink and hardlink entries are rejected**. `unpack_from_reader`
+//!    iterates entries and rejects any whose type is not `Regular`,
+//!    `Continuous`, or `GNUSparse` — symlinks, hardlinks, character/block
+//!    devices, FIFOs, and extended-header pseudo-entries all cause an
+//!    immediate error, preventing an attacker with R2 write access from
+//!    crafting a tar where expected filenames are symlinks to host paths.
+//!    (`GNUSparse` is allowed because `cow.img` is a sparse file and
+//!    `tar::Builder` uses this entry type for it.)
 //!
 //! **Maintenance note**: `is_image_complete()` is the structural check that
 //! catches case (1). If you add a new file to the image, you MUST extend
@@ -696,9 +697,33 @@ fn zstd_workers() -> u32 {
 }
 
 /// Unpack a tar.zst stream from `reader` into `dest`. Sync — call from spawn_blocking.
+///
+/// Defense-in-depth: rejects any tar entry that is not a regular file or
+/// GNU sparse file (symlinks, hardlinks, devices, etc.). An attacker with
+/// R2 write access
+/// could otherwise craft a tar where expected filenames are symlinks to
+/// host paths, bypassing `is_image_complete` and exposing host files to
+/// Firecracker. See module-level "Tar entry security" docs.
 fn unpack_from_reader<R: std::io::Read>(reader: R, dest: &Path) -> Result<(), R2Error> {
     let zr = zstd::stream::read::Decoder::new(reader)?;
-    tar::Archive::new(zr).unpack(dest)?;
+    let mut archive = tar::Archive::new(zr);
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let kind = entry.header().entry_type();
+        if !matches!(
+            kind,
+            tar::EntryType::Regular | tar::EntryType::Continuous | tar::EntryType::GNUSparse
+        ) {
+            let path_display = entry
+                .path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "<invalid path>".into());
+            return Err(R2Error::Io(std::io::Error::other(format!(
+                "rejected non-regular tar entry (type {kind:?}): {path_display}"
+            ))));
+        }
+        entry.unpack_in(dest)?;
+    }
     Ok(())
 }
 
@@ -1305,6 +1330,37 @@ mod tests {
         tar
     }
 
+    /// Hand-write a ustar header with a specific typeflag byte. Used to test
+    /// that `unpack_from_reader` rejects non-regular entries.
+    /// `typeflag`: `b'2'` = symlink, `b'1'` = hardlink, etc.
+    /// `link_target`: written into the linkname field (bytes 157..257).
+    fn craft_tar_with_typeflag(name: &[u8], typeflag: u8, link_target: &[u8]) -> Vec<u8> {
+        assert!(name.len() < 100);
+        assert!(link_target.len() < 100);
+        let mut header = [0u8; 512];
+        header[..name.len()].copy_from_slice(name);
+        header[100..108].copy_from_slice(b"0000644\0");
+        header[108..116].copy_from_slice(b"0000000\0");
+        header[116..124].copy_from_slice(b"0000000\0");
+        // size = 0 for symlinks/hardlinks
+        header[124..136].copy_from_slice(b"00000000000\0");
+        header[136..148].copy_from_slice(b"00000000000\0");
+        header[148..156].copy_from_slice(b"        ");
+        header[156] = typeflag;
+        header[157..157 + link_target.len()].copy_from_slice(link_target);
+        header[257..263].copy_from_slice(b"ustar\0");
+        header[263..265].copy_from_slice(b"00");
+        let cksum: u32 = header.iter().map(|&b| u32::from(b)).sum();
+        let cksum_str = format!("{cksum:06o}\0 ");
+        header[148..156].copy_from_slice(cksum_str.as_bytes());
+
+        let mut tar = Vec::with_capacity(512 + 1024);
+        tar.extend_from_slice(&header);
+        // No data blocks for symlinks/hardlinks. Two zero blocks = end-of-archive.
+        tar.extend_from_slice(&[0u8; 1024]);
+        tar
+    }
+
     /// `tar::Archive::unpack` must reject entries whose path escapes via `..` so
     /// attacker-controlled artifacts can't write outside the staging directory
     /// (defense-in-depth — R2 bucket is private, but if an IAM key leaked, this
@@ -1345,6 +1401,51 @@ mod tests {
             entries.is_empty(),
             "malicious entry should be dropped, final_dir empty, got {entries:?}"
         );
+    }
+
+    /// Helper: assert that a tar with the given typeflag is rejected by
+    /// `unpack_from_reader`. Covers symlink, hardlink, and any other
+    /// non-regular entry type.
+    async fn assert_unpack_rejects_typeflag(typeflag: u8, link_target: &[u8]) {
+        let raw_tar = craft_tar_with_typeflag(b"rootfs.ext4", typeflag, link_target);
+        let archive = tempfile::NamedTempFile::new().unwrap();
+        let archive_path = archive.path().to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            let out = std::fs::File::create(&archive_path).unwrap();
+            let mut zw = zstd::stream::write::Encoder::new(out, 1).unwrap();
+            std::io::Write::write_all(&mut zw, &raw_tar).unwrap();
+            zw.finish().unwrap();
+        })
+        .await
+        .unwrap();
+
+        let dst_root = tempfile::tempdir().unwrap();
+        let final_dir = dst_root.path().join("hash");
+        let err = unpack_archive_for_test(archive.path(), &final_dir)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("rejected non-regular tar entry"),
+            "expected rejection error, got: {msg}"
+        );
+        assert!(
+            !final_dir.exists(),
+            "final_dir must not be created on error"
+        );
+    }
+
+    /// Symlink entries must be rejected — an attacker could point
+    /// `rootfs.ext4` at `/etc/shadow` to leak host file contents.
+    #[tokio::test]
+    async fn unpack_rejects_symlink_entries() {
+        assert_unpack_rejects_typeflag(b'2', b"/etc/shadow").await;
+    }
+
+    /// Hardlink entries must be rejected — could alias existing host files.
+    #[tokio::test]
+    async fn unpack_rejects_hardlink_entries() {
+        assert_unpack_rejects_typeflag(b'1', b"/etc/passwd").await;
     }
 
     /// `finalize_staging` skips `punch_hole` when `cow.img` is empty (size=0).

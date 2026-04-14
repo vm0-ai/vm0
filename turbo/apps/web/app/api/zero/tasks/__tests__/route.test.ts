@@ -4,17 +4,13 @@ import {
   createTestRequest,
   createTestCompose,
   createTestZeroAgent,
-  createTestAgentSession,
   createTestRunInDb,
   addTestRunToThread,
   insertTestChatThread,
   getTestAgentComposeName,
   createTestSchedule,
-  insertTestSlackOrgInstallation,
-  insertTestSlackOrgConnection,
-  insertTestSlackOrgThreadSession,
-  createTestEmailThreadSession,
-  generateTestReplyToken,
+  updateTestScheduleState,
+  insertTestVoiceChatSession,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -98,6 +94,12 @@ describe("GET /api/zero/tasks", () => {
       prompt: "Run daily check",
     });
 
+    // Link a run to the schedule so it becomes actionable
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      status: "completed",
+    });
+    await updateTestScheduleState(schedule.id, { lastRunId: runId });
+
     const request = createTestRequest("http://localhost:3000/api/zero/tasks");
     const response = await GET(request);
     const data = await response.json();
@@ -109,39 +111,19 @@ describe("GET /api/zero/tasks", () => {
     expect(schedTask).toBeDefined();
     expect(schedTask.title).toBe("daily-check");
     expect(schedTask.scheduleId).toBe(schedule.id);
-    expect(schedTask.latestRunId).toBeNull();
-    expect(schedTask.status).toBeNull();
+    expect(schedTask.latestRunId).toBe(runId);
+    expect(schedTask.status).toBe("completed");
   });
 
-  it("should return slack thread tasks", async () => {
-    const { composeId } = await createTestCompose(uniqueId("slack-task"));
+  it("should not return schedule tasks without a lastRunId", async () => {
+    const { composeId } = await createTestCompose(
+      uniqueId("sched-no-run-test"),
+    );
 
-    // Create slack installation + connection
-    const slackWorkspaceId = uniqueId("ws");
-    await insertTestSlackOrgInstallation({
-      slackWorkspaceId,
-      slackWorkspaceName: "Test Workspace",
-      orgId: user.orgId,
-      installedByUserId: user.userId,
-    });
-    const { id: connectionId } = await insertTestSlackOrgConnection({
-      slackUserId: uniqueId("slack-user"),
-      slackWorkspaceId,
-      vm0UserId: user.userId,
-    });
-
-    // Create agent session + slack thread session
-    const session = await createTestAgentSession(user.userId, composeId);
-    const { id: slackThreadId } = await insertTestSlackOrgThreadSession({
-      connectionId,
-      agentSessionId: session.id,
-    });
-
-    // Create a run linked to the session
-    const { runId } = await createTestRunInDb(user.userId, composeId, {
-      status: "running",
-      continuedFromSessionId: session.id,
-      triggerSource: "slack",
+    // Create a schedule without linking any run (lastRunId remains null)
+    await createTestSchedule(composeId, "never-run-schedule", {
+      cronExpression: "0 0 * * *",
+      prompt: "This schedule has never run",
     });
 
     const request = createTestRequest("http://localhost:3000/api/zero/tasks");
@@ -149,35 +131,25 @@ describe("GET /api/zero/tasks", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const slackTask = data.tasks.find((t: Record<string, unknown>) => {
-      return t.type === "slack";
+    const scheduleTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.type === "schedule";
     });
-    expect(slackTask).toBeDefined();
-    expect(slackTask.slackThreadSessionId).toBe(slackThreadId);
-    expect(slackTask.latestRunId).toBe(runId);
-    expect(slackTask.status).toBe("running");
+    expect(scheduleTasks).toHaveLength(0);
   });
 
-  it("should return email thread tasks", async () => {
-    const { composeId } = await createTestCompose(uniqueId("email-task"));
+  it("should return voice chat tasks that have a runId", async () => {
+    const { composeId } = await createTestCompose(uniqueId("voice-chat-task"));
 
-    // Create agent session for email
-    const session = await createTestAgentSession(user.userId, composeId);
-
-    // Create email thread session
-    const replyToken = generateTestReplyToken(session.id);
-    const emailThread = await createTestEmailThreadSession({
-      userId: user.userId,
-      agentId: composeId,
-      agentSessionId: session.id,
-      replyToToken: replyToken,
-    });
-
-    // Create a run linked to the session
+    // Create a run so the voice chat session is actionable
     const { runId } = await createTestRunInDb(user.userId, composeId, {
       status: "completed",
-      continuedFromSessionId: session.id,
-      triggerSource: "email",
+    });
+
+    await insertTestVoiceChatSession({
+      orgId: user.orgId,
+      userId: user.userId,
+      agentId: composeId,
+      runId,
     });
 
     const request = createTestRequest("http://localhost:3000/api/zero/tasks");
@@ -185,13 +157,34 @@ describe("GET /api/zero/tasks", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const emailTask = data.tasks.find((t: Record<string, unknown>) => {
-      return t.type === "email";
+    const voiceTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.type === "voice_chat";
     });
-    expect(emailTask).toBeDefined();
-    expect(emailTask.emailThreadSessionId).toBe(emailThread.id);
-    expect(emailTask.latestRunId).toBe(runId);
-    expect(emailTask.status).toBe("completed");
+    expect(voiceTasks).toHaveLength(1);
+    expect(voiceTasks[0].latestRunId).toBe(runId);
+  });
+
+  it("should not return voice chat tasks without a runId", async () => {
+    const { composeId } = await createTestCompose(
+      uniqueId("voice-chat-no-run"),
+    );
+
+    // Create a voice chat session without linking any run (runId remains null)
+    await insertTestVoiceChatSession({
+      orgId: user.orgId,
+      userId: user.userId,
+      agentId: composeId,
+    });
+
+    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const voiceTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.type === "voice_chat";
+    });
+    expect(voiceTasks).toHaveLength(0);
   });
 
   it("should filter by agentId", async () => {
@@ -297,8 +290,18 @@ describe("GET /api/zero/tasks", () => {
       uniqueId("sched-filter-2"),
     );
 
-    await createTestSchedule(agent1, "agent1-schedule");
-    await createTestSchedule(agent2, "agent2-schedule");
+    const sched1 = await createTestSchedule(agent1, "agent1-schedule");
+    const sched2 = await createTestSchedule(agent2, "agent2-schedule");
+
+    // Link runs so schedules are actionable
+    const { runId: run1 } = await createTestRunInDb(user.userId, agent1, {
+      status: "completed",
+    });
+    await updateTestScheduleState(sched1.id, { lastRunId: run1 });
+    const { runId: run2 } = await createTestRunInDb(user.userId, agent2, {
+      status: "completed",
+    });
+    await updateTestScheduleState(sched2.id, { lastRunId: run2 });
 
     const request = createTestRequest(
       `http://localhost:3000/api/zero/tasks?agentId=${agent1}`,
@@ -405,26 +408,23 @@ describe("GET /api/zero/tasks", () => {
     );
     await addTestRunToThread(terminalThreadId, terminalRunId, user.userId);
 
-    // Schedule with no run (status = null), with an older source timestamp
-    const { composeId: composeId2 } = await createTestCompose(
-      uniqueId("null-status-agent"),
-    );
-    await createTestSchedule(composeId2, "null-status-schedule");
+    // Chat thread with no run (status = null) — chat tasks are allowed without runs
+    await insertTestChatThread(user.userId, composeId, "No Run Chat");
 
     const request = createTestRequest("http://localhost:3000/api/zero/tasks");
     const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const scheduleTasks = data.tasks.filter((t: Record<string, unknown>) => {
-      return t.type === "schedule";
+    const noRunTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.title === "No Run Chat";
     });
     const terminalTasks = data.tasks.filter((t: Record<string, unknown>) => {
       return t.title === "Terminal Task";
     });
-    expect(scheduleTasks).toHaveLength(1);
+    expect(noRunTasks).toHaveLength(1);
     expect(terminalTasks).toHaveLength(1);
-    expect(data.tasks.indexOf(scheduleTasks[0])).toBeLessThan(
+    expect(data.tasks.indexOf(noRunTasks[0])).toBeLessThan(
       data.tasks.indexOf(terminalTasks[0]),
     );
   });
@@ -662,11 +662,17 @@ describe("POST /api/zero/tasks/archive", () => {
     ).toBe(true);
   });
 
-  it("archives a schedule task with no run and excludes it from the task list", async () => {
+  it("archives a schedule task and excludes it from the task list", async () => {
     const { composeId } = await createTestCompose(uniqueId("arc-sched"));
     const schedule = await createTestSchedule(composeId, "Scheduled Task");
 
-    // Confirm it appears before archiving (latestRunId is null)
+    // Link a run so the schedule is actionable
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      status: "completed",
+    });
+    await updateTestScheduleState(schedule.id, { lastRunId: runId });
+
+    // Confirm it appears before archiving
     const listRes = await GET(
       createTestRequest("http://localhost:3000/api/zero/tasks"),
     );
@@ -677,7 +683,7 @@ describe("POST /api/zero/tasks/archive", () => {
       }),
     ).toBe(true);
 
-    // Archive with runId = null (schedule has no run yet)
+    // Archive with the runId
     const archiveRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/tasks/archive", {
         method: "POST",
@@ -685,7 +691,7 @@ describe("POST /api/zero/tasks/archive", () => {
         body: JSON.stringify({
           taskId: schedule.id,
           taskType: "schedule",
-          runId: null,
+          runId,
         }),
       }),
     );

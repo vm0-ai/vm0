@@ -42,6 +42,10 @@ pub struct GcArgs {
     /// Minimum: 1 — `0` would wipe even the just-uploaded image.
     #[arg(long, default_value_t = R2_DEFAULT_KEEP_DAYS, value_parser = clap::value_parser!(u64).range(1..))]
     r2_keep_days: u64,
+    /// Version name to protect from GC (e.g. "v0.78.3").
+    /// Used during deployment to prevent deleting the version being deployed.
+    #[arg(long)]
+    protect_version: Option<String>,
 }
 
 pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
@@ -65,7 +69,8 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
 
     let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
     let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
-    let versions_removed = gc_versions(&home, args.dry_run).await?;
+    let versions_removed =
+        gc_versions(&home, args.dry_run, args.protect_version.as_deref()).await?;
 
     let debootstrap_freed = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
 
@@ -548,7 +553,15 @@ fn is_semver_version(name: &str) -> bool {
 /// Scans `home.bin_dir()` for semver-named subdirectories (e.g. `v0.2.0`), checks
 /// whether the corresponding systemd unit is active, and deletes inactive versions
 /// (bin dir, runner config dir, and systemd unit).
-async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String>> {
+///
+/// If `protect` is provided, that version is unconditionally kept regardless of
+/// systemd unit state. This prevents the currently-deployed version from being
+/// garbage-collected during deployment (see `--protect-version`).
+async fn gc_versions(
+    home: &HomePaths,
+    dry_run: bool,
+    protect: Option<&str>,
+) -> RunnerResult<Vec<String>> {
     let bin_dir = home.bin_dir();
     let mut entries = match tokio::fs::read_dir(&bin_dir).await {
         Ok(rd) => rd,
@@ -567,6 +580,11 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if !is_semver_version(name) {
+            continue;
+        }
+
+        if protect == Some(name) {
+            info!("version {name}: protected (--protect-version), skipping");
             continue;
         }
 
@@ -1316,7 +1334,7 @@ mod tests {
         std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
 
         // systemctl will fail in test env, so versions are treated as inactive
-        let mut removed = gc_versions(&home, false).await.unwrap();
+        let mut removed = gc_versions(&home, false, None).await.unwrap();
         removed.sort();
         assert_eq!(removed, ["v1.0.0", "v2.0.0"]);
         assert!(!bin_dir.join("v1.0.0").exists());
@@ -1336,7 +1354,7 @@ mod tests {
 
         std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
 
-        let removed = gc_versions(&home, true).await.unwrap();
+        let removed = gc_versions(&home, true, None).await.unwrap();
         assert_eq!(removed, ["v1.0.0"]);
         assert!(bin_dir.join("v1.0.0").exists(), "dry-run should not delete");
     }
@@ -1347,7 +1365,7 @@ mod tests {
         let home = test_home(dir.path());
         std::fs::create_dir_all(home.bin_dir()).unwrap();
 
-        let removed = gc_versions(&home, false).await.unwrap();
+        let removed = gc_versions(&home, false, None).await.unwrap();
         assert!(removed.is_empty());
     }
 
@@ -1356,8 +1374,35 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         // Don't create bin_dir — should return 0, not error.
-        let removed = gc_versions(&home, false).await.unwrap();
+        let removed = gc_versions(&home, false, None).await.unwrap();
         assert!(removed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn gc_versions_protect_keeps_named_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+
+        std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
+        std::fs::create_dir_all(bin_dir.join("v2.0.0")).unwrap();
+
+        let mut removed = gc_versions(&home, false, Some("v1.0.0")).await.unwrap();
+        removed.sort();
+        assert_eq!(removed, ["v2.0.0"]);
+        assert!(
+            bin_dir.join("v1.0.0").exists(),
+            "skipped version should survive"
+        );
+        assert!(!bin_dir.join("v2.0.0").exists());
+    }
+
+    #[test]
+    fn gc_protect_version_flag_is_accepted() {
+        let r = GcCli::try_parse_from(["gc", "--protect-version", "v0.78.3"]);
+        assert!(r.is_ok(), "--protect-version must be accepted");
+        let cli = r.unwrap();
+        assert_eq!(cli.args.protect_version.as_deref(), Some("v0.78.3"));
     }
 
     #[tokio::test]

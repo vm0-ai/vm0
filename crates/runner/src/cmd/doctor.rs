@@ -594,16 +594,64 @@ async fn parse_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
     for line in content.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("ExecStart=") {
-            // ExecStart="..." start --config "..."
-            let tokens: Vec<&str> = rest.split_whitespace().collect();
-            let pos = tokens
-                .iter()
-                .position(|&t| t == "--config" || t == "-c" || t.trim_matches('"') == "--config")?;
-            let path_str = (*tokens.get(pos + 1)?).trim_matches('"');
-            return Some(PathBuf::from(path_str));
+            return parse_exec_start_config(rest);
         }
     }
     None
+}
+
+/// Extract the value following `--config` or `-c` from an `ExecStart` line body.
+///
+/// Handles both quoted (`--config "/path with spaces/f.yaml"`) and unquoted
+/// (`--config /simple/path.yaml`) forms. Only the argument *value* is
+/// extracted — the flag itself is found via substring search, which is safe
+/// because `--config` / `-c` never require quoting.
+fn parse_exec_start_config(line: &str) -> Option<PathBuf> {
+    extract_flag_value(line, "--config").or_else(|| extract_flag_value(line, "-c"))
+}
+
+/// Find `flag` in `line` as a standalone token, then return the next
+/// whitespace-delimited or quote-delimited value after it.
+///
+/// Supports both `--config /path` (space-separated) and `--config=/path`
+/// (equals-separated) forms.
+fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
+    // Search for `flag` that appears as a standalone token: preceded by
+    // whitespace (or start-of-string) and followed by whitespace, `=`, or
+    // end-of-string.
+    let idx = line
+        .match_indices(flag)
+        .find(|&(i, _)| {
+            let before_ok = i == 0
+                || line
+                    .as_bytes()
+                    .get(i - 1)
+                    .is_some_and(|b| b.is_ascii_whitespace());
+            let after_ok = line
+                .as_bytes()
+                .get(i + flag.len())
+                .is_none_or(|b| b.is_ascii_whitespace() || b == &b'=');
+            before_ok && after_ok
+        })?
+        .0;
+    let after = line.get(idx + flag.len()..)?;
+    // Strip an optional `=` separator, then whitespace.
+    let after = after.strip_prefix('=').unwrap_or(after).trim_ascii_start();
+    if after.is_empty() {
+        return None;
+    }
+    let path_str = if after.starts_with('"') {
+        // Quoted value: take everything between the opening and closing `"`.
+        let end = after.get(1..)?.find('"')?;
+        after.get(1..1 + end)?
+    } else {
+        // Unquoted value: take until next ASCII whitespace or end-of-string.
+        let end = after
+            .find(|c: char| c.is_ascii_whitespace())
+            .unwrap_or(after.len());
+        after.get(..end)?
+    };
+    Some(PathBuf::from(path_str))
 }
 
 /// Find installed services that have no matching running runner.
@@ -672,12 +720,22 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
 // API connectivity check
 // ---------------------------------------------------------------------------
 
+/// Returns `true` if the URL's host TLD is `.test` (RFC 2606).
+fn is_test_tld(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    parsed
+        .host_str()
+        .is_some_and(|h| h.ends_with(".test") || h == "test")
+}
+
 /// Returns `None` if no server configured or URL uses `.test` TLD (RFC 2606),
 /// `Some(true)` if reachable, `Some(false)` if unreachable.
 async fn check_api(config: &RunnerConfig) -> Option<bool> {
     let server = config.server.as_ref()?;
     // Skip connectivity check for .test domains (reserved per RFC 2606, used in CI)
-    if server.url.contains(".test") {
+    if is_test_tld(&server.url) {
         return None;
     }
     let client = reqeast::builder()
@@ -887,7 +945,11 @@ async fn is_lock_free(lock_path: &str) -> bool {
         use std::fs::File;
         let file = match File::open(&lock_path) {
             Ok(f) => f,
-            Err(_) => return true, // no lock file → not held
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
+            Err(e) => {
+                tracing::warn!("cannot open lock file {lock_path}: {e}, assuming held");
+                return false;
+            }
         };
         // Try exclusive lock without blocking
         match nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock) {
@@ -1422,5 +1484,153 @@ mod tests {
         }];
         let warnings = proxy_check_warnings("running", Some(32821), &mitm_procs);
         assert!(warnings.is_empty(), "running with proxy should not warn");
+    }
+
+    #[test]
+    fn is_test_tld_matches_dot_test() {
+        assert!(is_test_tld("https://not-a-real-server.test/api"));
+        assert!(is_test_tld("https://sub.domain.test"));
+        assert!(is_test_tld("https://test"));
+        assert!(is_test_tld("https://server.test:8080/api"));
+    }
+
+    #[test]
+    fn is_test_tld_rejects_substring_match() {
+        assert!(!is_test_tld("https://attestation.service.internal/api"));
+        assert!(!is_test_tld("https://my.testing.company.com/api"));
+        assert!(!is_test_tld("https://contest.example.com"));
+    }
+
+    #[test]
+    fn is_test_tld_handles_edge_cases() {
+        assert!(!is_test_tld("not-a-url"));
+        assert!(!is_test_tld("https://example.com/.test"));
+        assert!(!is_test_tld("https://example.com?q=.test"));
+    }
+
+    #[test]
+    fn parse_config_plain_path() {
+        let line = r#""/usr/bin/runner" start --config /data/runner.yaml"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_quoted_path_with_spaces() {
+        let line = r#""/opt/my runner/vm0-runner" start --config "/opt/my config/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/opt/my config/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_quoted_path_without_spaces() {
+        let line = r#""/usr/bin/runner" start --config "/etc/runner.yaml" --local"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/etc/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_short_flag() {
+        let line = r#""/usr/bin/runner" start -c "/data/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_missing_flag() {
+        let line = r#""/usr/bin/runner" start --local"#;
+        assert_eq!(parse_exec_start_config(line), None);
+    }
+
+    #[test]
+    fn parse_config_flag_at_end_without_value() {
+        let line = r#""/usr/bin/runner" start --config"#;
+        assert_eq!(parse_exec_start_config(line), None);
+    }
+
+    #[test]
+    fn parse_config_equals_form() {
+        let line = r#""/usr/bin/runner" start --config=/data/runner.yaml"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_equals_form_quoted() {
+        let line = r#""/usr/bin/runner" start --config="/data/my config/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/my config/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_ignores_flag_substring_in_exe_path() {
+        // The exe path contains "-c" but it should not match as the -c flag.
+        let line = r#""/opt/nice-cli/runner" start -c "/data/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_unclosed_quote_returns_none() {
+        let line = r#""/usr/bin/runner" start --config "/data/no-close"#;
+        assert_eq!(parse_exec_start_config(line), None);
+    }
+
+    #[test]
+    fn parse_config_tab_separated() {
+        let line = "\"/usr/bin/runner\" start --config\t/data/runner.yaml";
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_short_flag_equals_form() {
+        let line = r#""/usr/bin/runner" start -c=/data/runner.yaml"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[tokio::test]
+    async fn is_lock_free_returns_true_when_file_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no-such-file.lock");
+        assert!(super::is_lock_free(path.to_str().unwrap()).await);
+    }
+
+    #[tokio::test]
+    async fn is_lock_free_returns_true_when_lock_not_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("free.lock");
+        std::fs::File::create(&path).unwrap();
+        assert!(super::is_lock_free(path.to_str().unwrap()).await);
+    }
+
+    #[tokio::test]
+    async fn is_lock_free_returns_false_when_lock_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("held.lock");
+        let file = std::fs::File::create(&path).unwrap();
+        // Hold an exclusive lock for the duration of the test.
+        let _lock = nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock)
+            .expect("failed to acquire test lock");
+        assert!(!super::is_lock_free(path.to_str().unwrap()).await);
     }
 }

@@ -13,7 +13,7 @@ const prepareTriggerBodySchema = z.object({
 const prepareTriggerResponseSchema = z.object({
   preparation: z.object({
     id: z.string(),
-    status: z.string(),
+    status: z.enum(["preparing", "ready", "failed"]),
     runId: z.string().optional(),
   }),
 });
@@ -40,7 +40,7 @@ const prepareCompleteBodySchema = z.object({
 
 const prepareCompleteResponseSchema = z.object({
   id: z.string(),
-  status: z.string(),
+  status: z.enum(["preparing", "ready", "failed"]),
 });
 
 export const zeroVoiceChatPrepareCompleteContract = c.router({
@@ -66,3 +66,33 @@ export type PrepareCompleteBody = z.infer<typeof prepareCompleteBodySchema>;
 export type PrepareCompleteResponse = z.infer<
   typeof prepareCompleteResponseSchema
 >;
+
+const prepareListResponseSchema = z.object({
+  preparations: z.array(
+    z.object({
+      id: z.string(),
+      mode: z.string(),
+      prompt: z.string().nullable(),
+      agentId: z.string().nullable(),
+      createdAt: z.string(),
+    }),
+  ),
+});
+
+export const zeroVoiceChatPrepareListContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/voice-chat/prepare/list",
+    headers: authHeadersSchema,
+    responses: {
+      200: prepareListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List fresh meeting preparations for the current user",
+  },
+});
+
+export type FreshPreparation = z.infer<
+  typeof prepareListResponseSchema
+>["preparations"][number];

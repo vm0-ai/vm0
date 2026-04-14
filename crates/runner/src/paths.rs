@@ -193,6 +193,10 @@ impl LogPaths {
         self.dir.join(format!("network-{run_id}.jsonl"))
     }
 
+    pub fn proxy_log(&self, run_id: uuid::Uuid) -> PathBuf {
+        self.dir.join(format!("proxy-{run_id}.jsonl"))
+    }
+
     pub fn system_log(&self, run_id: uuid::Uuid) -> PathBuf {
         self.dir.join(format!("system-{run_id}.log"))
     }
@@ -203,12 +207,13 @@ impl LogPaths {
 
     /// Whether `name` matches any GC-eligible log file pattern.
     ///
-    /// Includes per-job logs (`network-*`, `system-*`, `metrics-*`) and
-    /// runner instance logs (`runner-*.log`).
+    /// Includes per-job logs (`network-*`, `system-*`, `metrics-*`, `proxy-*`)
+    /// and runner instance logs (`runner-*.log`).
     pub fn is_gc_eligible_log(name: &str) -> bool {
         (name.starts_with("network-") && name.ends_with(".jsonl"))
             || (name.starts_with("system-") && name.ends_with(".log"))
             || (name.starts_with("metrics-") && name.ends_with(".jsonl"))
+            || (name.starts_with("proxy-") && name.ends_with(".jsonl"))
             || (name.starts_with("runner-") && name.ends_with(".log"))
     }
 }
@@ -315,6 +320,7 @@ mod tests {
         assert!(lp.network_log(id).to_string_lossy().contains("network-"));
         assert!(lp.system_log(id).to_string_lossy().contains("system-"));
         assert!(lp.metrics_log(id).to_string_lossy().contains("metrics-"));
+        assert!(lp.proxy_log(id).to_string_lossy().contains("proxy-"));
     }
 
     #[test]
@@ -328,6 +334,9 @@ mod tests {
         assert!(LogPaths::is_gc_eligible_log(
             "metrics-550e8400-e29b-41d4-a716-446655440000.jsonl"
         ));
+        assert!(LogPaths::is_gc_eligible_log(
+            "proxy-550e8400-e29b-41d4-a716-446655440000.jsonl"
+        ));
         assert!(LogPaths::is_gc_eligible_log("runner-2026-04-01.log"));
     }
 
@@ -337,6 +346,7 @@ mod tests {
         assert!(!LogPaths::is_gc_eligible_log("status.json"));
         assert!(!LogPaths::is_gc_eligible_log("network-.log")); // wrong extension
         assert!(!LogPaths::is_gc_eligible_log("system-.jsonl")); // wrong extension
+        assert!(!LogPaths::is_gc_eligible_log("proxy-.log")); // wrong extension
         assert!(!LogPaths::is_gc_eligible_log("other-file.jsonl"));
     }
 

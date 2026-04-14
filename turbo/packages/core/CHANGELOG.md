@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.182.0](https://github.com/vm0-ai/vm0/compare/core-v8.181.1...core-v8.182.0) (2026-04-14)
+
+
+### Features
+
+* **voice-chat:** show prepared meetings list on voice chat page ([#9253](https://github.com/vm0-ai/vm0/issues/9253)) ([4b87a4f](https://github.com/vm0-ai/vm0/commit/4b87a4faebff29642789e2085b694477a398df42))
+
+## [8.181.1](https://github.com/vm0-ai/vm0/compare/core-v8.181.0...core-v8.181.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* harden voice-chat preparation with enum status and failed early exit ([#9170](https://github.com/vm0-ai/vm0/issues/9170)) ([#9173](https://github.com/vm0-ai/vm0/issues/9173)) ([9a2b34f](https://github.com/vm0-ai/vm0/commit/9a2b34f3883d0d96c4c1014b2413c0adb3517ec1))
+
+## [8.181.0](https://github.com/vm0-ai/vm0/compare/core-v8.180.2...core-v8.181.0) (2026-04-14)
+
+
+### Features
+
+* persist chat thread drafts to database with local-first sync ([#9202](https://github.com/vm0-ai/vm0/issues/9202)) ([a5a0c1d](https://github.com/vm0-ai/vm0/commit/a5a0c1dfb7deff0632f57cdd84f2a1a4dad1a700))
+
 ## [8.180.2](https://github.com/vm0-ai/vm0/compare/core-v8.180.1...core-v8.180.2) (2026-04-13)
 
 

@@ -27,27 +27,11 @@ mod status;
 mod telemetry;
 mod types;
 
-use std::fmt;
 use std::path::Path;
 use std::process::ExitCode;
-use std::time::Instant;
 
 use clap::{Parser, Subcommand};
-use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
-
-struct Elapsed(Instant);
-
-impl FormatTime for Elapsed {
-    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> fmt::Result {
-        let d = self.0.elapsed();
-        let total_secs = d.as_secs();
-        let mins = total_secs / 60;
-        let secs = total_secs % 60;
-        let millis = d.subsec_millis();
-        write!(w, "[{mins:02}:{secs:02}:{millis:03}]")
-    }
-}
 
 #[derive(Parser)]
 #[command(name = "runner", version)]
@@ -160,7 +144,6 @@ fn init_tracing_with_file(
     let writer = std::io::stderr.and(non_blocking);
 
     tracing_subscriber::fmt()
-        .with_timer(Elapsed(Instant::now()))
         .with_writer(writer)
         .with_ansi(false)
         .init();
@@ -169,9 +152,7 @@ fn init_tracing_with_file(
 }
 
 fn init_tracing_stderr() {
-    tracing_subscriber::fmt()
-        .with_timer(Elapsed(Instant::now()))
-        .init();
+    tracing_subscriber::fmt().init();
 }
 
 #[tokio::main]

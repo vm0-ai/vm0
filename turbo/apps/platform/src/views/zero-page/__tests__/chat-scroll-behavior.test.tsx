@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
+import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { currentChatThreadSignals$ } from "../../../signals/chat-page/create-chat-thread.ts";
+import {
+  mockChatLifecycle,
+  sendMessageInUI,
+  PLACEHOLDER,
+} from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -40,23 +45,31 @@ function mockThread(
 // CHAT-SCROLL-001: autoScroll$ gate — does NOT scroll when far from bottom
 describe("zero chat thread page - autoScroll skips when far from bottom", () => {
   it("does not change scrollTop when distance from bottom exceeds threshold (CHAT-SCROLL-001)", async () => {
-    mockThread("thread-scroll-001", [
-      { role: "user", content: "Hello scroll-001" },
-      { role: "assistant", content: "Reply scroll-001" },
-    ]);
+    const user = userEvent.setup();
+    // Navigate directly to a thread page so ZeroChatThreadPageInner renders
+    // immediately and setScrollContainer$ is called on mount.
+    const ctrl = mockChatLifecycle({ threadId: "thread-scroll-001" });
 
-    detachedSetupPage({ context, path: "/chats/thread-scroll-001" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Hello scroll-001")).toBeInTheDocument();
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-scroll-001",
     });
 
-    const scrollContainer = document.querySelector<HTMLElement>(
-      "[data-scroll-container]",
-    );
-    expect(scrollContainer).not.toBeNull();
+    // Wait for the scroll container to appear in the DOM.
+    const scrollContainer = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>("[data-scroll-container]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
 
-    // Mock scroll geometry so the user appears far from the bottom (distance > 80px).
+    // Wait for the composer to appear so we know the page is fully loaded.
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    // Configure scroll container geometry so the user appears far from the bottom
+    // (distanceFromBottom = scrollHeight - scrollTop - clientHeight > 80px).
+    // autoScroll$ reads these values on every polling iteration inside sendMessage$.
     Object.defineProperty(scrollContainer, "scrollHeight", {
       get: () => {
         return 1000;
@@ -70,93 +83,64 @@ describe("zero chat thread page - autoScroll skips when far from bottom", () => 
       configurable: true,
     });
     // distanceFromBottom = 1000 - 200 - 300 = 500 > 80
-    scrollContainer!.scrollTop = 200;
+    scrollContainer.scrollTop = 200;
 
-    const signals = context.store.get(currentChatThreadSignals$);
-    expect(signals).not.toBeNull();
-    context.store.set(signals!.autoScroll$);
+    await sendMessageInUI(user, textarea, "Hello");
 
-    // scrollTop must remain unchanged because the user is far from the bottom
-    expect(scrollContainer!.scrollTop).toBe(200);
+    // Wait for at least one polling iteration (Stop button appears)
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    ctrl.completeRun("Done");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+
+    // scrollTop must remain 200 because the user was far from the bottom on every
+    // polling iteration — autoScroll$ returns early without calling scrollToMessages.
+    expect(scrollContainer.scrollTop).toBe(200);
   });
 });
 
 // CHAT-SCROLL-002: autoScroll$ gate — DOES scroll when close to bottom
 describe("zero chat thread page - autoScroll scrolls when near bottom", () => {
   it("updates scrollTop when distance from bottom is within threshold (CHAT-SCROLL-002)", async () => {
-    mockThread("thread-scroll-002", [
-      { role: "user", content: "Hello scroll-002" },
-      { role: "assistant", content: "Reply scroll-002" },
-    ]);
+    const user = userEvent.setup();
+    // Navigate directly to a thread page so ZeroChatThreadPageInner renders
+    // immediately and setScrollContainer$ is called on mount.
+    mockChatLifecycle({ threadId: "thread-scroll-002" });
 
-    detachedSetupPage({ context, path: "/chats/thread-scroll-002" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Hello scroll-002")).toBeInTheDocument();
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-scroll-002",
     });
 
-    const scrollContainer = document.querySelector<HTMLElement>(
-      "[data-scroll-container]",
-    );
-    expect(scrollContainer).not.toBeNull();
+    // Wait for the scroll container and composer to be present.
+    const scrollContainer = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>("[data-scroll-container]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     // Keep default JSDOM geometry (scrollHeight=0, clientHeight=0) so
-    // distanceFromBottom = 0 - scrollTop - 0 = -scrollTop ≤ 80.
-    // Set a non-zero scrollTop to confirm autoScroll$ actually runs scrollToMessages
-    // and updates scrollTop back to the computed position (userTop=0 in JSDOM).
-    scrollContainer!.scrollTop = 50;
+    // distanceFromBottom = 0 - scrollTop - 0 = -scrollTop ≤ 80, meaning the
+    // threshold gate passes and scrollToMessages is called.
+    // Set a non-zero scrollTop to confirm autoScroll$ actually ran.
+    scrollContainer.scrollTop = 50;
 
-    const signals = context.store.get(currentChatThreadSignals$);
-    expect(signals).not.toBeNull();
-    context.store.set(signals!.autoScroll$);
+    await sendMessageInUI(user, textarea, "Hello");
 
-    // scrollToMessages sets scrollTop to userTop (= 0 in JSDOM), confirming it ran
-    expect(scrollContainer!.scrollTop).toBe(0);
-  });
-});
-
-// CHAT-SCROLL-003: forceScrollToBottom$ always scrolls regardless of distance
-describe("zero chat thread page - forceScrollToBottom ignores threshold", () => {
-  it("updates scrollTop even when the user is far from the bottom (CHAT-SCROLL-003)", async () => {
-    mockThread("thread-scroll-003", [
-      { role: "user", content: "Hello scroll-003" },
-      { role: "assistant", content: "Reply scroll-003" },
-    ]);
-
-    detachedSetupPage({ context, path: "/chats/thread-scroll-003" });
-
+    // Wait for at least one polling iteration — autoScroll$ is called each time.
+    // scrollToMessages sets scrollTop to userTop (= 0 in JSDOM), confirming it ran.
     await waitFor(() => {
-      expect(screen.getByText("Hello scroll-003")).toBeInTheDocument();
+      expect(scrollContainer.scrollTop).toBe(0);
     });
-
-    const scrollContainer = document.querySelector<HTMLElement>(
-      "[data-scroll-container]",
-    );
-    expect(scrollContainer).not.toBeNull();
-
-    // Place the user far from the bottom (> 80px threshold)
-    Object.defineProperty(scrollContainer, "scrollHeight", {
-      get: () => {
-        return 2000;
-      },
-      configurable: true,
-    });
-    Object.defineProperty(scrollContainer, "clientHeight", {
-      get: () => {
-        return 300;
-      },
-      configurable: true,
-    });
-    // distanceFromBottom = 2000 - 800 - 300 = 900 >> 80
-    scrollContainer!.scrollTop = 800;
-
-    const signals = context.store.get(currentChatThreadSignals$);
-    expect(signals).not.toBeNull();
-    context.store.set(signals!.forceScrollToBottom$);
-
-    // forceScrollToBottom$ calls scrollToMessages unconditionally;
-    // userTop = 0 in JSDOM, so scrollTop is reset to 0
-    expect(scrollContainer!.scrollTop).toBe(0);
   });
 });
 

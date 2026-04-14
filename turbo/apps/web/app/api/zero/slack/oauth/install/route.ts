@@ -21,6 +21,13 @@ import { SLACK_BOT_SCOPES } from "../../../../../../src/lib/zero/slack-org/scope
 
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
 
+/**
+ * Slack limits the OAuth `state` parameter to a conservative length. Truncate
+ * the prompt we carry through the flow so a long pasted prompt can't push the
+ * state past the limit.
+ */
+const MAX_PROMPT_STATE_LENGTH = 500;
+
 export async function GET(request: Request) {
   const { SLACK_CLIENT_ID } = env();
 
@@ -37,15 +44,19 @@ export async function GET(request: Request) {
   const orgId = url.searchParams.get("orgId");
   const vm0UserId = url.searchParams.get("vm0UserId");
   const reinstall = url.searchParams.get("reinstall");
+  const prompt = url.searchParams.get("prompt");
 
   const stateObj: {
     orgId?: string;
     vm0UserId?: string;
     reinstall?: boolean;
+    prompt?: string;
   } = {};
   if (orgId) stateObj.orgId = orgId;
   if (vm0UserId) stateObj.vm0UserId = vm0UserId;
   if (reinstall === "1") stateObj.reinstall = true;
+  if (prompt)
+    stateObj.prompt = [...prompt].slice(0, MAX_PROMPT_STATE_LENGTH).join("");
   const state =
     Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : "";
 

@@ -61,8 +61,6 @@ import {
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
-import { useAutoRead } from "./use-auto-read.ts";
-import { useAutoScroll, useAutoScrollOnce } from "./use-auto-scroll.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -234,24 +232,19 @@ export function ZeroChatThreadPageInner({
   const messagesLoading = messagesLoadable.state === "loading";
   const setScrollContainer = useSet(thread.setScrollContainer$);
 
-  // Force scroll to bottom once when messages first load, without
-  // re-triggering on every render (e.g. streaming chunks or re-navigation).
-  useAutoScrollOnce(messages.length > 0, thread.forceScrollToBottom$);
-
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       <ChatThreadHeader thread={thread} />
 
-      {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div
         ref={setScrollContainer}
         data-scroll-container
-        className="flex-1 overflow-y-auto [scrollbar-gutter:stable] flex flex-col min-h-0"
+        className="flex-1 overflow-y-auto [scrollbar-gutter:stable] min-h-0"
       >
-        <main className="flex-1 px-4 sm:px-6 py-4 items-center @container">
+        <main className="px-4 sm:px-6 py-4 items-center @container">
           <div
             data-message-container
-            className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible"
+            className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
           >
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
@@ -278,10 +271,9 @@ export function ZeroChatThreadPageInner({
             })}
           </div>
         </main>
-
-        {/* Composer — sticky inside the scroll container so it aligns with messages */}
-        <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
       </div>
+
+      <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
     </div>
   );
 }
@@ -310,9 +302,6 @@ function ChatThreadComposer({
   const cancelRun = useSet(thread.cancelRun$);
   const setInputRef = useSet(thread.setInputRef$);
   const pageSignal = useGet(pageSignal$);
-  const attachments = useGet(thread.draft.attachments$);
-
-  useAutoScroll(attachments.length, thread.autoScroll$);
 
   const handleSend = (text: string) => {
     setInput("");
@@ -322,7 +311,7 @@ function ChatThreadComposer({
   return (
     <footer
       data-chat-composer
-      className="relative sticky bottom-0 z-10 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]"
+      className="relative shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="mx-auto max-w-[900px]">
@@ -833,7 +822,7 @@ function AssistantMessageActions({
   return (
     <div className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
       <div className="hidden @[900px]:block" />
-      <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-150">
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -993,11 +982,7 @@ function StaticAssistantMessage({
 }) {
   const content = useLastResolved(message.result$) ?? "";
 
-  useAutoScroll(content, thread.autoScroll$);
-
   const showActivityLine = isRunActive(message);
-
-  useAutoRead(message.id, content, showActivityLine);
 
   const hasSummaries = message.summaries && message.summaries.length > 0;
 

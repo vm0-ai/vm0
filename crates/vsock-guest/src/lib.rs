@@ -267,30 +267,22 @@ unsafe fn kill_process_tree(child_id: u32) -> bool {
 /// Run a child process with timeout. Returns (exit_code, stdout, stderr).
 /// Returns exit code 124 on timeout (same as bash timeout command).
 fn wait_with_timeout(child: std::process::Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
 
     let timeout = Duration::from_millis(timeout_ms as u64);
     let child_id = child.id();
 
-    // Track if WE sent the kill (to distinguish from external SIGKILL)
-    let killed_by_timeout = Arc::new(AtomicBool::new(false));
-    let killed_by_timeout_clone = Arc::clone(&killed_by_timeout);
-
     // Channel to signal when process completes
     let (tx, rx) = mpsc::channel::<()>();
 
-    // Spawn a thread that will kill the process after timeout
-    thread::spawn(move || {
-        // Wait for either timeout or signal that process completed
+    // Spawn a thread that will kill the process after timeout.
+    // Returns true if it successfully killed the process tree.
+    let timeout_handle = thread::spawn(move || -> bool {
         if rx.recv_timeout(timeout).is_err() {
-            // Timeout reached — kill the entire process tree.
             // SAFETY: child_id is a valid PID from Command::spawn.
-            if unsafe { kill_process_tree(child_id) } {
-                killed_by_timeout_clone.store(true, Ordering::SeqCst);
-            }
+            return unsafe { kill_process_tree(child_id) };
         }
+        false
     });
 
     // Wait for the process to complete
@@ -299,10 +291,14 @@ fn wait_with_timeout(child: std::process::Child, timeout_ms: u32) -> (i32, Vec<u
     // Signal that process completed (killer thread will exit)
     let _ = tx.send(());
 
+    // Join the timeout thread to get its verdict. This eliminates the race
+    // between kill_process_tree returning and a flag being set — the thread's
+    // return value IS the result, and join() waits for it.
+    let killed_by_timeout = timeout_handle.join().unwrap_or(false);
+
     match output {
         Ok(output) => {
-            // Check if process was killed by OUR timeout (not external SIGKILL)
-            if killed_by_timeout.load(Ordering::SeqCst) {
+            if killed_by_timeout {
                 return (EXIT_CODE_TIMEOUT, output.stdout, b"Timeout".to_vec());
             }
             (
@@ -576,22 +572,19 @@ fn spawn_streaming_monitor(
         // Set up timeout BEFORE the stdout loop — if the process runs past the
         // deadline it must be killed even while we are still reading output.
         let child_id = child.id();
-        let killed_by_timeout = Arc::new(AtomicBool::new(false));
-        let timeout_done_tx = if timeout_ms > 0 {
-            let killed_clone = Arc::clone(&killed_by_timeout);
+        let (timeout_done_tx, timeout_handle) = if timeout_ms > 0 {
             let timeout = Duration::from_millis(timeout_ms as u64);
             let (tx, rx) = std::sync::mpsc::channel::<()>();
-            thread::spawn(move || {
+            let handle = thread::spawn(move || -> bool {
                 if rx.recv_timeout(timeout).is_err() {
                     // SAFETY: child_id is a valid PID.
-                    if unsafe { kill_process_tree(child_id) } {
-                        killed_clone.store(true, Ordering::SeqCst);
-                    }
+                    return unsafe { kill_process_tree(child_id) };
                 }
+                false
             });
-            Some(tx)
+            (Some(tx), Some(handle))
         } else {
-            None
+            (None, None)
         };
 
         // Drain stderr in a background thread BEFORE the stdout reader.
@@ -701,7 +694,10 @@ fn spawn_streaming_monitor(
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         let stderr = stderr_rx.recv_timeout(remaining).unwrap_or_default();
 
-        let (exit_code, stderr) = if killed_by_timeout.load(Ordering::SeqCst) {
+        let killed_by_timeout = timeout_handle
+            .map(|h| h.join().unwrap_or(false))
+            .unwrap_or(false);
+        let (exit_code, stderr) = if killed_by_timeout {
             (EXIT_CODE_TIMEOUT, b"Timeout".to_vec())
         } else {
             match status {
@@ -1332,6 +1328,41 @@ mod tests {
             send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "echo hello", 5000);
         assert_eq!(code, 0);
         assert_eq!(String::from_utf8_lossy(&stdout).trim(), "hello");
+
+        drop(host_writer);
+        drop(host_reader);
+        let _ = handle.join();
+    }
+
+    /// Buffered exec killed by timeout returns exit code 124.
+    #[test]
+    fn exec_timeout_returns_124() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+
+        let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+        let mut host_writer = host_stream.try_clone().unwrap();
+        let mut host_reader = host_stream;
+
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        // Discard MSG_READY
+        let mut hdr = [0u8; 4];
+        host_reader.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        host_reader.read_exact(&mut body).unwrap();
+
+        host_reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+
+        // sleep 60 with a 500ms timeout → killed by timeout
+        let (code, _stdout, stderr) =
+            send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "sleep 60", 500);
+        assert_eq!(code, EXIT_CODE_TIMEOUT);
+        assert_eq!(String::from_utf8_lossy(&stderr), "Timeout");
 
         drop(host_writer);
         drop(host_reader);

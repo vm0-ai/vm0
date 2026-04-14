@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GET, DELETE } from "../route";
+import { GET, DELETE, PATCH } from "../route";
 import { GET as listThreads, POST } from "../../route";
 import {
   createTestRequest,
@@ -415,5 +415,217 @@ describe("DELETE /api/zero/chat-threads/:id - Delete Thread", () => {
       ),
     );
     expect(deleteResponse.status).toBe(404);
+  });
+});
+
+describe("PATCH /api/zero/chat-threads/:id - Update Thread Draft", () => {
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
+
+    const { composeId } = await createTestCompose(uniqueId("chat-patch"));
+    testComposeId = composeId;
+  });
+
+  it("should require authentication", async () => {
+    mockClerk({ userId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads/some-thread-id",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draftContent: "hello" }),
+      },
+    );
+    const response = await PATCH(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should return 404 for non-existent thread", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads/00000000-0000-0000-0000-000000000000",
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draftContent: "hello" }),
+      },
+    );
+    const response = await PATCH(request);
+
+    expect(response.status).toBe(404);
+  });
+
+  it("should update draft content and return 204", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const patchRes = await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: "hello world" }),
+        },
+      ),
+    );
+    expect(patchRes.status).toBe(204);
+
+    // Verify GET returns the persisted draft
+    const getRes = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await getRes.json();
+    expect(data.draftContent).toBe("hello world");
+    expect(data.draftAttachments).toBeNull();
+  });
+
+  it("should update draft with attachments and return 204", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const attachments = [
+      {
+        id: "att-1",
+        url: "https://example.com/file.txt",
+        filename: "file.txt",
+        contentType: "text/plain",
+        size: 100,
+      },
+    ];
+
+    const patchRes = await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            draftContent: "with attachment",
+            draftAttachments: attachments,
+          }),
+        },
+      ),
+    );
+    expect(patchRes.status).toBe(204);
+
+    const getRes = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await getRes.json();
+    expect(data.draftContent).toBe("with attachment");
+    expect(data.draftAttachments).toEqual(attachments);
+  });
+
+  it("should clear draft when patching with null values", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    // First set a draft
+    await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: "to be cleared" }),
+        },
+      ),
+    );
+
+    // Then clear it
+    await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: null }),
+        },
+      ),
+    );
+
+    const getRes = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await getRes.json();
+    expect(data.draftContent).toBeNull();
+  });
+
+  it("should return 404 for another user's thread", async () => {
+    // Create thread as user 1
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    // Switch to user 2
+    await context.setupUser({ prefix: "other-user" });
+
+    const patchRes = await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: "unauthorized" }),
+        },
+      ),
+    );
+    expect(patchRes.status).toBe(404);
+  });
+
+  it("GET should return null draft fields for a new thread", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const getRes = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await getRes.json();
+    expect(data.draftContent).toBeNull();
+    expect(data.draftAttachments).toBeNull();
   });
 });

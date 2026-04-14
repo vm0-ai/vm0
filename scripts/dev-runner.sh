@@ -73,9 +73,10 @@ cmd_deploy() {
   BINARY="$CRATES_DIR/target/$TARGET/release/runner"
   log "Binary: $BINARY ($(du -h "$BINARY" | cut -f1))"
 
-  # Stop old service before uploading (avoids "Text file busy")
+  # Stop old service before uploading (avoids "Text file busy").
+  # stop() returns Ok when no service exists, so no need for || true.
   log "Stopping old service..."
-  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force 2>/dev/null || true"
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force"
 
   # Upload
   log "Deploying to $SSH_USER@$HOST..."
@@ -159,7 +160,7 @@ cmd_exec() {
 cmd_remove() {
   log "Removing runner $RUNNER_NAME from $HOST..."
 
-  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force 2>/dev/null || true"
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force" || true
   ssh_cmd "sudo rm -rf $REMOTE_BIN_DIR $RUNNER_DIR"
 
   log "Done! Runner $RUNNER_NAME removed from $HOST"

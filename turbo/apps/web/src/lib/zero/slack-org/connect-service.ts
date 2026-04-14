@@ -262,8 +262,22 @@ export async function notifyConnectSuccess(params: {
   orgId: string;
   channelId?: string | null;
   threadTs?: string | null;
+  /**
+   * Optional prompt captured from the entry URL (e.g. a use-case CTA).
+   * When provided and the greeting goes to a DM (not an ephemeral channel
+   * message), an additional plain-text DM asks the user whether they want
+   * to run this prompt.
+   */
+  pendingPrompt?: string | null;
 }): Promise<void> {
-  const { installation, slackUserId, orgId, channelId, threadTs } = params;
+  const {
+    installation,
+    slackUserId,
+    orgId,
+    channelId,
+    threadTs,
+    pendingPrompt,
+  } = params;
   const { SECRETS_ENCRYPTION_KEY } = env();
   const botToken = decryptSecretValue(
     installation.encryptedBotToken,
@@ -278,23 +292,31 @@ export async function notifyConnectSuccess(params: {
     agentName = agent?.displayName ?? agent?.name;
   }
 
-  const agentLine = agentName
-    ? `Your workspace agent is *${agentName}*.`
-    : `No workspace agent configured yet.`;
-
   const blocks = buildSuccessMessage(
-    `You're connected! :tada:\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
+    `You're connected! :tada:\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
   );
 
+  let sentEphemeral = false;
   if (channelId) {
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: slackUserId,
-      text: "You're connected!",
-      blocks,
-      ...(threadTs ? { thread_ts: threadTs } : {}),
-    });
-  } else {
+    try {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: slackUserId,
+        text: "You're connected!",
+        blocks,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+      });
+      sentEphemeral = true;
+    } catch (err) {
+      // Bot may not be in the channel — fall back to DM below
+      log.warn("Ephemeral failed, falling back to DM", {
+        channelId,
+        error: err,
+      });
+    }
+  }
+
+  if (!sentEphemeral) {
     const connectMsg = await postMessage(
       client,
       slackUserId,
@@ -307,6 +329,18 @@ export async function notifyConnectSuccess(params: {
         threadTs: connectMsg.ts,
         blocks: buildWelcomeMessage(agentName),
       });
+
+      if (pendingPrompt) {
+        // Wrap in a code block to prevent Slack mrkdwn injection
+        // (mentions, links, formatting) from user-controlled input.
+        const safePrompt = `\`\`\`${pendingPrompt.replaceAll("`", "\u2018")}\`\`\``;
+        await postMessage(
+          client,
+          slackUserId,
+          `By the way, would you like me to run this for you?\n\n${safePrompt}\n\nJust paste it in a message and I'll get started!`,
+          { threadTs: connectMsg.ts },
+        );
+      }
     }
 
     await globalThis.services.db

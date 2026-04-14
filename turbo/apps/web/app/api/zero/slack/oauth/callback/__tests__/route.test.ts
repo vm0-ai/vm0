@@ -92,7 +92,7 @@ describe("/api/zero/slack/oauth/callback", () => {
     // Should redirect to /slack/connect?status=connected
     expect(response.status).toBe(307);
     expect(response.headers.get("Location")).toContain(
-      "/slack/connect?status=connected",
+      "/settings/slack?status=connected",
     );
 
     // Verify installation was created with org_id
@@ -295,7 +295,7 @@ describe("/api/zero/slack/oauth/callback", () => {
     const responseA = await GET(requestA);
     expect(responseA.status).toBe(307);
     expect(responseA.headers.get("Location")).toContain(
-      "/slack/connect?status=connected",
+      "/settings/slack?status=connected",
     );
 
     // Second: Org B tries to install the same workspace
@@ -320,7 +320,7 @@ describe("/api/zero/slack/oauth/callback", () => {
     // Should redirect to /works with error
     expect(responseB.status).toBe(307);
     const location = responseB.headers.get("Location")!;
-    expect(location).toContain("/slack/connect?error=");
+    expect(location).toContain("/settings/slack?error=");
     expect(decodeURIComponent(location)).toContain(
       "already installed by another organization",
     );
@@ -383,7 +383,7 @@ describe("/api/zero/slack/oauth/callback", () => {
     // Should succeed
     expect(response.status).toBe(307);
     expect(response.headers.get("Location")).toContain(
-      "/slack/connect?status=connected",
+      "/settings/slack?status=connected",
     );
 
     // Bot token should be updated
@@ -431,7 +431,7 @@ describe("/api/zero/slack/oauth/callback", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("Location")).toContain(
-      "/slack/connect?status=connected",
+      "/settings/slack?status=connected",
     );
 
     // Should still have exactly one connection (onConflictDoNothing)
@@ -518,6 +518,241 @@ describe("/api/zero/slack/oauth/callback", () => {
     expect(installation!.botScopes).toBe(
       JSON.stringify(["chat:write", "channels:read", "users:read"]),
     );
+  });
+
+  it("should forward prompt from state to notifyConnectSuccess DM", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    mockOAuthSuccess({ teamId: workspaceId, authedUserId: "U-prompt-admin" });
+
+    const state = JSON.stringify({
+      orgId,
+      vm0UserId: adminUserId,
+      prompt: "summarize my inbox",
+    });
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("Location")).toContain(
+      "/settings/slack?status=connected",
+    );
+
+    // Allow fire-and-forget notifyConnectSuccess to complete
+    await vi.waitFor(async () => {
+      const mockClient = vi.mocked(new WebClient(), true);
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof vi.fn
+      >;
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes("summarize my inbox")
+        );
+      });
+      expect(promptCall).toBeDefined();
+    });
+  });
+
+  it("should not send prompt DM when state has no prompt", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-noprompt-admin",
+    });
+
+    const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("Location")).toContain(
+      "/settings/slack?status=connected",
+    );
+
+    // Allow fire-and-forget notifyConnectSuccess to complete
+    await vi.waitFor(async () => {
+      const mockClient = vi.mocked(new WebClient(), true);
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof vi.fn
+      >;
+      // Verify no "would you like me to run" prompt DM was sent
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes(
+            "would you like me to run",
+          )
+        );
+      });
+      expect(promptCall).toBeUndefined();
+    });
+  });
+
+  it("should forward prompt from connect flow state to notifyConnectSuccess", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    // First, create an installation via the install flow
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-connect-admin",
+    });
+    const installState = JSON.stringify({ orgId, vm0UserId: adminUserId });
+    const installRequest = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=install-code&state=${encodeURIComponent(installState)}`,
+    );
+    await GET(installRequest);
+
+    // Now use the connect flow with a prompt
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-connect-admin",
+    });
+    const connectState = JSON.stringify({
+      orgId,
+      vm0UserId: adminUserId,
+      flow: "connect",
+      prompt: "summarize my inbox",
+    });
+    const connectRequest = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(connectState)}`,
+    );
+    const response = await GET(connectRequest);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("Location")).toContain(
+      "/settings/slack?status=connected",
+    );
+
+    // Allow fire-and-forget notifyConnectSuccess to complete
+    await vi.waitFor(async () => {
+      const mockClient = vi.mocked(new WebClient(), true);
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof vi.fn
+      >;
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes("summarize my inbox")
+        );
+      });
+      expect(promptCall).toBeDefined();
+    });
+  });
+
+  it("should not send prompt DM in connect flow when state has no prompt", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    // Create installation
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-noprompt-connect",
+    });
+    const installState = JSON.stringify({ orgId, vm0UserId: adminUserId });
+    const installRequest = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=install-code&state=${encodeURIComponent(installState)}`,
+    );
+    await GET(installRequest);
+
+    // Connect flow without prompt
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-noprompt-connect",
+    });
+    const connectState = JSON.stringify({
+      orgId,
+      vm0UserId: adminUserId,
+      flow: "connect",
+    });
+    const connectRequest = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(connectState)}`,
+    );
+    const response = await GET(connectRequest);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("Location")).toContain(
+      "/settings/slack?status=connected",
+    );
+
+    // Allow fire-and-forget notifyConnectSuccess to complete
+    await vi.waitFor(async () => {
+      const mockClient = vi.mocked(new WebClient(), true);
+      const postMessageFn = mockClient.chat.postMessage as ReturnType<
+        typeof vi.fn
+      >;
+      const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
+        return (
+          typeof call[0] === "object" &&
+          call[0] !== null &&
+          "text" in call[0] &&
+          typeof (call[0] as { text: string }).text === "string" &&
+          (call[0] as { text: string }).text.includes(
+            "would you like me to run",
+          )
+        );
+      });
+      expect(promptCall).toBeUndefined();
+    });
+  });
+
+  it("should redirect connect flow errors to /settings/slack", async () => {
+    const state = JSON.stringify({
+      flow: "connect",
+    });
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=some-code&state=${encodeURIComponent(state)}`,
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("Location")!;
+    expect(location).toContain("/settings/slack?error=");
   });
 
   it("should redirect to /?tab=works&updated=1 when reinstall flag is set", async () => {

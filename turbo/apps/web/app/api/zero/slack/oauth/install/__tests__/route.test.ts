@@ -89,6 +89,68 @@ describe("/api/zero/slack/oauth/install", () => {
     );
   });
 
+  it("should include prompt in state when present in query", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/slack/oauth/install?orgId=org_123&vm0UserId=user_456&prompt=summarize%20my%20inbox",
+    );
+    const response = await GET(request);
+
+    const locationHeader = response.headers.get("Location");
+    const redirectUrl = new URL(locationHeader!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!);
+
+    expect(state.prompt).toBe("summarize my inbox");
+    expect(state.orgId).toBe("org_123");
+  });
+
+  it("should truncate long prompts to protect OAuth state length", async () => {
+    const longPrompt = "x".repeat(1200);
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/install?prompt=${encodeURIComponent(longPrompt)}`,
+    );
+    const response = await GET(request);
+
+    const locationHeader = response.headers.get("Location");
+    const redirectUrl = new URL(locationHeader!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!);
+
+    expect(typeof state.prompt).toBe("string");
+    expect(state.prompt.length).toBe(500);
+    expect(state.prompt).toBe("x".repeat(500));
+  });
+
+  it("should truncate prompts with unicode characters without splitting codepoints", async () => {
+    // Each emoji is one codepoint but multiple UTF-16 code units
+    const emojiPrompt = "\u{1F600}".repeat(600);
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/install?prompt=${encodeURIComponent(emojiPrompt)}`,
+    );
+    const response = await GET(request);
+
+    const locationHeader = response.headers.get("Location");
+    const redirectUrl = new URL(locationHeader!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!);
+
+    // Should have exactly 500 codepoints, not split surrogate pairs
+    expect([...state.prompt].length).toBe(500);
+    for (const char of state.prompt) {
+      expect(char).toBe("\u{1F600}");
+    }
+  });
+
+  it("should omit prompt from state when absent", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/slack/oauth/install?orgId=org_123&vm0UserId=user_456",
+    );
+    const response = await GET(request);
+
+    const locationHeader = response.headers.get("Location");
+    const redirectUrl = new URL(locationHeader!);
+    const state = JSON.parse(redirectUrl.searchParams.get("state")!);
+
+    expect(state.prompt).toBeUndefined();
+  });
+
   it("should return 503 when Slack is not configured", async () => {
     vi.stubEnv("SLACK_CLIENT_ID", "");
     reloadEnv();

@@ -143,7 +143,7 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
       set(markRead$, initialTask.id, task.latestRunId);
 
       if (task.type === "chat" && task.chatThreadId) {
-        const draft = set(ensureDraft$, task.chatThreadId);
+        const { draft } = set(ensureDraft$, task.chatThreadId);
         const signals = createChatThreadSignals(task.chatThreadId, draft);
         set(internalPanelEntry$, { kind: "chat", signals });
         set(internalOpenedAt$, Date.now());

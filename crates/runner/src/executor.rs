@@ -38,7 +38,7 @@ pub struct ExecutorConfig {
 pub struct JobParams {
     pub vcpu: u32,
     pub memory_mb: u32,
-    pub use_snapshot: bool,
+    pub restore_guest_state: bool,
 }
 
 /// Outcome of a job execution, including the sandbox for possible reuse.
@@ -203,7 +203,7 @@ async fn execute_new_sandbox(
         sandbox.as_ref(),
         context,
         config,
-        params.use_snapshot,
+        params.restore_guest_state,
         None,
         telemetry,
         cancel,
@@ -260,37 +260,12 @@ async fn execute_reused_sandbox(
     // Re-register proxy with new run credentials
     register_proxy(config, context, source_ip).await;
 
-    // Fix clock drift and reseed entropy (always needed after idle period).
-    // On failure, return the sandbox so the caller can still stop + destroy it.
-    if let Err(e) = fix_guest_clock(sandbox.as_ref()).await {
-        warn!(run_id = %context.run_id, error = %e, "fix_guest_clock failed on reused sandbox");
-        unregister_proxy(config, context, source_ip).await;
-        return ExecuteOutcome {
-            exit_code: 1,
-            error: Some(e.to_string()),
-            sandbox: Some(sandbox),
-            source_ip: source_ip.to_string(),
-            guest_session_id: None,
-        };
-    }
-    if let Err(e) = reseed_guest_entropy(sandbox.as_ref()).await {
-        warn!(run_id = %context.run_id, error = %e, "reseed_guest_entropy failed on reused sandbox");
-        unregister_proxy(config, context, source_ip).await;
-        return ExecuteOutcome {
-            exit_code: 1,
-            error: Some(e.to_string()),
-            sandbox: Some(sandbox),
-            source_ip: source_ip.to_string(),
-            guest_session_id: None,
-        };
-    }
-
-    // Run job — clock/entropy already handled.
+    // Run job — clock/entropy fixed inside run_in_sandbox (always needed after idle).
     let result = run_in_sandbox(
         sandbox.as_ref(),
         context,
         config,
-        false, // clock/entropy already handled
+        true,
         Some(prev_storage),
         telemetry,
         cancel,
@@ -328,11 +303,13 @@ async fn execute_reused_sandbox(
 /// Register a VM in the proxy registry and IP log map.
 async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
     let network_log_path = config.log_paths.network_log(context.run_id);
+    let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
     let registration = proxy::VmRegistration {
         run_id: &run_id_str,
         sandbox_token: &context.sandbox_token,
         network_log_path: &network_log_path,
+        proxy_log_path: &proxy_log_path,
         firewalls: context.firewalls.as_deref(),
         network_policies: context.network_policies.as_ref(),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
@@ -386,7 +363,7 @@ async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     config: &ExecutorConfig,
-    use_snapshot: bool,
+    restore_guest_state: bool,
     prev_storage: Option<&crate::idle_pool::StorageFingerprints>,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
@@ -397,8 +374,9 @@ async fn run_in_sandbox(
         context.run_id
     );
 
-    // 1. Fix guest clock after snapshot restore (must happen before HTTPS calls)
-    if use_snapshot {
+    // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
+    //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
+    if restore_guest_state {
         fix_guest_clock(sandbox).await?;
         reseed_guest_entropy(sandbox).await?;
     }
@@ -2280,7 +2258,7 @@ mod tests {
         JobParams {
             vcpu: 2,
             memory_mb: 2048,
-            use_snapshot: false,
+            restore_guest_state: false,
         }
     }
 
@@ -2328,7 +2306,7 @@ mod tests {
         factory.startup().await.unwrap();
 
         let params = JobParams {
-            use_snapshot: true,
+            restore_guest_state: true,
             ..default_params()
         };
         let (exit_code, _) = run_execute_inner(&factory, &minimal_context(), &config, &params)

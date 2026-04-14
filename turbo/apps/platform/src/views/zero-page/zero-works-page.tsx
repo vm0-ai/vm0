@@ -1,4 +1,4 @@
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -32,9 +32,14 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import slackIconImg from "./assets/slack-icon.svg";
 
-/** Append a cache-busting timestamp so the browser never reuses a cached OAuth redirect. */
+/** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
+ *  carry it through to the Slack DM greeting. */
 function openFreshOAuth(url: string) {
   const fresh = new URL(url, window.location.origin);
+  const prompt = new URLSearchParams(window.location.search).get("prompt");
+  if (prompt) {
+    fresh.searchParams.set("prompt", prompt);
+  }
   fresh.searchParams.set("_t", String(Date.now()));
   window.open(fresh.toString(), "_blank");
 }
@@ -139,7 +144,9 @@ function SlackCardActions({
 }
 
 function SlackCard({ displayName }: { displayName: string }) {
-  const slackDataLoadable = useLoadable(slackOrgData$);
+  // useLastLoadable keeps the prior resolved value during the polling refetch
+  // so the card text doesn't flicker back to defaults on every poll cycle.
+  const slackDataLoadable = useLastLoadable(slackOrgData$);
   const slackData =
     slackDataLoadable.state === "hasData" ? slackDataLoadable.data : null;
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectSlackOrg$);

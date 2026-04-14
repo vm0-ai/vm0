@@ -74,6 +74,22 @@ describe("voice-chat-preparation signals", () => {
     expect(context.store.get(meetingPrepStartTime$)).toBeTypeOf("number");
   });
 
+  it("should set status to failed immediately when initial status is failed", async () => {
+    setup();
+    const responses = [{ status: "failed" }];
+    const counter = mockPrepareEndpoint(responses);
+
+    await context.store.set(
+      triggerPreparation$,
+      "already failed prompt",
+      context.signal,
+    );
+
+    expect(context.store.get(meetingPrepStatus$)).toBe("failed");
+    // Should exit immediately — only the initial call, no polling
+    expect(counter.count).toBe(1);
+  });
+
   it("should poll until ready when preparation is in progress", async () => {
     setup();
     const responses = [

@@ -15,11 +15,15 @@ export const languageNames: Record<Locale, string> = {
   es: "Español",
 };
 
-export default getRequestConfig(async ({ locale }) => {
-  // Validate locale and fallback to default if invalid
-  // This prevents errors from malformed URLs like /favicon.ico/blog
+export default getRequestConfig(async ({ requestLocale }) => {
+  // In next-intl v4 the middleware-resolved locale arrives via requestLocale.
+  // It can be undefined for pages outside the [locale] segment (e.g. root
+  // layout, legal pages) or when an invalid URL reaches the config.
+  const requested = await requestLocale;
   const resolvedLocale =
-    locale && locales.includes(locale as Locale) ? locale : defaultLocale;
+    requested && locales.includes(requested as Locale)
+      ? (requested as Locale)
+      : defaultLocale;
 
   return {
     locale: resolvedLocale,

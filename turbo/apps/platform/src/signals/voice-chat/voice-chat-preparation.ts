@@ -1,5 +1,9 @@
 import { command, computed, state } from "ccstate";
-import { zeroVoiceChatPrepareTriggerContract } from "@vm0/core";
+import {
+  zeroVoiceChatPrepareTriggerContract,
+  zeroVoiceChatPrepareListContract,
+  type FreshPreparation,
+} from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
@@ -47,7 +51,7 @@ export const triggerPreparation$ = command(
     set(internalPrepPrompt$, prompt);
     set(internalPrepStartTime$, Date.now());
 
-    let initialStatus: string;
+    let initialStatus: "preparing" | "ready" | "failed";
     // eslint-disable-next-line no-restricted-syntax -- accept() throws on non-200; must catch to transition to "failed" state instead of leaving "preparing" forever
     try {
       const res = await accept(
@@ -68,6 +72,15 @@ export const triggerPreparation$ = command(
 
     if (initialStatus === "ready") {
       set(internalPrepStatus$, "ready");
+      await set(fetchFreshPreparations$, signal).catch((error: unknown) => {
+        throwIfAbort(error);
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    if (initialStatus === "failed") {
+      set(internalPrepStatus$, "failed");
       return;
     }
 
@@ -85,6 +98,11 @@ export const triggerPreparation$ = command(
 
         if (pollRes.body.preparation.status === "ready") {
           set(internalPrepStatus$, "ready");
+          await set(fetchFreshPreparations$, loopSignal).catch(
+            (error: unknown) => {
+              throwIfAbort(error);
+            },
+          );
           return true;
         }
 
@@ -106,3 +124,21 @@ export const clearPreparation$ = command(({ set }) => {
   set(internalPrepPrompt$, null);
   set(internalPrepStartTime$, null);
 });
+
+// --- Fresh preparations list ---
+
+const internalFreshPreparations$ = state<FreshPreparation[]>([]);
+
+export const freshPreparations$ = computed((get) => {
+  return get(internalFreshPreparations$);
+});
+
+export const fetchFreshPreparations$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatPrepareListContract);
+    const res = await accept(client.list({}), [200], { toast: false });
+    signal.throwIfAborted();
+    set(internalFreshPreparations$, res.body.preparations);
+  },
+);

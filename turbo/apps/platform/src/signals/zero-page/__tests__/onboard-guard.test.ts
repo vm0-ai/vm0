@@ -4,9 +4,11 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { onboardGuard$ } from "../onboard-guard.ts";
-import { pathname } from "../../location.ts";
+import { pathname, search } from "../../location.ts";
 
 const context = testContext();
+
+const CHOOSE_ORG_PATH = "/sign-in/tasks/choose-organization";
 
 function mockOnboardingStatus(body: {
   needsOnboarding: boolean;
@@ -61,7 +63,7 @@ describe("onboardGuard$", () => {
     expect(pathname()).toBe("/onboarding");
   });
 
-  it("should redirect to /select-org when org is deleted but user has other memberships", async () => {
+  it("should redirect to choose-organization when org is deleted but user has other memberships", async () => {
     mockOnboardingStatus({
       needsOnboarding: true,
       hasOrg: false,
@@ -81,7 +83,45 @@ describe("onboardGuard$", () => {
     const redirected = await context.store.set(onboardGuard$, context.signal);
 
     expect(redirected).toBeTruthy();
-    expect(pathname()).toBe("/select-org");
+    expect(window.location.href).toContain(CHOOSE_ORG_PATH);
+  });
+
+  it("should forward ?prompt= and ?connector= through to /onboarding", async () => {
+    mockOnboardingStatus({
+      needsOnboarding: true,
+      hasOrg: true,
+      hasDefaultAgent: false,
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?prompt=summarize%20this&connector=gmail,slack",
+      withoutRender: true,
+    });
+
+    const redirected = await context.store.set(onboardGuard$, context.signal);
+
+    expect(redirected).toBeTruthy();
+    expect(pathname()).toBe("/onboarding");
+    const forwarded = new URLSearchParams(search());
+    expect(forwarded.get("prompt")).toBe("summarize this");
+    expect(forwarded.get("connector")).toBe("gmail,slack");
+  });
+
+  it("should redirect without query string when no forwarded params are present", async () => {
+    mockOnboardingStatus({
+      needsOnboarding: true,
+      hasOrg: true,
+      hasDefaultAgent: false,
+    });
+
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    const redirected = await context.store.set(onboardGuard$, context.signal);
+
+    expect(redirected).toBeTruthy();
+    expect(pathname()).toBe("/onboarding");
+    expect(search()).toBe("");
   });
 
   it("should redirect to /onboarding when org is deleted and user has no memberships", async () => {

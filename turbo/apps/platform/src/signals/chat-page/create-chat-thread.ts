@@ -1,5 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { onRef, setLoop } from "../utils.ts";
+import { delay } from "signal-timers";
+import { onRef, setLoop, resetSignal, throwIfNotAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import {
   createDraftSignals,
@@ -11,7 +12,11 @@ import {
   reloadChatThreads$,
   type ChatThread,
 } from "../agent-chat.ts";
-import { chatMessagesContract, chatThreadByIdContract } from "@vm0/core";
+import {
+  chatMessagesContract,
+  chatThreadByIdContract,
+  type PersistedAttachment,
+} from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
@@ -28,6 +33,10 @@ import {
   type UserChatMessage,
   type AssistantChatMessage,
 } from "./chat-message.ts";
+import {
+  markMessageLoading$,
+  checkAutoRead$,
+} from "../voice-io/voice-io-tts.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -40,7 +49,6 @@ const L = logger("ChatThread");
 export interface ChatThreadSignals {
   // ── Data signals ──────────────────────────────────────────────────────────
   threadData$: Computed<Promise<ChatThread | null>>;
-  reloadThread$: Command<void, []>;
   messages$: Computed<Promise<ZeroChatMessage[]>>;
   allFinished$: Computed<Promise<boolean>>;
   thinkingMessage$: Computed<string>;
@@ -69,6 +77,9 @@ export interface ChatThreadSignals {
   // ── Focus ─────────────────────────────────────────────────────────────────
   setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
+  // ── Draft sync ────────────────────────────────────────────────────────────
+  /** Schedule a 500ms debounced PATCH to persist the current draft to the server. */
+  scheduleDraftSync$: Command<void, [AbortSignal]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +105,8 @@ function createThreadData(threadId: string) {
       latestSessionId: body.latestSessionId ?? null,
       unsavedRuns: body.unsavedRuns ?? [],
       isLegacySession: false,
+      draftContent: body.draftContent ?? null,
+      draftAttachments: body.draftAttachments ?? null,
     };
   });
 
@@ -112,10 +125,6 @@ function createThreadData(threadId: string) {
 
 function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
   const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
-
-  const resetLocalMessages$ = command(({ set }) => {
-    set(internalLocalMessages$, []);
-  });
 
   const currentChatMessages$ = computed(
     async (get): Promise<ZeroChatMessage[]> => {
@@ -212,7 +221,6 @@ function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
 
   return {
     internalLocalMessages$,
-    resetLocalMessages$,
     chatMessages$,
     messages$,
     allFinished$,
@@ -256,9 +264,7 @@ function scrollToMessages(scrollEl: HTMLElement) {
     return;
   }
 
-  const composer = scrollEl.querySelector<HTMLElement>("[data-chat-composer]");
-  const composerHeight = composer ? composer.offsetHeight : 0;
-  const visibleHeight = scrollEl.clientHeight - composerHeight;
+  const visibleHeight = scrollEl.clientHeight;
   const userTop = lastUser.offsetTop - container.offsetTop;
 
   if (lastAssistant && lastAssistant.offsetTop > lastUser.offsetTop) {
@@ -288,14 +294,6 @@ function createScrollSignals() {
     }),
   );
 
-  const forceScrollToBottom$ = command(({ get }) => {
-    const scrollEl = get(internalScrollContainer$);
-    if (!scrollEl) {
-      return;
-    }
-    scrollToMessages(scrollEl);
-  });
-
   const autoScroll$ = command(({ get }) => {
     const scrollEl = get(internalScrollContainer$);
     if (!scrollEl) {
@@ -309,7 +307,7 @@ function createScrollSignals() {
     scrollToMessages(scrollEl);
   });
 
-  return { setScrollContainer$, autoScroll$, forceScrollToBottom$ };
+  return { setScrollContainer$, autoScroll$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -332,11 +330,10 @@ function createComposerFileInput() {
   return { composerFileInput$, setComposerFileInput$ };
 }
 
-// ---------------------------------------------------------------------------
-// Sub-factory: message commands (send, load, cancel)
-// ---------------------------------------------------------------------------
-
-interface MessageCommandsDeps {
+// This is an internal scope used to maintain an internal message closure.
+// This scope should only be used within the current file to help decouple specific creator factory command functions.
+// This interface should never be exposed for external use.
+interface MessageCommandsInternalScope {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
   reloadThread$: Command<void, []>;
@@ -344,16 +341,19 @@ interface MessageCommandsDeps {
   chatMessages$: Computed<Promise<ChatMessages | null>>;
   draft: DraftSignals;
   reloadThinkingMessage$: Command<void, []>;
+  cancelDraftSync$: Command<void, []>;
+  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  autoScroll$: Command<void, []>;
 }
 
-function createPrepareUserMessage(deps: MessageCommandsDeps) {
+function createPrepareUserMessage(draft: DraftSignals) {
   return command(
     async (
-      { get, set },
+      { get },
       prompt: string,
       signal: AbortSignal,
-    ): Promise<{ fullPrompt: string } | null> => {
-      const allAttachments = get(deps.draft.attachments$);
+    ): Promise<{ fullPrompt: string; userMessage: UserChatMessage } | null> => {
+      const allAttachments = get(draft.attachments$);
       const allInfos = await Promise.all(
         allAttachments.map((a) => {
           return get(a.fileInfo$);
@@ -407,77 +407,92 @@ function createPrepareUserMessage(deps: MessageCommandsDeps) {
               })
             : undefined,
       };
-      set(deps.internalLocalMessages$, (prev) => {
-        return [...prev, userMessage];
-      });
-      set(deps.draft.clear$);
-      return { fullPrompt };
+      return { fullPrompt, userMessage };
     },
   );
 }
 
-function createMessageCommands(deps: MessageCommandsDeps) {
-  const prepareUserMessage$ = createPrepareUserMessage(deps);
+function createSendMessage(
+  deps: MessageCommandsInternalScope,
+  prepareUserMessage$: ReturnType<typeof createPrepareUserMessage>,
+) {
+  return command(async ({ get, set }, prompt: string, signal: AbortSignal) => {
+    const thread = await get(deps.threadData$);
+    signal.throwIfAborted();
+    const agentId = thread?.agentId;
+    if (!agentId) {
+      return;
+    }
 
-  const sendMessage$ = command(
-    async ({ get, set }, prompt: string, signal: AbortSignal) => {
-      const thread = await get(deps.threadData$);
-      signal.throwIfAborted();
-      const agentId = thread?.agentId;
-      if (!agentId) {
-        return;
-      }
+    const result = await set(prepareUserMessage$, prompt, signal);
+    if (!result) {
+      return;
+    }
+    signal.throwIfAborted();
 
-      const result = await set(prepareUserMessage$, prompt, signal);
-      if (!result) {
-        return;
-      }
-      signal.throwIfAborted();
+    set(deps.internalLocalMessages$, (prev) => {
+      return [...prev, result.userMessage];
+    });
+    set(deps.cancelDraftSync$);
+    set(deps.draft.clear$);
+    await set(deps.flushDraftClear$, signal);
+    signal.throwIfAborted();
 
-      const client = get(zeroClient$)(chatMessagesContract);
-      const sendResult = await accept(
-        client.send({
-          body: {
-            agentId,
-            prompt: result.fullPrompt,
-            threadId: deps.threadId,
-            hasTextContent: prompt.trim().length > 0,
-          },
-          fetchOptions: { signal },
-        }),
-        [201],
-      );
-      signal.throwIfAborted();
-
-      set(reloadChatThreads$);
-      set(deps.reloadThread$);
-
-      const { assistantMessage } = createActiveRunMessage(
-        sendResult.body.runId,
-        prompt,
-      );
-      set(deps.internalLocalMessages$, (prev) => {
-        return [...prev, assistantMessage];
-      });
-
-      const runLoop = assistantMessage.runLoop;
-      if (!runLoop) {
-        return;
-      }
-
-      await setLoop(
-        (sig) => {
-          set(reloadChatThreads$);
-          set(deps.reloadThread$);
-          return set(runLoop.checkFinished$, sig);
+    const client = get(zeroClient$)(chatMessagesContract);
+    const sendResult = await accept(
+      client.send({
+        body: {
+          agentId,
+          prompt: result.fullPrompt,
+          threadId: deps.threadId,
+          hasTextContent: prompt.trim().length > 0,
         },
-        3000,
-        signal,
-      );
-    },
-  );
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
 
-  const loadMessages$ = command(async ({ get, set }, signal: AbortSignal) => {
+    set(reloadChatThreads$);
+    set(deps.reloadThread$);
+
+    const { assistantMessage } = createActiveRunMessage(
+      sendResult.body.runId,
+      prompt,
+    );
+    set(deps.internalLocalMessages$, (prev) => {
+      return [...prev, assistantMessage];
+    });
+
+    set(markMessageLoading$, assistantMessage.id);
+
+    const runLoop = assistantMessage.runLoop;
+    if (!runLoop) {
+      return;
+    }
+
+    await setLoop(
+      async (sig) => {
+        set(reloadChatThreads$);
+        set(deps.reloadThread$);
+        const finished = await set(runLoop.checkFinished$, sig);
+        set(deps.autoScroll$);
+        return finished;
+      },
+      3000,
+      signal,
+    );
+
+    const content = await get(assistantMessage.result$);
+    signal.throwIfAborted();
+    if (content) {
+      await set(checkAutoRead$, assistantMessage.id, content, signal);
+    }
+  });
+}
+
+function createLoadMessages(deps: MessageCommandsInternalScope) {
+  return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("Loading messages");
     const msgs = await get(deps.chatMessages$);
     signal.throwIfAborted();
@@ -506,6 +521,8 @@ function createMessageCommands(deps: MessageCommandsDeps) {
           return;
         }
 
+        set(markMessageLoading$, message.id);
+
         await setLoop(
           (sig) => {
             set(deps.reloadThinkingMessage$);
@@ -515,12 +532,24 @@ function createMessageCommands(deps: MessageCommandsDeps) {
           signal,
         );
 
+        const content = await get(message.result$);
+        signal.throwIfAborted();
+        if (content) {
+          await set(checkAutoRead$, message.id, content, signal);
+        }
+
         set(reloadChatThreads$);
         set(deps.reloadThread$);
       }),
     );
     signal.throwIfAborted();
   });
+}
+
+function createMessageCommands(deps: MessageCommandsInternalScope) {
+  const prepareUserMessage$ = createPrepareUserMessage(deps.draft);
+  const sendMessage$ = createSendMessage(deps, prepareUserMessage$);
+  const loadMessages$ = createLoadMessages(deps);
 
   const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
     const local = get(deps.internalLocalMessages$);
@@ -639,6 +668,138 @@ function createThreadUIState() {
 // Factory
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Sub-factory: draft server sync (debounced PATCH)
+// ---------------------------------------------------------------------------
+
+/** Milliseconds to wait before persisting a draft change to the server. */
+const DRAFT_SYNC_DEBOUNCE_MS = 500;
+
+// Backing state for the debounce delay — not exported directly (no-export-state rule).
+const internalDraftSyncDebounceMs$ = state(DRAFT_SYNC_DEBOUNCE_MS);
+
+/**
+ * Overrides the debounce delay (ms) used by `scheduleDraftSync$`. Set to 0
+ * in tests to bypass the 500ms wait without fake timers.
+ *
+ * @internal — exported for testing only; do not use in application code.
+ */
+export const setDraftSyncDebounceMs$ = command(({ set }, ms: number) => {
+  set(internalDraftSyncDebounceMs$, ms);
+});
+
+function createDraftSync(threadId: string, draft: DraftSignals) {
+  // A reset signal is used to abort any in-flight debounced sync when a new
+  // change comes in or when the draft is cleared on send.
+  const draftSyncReset$ = resetSignal();
+
+  const syncWithContent$ = command(
+    async (
+      { get },
+      content: string | null,
+      attachments: PersistedAttachment[] | null,
+      signal: AbortSignal,
+    ) => {
+      const client = get(zeroClient$)(chatThreadByIdContract);
+      await accept(
+        client.patch({
+          params: { id: threadId },
+          body: { draftContent: content, draftAttachments: attachments },
+          fetchOptions: { signal },
+        }),
+        [204],
+      );
+    },
+  );
+
+  /**
+   * Debounced sync: waits 500ms, then reads the current draft state and PATCHes
+   * the server. Aborted when `scheduleDraftSync$` is called again (debounce
+   * reset) or when `cancelDraftSync$` fires (on send).
+   */
+  const debouncedSyncDraft$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      // Wait for the debounce window — abort if a newer change comes in.
+      // The delay is configurable via setDraftSyncDebounceMs$ so tests can set it to 0.
+      await delay(get(internalDraftSyncDebounceMs$), { signal });
+      signal.throwIfAborted();
+
+      const input = get(draft.input$);
+      const content = input.trim() || null;
+      const attachments = get(draft.attachments$);
+
+      // Resolve attachment fileInfo to collect only completed uploads
+      const infos = await Promise.all(
+        attachments.map((a) => {
+          return get(a.fileInfo$);
+        }),
+      );
+      signal.throwIfAborted();
+      const persisted = attachments
+        .map((a, i) => {
+          return { a, info: infos[i] };
+        })
+        .filter(
+          (
+            r,
+          ): r is {
+            a: ZeroChatAttachment;
+            info: { id: string; url: string };
+          } => {
+            return r.info !== null;
+          },
+        )
+        .map((r) => {
+          return {
+            id: r.info.id,
+            url: r.info.url,
+            filename: r.a.filename,
+            contentType: r.a.contentType,
+            size: r.a.size,
+          };
+        });
+
+      await set(
+        syncWithContent$,
+        content,
+        persisted.length > 0 ? persisted : null,
+        signal,
+      );
+    },
+  );
+
+  /**
+   * Schedules a debounced draft sync. Each call aborts any prior in-flight
+   * debounced sync and restarts the 500ms timer. Called from the draft change
+   * watcher in setupChatPage$.
+   */
+  const scheduleDraftSync$ = command(({ set }, signal: AbortSignal) => {
+    const debouncedSignal = set(draftSyncReset$, signal);
+    // Start the debounced async sync. Abort errors are ignored (expected when
+    // the signal is reset on the next draft change). Other errors surface via
+    // accept()'s built-in toast error handling.
+    void set(debouncedSyncDraft$, debouncedSignal).catch(throwIfNotAbort);
+  });
+
+  const cancelDraftSync$ = command(({ set }) => {
+    // Abort the current debounced sync by resetting the signal
+    set(draftSyncReset$);
+  });
+
+  const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
+    // Cancel any pending debounced sync first
+    set(draftSyncReset$);
+    // Immediately PATCH null values
+    await set(syncWithContent$, null, null, signal);
+  });
+
+  return { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ };
+}
+
+// ---------------------------------------------------------------------------
+// Draft cache
+// ---------------------------------------------------------------------------
+
 /**
  * Per-thread draft cache. Drafts survive navigation (thread-1 -> thread-2 ->
  * thread-1) because they are stored here rather than inside the factory's
@@ -655,36 +816,36 @@ const draftCache$ = state(new Map<string, DraftSignals>());
  * cache, returns it. Otherwise creates a new one and immutably updates the
  * cache state.
  *
+ * Returns `{ draft, isNew }` where `isNew` is true when a fresh draft was
+ * created (i.e. this is the first visit to the thread in this session).
+ * Callers can use `isNew` to decide whether to seed draft from server data.
+ *
  * This is a command (not a plain function) so the cache mutation happens
  * outside of any computed derivation.
  */
-export const ensureDraft$ = command(({ get, set }, threadId: string) => {
-  const cache = get(draftCache$);
-  const existing = cache.get(threadId);
-  if (existing) {
-    return existing;
-  }
-  const draft = createDraftSignals();
-  const next = new Map(cache);
-  next.set(threadId, draft);
-  set(draftCache$, next);
-  return draft;
-});
+export const ensureDraft$ = command(
+  ({ get, set }, threadId: string): { draft: DraftSignals; isNew: boolean } => {
+    const cache = get(draftCache$);
+    const existing = cache.get(threadId);
+    if (existing) {
+      return { draft: existing, isNew: false };
+    }
+    const draft = createDraftSignals();
+    const next = new Map(cache);
+    next.set(threadId, draft);
+    set(draftCache$, next);
+    return { draft, isNew: true };
+  },
+);
 
 export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const {
-    internalLocalMessages$,
-    resetLocalMessages$,
-    messages$,
-    chatMessages$,
-    allFinished$,
-  } = createMessageState(threadData$);
-  const { setScrollContainer$, autoScroll$, forceScrollToBottom$ } =
-    createScrollSignals();
+  const { internalLocalMessages$, messages$, chatMessages$, allFinished$ } =
+    createMessageState(threadData$);
+  const { setScrollContainer$, autoScroll$ } = createScrollSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, agentPinned$ } =
@@ -722,6 +883,9 @@ export function createChatThreadSignals(
     get(internalInputRef$)?.focus();
   });
 
+  const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
+    createDraftSync(threadId, draft);
+
   const { sendMessage$, loadMessages$, cancelRun$ } = createMessageCommands({
     threadId,
     threadData$,
@@ -730,21 +894,20 @@ export function createChatThreadSignals(
     chatMessages$,
     draft,
     reloadThinkingMessage$,
+    cancelDraftSync$,
+    flushDraftClear$,
+    autoScroll$,
   });
 
   return {
     threadData$,
-    reloadThread$,
     messages$,
     allFinished$,
     thinkingMessage$,
     loadMessages$,
     sendMessage$,
     cancelRun$,
-    resetLocalMessages$,
     setScrollContainer$,
-    autoScroll$,
-    forceScrollToBottom$,
     draft,
     composerFileInput$,
     setComposerFileInput$,
@@ -757,6 +920,7 @@ export function createChatThreadSignals(
     copyMessage$,
     setInputRef$,
     focusInput$,
+    scheduleDraftSync$,
   };
 }
 

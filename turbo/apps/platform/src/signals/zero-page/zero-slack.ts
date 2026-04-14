@@ -4,6 +4,9 @@ import { zeroIntegrationsSlackContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setLoop } from "../utils.ts";
+import { logger } from "../log.ts";
+
+const L = logger("ZeroSlack");
 
 const internalReload$ = state(0);
 
@@ -49,6 +52,14 @@ export const disconnectSlackOrg$ = command(
     signal.throwIfAborted();
     toast.success("Disconnected from Slack");
     set(reloadSlackOrg$);
+    // Re-start polling so the card picks up when the user re-connects
+    // via the OAuth tab.
+    set(pollSlackConnection$, signal).catch((error: unknown) => {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+      L.error("Re-poll after disconnect failed", error);
+    });
   },
 );
 

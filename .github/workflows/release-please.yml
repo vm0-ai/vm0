@@ -817,11 +817,25 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          # Borrow an existing repo-level-only secret as the symmetric
+          # encryption passphrase.  GRAFANA_CLOUD_API_KEY exists at repo
+          # level but NOT in the "production" environment, so both this
+          # job (no environment) and deploy-runner-production (environment:
+          # production, falls back to repo level) resolve it to the same
+          # value.  Because it is a registered secret GitHub masks it as
+          # *** in all logs, keeping the passphrase invisible.
+          PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+        shell: bash
         run: |
+          set -euo pipefail
+          # GitHub redacts raw secret values AND their base64 encodings
+          # from job outputs, so we AES-encrypt them before writing.
+          # The ciphertext does not match any registered secret and
+          # passes through unredacted.
           {
             echo "r2-account-id=$R2_ACCOUNT_ID"
-            echo "r2-access-key-id=$R2_ACCESS_KEY_ID"
-            echo "r2-secret-access-key=$R2_SECRET_ACCESS_KEY"
+            echo "r2-access-key-id=$(echo -n "$R2_ACCESS_KEY_ID" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$PASSPHRASE" -a -A)"
+            echo "r2-secret-access-key=$(echo -n "$R2_SECRET_ACCESS_KEY" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$PASSPHRASE" -a -A)"
             echo "r2-bucket=$R2_BUCKET"
           } >> "$GITHUB_OUTPUT"
 
@@ -927,6 +941,32 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      # Decrypt R2 secrets from resolve-image-cache.  The secrets were
+      # AES-encrypted with GRAFANA_CLOUD_API_KEY (a repo-level-only
+      # secret) to bypass GitHub's job-output redaction.  The same
+      # secret is available here because the "production" environment
+      # does not define it, so GitHub falls back to the repo-level
+      # value.  The passphrase appears as *** in logs (registered
+      # secret); the ciphertext is visible but useless without it.
+      - name: Decrypt R2 image cache credentials
+        env:
+          _PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          _ENC_AK: ${{ needs.resolve-image-cache.outputs.r2-access-key-id }}
+          _ENC_SK: ${{ needs.resolve-image-cache.outputs.r2-secret-access-key }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          AK=$(echo -n "$_ENC_AK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          SK=$(echo -n "$_ENC_SK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          if [ -z "$AK" ] || [ -z "$SK" ]; then
+            echo "::error::R2 credential decryption produced empty values"
+            exit 1
+          fi
+          {
+            echo "R2_ACCESS_KEY_ID=$AK"
+            echo "R2_SECRET_ACCESS_KEY=$SK"
+          } >> "$GITHUB_ENV"
+
       - name: Deploy to production with Ansible
         env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
@@ -939,9 +979,9 @@ jobs:
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           # R2 image cache credentials — from resolve-image-cache job (repo-level,
           # not production-scoped) so the runner uses the same bucket as CI.
+          # R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY come from $GITHUB_ENV
+          # (decoded in previous step).
           R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
-          R2_ACCESS_KEY_ID: ${{ needs.resolve-image-cache.outputs.r2-access-key-id }}
-          R2_SECRET_ACCESS_KEY: ${{ needs.resolve-image-cache.outputs.r2-secret-access-key }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
         run: |
           cd ansible

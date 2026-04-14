@@ -10,6 +10,7 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { endVoiceChat$, vcStatus$ } from "./voice-chat-session.ts";
 import {
   clearPreparation$,
+  fetchFreshPreparations$,
   meetingPrepStatus$,
 } from "./voice-chat-preparation.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -50,6 +51,11 @@ export const setupVoiceChatPage$ = command(
       });
     })().catch((error: unknown) => {
       L.warn("Preparation pre-warm failed", error);
+    });
+
+    // Fetch fresh meeting preparations list (fire-and-forget)
+    set(fetchFreshPreparations$, signal).catch((error: unknown) => {
+      L.warn("Fresh preparations list fetch failed", error);
     });
 
     // End voice chat session and clear preparation when navigating away

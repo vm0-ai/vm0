@@ -12,6 +12,8 @@ import {
   currentChatThreadSignals$,
   ensureDraft$,
 } from "./create-chat-thread.ts";
+import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
+import { appStore } from "../app-store.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -21,8 +23,9 @@ export const setupChatPage$ = command(
     }
 
     // Provision draft before rendering so currentChatThreadSignals$ is
-    // available on first render.
-    set(ensureDraft$, threadId);
+    // available on first render. `isNew` tells us whether the local cache
+    // was empty — if so, we will seed draft signals from server data below.
+    const { isNew } = set(ensureDraft$, threadId);
 
     set(
       updatePage$,
@@ -52,6 +55,45 @@ export const setupChatPage$ = command(
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
     set(setChatAgentId$, threadData?.agentId ?? null);
+
+    // Seed draft from server data on first visit (local cache was empty).
+    // Local-first: if the user already has local state, we do NOT overwrite it.
+    if (
+      isNew &&
+      threadData !== null &&
+      (threadData.draftContent !== null ||
+        (threadData.draftAttachments !== null &&
+          threadData.draftAttachments.length > 0))
+    ) {
+      const restoredAttachments = (threadData.draftAttachments ?? []).map(
+        createRestoredAttachment,
+      );
+      set(
+        thread.draft.seed$,
+        threadData.draftContent ?? "",
+        restoredAttachments,
+      );
+    }
+
+    // Watch for draft changes and schedule debounced sync to server.
+    // Only thread-page drafts are persisted (talk-page drafts are not).
+    // `initialized` guards against the spurious first invocation: ccstate
+    // fires every watcher synchronously at registration time with the current
+    // signal values, before the user has made any change. We skip that first
+    // call so a PATCH is not sent on page load.
+    let initialized = false;
+    appStore.watch(
+      (watchGet) => {
+        watchGet(thread.draft.input$);
+        watchGet(thread.draft.attachments$);
+        if (!initialized) {
+          initialized = true;
+          return;
+        }
+        appStore.set(thread.scheduleDraftSync$, signal);
+      },
+      { signal },
+    );
 
     await set(thread.loadMessages$, signal);
   },

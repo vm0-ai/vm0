@@ -88,7 +88,7 @@ describe("POST /api/zero/runs", () => {
       expect(data.runId).toBeTruthy();
     });
 
-    it("should return 404 when sessionId does not match any session", async () => {
+    it("should return 403 when ZERO_TOKEN is used (agent-run:write excluded)", async () => {
       mockClerk({ userId: null });
       const token = await generateZeroToken(user.userId, "run-1", user.orgId);
 
@@ -106,9 +106,9 @@ describe("POST /api/zero/runs", () => {
         }),
       );
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(403);
       const data = await response.json();
-      expect(data.error.message).toBe("Session not found");
+      expect(data.error.message).toContain("agent-run:write");
     });
 
     it("should return 400 when neither agentId nor sessionId is provided", async () => {
@@ -140,7 +140,7 @@ describe("POST /api/zero/runs", () => {
       reloadEnv();
     });
 
-    it("should set triggerSource to 'agent' for ZERO_TOKEN callers", async () => {
+    it("should return 403 for ZERO_TOKEN callers (agent-run:write excluded)", async () => {
       mockClerk({ userId: null });
       const token = await generateZeroToken(user.userId, "run-1", user.orgId);
 
@@ -158,11 +158,9 @@ describe("POST /api/zero/runs", () => {
         }),
       );
 
-      expect(response.status).toBe(201);
+      expect(response.status).toBe(403);
       const data = await response.json();
-      const zeroRun = await findTestZeroRun(data.runId);
-      expect(zeroRun).toBeDefined();
-      expect(zeroRun!.triggerSource).toBe("agent");
+      expect(data.error.message).toContain("agent-run:write");
     });
 
     it("should set triggerSource to 'web' for Clerk JWT callers", async () => {
@@ -184,7 +182,7 @@ describe("POST /api/zero/runs", () => {
       expect(zeroRun!.triggerSource).toBe("web");
     });
 
-    it("should set triggerAgentId to parent compose ID for ZERO_TOKEN callers", async () => {
+    it("should return 403 for ZERO_TOKEN callers even with parent run context", async () => {
       // Create a parent agent compose and a run for it (simulates the parent agent)
       // Must happen before mockClerk({ userId: null }) since createTestCompose needs auth
       const parentCompose = await createTestCompose(uniqueId("parent-agent"));
@@ -217,11 +215,9 @@ describe("POST /api/zero/runs", () => {
         }),
       );
 
-      expect(response.status).toBe(201);
+      expect(response.status).toBe(403);
       const data = await response.json();
-      const zeroRun = await findTestZeroRun(data.runId);
-      expect(zeroRun).toBeDefined();
-      expect(zeroRun!.triggerAgentId).toBe(parentCompose.composeId);
+      expect(data.error.message).toContain("agent-run:write");
     });
 
     it("should leave triggerAgentId null for web callers", async () => {

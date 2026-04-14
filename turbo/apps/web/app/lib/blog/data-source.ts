@@ -49,3 +49,25 @@ export async function getCategories(locale: string = "en"): Promise<string[]> {
   assertStrapiDataSource();
   return getAllCategoriesFromStrapi(locale);
 }
+
+/**
+ * Return the subset of supported locales that have a published translation for
+ * the given blog post slug.  Used to build accurate hreflang alternates so we
+ * never point crawlers at a 404 page.
+ */
+export async function getPostAvailableLocales(
+  slug: string,
+  supportedLocales: readonly string[],
+): Promise<string[]> {
+  const results = await Promise.all(
+    supportedLocales.map(async (loc) => {
+      const post = await getPost(slug, loc).catch(() => {
+        return null;
+      });
+      return post ? loc : null;
+    }),
+  );
+  return results.filter((loc): loc is string => {
+    return loc !== null;
+  });
+}
