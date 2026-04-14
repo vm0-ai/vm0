@@ -122,8 +122,9 @@ export async function reseedSkills(names: readonly string[]): Promise<void> {
  * Bind an existing custom skill to an agent by updating its customSkills array.
  * Used for testing multi-agent skill sharing.
  *
- * @why-db-direct Custom skill bindings are managed via the skills API, but
- * tests need to manipulate the customSkills array without full API ceremony.
+ * @why-db-direct Binding a custom skill via the skills API requires
+ * authenticated user context (Clerk session + org membership) that test
+ * setup cannot easily provide. Direct DB update is the only practical path.
  */
 export async function bindCustomSkillToAgent(
   agentId: string,
@@ -146,8 +147,9 @@ export async function bindCustomSkillToAgent(
 /**
  * Create a custom skill record in the zero_skills table for testing.
  *
- * @why-db-direct Custom skills in zero_skills are created via the skills API.
- * Tests need direct seeding for isolated setup without API auth context.
+ * @why-db-direct Creating zero_skills via the skills API requires
+ * authenticated user context (Clerk session + org membership) that test
+ * setup cannot easily provide. Direct DB insert is the only practical path.
  */
 export async function createTestZeroSkill(
   orgId: string,
