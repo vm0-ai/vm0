@@ -309,7 +309,7 @@ export async function notifyConnectSuccess(params: {
       sentEphemeral = true;
     } catch (err) {
       // Bot may not be in the channel — fall back to DM below
-      log.info("Ephemeral failed, falling back to DM", {
+      log.warn("Ephemeral failed, falling back to DM", {
         channelId,
         error: err,
       });
