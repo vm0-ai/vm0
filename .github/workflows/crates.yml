@@ -335,6 +335,13 @@ jobs:
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
           cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 
+      - name: Upload runner binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-aarch64
+          path: crates/target/${{ env.TARGET_TRIPLE }}/ci/runner
+          retention-days: 7
+
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
