@@ -212,7 +212,7 @@ describe("POST /api/zero/slack/commands", () => {
       expect(JSON.stringify(data.blocks)).toContain("already connected");
     });
 
-    it("includes agent name in already-connected message when agent is configured", async () => {
+    it("does not include agent name in already-connected message", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
       await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
@@ -235,7 +235,7 @@ describe("POST /api/zero/slack/commands", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(JSON.stringify(data.blocks)).toContain("already connected");
-      expect(JSON.stringify(data.blocks)).toContain("workspace agent");
+      expect(JSON.stringify(data.blocks)).not.toContain("workspace agent");
     });
   });
 
