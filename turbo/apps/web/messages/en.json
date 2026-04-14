@@ -1631,6 +1631,101 @@
           "Review before publishing. Zero creates Drafts by default — use the Strapi admin link Zero returns to spot-check each locale before going live.",
           "Feed Zero brand context. Paste your brand voice guidelines or a sample post from the target locale — the output will be noticeably more on-brand."
         ]
+      },
+      "daily-engineering-brief": {
+        "title": "Daily engineering brief with anomaly detection",
+        "description": "Ask Zero to pull live data from GitHub, Linear, Sentry, and Plausible every morning, compute 7-day rolling averages, flag any anomalies, and post a formatted four-section brief to your Slack channel automatically.",
+        "timeSaved": "~20 min saved daily",
+        "headings": {
+          "scenario": "Why scattered dashboards slow down your morning sync",
+          "prompt": "How to set up a daily cross-tool engineering brief with Zero",
+          "steps": "How Zero pulls live data, computes baselines, and flags anomalies",
+          "nextActions": "Drill into anomalies, fix broken connectors, or expand the brief",
+          "integrations": "Required integrations: GitHub and Slack. Optional: Linear, Sentry, Plausible",
+          "tips": "Best practices for scheduled multi-tool engineering briefings"
+        },
+        "scenario": "Every morning someone opens four different tabs: GitHub for PR activity, Linear for sprint progress, Sentry for overnight errors, and Plausible for traffic trends. They manually compare today's numbers to what they remember from last week and try to spot anything unusual before the standup. That cross-referencing takes 15 to 20 minutes and relies on memory. Zero runs before standup, pulls live data from all four sources, computes 7-day rolling averages, flags anything that deviates significantly, and posts a clean four-section brief to Slack before anyone opens their laptop.",
+        "promptVariants": [
+          {
+            "label": "Full daily brief",
+            "prompt": "@Zero every weekday at 8:30am, pull live data from Plausible, Sentry, GitHub, and Linear, flag anomalies vs the 7-day rolling average, and post a formatted 4-section daily brief to #engineering."
+          },
+          {
+            "label": "GitHub and Linear only",
+            "prompt": "@Zero every morning at 9am, pull today's GitHub PR and issue stats for vm0-ai/vm0 and Linear sprint progress. Flag anything more than 2x above the 7-day average and post to #standup."
+          },
+          {
+            "label": "On demand",
+            "prompt": "@Zero pull live data from GitHub and Linear right now, compare to the 7-day rolling average, and tell me what looks unusual today."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero every weekday at 8:30am pull live data from Plausible, Sentry, GitHub, and Linear, flag anomalies vs the 7-day rolling average, and post a 4-section brief to #engineering."
+          },
+          {
+            "name": "Zero",
+            "text": "Scheduled. Running weekdays at 08:30.\n\nRun from this morning:\n*GitHub* — 96 PRs merged today vs 14.3 avg 🔴 572% spike (coordinated test refactor). Issues closed: 71 vs 28.6 avg 🟢.\n*Linear* — 0 issues created this week, 3 in backlog.\n*Sentry* — connector not configured.\n*Plausible* — connector not configured."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero pulls live data from each source",
+            "description": "Zero queries GitHub for PRs merged, issues opened and closed, and commits. It pulls Linear for issues created, in-progress work, and backlog count. If configured, it also queries Sentry for error counts and Plausible for visitor and pageview metrics."
+          },
+          {
+            "title": "7-day rolling averages computed",
+            "description": "For each metric, Zero fetches the same data for the prior seven days and computes a daily average. This gives a stable baseline that accounts for weekends, deploys, and team size changes."
+          },
+          {
+            "title": "Anomalies flagged automatically",
+            "description": "Zero compares today's numbers to the rolling average and flags anything that deviates significantly. A spike in merged PRs might indicate a coordinated refactor; a drop in Plausible traffic might signal a deploy issue; a surge in issues opened might mean a new bug surface was discovered."
+          },
+          {
+            "title": "Four-section brief posted to Slack",
+            "description": "Zero posts a structured message with one section per source: Web Traffic, Errors and Reliability, Engineering Activity, and Project Tracker. Each section lists today's numbers, the 7-day average, and a plain-language anomaly note where applicable."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Drill into an anomaly",
+            "description": "Ask Zero to investigate a spike directly from the brief thread",
+            "examplePrompt": "@Zero the 572% PR spike in today's brief — list all those PRs and group them by label or title prefix so I can see what the team was shipping."
+          },
+          {
+            "title": "Fix a broken connector",
+            "description": "Resolve a missing token so all four sections have live data",
+            "examplePrompt": "@Zero check which connectors are missing or misconfigured for the daily brief and tell me what tokens I need to set."
+          },
+          {
+            "title": "Add a custom threshold",
+            "description": "Only get alerted when a metric crosses a meaningful threshold",
+            "examplePrompt": "@Zero update the daily brief schedule to only flag anomalies that are more than 3x the 7-day average. For smaller deviations, just include the number without a flag."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads PRs merged, issues opened and closed, and commit counts. Required for the Engineering Activity section."
+          },
+          {
+            "description": "Zero posts the formatted brief and threads any follow-up analysis into the same message. Required for delivery."
+          },
+          {
+            "description": "Zero reads issue creation, in-progress work, and backlog count for the Project Tracker section. Optional."
+          },
+          {
+            "description": "Zero reads unresolved error counts and new issue volume for the Errors and Reliability section. Optional."
+          },
+          {
+            "description": "Zero reads visitor counts, pageviews, and bounce rate for the Web Traffic section. Optional."
+          }
+        ],
+        "tips": [
+          "Schedule the brief 15 to 20 minutes before your standup so the team can see it before the meeting starts.",
+          "Start with GitHub and Slack only. Once the brief is running reliably, add Sentry and Plausible one at a time to validate each connector before expanding.",
+          "Add a custom threshold note to your prompt to reduce noise. For example, only flag metrics that are more than 2x the rolling average so minor day-to-day variation does not trigger alerts."
+        ]
       }
     }
   },

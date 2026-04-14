@@ -185,6 +185,12 @@ const STRAPI: ConnectorRef = {
   icon: "/assets/connectors/strapi.svg",
 };
 
+const PLAUSIBLE: ConnectorRef = {
+  id: "plausible",
+  label: "Plausible",
+  icon: "/assets/connectors/plausible.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -552,6 +558,41 @@ export const USE_CASES: UseCase[] = [
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "daily-engineering-brief",
+    color: "#7c9ebe",
+    avatar: {
+      rotation: 2,
+      skin: 4,
+      hairStyle: 5,
+      hairColor: 2,
+      expression: 3,
+      intensity: "h",
+    },
+    roles: ["engineering", "product"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, GITHUB, LINEAR, SENTRY, PLAUSIBLE],
+    integrations: [
+      { connector: GITHUB, required: true },
+      { connector: SLACK, required: true },
+      { connector: LINEAR, required: false },
+      { connector: SENTRY, required: false },
+      { connector: PLAUSIBLE, required: false },
+    ],
+    relatedSlugs: [
+      "product-health-briefing",
+      "sentry-triage",
+      "error-triage-daily",
+    ],
+    stepCount: 4,
+    nextActionCount: 3,
+    integrationCount: 5,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
