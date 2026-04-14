@@ -48,6 +48,7 @@ import {
 import {
   meetingPrepStatus$,
   meetingPrepPrompt$,
+  freshPreparations$,
   triggerPreparation$,
   clearPreparation$,
 } from "../../signals/voice-chat/voice-chat-preparation.ts";
@@ -305,6 +306,66 @@ function MeetingBox() {
   );
 }
 
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) {
+    return "just now";
+  }
+  if (minutes < 60) {
+    return `${minutes}min ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+
+function ReadyMeetings() {
+  const preparations = useLastResolved(freshPreparations$);
+  const pageSignal = useGet(pageSignal$);
+  const startMeeting = useSet(startVoiceMeeting$);
+  const agentId = useLastResolved(vcAgentId$);
+
+  if (!preparations || preparations.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="w-full max-w-md flex flex-col gap-2">
+      <h2 className="text-sm font-medium text-muted-foreground">
+        Ready Meetings
+      </h2>
+      {preparations.map((prep) => {
+        return (
+          <div
+            key={prep.id}
+            className="flex items-center justify-between rounded-lg border border-input px-4 py-3"
+          >
+            <div className="flex-1 min-w-0 mr-3">
+              <p className="text-sm truncate">{prep.prompt}</p>
+              <p className="text-xs text-muted-foreground">
+                {formatRelativeTime(prep.createdAt)}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                detach(
+                  startMeeting(prep.prompt!, pageSignal),
+                  Reason.DomCallback,
+                );
+              }}
+              disabled={!agentId}
+            >
+              Start
+            </Button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function VoiceChatPage() {
   const pageSignal = useGet(pageSignal$);
   const enabled = useLastResolved(vcEnabled$);
@@ -394,6 +455,7 @@ export function VoiceChatPage() {
           </Button>
         </div>
         <MeetingBox />
+        <ReadyMeetings />
       </div>
     );
   }

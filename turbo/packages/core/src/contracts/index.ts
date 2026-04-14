@@ -812,9 +812,11 @@ export {
 export {
   zeroVoiceChatPrepareTriggerContract,
   zeroVoiceChatPrepareCompleteContract,
+  zeroVoiceChatPrepareListContract,
   type ZeroVoiceChatPrepareCompleteContract,
   type PrepareCompleteBody,
   type PrepareCompleteResponse,
+  type FreshPreparation,
 } from "./zero-voice-chat-prepare";
 export {
   tasksContract,
