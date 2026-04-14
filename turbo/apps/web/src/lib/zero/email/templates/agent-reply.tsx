@@ -3,6 +3,7 @@ import {
   Head,
   Body,
   Container,
+  Markdown,
   Text,
   Link,
   Hr,
@@ -27,7 +28,12 @@ export function AgentReplyEmail({
       <Head />
       <Body style={bodyStyle}>
         <Container style={containerStyle}>
-          <Text style={outputStyle}>{output}</Text>
+          <Markdown
+            markdownContainerStyles={markdownContainerStyle}
+            markdownCustomStyles={markdownCustomStyles}
+          >
+            {output}
+          </Markdown>
           <Hr style={hrStyle} />
           <Text style={signatureStyle}>{agentName} from VM0</Text>
           <Text style={footerStyle}>
@@ -43,26 +49,59 @@ export function AgentReplyEmail({
   );
 }
 
+const fontFamily = "Arial, Helvetica, sans-serif";
+
 const bodyStyle = {
-  backgroundColor: "#f6f9fc",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  backgroundColor: "#ffffff",
+  fontFamily,
 };
 
 const containerStyle = {
-  backgroundColor: "#ffffff",
   margin: "0 auto",
-  padding: "20px 24px",
+  padding: "0 24px",
   maxWidth: "600px",
-  borderRadius: "8px",
 };
 
-const outputStyle = {
+const markdownContainerStyle = {
   fontSize: "14px",
-  color: "#374151",
-  lineHeight: "1.6",
-  whiteSpace: "pre-wrap" as const,
-  margin: "0",
+  color: "#222222",
+  lineHeight: "1.5",
+  fontFamily,
+};
+
+const markdownCustomStyles = {
+  h1: { fontSize: "18px", fontWeight: "bold" as const, margin: "16px 0 8px" },
+  h2: { fontSize: "16px", fontWeight: "bold" as const, margin: "14px 0 6px" },
+  h3: { fontSize: "15px", fontWeight: "bold" as const, margin: "12px 0 4px" },
+  p: { margin: "0 0 10px", lineHeight: "1.5" },
+  link: { color: "#1a73e8" },
+  bold: { fontWeight: "bold" as const },
+  codeInline: {
+    fontFamily: "monospace",
+    fontSize: "13px",
+    backgroundColor: "#f1f3f4",
+    padding: "1px 4px",
+    borderRadius: "3px",
+  },
+  codeBlock: {
+    fontFamily: "monospace",
+    fontSize: "13px",
+    backgroundColor: "#f1f3f4",
+    padding: "12px",
+    borderRadius: "4px",
+    overflowX: "auto" as const,
+    lineHeight: "1.4",
+  },
+  blockQuote: {
+    borderLeft: "3px solid #dadce0",
+    margin: "8px 0",
+    paddingLeft: "12px",
+    color: "#5f6368",
+  },
+  ul: { margin: "0 0 10px", paddingLeft: "24px" },
+  ol: { margin: "0 0 10px", paddingLeft: "24px" },
+  li: { margin: "2px 0" },
+  hr: { borderColor: "#dadce0", margin: "16px 0" },
 };
 
 const hrStyle = {
@@ -84,6 +123,6 @@ const footerStyle = {
 };
 
 const linkStyle = {
-  color: "#2563eb",
+  color: "#1a73e8",
   textDecoration: "underline",
 };
