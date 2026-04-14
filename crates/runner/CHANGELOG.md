@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.78.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.78.2...runner-rs-v0.78.3) (2026-04-14)
+
+
+### Bug Fixes
+
+* **runner:** switch log timestamps from elapsed-since-startup to wall-clock utc ([#9232](https://github.com/vm0-ai/vm0/issues/9232)) ([216f251](https://github.com/vm0-ai/vm0/commit/216f251989445c06e0b0b9e3335370bd2622cbd5))
+* **runner:** use proper url parsing for .test tld check in doctor ([#9237](https://github.com/vm0-ai/vm0/issues/9237)) ([6f5dd87](https://github.com/vm0-ai/vm0/commit/6f5dd8707f850a4d1b0766ce3bd9b0ab83b0ca78))
+
 ## [0.78.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.78.1...runner-rs-v0.78.2) (2026-04-13)
 
 
