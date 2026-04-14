@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.79.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.0...runner-rs-v0.79.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* **runner:** retry dnsmasq startup on port conflict ([#9257](https://github.com/vm0-ai/vm0/issues/9257)) ([3db33df](https://github.com/vm0-ai/vm0/commit/3db33df21828764734f5f0b2b30dbc6ee5303745)), closes [#9250](https://github.com/vm0-ai/vm0/issues/9250)
+
 ## [0.79.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.78.3...runner-rs-v0.79.0) (2026-04-14)
 
 

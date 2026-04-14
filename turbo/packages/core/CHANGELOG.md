@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.182.0](https://github.com/vm0-ai/vm0/compare/core-v8.181.1...core-v8.182.0) (2026-04-14)
+
+
+### Features
+
+* **voice-chat:** show prepared meetings list on voice chat page ([#9253](https://github.com/vm0-ai/vm0/issues/9253)) ([4b87a4f](https://github.com/vm0-ai/vm0/commit/4b87a4faebff29642789e2085b694477a398df42))
+
 ## [8.181.1](https://github.com/vm0-ai/vm0/compare/core-v8.181.0...core-v8.181.1) (2026-04-14)
 
 

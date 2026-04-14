@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.235.0](https://github.com/vm0-ai/vm0/compare/app-v0.234.0...app-v0.235.0) (2026-04-14)
+
+
+### Features
+
+* **voice-chat:** show prepared meetings list on voice chat page ([#9253](https://github.com/vm0-ai/vm0/issues/9253)) ([4b87a4f](https://github.com/vm0-ai/vm0/commit/4b87a4faebff29642789e2085b694477a398df42))
+
+
+### Refactoring
+
+* **platform:** move auto-read tts logic from react hooks to signal commands ([#9258](https://github.com/vm0-ai/vm0/issues/9258)) ([f36ecce](https://github.com/vm0-ai/vm0/commit/f36ecceb8fdc7933886d3c02bcdf7b5349f1c050))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.182.0
+
 ## [0.234.0](https://github.com/vm0-ai/vm0/compare/app-v0.233.0...app-v0.234.0) (2026-04-14)
 
 

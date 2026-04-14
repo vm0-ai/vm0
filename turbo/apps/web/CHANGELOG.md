@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.230.0](https://github.com/vm0-ai/vm0/compare/web-v12.229.1...web-v12.230.0) (2026-04-14)
+
+
+### Features
+
+* **voice-chat:** show prepared meetings list on voice chat page ([#9253](https://github.com/vm0-ai/vm0/issues/9253)) ([4b87a4f](https://github.com/vm0-ai/vm0/commit/4b87a4faebff29642789e2085b694477a398df42))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.182.0
+
 ## [12.229.1](https://github.com/vm0-ai/vm0/compare/web-v12.229.0...web-v12.229.1) (2026-04-14)
 
 
