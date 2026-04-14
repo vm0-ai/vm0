@@ -417,6 +417,40 @@ const CONNECTOR_TYPES_DEF = {
       ],
     },
   },
+  "google-meet": {
+    label: "Google Meet",
+    environmentMapping: {
+      GOOGLE_MEET_TOKEN: "$secrets.GOOGLE_MEET_ACCESS_TOKEN",
+    },
+    helpText:
+      "Connect your Google account to manage Meet spaces, view conference records, participants, recordings, and transcripts",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Google to grant Google Meet access.",
+        secrets: {
+          GOOGLE_MEET_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          GOOGLE_MEET_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "oauth",
+    oauth: {
+      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      scopes: [
+        "https://www.googleapis.com/auth/meetings.space.created",
+        "https://www.googleapis.com/auth/meetings.conferencerecords.readonly",
+        "https://www.googleapis.com/auth/userinfo.email",
+      ],
+    },
+  },
   close: {
     label: "Close",
     environmentMapping: {

@@ -63,6 +63,7 @@ import { gmailHandler } from "./providers/gmail-handler";
 import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
+import { googleMeetHandler } from "./providers/google-meet-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
 import { instantlyHandler } from "./providers/instantly-handler";
 import { intercomHandler } from "./providers/intercom-handler";
@@ -204,6 +205,7 @@ export const PROVIDER_HANDLERS: Record<
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
   "google-drive": googleDriveHandler,
+  "google-meet": googleMeetHandler,
   "google-sheets": googleSheetsHandler,
   lark: larkHandler,
   line: lineHandler,
