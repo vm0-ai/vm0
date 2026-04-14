@@ -1390,7 +1390,7 @@ jobs:
           GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
           GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
-          cargo build --release --target "$TARGET_TRIPLE" -p runner
+          cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -1488,7 +1488,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
         run: |
-          TARGET_DIR="crates/target/${TARGET_TRIPLE}/release"
+          TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
 
           deploy_to_host() {
             local HOST=$1
