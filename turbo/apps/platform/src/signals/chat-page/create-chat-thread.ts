@@ -336,14 +336,14 @@ interface MessageCommandsInternalScope {
   autoScroll$: Command<void, []>;
 }
 
-function createMessageCommands(deps: MessageCommandsInternalScope) {
-  const prepareUserMessage$ = command(
+function createPrepareUserMessage(draft: DraftSignals) {
+  return command(
     async (
       { get },
       prompt: string,
       signal: AbortSignal,
     ): Promise<{ fullPrompt: string; userMessage: UserChatMessage } | null> => {
-      const allAttachments = get(deps.draft.attachments$);
+      const allAttachments = get(draft.attachments$);
       const allInfos = await Promise.all(
         allAttachments.map((a) => {
           return get(a.fileInfo$);
@@ -400,84 +400,89 @@ function createMessageCommands(deps: MessageCommandsInternalScope) {
       return { fullPrompt, userMessage };
     },
   );
+}
 
-  const sendMessage$ = command(
-    async ({ get, set }, prompt: string, signal: AbortSignal) => {
-      const thread = await get(deps.threadData$);
-      signal.throwIfAborted();
-      const agentId = thread?.agentId;
-      if (!agentId) {
-        return;
-      }
+function createSendMessage(
+  deps: MessageCommandsInternalScope,
+  prepareUserMessage$: ReturnType<typeof createPrepareUserMessage>,
+) {
+  return command(async ({ get, set }, prompt: string, signal: AbortSignal) => {
+    const thread = await get(deps.threadData$);
+    signal.throwIfAborted();
+    const agentId = thread?.agentId;
+    if (!agentId) {
+      return;
+    }
 
-      const result = await set(prepareUserMessage$, prompt, signal);
-      if (!result) {
-        return;
-      }
-      signal.throwIfAborted();
+    const result = await set(prepareUserMessage$, prompt, signal);
+    if (!result) {
+      return;
+    }
+    signal.throwIfAborted();
 
-      set(deps.internalLocalMessages$, (prev) => {
-        return [...prev, result.userMessage];
-      });
-      set(deps.cancelDraftSync$);
-      set(deps.draft.clear$);
-      await set(deps.flushDraftClear$, signal);
-      signal.throwIfAborted();
+    set(deps.internalLocalMessages$, (prev) => {
+      return [...prev, result.userMessage];
+    });
+    set(deps.cancelDraftSync$);
+    set(deps.draft.clear$);
+    await set(deps.flushDraftClear$, signal);
+    signal.throwIfAborted();
 
-      const client = get(zeroClient$)(chatMessagesContract);
-      const sendResult = await accept(
-        client.send({
-          body: {
-            agentId,
-            prompt: result.fullPrompt,
-            threadId: deps.threadId,
-            hasTextContent: prompt.trim().length > 0,
-          },
-          fetchOptions: { signal },
-        }),
-        [201],
-      );
-      signal.throwIfAborted();
-
-      set(reloadChatThreads$);
-      set(deps.reloadThread$);
-
-      const { assistantMessage } = createActiveRunMessage(
-        sendResult.body.runId,
-        prompt,
-      );
-      set(deps.internalLocalMessages$, (prev) => {
-        return [...prev, assistantMessage];
-      });
-
-      set(markMessageLoading$, assistantMessage.id);
-
-      const runLoop = assistantMessage.runLoop;
-      if (!runLoop) {
-        return;
-      }
-
-      await setLoop(
-        async (sig) => {
-          set(reloadChatThreads$);
-          set(deps.reloadThread$);
-          const finished = await set(runLoop.checkFinished$, sig);
-          set(deps.autoScroll$);
-          return finished;
+    const client = get(zeroClient$)(chatMessagesContract);
+    const sendResult = await accept(
+      client.send({
+        body: {
+          agentId,
+          prompt: result.fullPrompt,
+          threadId: deps.threadId,
+          hasTextContent: prompt.trim().length > 0,
         },
-        3000,
-        signal,
-      );
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
 
-      const content = await get(assistantMessage.result$);
-      signal.throwIfAborted();
-      if (content) {
-        await set(checkAutoRead$, assistantMessage.id, content, signal);
-      }
-    },
-  );
+    set(reloadChatThreads$);
+    set(deps.reloadThread$);
 
-  const loadMessages$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const { assistantMessage } = createActiveRunMessage(
+      sendResult.body.runId,
+      prompt,
+    );
+    set(deps.internalLocalMessages$, (prev) => {
+      return [...prev, assistantMessage];
+    });
+
+    set(markMessageLoading$, assistantMessage.id);
+
+    const runLoop = assistantMessage.runLoop;
+    if (!runLoop) {
+      return;
+    }
+
+    await setLoop(
+      async (sig) => {
+        set(reloadChatThreads$);
+        set(deps.reloadThread$);
+        const finished = await set(runLoop.checkFinished$, sig);
+        set(deps.autoScroll$);
+        return finished;
+      },
+      3000,
+      signal,
+    );
+
+    const content = await get(assistantMessage.result$);
+    signal.throwIfAborted();
+    if (content) {
+      await set(checkAutoRead$, assistantMessage.id, content, signal);
+    }
+  });
+}
+
+function createLoadMessages(deps: MessageCommandsInternalScope) {
+  return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("Loading messages");
     const msgs = await get(deps.chatMessages$);
     signal.throwIfAborted();
@@ -529,6 +534,12 @@ function createMessageCommands(deps: MessageCommandsInternalScope) {
     );
     signal.throwIfAborted();
   });
+}
+
+function createMessageCommands(deps: MessageCommandsInternalScope) {
+  const prepareUserMessage$ = createPrepareUserMessage(deps.draft);
+  const sendMessage$ = createSendMessage(deps, prepareUserMessage$);
+  const loadMessages$ = createLoadMessages(deps);
 
   const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
     const local = get(deps.internalLocalMessages$);
