@@ -1573,4 +1573,19 @@ mod tests {
             Some(PathBuf::from("/data/runner.yaml"))
         );
     }
+
+    #[test]
+    fn parse_config_unclosed_quote_returns_none() {
+        let line = r#""/usr/bin/runner" start --config "/data/no-close"#;
+        assert_eq!(parse_exec_start_config(line), None);
+    }
+
+    #[test]
+    fn parse_config_short_flag_equals_form() {
+        let line = r#""/usr/bin/runner" start -c=/data/runner.yaml"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
 }
