@@ -437,15 +437,15 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, Strin
     (true, String::new())
 }
 
-/// Handle shutdown message - sync filesystems and acknowledge
+/// Handle shutdown message — acknowledge and suppress reconnection.
+///
+/// The guest rootfs is ext4 on an ephemeral COW device that is destroyed
+/// when the VM is killed, so there is nothing to sync. The primary purpose
+/// of this handler is to set `SHUTDOWN_RECEIVED` so the reconnection loop
+/// in `run()` exits cleanly instead of retrying (which it would otherwise
+/// do, since reconnection is the normal path after snapshot restore).
 fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
-    log("INFO", "Shutdown requested, syncing filesystems...");
-    // SAFETY: libc::sync() has no preconditions — it flushes all pending filesystem writes.
-    unsafe {
-        libc::sync();
-    }
-    log("INFO", "Sync complete");
-    // Set flag so run() knows not to reconnect after connection closes
+    log("INFO", "Shutdown requested");
     SHUTDOWN_RECEIVED.store(true, Ordering::SeqCst);
     vsock_proto::encode(MSG_SHUTDOWN_ACK, seq, &[]).map_err(to_io_error)
 }
