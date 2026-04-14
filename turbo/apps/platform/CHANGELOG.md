@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.234.0](https://github.com/vm0-ai/vm0/compare/app-v0.233.0...app-v0.234.0) (2026-04-14)
+
+
+### Features
+
+* **voice-chat:** change push-to-talk from hold to toggle mode ([#9249](https://github.com/vm0-ai/vm0/issues/9249)) ([8d57c45](https://github.com/vm0-ai/vm0/commit/8d57c45b6f74c97d4d1291116a23c2128502be98)), closes [#9245](https://github.com/vm0-ai/vm0/issues/9245)
+
+
+### Bug Fixes
+
+* harden voice-chat preparation with enum status and failed early exit ([#9170](https://github.com/vm0-ai/vm0/issues/9170)) ([#9173](https://github.com/vm0-ai/vm0/issues/9173)) ([9a2b34f](https://github.com/vm0-ai/vm0/commit/9a2b34f3883d0d96c4c1014b2413c0adb3517ec1))
+
+
+### Refactoring
+
+* **platform:** improve voice-io stt signals and add mic button tests ([#9115](https://github.com/vm0-ai/vm0/issues/9115)) ([45e6090](https://github.com/vm0-ai/vm0/commit/45e6090607901acce5e226144f4b6fc566bfeb15))
+* **platform:** redirect to web choose-organization instead of /select-org ([#9235](https://github.com/vm0-ai/vm0/issues/9235)) ([d9b9647](https://github.com/vm0-ai/vm0/commit/d9b9647b22d67bc041e5378176bf26d9f23e7ccd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.181.1
+
 ## [0.233.0](https://github.com/vm0-ai/vm0/compare/app-v0.232.2...app-v0.233.0) (2026-04-14)
 
 

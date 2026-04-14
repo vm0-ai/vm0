@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.181.1](https://github.com/vm0-ai/vm0/compare/core-v8.181.0...core-v8.181.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* harden voice-chat preparation with enum status and failed early exit ([#9170](https://github.com/vm0-ai/vm0/issues/9170)) ([#9173](https://github.com/vm0-ai/vm0/issues/9173)) ([9a2b34f](https://github.com/vm0-ai/vm0/commit/9a2b34f3883d0d96c4c1014b2413c0adb3517ec1))
+
 ## [8.181.0](https://github.com/vm0-ai/vm0/compare/core-v8.180.2...core-v8.181.0) (2026-04-14)
 
 

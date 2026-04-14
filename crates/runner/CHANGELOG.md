@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.79.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.78.3...runner-rs-v0.79.0) (2026-04-14)
+
+
+### Features
+
+* **runner:** per-job mitmproxy proxy log files ([#9239](https://github.com/vm0-ai/vm0/issues/9239)) ([1ea7fa4](https://github.com/vm0-ai/vm0/commit/1ea7fa4d2efc1418dc3ac3e6364793f35b8d0ff6)), closes [#9227](https://github.com/vm0-ai/vm0/issues/9227)
+
+
+### Bug Fixes
+
+* **runner:** harden mitmproxy usage report flush during shutdown ([#9234](https://github.com/vm0-ai/vm0/issues/9234)) ([08e65c7](https://github.com/vm0-ai/vm0/commit/08e65c76b45358b387a48078320ceb5f19c19e32)), closes [#9228](https://github.com/vm0-ai/vm0/issues/9228)
+
 ## [0.78.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.78.2...runner-rs-v0.78.3) (2026-04-14)
 
 
