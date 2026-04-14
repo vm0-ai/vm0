@@ -411,6 +411,35 @@ async fn is_image_complete(image: &ImagePaths) -> RunnerResult<bool> {
     Ok(true)
 }
 
+/// Read a stable CPU model identifier from `/proc/cpuinfo`.
+///
+/// On ARM64 this extracts `CPU implementer`, `CPU part`, and `CPU variant`
+/// (e.g. "0x41:0xd40:0x1" for Neoverse V1 / Graviton 3).
+/// On x86_64 this extracts the `model name` line.
+fn read_cpu_model() -> Option<String> {
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").ok()?;
+
+    // ARM64: combine implementer + part + variant
+    let get = |key: &str| -> Option<&str> {
+        cpuinfo.lines().find_map(|line| {
+            let (k, v) = line.split_once(':')?;
+            if k.trim() == key {
+                Some(v.trim())
+            } else {
+                None
+            }
+        })
+    };
+
+    if let (Some(implementer), Some(part)) = (get("CPU implementer"), get("CPU part")) {
+        let variant = get("CPU variant").unwrap_or("0x0");
+        return Some(format!("{implementer}:{part}:{variant}"));
+    }
+
+    // x86_64: use model name
+    get("model name").map(String::from)
+}
+
 /// Compute a unified hash from all rootfs + snapshot inputs.
 ///
 /// Inputs:
@@ -469,6 +498,12 @@ async fn compute_image_hash(
         nix::sys::utsname::uname().map_err(|e| RunnerError::Internal(format!("uname: {e}")))?;
     hasher.update(b"host_kernel:");
     hasher.update(uname.release().as_encoded_bytes());
+
+    // CPU model — different CPU models expose different registers and features,
+    // making snapshots non-portable (e.g. Graviton 2 vs 3).
+    hasher.update(b"cpu_model:");
+    let cpu_id = read_cpu_model().unwrap_or_default();
+    hasher.update(cpu_id.as_bytes());
 
     Ok(hex::encode(hasher.finalize()))
 }
