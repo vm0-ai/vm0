@@ -2,12 +2,12 @@
  * Tests for the auto-read (TTS) toggle button in the chat thread header.
  *
  * The toggle is gated on the `audioIO` feature switch. When enabled, a button
- * with aria-label "Toggle auto-read" appears in the chat thread page header.
- * Clicking it toggles autoReadEnabled$ (localStorage-backed signal) between
- * false and true.
+ * with aria-label "Toggle auto-read" appears in the chat thread page header
+ * and in the mobile top bar. Clicking it toggles autoReadEnabled$ (localStorage-
+ * backed signal) between false and true.
  *
  * See: turbo/apps/platform/src/views/zero-page/zero-chat-thread-page.tsx
- * See: turbo/apps/platform/src/views/zero-page/use-auto-read.ts
+ * See: turbo/apps/platform/src/views/zero-page/sidebar-layout.tsx
  * Related commit: feat(platform): add tts read-aloud button and auto-read toggle (#9105)
  */
 
@@ -39,7 +39,7 @@ describe("auto-read toggle - hidden when audioIO feature is off (AR-001)", () =>
       expect(screen.getByText("Assistant")).toBeInTheDocument();
     });
 
-    expect(screen.queryByLabelText("Toggle auto-read")).not.toBeInTheDocument();
+    expect(screen.queryAllByLabelText("Toggle auto-read")).toHaveLength(0);
   });
 });
 
@@ -54,7 +54,7 @@ describe("auto-read toggle - visible when audioIO feature is on (AR-002)", () =>
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Toggle auto-read")).toBeInTheDocument();
+      expect(screen.getAllByLabelText("Toggle auto-read").length).toBeGreaterThan(0);
     });
   });
 });
@@ -70,7 +70,7 @@ describe("auto-read toggle - initial state is off (AR-003)", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Toggle auto-read")).toBeInTheDocument();
+      expect(screen.getAllByLabelText("Toggle auto-read").length).toBeGreaterThan(0);
     });
 
     expect(context.store.get(autoReadEnabled$)).toBeFalsy();
@@ -87,9 +87,9 @@ describe("auto-read toggle - click enables auto-read (AR-004)", () => {
     mockSubagentThread(THREAD_ID);
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const toggleBtn = await waitFor(() =>
-      screen.getByLabelText("Toggle auto-read"),
-    );
+    const toggleBtn = await waitFor(() => {
+      return screen.getAllByLabelText("Toggle auto-read")[0];
+    });
 
     await user.click(toggleBtn);
 
@@ -107,9 +107,9 @@ describe("auto-read toggle - double-click returns to off (AR-005)", () => {
     mockSubagentThread(THREAD_ID);
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const toggleBtn = await waitFor(() =>
-      screen.getByLabelText("Toggle auto-read"),
-    );
+    const toggleBtn = await waitFor(() => {
+      return screen.getAllByLabelText("Toggle auto-read")[0];
+    });
 
     await user.click(toggleBtn);
     await user.click(toggleBtn);
