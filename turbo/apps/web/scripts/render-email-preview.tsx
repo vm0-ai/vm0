@@ -49,4 +49,7 @@ async function main() {
   console.log("Written to /tmp/email-preview.html");
 }
 
-main();
+main().catch((err: unknown) => {
+  console.error(err);
+  process.exit(1);
+});
