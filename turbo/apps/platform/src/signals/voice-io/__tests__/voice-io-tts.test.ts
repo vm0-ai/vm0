@@ -14,6 +14,7 @@ function mockWebAudio() {
   const mockAudioContext = {
     currentTime: 0,
     destination: {},
+    resume: vi.fn().mockResolvedValue(undefined),
     createBuffer: vi.fn(
       (_channels: number, length: number, sampleRate: number) => {
         return {
@@ -30,6 +31,7 @@ function mockWebAudio() {
         onended: null as (() => void) | null,
         connect: vi.fn(),
         start: vi.fn(),
+        addEventListener: vi.fn(),
       };
       sources.push(source);
       return source;

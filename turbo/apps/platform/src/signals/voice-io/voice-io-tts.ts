@@ -109,6 +109,8 @@ const fetchAndPlay$ = command(
     }
 
     const audioCtx = new AudioContext({ sampleRate: 24_000 });
+    await audioCtx.resume();
+    signal.throwIfAborted();
     const reader = body.getReader();
     let nextStartTime = audioCtx.currentTime;
     let lastSource: AudioBufferSourceNode | null = null;
