@@ -31,7 +31,7 @@ from auth import (
     handle_firewall_request,
     make_api_request,
 )
-from logging_utils import add_firewall_metadata, log_network_entry
+from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
 from matching import FirewallAllow, FirewallBlock, match_firewall_request
 from url_utils import get_original_url
 
@@ -173,6 +173,7 @@ async def request(flow: http.HTTPFlow) -> None:
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
+    flow.metadata["vm_proxy_log_path"] = vm_info.get("proxyLogPath", "")
     flow.metadata["capture_body"] = vm_info.get("captureNetworkBodies", False)
     flow.metadata["vm_sandbox_token"] = vm_info.get("sandboxToken", "")
 
@@ -202,9 +203,13 @@ async def request(flow: http.HTTPFlow) -> None:
             body=flow.request.content,
         )
         if isinstance(result, FirewallBlock):
-            ctx.log.warn(
-                f"[{run_id}] Firewall {result.ref}: "
-                f"no matching permission for {result.method} {result.path}"
+            proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+            log_proxy_entry(
+                proxy_log_path,
+                "warn",
+                f"Firewall {result.ref}: no matching permission for {result.method} {result.path}",
+                type="firewall_block",
+                ref=result.ref,
             )
             flow.metadata["firewall_action"] = "DENY"
             flow.metadata["firewall_base"] = result.base
@@ -417,6 +422,7 @@ def _report_usage_with_retry(
     sandbox_token: str,
     run_id: str,
     usage: dict,
+    proxy_log_path: str = "",
     max_retries: int = 1,
 ) -> None:
     """Report usage with retry.  Swallows all exceptions after final attempt."""
@@ -428,7 +434,12 @@ def _report_usage_with_retry(
             if attempt < max_retries:
                 time.sleep(0.5)
             else:
-                ctx.log.warn(f"[{run_id}] Usage report failed after {attempt + 1} attempts: {exc}")
+                log_proxy_entry(
+                    proxy_log_path,
+                    "warn",
+                    f"Usage report failed after {attempt + 1} attempts: {exc}",
+                    type="usage",
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -440,7 +451,9 @@ def _report_usage_with_retry(
 _usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
 
-def _enqueue_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
+def _enqueue_usage(
+    api_url: str, sandbox_token: str, run_id: str, usage: dict, proxy_log_path: str = ""
+) -> None:
     """Submit usage report to the thread pool.  Copies the dict to avoid mutation.
 
     If the executor has already been shut down (drain/shutdown race),
@@ -448,11 +461,13 @@ def _enqueue_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -
     """
     copied = dict(usage)
     try:
-        _usage_executor.submit(_report_usage_with_retry, api_url, sandbox_token, run_id, copied)
+        _usage_executor.submit(
+            _report_usage_with_retry, api_url, sandbox_token, run_id, copied, proxy_log_path
+        )
     except RuntimeError:
         # Executor shut down (done() already called during drain).
         # Fall back to synchronous delivery with retry.
-        _report_usage_with_retry(api_url, sandbox_token, run_id, copied)
+        _report_usage_with_retry(api_url, sandbox_token, run_id, copied, proxy_log_path)
 
 
 def _maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
@@ -473,10 +488,16 @@ def _maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
         proxy_usage["message_id"] = flow.id
     sandbox_token = flow.metadata.get("vm_sandbox_token", "")
     api_url = get_api_url()
+    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
     if not sandbox_token or not api_url:
-        ctx.log.warn(f"[{run_id}] Cannot report usage: missing sandbox_token or api_url")
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            "Cannot report usage: missing sandbox_token or api_url",
+            type="usage",
+        )
         return
-    _enqueue_usage(api_url, sandbox_token, run_id, proxy_usage)
+    _enqueue_usage(api_url, sandbox_token, run_id, proxy_usage, proxy_log_path)
 
 
 def responseheaders(flow: http.HTTPFlow) -> None:
@@ -814,6 +835,7 @@ def response(flow: http.HTTPFlow) -> None:
     # Log network entry for this run (always MITM mode with full HTTP details)
     # [NETWORK_LOG_FIELDS] — source of truth for network log fields
     network_log_path = flow.metadata.get("vm_network_log_path", "")
+    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
     if run_id and network_log_path:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
@@ -861,9 +883,15 @@ def response(flow: http.HTTPFlow) -> None:
             cache_key = (run_id, api_id)
             _firewall_header_cache.pop(cache_key, None)
 
-    # Log errors to mitmproxy console
+    # Log errors to per-job proxy log and mitmproxy console
     if flow.response and flow.response.status_code >= 400:
-        ctx.log.warn(f"[{run_id}] Response {flow.response.status_code}: {original_url}")
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            f"Response {flow.response.status_code}: {original_url}",
+            type="http_error",
+            status=flow.response.status_code,
+        )
 
 
 def error(flow: http.HTTPFlow) -> None:
@@ -875,6 +903,7 @@ def error(flow: http.HTTPFlow) -> None:
 
     run_id = flow.metadata.get("vm_run_id", "")
     network_log_path = flow.metadata.get("vm_network_log_path", "")
+    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
 
     if not run_id or not network_log_path:
         return
@@ -922,7 +951,13 @@ def error(flow: http.HTTPFlow) -> None:
     # connection error occurred.  Partial data is better than none.
     _maybe_report_proxy_usage(flow, run_id)
 
-    ctx.log.warn(f"[{run_id}] Error: {error_msg}: {original_url}")
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        f"Error: {error_msg}: {original_url}",
+        type="connection_error",
+        error=error_msg,
+    )
 
 
 # ============================================================================
@@ -957,6 +992,7 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
 
     flow.metadata["vm_run_id"] = vm_info.get("runId", "")
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
+    flow.metadata["vm_proxy_log_path"] = vm_info.get("proxyLogPath", "")
     flow.metadata["tcp_start_time"] = time.time()
 
 

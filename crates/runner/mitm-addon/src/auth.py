@@ -14,6 +14,7 @@ import urllib.request
 
 from mitmproxy import ctx, http
 
+from logging_utils import log_proxy_entry
 from url_utils import build_rewrite_url
 
 # Vercel bypass secret (still from environment as it's a secret)
@@ -284,6 +285,7 @@ async def handle_firewall_request(
     firewall_base = api_entry["base"]
     api_id = api_entry.get("id", firewall_base)
     run_id = flow.metadata.get("vm_run_id", "")
+    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
     sandbox_token = vm_info.get("sandboxToken", "")
     encrypted_secrets = vm_info.get("encryptedSecrets")
     auth_headers = api_entry.get("auth", {}).get("headers", {})
@@ -301,7 +303,13 @@ async def handle_firewall_request(
     flow.metadata["firewall_params"] = match_info.get("params", {})
 
     if not encrypted_secrets:
-        ctx.log.error(f"[{run_id}] No encryptedSecrets for firewall rule {firewall_base}")
+        log_proxy_entry(
+            proxy_log_path,
+            "error",
+            f"No encryptedSecrets for firewall rule {firewall_base}",
+            type="firewall",
+            firewall_base=firewall_base,
+        )
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_error"] = "auth_unavailable"
         flow.response = http.Response.make(
@@ -330,7 +338,13 @@ async def handle_firewall_request(
             auth_base,
         )
     except Exception as e:
-        ctx.log.error(f"[{run_id}] Firewall header fetch failed: {e}")
+        log_proxy_entry(
+            proxy_log_path,
+            "error",
+            f"Firewall header fetch failed: {e}",
+            type="firewall",
+            firewall_base=firewall_base,
+        )
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_error"] = "auth_failed"
         flow.response = http.Response.make(
@@ -372,7 +386,13 @@ async def handle_firewall_request(
             )
             flow.response = http.Response.make(status, resp_body, resp_headers)
         except Exception as e:
-            ctx.log.error(f"[{run_id}] URL rewrite forward failed: {e}")
+            log_proxy_entry(
+                proxy_log_path,
+                "error",
+                f"URL rewrite forward failed: {e}",
+                type="firewall",
+                firewall_base=firewall_base,
+            )
             flow.response = http.Response.make(
                 502,
                 json.dumps(
@@ -386,7 +406,13 @@ async def handle_firewall_request(
             )
 
         flow.metadata["auth_url_rewrite"] = True
-        ctx.log.info(f"[{run_id}] Firewall URL rewrite: {firewall_base} -> [redacted]")
+        log_proxy_entry(
+            proxy_log_path,
+            "info",
+            f"Firewall URL rewrite: {firewall_base} -> [redacted]",
+            type="firewall",
+            firewall_base=firewall_base,
+        )
     else:
         # Standard header injection path
         for header_name, header_value in headers.items():
@@ -398,4 +424,11 @@ async def handle_firewall_request(
     flow.metadata["auth_refreshed_secrets"] = token_meta.get("refreshed_secrets", [])
     flow.metadata["auth_cache_hit"] = token_meta.get("cache_hit", False)
 
-    ctx.log.info(f"[{run_id}] Firewall {firewall_base}: {flow.request.pretty_host}")
+    log_proxy_entry(
+        proxy_log_path,
+        "info",
+        f"Firewall {firewall_base}: {flow.request.pretty_host}",
+        type="firewall",
+        firewall_base=firewall_base,
+        host=flow.request.pretty_host,
+    )

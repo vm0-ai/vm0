@@ -1,10 +1,12 @@
-"""Network logging utilities.
+"""Network and proxy logging utilities.
 
-Functions for writing JSONL network log entries and extracting firewall metadata.
+Functions for writing JSONL network log entries, per-job proxy diagnostic
+log entries, and extracting firewall metadata.
 """
 
 import json
 import os
+import time
 
 from mitmproxy import ctx, http
 
@@ -21,6 +23,26 @@ def log_network_entry(log_path: str, entry: dict) -> None:
             os.close(fd)
     except Exception as e:
         ctx.log.warn(f"Failed to write network log: {e}")
+
+
+def log_proxy_entry(proxy_log_path: str, level: str, message: str, **extra: object) -> None:
+    """Write a diagnostic log entry to the per-job proxy log file (JSONL)."""
+    if not proxy_log_path:
+        return
+    entry: dict = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+        "level": level,
+        "message": message,
+    }
+    entry.update(extra)
+    try:
+        fd = os.open(proxy_log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
+        try:
+            os.write(fd, (json.dumps(entry) + "\n").encode())
+        finally:
+            os.close(fd)
+    except Exception:
+        pass
 
 
 def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:

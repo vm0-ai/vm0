@@ -328,11 +328,13 @@ async fn execute_reused_sandbox(
 /// Register a VM in the proxy registry and IP log map.
 async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
     let network_log_path = config.log_paths.network_log(context.run_id);
+    let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
     let registration = proxy::VmRegistration {
         run_id: &run_id_str,
         sandbox_token: &context.sandbox_token,
         network_log_path: &network_log_path,
+        proxy_log_path: &proxy_log_path,
         firewalls: context.firewalls.as_deref(),
         network_policies: context.network_policies.as_ref(),
         encrypted_secrets: context.encrypted_secrets.as_deref(),

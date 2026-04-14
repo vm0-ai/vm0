@@ -634,12 +634,14 @@ class TestResponseHandler:
         assert cache_key not in auth._firewall_header_cache
 
     def test_error_status_logs_warning(self, tmp_path):
-        """Response with status >= 400 calls ctx.log.warn."""
+        """Response with status >= 400 writes to per-job proxy log."""
         flow = _make_http_flow(host="api.example.com")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
 
+        proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata["vm_network_log_path"] = ""
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_rule"] = "domain:*.example.com"
         flow.metadata["original_url"] = "https://api.example.com/"
@@ -648,14 +650,12 @@ class TestResponseHandler:
         flow.response.status_code = 500
         flow.response.headers = {}
 
-        mock_log = MagicMock()
-        with patch.object(mitm_addon.ctx, "log", mock_log, create=True):
-            mitm_addon.response(flow)
+        mitm_addon.response(flow)
 
-        mock_log.warn.assert_called_once()
-        warn_msg = mock_log.warn.call_args[0][0]
-        assert "500" in warn_msg
-        assert "api.example.com" in warn_msg
+        assert proxy_log.exists()
+        content = proxy_log.read_text()
+        assert "500" in content
+        assert "api.example.com" in content
 
 
 class TestSseUsageExtractor:
@@ -1461,24 +1461,23 @@ class TestErrorHandler:
         assert entry["firewall_rule_match"] == "POST /chat.postMessage"
         assert entry["error"] == "timed out"
 
-    def test_error_logs_warning_to_console(self, tmp_path):
+    def test_error_logs_warning_to_proxy_log(self, tmp_path):
         flow = _make_http_flow(host="slack.com")
         log_path = str(tmp_path / "network.jsonl")
+        proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
         flow.metadata["original_url"] = "https://slack.com/api/test"
         flow.error = MagicMock()
         flow.error.msg = "connection reset by peer"
 
-        mock_log = MagicMock()
-        with patch.object(mitm_addon.ctx, "log", mock_log, create=True):
-            mitm_addon.error(flow)
+        mitm_addon.error(flow)
 
-        mock_log.warn.assert_called_once()
-        warn_msg = mock_log.warn.call_args[0][0]
-        assert "run-abc-123" in warn_msg
-        assert "connection reset by peer" in warn_msg
-        assert "slack.com" in warn_msg
+        assert proxy_log.exists()
+        content = proxy_log.read_text()
+        assert "connection reset by peer" in content
+        assert "slack.com" in content
 
 
 class TestMaybeReportProxyUsage:
@@ -1547,42 +1546,42 @@ class TestMaybeReportProxyUsage:
 
         mock_enqueue.assert_not_called()
 
-    def test_warns_when_missing_sandbox_token(self):
-        """Should log warning and skip when sandbox_token is empty."""
+    def test_warns_when_missing_sandbox_token(self, tmp_path):
+        """Should write to proxy log and skip when sandbox_token is empty."""
         flow = _make_http_flow(host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = ""
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
+        proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
 
-        mock_log = MagicMock()
         with (
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", mock_log, create=True),
             patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue,
         ):
             mitm_addon._maybe_report_proxy_usage(flow, "run-abc-123")
 
         mock_enqueue.assert_not_called()
-        mock_log.warn.assert_called_once()
-        assert "missing sandbox_token or api_url" in mock_log.warn.call_args[0][0]
+        assert proxy_log.exists()
+        assert "missing sandbox_token or api_url" in proxy_log.read_text()
 
-    def test_warns_when_missing_api_url(self):
-        """Should log warning and skip when api_url is empty."""
+    def test_warns_when_missing_api_url(self, tmp_path):
+        """Should write to proxy log and skip when api_url is empty."""
         flow = _make_http_flow(host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
+        proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
 
-        mock_log = MagicMock()
         with (
             patch.object(mitm_addon, "get_api_url", return_value=""),
-            patch.object(mitm_addon.ctx, "log", mock_log, create=True),
             patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue,
         ):
             mitm_addon._maybe_report_proxy_usage(flow, "run-abc-123")
 
         mock_enqueue.assert_not_called()
-        mock_log.warn.assert_called_once()
+        assert proxy_log.exists()
 
 
 class TestErrorUsageReporting:
@@ -1629,20 +1628,19 @@ class TestReportUsageWithRetry:
             mitm_addon._report_usage_with_retry("url", "tok", "run-1", {})
         assert mock_do.call_count == 2
 
-    def test_gives_up_after_max_retries(self):
-        mock_log = MagicMock()
-        with (
-            patch.object(
-                mitm_addon,
-                "_do_report_usage",
-                side_effect=ConnectionError("fail"),
-            ),
-            patch.object(mitm_addon.ctx, "log", mock_log, create=True),
+    def test_gives_up_after_max_retries(self, tmp_path):
+        proxy_log = tmp_path / "proxy-run-1.jsonl"
+        with patch.object(
+            mitm_addon,
+            "_do_report_usage",
+            side_effect=ConnectionError("fail"),
         ):
             # Should not raise
-            mitm_addon._report_usage_with_retry("url", "tok", "run-1", {}, max_retries=2)
-        mock_log.warn.assert_called_once()
-        assert "3 attempts" in mock_log.warn.call_args[0][0]
+            mitm_addon._report_usage_with_retry(
+                "url", "tok", "run-1", {}, proxy_log_path=str(proxy_log), max_retries=2
+            )
+        assert proxy_log.exists()
+        assert "3 attempts" in proxy_log.read_text()
 
     def test_sleeps_between_retries(self):
         with (
@@ -1674,7 +1672,7 @@ class TestEnqueueUsage:
         original = {"input_tokens": 100}
         captured = []
 
-        def capture_usage(_url, _tok, _rid, usage):
+        def capture_usage(_url, _tok, _rid, usage, _proxy_log_path=""):
             captured.append(usage)
 
         with patch.object(mitm_addon, "_report_usage_with_retry", capture_usage):
@@ -1704,7 +1702,7 @@ class TestEnqueueUsage:
         with patch.object(mitm_addon, "_report_usage_with_retry") as mock_retry:
             mitm_addon._enqueue_usage("url", "tok", "run-1", {"input_tokens": 42})
 
-        mock_retry.assert_called_once_with("url", "tok", "run-1", {"input_tokens": 42})
+        mock_retry.assert_called_once_with("url", "tok", "run-1", {"input_tokens": 42}, "")
 
 
 class TestDoneHook:

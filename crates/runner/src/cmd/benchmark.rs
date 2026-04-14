@@ -191,10 +191,12 @@ async fn run_sandbox(
     let source_ip = sandbox.source_ip().to_string();
     let run_id = sandbox.id().to_string();
     let network_log_path = std::path::PathBuf::from("/dev/null");
+    let proxy_log_path = std::path::PathBuf::from("/dev/null");
     let registration = proxy::VmRegistration {
         run_id: &run_id,
         sandbox_token: "",
         network_log_path: &network_log_path,
+        proxy_log_path: &proxy_log_path,
         firewalls: None,
         network_policies: None,
         encrypted_secrets: None,

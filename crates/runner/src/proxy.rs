@@ -27,6 +27,7 @@ struct VmEntry {
     sandbox_token: String,
     registered_at: i64,
     network_log_path: String,
+    proxy_log_path: String,
     firewalls: Option<Vec<Firewall>>,
     network_policies: Option<HashMap<String, NetworkPolicy>>,
     encrypted_secrets: Option<String>,
@@ -42,6 +43,7 @@ pub struct VmRegistration<'a> {
     pub run_id: &'a str,
     pub sandbox_token: &'a str,
     pub network_log_path: &'a std::path::Path,
+    pub proxy_log_path: &'a std::path::Path,
     pub firewalls: Option<&'a [Firewall]>,
     pub network_policies: Option<&'a HashMap<String, NetworkPolicy>>,
     pub encrypted_secrets: Option<&'a str>,
@@ -496,6 +498,7 @@ impl ProxyRegistryHandle {
                 sandbox_token: registration.sandbox_token.to_string(),
                 registered_at: now,
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
+                proxy_log_path: registration.proxy_log_path.to_string_lossy().into_owned(),
                 firewalls,
                 network_policies: registration.network_policies.cloned(),
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
@@ -595,6 +598,7 @@ mod tests {
                 sandbox_token: String::new(),
                 registered_at: 1000,
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
+                proxy_log_path: "/tmp/proxy-test-run.jsonl".to_string(),
                 firewalls: None,
                 network_policies: None,
                 encrypted_secrets: None,
@@ -644,6 +648,7 @@ mod tests {
             run_id: "run-1",
             sandbox_token: "tok-1",
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
+            proxy_log_path: std::path::Path::new("/tmp/proxy-run-1.jsonl"),
             firewalls: None,
             network_policies: None,
             encrypted_secrets: None,
@@ -664,8 +669,8 @@ mod tests {
         let registration2 = VmRegistration {
             run_id: "run-2",
             sandbox_token: "tok-2",
-
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
+            proxy_log_path: std::path::Path::new("/tmp/proxy-run-2.jsonl"),
             firewalls: None,
             network_policies: None,
             encrypted_secrets: None,
@@ -716,11 +721,13 @@ mod tests {
             tasks.spawn(async move {
                 let log_path =
                     std::path::PathBuf::from(format!("/tmp/network-{run_id_owned}.jsonl"));
+                let proxy_path =
+                    std::path::PathBuf::from(format!("/tmp/proxy-{run_id_owned}.jsonl"));
                 let registration = VmRegistration {
                     run_id: &run_id_owned,
                     sandbox_token: "",
-
                     network_log_path: &log_path,
+                    proxy_log_path: &proxy_path,
                     firewalls: None,
                     network_policies: None,
                     encrypted_secrets: None,
@@ -784,6 +791,7 @@ mod tests {
             run_id: "run-fw",
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-fw.jsonl"),
+            proxy_log_path: std::path::Path::new("/tmp/proxy-run-fw.jsonl"),
             firewalls: Some(&firewall_entries),
             network_policies: None,
             encrypted_secrets: None,
@@ -850,8 +858,8 @@ mod tests {
         let registration = VmRegistration {
             run_id: "run-enc",
             sandbox_token: "tok",
-
             network_log_path: std::path::Path::new("/tmp/network-run-enc.jsonl"),
+            proxy_log_path: std::path::Path::new("/tmp/proxy-run-enc.jsonl"),
             firewalls: None,
             network_policies: None,
             encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
@@ -914,6 +922,7 @@ mod tests {
             run_id: "run-webhook",
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-webhook.jsonl"),
+            proxy_log_path: std::path::Path::new("/tmp/proxy-run-webhook.jsonl"),
             firewalls: Some(&firewall_entries),
             network_policies: None,
             encrypted_secrets: Some("enc_data"),
