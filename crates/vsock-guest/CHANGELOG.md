@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.5](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.4...vsock-guest-v0.9.5) (2026-04-14)
+
+
+### Refactoring
+
+* **vsock-guest:** remove unnecessary libc::sync() from shutdown handler ([#9317](https://github.com/vm0-ai/vm0/issues/9317)) ([8fdd6db](https://github.com/vm0-ai/vm0/commit/8fdd6dbeffa64b5d11f55706c205dab066b81e36)), closes [#9295](https://github.com/vm0-ai/vm0/issues/9295)
+
 ## [0.9.4](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.3...vsock-guest-v0.9.4) (2026-04-14)
 
 

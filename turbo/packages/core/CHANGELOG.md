@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.183.0](https://github.com/vm0-ai/vm0/compare/core-v8.182.0...core-v8.183.0) (2026-04-14)
+
+
+### Features
+
+* **core:** split agent:delete capability from agent:write and exclude from agent tokens ([#9314](https://github.com/vm0-ai/vm0/issues/9314)) ([f52bd48](https://github.com/vm0-ai/vm0/commit/f52bd4811728e788cd6ac5d0beeda46b3cf21e59))
+
 ## [8.182.0](https://github.com/vm0-ai/vm0/compare/core-v8.181.1...core-v8.182.0) (2026-04-14)
 
 

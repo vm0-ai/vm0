@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.233.0](https://github.com/vm0-ai/vm0/compare/web-v12.232.1...web-v12.233.0) (2026-04-14)
+
+
+### Features
+
+* **core:** split agent:delete capability from agent:write and exclude from agent tokens ([#9314](https://github.com/vm0-ai/vm0/issues/9314)) ([f52bd48](https://github.com/vm0-ai/vm0/commit/f52bd4811728e788cd6ac5d0beeda46b3cf21e59))
+* **www:** add try-it CTA on use case cards and detail page ([#9138](https://github.com/vm0-ai/vm0/issues/9138)) ([c9f5b3e](https://github.com/vm0-ai/vm0/commit/c9f5b3e498759d143cf42ac3fd3cf055b3d8ab64))
+
+
+### Bug Fixes
+
+* **credit:** skip proxy usage alert when client data is all zeros ([#9316](https://github.com/vm0-ai/vm0/issues/9316)) ([491ecbb](https://github.com/vm0-ai/vm0/commit/491ecbb871fcf0cf6b270530471effb597f44597))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.183.0
+
 ## [12.232.1](https://github.com/vm0-ai/vm0/compare/web-v12.232.0...web-v12.232.1) (2026-04-14)
 
 
