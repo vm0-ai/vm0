@@ -335,10 +335,13 @@ jobs:
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
           cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 
+      - id: short-sha
+        run: echo "sha=$(echo "${GITHUB_SHA:-unknown}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
       - name: Upload runner binary
         uses: actions/upload-artifact@v4
         with:
-          name: runner-aarch64-linux
+          name: runner-${{ steps.short-sha.outputs.sha }}-aarch64-linux
           path: crates/target/${{ env.TARGET_TRIPLE }}/ci/runner
           retention-days: 7
 
