@@ -74,8 +74,9 @@ describe("org selection after auth", () => {
     });
 
     // Give async setup time to run, then verify no redirect happened
-    await vi.advanceTimersByTimeAsync?.(50).catch(() => {});
-    expect(window.location.href).not.toContain(CHOOSE_ORG_PATH);
+    await vi.waitFor(() => {
+      expect(window.location.href).not.toContain(CHOOSE_ORG_PATH);
+    });
   });
 
   it("redirects to choose-organization when user has no orgs", async () => {
