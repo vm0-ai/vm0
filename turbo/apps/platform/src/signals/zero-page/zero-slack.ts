@@ -4,6 +4,9 @@ import { zeroIntegrationsSlackContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setLoop } from "../utils.ts";
+import { logger } from "../log.ts";
+
+const L = logger("ZeroSlack");
 
 const internalReload$ = state(0);
 
@@ -49,6 +52,14 @@ export const disconnectSlackOrg$ = command(
     signal.throwIfAborted();
     toast.success("Disconnected from Slack");
     set(reloadSlackOrg$);
+    // Re-start polling so the card picks up when the user re-connects
+    // via the OAuth tab.
+    set(pollSlackConnection$, signal).catch((error: unknown) => {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+      L.error("Re-poll after disconnect failed", error);
+    });
   },
 );
 
@@ -105,19 +116,31 @@ export const pollSlackConnection$ = command(
 
 export const initSlackOrg$ = command((_ctx) => {
   const params = new URLSearchParams(window.location.search);
+  let dirty = false;
   if (params.get("updated") === "1") {
     toast.success("Permissions updated");
-    window.history.replaceState({}, "", window.location.pathname);
+    params.delete("updated");
+    dirty = true;
   } else if (params.get("installed") === "1") {
     toast.success("Slack installed successfully");
-    window.history.replaceState({}, "", window.location.pathname);
+    params.delete("installed");
+    dirty = true;
   }
   if (params.get("connected") === "1") {
     toast.success("Slack connected successfully");
-    window.history.replaceState({}, "", window.location.pathname);
+    params.delete("connected");
+    dirty = true;
   }
   if (params.get("error")) {
     toast.error(params.get("error")!);
-    window.history.replaceState({}, "", window.location.pathname);
+    params.delete("error");
+    dirty = true;
+  }
+  if (dirty) {
+    const remaining = params.toString();
+    const url = remaining
+      ? `${window.location.pathname}?${remaining}`
+      : window.location.pathname;
+    window.history.replaceState({}, "", url);
   }
 });
