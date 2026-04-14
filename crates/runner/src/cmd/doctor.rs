@@ -612,9 +612,12 @@ fn parse_exec_start_config(line: &str) -> Option<PathBuf> {
 
 /// Find `flag` in `line` as a standalone token, then return the next
 /// whitespace-delimited or quote-delimited value after it.
+///
+/// Supports both `--config /path` (space-separated) and `--config=/path`
+/// (equals-separated) forms.
 fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
     // Search for `flag` that appears as a standalone token: preceded by
-    // whitespace (or start-of-string) and followed by whitespace or
+    // whitespace (or start-of-string) and followed by whitespace, `=`, or
     // end-of-string.
     let idx = line
         .match_indices(flag)
@@ -623,13 +626,13 @@ fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
             let after_ok = line
                 .as_bytes()
                 .get(i + flag.len())
-                .is_none_or(|&b| b == b' ');
+                .is_none_or(|&b| b == b' ' || b == b'=');
             before_ok && after_ok
         })?
         .0;
     let after = line.get(idx + flag.len()..)?;
-    // The value starts after optional whitespace.
-    let after = after.trim_start();
+    // Strip an optional `=` separator, then whitespace.
+    let after = after.strip_prefix('=').unwrap_or(after).trim_start();
     if after.is_empty() {
         return None;
     }
@@ -1541,5 +1544,33 @@ mod tests {
     fn parse_config_flag_at_end_without_value() {
         let line = r#""/usr/bin/runner" start --config"#;
         assert_eq!(parse_exec_start_config(line), None);
+    }
+
+    #[test]
+    fn parse_config_equals_form() {
+        let line = r#""/usr/bin/runner" start --config=/data/runner.yaml"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_equals_form_quoted() {
+        let line = r#""/usr/bin/runner" start --config="/data/my config/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/my config/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_ignores_flag_substring_in_exe_path() {
+        // The exe path contains "-c" but it should not match as the -c flag.
+        let line = r#""/opt/nice-cli/runner" start -c "/data/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
     }
 }
