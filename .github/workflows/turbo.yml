@@ -1363,7 +1363,7 @@ jobs:
       runner-dir: ${{ steps.host.outputs.runner-dir }}
       runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
       chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
-      default-image-hash: ${{ steps.deploy.outputs.default-image-hash }}
+      image-hash-map: ${{ steps.deploy.outputs.image-hash-map }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1556,15 +1556,27 @@ jobs:
             exit 1
           fi
 
-          # Extract build hashes from any host's log (all hosts produce identical hashes).
-          FIRST_LOG=$(find "$LOG_DIR" -name '*.log' | head -1)
-          DEFAULT_IMAGE_HASH=$(grep '^image_hash=' "$FIRST_LOG" | cut -d= -f2)
+          # Extract per-host build hashes — they may differ across hosts
+          # because the image hash includes the host kernel version and CPU model.
+          HASH_MAP="{"
+          FIRST=true
+          for HOST in "${HOSTS[@]}"; do
+            HASH=$(grep '^image_hash=' "${LOG_DIR}/${HOST}.log" | cut -d= -f2)
+            if [ -z "$HASH" ]; then
+              echo "::error::Failed to extract image hash from ${HOST} log"
+              rm -rf "$LOG_DIR"
+              exit 1
+            fi
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              HASH_MAP+=","
+            fi
+            HASH_MAP+="\"${HOST}\":\"${HASH}\""
+          done
+          HASH_MAP+="}"
           rm -rf "$LOG_DIR"
-          if [ -z "$DEFAULT_IMAGE_HASH" ]; then
-            echo "::error::Failed to extract default image hash from log"
-            exit 1
-          fi
-          echo "default-image-hash=${DEFAULT_IMAGE_HASH}" >> "$GITHUB_OUTPUT"
+          echo "image-hash-map=${HASH_MAP}" >> "$GITHUB_OUTPUT"
 
   # Deploy runner start: generate config with real preview URL and start service
   # Waits for both deploy-runner-prepare (binaries + image) and deploy-web (preview URL)
@@ -1606,7 +1618,7 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-          DEFAULT_IMAGE_HASH: ${{ needs.deploy-runner-prepare.outputs.default-image-hash }}
+          IMAGE_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.image-hash-map }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
@@ -1616,6 +1628,14 @@ jobs:
             local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
             local REMOTE="${METAL_USER}@${HOST}"
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
+
+            # Look up per-host image hash (differs across kernel versions)
+            local IMAGE_HASH
+            IMAGE_HASH=$(echo "$IMAGE_HASH_MAP" | jq -r --arg h "$HOST" '.[$h]')
+            if [ -z "$IMAGE_HASH" ] || [ "$IMAGE_HASH" = "null" ]; then
+              echo "::error::No image hash found for ${HOST} in hash map"
+              return 1
+            fi
 
             # Guard: ensure binary exists (fails fast on "Re-run failed jobs" without prepare)
             # shellcheck disable=SC2029
@@ -1628,7 +1648,7 @@ jobs:
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
               --profile vm0/default \
-              --image-hash ${DEFAULT_IMAGE_HASH} \
+              --image-hash ${IMAGE_HASH} \
               --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \
