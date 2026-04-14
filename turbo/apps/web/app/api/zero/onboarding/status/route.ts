@@ -45,7 +45,9 @@ interface DefaultAgentInfo {
 async function resolveDefaultAgent(
   composeId: string,
 ): Promise<DefaultAgentInfo | null> {
-  // Single query: JOIN compose + zero_agents
+  // INNER JOIN: both agent_composes and zero_agents must exist.
+  // An orphan compose (missing zero_agents row) is treated as non-existent
+  // so the admin re-enters full onboarding and creates a complete agent.
   const [row] = await globalThis.services.db
     .select({
       name: agentComposes.name,
@@ -54,7 +56,7 @@ async function resolveDefaultAgent(
       sound: zeroAgents.sound,
     })
     .from(agentComposes)
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(eq(agentComposes.id, composeId))
     .limit(1);
 
