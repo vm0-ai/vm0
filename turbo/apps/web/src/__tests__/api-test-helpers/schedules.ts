@@ -196,6 +196,7 @@ export async function updateTestScheduleState(
     consecutiveFailures?: number;
     enabled?: boolean;
     nextRunAt?: Date | null;
+    lastRunId?: string;
   },
 ): Promise<void> {
   await globalThis.services.db
