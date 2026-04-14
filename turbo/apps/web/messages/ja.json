@@ -873,6 +873,332 @@
           "既存のUIパターンを名前で参照 — 「VS Codeのコマンドパレットのように」や「Notionのスラッシュメニューのように」 — v0の生成を導きます。",
           "最初の結果の直後にイテレーションプロンプトを使いましょう。1回の改良で通常90%の完成度に達します。"
         ]
+      },
+      "release-merge-guardian": {
+        "title": "Merge Release PRs When CI Goes Green",
+        "description": "Zero monitors your release branch for open PRs, checks CI status, and merges automatically when all checks pass — then posts a summary to Slack so your team always knows what shipped.",
+        "timeSaved": "~30 min saved",
+        "headings": {
+          "scenario": "Why open release PRs sit unmerged longer than they should",
+          "prompt": "How to ask Zero to watch and merge your release PR",
+          "steps": "How Zero monitors CI and merges when it's safe",
+          "nextActions": "Chain merges into deploys or post-release summaries",
+          "integrations": "Required integrations: GitHub, Slack, and Vercel",
+          "tips": "Best practices for automated release PR merging"
+        },
+        "scenario": "You're deep in a feature when someone messages: 'Is the release PR merged yet?' The PR has been green for 40 minutes. No one wanted to interrupt their flow to click Merge. Release PRs sit idle waiting for human attention that never comes at the right moment — delaying deploys, accumulating stale branches, and generating anxiety in Slack.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero check the release PR on main — confirm CI is fully green, review the diff summary, then merge it. Post the merged commit SHA and a one-line diff summary to #dev."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero if the release PR is green, merge it and ping #dev."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every day at 5pm, check if there's an open release PR with all CI checks passing. If yes, merge it and post a summary to #dev. Skip if no PR is ready."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero check if the release PR has the PTT feature — if CI is green, go ahead and merge it."
+          },
+          {
+            "name": "Zero",
+            "text": "PR #8836 confirmed green. All 3 CI checks passed. Merging now...\n\n✅ Merged to main. Vercel deployment triggered. I'll update this thread when the preview URL is ready."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads the open PR and CI status",
+            "description": "Zero fetches the release PR from GitHub, checks all required status checks, and reviews any blocking review requests or draft status before proceeding."
+          },
+          {
+            "title": "Merge is executed and logged",
+            "description": "Once all checks pass, Zero merges the PR using a squash or merge commit (per your repo settings) and captures the resulting commit SHA."
+          },
+          {
+            "title": "Slack summary posted",
+            "description": "Zero posts a one-line summary to your specified Slack channel: PR number, title, merge commit, and a link to the triggered deployment."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Watch the deploy",
+            "description": "Ask Zero to monitor the Vercel deployment after merging",
+            "examplePrompt": "@Zero after merging the release PR, watch the Vercel deploy and post the preview URL to #dev when it's live."
+          },
+          {
+            "title": "Create a release summary",
+            "description": "Generate a changelog from the merged PR",
+            "examplePrompt": "@Zero after merging, summarize what shipped: list the PRs included, group by feature vs. bug fix, and post to #general."
+          },
+          {
+            "title": "Automate the whole cycle",
+            "description": "Schedule daily release PR checks at end of business",
+            "examplePrompt": "@Zero every weekday at 5:30pm, check for open release PRs. If green, merge and post summary to #dev. If failing, post the failing check names."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads PR status, CI checks, and merges via the GitHub API. Needs repo write access."
+          },
+          {
+            "description": "Zero posts merge summaries and deployment links to your team channel."
+          },
+          {
+            "description": "Optional. Zero can fetch the Vercel deployment URL after merge and include it in the Slack summary."
+          }
+        ],
+        "tips": [
+          "Specify the exact PR or branch name to avoid ambiguity — 'release PR on main' is clearer than 'the PR'.",
+          "Add a required reviewer check: 'only merge if at least one approval is present' to avoid bypassing code review.",
+          "Combine with the Sentry triage use case: after merging, ask Zero to watch for new errors in the next 30 minutes."
+        ]
+      },
+      "competitor-intel-brief": {
+        "title": "Build a Live Competitor Snapshot in Minutes",
+        "description": "Ask Zero to research your top competitors, pull their latest positioning and pricing, and write a structured brief into Google Sheets — ready for your next strategy session.",
+        "timeSaved": "~2 hrs saved",
+        "headings": {
+          "scenario": "Why competitor docs go stale the moment you finish them",
+          "prompt": "How to ask Zero to research and document competitors",
+          "steps": "How Zero builds a structured competitive brief",
+          "nextActions": "Keep it fresh or push findings into your CRM",
+          "integrations": "Required integrations: Google Sheets, HubSpot, and Slack"
+        },
+        "scenario": "The strategy meeting is tomorrow and your competitive landscape doc was last updated in Q3. Pulling fresh pricing pages, scanning G2 reviews, reading competitor blog posts, and finding any recent funding announcements for five companies takes an afternoon. You end up rushing it or presenting stale information. Zero does the research legwork in minutes so you can spend your time on insight, not data collection.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero research our top 5 competitors: Thunderbit, Browse AI, Bardeen, Octoparse, and Apify. For each: pricing tiers, key feature claims, recent product updates, and positioning tagline. Put it in a Google Sheet with one row per competitor and share the link."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero quick competitor sweep — Thunderbit, Browse AI, Bardeen. Pricing + tagline. Post here."
+          },
+          {
+            "label": "Batch",
+            "prompt": "@Zero every Monday morning, refresh the competitor sheet with any pricing or positioning changes from the past week. Post a change summary to #product."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero research Thunderbit's main competitors — pricing, key features, positioning. Put it in a Google Sheet and share the link."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitive analysis written to your Competitors sheet (rows 2–8).\n\nTop finding: 3 of 5 raised prices in Q1 — Thunderbit is still lowest-price in no-code web scraping. Notion AI integration appears across 4/5 competitors this month.\n\nSheet: https://docs.google.com/..."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero researches each competitor",
+            "description": "Zero visits each competitor's pricing page, product site, and recent blog posts. It also checks G2, Product Hunt, and recent news mentions for funding or major launches."
+          },
+          {
+            "title": "Brief is written to Google Sheets",
+            "description": "Zero formats findings into your target sheet: one row per competitor with columns for pricing tier, positioning tagline, top 3 features, recent changes, and a quick verdict."
+          },
+          {
+            "title": "Summary posted to Slack",
+            "description": "Zero posts a 4–6 line highlight summary in the Slack thread — the biggest pricing changes, any new features worth noting, and the sheet link."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Push to your CRM",
+            "description": "Log competitor insights as HubSpot company notes",
+            "examplePrompt": "@Zero for each competitor in the sheet, create or update the company record in HubSpot with the latest positioning notes."
+          },
+          {
+            "title": "Set a weekly refresh",
+            "description": "Schedule a Monday morning competitor sweep",
+            "examplePrompt": "@Zero every Monday at 8am, re-run the competitor research and post any changes vs. last week to #product."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero writes the competitor brief to a sheet you specify. Needs edit access."
+          },
+          {
+            "description": "Optional. Zero can update or create company records with fresh positioning notes after each sweep."
+          },
+          {
+            "description": "Zero posts summaries and change highlights to your product channel."
+          }
+        ],
+        "tips": [
+          "Give Zero a specific list of competitors rather than 'our competitors' — it produces sharper, faster results.",
+          "Create a Google Sheet template first with the columns you want. Zero will fill it in rather than inventing a structure.",
+          "Add 'compare to us' at the end of the prompt — Zero will include a column showing where your product wins or lags."
+        ]
+      },
+      "candidate-rejection-draft": {
+        "title": "Draft Personalized Rejection Emails from Notes",
+        "description": "Paste interview notes or a brief description of the candidate, and Zero drafts a warm, professional rejection email tailored to their background — ready to review and send in seconds.",
+        "timeSaved": "~15 min saved",
+        "headings": {
+          "scenario": "Why candidate rejection emails always take longer than they should",
+          "prompt": "How to ask Zero to draft a rejection email",
+          "steps": "How Zero turns notes into a ready-to-send email",
+          "nextActions": "Log the outcome or build a rejection template library",
+          "integrations": "Required integrations: Gmail and Airtable",
+          "tips": "Best practices for rejection emails that protect your employer brand"
+        },
+        "scenario": "You have three first-round rejections to send by end of day. Each candidate deserves a thoughtful response — not a copy-pasted template. But writing a warm, specific rejection for each person while staying professional burns 20 minutes you don't have. Zero takes your notes and drafts each email in the candidate's own context, so it reads personal instead of formulaic.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero draft a rejection email for Sarah — she applied for Head of Marketing. Strong brand-building background, 8 years at Series B-D companies, but we're looking for someone with more hands-on performance marketing experience right now. Keep the door open for future roles."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero rejection email for Marcus, Product Manager role, great culture fit but not enough B2B SaaS depth for our stage."
+          },
+          {
+            "label": "Template",
+            "prompt": "@Zero build me a rejection email template for the engineering role. Variables: name, role, one specific positive observation, one honest reason we're passing, and a door-open close."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero draft a rejection email for Sarah — applied for Head of Marketing, great brand background, not the right fit for where we are stage-wise."
+          },
+          {
+            "name": "Zero",
+            "text": "Draft ready:\n\nSubject: Your Application — Head of Marketing\n\nHi Sarah,\n\nThank you for taking the time to speak with us. We were genuinely impressed by your brand-building experience.\n\nAfter careful consideration, we've decided to move forward with a candidate whose background is more focused on performance marketing at our current stage. This wasn't an easy call.\n\nWe'd love to stay in touch — your profile is one we'd revisit as we grow. Thank you again."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads your notes and extracts context",
+            "description": "Zero identifies the candidate's name, the role they applied for, the specific strengths you mentioned, and the honest reason you're passing."
+          },
+          {
+            "title": "Draft is written with personalized language",
+            "description": "Zero writes a rejection email that references specific things from your notes — making it feel like a human wrote it rather than a form letter. Tone matches the seniority and context of the role."
+          },
+          {
+            "title": "Ready to review and send via Gmail",
+            "description": "Zero outputs the subject line and body, ready to copy into Gmail or create a draft directly in your inbox if connected."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Log the outcome",
+            "description": "Track rejected candidates in Airtable for future roles",
+            "examplePrompt": "@Zero after sending the rejection, log Sarah's details to our Candidates table in Airtable — name, role applied, rejection reason, and date."
+          },
+          {
+            "title": "Build a template bank",
+            "description": "Create reusable rejection drafts by role and reason",
+            "examplePrompt": "@Zero create a set of 5 rejection templates: 2 for engineering roles, 2 for marketing, 1 generic. Cover 'wrong stage', 'missing skill', and 'strong candidate, wrong timing' scenarios."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero creates Gmail drafts ready to review and send, or sends directly if you confirm."
+          },
+          {
+            "description": "Optional. Zero can log rejected candidates to your Airtable hiring tracker after each rejection is sent."
+          }
+        ],
+        "tips": [
+          "Include one specific positive observation from the interview — it's what makes the rejection feel genuine rather than automated.",
+          "Specify whether you want to 'keep the door open' or give a clean close — Zero will adjust the ending tone accordingly.",
+          "For batch rejections, give Zero all the notes in one message and ask for drafts back-to-back — it handles multiple in a single pass."
+        ]
+      },
+      "social-mention-digest": {
+        "title": "Turn Social Mentions into a Daily Action Queue",
+        "description": "Zero scans your brand's X mentions each morning, categorizes them by sentiment and urgency, and posts a prioritized digest to Slack — so your team knows exactly where to engage that day.",
+        "timeSaved": "~20 min saved",
+        "headings": {
+          "scenario": "Why brand mentions pile up faster than anyone can respond",
+          "prompt": "How to ask Zero to monitor and triage social mentions",
+          "steps": "How Zero reads, categorizes, and queues your X mentions",
+          "nextActions": "Route urgent mentions to support or build a response library",
+          "integrations": "Required integrations: X (Twitter), Slack, and Intercom",
+          "tips": "Best practices for social mention monitoring with Zero"
+        },
+        "scenario": "Your product is growing and so are your X mentions. You check them once in the morning and miss the afternoon burst. Someone reported a broken feature publicly two hours ago — your support team had no idea. Positive shout-outs go unacknowledged. Competitor comparisons sit unanswered. Zero turns the firehose into a 10-line digest every morning, so the right mentions get to the right people before the day starts.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero pull our X mentions from the last 24 hours. Tag each one: bug-report, competitor-compare, positive-shoutout, question, or noise. Flag anything urgent or negative. Post a prioritized digest to #marketing with the top 5 that need a reply today."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero X mentions last 24h — flag anything urgent, summarize sentiment, top 3 that need replies."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every morning at 8am, pull @vm0_ai X mentions from the past 24h, categorize by urgency, and post the digest to #marketing. Only surface items that need a human response."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero pull our X mentions from the last 24h, tag sentiment, and flag anything that needs a reply today."
+          },
+          {
+            "name": "Zero",
+            "text": "Brand mention digest — last 24h:\n\n🔴 *Needs reply (3)*\n• @devuser_kai: \"your auth callback is broken on Firefox\" — bug report, high urgency\n• @techblogger99: \"comparing vm0 vs competitor X, any thoughts?\" — engagement opportunity\n• @startup_jane: \"confused about pricing tiers\" — support needed\n\n🟡 *Monitor (5)* · 🟢 *Positive (12)*\n\nFull list in thread ↓"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero fetches and reads all recent mentions",
+            "description": "Zero pulls mentions of your handle from X for the specified time window, filtering out bots and retweets below a follower threshold you can configure."
+          },
+          {
+            "title": "Each mention is categorized and scored",
+            "description": "Zero tags each mention: bug report, feature request, competitor comparison, positive feedback, support question, or noise. Urgency score is assigned based on sentiment and audience reach."
+          },
+          {
+            "title": "Digest posted to Slack",
+            "description": "Zero posts a structured digest to your channel: urgent items at the top with suggested response action, positive mentions grouped below, and a link to the full list."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Route bugs to your support team",
+            "description": "Escalate urgent mentions to Intercom or GitHub",
+            "examplePrompt": "@Zero for any mention tagged as bug-report, create an Intercom conversation so support can follow up with the user directly."
+          },
+          {
+            "title": "Draft the responses",
+            "description": "Ask Zero to write reply drafts for the top mentions",
+            "examplePrompt": "@Zero draft replies for the 3 urgent mentions — friendly, on-brand, and under 280 characters each."
+          },
+          {
+            "title": "Track engagement trends",
+            "description": "Log weekly mention volume and sentiment to a sheet",
+            "examplePrompt": "@Zero each Friday, log this week's mention counts by category to our Social Metrics sheet and compare to last week."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads mentions of your handle. Needs read access to your connected X account."
+          },
+          {
+            "description": "Zero posts the daily digest and urgent alerts to your specified channel."
+          },
+          {
+            "description": "Optional. Zero can create Intercom conversations for mentions that need direct user support."
+          }
+        ],
+        "tips": [
+          "Set a follower threshold (e.g. 'skip accounts with fewer than 50 followers') to filter out bot noise.",
+          "Ask Zero to tag 'competitor-compare' mentions separately — these are high-value sales opportunities worth a personal response.",
+          "Combine with the KOL outreach use case: when Zero flags an influential positive mention, use that context to warm up a personalized follow-up."
+        ]
       }
     }
   },

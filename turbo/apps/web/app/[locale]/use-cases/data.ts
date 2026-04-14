@@ -109,6 +109,36 @@ const V0: ConnectorRef = {
   icon: "/assets/connectors/v0.svg",
 };
 
+const VERCEL: ConnectorRef = {
+  id: "vercel",
+  label: "Vercel",
+  icon: "/assets/connectors/vercel.svg",
+};
+
+const GOOGLE_SHEETS: ConnectorRef = {
+  id: "google-sheets",
+  label: "Google Sheets",
+  icon: "/assets/connectors/google-sheets.svg",
+};
+
+const HUBSPOT: ConnectorRef = {
+  id: "hubspot",
+  label: "HubSpot",
+  icon: "/assets/connectors/hubspot.svg",
+};
+
+const AIRTABLE: ConnectorRef = {
+  id: "airtable",
+  label: "Airtable",
+  icon: "/assets/connectors/airtable.svg",
+};
+
+const INTERCOM: ConnectorRef = {
+  id: "intercom",
+  label: "Intercom",
+  icon: "/assets/connectors/intercom.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -328,6 +358,121 @@ export const USE_CASES: UseCase[] = [
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "release-merge-guardian",
+    color: "#5a7a6a",
+    avatar: {
+      rotation: 2,
+      skin: 3,
+      hairStyle: 1,
+      hairColor: 2,
+      expression: 4,
+      intensity: "h",
+    },
+    roles: ["engineering"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [GITHUB, SLACK, VERCEL],
+    integrations: [
+      { connector: GITHUB, required: true },
+      { connector: SLACK, required: true },
+      { connector: VERCEL, required: false },
+    ],
+    relatedSlugs: ["sentry-triage", "file-bugs-from-slack", "standup-summary"],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "competitor-intel-brief",
+    color: "#7a6a9a",
+    avatar: {
+      rotation: 4,
+      skin: 2,
+      hairStyle: 3,
+      hairColor: 4,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["product"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [GOOGLE_SHEETS, HUBSPOT, SLACK],
+    integrations: [
+      { connector: GOOGLE_SHEETS, required: true },
+      { connector: HUBSPOT, required: false },
+      { connector: SLACK, required: true },
+    ],
+    relatedSlugs: ["kol-cold-outreach", "standup-summary", "slack-triage"],
+    stepCount: 3,
+    nextActionCount: 2,
+    integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "candidate-rejection-draft",
+    color: "#8a7a6a",
+    avatar: {
+      rotation: 1,
+      skin: 4,
+      hairStyle: 2,
+      hairColor: 3,
+      expression: 1,
+      intensity: "l",
+    },
+    roles: ["ops"],
+    capability: "instant",
+    model: "GPT-4o",
+    connectors: [GMAIL, AIRTABLE],
+    integrations: [
+      { connector: GMAIL, required: true },
+      { connector: AIRTABLE, required: false },
+    ],
+    relatedSlugs: ["employee-onboarding", "standup-summary", "slack-triage"],
+    stepCount: 3,
+    nextActionCount: 2,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "social-mention-digest",
+    color: "#6a8a9a",
+    avatar: {
+      rotation: 5,
+      skin: 1,
+      hairStyle: 4,
+      hairColor: 5,
+      expression: 2,
+      intensity: "m",
+    },
+    roles: ["everyone"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [X_TWITTER, INTERCOM, SLACK],
+    integrations: [
+      { connector: X_TWITTER, required: true },
+      { connector: SLACK, required: true },
+      { connector: INTERCOM, required: false },
+    ],
+    relatedSlugs: ["kol-cold-outreach", "slack-triage", "sentry-triage"],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 3,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
