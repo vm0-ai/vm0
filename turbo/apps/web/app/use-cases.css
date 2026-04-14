@@ -621,23 +621,3 @@
   line-height: 1.5;
   color: hsl(var(--muted-foreground));
 }
-
-/* ---------------------------------------------------------------------------
-   "Try it" CTA — hover-visible on desktop, persistent on touch devices
-   --------------------------------------------------------------------------- */
-
-.uc-try-it-cta {
-  opacity: 0;
-  transition: opacity 200ms ease;
-}
-
-.group:hover .uc-try-it-cta,
-.group:focus-within .uc-try-it-cta {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .uc-try-it-cta {
-    opacity: 1;
-  }
-}

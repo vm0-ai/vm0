@@ -1,70 +1,59 @@
 import { describe, expect, it } from "vitest";
 import { CONNECTOR_TYPES } from "@vm0/core";
-import { USE_CASES, buildTryItHref } from "../data";
+import { USE_CASES, buildPromptHref } from "../data";
 
 describe("use cases data", () => {
   it("every connector id maps to a real CONNECTOR_TYPES key", () => {
+    // "vm0" is used for marketing display only and is not a platform connector
+    const KNOWN_DISPLAY_ONLY = new Set(["vm0"]);
     const invalid: string[] = [];
     for (const uc of USE_CASES) {
       for (const c of uc.connectors) {
-        if (!(c.id in CONNECTOR_TYPES)) {
+        if (!(c.id in CONNECTOR_TYPES) && !KNOWN_DISPLAY_ONLY.has(c.id)) {
           invalid.push(`${uc.slug} → ${c.id}`);
         }
       }
     }
     expect(invalid).toEqual([]);
   });
-
-  it("CTA prompt stays under the 200 char URL budget", () => {
-    const overflow: string[] = [];
-    for (const uc of USE_CASES) {
-      const prompt = uc.ctaPrompt ?? uc.promptVariants[0]?.prompt ?? "";
-      if (prompt.length > 200) {
-        overflow.push(`${uc.slug} (${prompt.length})`);
-      }
-    }
-    expect(overflow).toEqual([]);
-  });
 });
 
-describe("buildTryItHref", () => {
-  const sample = USE_CASES[0]!;
+describe("buildPromptHref", () => {
+  const connectors = USE_CASES[0]!.connectors;
 
-  it("encodes prompt and joins connector ids", () => {
-    const href = buildTryItHref(sample, "https://app.example.com");
-    const url = new URL(href);
-    expect(url.origin).toBe("https://app.example.com");
-    expect(url.pathname).toBe("/");
-    expect(url.searchParams.get("prompt")).toBe(
-      sample.ctaPrompt ?? sample.promptVariants[0]?.prompt ?? "",
+  it("strips @Zero prefix from the prompt", () => {
+    const href = buildPromptHref(
+      "@Zero top 3 Sentry errors in the last 24h",
+      connectors,
+      "https://app.example.com",
     );
-    expect(url.searchParams.get("connector")).toBe(
-      sample.connectors
-        .map((c) => {
-          return c.id;
-        })
-        .join(","),
+    const url = new URL(href);
+    expect(url.searchParams.get("prompt")).toBe(
+      "top 3 Sentry errors in the last 24h",
     );
   });
 
-  it("percent-encodes special characters in the prompt", () => {
-    const uc: typeof sample = {
-      ...sample,
-      ctaPrompt: "hello world & friends",
-    };
-    const href = buildTryItHref(uc, "https://app.example.com");
-    // URLSearchParams encodes space as `+` and `&` as `%26`.
+  it("passes through prompts without @Zero prefix unchanged", () => {
+    const href = buildPromptHref(
+      "show me recent errors",
+      connectors,
+      "https://app.example.com",
+    );
+    const url = new URL(href);
+    expect(url.searchParams.get("prompt")).toBe("show me recent errors");
+  });
+
+  it("percent-encodes special characters", () => {
+    const href = buildPromptHref(
+      "hello world & friends",
+      connectors,
+      "https://app.example.com",
+    );
     expect(href).toContain("prompt=hello+world+%26+friends");
   });
 
   it("omits empty params", () => {
-    const uc: typeof sample = {
-      ...sample,
-      ctaPrompt: "",
-      promptVariants: [],
-      connectors: [],
-    };
-    expect(buildTryItHref(uc, "https://app.example.com")).toBe(
+    expect(buildPromptHref("", [], "https://app.example.com")).toBe(
       "https://app.example.com",
     );
   });

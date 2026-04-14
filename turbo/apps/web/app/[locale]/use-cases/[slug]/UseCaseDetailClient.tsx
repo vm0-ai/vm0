@@ -8,7 +8,7 @@ import { Link } from "../../../../navigation";
 import Footer from "../../../components/Footer";
 import Particles from "../../../components/Particles";
 import { getAppUrl } from "../../../../src/lib/zero/url";
-import { buildTryItHref } from "../data";
+import { buildPromptHref } from "../data";
 import type { UseCase, ConnectorRef } from "../data";
 
 interface PromptVariant {
@@ -48,8 +48,17 @@ function Section({
   );
 }
 
-function PromptVariants({ variants }: { variants: PromptVariant[] }) {
+function PromptVariants({
+  variants,
+  connectors,
+  platformUrl,
+}: {
+  variants: PromptVariant[];
+  connectors: ConnectorRef[];
+  platformUrl: string;
+}) {
   const [activeTab, setActiveTab] = useState(0);
+  const activePrompt = variants[activeTab]?.prompt ?? "";
 
   return (
     <div>
@@ -68,7 +77,20 @@ function PromptVariants({ variants }: { variants: PromptVariant[] }) {
           );
         })}
       </div>
-      <div className="uc-prompt-block">{variants[activeTab]?.prompt}</div>
+      <div className="uc-prompt-block group">
+        {activePrompt}
+        <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
+          <a
+            href={buildPromptHref(activePrompt, connectors, platformUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 text-[13px] font-medium text-[#ed4e01]"
+          >
+            try it
+            <IconArrowUpRight size={14} />
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
@@ -122,20 +144,6 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                 return <ConnectorBadge key={c.id} connector={c} />;
               })}
             </div>
-
-            {/* Persistent CTA into the platform with this use case's prompt + connectors pre-wired. */}
-            {/* TODO(analytics): emit try-it-click event with useCase.slug */}
-            <div className="mt-6">
-              <a
-                href={buildTryItHref(useCase, platformUrl)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-lg bg-[#ed4e01] px-5 py-2.5 text-[15px] font-semibold text-white transition-colors hover:bg-[#d94301]"
-              >
-                {t("tryItButton")}
-                <IconArrowUpRight size={16} />
-              </a>
-            </div>
           </header>
 
           {/* Video preview */}
@@ -159,7 +167,11 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
 
           {/* Prompt */}
           <Section title={t(`content.${slug}.headings.prompt`)}>
-            <PromptVariants variants={promptVariants} />
+            <PromptVariants
+              variants={promptVariants}
+              connectors={useCase.connectors}
+              platformUrl={platformUrl}
+            />
           </Section>
 
           {/* Steps */}
@@ -186,8 +198,23 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                     <div className="uc-next-action-desc">
                       {action.description}
                     </div>
-                    <div className="uc-next-action-prompt">
+                    <div className="uc-next-action-prompt group">
                       {action.examplePrompt}
+                      <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
+                        <a
+                          href={buildPromptHref(
+                            action.examplePrompt,
+                            useCase.connectors,
+                            platformUrl,
+                          )}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-0.5 text-[13px] font-medium text-[#ed4e01]"
+                        >
+                          try it
+                          <IconArrowUpRight size={14} />
+                        </a>
+                      </div>
                     </div>
                   </div>
                 );

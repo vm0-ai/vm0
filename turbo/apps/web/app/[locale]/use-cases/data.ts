@@ -2,17 +2,11 @@
 // Use Cases – types & static data
 // ---------------------------------------------------------------------------
 
-import type { ConnectorType } from "@vm0/core";
-
 export type Role = "engineering" | "product" | "ops" | "everyone";
 export type Capability = "multi-tool" | "scheduled" | "instant";
 
 export interface ConnectorRef {
-  /**
-   * Must match a key in `@vm0/core` `CONNECTOR_TYPES` so the platform can
-   * resolve `?connector=<id>` deep-links to a real connector config.
-   */
-  id: ConnectorType;
+  id: string;
   label: string;
   icon: string;
   darkIcon?: string;
@@ -42,11 +36,6 @@ export interface UseCase {
   videoId?: string;
   connectors: ConnectorRef[];
   integrations: IntegrationData[];
-  /**
-   * Concise prompt used for the one-click "Try it" CTA.
-   * Keep ≤ 200 characters — very long prompts risk URL truncation.
-   */
-  ctaPrompt: string;
   relatedSlugs: string[];
   stepCount: number;
   nextActionCount: number;
@@ -147,8 +136,6 @@ export const USE_CASES: UseCase[] = [
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, SENTRY, AXIOM, GITHUB],
-    ctaPrompt:
-      "Show me the top Sentry errors from the last 24 hours, ranked by frequency, with detailed stack traces for the top 3.",
     integrations: [
       { connector: SENTRY, required: true },
       { connector: GITHUB, required: false },
@@ -182,8 +169,6 @@ export const USE_CASES: UseCase[] = [
     capability: "multi-tool",
     model: "GPT-4o",
     connectors: [GOOGLE_CALENDAR, GMAIL, LINEAR, NOTION],
-    ctaPrompt:
-      "Check my calendar, emails, and Linear tasks since yesterday and write me a work summary with meeting highlights and PR status.",
     integrations: [
       { connector: GOOGLE_CALENDAR, required: true },
       { connector: GMAIL, required: true },
@@ -218,8 +203,6 @@ export const USE_CASES: UseCase[] = [
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
     connectors: [X_TWITTER, GMAIL, NOTION, SLACK],
-    ctaPrompt:
-      "Read @swyx's recent X posts and draft a personalized cold email about a VM0 partnership. Save as a Gmail draft.",
     integrations: [
       { connector: X_TWITTER, required: true },
       { connector: GMAIL, required: true },
@@ -250,8 +233,6 @@ export const USE_CASES: UseCase[] = [
     capability: "instant",
     model: "GPT-4o mini",
     connectors: [SLACK, GITHUB, LINEAR],
-    ctaPrompt:
-      "Create a bug issue from Slack: ESC in the schedule dialog closes it with unsaved edits. Should ask for confirmation first.",
     integrations: [
       { connector: GITHUB, required: true },
       { connector: SLACK, required: true },
@@ -281,8 +262,6 @@ export const USE_CASES: UseCase[] = [
     capability: "instant",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, LINEAR, GOOGLE_CALENDAR],
-    ctaPrompt:
-      "Scan my unread Slack messages, filter out noise, and show what needs my attention today, sorted by urgency.",
     integrations: [
       { connector: SLACK, required: true },
       { connector: LINEAR, required: false },
@@ -313,8 +292,6 @@ export const USE_CASES: UseCase[] = [
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, NOTION, GOOGLE_CALENDAR, GMAIL],
-    ctaPrompt:
-      "Onboard a new teammate: duplicate the Notion template, schedule week-1 intros, post a welcome to #general, and send a first-week agenda.",
     integrations: [
       { connector: SLACK, required: true },
       { connector: NOTION, required: true },
@@ -345,8 +322,6 @@ export const USE_CASES: UseCase[] = [
     capability: "instant",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, V0],
-    ctaPrompt:
-      "Prototype a command palette that lets users search agents, recent runs, and connectors with fuzzy search and a preview panel.",
     integrations: [
       { connector: V0, required: true },
       { connector: SLACK, required: false },
@@ -379,8 +354,6 @@ export const USE_CASES: UseCase[] = [
     capability: "scheduled",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, NOTION],
-    ctaPrompt:
-      "Monitor Slack decisions and automatically document them in Notion with context, rationale, and action items.",
     integrations: [
       { connector: SLACK, required: true },
       { connector: NOTION, required: true },
@@ -409,8 +382,6 @@ export const USE_CASES: UseCase[] = [
     capability: "scheduled",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, GOOGLE_CALENDAR, LINEAR, GITHUB],
-    ctaPrompt:
-      "Generate a product health briefing from Linear tickets, GitHub PRs, and calendar events. Post a summary to Slack.",
     integrations: [
       { connector: SLACK, required: true },
       { connector: LINEAR, required: true },
@@ -441,8 +412,6 @@ export const USE_CASES: UseCase[] = [
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, VM0],
-    ctaPrompt:
-      "Check my VM0 agents for available upgrades and apply the latest improvements automatically.",
     integrations: [
       { connector: VM0, required: true },
       { connector: SLACK, required: false },
@@ -475,8 +444,6 @@ export const USE_CASES: UseCase[] = [
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
     connectors: [GITHUB],
-    ctaPrompt:
-      "Scan my GitHub repos for tech debt: outdated dependencies, TODO comments, and code smells. Prioritize by impact.",
     integrations: [{ connector: GITHUB, required: true }],
     relatedSlugs: ["sentry-triage", "file-bugs-from-slack", "upgrade-agent"],
     stepCount: 3,
@@ -502,8 +469,6 @@ export const USE_CASES: UseCase[] = [
     capability: "scheduled",
     model: "Claude 4 Sonnet",
     connectors: [X_TWITTER, NOTION, SLACK],
-    ctaPrompt:
-      "Audit competitor activity on X, summarize key moves and positioning changes, and save findings to Notion.",
     integrations: [
       { connector: X_TWITTER, required: true },
       { connector: NOTION, required: true },
@@ -537,8 +502,6 @@ export const USE_CASES: UseCase[] = [
     capability: "scheduled",
     model: "Claude 4 Sonnet",
     connectors: [SENTRY, AXIOM, GITHUB],
-    ctaPrompt:
-      "Set up a daily error triage: every morning, scan Sentry and Axiom for new errors and post a prioritized summary.",
     integrations: [
       { connector: SENTRY, required: true },
       { connector: GITHUB, required: true },
@@ -575,15 +538,23 @@ export function getUseCaseBySlug(slug: string): UseCase | undefined {
  * - `connector` param becomes a no-op on the platform until #9128/#9129 land,
  *   but extra query params are forward-compatible (ignored by current router).
  */
-export function buildTryItHref(useCase: UseCase, platformUrl: string): string {
-  const prompt = useCase.ctaPrompt;
-  const connector = useCase.connectors
+/**
+ * Build a platform deep-link from an arbitrary prompt string and connector list.
+ * Strips a leading `@Zero ` prefix from the prompt if present.
+ */
+export function buildPromptHref(
+  prompt: string,
+  connectors: ConnectorRef[],
+  platformUrl: string,
+): string {
+  const cleaned = prompt.replace(/^@Zero\s+/i, "");
+  const connector = connectors
     .map((c) => {
       return c.id;
     })
     .join(",");
   const qs = new URLSearchParams();
-  if (prompt) qs.set("prompt", prompt);
+  if (cleaned) qs.set("prompt", cleaned);
   if (connector) qs.set("connector", connector);
   const query = qs.toString();
   return query ? `${platformUrl}/?${query}` : platformUrl;
