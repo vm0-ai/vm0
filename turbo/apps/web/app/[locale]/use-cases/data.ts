@@ -532,13 +532,6 @@ export function getUseCaseBySlug(slug: string): UseCase | undefined {
 }
 
 /**
- * Build the platform deep-link for a use case's "Try it" CTA.
- * Shape: `{platformUrl}/?prompt=...&connector=id1,id2`.
- *
- * - `connector` param becomes a no-op on the platform until #9128/#9129 land,
- *   but extra query params are forward-compatible (ignored by current router).
- */
-/**
  * Build a platform deep-link from an arbitrary prompt string and connector list.
  * Strips a leading `@Zero ` prefix from the prompt if present.
  */

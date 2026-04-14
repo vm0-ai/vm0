@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CONNECTOR_TYPES } from "@vm0/core";
-import { USE_CASES, buildPromptHref } from "../data";
+import { USE_CASES, buildPromptHref } from "../../app/[locale]/use-cases/data";
 
 describe("use cases data", () => {
   it("every connector id maps to a real CONNECTOR_TYPES key", () => {

@@ -48,14 +48,32 @@ function Section({
   );
 }
 
+function TryItLink({ href, label }: { href: string; label: string }) {
+  return (
+    <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-0.5 text-[13px] font-medium text-[#ed4e01]"
+      >
+        {label}
+        <IconArrowUpRight size={14} />
+      </a>
+    </div>
+  );
+}
+
 function PromptVariants({
   variants,
   connectors,
   platformUrl,
+  tryItLabel,
 }: {
   variants: PromptVariant[];
   connectors: ConnectorRef[];
   platformUrl: string;
+  tryItLabel: string;
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const activePrompt = variants[activeTab]?.prompt ?? "";
@@ -79,17 +97,10 @@ function PromptVariants({
       </div>
       <div className="uc-prompt-block group">
         {activePrompt}
-        <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
-          <a
-            href={buildPromptHref(activePrompt, connectors, platformUrl)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-0.5 text-[13px] font-medium text-[#ed4e01]"
-          >
-            try it
-            <IconArrowUpRight size={14} />
-          </a>
-        </div>
+        <TryItLink
+          href={buildPromptHref(activePrompt, connectors, platformUrl)}
+          label={tryItLabel}
+        />
       </div>
     </div>
   );
@@ -171,6 +182,7 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
               variants={promptVariants}
               connectors={useCase.connectors}
               platformUrl={platformUrl}
+              tryItLabel={t("tryIt")}
             />
           </Section>
 
@@ -200,21 +212,14 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                     </div>
                     <div className="uc-next-action-prompt group">
                       {action.examplePrompt}
-                      <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100">
-                        <a
-                          href={buildPromptHref(
-                            action.examplePrompt,
-                            useCase.connectors,
-                            platformUrl,
-                          )}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-0.5 text-[13px] font-medium text-[#ed4e01]"
-                        >
-                          try it
-                          <IconArrowUpRight size={14} />
-                        </a>
-                      </div>
+                      <TryItLink
+                        href={buildPromptHref(
+                          action.examplePrompt,
+                          useCase.connectors,
+                          platformUrl,
+                        )}
+                        label={t("tryIt")}
+                      />
                     </div>
                   </div>
                 );
