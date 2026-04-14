@@ -55,10 +55,7 @@ export interface ChatThreadSignals {
   loadMessages$: Command<Promise<void>, [AbortSignal]>;
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
-  resetLocalMessages$: Command<void, []>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
-  autoScroll$: Command<void, []>;
-  forceScrollToBottom$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<

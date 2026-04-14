@@ -163,6 +163,34 @@ describe("zero chat thread page - scroll container mounts on load", () => {
   });
 });
 
+// CHAT-SCROLL-003: onRef cleanup sets scroll container to null on unmount
+describe("zero chat thread page - scroll container is cleared on unmount", () => {
+  it("clears scroll container signal when thread page unmounts on navigation (CHAT-SCROLL-003)", async () => {
+    mockThread("thread-scroll-unmount", [
+      { role: "user", content: "Unmount test message" },
+    ]);
+
+    detachedSetupPage({ context, path: "/chats/thread-scroll-unmount" });
+
+    // Wait for the scroll container to mount and the thread to render.
+    await waitFor(() => {
+      expect(screen.getByText("Unmount test message")).toBeInTheDocument();
+    });
+
+    const scrollContainer = document.querySelector("[data-scroll-container]");
+    expect(scrollContainer).not.toBeNull();
+
+    // Navigate away from the thread page — the ZeroChatThreadPageInner
+    // component unmounts, React fires the ref cleanup, onRef's AbortController
+    // aborts, and the abort listener sets internalScrollContainer$ to null.
+    context.store.set(detachedNavigateTo$, "/activities");
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-scroll-container]")).toBeNull();
+    });
+  });
+});
+
 // CHAT-SCROLL-005: useAutoScrollOnce resets on thread change so forceScrollToBottom$
 // fires again for the new thread
 describe("zero chat thread page - scroll fires for each new thread", () => {
