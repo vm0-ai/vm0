@@ -747,7 +747,7 @@ fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<PathBuf> {
         let content = match std::fs::read_to_string(entry.path()) {
             Ok(c) => c,
             Err(e) => {
-                tracing::debug!("workspace gc: cannot read {}: {e}", entry.path().display());
+                warn!("workspace gc: cannot read {}: {e}", entry.path().display());
                 continue;
             }
         };
