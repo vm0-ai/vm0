@@ -28,6 +28,7 @@ const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
 const AGENT_EXCLUDED_CAPABILITIES: ReadonlySet<ZeroCapability> = new Set([
   "schedule:delete",
   "agent-run:write",
+  "agent:delete",
 ]);
 
 const log = logger("auth:sandbox");

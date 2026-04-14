@@ -40,6 +40,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { generateZeroToken } from "../../../../../src/lib/auth/sandbox-token";
 import { POST as runSchedule } from "../../schedules/run/route";
 
 const context = testContext();
@@ -1075,6 +1076,28 @@ describe("Zero Agents API", () => {
         "no-token",
       );
       expect(response.status).toBe(401);
+    });
+
+    it("should reject agent run token (agent:delete is agent-excluded)", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      await insertOrgMembersCacheEntry({
+        userId: user.userId,
+        orgId: user.orgId,
+        role: "admin",
+      });
+
+      // Switch to zero token auth (agent run) — no Clerk session
+      mockClerk({ userId: null });
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
+
+      const response = await deleteAgent(created.agentId, token);
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.message).toBe(
+        "Missing required capability: agent:delete",
+      );
     });
   });
 

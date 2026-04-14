@@ -310,7 +310,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "agent:write",
+      requiredCapability: "agent:delete",
     });
     if (isAuthError(authCtx)) return authCtx;
 

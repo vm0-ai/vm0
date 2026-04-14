@@ -29,6 +29,7 @@ export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
 export const ZERO_CAPABILITIES = [
   "agent:read",
   "agent:write",
+  "agent:delete",
   "agent-run:read",
   "agent-run:write",
   "schedule:read",
@@ -57,7 +58,8 @@ export interface ZeroCapabilityMeta {
 export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
   {
     "agent:read": { group: "Agent", label: "Read agents" },
-    "agent:write": { group: "Agent", label: "Create, update & delete agents" },
+    "agent:write": { group: "Agent", label: "Create & update agents" },
+    "agent:delete": { group: "Agent", label: "Delete agents" },
     "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
     "agent-run:write": { group: "Agent Runs", label: "Create & cancel runs" },
     "schedule:read": { group: "Schedules", label: "View schedules" },

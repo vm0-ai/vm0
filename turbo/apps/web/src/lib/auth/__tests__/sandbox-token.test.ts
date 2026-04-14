@@ -302,6 +302,7 @@ describe("sandbox-token", () => {
       const auth = verifyZeroToken(token);
 
       expect(auth?.capabilities).not.toContain("schedule:delete");
+      expect(auth?.capabilities).not.toContain("agent:delete");
       expect(auth?.capabilities).toContain("schedule:write");
     });
 

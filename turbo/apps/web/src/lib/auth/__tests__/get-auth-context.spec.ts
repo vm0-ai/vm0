@@ -373,5 +373,6 @@ describe("getAuthContext with zero token and acceptAnySandboxCapability", () => 
       ]),
     );
     expect(result?.capabilities).not.toContain("agent-run:write");
+    expect(result?.capabilities).not.toContain("agent:delete");
   });
 });

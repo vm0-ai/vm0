@@ -191,6 +191,22 @@ describe("requireAuth", () => {
       );
     }
   });
+
+  it("should return 403 for zero token missing agent-excluded capability (agent:delete)", async () => {
+    const token = await generateZeroToken("user-1", "run-1", "org-1");
+
+    const result = await requireAuth(`Bearer ${token}`, {
+      requiredCapability: "agent:delete",
+    });
+
+    expect(isAuthError(result)).toBe(true);
+    if (isAuthError(result)) {
+      expect(result.status).toBe(403);
+      expect(result.body.error.message).toBe(
+        "Missing required capability: agent:delete",
+      );
+    }
+  });
 });
 
 describe("isAuthError", () => {
