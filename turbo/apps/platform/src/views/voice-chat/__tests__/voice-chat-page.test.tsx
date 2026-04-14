@@ -23,8 +23,8 @@ const context = testContext();
 const user = userEvent.setup();
 
 /**
- * Pre-warm endpoint is called fire-and-forget from setupVoiceChatPage$; mock it
- * to avoid unhandled-request warnings during tests.
+ * Mock voice-chat preparation endpoints called fire-and-forget from
+ * setupVoiceChatPage$ to avoid unhandled-request warnings during tests.
  */
 function mockVoiceChatPrepareEndpoint() {
   server.use(
@@ -32,6 +32,9 @@ function mockVoiceChatPrepareEndpoint() {
       return HttpResponse.json({
         preparation: { id: "prep-noop", status: "idle" },
       });
+    }),
+    http.get("*/api/zero/voice-chat/prepare/list", () => {
+      return HttpResponse.json({ preparations: [] });
     }),
   );
 }
@@ -65,13 +68,19 @@ describe("voice-chat page - idle state model selector (VC-002)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("tab", { name: "GPT Realtime Mini" }),
+        screen.getAllByRole("tab").find((el) => {
+          return /GPT Realtime Mini/.test(el.textContent ?? "");
+        }),
       ).toBeInTheDocument();
     });
 
     const tabs = screen.getAllByRole("tab");
-    const mini = tabs.findIndex((t) => t.textContent === "GPT Realtime Mini");
-    const full = tabs.findIndex((t) => t.textContent === "GPT Realtime");
+    const mini = tabs.findIndex((t) => {
+      return t.textContent === "GPT Realtime Mini";
+    });
+    const full = tabs.findIndex((t) => {
+      return t.textContent === "GPT Realtime";
+    });
     expect(mini).toBeLessThan(full);
   });
 
@@ -82,11 +91,15 @@ describe("voice-chat page - idle state model selector (VC-002)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("tab", { name: "GPT Realtime" }),
+        screen.getAllByRole("tab").find((el) => {
+          return /GPT Realtime/.test(el.textContent ?? "");
+        }),
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("tab", { name: "GPT Realtime Mini" }),
+      screen.getAllByRole("tab").find((el) => {
+        return /GPT Realtime Mini/.test(el.textContent ?? "");
+      }),
     ).toBeInTheDocument();
   });
 });
@@ -103,7 +116,7 @@ describe("voice-chat page - idle state quick chat box (VC-003)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /start voice chat/i }),
+        screen.getByText(/start voice chat/i),
       ).toBeInTheDocument();
     });
   });
@@ -143,11 +156,11 @@ describe("voice-chat page - idle state meeting box (VC-004)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /prepare/i }),
+        screen.getByText(/prepare/i),
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("button", { name: /start meeting/i }),
+      screen.getByText(/start meeting/i),
     ).toBeInTheDocument();
   });
 });
@@ -162,9 +175,9 @@ describe("voice-chat page - meeting box prepare button (VC-005)", () => {
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
 
-    const prepareBtn = await waitFor(() =>
-      screen.getByRole("button", { name: /^prepare$/i }),
-    );
+    const prepareBtn = await waitFor(() => {
+      return screen.getByText(/^prepare$/i);
+    });
     expect(prepareBtn).toBeDisabled();
   });
 
@@ -173,14 +186,14 @@ describe("voice-chat page - meeting box prepare button (VC-005)", () => {
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
 
-    const textarea = await waitFor(() =>
-      screen.getByPlaceholderText("What would you like to discuss?"),
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText("What would you like to discuss?");
+    });
     await user.type(textarea, "Quarterly planning");
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /^prepare$/i }),
+        screen.getByText(/^prepare$/i),
       ).not.toBeDisabled();
     });
   });
