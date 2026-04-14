@@ -443,7 +443,6 @@ fn read_cpu_microcode() -> Option<String> {
             Err(e) => tracing::warn!("failed to read {path}: {e}"),
         }
     }
-    tracing::warn!("could not determine CPU microcode/revision version");
     None
 }
 
@@ -645,6 +644,11 @@ mod tests {
         assert_eq!(h1.len(), 64); // SHA-256 hex
     }
 
+    /// Verify that each parameterized input changes the hash.
+    ///
+    /// Note: host-specific inputs (kernel version, CPU model, microcode, BIOS)
+    /// are read from the runtime environment and cannot be varied in tests.
+    /// Their inclusion is validated by `compute_image_hash_deterministic`.
     #[tokio::test]
     async fn compute_image_hash_sensitive_to_all_inputs() {
         let dir = tempfile::tempdir().unwrap();
