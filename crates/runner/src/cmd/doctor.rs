@@ -1607,4 +1607,30 @@ mod tests {
             Some(PathBuf::from("/data/runner.yaml"))
         );
     }
+
+    #[tokio::test]
+    async fn is_lock_free_returns_true_when_file_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no-such-file.lock");
+        assert!(super::is_lock_free(path.to_str().unwrap()).await);
+    }
+
+    #[tokio::test]
+    async fn is_lock_free_returns_true_when_lock_not_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("free.lock");
+        std::fs::File::create(&path).unwrap();
+        assert!(super::is_lock_free(path.to_str().unwrap()).await);
+    }
+
+    #[tokio::test]
+    async fn is_lock_free_returns_false_when_lock_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("held.lock");
+        let file = std::fs::File::create(&path).unwrap();
+        // Hold an exclusive lock for the duration of the test.
+        let _lock = nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock)
+            .expect("failed to acquire test lock");
+        assert!(!super::is_lock_free(path.to_str().unwrap()).await);
+    }
 }
