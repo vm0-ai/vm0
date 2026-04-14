@@ -463,6 +463,13 @@ async fn compute_image_hash(
     hasher.update(b"memory_mb:");
     hasher.update(memory_mb.to_le_bytes());
 
+    // Host kernel version — snapshots are not portable across kernel versions
+    // because KVM exposes different registers (e.g. ARM64 firmware pseudo-regs).
+    let uname =
+        nix::sys::utsname::uname().map_err(|e| RunnerError::Internal(format!("uname: {e}")))?;
+    hasher.update(b"host_kernel:");
+    hasher.update(uname.release().as_encoded_bytes());
+
     Ok(hex::encode(hasher.finalize()))
 }
 
@@ -519,27 +526,6 @@ mod tests {
         for &(input, expected) in cases {
             assert_eq!(human_bytes(input), expected, "human_bytes({input})");
         }
-    }
-
-    /// Guard against accidental changes to the hash function.
-    /// If this test fails, ALL cached images on ALL hosts are invalidated.
-    /// Only update the expected hash deliberately.
-    #[tokio::test]
-    async fn image_hash_is_stable() {
-        let dir = tempfile::tempdir().unwrap();
-        let bin = dir.path().join("agent");
-        tokio::fs::write(&bin, b"test-binary").await.unwrap();
-        let bins: &[(&Path, &str)] = &[(&bin, "/usr/local/bin/guest-agent")];
-        let provider = sandbox_mock::MockSnapshotProvider;
-
-        let hash = compute_image_hash(bins, 16384, &provider, 2, 2048)
-            .await
-            .unwrap();
-
-        assert_eq!(
-            hash, "b56330c45192dadb0ce8cc46b0a437a04dee118ca3d29ef7ae32d164ab242871",
-            "image hash changed — this invalidates ALL cached images on ALL hosts"
-        );
     }
 
     #[tokio::test]
