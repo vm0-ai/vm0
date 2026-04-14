@@ -48,12 +48,15 @@ export interface ChatThreadSignals {
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   resetLocalMessages$: Command<void, []>;
-  setScrollContainer$: Command<void, [HTMLElement | null]>;
+  setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
   forceScrollToBottom$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
-  setComposerFileInput$: Command<void, [HTMLElement | null]>;
+  setComposerFileInput$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   // ── Agent info (derived from threadData$.agentId) ─────────────────────────
   agentId$: Computed<Promise<string | null>>;
   agentDisplayName$: Computed<Promise<string | null>>;
@@ -276,9 +279,14 @@ function scrollToMessages(scrollEl: HTMLElement) {
 function createScrollSignals() {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
 
-  const setScrollContainer$ = command(({ set }, el: HTMLElement | null) => {
-    set(internalScrollContainer$, el);
-  });
+  const setScrollContainer$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalScrollContainer$, null);
+      });
+      set(internalScrollContainer$, el);
+    }),
+  );
 
   const forceScrollToBottom$ = command(({ get }) => {
     const scrollEl = get(internalScrollContainer$);
@@ -313,9 +321,14 @@ function createComposerFileInput() {
   const composerFileInput$ = computed((get) => {
     return get(internal$);
   });
-  const setComposerFileInput$ = command(({ set }, el: HTMLElement | null) => {
-    set(internal$, el);
-  });
+  const setComposerFileInput$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internal$, null);
+      });
+      set(internal$, el);
+    }),
+  );
   return { composerFileInput$, setComposerFileInput$ };
 }
 

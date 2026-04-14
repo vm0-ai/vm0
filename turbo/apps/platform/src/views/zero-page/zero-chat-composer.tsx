@@ -116,7 +116,10 @@ interface ZeroChatComposerProps {
   /** Composer file input element reference. When omitted, falls back to singleton. */
   composerFileInput$?: Computed<HTMLElement | null>;
   /** Set the composer file input element. When omitted, falls back to singleton. */
-  setComposerFileInput$?: Command<void, [HTMLElement | null]>;
+  setComposerFileInput$?: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   /** Register the textarea element for external focus control. */
   setInputRef?: (el: HTMLElement | null) => void;
 }
@@ -526,7 +529,9 @@ function useResolvedComposerSignals(
   input: string,
   draft: DraftSignals | undefined,
   composerFileInputProp$: Computed<HTMLElement | null> | undefined,
-  setComposerFileInputProp$: Command<void, [HTMLElement | null]> | undefined,
+  setComposerFileInputProp$:
+    | Command<(() => void) | undefined, [HTMLElement | null]>
+    | undefined,
 ) {
   const attachments = useGet(
     draft ? draft.attachments$ : singletonAttachments$,

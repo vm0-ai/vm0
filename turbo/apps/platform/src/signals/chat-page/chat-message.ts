@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "../zero-page/log-types.ts";
-import { resetSignal, setLoop } from "../utils.ts";
+import { onRef, resetSignal, setLoop } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
@@ -937,8 +937,11 @@ export const composerFileInput$ = computed((get) => {
   return get(internalComposerFileInput$);
 });
 
-export const setComposerFileInput$ = command(
-  ({ set }, el: HTMLElement | null) => {
+export const setComposerFileInput$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      set(internalComposerFileInput$, null);
+    });
     set(internalComposerFileInput$, el);
-  },
+  }),
 );

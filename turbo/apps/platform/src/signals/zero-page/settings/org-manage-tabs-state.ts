@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { onRef } from "../../utils.ts";
 import {
   zeroOrgInviteContract,
   zeroOrgMembersContract,
@@ -112,10 +113,13 @@ export const fileInputEl$ = computed((get) => {
   return get(internalFileInputEl$);
 });
 
-export const setFileInputEl$ = command(
-  ({ set }, value: HTMLInputElement | null) => {
-    set(internalFileInputEl$, value);
-  },
+export const setFileInputEl$ = onRef(
+  command(({ set }, el: HTMLInputElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      set(internalFileInputEl$, null);
+    });
+    set(internalFileInputEl$, el);
+  }),
 );
 
 const internalLogoLoaded$ = state(false);

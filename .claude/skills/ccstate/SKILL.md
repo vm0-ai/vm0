@@ -623,6 +623,72 @@ const example$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 **Rule of thumb:** If the awaited operation receives your signal, it will throw on abort itself. If it doesn't, check manually after.
 
+## DOM Ref Pattern — `onRef`
+
+When a signal stores a reference to a DOM element (e.g., a scroll container, a file input), **always use `onRef`** to wrap the setter command. Never write a command that directly accepts `HTMLElement | null`.
+
+### Why
+
+React ref callbacks receive `null` when the element unmounts. A plain command that accepts `el | null` has no lifecycle hook — there is no place to remove event listeners or cancel side-effects tied to the element. `onRef` solves this by:
+
+1. Filtering out `null` — the inner command only fires when the element mounts.
+2. Providing an `AbortSignal` — aborted automatically when the element unmounts, so cleanup is trivial.
+3. Returning a React-compatible cleanup function for ref callbacks (React 19+).
+
+### Pattern
+
+```typescript
+import { command, state, computed } from "ccstate";
+import { onRef } from "../utils.ts";
+
+const internalEl$ = state<HTMLElement | null>(null);
+
+export const el$ = computed((get) => get(internalEl$));
+
+export const setEl$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      set(internalEl$, null);
+    });
+    set(internalEl$, el);
+  }),
+);
+```
+
+The resulting type is `Command<(() => void) | undefined, [HTMLElement | null]>` — it accepts `null` (for React ref callbacks) and returns a cleanup function when non-null.
+
+### Anti-pattern
+
+```typescript
+// ❌ WRONG — no lifecycle, no cleanup mechanism
+const setEl$ = command(({ set }, el: HTMLElement | null) => {
+  set(internalEl$, el);
+});
+```
+
+### View usage
+
+Pass the `useSet` result directly as a ref — do **not** wrap it in an arrow function (which would discard the cleanup return value):
+
+```typescript
+// ✅ Correct
+const setEl = useSet(setEl$);
+return <div ref={setEl} />;
+
+// ❌ Wrong — discards cleanup
+return <div ref={(el) => { setEl(el); }} />;
+```
+
+### In factory interfaces
+
+Use the `onRef` return type in the interface:
+
+```typescript
+export interface MySignals {
+  setEl$: Command<(() => void) | undefined, [HTMLElement | null]>;
+}
+```
+
 ## Signal Factory Pattern
 
 Refactored the signal handling to avoid global singletons when multiple signals exist within a single page.
@@ -652,10 +718,17 @@ export const sendMessage$ = command(async ({ get, set }, prompt, signal) => {
 });
 
 // chat-auto-scroll.ts
+import { onRef } from "../utils.ts";
+
 const chatScrollContainer$ = state<HTMLElement | null>(null);
-export const setChatScrollContainer$ = command(({ set }, el) => {
-  set(chatScrollContainer$, el);
-});
+export const setChatScrollContainer$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      set(chatScrollContainer$, null);
+    });
+    set(chatScrollContainer$, el);
+  }),
+);
 export const autoScroll$ = command(({ get }) => {
   /* ... */
 });
@@ -686,13 +759,14 @@ While this approach is more complex than using a singleton, it provides a viable
 ```typescript
 // create-chat-thread.ts
 import { command, computed, state, type Command, type Computed } from "ccstate";
+import { onRef } from "../utils.ts";
 
 export interface ChatThreadSignals {
   messages$: Computed<Promise<ZeroChatMessage[]>>;
   allFinished$: Computed<Promise<boolean>>;
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
   resetLocalMessages$: Command<void, []>;
-  setScrollContainer$: Command<void, [HTMLElement | null]>;
+  setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
   draft: DraftSignals;
 }
@@ -729,9 +803,14 @@ function createMessageState(threadData$: Computed<Promise<ThreadData | null>>) {
 function createScrollSignals() {
   const container$ = state<HTMLElement | null>(null);
 
-  const setScrollContainer$ = command(({ set }, el: HTMLElement | null) => {
-    set(container$, el);
-  });
+  const setScrollContainer$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(container$, null);
+      });
+      set(container$, el);
+    }),
+  );
 
   const autoScroll$ = command(({ get }) => {
     const scrollEl = get(container$);

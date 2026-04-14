@@ -1,4 +1,5 @@
 import { command, state } from "ccstate";
+import { onRef } from "../utils.ts";
 
 const NEAR_BOTTOM_THRESHOLD = 80;
 
@@ -6,10 +7,13 @@ const NEAR_BOTTOM_THRESHOLD = 80;
 
 const transcriptScrollContainer$ = state<HTMLElement | null>(null);
 
-export const setTranscriptScrollContainer$ = command(
-  ({ set }, el: HTMLElement | null) => {
+export const setTranscriptScrollContainer$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      set(transcriptScrollContainer$, null);
+    });
     set(transcriptScrollContainer$, el);
-  },
+  }),
 );
 
 export const autoScrollTranscript$ = command(({ get }) => {
@@ -27,10 +31,13 @@ export const autoScrollTranscript$ = command(({ get }) => {
 
 const eventsScrollContainer$ = state<HTMLElement | null>(null);
 
-export const setEventsScrollContainer$ = command(
-  ({ set }, el: HTMLElement | null) => {
+export const setEventsScrollContainer$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      set(eventsScrollContainer$, null);
+    });
     set(eventsScrollContainer$, el);
-  },
+  }),
 );
 
 export const autoScrollEvents$ = command(({ get }) => {

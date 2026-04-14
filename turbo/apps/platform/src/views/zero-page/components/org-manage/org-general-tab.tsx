@@ -238,9 +238,7 @@ function ProfileSection({
           <div className="flex items-center gap-3 shrink-0">
             {isAdmin && (
               <input
-                ref={(el) => {
-                  setFileInputEl(el);
-                }}
+                ref={setFileInputEl}
                 type="file"
                 aria-label="Upload logo"
                 accept="image/png,image/jpeg,image/gif,image/webp"
