@@ -54,7 +54,9 @@ describe("auto-read toggle - visible when audioIO feature is on (AR-002)", () =>
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(screen.getAllByLabelText("Toggle auto-read").length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByLabelText("Toggle auto-read").length,
+      ).toBeGreaterThan(0);
     });
   });
 });
@@ -70,7 +72,9 @@ describe("auto-read toggle - initial state is off (AR-003)", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(screen.getAllByLabelText("Toggle auto-read").length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByLabelText("Toggle auto-read").length,
+      ).toBeGreaterThan(0);
     });
 
     expect(context.store.get(autoReadEnabled$)).toBeFalsy();
