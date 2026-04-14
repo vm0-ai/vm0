@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.235.1](https://github.com/vm0-ai/vm0/compare/app-v0.235.0...app-v0.235.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* **voice-io:** move audio context creation before async fetch for gesture activation ([#9272](https://github.com/vm0-ai/vm0/issues/9272)) ([42ab356](https://github.com/vm0-ai/vm0/commit/42ab35694d2a68f96f13dc8570f11e3056c5fd7d)), closes [#9252](https://github.com/vm0-ai/vm0/issues/9252)
+
 ## [0.235.0](https://github.com/vm0-ai/vm0/compare/app-v0.234.0...app-v0.235.0) (2026-04-14)
 
 
