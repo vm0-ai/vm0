@@ -220,7 +220,7 @@ async function handleInstallCallback(params: {
         requestedOrgId: state.orgId,
       });
       return NextResponse.redirect(
-        `${appUrl}/works?error=${encodeURIComponent("This Slack workspace is already installed by another organization. Please contact the workspace admin to uninstall first.")}`,
+        `${appUrl}/settings/slack?error=${encodeURIComponent("This Slack workspace is already installed by another organization. Please contact the workspace admin to uninstall first.")}`,
       );
     }
 
@@ -342,7 +342,9 @@ async function handlePlatformInstall(
     return NextResponse.redirect(`${appUrl}/?tab=works&updated=1`);
   }
 
-  return NextResponse.redirect(`${appUrl}/works?installed=1`);
+  return NextResponse.redirect(
+    `${appUrl}/settings/slack?status=connected&workspace=${encodeURIComponent(oauthResult.teamName)}`,
+  );
 }
 
 /**
@@ -364,7 +366,7 @@ async function handleConnectCallback(params: {
 
   if (!state.orgId || !state.vm0UserId) {
     return NextResponse.redirect(
-      `${appUrl}/works?error=${encodeURIComponent("Invalid connect state.")}`,
+      `${appUrl}/settings/slack?error=${encodeURIComponent("Invalid connect state.")}`,
     );
   }
 
@@ -379,7 +381,7 @@ async function handleConnectCallback(params: {
   } catch (err) {
     log.error("Slack OAuth exchange failed (connect flow)", { error: err });
     return NextResponse.redirect(
-      `${appUrl}/works?error=${encodeURIComponent("Failed to connect Slack account. Please try again.")}`,
+      `${appUrl}/settings/slack?error=${encodeURIComponent("Failed to connect Slack account. Please try again.")}`,
     );
   }
 
@@ -394,14 +396,14 @@ async function handleConnectCallback(params: {
 
   if (!installation) {
     return NextResponse.redirect(
-      `${appUrl}/works?error=${encodeURIComponent("No Slack workspace installed for this organization.")}`,
+      `${appUrl}/settings/slack?error=${encodeURIComponent("No Slack workspace installed for this organization.")}`,
     );
   }
 
   // Verify workspace matches (user must have authed with the right workspace)
   if (userIdentity.teamId !== installation.slackWorkspaceId) {
     return NextResponse.redirect(
-      `${appUrl}/works?error=${encodeURIComponent("You authenticated with a different Slack workspace. Please use the workspace connected to your organization.")}`,
+      `${appUrl}/settings/slack?error=${encodeURIComponent("You authenticated with a different Slack workspace. Please use the workspace connected to your organization.")}`,
     );
   }
 
@@ -440,5 +442,7 @@ async function handleConnectCallback(params: {
     return log.warn("Failed to notify connect success", { error: err });
   });
 
-  return NextResponse.redirect(`${appUrl}/works?connected=1`);
+  return NextResponse.redirect(
+    `${appUrl}/settings/slack?status=connected&workspace=${encodeURIComponent(installation.slackWorkspaceName ?? "")}`,
+  );
 }

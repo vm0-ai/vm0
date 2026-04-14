@@ -6,6 +6,7 @@ import {
   detachedNavigateTo$,
   setupAuthPageWrapper,
   pathParams$,
+  searchParams$,
 } from "./route.ts";
 import { ROUTES, type RoutePath } from "./route-paths.ts";
 
@@ -63,6 +64,16 @@ const setupNotFoundRedirect$ = command(({ set }) => {
 function redirectTo(target: RoutePath) {
   return command(({ set }) => {
     set(detachedNavigateTo$, target, { replace: true });
+  });
+}
+
+/** Redirect preserving the current URL's query string. */
+function redirectWithSearch(target: RoutePath) {
+  return command(({ get, set }) => {
+    set(detachedNavigateTo$, target, {
+      replace: true,
+      searchParams: get(searchParams$),
+    });
   });
 }
 
@@ -251,10 +262,7 @@ const ROUTE_CONFIG = [
   },
   { path: "/queue", setup: redirectTo(ROUTES.queues) },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
-  {
-    path: "/slack/connect",
-    setup: setupAuthPageWrapper(setupSlackConnectPage$),
-  },
+  { path: "/slack/connect", setup: redirectWithSearch(ROUTES.settingsSlack) },
 
   {
     // Catch-all: redirect unknown paths to /

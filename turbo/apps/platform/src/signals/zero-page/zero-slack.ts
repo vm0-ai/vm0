@@ -116,31 +116,19 @@ export const pollSlackConnection$ = command(
 
 export const initSlackOrg$ = command((_ctx) => {
   const params = new URLSearchParams(window.location.search);
-  let dirty = false;
   if (params.get("updated") === "1") {
     toast.success("Permissions updated");
-    params.delete("updated");
-    dirty = true;
+    window.history.replaceState({}, "", window.location.pathname);
   } else if (params.get("installed") === "1") {
     toast.success("Slack installed successfully");
-    params.delete("installed");
-    dirty = true;
+    window.history.replaceState({}, "", window.location.pathname);
   }
   if (params.get("connected") === "1") {
     toast.success("Slack connected successfully");
-    params.delete("connected");
-    dirty = true;
+    window.history.replaceState({}, "", window.location.pathname);
   }
   if (params.get("error")) {
     toast.error(params.get("error")!);
-    params.delete("error");
-    dirty = true;
-  }
-  if (dirty) {
-    const remaining = params.toString();
-    const url = remaining
-      ? `${window.location.pathname}?${remaining}`
-      : window.location.pathname;
-    window.history.replaceState({}, "", url);
+    window.history.replaceState({}, "", window.location.pathname);
   }
 });

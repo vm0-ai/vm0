@@ -16,7 +16,7 @@ describe("buildOrgConnectUrl", () => {
   it("should point to platform slack connect page", () => {
     const url = buildOrgConnectUrl("T-workspace", "U-user", "C-channel");
 
-    expect(url).toContain("/slack/connect");
+    expect(url).toContain("/settings/slack");
     expect(url).toContain("w=T-workspace");
     expect(url).toContain("u=U-user");
     expect(url).toContain("c=C-channel");
@@ -43,7 +43,7 @@ describe("buildOrgConnectUrl", () => {
     const url = buildOrgConnectUrl("T-ws", "U-usr", "");
 
     const parsed = new URL(url);
-    expect(parsed.pathname).toBe("/slack/connect");
+    expect(parsed.pathname).toBe("/settings/slack");
     expect(parsed.searchParams.get("w")).toBe("T-ws");
     expect(parsed.searchParams.get("u")).toBe("U-usr");
     expect(parsed.searchParams.has("c")).toBe(false);
