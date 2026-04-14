@@ -251,7 +251,10 @@ const ROUTE_CONFIG = [
   },
   { path: "/queue", setup: redirectTo(ROUTES.queues) },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
-  { path: "/slack/connect", setup: redirectTo(ROUTES.settingsSlack) },
+  {
+    path: "/slack/connect",
+    setup: setupAuthPageWrapper(setupSlackConnectPage$),
+  },
 
   {
     // Catch-all: redirect unknown paths to /
