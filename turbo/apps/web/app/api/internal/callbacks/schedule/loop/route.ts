@@ -16,10 +16,7 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 function parsePayload(payload: unknown): ScheduleLoopCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
-  if (
-    typeof p.scheduleId !== "string" ||
-    typeof p.intervalSeconds !== "number"
-  ) {
+  if (typeof p.scheduleId !== "string") {
     return null;
   }
   return p as unknown as ScheduleLoopCallbackPayload;
@@ -45,7 +42,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const { scheduleId, intervalSeconds } = payload;
+  const { scheduleId } = payload;
 
   // Ignore progress notifications — only act on terminal states
   if (status === "progress") {
@@ -83,7 +80,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const shouldDisable = newFailureCount >= MAX_CONSECUTIVE_FAILURES;
   const nextRunAt = shouldDisable
     ? null
-    : new Date(now.getTime() + intervalSeconds * 1000);
+    : new Date(now.getTime() + schedule.intervalSeconds! * 1000);
 
   await globalThis.services.db
     .update(zeroAgentSchedules)

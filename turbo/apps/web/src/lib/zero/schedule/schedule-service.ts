@@ -860,7 +860,6 @@ export async function executeSchedule(
   if (schedule.triggerType === "loop") {
     const loopPayload: ScheduleLoopCallbackPayload = {
       scheduleId: schedule.id,
-      intervalSeconds: schedule.intervalSeconds!,
     };
     callbacks.push({
       url: `${getApiUrl()}/api/internal/callbacks/schedule/loop`,

@@ -20,11 +20,6 @@ import {
 
 const context = testContext();
 
-interface LoopCallbackPayload {
-  scheduleId: string;
-  intervalSeconds: number;
-}
-
 describe("POST /api/internal/callbacks/schedule/loop", () => {
   let composeId: string;
   let userId: string;
@@ -51,7 +46,6 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       url: "http://localhost/api/internal/callbacks/schedule/loop",
       payload: {
         scheduleId: schedule.id,
-        intervalSeconds: 300,
       },
     });
     return { schedule, runId, callbackId, secret };
@@ -66,7 +60,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
         {
           runId,
           status: "completed",
-          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+          payload: { scheduleId: schedule.id },
         },
         secret,
         { invalidSignature: true },
@@ -84,7 +78,6 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
           status: "completed",
           payload: {
             scheduleId: "00000000-0000-0000-0000-000000000000",
-            intervalSeconds: 300,
           },
         },
         "fake-secret",
@@ -103,7 +96,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
           callbackId,
           runId,
           status: "completed",
-          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+          payload: { scheduleId: schedule.id },
         },
         secret,
       );
@@ -136,7 +129,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
           callbackId,
           runId,
           status: "completed",
-          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+          payload: { scheduleId: schedule.id },
         },
         secret,
       );
@@ -163,7 +156,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
         {
           runId,
           status: "completed",
-          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+          payload: { scheduleId: schedule.id },
         },
         secret,
       );
@@ -191,7 +184,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
           runId,
           status: "failed",
           error: "Agent crashed",
-          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+          payload: { scheduleId: schedule.id },
         },
         secret,
       );
@@ -218,7 +211,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
           runId,
           status: "failed",
           error: "Third failure",
-          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+          payload: { scheduleId: schedule.id },
         },
         secret,
       );
@@ -242,7 +235,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
         {
           runId,
           status: "progress",
-          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+          payload: { scheduleId: schedule.id },
         },
         secret,
       );
@@ -270,7 +263,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
         {
           runId,
           status: "completed",
-          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+          payload: { scheduleId: schedule.id },
         },
         secret,
       );
@@ -292,7 +285,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
         {
           runId,
           status: "completed",
-          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+          payload: { scheduleId: schedule.id },
         },
         secret,
       );
@@ -301,6 +294,37 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.skipped).toBe(true);
+    });
+
+    it("should use current DB interval, not stale value from run creation time", async () => {
+      const { schedule, runId, secret } = await setupLoopSchedule();
+
+      // User changes interval from 300 to 600 while run is in progress
+      await updateTestScheduleState(schedule.id, { intervalSeconds: 600 });
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
+        {
+          runId,
+          status: "completed",
+          payload: { scheduleId: schedule.id },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+
+      const updated = await findTestScheduleById(schedule.id);
+      // nextRunAt should be ~600s from now, not the original 300s
+      const expectedMin = new Date(Date.now() + 599 * 1000);
+      const expectedMax = new Date(Date.now() + 601 * 1000);
+      expect(updated!.nextRunAt!.getTime()).toBeGreaterThanOrEqual(
+        expectedMin.getTime(),
+      );
+      expect(updated!.nextRunAt!.getTime()).toBeLessThanOrEqual(
+        expectedMax.getTime(),
+      );
     });
   });
 });

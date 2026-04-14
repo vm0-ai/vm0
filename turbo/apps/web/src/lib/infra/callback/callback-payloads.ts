@@ -53,7 +53,6 @@ export interface EmailReplyCallbackPayload {
 
 export interface ScheduleLoopCallbackPayload {
   scheduleId: string;
-  intervalSeconds: number;
 }
 
 export interface ScheduleCronCallbackPayload {
