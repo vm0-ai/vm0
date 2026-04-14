@@ -40,3 +40,6 @@ next-env.d.ts
 .schema-*.sql
 .schema-diff.txt
 .migrations-backup/
+
+# generated email preview artifacts
+/public/email-preview.html
