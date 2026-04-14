@@ -1,21 +1,37 @@
-import { and, eq } from "drizzle-orm";
 import { vi } from "vitest";
 import { http as mswHttp, HttpResponse } from "msw";
 import type { ConnectorType } from "@vm0/core";
-import { initServices } from "../../lib/init-services";
-import { connectors } from "../../db/schema/connector";
-import { connectorSessions } from "../../db/schema/connector-session";
-import { secrets } from "../../db/schema/secret";
-import { userConnectors } from "../../db/schema/user-connector";
-import {
-  encryptSecretValue,
-  decryptSecretValue,
-} from "../../lib/shared/crypto/secrets-encryption";
 import { server } from "../../mocks/server";
 import { reloadEnv } from "../../env";
 import { GET as connectorCallbackRoute } from "../../../app/api/connectors/[type]/callback/route";
 import { POST as setSecretRoute } from "../../../app/api/zero/secrets/route";
 import { createTestRequest } from "./core";
+
+// ---------------------------------------------------------------------------
+// Re-exports: DB-direct seeders and assertion helpers.
+//
+// These functions were moved to dedicated directories but are re-exported
+// here for backward compatibility — existing test files import from
+// api-test-helpers and should continue to work unchanged.
+// ---------------------------------------------------------------------------
+
+export {
+  createTestUserConnector,
+  insertTestConnectorSecret,
+  createTestConnectorSession,
+} from "../db-test-seeders/connectors";
+
+export {
+  findTestConnectorSecret,
+  findTestConnectorTokenExpiresAt,
+} from "../db-test-assertions/connectors";
+
+// ---------------------------------------------------------------------------
+// API-based helpers.
+//
+// These call production route handlers (not raw DB) and are valid
+// API-based helpers.
+// ---------------------------------------------------------------------------
 
 // OAuth provider mock configurations for test setup
 const OAUTH_PROVIDER_MOCKS: Record<
@@ -253,145 +269,4 @@ export async function createTestConnector(options?: {
   } else {
     await createTestOAuthConnector(options);
   }
-}
-
-/**
- * Grant a user permission to use a connector for a specific agent.
- * Inserts into the user_connectors table (sparse: presence = enabled).
- */
-export async function createTestUserConnector(
-  orgId: string,
-  userId: string,
-  agentId: string,
-  connectorType: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(userConnectors)
-    .values({ orgId, userId, agentId, connectorType })
-    .onConflictDoNothing();
-}
-
-/**
- * Find and decrypt a connector secret token from the database.
- * Used for verifying that the correct token was stored during connector OAuth flow.
- *
- * @param orgId - The org ID to look up the secret for
- * @param secretName - The secret name (e.g. "SLACK_ACCESS_TOKEN")
- * @returns The decrypted token value, or undefined if not found
- */
-export async function findTestConnectorSecret(
-  orgId: string,
-  secretName: string,
-  type: "connector" | "user" = "connector",
-): Promise<string | undefined> {
-  const [storedSecret] = await globalThis.services.db
-    .select()
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, orgId),
-        eq(secrets.name, secretName),
-        eq(secrets.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (!storedSecret) return undefined;
-
-  return decryptSecretValue(
-    storedSecret.encryptedValue,
-    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-  );
-}
-
-/**
- * Get the tokenExpiresAt timestamp for a connector.
- * Used for verifying that token expiry was correctly stored during OAuth flow.
- *
- * @param orgId - The org ID
- * @param type - The connector type (e.g. "notion", "github")
- * @returns The tokenExpiresAt Date, or null if not set, or undefined if connector not found
- */
-export async function findTestConnectorTokenExpiresAt(
-  orgId: string,
-  type: string,
-): Promise<Date | null | undefined> {
-  const [row] = await globalThis.services.db
-    .select({ tokenExpiresAt: connectors.tokenExpiresAt })
-    .from(connectors)
-    .where(and(eq(connectors.orgId, orgId), eq(connectors.type, type)))
-    .limit(1);
-
-  if (!row) return undefined;
-  return row.tokenExpiresAt;
-}
-
-/**
- * Insert an encrypted connector secret into the database.
- * Used for setting up test state (e.g., access tokens, refresh tokens) without going through the OAuth flow.
- */
-export async function insertTestConnectorSecret(
-  orgId: string,
-  userId: string,
-  name: string,
-  value: string,
-): Promise<void> {
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  await globalThis.services.db.insert(secrets).values({
-    name,
-    encryptedValue: encryptSecretValue(value, encryptionKey),
-    type: "connector",
-    userId,
-    orgId,
-  });
-}
-
-/**
- * Generate a unique session code for testing (format: XXXX-XXXX, max 9 chars)
- */
-function generateTestSessionCode(): string {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 8; i++) {
-    if (i === 4) code += "-";
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
-
-/**
- * Create a test connector session directly in the database.
- * Used for setting up test data for session status tests.
- *
- * @param userId - The user ID to associate with the session
- * @param type - The connector type
- * @param options - Session configuration options
- */
-export async function createTestConnectorSession(
-  userId: string,
-  type: ConnectorType,
-  options?: {
-    status?: "pending" | "complete" | "error";
-    errorMessage?: string;
-    expiresAt?: Date;
-    completedAt?: Date;
-  },
-): Promise<typeof connectorSessions.$inferSelect> {
-  const expiresAt = options?.expiresAt ?? new Date(Date.now() + 15 * 60 * 1000); // 15 minutes default
-
-  const [session] = await globalThis.services.db
-    .insert(connectorSessions)
-    .values({
-      code: generateTestSessionCode(),
-      type,
-      userId,
-      status: options?.status ?? "pending",
-      errorMessage: options?.errorMessage,
-      expiresAt,
-      completedAt: options?.completedAt,
-    })
-    .returning();
-
-  return session!;
 }
