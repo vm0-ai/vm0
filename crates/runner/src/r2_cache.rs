@@ -97,7 +97,7 @@
 //!
 //! ## Tar entry security
 //!
-//! `tar::Archive::unpack` (0.4) has two relevant behaviors when consuming an
+//! The `tar` crate (0.4) has two relevant behaviors when consuming an
 //! attacker-influenced archive:
 //!
 //! 1. **Path traversal (`..` components) is silently dropped**. Verified by
@@ -714,9 +714,12 @@ fn unpack_from_reader<R: std::io::Read>(reader: R, dest: &Path) -> Result<(), R2
             kind,
             tar::EntryType::Regular | tar::EntryType::Continuous | tar::EntryType::GNUSparse
         ) {
+            let path_display = entry
+                .path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "<invalid path>".into());
             return Err(R2Error::Io(std::io::Error::other(format!(
-                "rejected non-regular tar entry (type {kind:?}): {}",
-                entry.path().unwrap_or_default().display()
+                "rejected non-regular tar entry (type {kind:?}): {path_display}"
             ))));
         }
         entry.unpack_in(dest)?;
@@ -1400,11 +1403,11 @@ mod tests {
         );
     }
 
-    /// Symlink entries must be rejected — an attacker could point
-    /// `rootfs.ext4` at `/etc/shadow` to leak host file contents.
-    #[tokio::test]
-    async fn unpack_rejects_symlink_entries() {
-        let raw_tar = craft_tar_with_typeflag(b"rootfs.ext4", b'2', b"/etc/shadow");
+    /// Helper: assert that a tar with the given typeflag is rejected by
+    /// `unpack_from_reader`. Covers symlink, hardlink, and any other
+    /// non-regular entry type.
+    async fn assert_unpack_rejects_typeflag(typeflag: u8, link_target: &[u8]) {
+        let raw_tar = craft_tar_with_typeflag(b"rootfs.ext4", typeflag, link_target);
         let archive = tempfile::NamedTempFile::new().unwrap();
         let archive_path = archive.path().to_path_buf();
         tokio::task::spawn_blocking(move || {
@@ -1432,35 +1435,17 @@ mod tests {
         );
     }
 
+    /// Symlink entries must be rejected — an attacker could point
+    /// `rootfs.ext4` at `/etc/shadow` to leak host file contents.
+    #[tokio::test]
+    async fn unpack_rejects_symlink_entries() {
+        assert_unpack_rejects_typeflag(b'2', b"/etc/shadow").await;
+    }
+
     /// Hardlink entries must be rejected — could alias existing host files.
     #[tokio::test]
     async fn unpack_rejects_hardlink_entries() {
-        let raw_tar = craft_tar_with_typeflag(b"rootfs.ext4", b'1', b"/etc/passwd");
-        let archive = tempfile::NamedTempFile::new().unwrap();
-        let archive_path = archive.path().to_path_buf();
-        tokio::task::spawn_blocking(move || {
-            let out = std::fs::File::create(&archive_path).unwrap();
-            let mut zw = zstd::stream::write::Encoder::new(out, 1).unwrap();
-            std::io::Write::write_all(&mut zw, &raw_tar).unwrap();
-            zw.finish().unwrap();
-        })
-        .await
-        .unwrap();
-
-        let dst_root = tempfile::tempdir().unwrap();
-        let final_dir = dst_root.path().join("hash");
-        let err = unpack_archive_for_test(archive.path(), &final_dir)
-            .await
-            .unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("rejected non-regular tar entry"),
-            "expected rejection error, got: {msg}"
-        );
-        assert!(
-            !final_dir.exists(),
-            "final_dir must not be created on error"
-        );
+        assert_unpack_rejects_typeflag(b'1', b"/etc/passwd").await;
     }
 
     /// `finalize_staging` skips `punch_hole` when `cow.img` is empty (size=0).
