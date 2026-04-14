@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.235.4](https://github.com/vm0-ai/vm0/compare/app-v0.235.3...app-v0.235.4) (2026-04-14)
+
+
+### Bug Fixes
+
+* **platform:** refresh pinned agents after onboarding completion ([#9312](https://github.com/vm0-ai/vm0/issues/9312)) ([0a1a050](https://github.com/vm0-ai/vm0/commit/0a1a0508ad979f65cd1cf8a00cc02cee1cd93620)), closes [#9308](https://github.com/vm0-ai/vm0/issues/9308)
+* **platform:** reset tts playback state on signal abort ([#9303](https://github.com/vm0-ai/vm0/issues/9303)) ([fd04820](https://github.com/vm0-ai/vm0/commit/fd0482007cf60a83e1a8e253a80f4e76b64f2797))
+
+
+### Refactoring
+
+* **platform:** remove runs tab from usage page ([#9310](https://github.com/vm0-ai/vm0/issues/9310)) ([b4c8f68](https://github.com/vm0-ai/vm0/commit/b4c8f68e195c4261233b05a0677101616ec67eaf))
+
 ## [0.235.3](https://github.com/vm0-ai/vm0/compare/app-v0.235.2...app-v0.235.3) (2026-04-14)
 
 

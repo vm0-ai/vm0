@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.11.0...sandbox-v0.12.0) (2026-04-14)
+
+
+### Features
+
+* **sandbox-fc:** pause vcpus while sandbox is parked in idle pool ([#9306](https://github.com/vm0-ai/vm0/issues/9306)) ([b7f322e](https://github.com/vm0-ai/vm0/commit/b7f322e247cddb12a061c8639f64efa0fb81f619))
+
 ## [0.11.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.10.0...sandbox-v0.11.0) (2026-04-13)
 
 
