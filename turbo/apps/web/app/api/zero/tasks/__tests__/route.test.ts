@@ -10,6 +10,7 @@ import {
   getTestAgentComposeName,
   createTestSchedule,
   updateTestScheduleState,
+  insertTestVoiceChatSession,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -112,6 +113,78 @@ describe("GET /api/zero/tasks", () => {
     expect(schedTask.scheduleId).toBe(schedule.id);
     expect(schedTask.latestRunId).toBe(runId);
     expect(schedTask.status).toBe("completed");
+  });
+
+  it("should not return schedule tasks without a lastRunId", async () => {
+    const { composeId } = await createTestCompose(
+      uniqueId("sched-no-run-test"),
+    );
+
+    // Create a schedule without linking any run (lastRunId remains null)
+    await createTestSchedule(composeId, "never-run-schedule", {
+      cronExpression: "0 0 * * *",
+      prompt: "This schedule has never run",
+    });
+
+    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const scheduleTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.type === "schedule";
+    });
+    expect(scheduleTasks).toHaveLength(0);
+  });
+
+  it("should return voice chat tasks that have a runId", async () => {
+    const { composeId } = await createTestCompose(uniqueId("voice-chat-task"));
+
+    // Create a run so the voice chat session is actionable
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      status: "completed",
+    });
+
+    await insertTestVoiceChatSession({
+      orgId: user.orgId,
+      userId: user.userId,
+      agentId: composeId,
+      runId,
+    });
+
+    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const voiceTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.type === "voice_chat";
+    });
+    expect(voiceTasks).toHaveLength(1);
+    expect(voiceTasks[0].latestRunId).toBe(runId);
+  });
+
+  it("should not return voice chat tasks without a runId", async () => {
+    const { composeId } = await createTestCompose(
+      uniqueId("voice-chat-no-run"),
+    );
+
+    // Create a voice chat session without linking any run (runId remains null)
+    await insertTestVoiceChatSession({
+      orgId: user.orgId,
+      userId: user.userId,
+      agentId: composeId,
+    });
+
+    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const voiceTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.type === "voice_chat";
+    });
+    expect(voiceTasks).toHaveLength(0);
   });
 
   it("should filter by agentId", async () => {
