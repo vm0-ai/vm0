@@ -23,6 +23,13 @@ import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org
 
 const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
 
+/**
+ * Slack limits the OAuth `state` parameter to a conservative length. Truncate
+ * the prompt we carry through the flow so a long pasted prompt can't push the
+ * state past the limit.
+ */
+const MAX_PROMPT_STATE_LENGTH = 500;
+
 export async function GET(request: Request) {
   const { SLACK_CLIENT_ID } = env();
 
@@ -61,8 +68,18 @@ export async function GET(request: Request) {
   }
 
   const redirectUri = `${getApiUrl()}/api/zero/slack/oauth/callback`;
+  const prompt = url.searchParams.get("prompt");
 
-  const state = JSON.stringify({ orgId, vm0UserId, flow: "connect" });
+  const stateObj: {
+    orgId: string;
+    vm0UserId: string;
+    flow: "connect";
+    prompt?: string;
+  } = { orgId, vm0UserId, flow: "connect" };
+  if (prompt) {
+    stateObj.prompt = [...prompt].slice(0, MAX_PROMPT_STATE_LENGTH).join("");
+  }
+  const state = JSON.stringify(stateObj);
 
   const authUrl = new URL(SLACK_OAUTH_URL);
   authUrl.searchParams.set("client_id", SLACK_CLIENT_ID);

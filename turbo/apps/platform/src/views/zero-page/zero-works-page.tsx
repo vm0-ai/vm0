@@ -32,9 +32,14 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import slackIconImg from "./assets/slack-icon.svg";
 
-/** Append a cache-busting timestamp so the browser never reuses a cached OAuth redirect. */
+/** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
+ *  carry it through to the Slack DM greeting. */
 function openFreshOAuth(url: string) {
   const fresh = new URL(url, window.location.origin);
+  const prompt = new URLSearchParams(window.location.search).get("prompt");
+  if (prompt) {
+    fresh.searchParams.set("prompt", prompt);
+  }
   fresh.searchParams.set("_t", String(Date.now()));
   window.open(fresh.toString(), "_blank");
 }

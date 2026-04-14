@@ -437,6 +437,7 @@ async function handleConnectCallback(params: {
     installation,
     slackUserId: userIdentity.authedUserId,
     orgId: state.orgId,
+    pendingPrompt: state.prompt,
   }).catch((err) => {
     return log.warn("Failed to notify connect success", { error: err });
   });
