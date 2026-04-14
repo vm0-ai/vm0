@@ -8,9 +8,10 @@ use sandbox::{
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Notify;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 use vsock_host::VsockHost;
 
+use crate::api::ApiError;
 use nbd_cow::NbdCowDevice;
 
 use crate::api::ApiClient;
@@ -100,10 +101,11 @@ pub struct FirecrackerSandbox {
     /// Set to `true` by `factory.destroy()` to suppress Drop-based leak recovery.
     pub(crate) destroyed: bool,
     /// Tracks whether the sandbox is currently in the idle/parked state.
-    /// Set by `park()` on success (including the small-profile no-op case)
-    /// and cleared by `unpark()`. Used to make both methods idempotent and
-    /// to let `unpark()` know whether it should touch the balloon
-    /// controller or treat the call as a pure no-op.
+    /// When true, balloon is inflated (for large VMs) and vCPUs are paused.
+    /// Set by `park()` on success and cleared by `unpark()`. Used to make
+    /// both methods idempotent, to let `unpark()` know whether it should
+    /// touch the balloon controller, and to let `stop()` skip vsock
+    /// graceful shutdown (guest can't respond with paused vCPUs).
     is_parked: bool,
 }
 
@@ -587,8 +589,15 @@ impl Sandbox for FirecrackerSandbox {
             h.abort();
         }
 
-        // Try graceful shutdown via vsock.
-        {
+        // Skip vsock graceful shutdown for parked sandboxes — vCPUs are
+        // paused and cannot process the message. No in-flight user work
+        // to clean up. Go straight to force-kill.
+        //
+        // Edge case: after a partial unpark failure (resume succeeded but
+        // deflate failed), is_parked is true but vCPUs are actually running.
+        // Skipping graceful shutdown is still correct — the sandbox was idle
+        // with no user workload.
+        if !self.is_parked {
             let guest = self.guest.lock().await.take();
             if let Some(guest) = guest
                 && !guest.shutdown(SHUTDOWN_TIMEOUT).await
@@ -626,24 +635,28 @@ impl Sandbox for FirecrackerSandbox {
     // -- idle transitions --
     //
     // `park()` is called by the runner when a sandbox is handed off to the
-    // idle pool. It stops the reactive balloon controller, then issues a
-    // single PATCH /balloon to reclaim as much guest memory as possible
-    // (down to `MIN_GUEST_MIB` for kernel headroom).
+    // idle pool. It stops the reactive balloon controller, inflates the
+    // balloon to reclaim guest memory, waits for inflation to complete,
+    // then pauses vCPUs to eliminate idle CPU overhead (timer ticks,
+    // kernel scheduling). Ordering: inflate before pause — the guest
+    // balloon driver needs running vCPUs to process the inflate.
     //
     // `unpark()` is called when the runner pulls the sandbox back out of
-    // the idle pool. It deflates the balloon and respawns the reactive
-    // controller so active workload is served with full memory again.
+    // the idle pool. It resumes vCPUs, deflates the balloon, and respawns
+    // the reactive controller so active workload is served with full
+    // memory again. Ordering: resume before deflate — the guest needs
+    // running vCPUs to process the deflate.
     //
-    // Both methods propagate balloon PATCH failures as `IdleTransition`
-    // errors — on failure the caller (runner) destroys the sandbox and
-    // falls through to fresh-create. On a healthy Firecracker the PATCH
-    // /balloon API is essentially infallible; a failure here strongly
-    // indicates FC is dead or unhealthy, which destroy-and-refresh
-    // handles cleanly.
+    // Both methods propagate PATCH failures as `IdleTransition` errors —
+    // on failure the caller (runner) destroys the sandbox and falls
+    // through to fresh-create. Firecracker's pause/resume returns 400
+    // when the VM is already in the target state; within park/unpark
+    // this only happens after a partial retry, so 400 is treated as
+    // success (idempotent).
     //
-    // For profiles where `memory_mb <= MIN_GUEST_MIB` there is nothing to
-    // reclaim, so both methods become pure no-ops — the reactive controller
-    // is left running throughout the idle period.
+    // For profiles where `memory_mb <= MIN_GUEST_MIB` there is no memory
+    // to reclaim (balloon is skipped), but vCPUs are still paused — timer
+    // ticks waste CPU regardless of memory size.
     //
     // The `is_parked` flag makes both methods idempotent and lets unpark
     // skip the abort+respawn dance when park was a no-op.
@@ -780,6 +793,61 @@ impl Sandbox for FirecrackerSandbox {
 // building a fully-initialised `FirecrackerSandbox` (which pulls in the
 // network pool, NBD COW device, firecracker child process, etc.).
 
+/// Maximum time to wait for balloon inflation before pausing vCPUs.
+const BALLOON_SETTLE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Poll interval while waiting for balloon inflation.
+const BALLOON_SETTLE_POLL: Duration = Duration::from_millis(500);
+
+/// Wait until the guest balloon driver inflates to `target_mib`.
+///
+/// The guest needs running vCPUs to inflate, so this must be called
+/// **before** pausing. Returns when `actual_mib >= target_mib`, or
+/// after [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better than
+/// none). Errors from stats fetching are non-fatal — we log and
+/// proceed to pause.
+async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str) {
+    let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
+    loop {
+        match client.get_balloon_statistics().await {
+            Ok(stats) if stats.actual_mib >= target_mib => {
+                info!(
+                    id = %log_id,
+                    actual = stats.actual_mib,
+                    target = target_mib,
+                    "balloon fully inflated, proceeding to pause"
+                );
+                return;
+            }
+            Ok(stats) => {
+                trace!(
+                    id = %log_id,
+                    actual = stats.actual_mib,
+                    target = target_mib,
+                    "waiting for balloon"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    id = %log_id,
+                    %e,
+                    "balloon stats unavailable, proceeding to pause"
+                );
+                return;
+            }
+        }
+        if tokio::time::Instant::now() >= deadline {
+            warn!(
+                id = %log_id,
+                target = target_mib,
+                "balloon inflate incomplete after {}s, pausing anyway",
+                BALLOON_SETTLE_TIMEOUT.as_secs()
+            );
+            return;
+        }
+        tokio::time::sleep(BALLOON_SETTLE_POLL).await;
+    }
+}
+
 async fn park_inner(
     is_parked: &mut bool,
     memory_mb: u32,
@@ -792,42 +860,62 @@ async fn park_inner(
     }
 
     let target = memory_mb.saturating_sub(balloon::MIN_GUEST_MIB);
-    if target == 0 {
-        // Profile too small to balloon — keep the reactive controller
-        // running (it will be a no-op anyway since max_inflate == 0).
-        *is_parked = true;
-        info!(id = %log_id, memory_mb, "sandbox parked (no-op: memory below balloon threshold)");
-        return Ok(());
-    }
-
-    // Stop the reactive controller so we're the sole writer to /balloon.
-    // abort() + await ensures any in-flight PATCH from the controller
-    // completes (or is cancelled) before ours lands.
-    //
-    // Ordering note: we abort BEFORE the PATCH (rather than after) because
-    // the controller's reactive logic would otherwise see the post-inflate
-    // drop in `available_memory` as memory pressure and immediately deflate
-    // back, undoing our work.
-    //
-    // Failure-mode invariant: if patch_balloon returns Err, the controller
-    // is gone and `is_parked` stays false. This is an intentional
-    // "transient inconsistent" state — the runner's only failure handling
-    // is `stop_and_destroy_sandbox`, so the sandbox is dropped (and Drop
-    // ensures any leftover handles are aborted) before any further
-    // operations can observe the missing controller.
-    if let Some(h) = balloon_controller.take() {
-        h.abort();
-        let _ = h.await;
-    }
-
     let client = ApiClient::new(api_sock);
-    client
-        .patch_balloon(target)
-        .await
-        .map_err(|e| SandboxError::IdleTransition(format!("balloon inflate: {e}")))?;
+
+    if target > 0 {
+        // Stop the reactive controller so we're the sole writer to /balloon.
+        // abort() + await ensures any in-flight PATCH from the controller
+        // completes (or is cancelled) before ours lands.
+        //
+        // Ordering note: we abort BEFORE the PATCH (rather than after) because
+        // the controller's reactive logic would otherwise see the post-inflate
+        // drop in `available_memory` as memory pressure and immediately deflate
+        // back, undoing our work.
+        //
+        // Failure-mode invariant: if patch_balloon or pause returns Err, the
+        // controller is gone and `is_parked` stays false. This is an
+        // intentional "transient inconsistent" state — the runner's only
+        // failure handling is `stop_and_destroy_sandbox`, so the sandbox is
+        // dropped (and Drop ensures any leftover handles are aborted) before
+        // any further operations can observe the missing controller.
+        if let Some(h) = balloon_controller.take() {
+            h.abort();
+            let _ = h.await;
+        }
+
+        client
+            .patch_balloon(target)
+            .await
+            .map_err(|e| SandboxError::IdleTransition(format!("balloon inflate: {e}")))?;
+
+        // Wait for the guest to fully inflate the balloon before pausing
+        // vCPUs. The guest balloon driver needs running vCPUs to process
+        // the inflate — pausing immediately would negate the memory savings.
+        wait_for_balloon(&client, target, log_id).await;
+    }
+
+    // Pause vCPUs to eliminate idle CPU overhead (timer ticks, kernel
+    // scheduling). For small VMs (target == 0) we skip the balloon but
+    // still pause — timer ticks waste CPU regardless of memory size.
+    //
+    // Idempotent 400 handling: Firecracker returns 400 if the VM is
+    // already paused. Within park_inner this only happens if a prior
+    // partial park (balloon OK, pause failed on transient error) already
+    // paused the VM. Treat as success to preserve retry semantics.
+    match client.pause().await {
+        Ok(()) => {}
+        Err(ApiError::Http { status: 400, .. }) => {
+            info!(id = %log_id, "vm already paused, continuing park");
+        }
+        Err(e) => return Err(SandboxError::IdleTransition(format!("vm pause: {e}"))),
+    }
 
     *is_parked = true;
-    info!(id = %log_id, target_mib = target, "sandbox parked (balloon inflated)");
+    if target > 0 {
+        info!(id = %log_id, target_mib = target, "sandbox parked (balloon inflated, vCPUs paused)");
+    } else {
+        info!(id = %log_id, "sandbox parked (vCPUs paused, balloon skipped)");
+    }
     Ok(())
 }
 
@@ -841,6 +929,22 @@ async fn unpark_inner(
 ) -> sandbox::Result<()> {
     if !*is_parked {
         return Ok(());
+    }
+
+    // Resume vCPUs before any balloon work — the guest needs running
+    // vCPUs to process the deflate PATCH.
+    //
+    // Idempotent 400 handling: Firecracker returns 400 if the VM is
+    // already running. Within unpark_inner this only happens if a prior
+    // partial unpark (resume OK, deflate failed) already resumed the VM.
+    // Treat as success to preserve the trait's retry contract.
+    let client = ApiClient::new(api_sock);
+    match client.resume().await {
+        Ok(()) => {}
+        Err(ApiError::Http { status: 400, .. }) => {
+            info!(id = %log_id, "vm already running, continuing unpark");
+        }
+        Err(e) => return Err(SandboxError::IdleTransition(format!("vm resume: {e}"))),
     }
 
     let park_touched_controller = memory_mb > balloon::MIN_GUEST_MIB;
@@ -868,7 +972,6 @@ async fn unpark_inner(
         // through to fresh-create. Leaving is_parked=true and controller=None
         // is safe: the sandbox is about to be dropped; a hypothetical retry
         // would re-enter this branch and attempt deflate again.
-        let client = ApiClient::new(api_sock);
         client
             .patch_balloon(0)
             .await
@@ -882,7 +985,7 @@ async fn unpark_inner(
     }
 
     *is_parked = false;
-    info!(id = %log_id, "sandbox unparked");
+    info!(id = %log_id, "sandbox unparked (vCPUs resumed)");
     Ok(())
 }
 
@@ -971,71 +1074,130 @@ mod tests {
     //
     // These exercise `park_inner` / `unpark_inner` against a mock Firecracker
     // API socket. We assert on:
-    //   1. the correct sequence of PATCH /balloon requests (bodies captured);
+    //   1. the correct sequence of PATCH requests (method, path, body);
     //   2. whether the reactive controller handle is present / absent;
     //   3. the is_parked flag state; and
     //   4. idempotency on repeat calls.
 
     use std::path::PathBuf;
+    use std::sync::atomic::AtomicU32;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixListener;
     use tokio::sync::Mutex as TokioMutex;
 
-    /// Spawn a mock FC API server on a temporary Unix socket. It responds to
-    /// any number of PATCH /balloon calls. The response status is configurable
-    /// per call via `responses` (consumed FIFO; defaults to 204 once empty).
-    /// All received PATCH bodies are captured into `bodies`.
+    /// A captured HTTP request from the mock FC API server.
+    #[derive(Debug, Clone)]
+    struct MockRequest {
+        method: String,
+        path: String,
+        body: String,
+    }
+
+    /// Spawn a mock FC API server on a temporary Unix socket.
     ///
-    /// Returns (sock_path, bodies_handle, tempdir) — keep the tempdir alive
-    /// until the test finishes so the socket isn't cleaned up prematurely.
+    /// - PATCH requests: status consumed FIFO from `responses` (defaults to
+    ///   204 once empty). All requests are captured into the returned list.
+    /// - GET /balloon/statistics: returns a 200 JSON response with
+    ///   `actual_mib` read from `balloon_actual` (or a large value if None,
+    ///   so `wait_for_balloon` returns immediately in most tests).
+    ///
+    /// Returns (sock_path, requests_handle, tempdir) — keep the tempdir
+    /// alive until the test finishes.
     async fn spawn_mock_fc_api(
-        mut responses: std::collections::VecDeque<u16>,
-    ) -> (PathBuf, Arc<TokioMutex<Vec<String>>>, tempfile::TempDir) {
+        responses: std::collections::VecDeque<u16>,
+        balloon_actual: Option<Arc<AtomicU32>>,
+    ) -> (
+        PathBuf,
+        Arc<TokioMutex<Vec<MockRequest>>>,
+        tempfile::TempDir,
+    ) {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
         let sock_path = dir.path().join("api.sock");
         let listener = UnixListener::bind(&sock_path)
             .unwrap_or_else(|e| panic!("bind {}: {e}", sock_path.display()));
 
-        let bodies: Arc<TokioMutex<Vec<String>>> = Arc::new(TokioMutex::new(Vec::new()));
-        let bodies_clone = Arc::clone(&bodies);
+        let requests: Arc<TokioMutex<Vec<MockRequest>>> = Arc::new(TokioMutex::new(Vec::new()));
+        let requests_clone = Arc::clone(&requests);
 
+        // Wrap the response queue in a mutex so per-connection tasks can
+        // pop from it without moving the entire VecDeque into the closure.
+        let responses = Arc::new(TokioMutex::new(responses));
         tokio::spawn(async move {
             loop {
                 let Ok((mut stream, _)) = listener.accept().await else {
                     return;
                 };
-                let bodies_inner = Arc::clone(&bodies_clone);
-                let status = responses.pop_front().unwrap_or(204);
+                let reqs_inner = Arc::clone(&requests_clone);
+                let responses = Arc::clone(&responses);
+                let balloon_actual = balloon_actual.clone();
                 tokio::spawn(async move {
                     let mut buf = vec![0u8; 8192];
                     let n = stream.read(&mut buf).await.unwrap_or(0);
-                    let req = String::from_utf8_lossy(&buf[..n]);
-                    if let Some(pos) = req.find("\r\n\r\n") {
-                        bodies_inner.lock().await.push(req[pos + 4..].to_string());
-                    }
-                    let (reason, body) = if status == 204 {
-                        ("No Content", String::new())
+                    let raw = String::from_utf8_lossy(&buf[..n]);
+
+                    // Parse request line: "METHOD /path HTTP/1.1"
+                    let first_line = raw.lines().next().unwrap_or("");
+                    let mut parts = first_line.split_whitespace();
+                    let method = parts.next().unwrap_or("").to_string();
+                    let path = parts.next().unwrap_or("").to_string();
+
+                    let body = raw
+                        .find("\r\n\r\n")
+                        .map(|pos| raw[pos + 4..].to_string())
+                        .unwrap_or_default();
+
+                    reqs_inner.lock().await.push(MockRequest {
+                        method: method.clone(),
+                        path: path.clone(),
+                        body,
+                    });
+
+                    // Route response by method + path.
+                    // GET /balloon/statistics is handled separately (always
+                    // 200 with configurable stats). All other requests
+                    // consume the next entry from the FIFO response queue.
+                    if method == "GET" && path == "/balloon/statistics" {
+                        let actual = balloon_actual
+                            .as_ref()
+                            .map_or(99999, |a| a.load(Ordering::Relaxed));
+                        let stats = format!(
+                            r#"{{"target_mib":0,"actual_mib":{actual},"target_pages":0,"actual_pages":0}}"#
+                        );
+                        let resp = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{stats}",
+                            stats.len()
+                        );
+                        let _ = stream.write_all(resp.as_bytes()).await;
                     } else {
-                        ("Bad Request", r#"{"fault_message":"test"}"#.to_string())
-                    };
-                    let response = format!(
-                        "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\n\r\n{body}",
-                        body.len()
-                    );
-                    let _ = stream.write_all(response.as_bytes()).await;
+                        let status = responses.lock().await.pop_front().unwrap_or(204);
+                        let (reason, resp_body) = if status == 204 {
+                            ("No Content", String::new())
+                        } else {
+                            ("Bad Request", r#"{"fault_message":"test"}"#.to_string())
+                        };
+                        let resp = format!(
+                            "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\n\r\n{resp_body}",
+                            resp_body.len()
+                        );
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                    }
                 });
             }
         });
 
-        (sock_path, bodies, dir)
+        (sock_path, requests, dir)
+    }
+
+    /// Filter captured requests to only PATCH requests (ignoring GET stats
+    /// polls from `wait_for_balloon` and the reactive balloon controller).
+    fn patches(reqs: &[MockRequest]) -> Vec<&MockRequest> {
+        reqs.iter().filter(|r| r.method == "PATCH").collect()
     }
 
     #[tokio::test]
-    async fn park_inflates_and_aborts_controller() {
-        let (sock, bodies, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new()).await;
+    async fn park_inflates_and_pauses() {
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
-        // Stand in for the existing reactive controller with a simple
-        // sleeping task — park_inner should abort it.
         let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
             tokio::time::sleep(Duration::from_secs(3600)).await
         }));
@@ -1047,22 +1209,24 @@ mod tests {
 
         assert!(is_parked, "is_parked should be set");
         assert!(controller.is_none(), "controller handle should be taken");
-        let bodies = bodies.lock().await;
+
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
         assert_eq!(
-            bodies.len(),
-            1,
-            "expected exactly one PATCH, got {bodies:?}"
+            ps.len(),
+            2,
+            "expected balloon inflate + vm pause, got {ps:?}"
         );
-        let parsed: serde_json::Value = serde_json::from_str(&bodies[0]).unwrap();
+        assert_eq!(ps[0].path, "/balloon");
+        let parsed: serde_json::Value = serde_json::from_str(&ps[0].body).unwrap();
         assert_eq!(parsed["amount_mib"].as_u64().unwrap(), 1536); // 2048 - 512
+        assert_eq!(ps[1].path, "/vm");
+        assert!(ps[1].body.contains("Paused"));
     }
 
     #[tokio::test]
     async fn park_inflates_by_one_at_min_plus_one() {
-        // Boundary: memory_mb = MIN_GUEST_MIB + 1 → target = 1.
-        // Confirms the saturating_sub branch and the >0 check route the
-        // smallest non-trivial profile through the active-inflate path.
-        let (sock, bodies, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new()).await;
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
             tokio::time::sleep(Duration::from_secs(3600)).await
@@ -1080,19 +1244,20 @@ mod tests {
         .unwrap();
 
         assert!(is_parked);
-        assert!(
-            controller.is_none(),
-            "513 MiB profile must take the active-inflate branch (controller aborted)"
-        );
-        let bodies = bodies.lock().await;
-        assert_eq!(bodies.len(), 1);
-        let parsed: serde_json::Value = serde_json::from_str(&bodies[0]).unwrap();
+        assert!(controller.is_none());
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2);
+        assert_eq!(ps[0].path, "/balloon");
+        let parsed: serde_json::Value = serde_json::from_str(&ps[0].body).unwrap();
         assert_eq!(parsed["amount_mib"].as_u64().unwrap(), 1);
+        assert_eq!(ps[1].path, "/vm");
+        assert!(ps[1].body.contains("Paused"));
     }
 
     #[tokio::test]
-    async fn park_noop_when_memory_at_min() {
-        let (sock, bodies, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new()).await;
+    async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let original_controller: tokio::task::JoinHandle<()> =
             tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
@@ -1102,7 +1267,7 @@ mod tests {
 
         park_inner(
             &mut is_parked,
-            512, // equal to MIN_GUEST_MIB
+            512,
             &mut controller,
             &sock,
             "test-park-small",
@@ -1110,22 +1275,24 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(is_parked, "is_parked should still be set");
+        assert!(is_parked, "is_parked should be set");
         let still_there = controller.as_ref().expect("controller must be preserved");
         assert_eq!(
             still_there.id(),
             original_id,
             "controller must not be replaced or aborted"
         );
-        assert!(
-            bodies.lock().await.is_empty(),
-            "no PATCH should be issued for small profiles"
-        );
+
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 1, "expected only vm pause, no balloon PATCH");
+        assert_eq!(ps[0].path, "/vm");
+        assert!(ps[0].body.contains("Paused"));
     }
 
     #[tokio::test]
-    async fn unpark_deflates_and_respawns_controller() {
-        let (sock, bodies, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new()).await;
+    async fn unpark_resumes_and_deflates() {
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
@@ -1148,24 +1315,16 @@ mod tests {
             "reactive controller must be respawned"
         );
 
-        // PATCH /balloon {amount_mib: 0} from unpark, plus the first tick
-        // of the freshly spawned reactive controller may issue a GET
-        // /balloon/statistics (which we don't handle here, but that's fine —
-        // we're only checking that the deflate PATCH was observed).
-        let bodies = bodies.lock().await;
-        let deflate = bodies
-            .iter()
-            .find(|b| {
-                serde_json::from_str::<serde_json::Value>(b)
-                    .ok()
-                    .and_then(|v| v["amount_mib"].as_u64())
-                    == Some(0)
-            })
-            .expect("deflate PATCH not observed");
-        assert!(deflate.contains("amount_mib"), "body: {deflate}");
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        // resume, then deflate (+ possible reactive controller PATCHes)
+        assert!(ps.len() >= 2, "expected at least resume + deflate");
+        assert_eq!(ps[0].path, "/vm");
+        assert!(ps[0].body.contains("Resumed"));
+        assert_eq!(ps[1].path, "/balloon");
+        let parsed: serde_json::Value = serde_json::from_str(&ps[1].body).unwrap();
+        assert_eq!(parsed["amount_mib"].as_u64().unwrap(), 0);
 
-        // Abort the respawned reactive controller so the test runtime
-        // doesn't leave a 5s-tick task running against the mock socket.
         if let Some(h) = controller.take() {
             h.abort();
         }
@@ -1173,13 +1332,9 @@ mod tests {
 
     #[tokio::test]
     async fn unpark_propagates_deflate_error() {
-        // Mock returns 400 on the first PATCH (deflate). Unpark must
-        // propagate the failure as `IdleTransition` so the runner can
-        // destroy the sandbox and fall through to fresh-create. On Err,
-        // is_parked stays true and controller stays None — consistent with
-        // park_inner's failure semantics.
-        let (sock, bodies, _dir) =
-            spawn_mock_fc_api(std::collections::VecDeque::from(vec![400])).await;
+        // Resume succeeds (204), deflate fails (400).
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 400]), None).await;
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
@@ -1202,28 +1357,23 @@ mod tests {
             "controller must not be respawned on failure"
         );
 
-        // Verify a deflate PATCH was actually attempted — guards against
-        // refactors that accidentally short-circuit before the PATCH.
-        let bodies = bodies.lock().await;
-        assert_eq!(bodies.len(), 1, "expected exactly one PATCH attempt");
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&bodies[0]).unwrap()["amount_mib"]
-                .as_u64()
-                .unwrap(),
-            0,
-            "deflate PATCH must target amount_mib=0"
-        );
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2, "expected resume + failed deflate");
+        assert_eq!(ps[0].path, "/vm");
+        assert!(ps[0].body.contains("Resumed"));
+        assert_eq!(ps[1].path, "/balloon");
     }
 
     #[tokio::test]
-    async fn unpark_on_small_vm_is_a_noop() {
-        let (sock, bodies, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new()).await;
+    async fn unpark_small_vm_skips_balloon_but_resumes_vcpus() {
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let original_controller: tokio::task::JoinHandle<()> =
             tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
         let original_id = original_controller.id();
         let mut controller = Some(original_controller);
-        let mut is_parked = true; // was parked (as a no-op) earlier
+        let mut is_parked = true;
         let crash_notify = Arc::new(Notify::new());
 
         unpark_inner(
@@ -1244,15 +1394,17 @@ mod tests {
             original_id,
             "controller must not be replaced"
         );
-        assert!(
-            bodies.lock().await.is_empty(),
-            "no PATCH should be issued for small profiles"
-        );
+
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 1, "expected only vm resume, no balloon PATCH");
+        assert_eq!(ps[0].path, "/vm");
+        assert!(ps[0].body.contains("Resumed"));
     }
 
     #[tokio::test]
     async fn double_park_is_idempotent() {
-        let (sock, bodies, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new()).await;
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
             tokio::time::sleep(Duration::from_secs(3600)).await
@@ -1267,17 +1419,18 @@ mod tests {
             .unwrap();
 
         assert!(is_parked);
-        let bodies = bodies.lock().await;
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
         assert_eq!(
-            bodies.len(),
-            1,
-            "expected exactly one PATCH despite double-park, got {bodies:?}"
+            ps.len(),
+            2,
+            "expected exactly one park sequence (inflate + pause) despite double-park"
         );
     }
 
     #[tokio::test]
     async fn double_unpark_is_idempotent() {
-        let (sock, bodies, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new()).await;
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
@@ -1312,21 +1465,11 @@ mod tests {
             first_controller_id,
             "second unpark must not replace the controller"
         );
-        // Only one deflate PATCH should have been issued.
-        let deflate_count = bodies
-            .lock()
-            .await
-            .iter()
-            .filter(|b| {
-                serde_json::from_str::<serde_json::Value>(b)
-                    .ok()
-                    .and_then(|v| v["amount_mib"].as_u64())
-                    == Some(0)
-            })
-            .count();
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        let deflate_count = ps.iter().filter(|r| r.path == "/balloon").count();
         assert_eq!(deflate_count, 1, "expected exactly one deflate PATCH");
 
-        // Abort the respawned reactive controller.
         if let Some(h) = controller.take() {
             h.abort();
         }
@@ -1334,7 +1477,7 @@ mod tests {
 
     #[tokio::test]
     async fn unpark_without_park_is_noop() {
-        let (sock, bodies, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new()).await;
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let original_controller: tokio::task::JoinHandle<()> =
             tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
@@ -1360,19 +1503,12 @@ mod tests {
             original_id,
             "controller must not be touched"
         );
-        assert!(bodies.lock().await.is_empty());
+        assert!(patches(&reqs.lock().await).is_empty());
     }
 
     #[tokio::test]
     async fn park_unpark_park_cycle() {
-        // Simulates a production reuse sequence:
-        //   turn 1: sandbox created → park
-        //   turn 2: take → unpark → (job runs) → park
-        // The is_parked flag should oscillate correctly, PATCHes should
-        // follow the expected sequence (inflate, deflate, inflate), and
-        // each unpark's respawned controller must be aborted by the next
-        // park (no leak of the intermediate controller task).
-        let (sock, bodies, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new()).await;
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let initial: tokio::task::JoinHandle<()> =
             tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
@@ -1410,36 +1546,39 @@ mod tests {
             "second park must abort the controller respawned by unpark"
         );
 
-        // PATCH sequence: inflate(1536), deflate(0), inflate(1536).
-        //
-        // Fragility note: the respawned reactive controller's first tick
-        // fires immediately (tokio::time::interval burst-mode) and issues
-        // GET /balloon/statistics against this mock. `spawn_mock_fc_api`
-        // returns an empty 204 for any request, so the client's JSON parse
-        // fails and the controller tick early-returns without issuing a
-        // PATCH. The `filter_map(|v| v["amount_mib"].as_u64())` below also
-        // drops any empty GET bodies that did land in `bodies`. If the
-        // mock is ever upgraded to return a parseable stats body, this
-        // test may see an extra controller-originated PATCH and will need
-        // to be reworked.
-        let bodies = bodies.lock().await;
-        let amounts: Vec<u64> = bodies
+        // PATCH sequence: inflate, pause, resume, deflate, inflate, pause.
+        // Filter to only PATCHes (ignoring GET /balloon/statistics from
+        // wait_for_balloon and the respawned reactive controller).
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        let ops: Vec<(&str, Option<u64>)> = ps
             .iter()
-            .filter_map(|b| serde_json::from_str::<serde_json::Value>(b).ok())
-            .filter_map(|v| v["amount_mib"].as_u64())
+            .map(|r| {
+                let amt = serde_json::from_str::<serde_json::Value>(&r.body)
+                    .ok()
+                    .and_then(|v| v["amount_mib"].as_u64());
+                (r.path.as_str(), amt)
+            })
             .collect();
         assert_eq!(
-            amounts,
-            vec![1536, 0, 1536],
-            "expected inflate, deflate, inflate sequence; got {amounts:?}"
+            ops,
+            vec![
+                ("/balloon", Some(1536)), // park 1: inflate
+                ("/vm", None),            // park 1: pause
+                ("/vm", None),            // unpark: resume
+                ("/balloon", Some(0)),    // unpark: deflate
+                ("/balloon", Some(1536)), // park 2: inflate
+                ("/vm", None),            // park 2: pause
+            ],
+            "unexpected PATCH sequence: {ops:?}"
         );
     }
 
     #[tokio::test]
-    async fn park_patch_failure_leaves_flag_false() {
-        // Mock returns 400 on the first PATCH.
-        let (sock, _bodies, _dir) =
-            spawn_mock_fc_api(std::collections::VecDeque::from(vec![400])).await;
+    async fn park_balloon_failure_leaves_flag_false() {
+        // Balloon inflate fails (400). Pause should not be attempted.
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![400]), None).await;
 
         let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
             tokio::time::sleep(Duration::from_secs(3600)).await
@@ -1457,10 +1596,15 @@ mod tests {
 
         assert!(matches!(result, Err(SandboxError::IdleTransition(_))));
         assert!(!is_parked, "flag must stay false on failure");
-        // Controller was already aborted by park before the PATCH attempt.
         assert!(controller.is_none());
 
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 1, "only balloon inflate should be attempted");
+        assert_eq!(ps[0].path, "/balloon");
+
         // A follow-up unpark must be a clean no-op because is_parked is false.
+        drop(reqs);
         let crash_notify = Arc::new(Notify::new());
         unpark_inner(
             &mut is_parked,
@@ -1478,56 +1622,46 @@ mod tests {
 
     #[tokio::test]
     async fn park_retry_after_failure_succeeds() {
-        // First PATCH fails (400), the retry succeeds (204).
-        let (sock, bodies, _dir) =
-            spawn_mock_fc_api(std::collections::VecDeque::from(vec![400, 204])).await;
+        // First park: balloon fails (400). Second park: balloon OK (204), pause OK (204).
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![400, 204, 204]), None).await;
 
         let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
             tokio::time::sleep(Duration::from_secs(3600)).await
         }));
         let mut is_parked = false;
 
-        // First park attempt: PATCH returns 400, flag stays false, controller
-        // is gone (aborted before PATCH).
         let first = park_inner(&mut is_parked, 2048, &mut controller, &sock, "retry").await;
         assert!(matches!(first, Err(SandboxError::IdleTransition(_))));
         assert!(!is_parked);
         assert!(controller.is_none());
 
-        // Second park attempt: controller slot is already None (no-op
-        // .take()), PATCH succeeds (204), flag flips to true.
         park_inner(&mut is_parked, 2048, &mut controller, &sock, "retry")
             .await
             .unwrap();
         assert!(is_parked);
-        assert!(controller.is_none());
 
-        // Both PATCHes targeted the same inflate amount (2048 - 512 = 1536).
-        let bodies = bodies.lock().await;
-        assert_eq!(bodies.len(), 2, "expected two PATCH attempts");
-        for (i, body) in bodies.iter().enumerate() {
-            let parsed: serde_json::Value = serde_json::from_str(body).unwrap();
-            assert_eq!(
-                parsed["amount_mib"].as_u64().unwrap(),
-                1536,
-                "PATCH #{i} body must inflate to 1536 MiB"
-            );
-        }
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        // First attempt: balloon(400). Second: balloon(204) + pause(204).
+        assert_eq!(ps.len(), 3);
+        assert_eq!(ps[0].path, "/balloon");
+        assert_eq!(ps[1].path, "/balloon");
+        assert_eq!(ps[2].path, "/vm");
+        assert!(ps[2].body.contains("Paused"));
     }
 
     #[tokio::test]
     async fn unpark_retry_after_failure_succeeds() {
-        // Symmetric counterpart to `park_retry_after_failure_succeeds`.
-        // First PATCH (deflate) fails with 400, the retry succeeds with 204.
-        let (sock, bodies, _dir) =
-            spawn_mock_fc_api(std::collections::VecDeque::from(vec![400, 204])).await;
+        // First unpark: resume fails (500 — genuine error, not idempotent 400).
+        // Second unpark: resume OK (204), deflate OK (204).
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![500, 204, 204]), None).await;
 
         let mut is_parked = true;
         let mut controller: Option<tokio::task::JoinHandle<()>> = None;
         let crash_notify = Arc::new(Notify::new());
 
-        // First unpark attempt: PATCH 400, flag stays true, controller
-        // stays None (not respawned on failure).
         let first = unpark_inner(
             &mut is_parked,
             2048,
@@ -1539,10 +1673,8 @@ mod tests {
         .await;
         assert!(matches!(first, Err(SandboxError::IdleTransition(_))));
         assert!(is_parked, "flag must stay true on failure");
-        assert!(controller.is_none(), "controller must not be respawned");
+        assert!(controller.is_none());
 
-        // Second unpark attempt: PATCH 204, flag flips to false, controller
-        // is respawned.
         unpark_inner(
             &mut is_parked,
             2048,
@@ -1556,19 +1688,247 @@ mod tests {
         assert!(!is_parked);
         assert!(controller.is_some(), "controller must be respawned");
 
-        // Both PATCHes targeted the deflate amount (0).
-        let bodies = bodies.lock().await;
-        let deflate_count = bodies
-            .iter()
-            .filter_map(|b| serde_json::from_str::<serde_json::Value>(b).ok())
-            .filter(|v| v["amount_mib"].as_u64() == Some(0))
-            .count();
-        assert_eq!(deflate_count, 2, "expected two deflate PATCHes");
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 3);
+        // First attempt: resume(500).
+        assert_eq!(ps[0].path, "/vm");
+        assert!(ps[0].body.contains("Resumed"));
+        // Second attempt: resume(204), deflate(204).
+        assert_eq!(ps[1].path, "/vm");
+        assert_eq!(ps[2].path, "/balloon");
 
-        // Abort the respawned reactive controller so the test runtime
-        // doesn't leave a 5s-tick task running against the mock socket.
         if let Some(h) = controller.take() {
             h.abort();
         }
+    }
+
+    // -- new tests for vCPU pause/resume --
+
+    #[tokio::test]
+    async fn park_pause_failure_propagates_as_idle_transition() {
+        // Balloon inflate OK (204), vm pause fails (500).
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 500]), None).await;
+
+        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(3600)).await
+        }));
+        let mut is_parked = false;
+
+        let result = park_inner(&mut is_parked, 2048, &mut controller, &sock, "pause-fail").await;
+
+        assert!(matches!(result, Err(SandboxError::IdleTransition(_))));
+        assert!(!is_parked, "flag must stay false on failure");
+        // Controller was aborted before balloon PATCH.
+        assert!(controller.is_none());
+
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2);
+        assert_eq!(ps[0].path, "/balloon");
+        assert_eq!(ps[1].path, "/vm");
+    }
+
+    #[tokio::test]
+    async fn unpark_resume_failure_propagates_as_idle_transition() {
+        // Resume fails with 500 (genuine error). No deflate should be attempted.
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![500]), None).await;
+
+        let mut is_parked = true;
+        let mut controller: Option<tokio::task::JoinHandle<()>> = None;
+        let crash_notify = Arc::new(Notify::new());
+
+        let result = unpark_inner(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            &sock,
+            &crash_notify,
+            "resume-fail",
+        )
+        .await;
+
+        assert!(matches!(result, Err(SandboxError::IdleTransition(_))));
+        assert!(is_parked, "flag must stay true on failure");
+        assert!(controller.is_none(), "controller must not be respawned");
+
+        let reqs = reqs.lock().await;
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 1, "only resume should be attempted, no deflate");
+        assert_eq!(ps[0].path, "/vm");
+        assert!(ps[0].body.contains("Resumed"));
+    }
+
+    #[tokio::test]
+    async fn unpark_retry_after_partial_failure_resumes_idempotently() {
+        // First unpark: resume OK (204), deflate fails (400).
+        // Second unpark: resume 400 (already running — treated as OK), deflate OK (204).
+        let (sock, _reqs, _dir) = spawn_mock_fc_api(
+            std::collections::VecDeque::from(vec![204, 400, 400, 204]),
+            None,
+        )
+        .await;
+
+        let mut is_parked = true;
+        let mut controller: Option<tokio::task::JoinHandle<()>> = None;
+        let crash_notify = Arc::new(Notify::new());
+
+        // First attempt: resume OK, deflate fails.
+        let first = unpark_inner(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            &sock,
+            &crash_notify,
+            "idem",
+        )
+        .await;
+        assert!(matches!(first, Err(SandboxError::IdleTransition(_))));
+        assert!(is_parked, "flag must stay true after partial failure");
+
+        // Second attempt: resume 400 (idempotent), deflate OK.
+        unpark_inner(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            &sock,
+            &crash_notify,
+            "idem",
+        )
+        .await
+        .unwrap();
+        assert!(!is_parked);
+        assert!(
+            controller.is_some(),
+            "controller must be respawned on success"
+        );
+
+        if let Some(h) = controller.take() {
+            h.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn park_waits_for_balloon_before_pause() {
+        // Mock returns increasing actual_mib: 0 → 0 → 1536 (target reached).
+        let balloon_actual = Arc::new(AtomicU32::new(0));
+        let (sock, reqs, _dir) = spawn_mock_fc_api(
+            std::collections::VecDeque::new(),
+            Some(Arc::clone(&balloon_actual)),
+        )
+        .await;
+
+        // Bump actual_mib to target after a short delay (simulates guest
+        // balloon driver working). The poll interval is 500ms; we set it
+        // after 200ms so the second poll sees it.
+        let actual_clone = Arc::clone(&balloon_actual);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            actual_clone.store(1536, Ordering::Relaxed);
+        });
+
+        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(3600)).await
+        }));
+        let mut is_parked = false;
+
+        park_inner(&mut is_parked, 2048, &mut controller, &sock, "wait-test")
+            .await
+            .unwrap();
+
+        assert!(is_parked);
+        let reqs = reqs.lock().await;
+
+        // Should have at least one GET /balloon/statistics before the PATCH /vm pause.
+        let stats_gets: Vec<_> = reqs
+            .iter()
+            .filter(|r| r.method == "GET" && r.path == "/balloon/statistics")
+            .collect();
+        assert!(
+            !stats_gets.is_empty(),
+            "expected at least one balloon stats poll before pause"
+        );
+
+        // Verify PATCH ordering: balloon inflate, then vm pause.
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2);
+        assert_eq!(ps[0].path, "/balloon");
+        assert_eq!(ps[1].path, "/vm");
+        assert!(ps[1].body.contains("Paused"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn park_pauses_after_balloon_settle_timeout() {
+        // Balloon never reaches target — wait_for_balloon must time out
+        // and proceed to pause anyway. With `start_paused = true`, tokio
+        // auto-advances simulated time when all tasks await timers, so
+        // the 10s timeout completes instantly in wall-clock time.
+        let balloon_actual = Arc::new(AtomicU32::new(0)); // stuck at 0
+        let (sock, reqs, _dir) = spawn_mock_fc_api(
+            std::collections::VecDeque::new(),
+            Some(Arc::clone(&balloon_actual)),
+        )
+        .await;
+
+        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(3600)).await
+        }));
+        let mut is_parked = false;
+
+        park_inner(&mut is_parked, 2048, &mut controller, &sock, "timeout-test")
+            .await
+            .unwrap();
+
+        // Park must succeed despite balloon never reaching target.
+        assert!(is_parked);
+
+        let reqs = reqs.lock().await;
+
+        // At least one stats poll must have occurred before the timeout.
+        let stats_gets = reqs
+            .iter()
+            .filter(|r| r.method == "GET" && r.path == "/balloon/statistics")
+            .count();
+        assert!(
+            stats_gets >= 1,
+            "expected at least one balloon stats poll before timeout, got {stats_gets}"
+        );
+
+        // Final PATCH must be the vm pause.
+        let ps = patches(&reqs);
+        assert_eq!(ps.len(), 2, "expected balloon inflate + vm pause");
+        assert_eq!(ps[0].path, "/balloon");
+        assert_eq!(ps[1].path, "/vm");
+        assert!(ps[1].body.contains("Paused"));
+    }
+
+    #[tokio::test]
+    async fn park_small_vm_pause_failure_preserves_controller() {
+        // Small VM (≤512 MiB): no balloon work, just pause. If pause
+        // fails, the controller must be preserved (not aborted) — unlike
+        // large VMs where the controller is already gone.
+        let (sock, _reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![500]), None).await;
+
+        let original_controller: tokio::task::JoinHandle<()> =
+            tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
+        let original_id = original_controller.id();
+        let mut controller = Some(original_controller);
+        let mut is_parked = false;
+
+        let result = park_inner(&mut is_parked, 512, &mut controller, &sock, "small-fail").await;
+
+        assert!(matches!(result, Err(SandboxError::IdleTransition(_))));
+        assert!(!is_parked, "flag must stay false on failure");
+        // Key assertion: controller is preserved for small VMs (no balloon
+        // work was done, so no need to abort the controller).
+        let still_there = controller.as_ref().expect("controller must be preserved");
+        assert_eq!(
+            still_there.id(),
+            original_id,
+            "controller must not be replaced or aborted"
+        );
     }
 }

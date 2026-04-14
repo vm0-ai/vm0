@@ -30,10 +30,11 @@ pub trait Sandbox: Send + Sync + Any {
 
     /// Transition the sandbox into the idle/parked state.
     ///
-    /// Implementations may reclaim guest memory (e.g. balloon inflate),
-    /// pause background tickers, etc. The sandbox process remains running
-    /// and vCPUs are not paused — a parked sandbox must still be able to
-    /// respond to graceful shutdown via `stop()`.
+    /// Implementations may reclaim guest memory (e.g. balloon inflate)
+    /// and pause vCPUs to eliminate idle CPU overhead. A parked sandbox's
+    /// `stop()` must handle the paused state (e.g. skip graceful guest
+    /// shutdown and go straight to force-kill, since vCPUs cannot process
+    /// vsock messages).
     ///
     /// Must be idempotent: calling `park()` on an already-parked sandbox
     /// returns `Ok(())` without side effects.
@@ -49,8 +50,8 @@ pub trait Sandbox: Send + Sync + Any {
     ///
     /// Must be called before any further work is dispatched via `exec` /
     /// `spawn_watch` on a previously parked sandbox. Implementations
-    /// should restore whatever state `park()` altered (balloon deflate,
-    /// respawn background tickers, etc).
+    /// should restore whatever state `park()` altered (resume vCPUs,
+    /// balloon deflate, respawn background tickers, etc).
     ///
     /// Must be idempotent: calling `unpark()` on a sandbox that was
     /// never parked — or calling it repeatedly — returns `Ok(())`

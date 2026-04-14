@@ -159,6 +159,20 @@ impl<'a> ApiClient<'a> {
         Ok(())
     }
 
+    /// Resume a paused VM via PATCH /vm.
+    ///
+    /// Must be called before any guest interaction after a [`Self::pause`].
+    pub async fn resume(&self) -> Result<(), ApiError> {
+        self.send(
+            "PATCH",
+            "/vm",
+            Some(br#"{"state":"Resumed"}"#),
+            REQUEST_TIMEOUT,
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Create a snapshot via PUT /snapshot/create.
     ///
     /// The VM must be paused first (see [`Self::pause`]).
