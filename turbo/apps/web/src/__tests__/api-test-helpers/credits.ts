@@ -1,11 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { initServices } from "../../lib/init-services";
-import { orgMetadata } from "../../db/schema/org-metadata";
 import { creditUsage } from "../../db/schema/credit-usage";
 import { clientCreditUsage } from "../../db/schema/client-credit-usage";
-import { creditPricing } from "../../db/schema/credit-pricing";
-import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
 import { usageDaily } from "../../db/schema/usage-daily";
 import { insightsDaily } from "../../db/schema/insights-daily";
 import {
@@ -20,7 +17,32 @@ import {
 } from "../../lib/zero/credit/credit-expires-service";
 
 // ---------------------------------------------------------------------------
-// org credit helpers
+// Re-exports: DB-direct seeders and assertion helpers.
+//
+// These functions were moved to dedicated directories but are re-exported
+// here for backward compatibility — existing test files import from
+// api-test-helpers and should continue to work unchanged.
+// ---------------------------------------------------------------------------
+
+export {
+  updateOrgStripeFields,
+  updateOrgAutoRecharge,
+  updateOrgStripeSubscription,
+  insertTestCreditPricing,
+  insertCreditExpiresRecord,
+} from "../db-test-seeders/credits";
+
+export {
+  getOrgBillingFields,
+  getOrgAutoRechargeFields,
+  findCreditExpiresRecords,
+} from "../db-test-assertions/credits";
+
+// ---------------------------------------------------------------------------
+// Service-layer wrappers.
+//
+// These call production service functions (not raw DB) and are valid
+// API-based helpers.
 // ---------------------------------------------------------------------------
 
 /**
@@ -30,155 +52,41 @@ export async function grantCreditsToOrg(
   orgId: string,
   amount: number,
 ): Promise<void> {
+  initServices();
   await globalThis.services.db.transaction(async (tx) => {
     await grantOrgCredits(tx, orgId, amount);
   });
 }
 
-// ---------------------------------------------------------------------------
-// Stripe billing helpers
-// ---------------------------------------------------------------------------
-
 /**
- * Set Stripe billing fields on an org in the `org_metadata` table.
+ * Deduct from expires records within a transaction (test helper).
  */
-export async function updateOrgStripeFields(
+export async function testDeductFromExpiresRecords(
   orgId: string,
-  fields: {
-    stripeCustomerId?: string | null;
-    stripeSubscriptionId?: string | null;
-    subscriptionStatus?: string | null;
-    currentPeriodEnd?: Date | null;
-    cancelAtPeriodEnd?: boolean;
-    lastProcessedInvoiceId?: string | null;
-    tier?: string;
-  },
-): Promise<void> {
-  await globalThis.services.db
-    .update(orgMetadata)
-    .set({ ...fields, updatedAt: new Date() })
-    .where(eq(orgMetadata.orgId, orgId));
-}
-
-/**
- * Read all billing-related fields from an org in the `org_metadata` table.
- */
-export async function getOrgBillingFields(orgId: string) {
-  const [row] = await globalThis.services.db
-    .select({
-      tier: orgMetadata.tier,
-      credits: orgMetadata.credits,
-      stripeCustomerId: orgMetadata.stripeCustomerId,
-      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-      subscriptionStatus: orgMetadata.subscriptionStatus,
-      currentPeriodEnd: orgMetadata.currentPeriodEnd,
-      cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-      lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
-    })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return row ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// Auto-recharge helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Configure auto-recharge settings on an org.
- */
-export async function updateOrgAutoRecharge(
-  orgId: string,
-  fields: {
-    autoRechargeEnabled?: boolean;
-    autoRechargeThreshold?: number | null;
-    autoRechargeAmount?: number | null;
-    autoRechargePendingAt?: Date | null;
-  },
-): Promise<void> {
-  await globalThis.services.db
-    .update(orgMetadata)
-    .set({ ...fields, updatedAt: new Date() })
-    .where(eq(orgMetadata.orgId, orgId));
-}
-
-/**
- * Read auto-recharge fields from an org.
- */
-export async function getOrgAutoRechargeFields(orgId: string) {
-  const [row] = await globalThis.services.db
-    .select({
-      autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
-      autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
-      autoRechargeAmount: orgMetadata.autoRechargeAmount,
-      autoRechargePendingAt: orgMetadata.autoRechargePendingAt,
-    })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return row ?? null;
-}
-
-/**
- * Set Stripe subscription fields on org_metadata for testing billing-related flows.
- */
-export async function updateOrgStripeSubscription(
-  orgId: string,
-  subscriptionId: string,
-  status: string,
-): Promise<void> {
-  await globalThis.services.db
-    .update(orgMetadata)
-    .set({
-      stripeSubscriptionId: subscriptionId,
-      subscriptionStatus: status,
-      updatedAt: new Date(),
-    })
-    .where(eq(orgMetadata.orgId, orgId));
-}
-
-/**
- * Insert a credit_pricing record for testing.
- * Uses upsert so tests can safely set pricing for the same model.
- */
-export async function insertTestCreditPricing(
-  model: string,
-  options?: {
-    inputTokenPrice?: number;
-    outputTokenPrice?: number;
-    cacheReadTokenPrice?: number;
-    cacheCreationTokenPrice?: number;
-    modelProvider?: string;
-  },
+  amount: number,
 ): Promise<void> {
   initServices();
-  const inputTokenPrice = options?.inputTokenPrice ?? 100;
-  const outputTokenPrice = options?.outputTokenPrice ?? 200;
-  const cacheReadTokenPrice = options?.cacheReadTokenPrice ?? 0;
-  const cacheCreationTokenPrice = options?.cacheCreationTokenPrice ?? 0;
-  const modelProvider = options?.modelProvider ?? "";
-
-  await globalThis.services.db
-    .insert(creditPricing)
-    .values({
-      model,
-      modelProvider,
-      inputTokenPrice,
-      outputTokenPrice,
-      cacheReadTokenPrice,
-      cacheCreationTokenPrice,
-    })
-    .onConflictDoUpdate({
-      target: [creditPricing.model, creditPricing.modelProvider],
-      set: {
-        inputTokenPrice,
-        outputTokenPrice,
-        cacheReadTokenPrice,
-        cacheCreationTokenPrice,
-      },
-    });
+  await globalThis.services.db.transaction(async (tx) => {
+    await deductFromExpiresRecords(tx, orgId, amount);
+  });
 }
+
+/**
+ * Expire credits within a transaction (test helper).
+ * Returns the total expired amount.
+ */
+export async function testExpireCredits(orgId: string): Promise<number> {
+  initServices();
+  let result = 0;
+  await globalThis.services.db.transaction(async (tx) => {
+    result = await expireCredits(tx, orgId);
+  });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Usage / insights helpers (Part 2 — will be migrated in a separate issue).
+// ---------------------------------------------------------------------------
 
 /**
  * Insert a credit_usage record for testing.
@@ -641,72 +549,4 @@ export async function createCompletedRun(
     })
     .returning();
   return run!.id;
-}
-
-// ---------------------------------------------------------------------------
-// Credit expires record helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Insert a credit expires record for testing.
- */
-export async function insertCreditExpiresRecord(params: {
-  orgId: string;
-  source?: string;
-  stripeInvoiceId?: string;
-  amount: number;
-  remaining?: number;
-  expiresAt: Date;
-}): Promise<string> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .insert(creditExpiresRecord)
-    .values({
-      orgId: params.orgId,
-      source: params.source ?? "subscription_renewal",
-      stripeInvoiceId: params.stripeInvoiceId ?? null,
-      amount: params.amount,
-      remaining: params.remaining ?? params.amount,
-      expiresAt: params.expiresAt,
-    })
-    .returning({ id: creditExpiresRecord.id });
-  return row!.id;
-}
-
-/**
- * Find all credit expires records for an org, ordered by expires_at ASC.
- */
-export async function findCreditExpiresRecords(orgId: string) {
-  initServices();
-  return globalThis.services.db
-    .select()
-    .from(creditExpiresRecord)
-    .where(eq(creditExpiresRecord.orgId, orgId))
-    .orderBy(creditExpiresRecord.expiresAt);
-}
-
-/**
- * Deduct from expires records within a transaction (test helper).
- */
-export async function testDeductFromExpiresRecords(
-  orgId: string,
-  amount: number,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db.transaction(async (tx) => {
-    await deductFromExpiresRecords(tx, orgId, amount);
-  });
-}
-
-/**
- * Expire credits within a transaction (test helper).
- * Returns the total expired amount.
- */
-export async function testExpireCredits(orgId: string): Promise<number> {
-  initServices();
-  let result = 0;
-  await globalThis.services.db.transaction(async (tx) => {
-    result = await expireCredits(tx, orgId);
-  });
-  return result;
 }
