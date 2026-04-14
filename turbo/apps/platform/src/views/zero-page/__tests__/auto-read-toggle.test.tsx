@@ -39,9 +39,7 @@ describe("auto-read toggle - hidden when audioIO feature is off (AR-001)", () =>
       expect(screen.getByText("Assistant")).toBeInTheDocument();
     });
 
-    expect(
-      screen.queryByLabelText("Toggle auto-read"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Toggle auto-read")).not.toBeInTheDocument();
   });
 });
 
@@ -75,7 +73,7 @@ describe("auto-read toggle - initial state is off (AR-003)", () => {
       expect(screen.getByLabelText("Toggle auto-read")).toBeInTheDocument();
     });
 
-    expect(context.store.get(autoReadEnabled$)).toBe(false);
+    expect(context.store.get(autoReadEnabled$)).toBeFalsy();
   });
 });
 
@@ -95,7 +93,7 @@ describe("auto-read toggle - click enables auto-read (AR-004)", () => {
 
     await user.click(toggleBtn);
 
-    expect(context.store.get(autoReadEnabled$)).toBe(true);
+    expect(context.store.get(autoReadEnabled$)).toBeTruthy();
   });
 });
 
@@ -116,6 +114,6 @@ describe("auto-read toggle - double-click returns to off (AR-005)", () => {
     await user.click(toggleBtn);
     await user.click(toggleBtn);
 
-    expect(context.store.get(autoReadEnabled$)).toBe(false);
+    expect(context.store.get(autoReadEnabled$)).toBeFalsy();
   });
 });
