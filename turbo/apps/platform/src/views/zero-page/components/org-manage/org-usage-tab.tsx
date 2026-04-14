@@ -23,7 +23,6 @@ import {
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { CreditsChart } from "../../../usage-page/components/credits-chart.tsx";
-import { RunsTab } from "../../../usage-page/components/runs-tab.tsx";
 import {
   billingStatusAsync$,
   apiTierToBillingTier,
@@ -549,17 +548,10 @@ export function OrgUsageTab() {
           >
             Daily
           </TabsTrigger>
-          <TabsTrigger
-            value="runs"
-            className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-          >
-            Runs
-          </TabsTrigger>
         </TabsList>
       </Tabs>
       {tab === "overview" && <OverviewSection />}
       {tab === "daily" && <CreditsChart />}
-      {tab === "runs" && <RunsTab />}
     </div>
   );
 }

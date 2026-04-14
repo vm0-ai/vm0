@@ -1,9 +1,5 @@
 import { computed, state, command } from "ccstate";
-import {
-  zeroUsageMembersContract,
-  zeroUsageDailyContract,
-  zeroUsageRunsContract,
-} from "@vm0/core";
+import { zeroUsageMembersContract, zeroUsageDailyContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -18,7 +14,7 @@ export const usageMembersAsync$ = computed(async (get) => {
 
 // --- Tab state ---
 
-export type UsageTab = "overview" | "daily" | "runs";
+export type UsageTab = "overview" | "daily";
 
 const internalUsageTab$ = state<UsageTab>("overview");
 
@@ -153,88 +149,6 @@ export const dailyCreditsAsync$ = computed(async (get) => {
   const client = createClient(zeroUsageDailyContract);
   const result = await accept(
     client.get({ query: { mode, dateFrom, dateTo } }),
-    [200],
-  );
-  return result.body;
-});
-
-// --- Per-run records signals ---
-
-const internalRunsPage$ = state(1);
-const internalRunsPageSize$ = state(20);
-const internalRunsAgentFilter$ = state<string | undefined>(undefined);
-const internalRunsMemberFilter$ = state<string | undefined>(undefined);
-const internalRunsDateFrom$ = state<string | undefined>(undefined);
-const internalRunsDateTo$ = state<string | undefined>(undefined);
-
-export const runsPage$ = computed((get) => {
-  return get(internalRunsPage$);
-});
-
-export const runsPageSize$ = computed((get) => {
-  return get(internalRunsPageSize$);
-});
-
-export const runsMemberFilter$ = computed((get) => {
-  return get(internalRunsMemberFilter$);
-});
-
-export const setRunsPage$ = command(({ set }, page: number) => {
-  set(internalRunsPage$, page);
-});
-
-export const setRunsPageSize$ = command(({ set }, pageSize: number) => {
-  set(internalRunsPageSize$, pageSize);
-  set(internalRunsPage$, 1);
-});
-
-export const setRunsFilter$ = command(
-  (
-    { set },
-    filter: {
-      agentId?: string;
-      userId?: string;
-      dateFrom?: string;
-      dateTo?: string;
-    },
-  ) => {
-    if (filter.agentId !== undefined) {
-      set(internalRunsAgentFilter$, filter.agentId || undefined);
-    }
-    if (filter.userId !== undefined) {
-      set(internalRunsMemberFilter$, filter.userId || undefined);
-    }
-    if (filter.dateFrom !== undefined) {
-      set(internalRunsDateFrom$, filter.dateFrom || undefined);
-    }
-    if (filter.dateTo !== undefined) {
-      set(internalRunsDateTo$, filter.dateTo || undefined);
-    }
-    set(internalRunsPage$, 1);
-  },
-);
-
-export const usageRunsAsync$ = computed(async (get) => {
-  const createClient = get(zeroClient$);
-  const page = get(internalRunsPage$);
-  const pageSize = get(internalRunsPageSize$);
-  const agentId = get(internalRunsAgentFilter$);
-  const userId = get(internalRunsMemberFilter$);
-  const dateFrom = get(internalRunsDateFrom$);
-  const dateTo = get(internalRunsDateTo$);
-
-  const client = createClient(zeroUsageRunsContract);
-  const result = await accept(
-    client.get({
-      query: {
-        page,
-        pageSize,
-        agentId,
-        userIds: userId,
-        dateFrom,
-        dateTo,
-      },
-    }),
     [200],
   );
   return result.body;
