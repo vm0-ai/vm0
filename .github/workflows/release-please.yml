@@ -798,9 +798,34 @@ jobs:
                   type: mrkdwn
                   text: "*CLI* ❌ Publish failed\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
+  # Resolve repo-level R2 vars for the shared image cache bucket.
+  # Must run WITHOUT `environment:` so vars/secrets resolve to repo-level
+  # (dev bucket), not the production-scoped user-storage bucket.
+  resolve-image-cache:
+    runs-on: ubuntu-latest
+    needs: [release-please]
+    if: needs.release-please.outputs.runner_rs_release_created == 'true'
+    outputs:
+      r2-account-id: ${{ steps.resolve.outputs.r2-account-id }}
+      r2-access-key-id: ${{ steps.resolve.outputs.r2-access-key-id }}
+      r2-secret-access-key: ${{ steps.resolve.outputs.r2-secret-access-key }}
+      r2-bucket: ${{ steps.resolve.outputs.r2-bucket }}
+    steps:
+      - id: resolve
+        env:
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+        run: |
+          echo "r2-account-id=$R2_ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+          echo "r2-access-key-id=$R2_ACCESS_KEY_ID" >> "$GITHUB_OUTPUT"
+          echo "r2-secret-access-key=$R2_SECRET_ACCESS_KEY" >> "$GITHUB_OUTPUT"
+          echo "r2-bucket=$R2_BUCKET" >> "$GITHUB_OUTPUT"
+
   # Deploy runner to production metal instances
   deploy-runner-production:
-    needs: [release-please, migrate-production, deploy-web-production]
+    needs: [release-please, migrate-production, deploy-web-production, resolve-image-cache]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.runner_rs_release_created == 'true'
@@ -908,11 +933,12 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
-          # R2 credentials for runner build image cache (read by runner via env)
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          # R2 image cache credentials — from resolve-image-cache job (repo-level,
+          # not production-scoped) so the runner uses the same bucket as CI.
+          R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
+          R2_ACCESS_KEY_ID: ${{ needs.resolve-image-cache.outputs.r2-access-key-id }}
+          R2_SECRET_ACCESS_KEY: ${{ needs.resolve-image-cache.outputs.r2-secret-access-key }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
         run: |
           cd ansible
           ansible-playbook \
