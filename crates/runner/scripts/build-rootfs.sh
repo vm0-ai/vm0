@@ -481,7 +481,7 @@ create_ext4
 # Move into final place
 mv "$TMP_ROOTFS_PATH" "$ROOTFS_PATH"
 
-# Report size
+# Report final image size
 SIZE=$(stat -c%s "$ROOTFS_PATH")
 SIZE_MB=$((SIZE / 1024 / 1024))
 echo "[OK] rootfs built: ${ROOTFS_PATH} (${SIZE_MB} MiB)"
