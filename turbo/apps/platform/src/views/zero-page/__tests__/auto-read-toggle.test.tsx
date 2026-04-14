@@ -72,9 +72,12 @@ describe("auto-read toggle - initial state is off (AR-003)", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      const toggleBtn = screen.getAllByLabelText("Toggle auto-read")[0];
-      expect(toggleBtn).toHaveAttribute("aria-pressed", "false");
+      expect(
+        screen.getAllByLabelText("Toggle auto-read").length,
+      ).toBeGreaterThan(0);
     });
+
+    expect(context.store.get(autoReadEnabled$)).toBeFalsy();
   });
 });
 
