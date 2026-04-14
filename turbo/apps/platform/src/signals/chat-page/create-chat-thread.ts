@@ -351,6 +351,8 @@ interface MessageCommandsDeps {
   reloadThinkingMessage$: Command<void, []>;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  autoScroll$: Command<void, []>;
+  forceScrollToBottom$: Command<void, []>;
 }
 
 function createPrepareUserMessage(deps: MessageCommandsDeps) {
@@ -477,10 +479,13 @@ function createMessageCommands(deps: MessageCommandsDeps) {
         return;
       }
 
+      set(deps.forceScrollToBottom$);
+
       await setLoop(
         (sig) => {
           set(reloadChatThreads$);
           set(deps.reloadThread$);
+          set(deps.autoScroll$);
           return set(runLoop.checkFinished$, sig);
         },
         3000,
@@ -504,6 +509,7 @@ function createMessageCommands(deps: MessageCommandsDeps) {
     }
 
     set(deps.internalLocalMessages$, msgs.activeRunMessages);
+    set(deps.forceScrollToBottom$);
 
     const assistantMessages = msgs.activeRunMessages.filter(
       (m): m is AssistantChatMessage => {
@@ -529,6 +535,7 @@ function createMessageCommands(deps: MessageCommandsDeps) {
         await setLoop(
           (sig) => {
             set(deps.reloadThinkingMessage$);
+            set(deps.autoScroll$);
             return set(runLoop.checkFinished$, sig);
           },
           3000,
@@ -899,6 +906,8 @@ export function createChatThreadSignals(
     reloadThinkingMessage$,
     cancelDraftSync$,
     flushDraftClear$,
+    autoScroll$,
+    forceScrollToBottom$,
   });
 
   return {

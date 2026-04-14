@@ -179,8 +179,7 @@ describe("zero chat thread page - scroll container mounts on load", () => {
   });
 });
 
-// CHAT-SCROLL-005: useAutoScrollOnce resets on thread change so forceScrollToBottom$
-// fires again for the new thread
+// CHAT-SCROLL-005: forceScrollToBottom$ fires again for each new thread
 describe("zero chat thread page - scroll fires for each new thread", () => {
   it("scroll container is present after navigating to a second thread (CHAT-SCROLL-005)", async () => {
     mockThread("thread-scroll-nav-a", [
@@ -197,9 +196,8 @@ describe("zero chat thread page - scroll fires for each new thread", () => {
       expect(screen.getByText("Thread nav-A message")).toBeInTheDocument();
     });
 
-    // Navigate to thread B — a new ChatThreadSignals is created, giving
-    // useAutoScrollOnce a new scroll command reference and resetting its
-    // fired flag so it can scroll for the new thread.
+    // Navigate to thread B — a new ChatThreadSignals is created with a fresh
+    // forceScrollToBottom$ command so the signal layer scrolls for the new thread.
     context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-scroll-nav-b" },
     });
