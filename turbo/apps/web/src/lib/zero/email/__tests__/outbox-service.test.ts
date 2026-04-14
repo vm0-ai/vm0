@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render } from "@react-email/components";
-import type { ReactElement } from "react";
+import type { CreateEmailOptions } from "resend";
 import { Resend } from "resend";
 import { testContext } from "../../../../__tests__/test-helpers";
 import {
@@ -297,8 +297,12 @@ describe("outbox-service", () => {
 
       const sentCall = mockResend.emails.send.mock.calls[0];
       expect(sentCall).toBeDefined();
-      const reactElement = (sentCall![0] as { react: ReactElement }).react;
-      const html = await render(reactElement);
+      const payload: CreateEmailOptions = sentCall![0];
+      expect(payload).toHaveProperty("react");
+      if (!("react" in payload) || payload.react == null) {
+        throw new Error("Expected react property on email payload");
+      }
+      const html = await render(payload.react);
 
       expect(html).toContain("<h2");
       expect(html).toContain("<strong");
