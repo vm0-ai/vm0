@@ -3,6 +3,10 @@ import { initServices } from "../../lib/init-services";
 import { users } from "../../db/schema/user";
 import { userCache } from "../../db/schema/user-cache";
 import { vm0ApiKeys } from "../../db/schema/vm0-api-key";
+import {
+  voiceChatSessions,
+  voiceChatPreparations,
+} from "../../db/schema/voice-chat";
 
 /**
  * Insert a user row for testing.
@@ -90,4 +94,84 @@ export async function insertVm0ApiKeys(
 ) {
   initServices();
   await globalThis.services.db.insert(vm0ApiKeys).values(keys);
+}
+
+/**
+ * Create a voice-chat session directly in the database.
+ * @why-db-direct Voice chat sessions are created by the voice-chat API which requires WebSocket infrastructure not available in tests
+ */
+export async function createTestVoiceChatSession(
+  orgId: string,
+  userId: string,
+  status = "active",
+): Promise<{ id: string }> {
+  initServices();
+  const [session] = await globalThis.services.db
+    .insert(voiceChatSessions)
+    .values({ orgId, userId, status })
+    .returning({ id: voiceChatSessions.id });
+  return session!;
+}
+
+/**
+ * Insert a voice-chat session with full override support.
+ * @why-db-direct Voice chat sessions require WebSocket infrastructure; full override enables impossible-state testing (e.g., stale heartbeats)
+ */
+export async function insertTestVoiceChatSession(overrides: {
+  orgId: string;
+  userId: string;
+  agentId?: string;
+  status?: string;
+  runId?: string;
+  createdAt?: Date;
+  lastHeartbeatAt?: Date;
+}): Promise<string> {
+  initServices();
+  const now = new Date();
+  const [row] = await globalThis.services.db
+    .insert(voiceChatSessions)
+    .values({
+      orgId: overrides.orgId,
+      userId: overrides.userId,
+      agentId: overrides.agentId,
+      status: overrides.status ?? "active",
+      runId: overrides.runId,
+      createdAt: overrides.createdAt ?? now,
+      lastHeartbeatAt: overrides.lastHeartbeatAt ?? now,
+    })
+    .returning({ id: voiceChatSessions.id });
+  return row!.id;
+}
+
+/**
+ * Insert a voice-chat preparation record.
+ * @why-db-direct Voice chat preparations are created by the prepare endpoint which requires real-time infrastructure
+ */
+export async function insertTestVoiceChatPreparation(overrides: {
+  orgId: string;
+  userId: string;
+  agentId?: string;
+  mode?: string;
+  prompt?: string;
+  runId?: string;
+  status?: string;
+  directiveContent?: string;
+  createdAt?: Date;
+}): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(voiceChatPreparations)
+    .values({
+      orgId: overrides.orgId,
+      userId: overrides.userId,
+      agentId: overrides.agentId,
+      mode: overrides.mode ?? "chat",
+      prompt: overrides.prompt ?? null,
+      runId: overrides.runId ?? null,
+      status: overrides.status ?? "preparing",
+      directiveContent: overrides.directiveContent ?? null,
+      createdAt: overrides.createdAt ?? new Date(),
+    })
+    .returning({ id: voiceChatPreparations.id });
+  return row!.id;
 }

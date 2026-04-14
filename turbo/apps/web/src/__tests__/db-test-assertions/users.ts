@@ -1,6 +1,12 @@
 import { eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { users } from "../../db/schema/user";
+import { pushSubscriptions } from "../../db/schema/push-subscription";
+import {
+  voiceChatSessions,
+  voiceChatEvents,
+  voiceChatPreparations,
+} from "../../db/schema/voice-chat";
 
 /**
  * Read a full users row by userId.
@@ -48,4 +54,76 @@ export async function countUserRows(
     sql`SELECT COUNT(*)::int AS count FROM ${sql.identifier(tableName)} WHERE ${sql.identifier(columnName)} = ${userId}`,
   );
   return (rows.rows[0] as { count: number }).count;
+}
+
+/**
+ * Query push subscriptions for the given endpoint directly from the DB.
+ * Returns the matching rows (empty array means the subscription was deleted).
+ */
+export async function getPushSubscriptionsByEndpoint(
+  endpoint: string,
+): Promise<Array<{ id: string; endpoint: string }>> {
+  initServices();
+  return globalThis.services.db
+    .select({ id: pushSubscriptions.id, endpoint: pushSubscriptions.endpoint })
+    .from(pushSubscriptions)
+    .where(eq(pushSubscriptions.endpoint, endpoint));
+}
+
+/**
+ * Read a voice-chat session's status field.
+ */
+export async function getTestVoiceChatSessionStatus(
+  id: string,
+): Promise<string | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ status: voiceChatSessions.status })
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, id));
+  return row?.status;
+}
+
+/**
+ * Read a voice-chat session's lastHeartbeatAt timestamp.
+ */
+export async function getTestVoiceChatSessionHeartbeat(
+  id: string,
+): Promise<Date | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ lastHeartbeatAt: voiceChatSessions.lastHeartbeatAt })
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, id));
+  return row?.lastHeartbeatAt;
+}
+
+/**
+ * Read voice-chat events for a session.
+ */
+export async function getTestVoiceChatEvents(
+  sessionId: string,
+): Promise<Array<{ type: string; source: string; content: string | null }>> {
+  initServices();
+  return globalThis.services.db
+    .select({
+      type: voiceChatEvents.type,
+      source: voiceChatEvents.source,
+      content: voiceChatEvents.content,
+    })
+    .from(voiceChatEvents)
+    .where(eq(voiceChatEvents.sessionId, sessionId));
+}
+
+/**
+ * Read a full voice-chat preparation record.
+ */
+export async function getTestVoiceChatPreparation(id: string) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(voiceChatPreparations)
+    .where(eq(voiceChatPreparations.id, id))
+    .limit(1);
+  return row;
 }

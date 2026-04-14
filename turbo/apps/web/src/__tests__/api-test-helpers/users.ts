@@ -1,16 +1,8 @@
-import { eq } from "drizzle-orm";
-import { initServices } from "../../lib/init-services";
 import {
   consumeCaptureNetworkBodies,
   getUserPreferences,
   updateUserPreferences,
 } from "../../lib/zero/user/user-preferences-service";
-import { pushSubscriptions } from "../../db/schema/push-subscription";
-import {
-  voiceChatSessions,
-  voiceChatEvents,
-  voiceChatPreparations,
-} from "../../db/schema/voice-chat";
 import { getVm0ApiKey } from "../../lib/zero/vm0-key/vm0-key-service";
 import { POST as registerPushSubscriptionRoute } from "../../../app/api/zero/push-subscriptions/route";
 import { randomUUID } from "crypto";
@@ -24,10 +16,21 @@ export {
   seedUserCacheEntry,
   insertUserCacheEntry,
   insertVm0ApiKeys,
+  createTestVoiceChatSession,
+  insertTestVoiceChatSession,
+  insertTestVoiceChatPreparation,
 } from "../db-test-seeders/users";
 
 // Re-exports: read-only assertions
-export { getUserRow, countUserRows } from "../db-test-assertions/users";
+export {
+  getUserRow,
+  countUserRows,
+  getPushSubscriptionsByEndpoint,
+  getTestVoiceChatSessionStatus,
+  getTestVoiceChatSessionHeartbeat,
+  getTestVoiceChatEvents,
+  getTestVoiceChatPreparation,
+} from "../db-test-assertions/users";
 
 /**
  * Get a VM0 API key from the pool for a vendor.
@@ -68,141 +71,6 @@ export async function createTestPushSubscription(
   }
 
   return { endpoint: ep };
-}
-
-/**
- * Query push subscriptions for the given endpoint directly from the DB.
- * Returns the matching rows (empty array means the subscription was deleted).
- */
-export async function getPushSubscriptionsByEndpoint(
-  endpoint: string,
-): Promise<Array<{ id: string; endpoint: string }>> {
-  initServices();
-  return globalThis.services.db
-    .select({ id: pushSubscriptions.id, endpoint: pushSubscriptions.endpoint })
-    .from(pushSubscriptions)
-    .where(eq(pushSubscriptions.endpoint, endpoint));
-}
-
-// ============================================================================
-// Voice Chat Helpers
-// ============================================================================
-
-/**
- * Create a voice-chat session directly in the database.
- */
-export async function createTestVoiceChatSession(
-  orgId: string,
-  userId: string,
-  status = "active",
-): Promise<{ id: string }> {
-  initServices();
-  const [session] = await globalThis.services.db
-    .insert(voiceChatSessions)
-    .values({ orgId, userId, status })
-    .returning({ id: voiceChatSessions.id });
-  return session!;
-}
-
-export async function insertTestVoiceChatSession(overrides: {
-  orgId: string;
-  userId: string;
-  agentId?: string;
-  status?: string;
-  runId?: string;
-  createdAt?: Date;
-  lastHeartbeatAt?: Date;
-}): Promise<string> {
-  initServices();
-  const now = new Date();
-  const [row] = await globalThis.services.db
-    .insert(voiceChatSessions)
-    .values({
-      orgId: overrides.orgId,
-      userId: overrides.userId,
-      agentId: overrides.agentId,
-      status: overrides.status ?? "active",
-      runId: overrides.runId,
-      createdAt: overrides.createdAt ?? now,
-      lastHeartbeatAt: overrides.lastHeartbeatAt ?? now,
-    })
-    .returning({ id: voiceChatSessions.id });
-  return row!.id;
-}
-
-export async function getTestVoiceChatSessionStatus(
-  id: string,
-): Promise<string | undefined> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ status: voiceChatSessions.status })
-    .from(voiceChatSessions)
-    .where(eq(voiceChatSessions.id, id));
-  return row?.status;
-}
-
-export async function getTestVoiceChatSessionHeartbeat(
-  id: string,
-): Promise<Date | undefined> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ lastHeartbeatAt: voiceChatSessions.lastHeartbeatAt })
-    .from(voiceChatSessions)
-    .where(eq(voiceChatSessions.id, id));
-  return row?.lastHeartbeatAt;
-}
-
-export async function getTestVoiceChatEvents(
-  sessionId: string,
-): Promise<Array<{ type: string; source: string; content: string | null }>> {
-  initServices();
-  return globalThis.services.db
-    .select({
-      type: voiceChatEvents.type,
-      source: voiceChatEvents.source,
-      content: voiceChatEvents.content,
-    })
-    .from(voiceChatEvents)
-    .where(eq(voiceChatEvents.sessionId, sessionId));
-}
-
-export async function insertTestVoiceChatPreparation(overrides: {
-  orgId: string;
-  userId: string;
-  agentId?: string;
-  mode?: string;
-  prompt?: string;
-  runId?: string;
-  status?: string;
-  directiveContent?: string;
-  createdAt?: Date;
-}): Promise<string> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .insert(voiceChatPreparations)
-    .values({
-      orgId: overrides.orgId,
-      userId: overrides.userId,
-      agentId: overrides.agentId,
-      mode: overrides.mode ?? "chat",
-      prompt: overrides.prompt ?? null,
-      runId: overrides.runId ?? null,
-      status: overrides.status ?? "preparing",
-      directiveContent: overrides.directiveContent ?? null,
-      createdAt: overrides.createdAt ?? new Date(),
-    })
-    .returning({ id: voiceChatPreparations.id });
-  return row!.id;
-}
-
-export async function getTestVoiceChatPreparation(id: string) {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select()
-    .from(voiceChatPreparations)
-    .where(eq(voiceChatPreparations.id, id))
-    .limit(1);
-  return row;
 }
 
 /**
