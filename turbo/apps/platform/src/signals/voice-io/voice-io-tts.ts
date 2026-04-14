@@ -107,6 +107,7 @@ const fetchAndPlay$ = command(
       if (!response) {
         L.error("TTS API returned error");
         await audioCtx.close();
+        signal.throwIfAborted();
         set(internalPlayingMessageId$, null);
         return;
       }
@@ -114,6 +115,7 @@ const fetchAndPlay$ = command(
       const body = response.body;
       if (!body) {
         await audioCtx.close();
+        signal.throwIfAborted();
         set(internalPlayingMessageId$, null);
         return;
       }

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { http, HttpResponse, delay } from "msw";
+import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { playTts$, stopTts$, ttsPlayingMessageId$ } from "../voice-io-tts.ts";
+import { createDeferredPromise, resetSignal } from "../../utils.ts";
 
 function mockWebAudio() {
   const sources: {
@@ -135,11 +136,8 @@ describe("playTts$", () => {
     mockWebAudio();
     mockTtsEndpoint();
 
-    const controller = new AbortController();
-    controller.abort();
-
     await expect(
-      context.store.set(playTts$, "msg-1", "Hello world", controller.signal),
+      context.store.set(playTts$, "msg-1", "Hello world", AbortSignal.abort()),
     ).rejects.toThrow();
 
     expect(context.store.get(ttsPlayingMessageId$)).toBeNull();
@@ -149,27 +147,24 @@ describe("playTts$", () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
 
+    const fetchGate = createDeferredPromise<void>(context.signal);
     server.use(
       http.post("http://localhost:3000/api/zero/voice-io/tts", async () => {
-        await delay(100);
-        const body = new ReadableStream({
-          start(controller) {
-            controller.enqueue(new Uint8Array([0x00, 0x01, 0x00, 0x02]));
-            controller.close();
-          },
-        });
-        return new HttpResponse(body, {
-          headers: { "Content-Type": "application/octet-stream" },
-        });
+        await fetchGate.promise;
+        return HttpResponse.json({});
       }),
     );
 
+    const pageReset$ = resetSignal();
+    const pageSignal = context.store.set(pageReset$, context.signal);
     const playPromise = context.store.set(
       playTts$,
       "msg-2",
       "Hello world",
-      AbortSignal.timeout(20),
+      pageSignal,
     );
+    // Abort the signal by resetting — simulates page navigation
+    context.store.set(pageReset$, context.signal);
 
     await expect(playPromise).rejects.toThrow();
     expect(context.store.get(ttsPlayingMessageId$)).toBeNull();
@@ -179,28 +174,20 @@ describe("playTts$", () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
 
+    const fetchGate = createDeferredPromise<void>(context.signal);
     server.use(
       http.post("http://localhost:3000/api/zero/voice-io/tts", async () => {
-        await delay(50);
-        const body = new ReadableStream({
-          start(controller) {
-            controller.enqueue(new Uint8Array([0x00, 0x01, 0x00, 0x02]));
-            controller.close();
-          },
-        });
-        return new HttpResponse(body, {
-          headers: { "Content-Type": "application/octet-stream" },
-        });
+        await fetchGate.promise;
+        return HttpResponse.json({});
       }),
     );
 
     // First attempt — abort mid-flight
-    const p1 = context.store.set(
-      playTts$,
-      "msg-3",
-      "Hello",
-      AbortSignal.timeout(10),
-    );
+    const pageReset$ = resetSignal();
+    const pageSignal = context.store.set(pageReset$, context.signal);
+    const p1 = context.store.set(playTts$, "msg-3", "Hello", pageSignal);
+    // Abort the signal by resetting — simulates page navigation
+    context.store.set(pageReset$, context.signal);
     try {
       await p1;
     } catch {
