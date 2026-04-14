@@ -554,13 +554,13 @@ fn is_semver_version(name: &str) -> bool {
 /// whether the corresponding systemd unit is active, and deletes inactive versions
 /// (bin dir, runner config dir, and systemd unit).
 ///
-/// If `skip` is provided, that version is unconditionally protected from deletion,
-/// regardless of systemd unit state. This prevents the currently-deployed version
-/// from being garbage-collected during deployment.
+/// If `protect` is provided, that version is unconditionally kept regardless of
+/// systemd unit state. This prevents the currently-deployed version from being
+/// garbage-collected during deployment (see `--protect-version`).
 async fn gc_versions(
     home: &HomePaths,
     dry_run: bool,
-    skip: Option<&str>,
+    protect: Option<&str>,
 ) -> RunnerResult<Vec<String>> {
     let bin_dir = home.bin_dir();
     let mut entries = match tokio::fs::read_dir(&bin_dir).await {
@@ -583,7 +583,7 @@ async fn gc_versions(
             continue;
         }
 
-        if skip == Some(name) {
+        if protect == Some(name) {
             info!("version {name}: protected (--protect-version), skipping");
             continue;
         }
