@@ -2,7 +2,13 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { tasksContract, type TaskItem } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
-import { jsonParseOr, onRef, setLoop } from "../utils.ts";
+import {
+  jsonParseOr,
+  onRef,
+  resetSignal,
+  setLoop,
+  throwIfNotAbort,
+} from "../utils.ts";
 import {
   createChatThreadSignals,
   ensureDraft$,
@@ -39,7 +45,7 @@ const OPTIMISTIC_TTL_MS = 30_000;
 
 export type TaskPanelEntry =
   | { kind: "chat"; signals: ChatThreadSignals }
-  | { kind: "activity"; signals: ActivitySignals };
+  | { kind: "activity"; signals: ActivitySignals; runId: string };
 
 // ---------------------------------------------------------------------------
 // TaskSignals — per-task signal bundle
@@ -57,6 +63,7 @@ export interface TaskSignals {
   panelEntry$: Computed<TaskPanelEntry | null>;
   openTask$: Command<Promise<void>, [AbortSignal]>;
   closeTask$: Command<void, []>;
+  refreshPanel$: Command<void, [AbortSignal]>;
   focusInput$: Command<void, []>;
   setCardRef$: Command<void | (() => void), [HTMLElement | null]>;
   focusCard$: Command<void, []>;
@@ -84,6 +91,44 @@ const markRead$ = command(
     );
   },
 );
+
+function createCardSignals() {
+  const internalCardRef$ = state<HTMLElement | null>(null);
+  const setCardRef$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalCardRef$, null);
+      });
+      set(internalCardRef$, el);
+    }),
+  );
+  const scrollCardIntoView$ = command(({ get }) => {
+    const el = get(internalCardRef$);
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+    }
+  });
+  const focusCard$ = command(({ get, set }) => {
+    set(scrollCardIntoView$);
+    get(internalCardRef$)?.focus();
+  });
+
+  const internalInputFocused$ = state(false);
+  const inputFocused$ = computed((get) => {
+    return get(internalInputFocused$);
+  });
+  const setInputFocused$ = command(({ set }, focused: boolean) => {
+    set(internalInputFocused$, focused);
+  });
+
+  return {
+    setCardRef$,
+    focusCard$,
+    scrollCardIntoView$,
+    inputFocused$,
+    setInputFocused$,
+  };
+}
 
 function createTaskSignals(initialTask: TaskItem): TaskSignals {
   const internalTask$ = state(initialTask);
@@ -121,11 +166,46 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     return get(internalPanelEntry$);
   });
 
+  const {
+    setCardRef$,
+    focusCard$,
+    scrollCardIntoView$,
+    inputFocused$,
+    setInputFocused$,
+  } = createCardSignals();
+
+  const resetPanelPolling$ = resetSignal();
+
   const closeTask$ = command(({ set }) => {
+    set(resetPanelPolling$);
     set(internalOpen$, false);
     set(internalOpenedAt$, null);
     set(internalPanelEntry$, null);
-    set(internalInputFocused$, false);
+    set(setInputFocused$, false);
+  });
+
+  const refreshPanel$ = command(({ get, set }, signal: AbortSignal) => {
+    const entry = get(internalPanelEntry$);
+    if (!entry || entry.kind !== "activity") {
+      return;
+    }
+
+    const task = get(internalTask$);
+    if (!task.latestRunId || entry.runId === task.latestRunId) {
+      return;
+    }
+
+    const panelSignal = set(resetPanelPolling$, signal);
+    const signals = createActivitySignals(task.latestRunId);
+    set(internalPanelEntry$, {
+      kind: "activity",
+      signals,
+      runId: task.latestRunId,
+    });
+
+    // Polling lifecycle is managed by resetPanelPolling$ — aborted on next
+    // refresh or panel close. throwIfNotAbort swallows the expected AbortError.
+    set(signals.startPolling$, panelSignal).catch(throwIfNotAbort);
   });
 
   const optimisticRef = { value: false };
@@ -153,11 +233,16 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
       }
 
       if (task.latestRunId) {
+        const panelSignal = set(resetPanelPolling$, signal);
         const signals = createActivitySignals(task.latestRunId);
-        set(internalPanelEntry$, { kind: "activity", signals });
+        set(internalPanelEntry$, {
+          kind: "activity",
+          signals,
+          runId: task.latestRunId,
+        });
         set(internalOpenedAt$, Date.now());
         set(internalOpen$, true);
-        await set(signals.startPolling$, signal);
+        await set(signals.startPolling$, panelSignal);
       }
     },
   );
@@ -167,34 +252,6 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     if (entry) {
       set(entry.signals.focusInput$);
     }
-  });
-
-  const internalCardRef$ = state<HTMLElement | null>(null);
-  const setCardRef$ = onRef(
-    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener("abort", () => {
-        set(internalCardRef$, null);
-      });
-      set(internalCardRef$, el);
-    }),
-  );
-  const scrollCardIntoView$ = command(({ get }) => {
-    const el = get(internalCardRef$);
-    if (el) {
-      el.scrollIntoView({ block: "nearest" });
-    }
-  });
-  const focusCard$ = command(({ get, set }) => {
-    set(scrollCardIntoView$);
-    get(internalCardRef$)?.focus();
-  });
-
-  const internalInputFocused$ = state(false);
-  const inputFocused$ = computed((get) => {
-    return get(internalInputFocused$);
-  });
-  const setInputFocused$ = command(({ set }, focused: boolean) => {
-    set(internalInputFocused$, focused);
   });
 
   return {
@@ -219,6 +276,7 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     panelEntry$,
     openTask$,
     closeTask$,
+    refreshPanel$,
     focusInput$,
     setCardRef$,
     focusCard$,
@@ -293,8 +351,9 @@ export const setupTasksLoop$ = command(
             set(existing.updateTask$, task);
             existing.optimistic = false;
             existing.optimisticInsertedAt = null;
-            // Auto-mark read when task panel is already open
+            // Refresh activity panel when latestRunId changes, then mark read
             if (get(existing.open$)) {
+              set(existing.refreshPanel$, signal);
               set(markRead$, task.id, task.latestRunId);
             }
           } else {

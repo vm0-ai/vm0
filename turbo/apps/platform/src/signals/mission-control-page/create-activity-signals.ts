@@ -8,6 +8,7 @@ import type { LogDetail, AgentEvent } from "../zero-page/log-types.ts";
 // ---------------------------------------------------------------------------
 
 export interface ActivitySignals {
+  runId: string;
   detail$: Computed<Promise<LogDetail>>;
   events$: Computed<Promise<AgentEvent[]>>;
   stepSearch$: Computed<string>;
@@ -63,6 +64,7 @@ export function createActivitySignals(runId: string): ActivitySignals {
   const focusInput$ = command(() => {});
 
   return {
+    runId,
     detail$,
     events$,
     stepSearch$,
