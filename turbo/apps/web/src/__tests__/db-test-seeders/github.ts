@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { githubInstallations } from "../../db/schema/github-installation";
 import { githubUserLinks } from "../../db/schema/github-user-link";
 import { githubIssueSessions } from "../../db/schema/github-issue-session";
+import { initServices } from "../../lib/init-services";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 import { uniqueId, uniqueNumericId } from "../test-helpers";
 
@@ -23,6 +24,7 @@ export async function insertTestGitHubInstallation(
   composeId: string,
   installationId?: string,
 ) {
+  initServices();
   const id = installationId ?? uniqueNumericId();
   const encryptedToken = encryptSecretValue(
     "ghs_test_token",
@@ -52,6 +54,7 @@ export async function insertTestPendingGitHubInstallation(
   targetId: string,
   targetType: string = "Organization",
 ) {
+  initServices();
   const [row] = await globalThis.services.db
     .insert(githubInstallations)
     .values({
@@ -81,6 +84,7 @@ export async function insertTestGitHubInstallationWithAdmin(
   composeId: string,
   vm0UserId: string,
 ) {
+  initServices();
   const githubUserId = uniqueId("gh-uid");
   const installation = await insertTestGitHubInstallation(composeId);
 
@@ -115,6 +119,7 @@ export async function insertTestGitHubUserLink(
   installationId: string,
   vm0UserId: string,
 ) {
+  initServices();
   await globalThis.services.db
     .insert(githubUserLinks)
     .values({ githubUserId, installationId, vm0UserId })
@@ -136,6 +141,7 @@ export async function insertTestGitHubIssueSession(params: {
   agentSessionId: string;
   lastCommentId?: string;
 }): Promise<{ id: string }> {
+  initServices();
   const [row] = await globalThis.services.db
     .insert(githubIssueSessions)
     .values({
@@ -160,6 +166,7 @@ export async function insertTestGithubInstallation(params: {
   composeId: string;
   installationId?: string;
 }): Promise<{ id: string }> {
+  initServices();
   const [row] = await globalThis.services.db
     .insert(githubInstallations)
     .values({
@@ -181,6 +188,7 @@ export async function insertTestGithubUserLink(params: {
   githubUserId: string;
   vm0UserId: string;
 }): Promise<{ id: string }> {
+  initServices();
   const [row] = await globalThis.services.db
     .insert(githubUserLinks)
     .values({
