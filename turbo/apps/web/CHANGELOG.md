@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.231.0](https://github.com/vm0-ai/vm0/compare/web-v12.230.0...web-v12.231.0) (2026-04-14)
+
+
+### Features
+
+* add 6 new use cases (batch 2) ([#9261](https://github.com/vm0-ai/vm0/issues/9261)) ([aba2af0](https://github.com/vm0-ai/vm0/commit/aba2af08068d5c80c00081d07b386ec0e330466e))
+
+
+### Bug Fixes
+
+* **web:** resolve SEO crawl errors for hreflang, html lang, and missing translations ([#9274](https://github.com/vm0-ai/vm0/issues/9274)) ([55f6d2b](https://github.com/vm0-ai/vm0/commit/55f6d2b5c809357e06a16460bc425dd215c5b429))
+
 ## [12.230.0](https://github.com/vm0-ai/vm0/compare/web-v12.229.1...web-v12.230.0) (2026-04-14)
 
 

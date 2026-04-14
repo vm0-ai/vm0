@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.235.2](https://github.com/vm0-ai/vm0/compare/app-v0.235.1...app-v0.235.2) (2026-04-14)
+
+
+### Refactoring
+
+* **platform:** clean up chat thread signals and move composer out of scroll container ([#9277](https://github.com/vm0-ai/vm0/issues/9277)) ([42f47c1](https://github.com/vm0-ai/vm0/commit/42f47c140479410d94403e58e1594479866e82ce))
+
 ## [0.235.1](https://github.com/vm0-ai/vm0/compare/app-v0.235.0...app-v0.235.1) (2026-04-14)
 
 
