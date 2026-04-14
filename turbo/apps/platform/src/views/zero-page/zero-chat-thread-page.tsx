@@ -61,8 +61,6 @@ import {
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
-import { useAutoRead } from "./use-auto-read.ts";
-import { useAutoScroll, useAutoScrollOnce } from "./use-auto-scroll.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -234,10 +232,6 @@ export function ZeroChatThreadPageInner({
   const messagesLoading = messagesLoadable.state === "loading";
   const setScrollContainer = useSet(thread.setScrollContainer$);
 
-  // Force scroll to bottom once when messages first load, without
-  // re-triggering on every render (e.g. streaming chunks or re-navigation).
-  useAutoScrollOnce(messages.length > 0, thread.forceScrollToBottom$);
-
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       <ChatThreadHeader thread={thread} />
@@ -310,9 +304,6 @@ function ChatThreadComposer({
   const cancelRun = useSet(thread.cancelRun$);
   const setInputRef = useSet(thread.setInputRef$);
   const pageSignal = useGet(pageSignal$);
-  const attachments = useGet(thread.draft.attachments$);
-
-  useAutoScroll(attachments.length, thread.autoScroll$);
 
   const handleSend = (text: string) => {
     setInput("");
@@ -993,11 +984,7 @@ function StaticAssistantMessage({
 }) {
   const content = useLastResolved(message.result$) ?? "";
 
-  useAutoScroll(content, thread.autoScroll$);
-
   const showActivityLine = isRunActive(message);
-
-  useAutoRead(message.id, content, showActivityLine);
 
   const hasSummaries = message.summaries && message.summaries.length > 0;
 

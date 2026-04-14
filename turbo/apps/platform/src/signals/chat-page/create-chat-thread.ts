@@ -33,6 +33,10 @@ import {
   type UserChatMessage,
   type AssistantChatMessage,
 } from "./chat-message.ts";
+import {
+  markMessageLoading$,
+  checkAutoRead$,
+} from "../voice-io/voice-io-tts.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -466,6 +470,8 @@ function createMessageCommands(deps: MessageCommandsDeps) {
         return [...prev, assistantMessage];
       });
 
+      set(markMessageLoading$, assistantMessage.id);
+
       const runLoop = assistantMessage.runLoop;
       if (!runLoop) {
         return;
@@ -480,6 +486,12 @@ function createMessageCommands(deps: MessageCommandsDeps) {
         3000,
         signal,
       );
+
+      const content = await get(assistantMessage.result$);
+      signal.throwIfAborted();
+      if (content) {
+        await set(checkAutoRead$, assistantMessage.id, content, signal);
+      }
     },
   );
 
@@ -512,6 +524,8 @@ function createMessageCommands(deps: MessageCommandsDeps) {
           return;
         }
 
+        set(markMessageLoading$, message.id);
+
         await setLoop(
           (sig) => {
             set(deps.reloadThinkingMessage$);
@@ -520,6 +534,12 @@ function createMessageCommands(deps: MessageCommandsDeps) {
           3000,
           signal,
         );
+
+        const content = await get(message.result$);
+        signal.throwIfAborted();
+        if (content) {
+          await set(checkAutoRead$, message.id, content, signal);
+        }
 
         set(reloadChatThreads$);
         set(deps.reloadThread$);

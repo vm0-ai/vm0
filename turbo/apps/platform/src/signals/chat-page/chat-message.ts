@@ -9,6 +9,10 @@ import {
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
 import { createRunLoop, type PagedRunEvents } from "../zero-page/polling.ts";
+import {
+  markMessageLoading$,
+  checkAutoRead$,
+} from "../voice-io/voice-io-tts.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import {
@@ -645,6 +649,8 @@ export const loadChatMessages$ = command(
           return;
         }
 
+        set(markMessageLoading$, message.id);
+
         await setLoop(
           (sig) => {
             set(reloadThinkingMessage$, (x) => {
@@ -655,6 +661,12 @@ export const loadChatMessages$ = command(
           3000,
           signal,
         );
+
+        const content = await get(message.result$);
+        signal.throwIfAborted();
+        if (content) {
+          await set(checkAutoRead$, message.id, content, signal);
+        }
 
         set(reloadChatThreads$);
         set(reloadCurrentChatThread$);
@@ -910,6 +922,8 @@ export const sendExistingThreadMessage$ = command(
       return [...prev, assistantMessage];
     });
 
+    set(markMessageLoading$, assistantMessage.id);
+
     const runLoop = assistantMessage.runLoop;
     if (!runLoop) {
       return;
@@ -924,6 +938,12 @@ export const sendExistingThreadMessage$ = command(
       3000,
       signal,
     );
+
+    const content = await get(assistantMessage.result$);
+    signal.throwIfAborted();
+    if (content) {
+      await set(checkAutoRead$, assistantMessage.id, content, signal);
+    }
   },
 );
 
