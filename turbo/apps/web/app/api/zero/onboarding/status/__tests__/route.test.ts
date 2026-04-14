@@ -5,13 +5,12 @@ import {
   createTestCompose,
   createTestZeroAgent,
   seedOrphanCompose,
+  updateOrgDefaultAgent,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { PUT as setDefaultAgent } from "../../../default-agent/route";
 import { POST as completeOnboarding } from "../../complete/route";
-import { initServices } from "../../../../../../src/lib/init-services";
-import { orgMetadata } from "../../../../../../src/db/schema/org-metadata";
 
 const context = testContext();
 
@@ -239,14 +238,7 @@ describe("GET /api/zero/onboarding/status", () => {
     });
 
     // Directly set the orphan compose as defaultAgentId in org_metadata
-    initServices();
-    await globalThis.services.db
-      .insert(orgMetadata)
-      .values({ orgId: user.orgId, defaultAgentId: orphan.composeId })
-      .onConflictDoUpdate({
-        target: orgMetadata.orgId,
-        set: { defaultAgentId: orphan.composeId },
-      });
+    await updateOrgDefaultAgent(user.orgId, orphan.composeId);
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/onboarding/status",
