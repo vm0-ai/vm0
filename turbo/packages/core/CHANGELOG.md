@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.181.0](https://github.com/vm0-ai/vm0/compare/core-v8.180.2...core-v8.181.0) (2026-04-14)
+
+
+### Features
+
+* persist chat thread drafts to database with local-first sync ([#9202](https://github.com/vm0-ai/vm0/issues/9202)) ([a5a0c1d](https://github.com/vm0-ai/vm0/commit/a5a0c1dfb7deff0632f57cdd84f2a1a4dad1a700))
+
 ## [8.180.2](https://github.com/vm0-ai/vm0/compare/core-v8.180.1...core-v8.180.2) (2026-04-13)
 
 

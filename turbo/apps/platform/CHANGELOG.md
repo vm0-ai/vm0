@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.233.0](https://github.com/vm0-ai/vm0/compare/app-v0.232.2...app-v0.233.0) (2026-04-14)
+
+
+### Features
+
+* persist chat thread drafts to database with local-first sync ([#9202](https://github.com/vm0-ai/vm0/issues/9202)) ([a5a0c1d](https://github.com/vm0-ai/vm0/commit/a5a0c1dfb7deff0632f57cdd84f2a1a4dad1a700))
+
+
+### Bug Fixes
+
+* **voice-io:** show tts controls on mobile touch devices ([#9226](https://github.com/vm0-ai/vm0/issues/9226)) ([#9229](https://github.com/vm0-ai/vm0/issues/9229)) ([f65ef35](https://github.com/vm0-ai/vm0/commit/f65ef35a93bad5aa63abcf7c10cea2c4a0f2c586))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.181.0
+
 ## [0.232.2](https://github.com/vm0-ai/vm0/compare/app-v0.232.1...app-v0.232.2) (2026-04-13)
 
 
