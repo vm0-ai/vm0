@@ -157,7 +157,7 @@ describe("voice-chat page - idle state meeting box (VC-004)", () => {
 // ---------------------------------------------------------------------------
 
 describe("voice-chat page - meeting box prepare button (VC-005)", () => {
-  it("Prepare button is disabled when meeting topic is empty", async () => {
+  it("prepare button is disabled when meeting topic is empty", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
@@ -168,7 +168,7 @@ describe("voice-chat page - meeting box prepare button (VC-005)", () => {
     expect(prepareBtn).toBeDisabled();
   });
 
-  it("Prepare button is enabled after typing a meeting topic", async () => {
+  it("prepare button is enabled after typing a meeting topic", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
