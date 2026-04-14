@@ -18,11 +18,7 @@ import {
 } from "../../../../../src/lib/zero/slack/blocks";
 import { disconnect } from "../../../../../src/lib/zero/slack-org/connect-service";
 import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
-import {
-  resolveDefaultComposeId,
-  buildOrgConnectUrl,
-  getWorkspaceAgent,
-} from "../../../../../src/lib/zero/slack-org/handlers/shared";
+import { buildOrgConnectUrl } from "../../../../../src/lib/zero/slack-org/handlers/shared";
 import { getAppUrl } from "../../../../../src/lib/zero/url";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -85,22 +81,9 @@ async function handleConnect(
     .limit(1);
 
   if (existingConnection) {
-    let agentName: string | undefined;
-    if (installation.orgId) {
-      const composeId = await resolveDefaultComposeId(installation.orgId);
-      if (composeId) {
-        const agent = await getWorkspaceAgent(composeId);
-        agentName = agent?.displayName ?? agent?.name;
-      }
-    }
-
-    const agentLine = agentName
-      ? `Your workspace agent is *${agentName}*.`
-      : `No workspace agent configured yet.`;
-
     return ephemeral(
       buildSuccessMessage(
-        `You are already connected.\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
+        `You are already connected.\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
       ),
     );
   }
