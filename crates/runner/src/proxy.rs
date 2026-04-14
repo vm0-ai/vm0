@@ -991,8 +991,9 @@ mod tests {
             .spawn()
             .unwrap();
 
-        // Give process time to exit before polling starts.
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Wait for `true` to actually exit before calling wait_for_ready,
+        // so the first try_wait() inside the function detects it immediately.
+        let _ = child.wait().await;
 
         let port = find_available_port().unwrap();
         let result = wait_for_ready(&mut child, port, Duration::from_secs(5)).await;
