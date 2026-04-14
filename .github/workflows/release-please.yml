@@ -825,6 +825,7 @@ jobs:
           # value.  Because it is a registered secret GitHub masks it as
           # *** in all logs, keeping the passphrase invisible.
           PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+        shell: bash
         run: |
           set -euo pipefail
           # GitHub redacts raw secret values AND their base64 encodings
@@ -952,6 +953,7 @@ jobs:
           _PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           _ENC_AK: ${{ needs.resolve-image-cache.outputs.r2-access-key-id }}
           _ENC_SK: ${{ needs.resolve-image-cache.outputs.r2-secret-access-key }}
+        shell: bash
         run: |
           set -euo pipefail
           AK=$(echo -n "$_ENC_AK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
