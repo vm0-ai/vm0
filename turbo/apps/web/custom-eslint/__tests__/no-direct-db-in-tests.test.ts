@@ -23,6 +23,14 @@ ruleTester.run("no-direct-db-in-tests", rule, {
       // services.db without globalThis prefix is fine (different variable)
       code: "const x = services.db;",
     },
+    {
+      // Importing from db-test-seeders is fine
+      code: 'import { insertTestUser } from "../db-test-seeders/users";',
+    },
+    {
+      // Importing from non-schema paths is fine
+      code: 'import { foo } from "../../lib/services";',
+    },
   ],
   invalid: [
     {
@@ -53,6 +61,14 @@ ruleTester.run("no-direct-db-in-tests", rule, {
         });
       `,
       errors: [{ messageId: "noInitServices" }],
+    },
+    {
+      code: 'import { users } from "../../db/schema/user";',
+      errors: [{ messageId: "noDbSchemaImport" }],
+    },
+    {
+      code: 'import { agentRuns } from "../../db/schema/agent-run";',
+      errors: [{ messageId: "noDbSchemaImport" }],
     },
   ],
 });

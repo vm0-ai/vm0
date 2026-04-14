@@ -1,7 +1,3 @@
-import { and, eq } from "drizzle-orm";
-import { initServices } from "../../lib/init-services";
-import { agentComposes } from "../../db/schema/agent-compose";
-import { zeroAgents } from "../../db/schema/zero-agent";
 import type { ScheduleResponse } from "../../lib/zero/schedule/schedule-service";
 import {
   deploySchedule,
@@ -12,33 +8,7 @@ import {
   getScheduleRecentRuns,
 } from "../../lib/zero/schedule";
 import { getTestAuthContext } from "./core";
-
-/**
- * Resolve composeId to agentId for test helpers.
- * Looks up the compose to get org/name, then finds the corresponding zero agent.
- */
-async function resolveAgentIdFromCompose(composeId: string): Promise<string> {
-  const [compose] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId, name: agentComposes.name })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  if (!compose) throw new Error(`Compose ${composeId} not found`);
-
-  const [agent] = await globalThis.services.db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, compose.orgId),
-        eq(zeroAgents.name, compose.name),
-      ),
-    )
-    .limit(1);
-  if (!agent) throw new Error(`Zero agent not found for compose ${composeId}`);
-
-  return agent.id;
-}
+import { resolveAgentIdFromCompose } from "../db-test-seeders/schedules";
 
 /**
  * Create a test schedule via the schedule service.
@@ -57,7 +27,6 @@ export async function createTestSchedule(
     appendSystemPrompt?: string;
   },
 ): Promise<ScheduleResponse> {
-  initServices();
   const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
 
@@ -92,7 +61,6 @@ export async function getTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
-  initServices();
   const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
   return getScheduleByName(userId, orgId, agentId, name);
@@ -109,7 +77,6 @@ export async function enableTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
-  initServices();
   const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
   return enableSchedule(userId, orgId, agentId, name);
@@ -126,7 +93,6 @@ export async function disableTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
-  initServices();
   const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
   return disableSchedule(userId, orgId, agentId, name);
@@ -142,7 +108,6 @@ export async function deleteTestSchedule(
   composeId: string,
   name: string,
 ): Promise<void> {
-  initServices();
   const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
   await deleteSchedule(userId, orgId, agentId, name);
@@ -169,7 +134,6 @@ export async function getTestScheduleRuns(
     error: string | null;
   }>;
 }> {
-  initServices();
   const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
   const runs = await getScheduleRecentRuns(

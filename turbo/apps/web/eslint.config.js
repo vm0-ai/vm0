@@ -78,6 +78,15 @@ export default [
     },
   },
   {
+    files: ["**/api-test-helpers/**/*.ts"],
+    plugins: {
+      web: webPlugin,
+    },
+    rules: {
+      "web/no-direct-db-in-tests": "error",
+    },
+  },
+  {
     ignores: [
       "custom-eslint/**",
       "scripts/migrations/001-backfill-clerk-orgs/**",

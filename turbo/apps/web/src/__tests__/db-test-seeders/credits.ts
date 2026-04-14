@@ -12,6 +12,11 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
+import { grantOrgCredits } from "../../lib/zero/org/org-service";
+import {
+  deductFromExpiresRecords,
+  expireCredits,
+} from "../../lib/zero/credit/credit-expires-service";
 
 // ---------------------------------------------------------------------------
 // DB-direct seeders for billing / Stripe test setup.
@@ -504,4 +509,59 @@ export async function createCompletedRun(
     })
     .returning();
   return run!.id;
+}
+
+// ---------------------------------------------------------------------------
+// Transaction wrappers.
+//
+// These functions wrap production service functions that expect a transaction
+// parameter (tx). They provide the transaction context for test usage.
+// ---------------------------------------------------------------------------
+
+/**
+ * Grant credits to an org atomically. Wraps grantOrgCredits in a transaction.
+ *
+ * @why-db-direct Requires a database transaction wrapper to call grantOrgCredits
+ * service; no API endpoint provides atomic credit grants
+ */
+export async function grantCreditsToOrg(
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db.transaction(async (tx) => {
+    await grantOrgCredits(tx, orgId, amount);
+  });
+}
+
+/**
+ * Deduct from expires records within a transaction (test helper).
+ *
+ * @why-db-direct Requires a database transaction wrapper to call
+ * deductFromExpiresRecords service; service expects tx parameter
+ */
+export async function testDeductFromExpiresRecords(
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db.transaction(async (tx) => {
+    await deductFromExpiresRecords(tx, orgId, amount);
+  });
+}
+
+/**
+ * Expire credits within a transaction (test helper).
+ * Returns the total expired amount.
+ *
+ * @why-db-direct Requires a database transaction wrapper to call expireCredits
+ * service; service expects tx parameter
+ */
+export async function testExpireCredits(orgId: string): Promise<number> {
+  initServices();
+  let result = 0;
+  await globalThis.services.db.transaction(async (tx) => {
+    result = await expireCredits(tx, orgId);
+  });
+  return result;
 }

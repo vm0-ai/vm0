@@ -38,10 +38,23 @@ export default createRule({
         "Do not use globalThis.services.db in test files. Use API helpers instead. See docs/testing/web-testing.md#avoid-db-operations",
       noInitServices:
         "Do not call initServices() in test files. Route handlers call it internally. See docs/testing/web-testing.md#no-initservices-in-route-tests",
+      noDbSchemaImport:
+        "Do not import from db/schema/* in test files. Use db-test-seeders or db-test-assertions instead.",
     },
   },
   create(context) {
     return {
+      // Detect imports from db/schema/*
+      ImportDeclaration(node: TSESTree.ImportDeclaration) {
+        const source = node.source.value;
+        if (typeof source === "string" && /\/db\/schema\//.test(source)) {
+          context.report({
+            node,
+            messageId: "noDbSchemaImport",
+          });
+        }
+      },
+
       // Detect globalThis.services.db
       MemberExpression(node: TSESTree.MemberExpression) {
         if (
