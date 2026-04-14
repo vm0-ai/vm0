@@ -115,9 +115,7 @@ describe("voice-chat page - idle state quick chat box (VC-003)", () => {
     detachedSetupPage({ context, path: "/voice-chat" });
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/start voice chat/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/start voice chat/i)).toBeInTheDocument();
     });
   });
 });
@@ -155,13 +153,9 @@ describe("voice-chat page - idle state meeting box (VC-004)", () => {
     detachedSetupPage({ context, path: "/voice-chat" });
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/prepare/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/prepare/i)).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(/start meeting/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/start meeting/i)).toBeInTheDocument();
   });
 });
 
@@ -192,9 +186,7 @@ describe("voice-chat page - meeting box prepare button (VC-005)", () => {
     await user.type(textarea, "Quarterly planning");
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/^prepare$/i),
-      ).not.toBeDisabled();
+      expect(screen.getByText(/^prepare$/i)).not.toBeDisabled();
     });
   });
 });
