@@ -1,0 +1,20 @@
+name: "Install mold linker"
+description: "Download and install the mold linker for faster linking of cross-compiled binaries"
+
+inputs:
+  version:
+    description: "mold version to install"
+    required: false
+    default: "2.41.0"
+
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      env:
+        MOLD_VERSION: ${{ inputs.version }}
+      run: |
+        curl -fsSL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" \
+          | tar xz --strip-components=2 -C /usr/local/bin "mold-${MOLD_VERSION}-x86_64-linux/bin/mold"
+        ln -sf /usr/local/bin/mold /usr/local/bin/ld.mold
+        ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold
