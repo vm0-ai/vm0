@@ -368,6 +368,7 @@ pub(crate) async fn spawn_mitmdump(
 
     // Wait for process to be alive (poll liveness).
     if let Err(e) = wait_for_ready(&mut child, port, READY_TIMEOUT).await {
+        stopping.store(true, Ordering::Release);
         let _ = child.kill().await;
         return Err(e);
     }
