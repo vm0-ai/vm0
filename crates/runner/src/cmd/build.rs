@@ -541,10 +541,13 @@ async fn compute_image_hash(
     hasher.update(b"cpu_microcode:");
     hasher.update(read_cpu_microcode().unwrap_or_default().as_bytes());
 
-    // BIOS/firmware version — firmware updates can change ACPI tables, CPU feature
-    // advertisement, and memory map, affecting KVM register state in snapshots.
+    // BIOS/firmware version and revision — firmware updates can change ACPI tables,
+    // CPU feature advertisement, and memory map, affecting KVM register state in
+    // snapshots. Both fields can change independently.
     hasher.update(b"bios_version:");
     hasher.update(read_sysfs_trimmed("/sys/devices/virtual/dmi/id/bios_version").as_bytes());
+    hasher.update(b"bios_release:");
+    hasher.update(read_sysfs_trimmed("/sys/devices/virtual/dmi/id/bios_release").as_bytes());
 
     Ok(hex::encode(hasher.finalize()))
 }
