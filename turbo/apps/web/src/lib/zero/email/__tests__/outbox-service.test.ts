@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render } from "@react-email/components";
+import type { ReactElement } from "react";
 import { Resend } from "resend";
 import { testContext } from "../../../../__tests__/test-helpers";
 import {
@@ -272,6 +274,35 @@ describe("outbox-service", () => {
       const item = await findTestOutboxItemById(id);
       expect(item).not.toBeNull();
       expect(item!.subject).toBe("Old sent");
+    });
+  });
+
+  describe("agent-reply markdown rendering", () => {
+    it("renders markdown output as structural HTML tags", async () => {
+      const { id } = await insertTestOutboxItem({
+        fromAddress: "agent@vm7.bot",
+        toAddresses: "user@example.com",
+        subject: "Markdown test",
+        template: {
+          template: "agent-reply",
+          props: {
+            agentName: "test-agent",
+            output: "## Hello\n\nThis is **bold** and `code`.",
+            logsUrl: "https://example.com/logs",
+          },
+        },
+      });
+
+      await drainById(id);
+
+      const sentCall = mockResend.emails.send.mock.calls[0];
+      expect(sentCall).toBeDefined();
+      const reactElement = (sentCall![0] as { react: ReactElement }).react;
+      const html = await render(reactElement);
+
+      expect(html).toContain("<h2");
+      expect(html).toContain("<strong");
+      expect(html).toContain("<code");
     });
   });
 
