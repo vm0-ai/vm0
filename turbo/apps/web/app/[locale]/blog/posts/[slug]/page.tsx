@@ -10,7 +10,12 @@ import { Link } from "../../../../../navigation";
 import Particles from "../../../../components/Particles";
 import Footer from "../../../../components/Footer";
 import { ShareButtons } from "../../../../components/blog";
-import { getPost, getPosts, getBlogBaseUrl } from "../../../../lib/blog";
+import {
+  getPost,
+  getPosts,
+  getPostAvailableLocales,
+  getBlogBaseUrl,
+} from "../../../../lib/blog";
 import { locales, type Locale } from "../../../../../i18n";
 import { buildLocaleAlternates } from "../../../../lib/seo/alternates";
 import { isBlogEnabled } from "../../../../../src/env";
@@ -44,7 +49,11 @@ export async function generateMetadata({
   return {
     title: post.title,
     description: post.excerpt,
-    alternates: buildLocaleAlternates(`/blog/posts/${slug}`, locale as Locale),
+    alternates: buildLocaleAlternates(
+      `/blog/posts/${slug}`,
+      locale as Locale,
+      (await getPostAvailableLocales(slug, locales)) as Locale[],
+    ),
     openGraph: {
       title: post.title,
       description: post.excerpt,
