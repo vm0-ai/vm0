@@ -296,15 +296,27 @@ export async function notifyConnectSuccess(params: {
     `You're connected! :tada:\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
   );
 
+  let sentEphemeral = false;
   if (channelId) {
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: slackUserId,
-      text: "You're connected!",
-      blocks,
-      ...(threadTs ? { thread_ts: threadTs } : {}),
-    });
-  } else {
+    try {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: slackUserId,
+        text: "You're connected!",
+        blocks,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+      });
+      sentEphemeral = true;
+    } catch (err) {
+      // Bot may not be in the channel — fall back to DM below
+      log.info("Ephemeral failed, falling back to DM", {
+        channelId,
+        error: err,
+      });
+    }
+  }
+
+  if (!sentEphemeral) {
     const connectMsg = await postMessage(
       client,
       slackUserId,
