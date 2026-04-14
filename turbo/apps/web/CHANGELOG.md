@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.232.1](https://github.com/vm0-ai/vm0/compare/web-v12.232.0...web-v12.232.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* use database interval instead of stale callback payload value ([#9307](https://github.com/vm0-ai/vm0/issues/9307)) ([1c22fd7](https://github.com/vm0-ai/vm0/commit/1c22fd7d60eeca979081dd77114e528d48eb4ed4)), closes [#9304](https://github.com/vm0-ai/vm0/issues/9304)
+
 ## [12.232.0](https://github.com/vm0-ai/vm0/compare/web-v12.231.0...web-v12.232.0) (2026-04-14)
 
 
