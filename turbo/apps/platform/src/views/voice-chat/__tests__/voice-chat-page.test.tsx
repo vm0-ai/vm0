@@ -3,8 +3,10 @@
  *
  * Covers:
  * - Feature-gated rendering: disabled state when voiceChat switch is off
- * - Idle state UI: model selector tabs, Quick Chat box, Meeting box
- * - Meeting box: textarea, Prepare button, Start Meeting button
+ * - Idle state model selector: tab ordering and default selection
+ * - Quick Chat box: Start Voice Chat button enabled when agent is available
+ * - Meeting box: Start Meeting button disabled when textarea is empty
+ * - Meeting box: Prepare button disabled/enabled based on textarea content
  *
  * See: turbo/apps/platform/src/views/voice-chat/voice-chat-page.tsx
  * Related commits: #9151 (meeting prep), #9179 (model tab reorder), #9180 (footer layout), #9082 (model selector)
@@ -84,23 +86,17 @@ describe("voice-chat page - idle state model selector (VC-002)", () => {
     expect(mini).toBeLessThan(full);
   });
 
-  it("shows both model tabs when voiceChat is enabled", async () => {
+  it("gpt realtime mini tab is selected by default when voiceChat is enabled", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
 
     await waitFor(() => {
-      expect(
-        screen.getAllByRole("tab").find((el) => {
-          return /GPT Realtime/.test(el.textContent ?? "");
-        }),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getAllByRole("tab").find((el) => {
+      const miniTab = screen.getAllByRole("tab").find((el) => {
         return /GPT Realtime Mini/.test(el.textContent ?? "");
-      }),
-    ).toBeInTheDocument();
+      });
+      expect(miniTab).toHaveAttribute("aria-selected", "true");
+    });
   });
 });
 
@@ -109,14 +105,17 @@ describe("voice-chat page - idle state model selector (VC-002)", () => {
 // ---------------------------------------------------------------------------
 
 describe("voice-chat page - idle state quick chat box (VC-003)", () => {
-  it("renders Start Voice Chat button", async () => {
+  it("start voice chat button is enabled when an agent is available", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
 
-    await waitFor(() => {
-      expect(screen.getByText(/start voice chat/i)).toBeInTheDocument();
+    const btn = await waitFor(() => {
+      const el = screen.getByRole("button", { name: /start voice chat/i });
+      expect(el).not.toBeDisabled();
+      return el;
     });
+    expect(btn).toBeInTheDocument();
   });
 });
 
@@ -125,15 +124,15 @@ describe("voice-chat page - idle state quick chat box (VC-003)", () => {
 // ---------------------------------------------------------------------------
 
 describe("voice-chat page - idle state meeting box (VC-004)", () => {
-  it("renders Prepare and Start Meeting buttons", async () => {
+  it("start meeting button is disabled when meeting topic textarea is empty", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
 
-    await waitFor(() => {
-      expect(screen.getByText(/prepare/i)).toBeInTheDocument();
+    const btn = await waitFor(() => {
+      return screen.getByRole("button", { name: /start meeting/i });
     });
-    expect(screen.getByText(/start meeting/i)).toBeInTheDocument();
+    expect(btn).toBeDisabled();
   });
 });
 
