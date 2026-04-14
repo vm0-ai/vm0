@@ -1,14 +1,10 @@
-import { and, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import {
   consumeCaptureNetworkBodies,
   getUserPreferences,
   updateUserPreferences,
 } from "../../lib/zero/user/user-preferences-service";
-import { users } from "../../db/schema/user";
-import { userCache } from "../../db/schema/user-cache";
-import { vm0ApiKeys } from "../../db/schema/vm0-api-key";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { pushSubscriptions } from "../../db/schema/push-subscription";
 import {
   voiceChatSessions,
@@ -20,207 +16,24 @@ import { POST as registerPushSubscriptionRoute } from "../../../app/api/zero/pus
 import { randomUUID } from "crypto";
 import { createTestRequest } from "./core";
 
-/**
- * Read a full users row by userId.
- * Returns undefined if no row exists.
- */
-export async function getUserRow(userId: string) {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select()
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return row;
-}
+// Re-exports: DB-direct seeders
+export {
+  insertTestUser,
+  insertUserRow,
+  deleteUserRow,
+  seedUserCacheEntry,
+  insertUserCacheEntry,
+  insertVm0ApiKeys,
+} from "../db-test-seeders/users";
 
-/**
- * Insert a user row for testing.
- */
-export async function insertUserRow(
-  userId: string,
-  emailUnsubscribed: boolean,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(users)
-    .values({ id: userId, emailUnsubscribed })
-    .onConflictDoNothing();
-}
-
-/**
- * Delete a user row by userId.
- */
-export async function deleteUserRow(userId: string): Promise<void> {
-  initServices();
-  await globalThis.services.db.delete(users).where(eq(users.id, userId));
-}
-
-/**
- * Insert a user row for testing.
- * Uses onConflictDoNothing so it's safe to call multiple times.
- */
-export async function insertTestUser(userId: string): Promise<void> {
-  await globalThis.services.db
-    .insert(users)
-    .values({ id: userId })
-    .onConflictDoNothing();
-}
-
-/**
- * Insert test VM0 API keys into the key pool.
- */
-export async function insertVm0ApiKeys(
-  keys: Array<{
-    vendor: string;
-    model: string;
-    apiKey: string;
-    label?: string;
-  }>,
-) {
-  initServices();
-  await globalThis.services.db.insert(vm0ApiKeys).values(keys);
-}
+// Re-exports: read-only assertions
+export { getUserRow, countUserRows } from "../db-test-assertions/users";
 
 /**
  * Get a VM0 API key from the pool for a vendor.
  */
 export async function getTestVm0ApiKey(vendor: string) {
   return getVm0ApiKey(vendor);
-}
-
-/**
- * Seed or update a user_cache entry for testing.
- */
-export async function seedUserCacheEntry(
-  userId: string,
-  email: string,
-  name?: string,
-): Promise<void> {
-  await globalThis.services.db
-    .insert(userCache)
-    .values({ userId, email, name: name ?? null, cachedAt: new Date() })
-    .onConflictDoUpdate({
-      target: userCache.userId,
-      set: { email, name: name ?? null, cachedAt: new Date() },
-    });
-}
-
-/**
- * Insert a user_cache row for testing.
- */
-export async function insertUserCacheEntry(entry: {
-  userId: string;
-  email: string;
-  name?: string;
-  cachedAt?: Date;
-}): Promise<void> {
-  await globalThis.services.db.insert(userCache).values({
-    userId: entry.userId,
-    email: entry.email,
-    name: entry.name ?? null,
-    cachedAt: entry.cachedAt ?? new Date(),
-  });
-}
-
-/**
- * Count rows in a table where user_id matches.
- * Mirror of countOrgRows for user-scoped deletion verification.
- */
-export async function countUserRows(
-  tableName:
-    | "agent_runs"
-    | "agent_run_queue"
-    | "agent_composes"
-    | "storages"
-    | "secrets"
-    | "model_providers"
-    | "connectors"
-    | "variables"
-    | "usage_daily"
-    | "export_jobs"
-    | "zero_agent_schedules"
-    | "cli_tokens"
-    | "compose_jobs"
-    | "connector_sessions"
-    | "device_codes"
-    | "org_members_cache"
-    | "org_members_metadata"
-    | "user_cache"
-    | "users",
-  userId: string,
-): Promise<number> {
-  const columnName = tableName === "users" ? "id" : "user_id";
-  const rows = await globalThis.services.db.execute(
-    sql`SELECT COUNT(*)::int AS count FROM ${sql.identifier(tableName)} WHERE ${sql.identifier(columnName)} = ${userId}`,
-  );
-  return (rows.rows[0] as { count: number }).count;
-}
-
-/**
- * Get user preferences from org_members_metadata.
- */
-export async function getTestUserPreferences(
-  userId: string,
-  orgId: string,
-): Promise<{
-  timezone: string | null;
-  sendMode: string;
-  onboardingDone: boolean;
-}> {
-  const [row] = await globalThis.services.db
-    .select({
-      timezone: orgMembersMetadata.timezone,
-      sendMode: orgMembersMetadata.sendMode,
-      onboardingDone: orgMembersMetadata.onboardingDone,
-    })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.userId, userId),
-        eq(orgMembersMetadata.orgId, orgId),
-      ),
-    )
-    .limit(1);
-  return {
-    timezone: row?.timezone ?? null,
-    sendMode: row?.sendMode ?? "enter",
-    onboardingDone: row?.onboardingDone ?? false,
-  };
-}
-
-/**
- * Set user preferences in org_members_metadata.
- */
-export async function setTestUserPreferences(
-  userId: string,
-  orgId: string,
-  prefs: Partial<{
-    timezone: string | null;
-    sendMode: string;
-    onboardingDone: boolean;
-  }>,
-): Promise<void> {
-  await globalThis.services.db
-    .insert(orgMembersMetadata)
-    .values({
-      userId,
-      orgId,
-      timezone: prefs.timezone ?? null,
-      sendMode: prefs.sendMode ?? "enter",
-      onboardingDone: prefs.onboardingDone ?? false,
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-      set: {
-        ...(prefs.timezone !== undefined && { timezone: prefs.timezone }),
-        ...(prefs.sendMode !== undefined && { sendMode: prefs.sendMode }),
-        ...(prefs.onboardingDone !== undefined && {
-          onboardingDone: prefs.onboardingDone,
-        }),
-        updatedAt: new Date(),
-      },
-    });
 }
 
 /**
