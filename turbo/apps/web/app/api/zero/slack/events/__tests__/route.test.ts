@@ -9,12 +9,14 @@ import {
   createTestCompose,
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
-  seedTestCompose,
-  seedOrphanCompose,
   updateOrgDefaultAgent,
   countSlackOrgInstallations,
   countSlackOrgConnections,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  seedOrphanCompose,
+  clearComposeHeadVersion,
+} from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
 
 import { POST } from "../route";
@@ -326,11 +328,8 @@ describe("POST /api/zero/slack/events", () => {
 
     it("posts error when run was not created (no callback)", async () => {
       // Set up a compose WITHOUT a version → createZeroRun fails before creating the run
-      const { agentId } = await seedTestCompose({
-        userId: user.userId,
-        name: uniqueId("agent"),
-        orgId: user.orgId,
-      });
+      const { composeId, agentId } = await createTestCompose(uniqueId("agent"));
+      await clearComposeHeadVersion(composeId);
       await updateOrgDefaultAgent(user.orgId, agentId);
       const { workspaceId, slackUserId } = await setupWorkspace(user.orgId);
 
@@ -682,11 +681,8 @@ describe("POST /api/zero/slack/events", () => {
     });
 
     it("posts error when run was not created (no callback)", async () => {
-      const { agentId } = await seedTestCompose({
-        userId: user.userId,
-        name: uniqueId("agent"),
-        orgId: user.orgId,
-      });
+      const { composeId, agentId } = await createTestCompose(uniqueId("agent"));
+      await clearComposeHeadVersion(composeId);
       await updateOrgDefaultAgent(user.orgId, agentId);
       const { workspaceId, slackUserId } = await setupWorkspace(user.orgId);
 
@@ -753,11 +749,7 @@ describe("POST /api/zero/slack/events", () => {
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
       });
-      const { agentId } = await seedTestCompose({
-        userId: user.userId,
-        name: uniqueId("agent"),
-        orgId: user.orgId,
-      });
+      const { agentId } = await createTestCompose(uniqueId("agent"));
       await updateOrgDefaultAgent(user.orgId, agentId);
 
       const request = createSlackRetryRequest({
@@ -797,11 +789,7 @@ describe("POST /api/zero/slack/events", () => {
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
       });
-      const { agentId } = await seedTestCompose({
-        userId: user.userId,
-        name: uniqueId("agent"),
-        orgId: user.orgId,
-      });
+      const { agentId } = await createTestCompose(uniqueId("agent"));
       await updateOrgDefaultAgent(user.orgId, agentId);
 
       const request = createSlackRetryRequest({

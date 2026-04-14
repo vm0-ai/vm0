@@ -3,7 +3,6 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestZeroAgent,
   createTestRun,
   createTestRunInDb,
   createTestSchedule,
@@ -12,6 +11,7 @@ import {
   createOrphanTestRun,
   insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
   testContext,
   type UserContext,

@@ -3,7 +3,6 @@ import { GET, POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestZeroAgent,
   createTestRunInDb,
   addTestRunToThread,
   insertTestChatThread,
@@ -12,6 +11,7 @@ import {
   updateTestScheduleState,
   insertTestVoiceChatSession,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import {
   testContext,
   uniqueId,

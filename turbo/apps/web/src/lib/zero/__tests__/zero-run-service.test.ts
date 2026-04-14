@@ -9,14 +9,14 @@ import {
   createTestConnector,
   createTestUserConnector,
   createTestSchedule,
-  createTestZeroAgent,
-  getTestZeroAgentId,
   findTestRunRecord,
   findTestZeroRun,
   findTestRunCallbacks,
   findTestRunnerJobEntry,
   insertUserCacheEntry,
 } from "../../../__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../__tests__/db-test-seeders/agents";
+import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import { createZeroRun, createZeroRunRecord } from "../zero-run-service";
 import { verifyZeroToken } from "../../auth/sandbox-token";
 import { decryptSecretsMap } from "../../shared/crypto/secrets-encryption";

@@ -16,7 +16,6 @@ import {
   createTestAgentSession,
   createTestEmailThreadSession,
   insertOrgDefaultModelProvider,
-  createTestZeroAgent,
   insertTestStorage,
   insertTestStorageVersion,
   insertTestUsageDaily,
@@ -31,12 +30,10 @@ import {
   countGithubUserLinkRows,
   countTelegramUserLinkRows,
   updateOrgStripeSubscription,
-  updateAgentComposeOrg,
   createTelegramInstallationForCompose,
   createTestCliToken,
   createTestDeviceCode,
   createTestConnectorSession,
-  insertTestComposeJob,
   insertTestGithubInstallation,
   insertTestGithubUserLink,
   insertTestTelegramInstallation,
@@ -45,6 +42,11 @@ import {
   insertOrgCacheEntry,
   insertTestSlackOrgThreadSession,
 } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestZeroAgent,
+  updateAgentComposeOrg,
+  insertTestComposeJob,
+} from "../../../../../src/__tests__/db-test-seeders/agents";
 
 // Mock @clerk/nextjs/webhooks (external dependency)
 const mockVerifyWebhook = vi.hoisted(() => {

@@ -3,10 +3,10 @@ import { PUT } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  deleteTestCompose,
   deleteOrgRow,
   getOrgDefaultAgent,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { deleteTestCompose } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 

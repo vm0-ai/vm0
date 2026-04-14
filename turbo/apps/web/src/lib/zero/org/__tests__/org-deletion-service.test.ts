@@ -10,7 +10,6 @@ import {
   findTestRunRecord,
   findTestQueueEntry,
   insertOrgDefaultModelProvider,
-  createTestZeroAgent,
   insertTestQueueEntry,
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,
@@ -29,6 +28,7 @@ import {
   insertTestOrgSentinelVariable,
   createTestSchedule,
 } from "../../../../__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../__tests__/db-test-seeders/agents";
 import { deleteOrgData } from "../org-deletion-service";
 
 const context = testContext();

@@ -13,8 +13,8 @@ import {
   insertUserRow,
   deleteUserRow,
   getTestDb,
-  seedTestCompose,
 } from "./api-test-helpers";
+import { seedTestCompose } from "./db-test-seeders/agents";
 import {
   backfillOrgMetadata,
   backfillOrgMembersMetadata,

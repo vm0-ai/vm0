@@ -3,10 +3,12 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestZeroAgent,
-  seedOrphanCompose,
   updateOrgDefaultAgent,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestZeroAgent,
+  seedOrphanCompose,
+} from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { PUT as setDefaultAgent } from "../../../default-agent/route";

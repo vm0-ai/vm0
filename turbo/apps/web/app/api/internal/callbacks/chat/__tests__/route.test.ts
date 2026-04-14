@@ -10,13 +10,13 @@ import {
   createTestCallback,
   createTestRunInDb,
   createTestRequest,
-  getTestZeroAgentId,
   createTestAgentSession,
   createTestPushSubscription,
   getPushSubscriptionsByEndpoint,
   createSignedCallbackRequest,
   getTestSessionChatMessages,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../../../../src/env";
 import { POST as createThreadHandler } from "../../../../zero/chat-threads/route";
 import { POST } from "../route";

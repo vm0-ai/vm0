@@ -5,9 +5,9 @@ import {
   createTestCompose,
   findTestZeroRun,
   insertTestVoiceChatPreparation,
-  getTestZeroAgentId,
   getTestVoiceChatPreparation,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import {
   testContext,
   uniqueId,

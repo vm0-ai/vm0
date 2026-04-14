@@ -29,12 +29,12 @@ import {
   countSlackConnectionRows,
   countGithubUserLinkRows,
   countTelegramUserLinkRows,
-  insertTestComposeJob,
   insertTestGithubInstallation,
   insertTestGithubUserLink,
   insertTestTelegramInstallation,
   insertTestTelegramUserLink,
 } from "../../../../__tests__/api-test-helpers";
+import { insertTestComposeJob } from "../../../../__tests__/db-test-seeders/agents";
 import { deleteUserData } from "../user-deletion-service";
 
 const context = testContext();

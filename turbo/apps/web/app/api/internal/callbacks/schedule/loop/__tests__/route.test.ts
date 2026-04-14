@@ -9,7 +9,6 @@ import {
   createTestRunInDb,
   createTestCallback,
   createTestSchedule,
-  createTestZeroAgent,
   enableTestSchedule,
   disableTestSchedule,
   deleteTestSchedule,
@@ -17,6 +16,7 @@ import {
   findTestScheduleById,
   createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../../../src/__tests__/db-test-seeders/agents";
 
 const context = testContext();
 

@@ -7,11 +7,11 @@ import { server } from "../../../../mocks/server";
 import { reloadEnv } from "../../../../env";
 import {
   updateOrgStripeSubscription,
-  updateAgentComposeOrg,
   createTelegramInstallationForCompose,
   createSlackInstallationForOrg,
   findTestSlackOrgInstallation,
 } from "../../../../__tests__/api-test-helpers";
+import { updateAgentComposeOrg } from "../../../../__tests__/db-test-seeders/agents";
 import { cleanupOrgExternalServices } from "../org-external-cleanup";
 
 // --- Stripe mock (external dependency — allowed) ---

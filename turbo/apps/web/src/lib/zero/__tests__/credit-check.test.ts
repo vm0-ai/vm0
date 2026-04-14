@@ -7,7 +7,6 @@ import {
 import {
   createTestCompose,
   createTestRunInDb,
-  getTestZeroAgentId,
   findTestRunsByUserAndPrompt,
   findTestRunRecord,
   findTestQueueEntry,
@@ -18,6 +17,7 @@ import {
   insertOrgMembersEntry,
   insertTestZeroRun,
 } from "../../../__tests__/api-test-helpers";
+import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../env";
 import { createZeroRun } from "../zero-run-service";
 import { isInsufficientCredits, isNotFound } from "../../shared/errors";

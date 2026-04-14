@@ -30,10 +30,10 @@ import {
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
   insertOrgMembersCacheEntry,
-  getTestComposeVersionContent,
   createTestTarFile,
   createTestZeroSkill,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { getTestComposeVersionContent } from "../../../../../src/__tests__/db-test-assertions/agents";
 import { getInstructionsStorageName } from "@vm0/core";
 import {
   testContext,

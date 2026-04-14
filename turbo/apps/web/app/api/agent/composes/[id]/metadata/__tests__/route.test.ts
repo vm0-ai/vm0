@@ -3,9 +3,9 @@ import { PATCH } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestZeroAgent,
-  getTestZeroAgent,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../../../src/__tests__/db-test-seeders/agents";
+import { getTestZeroAgent } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 import {
   testContext,
   uniqueId,

@@ -8,10 +8,10 @@ import {
   createTestCompose,
   createTestRunInDb,
   createTestCallback,
-  createTestZeroAgent,
   createSignedCallbackRequest,
   findTestZeroRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
 import { POST } from "../route";
 import { http } from "../../../../../../src/__tests__/msw";

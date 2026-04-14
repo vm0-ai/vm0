@@ -11,7 +11,6 @@ import {
   createTestSandboxToken,
   completeTestRun,
   createTestSchedule,
-  createTestZeroAgent,
   linkRunToSchedule,
   createTestAgentSession,
   createTestEmailThreadSession,
@@ -23,6 +22,7 @@ import {
   getTestAgentSessionWithConversation,
   generateTestReplyToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
 import {
   testContext,

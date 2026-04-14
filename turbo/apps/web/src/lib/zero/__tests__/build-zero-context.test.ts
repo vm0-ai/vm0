@@ -9,9 +9,9 @@ import {
   createTestSecret,
   createTestVariable,
   createTestUserConnector,
-  getTestZeroAgentId,
   findTestRunnerJobEntry,
 } from "../../../__tests__/api-test-helpers";
+import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import { createZeroRun } from "../zero-run-service";
 import { upsertOrgModelProvider } from "../model-provider/model-provider-service";
 import { upsertSecretByOrg } from "../secret/secret-service";

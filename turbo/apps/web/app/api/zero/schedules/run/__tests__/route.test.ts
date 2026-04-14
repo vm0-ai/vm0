@@ -3,11 +3,11 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestZeroAgent,
   createTestOrg,
   createTestSchedule,
   enableTestSchedule,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
   testContext,
   uniqueId,

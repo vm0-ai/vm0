@@ -3,7 +3,6 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestZeroAgent,
   createTestRun,
   createTestSchedule,
   enableTestSchedule,
@@ -11,9 +10,12 @@ import {
   getTestScheduleRuns,
   getTestRun,
   disableAllSchedules,
-  clearComposeHeadVersion,
   setScheduleConsecutiveFailures,
 } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestZeroAgent,
+  clearComposeHeadVersion,
+} from "../../../../../src/__tests__/db-test-seeders/agents";
 import {
   testContext,
   uniqueId,

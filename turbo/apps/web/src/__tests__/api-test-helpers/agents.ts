@@ -1,15 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { chatThreads } from "../../db/schema/chat-thread";
-import type { RawPermissionPolicies } from "@vm0/core";
 import { initServices } from "../../lib/init-services";
 import {
   addRunToThread,
   updateChatThreadTitle,
 } from "../../lib/zero/chat-thread";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../db/schema/agent-compose";
+import { agentComposes } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { agentSessions } from "../../db/schema/agent-session";
@@ -18,8 +14,6 @@ import {
   type StoredChatMessage,
 } from "../../db/schema/zero-agent-session";
 import { conversations } from "../../db/schema/conversation";
-import { composeJobs } from "../../db/schema/compose-job";
-import { hashFileContent } from "../../lib/infra/storage/content-hash";
 import { POST as createComposeRoute } from "../../../app/api/agent/composes/route";
 import { POST as upsertOrgModelProviderRoute } from "../../../app/api/zero/model-providers/route";
 import { uniqueId } from "../test-helpers";
@@ -29,6 +23,7 @@ import {
   type ComposeConfigOptions,
 } from "./core";
 import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
+import { createTestComposeVersion } from "../db-test-seeders/agents";
 
 /**
  * Create a test compose via API route handler.
@@ -85,116 +80,6 @@ export async function createTestCompose(
   }
 
   return { ...result, agentId: result.composeId };
-}
-
-/**
- * Create or update a test zero_agents row for agent metadata.
- *
- * Since zero_agents.id = agent_composes.id (composeId), this looks up
- * the composeId by (orgId, name) and upserts the metadata row.
- *
- * @param orgId - The org ID
- * @param name - The agent name (must match compose name)
- * @param metadata - Agent metadata fields
- */
-export async function createTestZeroAgent(
-  orgId: string,
-  name: string,
-  metadata: {
-    displayName?: string;
-    description?: string;
-    sound?: string;
-    permissionPolicies?: RawPermissionPolicies;
-  },
-): Promise<void> {
-  initServices();
-
-  // Resolve composeId and userId from compose table (zero_agents.id = composeId)
-  const [compose] = await globalThis.services.db
-    .select({ id: agentComposes.id, userId: agentComposes.userId })
-    .from(agentComposes)
-    .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.name, name)))
-    .limit(1);
-
-  if (!compose) {
-    throw new Error(`Compose not found for org=${orgId} name=${name}`);
-  }
-
-  await globalThis.services.db
-    .insert(zeroAgents)
-    .values({
-      id: compose.id,
-      orgId,
-      owner: compose.userId,
-      name,
-      displayName: metadata.displayName ?? null,
-      description: metadata.description ?? null,
-      sound: metadata.sound ?? null,
-      permissionPolicies: metadata.permissionPolicies ?? null,
-    })
-    .onConflictDoUpdate({
-      target: [zeroAgents.orgId, zeroAgents.name],
-      set: {
-        displayName: metadata.displayName ?? null,
-        description: metadata.description ?? null,
-        sound: metadata.sound ?? null,
-        permissionPolicies: metadata.permissionPolicies ?? null,
-      },
-    });
-}
-
-/**
- * Get the zero_agents UUID by org + agent name.
- *
- * @param orgId - The org ID
- * @param name - The agent name
- * @returns The zero agent UUID
- */
-export async function getTestZeroAgentId(
-  orgId: string,
-  name: string,
-): Promise<string> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
-    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, name)))
-    .limit(1);
-  if (!row) {
-    throw new Error(`Zero agent not found: org=${orgId} name=${name}`);
-  }
-  return row.id;
-}
-
-/**
- * Read a zero_agents row by org + agent name.
- *
- * @param orgId - The org ID
- * @param name - The agent name
- * @returns The zero_agents row, or undefined if not found
- */
-export async function getTestZeroAgent(
-  orgId: string,
-  name: string,
-): Promise<
-  | {
-      displayName: string | null;
-      description: string | null;
-      sound: string | null;
-    }
-  | undefined
-> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({
-      displayName: zeroAgents.displayName,
-      description: zeroAgents.description,
-      sound: zeroAgents.sound,
-    })
-    .from(zeroAgents)
-    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, name)))
-    .limit(1);
-  return row;
 }
 
 /**
@@ -304,29 +189,6 @@ export async function createTestAgentSession(
 }
 
 /**
- * Create a compose version for a compose.
- * Internal helper for createTestSessionWithConversation.
- */
-export async function createTestComposeVersion(
-  composeId: string,
-  userId: string,
-): Promise<string> {
-  const versionId = uniqueId("version");
-  await globalThis.services.db.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId,
-    content: { name: "test-agent", model: "claude-3-5-sonnet-20241022" },
-    createdBy: userId,
-  });
-  // Update compose to point to this version
-  await globalThis.services.db
-    .update(agentComposes)
-    .set({ headVersionId: versionId })
-    .where(eq(agentComposes.id, composeId));
-  return versionId;
-}
-
-/**
  * Create an agent session with a linked conversation.
  * This creates the full data chain required by validateAgentSession:
  * compose version -> run -> conversation -> session
@@ -383,57 +245,6 @@ export async function createTestSessionWithConversation(
 }
 
 /**
- * Insert an agent compose record directly in the database.
- *
- * Direct DB insert is required for schema-level tests (e.g., CASCADE behavior)
- * that need precise control over record creation without API side effects.
- */
-export async function insertTestAgentCompose(
-  userId: string,
-  orgId: string,
-  name: string,
-) {
-  const [row] = await globalThis.services.db
-    .insert(agentComposes)
-    .values({ userId, orgId, name })
-    .returning();
-  return row!;
-}
-
-/**
- * Insert a test compose with a version for export testing.
- *
- * Direct DB insert is required because the export test needs compose data
- * without going through the full compose creation API flow.
- */
-export async function insertTestComposeWithVersion(
-  userId: string,
-  orgId: string,
-  name: string,
-  content: Record<string, unknown>,
-) {
-  const [compose] = await globalThis.services.db
-    .insert(agentComposes)
-    .values({ userId, orgId, name })
-    .returning();
-
-  const versionId = hashFileContent(Buffer.from(uniqueId("ver")));
-  await globalThis.services.db.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId: compose!.id,
-    content,
-    createdBy: userId,
-  });
-
-  await globalThis.services.db
-    .update(agentComposes)
-    .set({ headVersionId: versionId })
-    .where(eq(agentComposes.id, compose!.id));
-
-  return { composeId: compose!.id, versionId };
-}
-
-/**
  * Insert a test agent session with chat messages for export testing.
  *
  * Direct DB insert is required because agent sessions are created by
@@ -458,197 +269,6 @@ export async function insertTestAgentSessionWithMessages(
     .insert(zeroAgentSessions)
     .values({ id: session!.id, chatMessages });
   return session!;
-}
-
-/**
- * Insert a test compose job directly in the database.
- */
-export async function insertTestComposeJob(params: {
-  userId: string;
-  status?: string;
-  githubUrl?: string;
-}): Promise<{ id: string }> {
-  const [row] = await globalThis.services.db
-    .insert(composeJobs)
-    .values({
-      userId: params.userId,
-      status: params.status ?? "completed",
-      githubUrl: params.githubUrl ?? "https://github.com/test/repo",
-    })
-    .returning({ id: composeJobs.id });
-  return row!;
-}
-
-/**
- * Delete a compose and its matching zero agent from the database.
- * Used to simulate a user deleting an agent compose.
- */
-export async function deleteTestCompose(composeId: string): Promise<void> {
-  initServices();
-  // Resolve the compose's (orgId, name) to also delete the matching zero agent
-  const [compose] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId, name: agentComposes.name })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  await globalThis.services.db
-    .delete(agentComposes)
-    .where(eq(agentComposes.id, composeId));
-  if (compose) {
-    await globalThis.services.db
-      .delete(zeroAgents)
-      .where(
-        and(
-          eq(zeroAgents.orgId, compose.orgId),
-          eq(zeroAgents.name, compose.name),
-        ),
-      );
-  }
-}
-
-/**
- * Clear the headVersionId of a compose to simulate a compose with no versions.
- * Useful for triggering pre-run failures in executeSchedule().
- */
-export async function clearComposeHeadVersion(
-  composeId: string,
-): Promise<void> {
-  await globalThis.services.db
-    .update(agentComposes)
-    .set({ headVersionId: null })
-    .where(eq(agentComposes.id, composeId));
-}
-
-/**
- * Set the headVersionId of a compose to a specific value.
- * Useful for simulating stale compose versions in recompose tests.
- */
-export async function setComposeHeadVersion(
-  composeId: string,
-  headVersionId: string,
-): Promise<void> {
-  await globalThis.services.db
-    .update(agentComposes)
-    .set({ headVersionId })
-    .where(eq(agentComposes.id, composeId));
-}
-
-/**
- * Read the headVersionId and updatedAt of a compose record.
- * Useful for verifying recompose behavior in tests.
- */
-export async function getComposeHeadVersion(
-  composeId: string,
-): Promise<
-  { headVersionId: string | null; updatedAt: Date | null } | undefined
-> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({
-      headVersionId: agentComposes.headVersionId,
-      updatedAt: agentComposes.updatedAt,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  return row;
-}
-
-/**
- * Read the head compose version content for a compose record.
- * Returns the resolved compose content stored in the version.
- */
-export async function getTestComposeVersionContent(
-  composeId: string,
-): Promise<Record<string, unknown> | null> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({
-      content: agentComposeVersions.content,
-    })
-    .from(agentComposeVersions)
-    .innerJoin(
-      agentComposes,
-      eq(agentComposes.headVersionId, agentComposeVersions.id),
-    )
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  return (row?.content as Record<string, unknown>) ?? null;
-}
-
-/**
- * Update agent compose's orgId. Useful when tests need telegram installations
- * or other compose-linked entities to belong to a specific org.
- */
-export async function updateAgentComposeOrg(
-  composeId: string,
-  orgId: string,
-): Promise<void> {
-  await globalThis.services.db
-    .update(agentComposes)
-    .set({ orgId })
-    .where(eq(agentComposes.id, composeId));
-}
-
-/**
- * Seed an agent compose record for testing.
- */
-export async function seedTestCompose(opts: {
-  userId: string;
-  name: string;
-  orgId: string;
-}): Promise<{ composeId: string; agentId: string }> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .insert(agentComposes)
-    .values({
-      userId: opts.userId,
-      name: opts.name,
-      orgId: opts.orgId,
-    })
-    .returning({ id: agentComposes.id });
-  if (!row) {
-    throw new Error("Failed to seed agent compose");
-  }
-
-  // Ensure a matching zero_agents row exists (id = composeId after PK refactor)
-  await globalThis.services.db
-    .insert(zeroAgents)
-    .values({
-      id: row.id,
-      orgId: opts.orgId,
-      owner: opts.userId,
-      name: opts.name,
-    })
-    .onConflictDoNothing();
-
-  return { composeId: row.id, agentId: row.id };
-}
-
-/**
- * Seed an agent compose record WITHOUT a corresponding zero_agents row.
- * Useful for testing "agent not found" scenarios where the compose ID exists
- * in agent_composes (satisfying FK constraints) but getWorkspaceAgent() returns
- * undefined because there is no zero_agents row.
- */
-export async function seedOrphanCompose(opts: {
-  userId: string;
-  name: string;
-  orgId: string;
-}): Promise<{ composeId: string }> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .insert(agentComposes)
-    .values({
-      userId: opts.userId,
-      name: opts.name,
-      orgId: opts.orgId,
-    })
-    .returning({ id: agentComposes.id });
-  if (!row) {
-    throw new Error("Failed to seed orphan agent compose");
-  }
-  return { composeId: row.id };
 }
 
 /**

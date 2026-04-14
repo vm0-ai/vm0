@@ -8,10 +8,10 @@ import {
   createTestCompose,
   createTestRunInDb,
   createTestSandboxToken,
-  getTestZeroAgentId,
   insertTestVoiceChatPreparation,
   getTestVoiceChatPreparation,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import { getTestZeroAgentId } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 import { POST } from "../route";
 
 const context = testContext();

@@ -3,12 +3,12 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  getTestZeroAgentId,
   createTestSessionWithConversation,
   createTestRunInDb,
   findTestZeroRun,
   insertOrgDefaultModelProvider,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
 import {
   testContext,
   uniqueId,

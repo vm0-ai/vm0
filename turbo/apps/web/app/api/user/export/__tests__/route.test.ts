@@ -4,11 +4,10 @@ import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   createTestRequest,
+  createTestCompose,
   findTestExportJobById,
-  insertTestComposeWithVersion,
   insertTestAgentSessionWithMessages,
   insertTestArtifactStorage,
-  insertTestAgentCompose,
 } from "../../../../../src/__tests__/api-test-helpers";
 
 const context = testContext();
@@ -42,15 +41,9 @@ describe("POST /api/user/export", () => {
       mockClerk({ userId: user.userId, orgId: user.orgId });
 
       // Create test compose with version
-      const { composeId } = await insertTestComposeWithVersion(
-        user.userId,
-        user.orgId,
-        "test-agent",
-        {
-          version: "1",
-          agents: { "test-agent": { framework: "claude-code" } },
-        },
-      );
+      const { composeId } = await createTestCompose("test-agent", {
+        framework: "claude-code",
+      });
 
       // Create test session with chat messages
       await insertTestAgentSessionWithMessages(user.userId, composeId, [
@@ -184,7 +177,7 @@ describe("POST /api/user/export", () => {
       const userA = await context.setupUser();
       mockClerk({ userId: userA.userId, orgId: userA.orgId });
 
-      await insertTestAgentCompose(userA.userId, userA.orgId, "user-a-agent");
+      await createTestCompose("user-a-agent");
 
       // User B triggers export
       const userB = await context.setupUser({ prefix: "other" });

@@ -20,9 +20,9 @@ import {
   insertOrgCacheEntry,
   insertOrgMembersCacheEntry,
   getOrgCacheEntry,
-  createTestZeroAgent,
   updateOrgTier,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import {
   generateSandboxToken,
   generateZeroToken,

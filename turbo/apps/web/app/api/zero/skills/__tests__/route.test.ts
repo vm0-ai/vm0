@@ -9,8 +9,8 @@ import {
 import {
   createTestRequest,
   createTestCliToken,
+  createTestCompose,
   bindCustomSkillToAgent,
-  seedTestCompose,
   getAgentCustomSkills,
   insertOrgMembersCacheEntry,
   createTestTarFile,
@@ -155,12 +155,9 @@ describe("Zero Skills API (org-level)", () => {
     });
 
     it("should not bind skill to any agent", async () => {
-      const orgId = `org_mock_${user.userId}`;
-      const { agentId } = await seedTestCompose({
-        userId: user.userId,
-        name: `test-agent-${user.userId.slice(-8)}`,
-        orgId,
-      });
+      const { agentId } = await createTestCompose(
+        `test-agent-${user.userId.slice(-8)}`,
+      );
 
       await postSkillReq(
         { name: "unbound-skill", files: singleFile("# Content") },
@@ -357,17 +354,8 @@ describe("Zero Skills API (org-level)", () => {
       );
 
       // Bind to two agents
-      const orgId = `org_mock_${user.userId}`;
-      const agent1 = await seedTestCompose({
-        userId: user.userId,
-        name: `agent1-${user.userId.slice(-8)}`,
-        orgId,
-      });
-      const agent2 = await seedTestCompose({
-        userId: user.userId,
-        name: `agent2-${user.userId.slice(-8)}`,
-        orgId,
-      });
+      const agent1 = await createTestCompose(`agent1-${user.userId.slice(-8)}`);
+      const agent2 = await createTestCompose(`agent2-${user.userId.slice(-8)}`);
       await bindCustomSkillToAgent(agent1.agentId, "shared-skill");
       await bindCustomSkillToAgent(agent2.agentId, "shared-skill");
 

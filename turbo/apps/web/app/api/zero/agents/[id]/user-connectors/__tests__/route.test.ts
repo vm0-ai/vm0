@@ -4,9 +4,9 @@ import { POST as postAgentRoute } from "../../../route";
 import {
   createTestRequest,
   createTestCliToken,
-  setComposeHeadVersion,
-  getComposeHeadVersion,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import { setComposeHeadVersion } from "../../../../../../../src/__tests__/db-test-seeders/agents";
+import { getComposeHeadVersion } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 import {
   testContext,
   type UserContext,
