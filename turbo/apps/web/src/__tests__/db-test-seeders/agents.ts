@@ -5,7 +5,15 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
+import { agentRuns } from "../../db/schema/agent-run";
+import { agentSessions } from "../../db/schema/agent-session";
+import { chatThreads } from "../../db/schema/chat-thread";
+import { conversations } from "../../db/schema/conversation";
 import { zeroAgents } from "../../db/schema/zero-agent";
+import {
+  zeroAgentSessions,
+  type StoredChatMessage,
+} from "../../db/schema/zero-agent-session";
 import { composeJobs } from "../../db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
 
@@ -220,4 +228,201 @@ export async function deleteTestCompose(composeId: string): Promise<void> {
   await globalThis.services.db
     .delete(agentComposes)
     .where(eq(agentComposes.id, composeId));
+}
+
+// ---------------------------------------------------------------------------
+// Session / conversation seeders (migrated from api-test-helpers/agents.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure a matching zero_agents row exists for a compose.
+ * Extracted from createTestCompose — the compose API route doesn't create
+ * the zero_agents row; this bridges the gap for tests.
+ *
+ * @why-db-direct The compose creation API route does not insert a
+ * zero_agents row. Tests need this row for agent lookups and session
+ * creation.
+ */
+export async function ensureZeroAgentRow(composeId: string): Promise<void> {
+  initServices();
+  const [compose] = await globalThis.services.db
+    .select({
+      orgId: agentComposes.orgId,
+      userId: agentComposes.userId,
+      name: agentComposes.name,
+    })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  if (!compose) return;
+  await globalThis.services.db
+    .insert(zeroAgents)
+    .values({
+      id: composeId,
+      orgId: compose.orgId,
+      owner: compose.userId,
+      name: compose.name,
+    })
+    .onConflictDoNothing();
+}
+
+/**
+ * Create a test agent session linked to a compose.
+ *
+ * @why-db-direct Agent sessions are created by the run flow, not a
+ * standalone API endpoint. Tests need direct seeding for isolated setup.
+ */
+export async function createTestAgentSession(
+  userId: string,
+  agentComposeId: string,
+): Promise<{ id: string }> {
+  initServices();
+  const [compose] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentComposeId))
+    .limit(1);
+  if (!compose) throw new Error(`Compose ${agentComposeId} not found`);
+  const [session] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({ userId, orgId: compose.orgId, agentComposeId })
+    .returning({ id: agentSessions.id });
+  return session!;
+}
+
+/**
+ * Create an agent session with a linked conversation.
+ * This creates the full data chain required by validateAgentSession:
+ * compose version -> run -> conversation -> session
+ *
+ * @why-db-direct Creates full compose→run→conversation→session chain;
+ * no single API endpoint provides this setup.
+ */
+export async function createTestSessionWithConversation(
+  userId: string,
+  agentComposeId: string,
+): Promise<{ id: string }> {
+  initServices();
+  // Look up orgId from the compose
+  const [compose] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentComposeId))
+    .limit(1);
+  if (!compose) {
+    throw new Error(`Compose ${agentComposeId} not found`);
+  }
+  // Create compose version
+  const versionId = await createTestComposeVersion(agentComposeId, userId);
+  // Create run record
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      orgId: compose.orgId,
+      agentComposeVersionId: versionId,
+      status: "completed",
+      prompt: "test prompt",
+    })
+    .returning({
+      id: agentRuns.id,
+    });
+  // Create conversation
+  const [conversation] = await globalThis.services.db
+    .insert(conversations)
+    .values({
+      runId: run!.id,
+      cliAgentType: "claude",
+      cliAgentSessionId: uniqueId("cli-session"),
+      cliAgentSessionHistory: "[]",
+    })
+    .returning({ id: conversations.id });
+  // Create session with conversation
+  const [session] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({
+      userId,
+      orgId: compose.orgId,
+      agentComposeId,
+      conversationId: conversation!.id,
+    })
+    .returning({ id: agentSessions.id });
+  return session!;
+}
+
+/**
+ * Insert a test agent session with chat messages for export testing.
+ *
+ * @why-db-direct Inserts session with specific chat messages; no API
+ * exists for direct message injection into agent sessions.
+ */
+export async function insertTestAgentSessionWithMessages(
+  userId: string,
+  agentComposeId: string,
+  chatMessages: StoredChatMessage[],
+) {
+  initServices();
+  const [compose] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentComposeId))
+    .limit(1);
+  if (!compose) throw new Error(`Compose ${agentComposeId} not found`);
+  const [session] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({ userId, orgId: compose.orgId, agentComposeId })
+    .returning({ id: agentSessions.id });
+  await globalThis.services.db
+    .insert(zeroAgentSessions)
+    .values({ id: session!.id, chatMessages });
+  return session!;
+}
+
+/**
+ * Append chat messages to a zero_agent_sessions record.
+ *
+ * @why-db-direct Appends to zero_agent_sessions chat history; no API
+ * exists for direct history manipulation.
+ */
+export async function appendTestChatMessages(
+  sessionId: string,
+  messages: StoredChatMessage[],
+): Promise<void> {
+  initServices();
+  const [existing] = await globalThis.services.db
+    .select({ chatMessages: zeroAgentSessions.chatMessages })
+    .from(zeroAgentSessions)
+    .where(eq(zeroAgentSessions.id, sessionId))
+    .limit(1);
+
+  const currentMessages = (existing?.chatMessages ?? []) as StoredChatMessage[];
+  const updated = [...currentMessages, ...messages];
+
+  await globalThis.services.db
+    .insert(zeroAgentSessions)
+    .values({ id: sessionId, chatMessages: updated })
+    .onConflictDoUpdate({
+      target: zeroAgentSessions.id,
+      set: { chatMessages: updated },
+    });
+}
+
+/**
+ * Insert a chat thread directly in the database.
+ * Returns the thread ID.
+ *
+ * @why-db-direct Chat threads are created as side effects of run
+ * completion, not via a direct creation API endpoint.
+ */
+export async function insertTestChatThread(
+  userId: string,
+  agentComposeId: string,
+  title: string,
+): Promise<string> {
+  initServices();
+  const [thread] = await globalThis.services.db
+    .insert(chatThreads)
+    .values({ userId, agentComposeId, title })
+    .returning({ id: chatThreads.id });
+  return thread!.id;
 }

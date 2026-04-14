@@ -4,7 +4,12 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
+import { agentSessions } from "../../db/schema/agent-session";
 import { zeroAgents } from "../../db/schema/zero-agent";
+import {
+  zeroAgentSessions,
+  type StoredChatMessage,
+} from "../../db/schema/zero-agent-session";
 
 /**
  * Read the headVersionId and updatedAt of a compose record.
@@ -93,4 +98,81 @@ export async function getTestZeroAgent(
     .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, name)))
     .limit(1);
   return row;
+}
+
+// ---------------------------------------------------------------------------
+// Session / conversation assertions (migrated from api-test-helpers/agents.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Get chat messages for a zero_agent_sessions record.
+ */
+export async function getTestSessionChatMessages(
+  sessionId: string,
+): Promise<StoredChatMessage[]> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ chatMessages: zeroAgentSessions.chatMessages })
+    .from(zeroAgentSessions)
+    .where(eq(zeroAgentSessions.id, sessionId))
+    .limit(1);
+  return (row?.chatMessages ?? []) as StoredChatMessage[];
+}
+
+/**
+ * Get an agent session with its conversation data.
+ */
+export async function getTestAgentSessionWithConversation(
+  sessionId: string,
+): Promise<
+  | {
+      id: string;
+      userId: string;
+      orgId: string;
+      agentComposeId: string;
+      conversationId: string | null;
+      memoryName: string | null;
+      chatMessages: StoredChatMessage[];
+    }
+  | undefined
+> {
+  initServices();
+  const [session] = await globalThis.services.db
+    .select()
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+
+  if (!session) return undefined;
+
+  const [zeroSession] = await globalThis.services.db
+    .select({ chatMessages: zeroAgentSessions.chatMessages })
+    .from(zeroAgentSessions)
+    .where(eq(zeroAgentSessions.id, sessionId))
+    .limit(1);
+
+  return {
+    id: session.id,
+    userId: session.userId,
+    orgId: session.orgId,
+    agentComposeId: session.agentComposeId,
+    conversationId: session.conversationId ?? null,
+    memoryName: session.memoryName ?? null,
+    chatMessages: (zeroSession?.chatMessages ?? []) as StoredChatMessage[],
+  };
+}
+
+/**
+ * Get the agent compose name by compose ID.
+ */
+export async function getTestAgentComposeName(
+  composeId: string,
+): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  return row!.name;
 }

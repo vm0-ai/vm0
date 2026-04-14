@@ -1,29 +1,47 @@
-import { eq } from "drizzle-orm";
-import { chatThreads } from "../../db/schema/chat-thread";
-import { initServices } from "../../lib/init-services";
 import {
   addRunToThread,
   updateChatThreadTitle,
 } from "../../lib/zero/chat-thread";
-import { agentComposes } from "../../db/schema/agent-compose";
-import { agentRuns } from "../../db/schema/agent-run";
-import { zeroAgents } from "../../db/schema/zero-agent";
-import { agentSessions } from "../../db/schema/agent-session";
-import {
-  zeroAgentSessions,
-  type StoredChatMessage,
-} from "../../db/schema/zero-agent-session";
-import { conversations } from "../../db/schema/conversation";
 import { POST as createComposeRoute } from "../../../app/api/agent/composes/route";
 import { POST as upsertOrgModelProviderRoute } from "../../../app/api/zero/model-providers/route";
-import { uniqueId } from "../test-helpers";
 import {
   createTestRequest,
   createDefaultComposeConfig,
   type ComposeConfigOptions,
 } from "./core";
 import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
-import { createTestComposeVersion } from "../db-test-seeders/agents";
+import { ensureZeroAgentRow } from "../db-test-seeders/agents";
+
+// ---------------------------------------------------------------------------
+// Re-exports: DB-direct seeders and assertion helpers.
+//
+// These functions were moved to dedicated directories but are re-exported
+// here for backward compatibility — existing test files import from
+// api-test-helpers and should continue to work unchanged.
+// ---------------------------------------------------------------------------
+
+export {
+  createTestComposeVersion,
+  ensureZeroAgentRow,
+  createTestAgentSession,
+  createTestSessionWithConversation,
+  insertTestAgentSessionWithMessages,
+  appendTestChatMessages,
+  insertTestChatThread,
+} from "../db-test-seeders/agents";
+
+export {
+  getTestSessionChatMessages,
+  getTestAgentSessionWithConversation,
+  getTestAgentComposeName,
+} from "../db-test-assertions/agents";
+
+// ---------------------------------------------------------------------------
+// API-based helpers.
+//
+// These call production route handlers (not raw DB) and are valid
+// API-based helpers.
+// ---------------------------------------------------------------------------
 
 /**
  * Create a test compose via API route handler.
@@ -61,23 +79,7 @@ export async function createTestCompose(
     await response.json();
 
   // Ensure a matching zero_agents row exists (id = composeId after PK refactor)
-  initServices();
-  const [compose] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId, userId: agentComposes.userId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, result.composeId))
-    .limit(1);
-  if (compose) {
-    await globalThis.services.db
-      .insert(zeroAgents)
-      .values({
-        id: result.composeId,
-        orgId: compose.orgId,
-        owner: compose.userId,
-        name: result.name,
-      })
-      .onConflictDoNothing();
-  }
+  await ensureZeroAgentRow(result.composeId);
 
   return { ...result, agentId: result.composeId };
 }
@@ -165,192 +167,11 @@ export async function createTestOrgMultiAuthModelProvider(
   return data.provider;
 }
 
-/**
- * Create a test run via internal API route handler.
- *
- * @param userId - The user ID
- * @param agentComposeId - The compose ID
- */
-export async function createTestAgentSession(
-  userId: string,
-  agentComposeId: string,
-): Promise<{ id: string }> {
-  const [compose] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentComposeId))
-    .limit(1);
-  if (!compose) throw new Error(`Compose ${agentComposeId} not found`);
-  const [session] = await globalThis.services.db
-    .insert(agentSessions)
-    .values({ userId, orgId: compose.orgId, agentComposeId })
-    .returning({ id: agentSessions.id });
-  return session!;
-}
-
-/**
- * Create an agent session with a linked conversation.
- * This creates the full data chain required by validateAgentSession:
- * compose version -> run -> conversation -> session
- */
-export async function createTestSessionWithConversation(
-  userId: string,
-  agentComposeId: string,
-): Promise<{ id: string }> {
-  // Look up orgId from the compose
-  const [compose] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentComposeId))
-    .limit(1);
-  if (!compose) {
-    throw new Error(`Compose ${agentComposeId} not found`);
-  }
-  // Create compose version
-  const versionId = await createTestComposeVersion(agentComposeId, userId);
-  // Create run record
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId,
-      orgId: compose.orgId,
-      agentComposeVersionId: versionId,
-      status: "completed",
-      prompt: "test prompt",
-    })
-    .returning({
-      id: agentRuns.id,
-    });
-  // Create conversation
-  const [conversation] = await globalThis.services.db
-    .insert(conversations)
-    .values({
-      runId: run!.id,
-      cliAgentType: "claude",
-      cliAgentSessionId: uniqueId("cli-session"),
-      cliAgentSessionHistory: "[]",
-    })
-    .returning({ id: conversations.id });
-  // Create session with conversation
-  const [session] = await globalThis.services.db
-    .insert(agentSessions)
-    .values({
-      userId,
-      orgId: compose.orgId,
-      agentComposeId,
-      conversationId: conversation!.id,
-    })
-    .returning({ id: agentSessions.id });
-  return session!;
-}
-
-/**
- * Insert a test agent session with chat messages for export testing.
- *
- * Direct DB insert is required because agent sessions are created by
- * the run flow, not by a standalone API endpoint.
- */
-export async function insertTestAgentSessionWithMessages(
-  userId: string,
-  agentComposeId: string,
-  chatMessages: StoredChatMessage[],
-) {
-  const [compose] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentComposeId))
-    .limit(1);
-  if (!compose) throw new Error(`Compose ${agentComposeId} not found`);
-  const [session] = await globalThis.services.db
-    .insert(agentSessions)
-    .values({ userId, orgId: compose.orgId, agentComposeId })
-    .returning({ id: agentSessions.id });
-  await globalThis.services.db
-    .insert(zeroAgentSessions)
-    .values({ id: session!.id, chatMessages });
-  return session!;
-}
-
-/**
- * Append chat messages to a zero_agent_sessions record.
- */
-export async function appendTestChatMessages(
-  sessionId: string,
-  messages: StoredChatMessage[],
-): Promise<void> {
-  const [existing] = await globalThis.services.db
-    .select({ chatMessages: zeroAgentSessions.chatMessages })
-    .from(zeroAgentSessions)
-    .where(eq(zeroAgentSessions.id, sessionId))
-    .limit(1);
-
-  const currentMessages = (existing?.chatMessages ?? []) as StoredChatMessage[];
-  const updated = [...currentMessages, ...messages];
-
-  await globalThis.services.db
-    .insert(zeroAgentSessions)
-    .values({ id: sessionId, chatMessages: updated })
-    .onConflictDoUpdate({
-      target: zeroAgentSessions.id,
-      set: { chatMessages: updated },
-    });
-}
-
-/**
- * Get chat messages for a zero_agent_sessions record.
- */
-export async function getTestSessionChatMessages(
-  sessionId: string,
-): Promise<StoredChatMessage[]> {
-  const [row] = await globalThis.services.db
-    .select({ chatMessages: zeroAgentSessions.chatMessages })
-    .from(zeroAgentSessions)
-    .where(eq(zeroAgentSessions.id, sessionId))
-    .limit(1);
-  return (row?.chatMessages ?? []) as StoredChatMessage[];
-}
-
-/**
- * Get an agent session with its conversation data.
- */
-export async function getTestAgentSessionWithConversation(
-  sessionId: string,
-): Promise<
-  | {
-      id: string;
-      userId: string;
-      orgId: string;
-      agentComposeId: string;
-      conversationId: string | null;
-      memoryName: string | null;
-      chatMessages: StoredChatMessage[];
-    }
-  | undefined
-> {
-  const [session] = await globalThis.services.db
-    .select()
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId))
-    .limit(1);
-
-  if (!session) return undefined;
-
-  const [zeroSession] = await globalThis.services.db
-    .select({ chatMessages: zeroAgentSessions.chatMessages })
-    .from(zeroAgentSessions)
-    .where(eq(zeroAgentSessions.id, sessionId))
-    .limit(1);
-
-  return {
-    id: session.id,
-    userId: session.userId,
-    orgId: session.orgId,
-    agentComposeId: session.agentComposeId,
-    conversationId: session.conversationId ?? null,
-    memoryName: session.memoryName ?? null,
-    chatMessages: (zeroSession?.chatMessages ?? []) as StoredChatMessage[],
-  };
-}
+// ---------------------------------------------------------------------------
+// Service wrappers.
+//
+// These wrap internal service functions and are valid API-level helpers.
+// ---------------------------------------------------------------------------
 
 /**
  * Link a run to a chat thread for test setup.
@@ -373,36 +194,4 @@ export async function updateTestChatThreadTitle(
   title: string,
 ): Promise<void> {
   return updateChatThreadTitle(threadId, title);
-}
-
-/**
- * Insert a chat thread directly in the database.
- * Returns the thread ID.
- */
-export async function insertTestChatThread(
-  userId: string,
-  agentComposeId: string,
-  title: string,
-): Promise<string> {
-  initServices();
-  const [thread] = await globalThis.services.db
-    .insert(chatThreads)
-    .values({ userId, agentComposeId, title })
-    .returning({ id: chatThreads.id });
-  return thread!.id;
-}
-
-/**
- * Get the agent compose name by compose ID.
- */
-export async function getTestAgentComposeName(
-  composeId: string,
-): Promise<string> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ name: agentComposes.name })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  return row!.name;
 }
