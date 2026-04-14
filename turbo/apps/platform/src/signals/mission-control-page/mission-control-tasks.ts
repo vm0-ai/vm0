@@ -130,6 +130,79 @@ function createCardSignals() {
   };
 }
 
+interface PanelSignals {
+  internalOpen$: ReturnType<typeof state<boolean>>;
+  internalOpenedAt$: ReturnType<typeof state<number | null>>;
+  internalPanelEntry$: ReturnType<typeof state<TaskPanelEntry | null>>;
+  resetPanelPolling$: ReturnType<typeof resetSignal>;
+  open$: Computed<boolean>;
+  openedAt$: Computed<number | null>;
+  panelEntry$: Computed<TaskPanelEntry | null>;
+  closeTask$: Command<void, []>;
+  refreshPanel$: Command<void, [AbortSignal]>;
+}
+
+function createPanelSignals(
+  internalTask$: ReturnType<typeof state<TaskItem>>,
+  setInputFocused$: Command<void, [boolean]>,
+): PanelSignals {
+  const internalOpen$ = state(false);
+  const internalOpenedAt$ = state<number | null>(null);
+  const internalPanelEntry$ = state<TaskPanelEntry | null>(null);
+  const resetPanelPolling$ = resetSignal();
+
+  const open$ = computed((get) => {
+    return get(internalOpen$);
+  });
+  const openedAt$ = computed((get) => {
+    return get(internalOpenedAt$);
+  });
+  const panelEntry$ = computed((get) => {
+    return get(internalPanelEntry$);
+  });
+
+  const closeTask$ = command(({ set }) => {
+    set(resetPanelPolling$);
+    set(internalOpen$, false);
+    set(internalOpenedAt$, null);
+    set(internalPanelEntry$, null);
+    set(setInputFocused$, false);
+  });
+
+  const refreshPanel$ = command(({ get, set }, signal: AbortSignal) => {
+    const entry = get(internalPanelEntry$);
+    if (!entry || entry.kind !== "activity") {
+      return;
+    }
+    const task = get(internalTask$);
+    if (!task.latestRunId || entry.runId === task.latestRunId) {
+      return;
+    }
+    const panelSignal = set(resetPanelPolling$, signal);
+    const signals = createActivitySignals(task.latestRunId);
+    set(internalPanelEntry$, {
+      kind: "activity",
+      signals,
+      runId: task.latestRunId,
+    });
+    // Polling lifecycle is managed by resetPanelPolling$ — aborted on next
+    // refresh or panel close. throwIfNotAbort swallows the expected AbortError.
+    set(signals.startPolling$, panelSignal).catch(throwIfNotAbort);
+  });
+
+  return {
+    internalOpen$,
+    internalOpenedAt$,
+    internalPanelEntry$,
+    resetPanelPolling$,
+    open$,
+    openedAt$,
+    panelEntry$,
+    closeTask$,
+    refreshPanel$,
+  };
+}
+
 function createTaskSignals(initialTask: TaskItem): TaskSignals {
   const internalTask$ = state(initialTask);
 
@@ -150,22 +223,6 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     return seen[initialTask.id] !== task.latestRunId;
   });
 
-  const internalOpen$ = state(false);
-  const internalOpenedAt$ = state<number | null>(null);
-  const internalPanelEntry$ = state<TaskPanelEntry | null>(null);
-
-  const open$ = computed((get) => {
-    return get(internalOpen$);
-  });
-
-  const openedAt$ = computed((get) => {
-    return get(internalOpenedAt$);
-  });
-
-  const panelEntry$ = computed((get) => {
-    return get(internalPanelEntry$);
-  });
-
   const {
     setCardRef$,
     focusCard$,
@@ -174,39 +231,17 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     setInputFocused$,
   } = createCardSignals();
 
-  const resetPanelPolling$ = resetSignal();
-
-  const closeTask$ = command(({ set }) => {
-    set(resetPanelPolling$);
-    set(internalOpen$, false);
-    set(internalOpenedAt$, null);
-    set(internalPanelEntry$, null);
-    set(setInputFocused$, false);
-  });
-
-  const refreshPanel$ = command(({ get, set }, signal: AbortSignal) => {
-    const entry = get(internalPanelEntry$);
-    if (!entry || entry.kind !== "activity") {
-      return;
-    }
-
-    const task = get(internalTask$);
-    if (!task.latestRunId || entry.runId === task.latestRunId) {
-      return;
-    }
-
-    const panelSignal = set(resetPanelPolling$, signal);
-    const signals = createActivitySignals(task.latestRunId);
-    set(internalPanelEntry$, {
-      kind: "activity",
-      signals,
-      runId: task.latestRunId,
-    });
-
-    // Polling lifecycle is managed by resetPanelPolling$ — aborted on next
-    // refresh or panel close. throwIfNotAbort swallows the expected AbortError.
-    set(signals.startPolling$, panelSignal).catch(throwIfNotAbort);
-  });
+  const {
+    internalOpen$,
+    internalOpenedAt$,
+    internalPanelEntry$,
+    resetPanelPolling$,
+    open$,
+    openedAt$,
+    panelEntry$,
+    closeTask$,
+    refreshPanel$,
+  } = createPanelSignals(internalTask$, setInputFocused$);
 
   const optimisticRef = { value: false };
   const optimisticInsertedAtRef = { value: null as number | null };
@@ -216,12 +251,8 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
       if (get(internalOpen$)) {
         return;
       }
-
       const task = get(internalTask$);
-
-      // Mark as read when opening
       set(markRead$, initialTask.id, task.latestRunId);
-
       if (task.type === "chat" && task.chatThreadId) {
         const { draft } = set(ensureDraft$, task.chatThreadId);
         const signals = createChatThreadSignals(task.chatThreadId, draft);
@@ -231,7 +262,6 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
         await set(signals.loadMessages$, signal);
         return;
       }
-
       if (task.latestRunId) {
         const panelSignal = set(resetPanelPolling$, signal);
         const signals = createActivitySignals(task.latestRunId);
