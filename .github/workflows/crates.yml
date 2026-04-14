@@ -244,24 +244,14 @@ jobs:
       needs.detect.outputs.nbd-cow-changed == 'true'
     timeout-minutes: 5
     env:
-      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
       TARGET_TRIPLE: aarch64-unknown-linux-musl
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install mold linker
-        env:
-          MOLD_VERSION: "2.40.4"
-        run: |
-          curl -fsSL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" \
-            | tar xz --strip-components=2 -C /usr/local/bin "mold-${MOLD_VERSION}-x86_64-linux/bin/mold"
-          ln -sf /usr/local/bin/mold /usr/local/bin/ld.mold
-          ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold
-
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          shared-key: aarch64-musl-ci
+          shared-key: aarch64-musl-release
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cross-compile nbd-cow tests for ARM64
@@ -306,8 +296,6 @@ jobs:
       needs.detect.outputs.guest-reseed-changed == 'true'
     timeout-minutes: 20
     env:
-      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
-      CARGO_PROFILE: ci
       TARGET_TRIPLE: aarch64-unknown-linux-musl
     outputs:
       host: ${{ needs.detect.outputs.metal-host }}
@@ -316,36 +304,30 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install mold linker
-        env:
-          MOLD_VERSION: "2.40.4"
-        run: |
-          curl -fsSL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" \
-            | tar xz --strip-components=2 -C /usr/local/bin "mold-${MOLD_VERSION}-x86_64-linux/bin/mold"
-          ln -sf /usr/local/bin/mold /usr/local/bin/ld.mold
-          ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold
-
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          shared-key: aarch64-musl-ci
+          shared-key: aarch64-musl-release
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      # IMPORTANT: these compile settings (--release, default linker, no
+      # custom RUSTFLAGS) must match release-please.yml so image_hash is
+      # identical across pipelines and R2 cache hits on deploy. See #9192.
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
-          cargo build --profile "$CARGO_PROFILE" --target "$TARGET_TRIPLE" \
+          cargo build --release --target "$TARGET_TRIPLE" \
             -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
           cd crates
-          GUEST_AGENT_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-agent" \
-          GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-download" \
-          GUEST_INIT_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-init" \
-          GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-mock-claude" \
-          GUEST_RESEED_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-reseed" \
-          cargo build --profile "$CARGO_PROFILE" --target "$TARGET_TRIPLE" -p runner
+          GUEST_AGENT_PATH="target/$TARGET_TRIPLE/release/guest-agent" \
+          GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/release/guest-download" \
+          GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
+          GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
+          GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
+          cargo build --release --target "$TARGET_TRIPLE" -p runner
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -381,7 +363,7 @@ jobs:
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
           BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
-          TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
+          TARGET_DIR="crates/target/${TARGET_TRIPLE}/release"
 
           # Clean previous run artifacts and upload runner (guests are embedded)
           echo "=== Deploying runner to ${HOST}:${BIN_DIR} ==="
