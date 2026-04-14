@@ -41,7 +41,7 @@ interface RawTask {
 }
 
 /**
- * List unified tasks across chat threads, schedules, slack threads, and email threads.
+ * List unified tasks across chat threads, schedules, voice chats, and agent runs.
  * Returns up to 25 tasks sorted by latest run time DESC.
  */
 export async function listTasks(
@@ -135,12 +135,6 @@ export async function listTasks(
       case "schedule":
         task.scheduleId = raw.id;
         break;
-      case "slack":
-        task.slackThreadSessionId = raw.id;
-        break;
-      case "email":
-        task.emailThreadSessionId = raw.id;
-        break;
       case "voice_chat":
         task.voiceChatSessionId = raw.id;
         break;
@@ -174,7 +168,7 @@ type DB = typeof globalThis.services.db;
 interface ArchivedSets {
   /** Run IDs that have been archived (for tasks with a latestRunId). */
   runIds: Set<string>;
-  /** Task IDs archived with no run (e.g. schedules that never ran). */
+  /** Task IDs archived when they had no run at the time of archival. */
   nullRunTaskIds: Set<string>;
 }
 
