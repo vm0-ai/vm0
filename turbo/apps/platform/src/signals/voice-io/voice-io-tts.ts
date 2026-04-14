@@ -86,29 +86,39 @@ const fetchAndPlay$ = command(
 
     const fetchFn = get(fetch$);
 
+    // Create AudioContext synchronously during user gesture so the browser
+    // grants autoplay permission (transient activation window is ~5 s).
+    const audioCtx = new AudioContext({ sampleRate: 24_000 });
+
     let response: Response | null;
     // eslint-disable-next-line no-restricted-syntax -- raw fetch for binary audio (not a ts-rest contract)
     try {
       response = await fetchTtsAudio(fetchFn, plainText, signal);
     } catch (error) {
       L.error("TTS fetch failed", error);
+      await audioCtx.close();
+      signal.throwIfAborted();
       set(internalPlayingMessageId$, null);
       return;
     }
 
     if (!response) {
       L.error("TTS API returned error");
+      await audioCtx.close();
+      signal.throwIfAborted();
       set(internalPlayingMessageId$, null);
       return;
     }
 
     const body = response.body;
     if (!body) {
+      await audioCtx.close();
+      signal.throwIfAborted();
       set(internalPlayingMessageId$, null);
       return;
     }
 
-    const audioCtx = new AudioContext({ sampleRate: 24_000 });
+    // Safety fallback: resume if the context did not auto-start (e.g. auto-read path).
     await audioCtx.resume();
     signal.throwIfAborted();
     const reader = body.getReader();
@@ -152,12 +162,15 @@ const fetchAndPlay$ = command(
         continue;
       }
 
-      // Convert Int16LE PCM to Float32
-      const int16 = new Int16Array(
-        chunk.buffer,
-        chunk.byteOffset,
-        chunk.length / 2,
-      );
+      // Convert Int16LE PCM to Float32 (use aligned buffer to avoid RangeError)
+      const aligned =
+        chunk.buffer.byteLength === chunk.length && chunk.byteOffset === 0
+          ? chunk.buffer
+          : chunk.buffer.slice(
+              chunk.byteOffset,
+              chunk.byteOffset + chunk.length,
+            );
+      const int16 = new Int16Array(aligned);
       const float32 = new Float32Array(int16.length);
       for (let i = 0; i < int16.length; i++) {
         float32[i] = int16[i] / 32_768;
