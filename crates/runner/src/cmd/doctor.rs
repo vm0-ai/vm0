@@ -672,12 +672,22 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
 // API connectivity check
 // ---------------------------------------------------------------------------
 
+/// Returns `true` if the URL's host TLD is `.test` (RFC 2606).
+fn is_test_tld(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    parsed
+        .host_str()
+        .is_some_and(|h| h.ends_with(".test") || h == "test")
+}
+
 /// Returns `None` if no server configured or URL uses `.test` TLD (RFC 2606),
 /// `Some(true)` if reachable, `Some(false)` if unreachable.
 async fn check_api(config: &RunnerConfig) -> Option<bool> {
     let server = config.server.as_ref()?;
     // Skip connectivity check for .test domains (reserved per RFC 2606, used in CI)
-    if server.url.contains(".test") {
+    if is_test_tld(&server.url) {
         return None;
     }
     let client = reqeast::builder()
@@ -1422,5 +1432,26 @@ mod tests {
         }];
         let warnings = proxy_check_warnings("running", Some(32821), &mitm_procs);
         assert!(warnings.is_empty(), "running with proxy should not warn");
+    }
+
+    #[test]
+    fn is_test_tld_matches_dot_test() {
+        assert!(is_test_tld("https://not-a-real-server.test/api"));
+        assert!(is_test_tld("https://sub.domain.test"));
+        assert!(is_test_tld("https://test"));
+    }
+
+    #[test]
+    fn is_test_tld_rejects_substring_match() {
+        assert!(!is_test_tld("https://attestation.service.internal/api"));
+        assert!(!is_test_tld("https://my.testing.company.com/api"));
+        assert!(!is_test_tld("https://contest.example.com"));
+    }
+
+    #[test]
+    fn is_test_tld_handles_edge_cases() {
+        assert!(!is_test_tld("not-a-url"));
+        assert!(!is_test_tld("https://example.com/.test"));
+        assert!(!is_test_tld("https://example.com?q=.test"));
     }
 }
