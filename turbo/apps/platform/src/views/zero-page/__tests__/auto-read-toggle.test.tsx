@@ -66,18 +66,16 @@ describe("auto-read toggle - visible when audioIO feature is on (AR-002)", () =>
 // ---------------------------------------------------------------------------
 
 describe("auto-read toggle - initial state is off (AR-003)", () => {
-  it("autoReadEnabled$ is false before any interaction", async () => {
+  it("toggle button has aria-pressed=false before any interaction", async () => {
     setMockFeatureSwitches({ audioIO: true });
     mockSubagentThread(THREAD_ID);
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await waitFor(() => {
-      expect(
-        screen.getAllByLabelText("Toggle auto-read").length,
-      ).toBeGreaterThan(0);
+    const toggleBtn = await waitFor(() => {
+      return screen.getAllByLabelText("Toggle auto-read")[0];
     });
 
-    expect(context.store.get(autoReadEnabled$)).toBeFalsy();
+    expect(toggleBtn).toHaveAttribute("aria-pressed", "false");
   });
 });
 

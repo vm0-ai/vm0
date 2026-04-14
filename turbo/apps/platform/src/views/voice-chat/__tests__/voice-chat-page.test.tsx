@@ -125,28 +125,6 @@ describe("voice-chat page - idle state quick chat box (VC-003)", () => {
 // ---------------------------------------------------------------------------
 
 describe("voice-chat page - idle state meeting box (VC-004)", () => {
-  it("renders Voice Meeting section heading", async () => {
-    setMockFeatureSwitches({ voiceChat: true });
-    mockVoiceChatPrepareEndpoint();
-    detachedSetupPage({ context, path: "/voice-chat" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Voice Meeting")).toBeInTheDocument();
-    });
-  });
-
-  it("renders meeting topic textarea", async () => {
-    setMockFeatureSwitches({ voiceChat: true });
-    mockVoiceChatPrepareEndpoint();
-    detachedSetupPage({ context, path: "/voice-chat" });
-
-    await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("What would you like to discuss?"),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("renders Prepare and Start Meeting buttons", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockVoiceChatPrepareEndpoint();

@@ -186,6 +186,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
                       : "text-muted-foreground/60 hover:text-foreground hover:bg-accent",
                   )}
                   aria-label="Toggle auto-read"
+                  aria-pressed={autoRead}
                 >
                   <IconVolume2 size={18} stroke={1.5} />
                 </button>
