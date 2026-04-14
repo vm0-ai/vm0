@@ -57,7 +57,10 @@ include!(concat!(env!("OUT_DIR"), "/addon_files.rs"));
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Timeout for graceful shutdown before SIGKILL.
-const STOP_TIMEOUT: Duration = Duration::from_secs(3);
+///
+/// Must be long enough for `done()` in the mitmproxy addon to flush
+/// all in-flight usage reports (each POST has a 10 s HTTP timeout).
+const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Configuration for starting the proxy.
 #[derive(Clone)]

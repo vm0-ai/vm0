@@ -434,15 +434,25 @@ def _report_usage_with_retry(
 # ---------------------------------------------------------------------------
 # Usage reporting thread pool — replaces fire-and-forget daemon threads.
 # ThreadPoolExecutor processes reports in parallel; done() flushes pending
-# items before mitmproxy exits (SIGKILL at 3 s is the hard stop).
+# items before mitmproxy exits (SIGKILL at 15 s is the hard stop).
 # ---------------------------------------------------------------------------
 
 _usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
 
 def _enqueue_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
-    """Submit usage report to the thread pool.  Copies the dict to avoid mutation."""
-    _usage_executor.submit(_report_usage_with_retry, api_url, sandbox_token, run_id, dict(usage))
+    """Submit usage report to the thread pool.  Copies the dict to avoid mutation.
+
+    If the executor has already been shut down (drain/shutdown race),
+    falls back to synchronous delivery so the report is not silently lost.
+    """
+    copied = dict(usage)
+    try:
+        _usage_executor.submit(_report_usage_with_retry, api_url, sandbox_token, run_id, copied)
+    except RuntimeError:
+        # Executor shut down (done() already called during drain).
+        # Fall back to synchronous delivery with retry.
+        _report_usage_with_retry(api_url, sandbox_token, run_id, copied)
 
 
 def _maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
@@ -923,7 +933,7 @@ def error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports before mitmproxy exits.
 
-    The runner sends SIGTERM then waits 3 seconds before SIGKILL.
+    The runner sends SIGTERM then waits 15 seconds before SIGKILL.
     ``shutdown(wait=True)`` blocks until all submitted futures complete;
     SIGKILL is the hard stop if any report takes too long.
     """

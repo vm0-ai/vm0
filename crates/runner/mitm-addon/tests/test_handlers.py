@@ -1697,6 +1697,15 @@ class TestEnqueueUsage:
         assert args[2] == "tok"
         assert args[3] == "run-1"
 
+    def test_enqueue_falls_back_to_sync_after_shutdown(self):
+        """After executor shutdown, _enqueue_usage should deliver synchronously with retry."""
+        mitm_addon._usage_executor.shutdown(wait=True)
+
+        with patch.object(mitm_addon, "_report_usage_with_retry") as mock_retry:
+            mitm_addon._enqueue_usage("url", "tok", "run-1", {"input_tokens": 42})
+
+        mock_retry.assert_called_once_with("url", "tok", "run-1", {"input_tokens": 42})
+
 
 class TestDoneHook:
     """Tests for the done() graceful shutdown hook."""
