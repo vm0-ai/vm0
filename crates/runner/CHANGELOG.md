@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.79.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.3...runner-rs-v0.79.4) (2026-04-14)
+
+
+### Bug Fixes
+
+* kill child process on error paths to prevent orphans ([#9267](https://github.com/vm0-ai/vm0/issues/9267)) ([16b1686](https://github.com/vm0-ai/vm0/commit/16b1686449c1913184dba9c93195baff74d107b8))
+* **runner:** invalidate image cache and skip remote cache on deploy ([#9300](https://github.com/vm0-ai/vm0/issues/9300)) ([67ce548](https://github.com/vm0-ai/vm0/commit/67ce548f3f7a5feff97ba7f882562f5bfef200c6))
+
+
+### Refactoring
+
+* **runner:** deduplicate guest state restore in executor ([#9289](https://github.com/vm0-ai/vm0/issues/9289)) ([fea8ef2](https://github.com/vm0-ai/vm0/commit/fea8ef2055cec702bd72bf488f711c4bafc20754))
+
 ## [0.79.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.2...runner-rs-v0.79.3) (2026-04-14)
 
 ## [0.79.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.1...runner-rs-v0.79.2) (2026-04-14)

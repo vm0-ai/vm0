@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.232.0](https://github.com/vm0-ai/vm0/compare/web-v12.231.0...web-v12.232.0) (2026-04-14)
+
+
+### Features
+
+* **auth:** remove agent-run:write capability from agent tokens ([#9290](https://github.com/vm0-ai/vm0/issues/9290)) ([932a33e](https://github.com/vm0-ai/vm0/commit/932a33e3dcb73429e3b283574e4dd0c00d100caf))
+
+
+### Bug Fixes
+
+* **web:** filter out non-actionable tasks from mission control list ([#9218](https://github.com/vm0-ai/vm0/issues/9218)) ([a2e69e5](https://github.com/vm0-ai/vm0/commit/a2e69e58fb8b18efdcb9e6f4000d02c43fd779c3))
+
 ## [12.231.0](https://github.com/vm0-ai/vm0/compare/web-v12.230.0...web-v12.231.0) (2026-04-14)
 
 

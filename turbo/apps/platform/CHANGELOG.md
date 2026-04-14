@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.235.3](https://github.com/vm0-ai/vm0/compare/app-v0.235.2...app-v0.235.3) (2026-04-14)
+
+
+### Bug Fixes
+
+* **voice-chat:** change default model back to gpt-realtime ([#9292](https://github.com/vm0-ai/vm0/issues/9292)) ([80f531a](https://github.com/vm0-ai/vm0/commit/80f531a9a2ab83ed2332ed28342ee08ecd28d34f))
+
 ## [0.235.2](https://github.com/vm0-ai/vm0/compare/app-v0.235.1...app-v0.235.2) (2026-04-14)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.113.0](https://github.com/vm0-ai/vm0/compare/cli-v9.112.6...cli-v9.113.0) (2026-04-14)
+
+
+### Features
+
+* **auth:** remove agent-run:write capability from agent tokens ([#9290](https://github.com/vm0-ai/vm0/issues/9290)) ([932a33e](https://github.com/vm0-ai/vm0/commit/932a33e3dcb73429e3b283574e4dd0c00d100caf))
+
 ## [9.112.6](https://github.com/vm0-ai/vm0/compare/cli-v9.112.5...cli-v9.112.6) (2026-04-14)
 
 
