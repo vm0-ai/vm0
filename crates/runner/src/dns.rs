@@ -120,6 +120,7 @@ pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
             )));
         }
         Err(e) => {
+            let _ = child.kill().await;
             return Err(std::io::Error::other(format!(
                 "dnsmasq process check failed: {e}"
             )));
@@ -127,10 +128,10 @@ pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
         Ok(None) => {} // still running — good
     }
 
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| std::io::Error::other("failed to capture dnsmasq stderr"))?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        let _ = child.start_kill();
+        std::io::Error::other("failed to capture dnsmasq stderr")
+    })?;
 
     let cancel = CancellationToken::new();
     let token = cancel.clone();
