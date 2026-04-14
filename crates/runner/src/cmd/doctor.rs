@@ -594,16 +594,55 @@ async fn parse_unit_config_path(unit_path: &Path) -> Option<PathBuf> {
     for line in content.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("ExecStart=") {
-            // ExecStart="..." start --config "..."
-            let tokens: Vec<&str> = rest.split_whitespace().collect();
-            let pos = tokens
-                .iter()
-                .position(|&t| t == "--config" || t == "-c" || t.trim_matches('"') == "--config")?;
-            let path_str = (*tokens.get(pos + 1)?).trim_matches('"');
-            return Some(PathBuf::from(path_str));
+            return parse_exec_start_config(rest);
         }
     }
     None
+}
+
+/// Extract the value following `--config` or `-c` from an `ExecStart` line body.
+///
+/// Handles both quoted (`--config "/path with spaces/f.yaml"`) and unquoted
+/// (`--config /simple/path.yaml`) forms. Only the argument *value* is
+/// extracted — the flag itself is found via substring search, which is safe
+/// because `--config` / `-c` never require quoting.
+fn parse_exec_start_config(line: &str) -> Option<PathBuf> {
+    extract_flag_value(line, "--config").or_else(|| extract_flag_value(line, "-c"))
+}
+
+/// Find `flag` in `line` as a standalone token, then return the next
+/// whitespace-delimited or quote-delimited value after it.
+fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
+    // Search for `flag` that appears as a standalone token: preceded by
+    // whitespace (or start-of-string) and followed by whitespace or
+    // end-of-string.
+    let idx = line
+        .match_indices(flag)
+        .find(|&(i, _)| {
+            let before_ok = i == 0 || line.as_bytes().get(i - 1).is_some_and(|&b| b == b' ');
+            let after_ok = line
+                .as_bytes()
+                .get(i + flag.len())
+                .is_none_or(|&b| b == b' ');
+            before_ok && after_ok
+        })?
+        .0;
+    let after = line.get(idx + flag.len()..)?;
+    // The value starts after optional whitespace.
+    let after = after.trim_start();
+    if after.is_empty() {
+        return None;
+    }
+    let path_str = if after.starts_with('"') {
+        // Quoted value: take everything between the opening and closing `"`.
+        let end = after.get(1..)?.find('"')?;
+        after.get(1..1 + end)?
+    } else {
+        // Unquoted value: take until next whitespace or end-of-string.
+        let end = after.find(char::is_whitespace).unwrap_or(after.len());
+        after.get(..end)?
+    };
+    Some(PathBuf::from(path_str))
 }
 
 /// Find installed services that have no matching running runner.
@@ -1454,5 +1493,53 @@ mod tests {
         assert!(!is_test_tld("not-a-url"));
         assert!(!is_test_tld("https://example.com/.test"));
         assert!(!is_test_tld("https://example.com?q=.test"));
+    }
+
+    #[test]
+    fn parse_config_plain_path() {
+        let line = r#""/usr/bin/runner" start --config /data/runner.yaml"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_quoted_path_with_spaces() {
+        let line = r#""/opt/my runner/vm0-runner" start --config "/opt/my config/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/opt/my config/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_quoted_path_without_spaces() {
+        let line = r#""/usr/bin/runner" start --config "/etc/runner.yaml" --local"#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/etc/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_short_flag() {
+        let line = r#""/usr/bin/runner" start -c "/data/runner.yaml""#;
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_config_missing_flag() {
+        let line = r#""/usr/bin/runner" start --local"#;
+        assert_eq!(parse_exec_start_config(line), None);
+    }
+
+    #[test]
+    fn parse_config_flag_at_end_without_value() {
+        let line = r#""/usr/bin/runner" start --config"#;
+        assert_eq!(parse_exec_start_config(line), None);
     }
 }
