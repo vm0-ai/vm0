@@ -1,11 +1,13 @@
-//! Validation for runner directory names.
+//! Validation for runner instance names.
 //!
-//! Runner directory names are joined against `HomePaths::runners_dir()`
-//! to form on-disk paths (`/var/lib/vm0-runner/runners/<name>/`). Without
-//! validation, an absolute path (`/etc`) replaces the base via
+//! The same name is used as both a directory name (joined against
+//! `HomePaths::runners_dir()`) and a systemd service name suffix
+//! (e.g. `vm0-runner-<name>`). This module is the single source of
+//! truth for what counts as a valid runner instance name.
+//!
+//! Without validation, an absolute path (`/etc`) replaces the base via
 //! `Path::join`, and a bare `..` segment escapes once the kernel resolves
-//! it. This module is the single source of truth for what counts as a
-//! safe runner directory name.
+//! it.
 //!
 //! Unlike `group` and `profile`, runner directory names are not persisted
 //! in `runner.yaml` (only the resolved `RunnerConfig.base_dir: PathBuf`
@@ -31,7 +33,10 @@ pub fn validate_or_err(name: &str) -> RunnerResult<()> {
     Ok(())
 }
 
-/// Validate that `name` is a safe single-segment directory name.
+/// Validate that `name` is a safe runner instance identifier.
+///
+/// Used for both runner directory names and systemd service name suffixes
+/// to ensure a single validation rule across the codebase.
 ///
 /// Accepts `[a-z0-9.-]+` with these guards:
 /// - non-empty
@@ -42,7 +47,7 @@ pub fn validate_or_err(name: &str) -> RunnerResult<()> {
 /// name to a single path segment regardless of the host's separator
 /// conventions. The dot allowance exists for production semver dirnames
 /// produced by `ansible/playbooks/deploy-runner.yml` (e.g. `v0.3.0`).
-fn validate_name(name: &str) -> bool {
+pub(crate) fn validate_name(name: &str) -> bool {
     if name.is_empty() || name.starts_with('.') || name.starts_with('-') {
         return false;
     }

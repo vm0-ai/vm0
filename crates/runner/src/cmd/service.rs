@@ -119,16 +119,14 @@ const UNIT_PREFIX: &str = "vm0-runner-";
 
 /// Build the full systemd unit name from the user-supplied suffix.
 ///
-/// Validates that the suffix contains only safe characters for systemd unit
-/// names and file paths.
+/// Validates the suffix with [`crate::runner_dirname::validate_name`] so
+/// that runner directory names and service name suffixes follow the same
+/// rules (lowercase alphanumeric, hyphens, dots; no leading `.` or `-`).
 pub(crate) fn unit_name(suffix: &str) -> RunnerResult<String> {
-    if suffix.is_empty()
-        || !suffix
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b'_')
-    {
+    if !crate::runner_dirname::validate_name(suffix) {
         return Err(RunnerError::Config(format!(
-            "invalid service name suffix '{suffix}': only alphanumeric, '.', '-', '_' allowed"
+            "invalid service name suffix '{suffix}': must be non-empty, \
+             lowercase alphanumeric, hyphens, and dots; cannot start with '.' or '-'"
         )));
     }
     Ok(format!("{UNIT_PREFIX}{suffix}"))
@@ -673,7 +671,10 @@ mod tests {
     fn test_unit_name() {
         assert_eq!(unit_name("v0.2.0").unwrap(), "vm0-runner-v0.2.0");
         assert_eq!(unit_name("staging").unwrap(), "vm0-runner-staging");
-        assert_eq!(unit_name("my_name-1.0").unwrap(), "vm0-runner-my_name-1.0");
+        assert_eq!(
+            unit_name("pr-1234-test").unwrap(),
+            "vm0-runner-pr-1234-test"
+        );
     }
 
     #[test]
@@ -682,6 +683,19 @@ mod tests {
         assert!(unit_name("../evil").is_err());
         assert!(unit_name("has space").is_err());
         assert!(unit_name("semi;colon").is_err());
+        // Now aligned with runner_dirname: reject uppercase, underscore, leading dot/hyphen
+        assert!(unit_name("V0.2.0").is_err());
+        assert!(unit_name("my_name-1.0").is_err());
+        assert!(unit_name(".hidden").is_err());
+        assert!(unit_name("-flag").is_err());
+    }
+
+    /// Guard against someone replacing the call with `validate_or_err`
+    /// which would surface a "runner-dirname" message in a service context.
+    #[test]
+    fn test_unit_name_error_mentions_service() {
+        let msg = unit_name("UPPER").unwrap_err().to_string();
+        assert!(msg.contains("service name suffix"), "got: {msg}");
     }
 
     #[test]
