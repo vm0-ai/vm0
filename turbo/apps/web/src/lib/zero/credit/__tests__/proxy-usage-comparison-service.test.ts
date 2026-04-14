@@ -240,6 +240,54 @@ describe("compareRecentRunsProxyUsage", () => {
     expect(entries[0]!.meta).toMatchObject({ runId });
   });
 
+  // ── Zero-usage runs (no LLM call) ──────────────────────────────────
+
+  it("does not log 'missing proxy' when client data is all zeros", async () => {
+    const { orgId, userId } = await context.setupUser({
+      prefix: "zero-client",
+    });
+    const runId = await createCompletedRun(
+      orgId,
+      userId,
+      new Date(Date.now() - 120_000),
+    );
+    // Client reported usage but all token counts are zero (no LLM call)
+    await insertTestClientCreditUsage(orgId, {
+      userId,
+      runId,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      webSearchRequests: 0,
+    });
+
+    await compareRecentRunsProxyUsage();
+
+    expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
+  });
+
+  it("does not log 'missing client' when proxy data is all zeros", async () => {
+    const { orgId, userId } = await context.setupUser({ prefix: "zero-proxy" });
+    const runId = await createCompletedRun(
+      orgId,
+      userId,
+      new Date(Date.now() - 120_000),
+    );
+    // Proxy recorded usage but all token counts are zero
+    await insertTestCreditUsageForRun({
+      runId,
+      orgId,
+      userId,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+
+    await compareRecentRunsProxyUsage();
+
+    expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
+  });
+
   // ── Multi-row proxy aggregates subagent usage ──────────────────────
 
   it("aggregates multiple proxy rows (subagents) per run for comparison", async () => {
