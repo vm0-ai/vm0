@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.5...vsock-guest-v0.10.0) (2026-04-14)
+
+
+### Features
+
+* **vsock:** chunked write_file with append flag for large files ([#9335](https://github.com/vm0-ai/vm0/issues/9335)) ([16f128d](https://github.com/vm0-ai/vm0/commit/16f128d5e28e43c869a9e4bcc8993b1637175f93))
+
 ## [0.9.5](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.4...vsock-guest-v0.9.5) (2026-04-14)
 
 

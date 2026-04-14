@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.79.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.6...runner-rs-v0.79.7) (2026-04-14)
+
+
+### Bug Fixes
+
+* log directory iteration errors instead of silently swallowing ([#9333](https://github.com/vm0-ai/vm0/issues/9333)) ([a48fdde](https://github.com/vm0-ai/vm0/commit/a48fdde6bfd523dd1593e23870eb8ea82f40d6b0)), closes [#9037](https://github.com/vm0-ai/vm0/issues/9037)
+* **runner:** include host kernel version in image hash ([#9305](https://github.com/vm0-ai/vm0/issues/9305)) ([b30bc7d](https://github.com/vm0-ai/vm0/commit/b30bc7d447bc88c5753f9d8c30b90c873ccb993d))
+* upgrade debug-level log to warn in gc read_to_string failure ([#9345](https://github.com/vm0-ai/vm0/issues/9345)) ([8a0813e](https://github.com/vm0-ai/vm0/commit/8a0813eb79ec673c22c0881bfec66e75986869c3)), closes [#9334](https://github.com/vm0-ai/vm0/issues/9334)
+
 ## [0.79.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.5...runner-rs-v0.79.6) (2026-04-14)
 
 ## [0.79.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.4...runner-rs-v0.79.5) (2026-04-14)

@@ -1,5 +1,49 @@
 # Changelog
 
+## [12.234.0](https://github.com/vm0-ai/vm0/compare/web-v12.233.0...web-v12.234.0) (2026-04-14)
+
+
+### Features
+
+* **connector:** add google meet oauth connector ([#9330](https://github.com/vm0-ai/vm0/issues/9330)) ([15e1a5b](https://github.com/vm0-ai/vm0/commit/15e1a5baaf6fc4e460233a804065193e13027520))
+* **web:** render agent reply email body as markdown ([#9323](https://github.com/vm0-ai/vm0/issues/9323)) ([95eb5e4](https://github.com/vm0-ai/vm0/commit/95eb5e4154336b4ea6c61bfab8bebe2f24c16050))
+
+
+### Bug Fixes
+
+* **onboarding:** treat orphan compose as no default agent in status check ([#9320](https://github.com/vm0-ai/vm0/issues/9320)) ([ead34d2](https://github.com/vm0-ai/vm0/commit/ead34d2c9c62f57c9c145c36325fc6e6aded1bff))
+
+
+### Refactoring
+
+* migrate user record helpers to three-tier test architecture ([#9346](https://github.com/vm0-ai/vm0/issues/9346)) ([07f2def](https://github.com/vm0-ai/vm0/commit/07f2def0449dcdd67ec40f40b68b312c45540530)), closes [#9344](https://github.com/vm0-ai/vm0/issues/9344)
+* move org test infrastructure from api-test-helpers to proper modules ([#9342](https://github.com/vm0-ai/vm0/issues/9342)) ([b56d85f](https://github.com/vm0-ai/vm0/commit/b56d85f79ece9fa733938d9851735b454e9a2b6d)), closes [#9338](https://github.com/vm0-ai/vm0/issues/9338)
+* **test:** migrate agents.ts session/conversation helpers to three-tier architecture ([#9377](https://github.com/vm0-ai/vm0/issues/9377)) ([000aa3c](https://github.com/vm0-ai/vm0/commit/000aa3cf98b29ee4eb85c0f597e4253d3d8a8b86)), closes [#9374](https://github.com/vm0-ai/vm0/issues/9374)
+* **test:** migrate auth.ts helpers to three-tier test architecture ([#9365](https://github.com/vm0-ai/vm0/issues/9365)) ([de1c843](https://github.com/vm0-ai/vm0/commit/de1c843b31133e106e1726cd56fb89cc439e9d7f)), closes [#9358](https://github.com/vm0-ai/vm0/issues/9358)
+* **test:** migrate compose helpers to three-tier structure ([#9347](https://github.com/vm0-ai/vm0/issues/9347)) ([6d98ae6](https://github.com/vm0-ai/vm0/commit/6d98ae6e1620b2313c67bbbd1666642d31ccca89)), closes [#9340](https://github.com/vm0-ai/vm0/issues/9340)
+* **test:** migrate email and phone helpers to three-tier architecture ([#9366](https://github.com/vm0-ai/vm0/issues/9366)) ([1fe213e](https://github.com/vm0-ai/vm0/commit/1fe213e0304b7c69da532f008720a38bb51d7680)), closes [#9360](https://github.com/vm0-ai/vm0/issues/9360)
+* **test:** migrate org.ts helpers to three-tier test architecture ([#9373](https://github.com/vm0-ai/vm0/issues/9373)) ([#9380](https://github.com/vm0-ai/vm0/issues/9380)) ([c6b6f96](https://github.com/vm0-ai/vm0/commit/c6b6f960d1d2d42aeea79487b9bd84d615b8ff69))
+* **test:** migrate run creation helpers to db-test-seeders ([#9349](https://github.com/vm0-ai/vm0/issues/9349)) ([07efe2e](https://github.com/vm0-ai/vm0/commit/07efe2e67a5544fcb29e49beb7954111891c32f4))
+* **test:** migrate runner and export helpers to three-tier architecture ([#9371](https://github.com/vm0-ai/vm0/issues/9371)) ([8d10405](https://github.com/vm0-ai/vm0/commit/8d10405b5ad789bfa3908bb25dc2272dfcd89d6a)), closes [#9367](https://github.com/vm0-ai/vm0/issues/9367)
+* **test:** migrate runs.ts mutation/query helpers to three-tier architecture ([#9378](https://github.com/vm0-ai/vm0/issues/9378)) ([7be45e8](https://github.com/vm0-ai/vm0/commit/7be45e8920305621e153d8c1c2bc35455b090425)), closes [#9375](https://github.com/vm0-ai/vm0/issues/9375)
+* **test:** migrate schedules and secrets helpers to three-tier architecture ([#9372](https://github.com/vm0-ai/vm0/issues/9372)) ([ae670bd](https://github.com/vm0-ai/vm0/commit/ae670bdaefcc9754aac7ccb38959ab0ada205cd9)), closes [#9369](https://github.com/vm0-ai/vm0/issues/9369)
+* **test:** migrate skills.ts helpers to three-tier test architecture ([#9368](https://github.com/vm0-ai/vm0/issues/9368)) ([42c1837](https://github.com/vm0-ai/vm0/commit/42c18374cfd6c430bd3c2131c0b497265276ac6c))
+* **test:** migrate slack.ts helpers to three-tier structure ([#9356](https://github.com/vm0-ai/vm0/issues/9356)) ([9b97828](https://github.com/vm0-ai/vm0/commit/9b97828adf62426737f37f3aa29228e2585b795e))
+* **test:** migrate storage helpers to three-tier test architecture ([#9362](https://github.com/vm0-ai/vm0/issues/9362)) ([0b09f54](https://github.com/vm0-ai/vm0/commit/0b09f540e71773da9c6fdde7f3da1ef7e9b0a395))
+* **test:** migrate telegram.ts helpers to three-tier test architecture ([#9357](https://github.com/vm0-ai/vm0/issues/9357)) ([4286177](https://github.com/vm0-ai/vm0/commit/4286177435bc3c0a847ddee629ce2df84681d8ea)), closes [#9352](https://github.com/vm0-ai/vm0/issues/9352)
+* **test:** migrate users.ts voice chat helpers to three-tier architecture ([#9379](https://github.com/vm0-ai/vm0/issues/9379)) ([fa1824b](https://github.com/vm0-ai/vm0/commit/fa1824bb9020ab2181363e91cbfa62a803b59014)), closes [#9376](https://github.com/vm0-ai/vm0/issues/9376)
+* **test:** move billing helpers to db-test-seeders and db-test-assertions ([#9343](https://github.com/vm0-ai/vm0/issues/9343)) ([1539049](https://github.com/vm0-ai/vm0/commit/1539049cf505b2921f53dc44e8fe8ee1705bc0e1)), closes [#9341](https://github.com/vm0-ai/vm0/issues/9341)
+* **test:** move connector helpers to db-test-seeders and db-test-assertions ([#9364](https://github.com/vm0-ai/vm0/issues/9364)) ([b3de646](https://github.com/vm0-ai/vm0/commit/b3de646dfedfd3e33330a51724d9e2c5b12d2fcb)), closes [#9359](https://github.com/vm0-ai/vm0/issues/9359)
+* **test:** move github helpers to db-test-seeders and db-test-assertions ([#9355](https://github.com/vm0-ai/vm0/issues/9355)) ([8f6c8a0](https://github.com/vm0-ai/vm0/commit/8f6c8a0dd1368f8c623f755f0225d45e0106989d))
+* **test:** move usage and insights helpers to db-test-seeders and db-test-assertions ([#9350](https://github.com/vm0-ai/vm0/issues/9350)) ([8a54121](https://github.com/vm0-ai/vm0/commit/8a541219842618e9a9e3eab9a31744bc2a5f3fbe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.184.0
+
 ## [12.233.0](https://github.com/vm0-ai/vm0/compare/web-v12.232.1...web-v12.233.0) (2026-04-14)
 
 

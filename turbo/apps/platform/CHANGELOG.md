@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.236.0](https://github.com/vm0-ai/vm0/compare/app-v0.235.5...app-v0.236.0) (2026-04-14)
+
+
+### Features
+
+* **connector:** add google meet oauth connector ([#9330](https://github.com/vm0-ai/vm0/issues/9330)) ([15e1a5b](https://github.com/vm0-ai/vm0/commit/15e1a5baaf6fc4e460233a804065193e13027520))
+* **mission-control:** refresh activity panel when latest run changes ([#9325](https://github.com/vm0-ai/vm0/issues/9325)) ([159a82b](https://github.com/vm0-ai/vm0/commit/159a82bfd70d1eaaf3a9a7cfcce0201f31aa8380))
+
+
+### Refactoring
+
+* **mission-control:** fix p1 issues from pr review ([#9337](https://github.com/vm0-ai/vm0/issues/9337)) ([f3d5cd6](https://github.com/vm0-ai/vm0/commit/f3d5cd6174ab41c5e6e01ddf9ad968f1d0745ce2))
+* **platform:** migrate dom ref setters to use onref pattern ([#9301](https://github.com/vm0-ai/vm0/issues/9301)) ([4012d49](https://github.com/vm0-ai/vm0/commit/4012d49f369800ae2a9bbd40757f9e2501297042))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.184.0
+
 ## [0.235.5](https://github.com/vm0-ai/vm0/compare/app-v0.235.4...app-v0.235.5) (2026-04-14)
 
 

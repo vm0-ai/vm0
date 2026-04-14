@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.8.5...vsock-test-v0.9.0) (2026-04-14)
+
+
+### Features
+
+* **vsock:** chunked write_file with append flag for large files ([#9335](https://github.com/vm0-ai/vm0/issues/9335)) ([16f128d](https://github.com/vm0-ai/vm0/commit/16f128d5e28e43c869a9e4bcc8993b1637175f93))
+
 ## [0.8.5](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.8.4...vsock-test-v0.8.5) (2026-04-14)
 
 ## [0.8.4](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.8.3...vsock-test-v0.8.4) (2026-04-14)

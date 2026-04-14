@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.184.0](https://github.com/vm0-ai/vm0/compare/core-v8.183.0...core-v8.184.0) (2026-04-14)
+
+
+### Features
+
+* **connector:** add google meet oauth connector ([#9330](https://github.com/vm0-ai/vm0/issues/9330)) ([15e1a5b](https://github.com/vm0-ai/vm0/commit/15e1a5baaf6fc4e460233a804065193e13027520))
+
 ## [8.183.0](https://github.com/vm0-ai/vm0/compare/core-v8.182.0...core-v8.183.0) (2026-04-14)
 
 
