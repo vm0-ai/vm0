@@ -1379,7 +1379,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gc_versions_skip_protects_named_version() {
+    async fn gc_versions_protect_keeps_named_version() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let bin_dir = home.bin_dir();
