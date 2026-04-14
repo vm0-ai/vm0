@@ -509,9 +509,70 @@ impl VsockHost {
         })
     }
 
+    /// Maximum content per write_file message.  Leaves headroom below
+    /// [`vsock_proto::MAX_MESSAGE_SIZE`] for the path and frame overhead.
+    const WRITE_FILE_CHUNK_LIMIT: usize = 15 * 1024 * 1024;
+
     /// Write a file on the guest.
+    ///
+    /// Content larger than 15 MB is automatically split into multiple
+    /// messages using the `FLAG_APPEND` protocol flag.  Chunks are written
+    /// to a temporary file and atomically renamed to the target path after
+    /// the last chunk succeeds, so a partial transfer never leaves a
+    /// truncated file at the destination.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
-        let payload = vsock_proto::encode_write_file(path, content, sudo)
+        if content.len() <= Self::WRITE_FILE_CHUNK_LIMIT {
+            return self.write_file_chunk(path, content, sudo, false).await;
+        }
+
+        // Write chunks to a temp file, then atomic rename.
+        let tmp = format!("{path}.vm0tmp");
+        let escaped_tmp = tmp.replace('\'', "'\\''");
+        let rm_tmp = format!("rm -f '{escaped_tmp}'");
+
+        let result = async {
+            for (i, chunk) in content.chunks(Self::WRITE_FILE_CHUNK_LIMIT).enumerate() {
+                self.write_file_chunk(&tmp, chunk, sudo, i > 0).await?;
+            }
+            io::Result::Ok(())
+        }
+        .await;
+
+        if result.is_err() {
+            // Best-effort cleanup of the temp file.
+            let _ = self.exec(&rm_tmp, 5000, &[], sudo).await;
+            return result;
+        }
+
+        // Atomic rename temp → target.
+        let escaped_path = path.replace('\'', "'\\''");
+        let mv_cmd = format!("mv -f '{escaped_tmp}' '{escaped_path}'");
+        match self.exec(&mv_cmd, 5000, &[], sudo).await {
+            Ok(r) if r.exit_code == 0 => Ok(()),
+            Ok(r) => {
+                let _ = self.exec(&rm_tmp, 5000, &[], sudo).await;
+                Err(io::Error::other(format!(
+                    "failed to rename temp file to {path}: {}",
+                    String::from_utf8_lossy(&r.stderr),
+                )))
+            }
+            Err(e) => {
+                // Connection may be broken, but try cleanup anyway.
+                let _ = self.exec(&rm_tmp, 5000, &[], sudo).await;
+                Err(e)
+            }
+        }
+    }
+
+    /// Send a single write_file message and validate the response.
+    async fn write_file_chunk(
+        &self,
+        path: &str,
+        content: &[u8],
+        sudo: bool,
+        append: bool,
+    ) -> io::Result<()> {
+        let payload = vsock_proto::encode_write_file(path, content, sudo, append)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let timeout = Duration::from_secs(300);
         let resp = self.request(MSG_WRITE_FILE, &payload, timeout).await?;
@@ -787,10 +848,12 @@ mod tests {
             let msgs = decoder.decode(&buf[..n]).unwrap();
             assert_eq!(msgs[0].msg_type, MSG_WRITE_FILE);
 
-            let (path, content, sudo) = vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
+            let (path, content, sudo, append) =
+                vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
             assert_eq!(path, "/tmp/test.txt");
             assert_eq!(content, b"hello");
             assert!(!sudo);
+            assert!(!append);
 
             let payload = vsock_proto::encode_write_file_result(true, "");
             let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
@@ -801,6 +864,183 @@ mod tests {
         host.write_file("/tmp/test.txt", b"hello", false)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_write_file_chunked() {
+        let (host_stream, mut guest) = make_pair();
+
+        // Content just over the chunk limit → 2 write messages + 1 exec (mv)
+        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let content = vec![0xABu8; chunk_limit + 100];
+        let content_clone = content.clone();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut chunks_received = Vec::new();
+            let mut buf = vec![0u8; chunk_limit + 4096];
+
+            // Read write_file chunks + final exec (mv) message
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                for msg in msgs {
+                    if msg.msg_type == MSG_WRITE_FILE {
+                        let (path, chunk, _sudo, append) =
+                            vsock_proto::decode_write_file(&msg.payload).unwrap();
+                        // Chunks go to temp file
+                        assert_eq!(path, "/tmp/big.bin.vm0tmp");
+                        chunks_received.push((append, chunk.to_vec()));
+
+                        let payload = vsock_proto::encode_write_file_result(true, "");
+                        let resp =
+                            vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                    } else if msg.msg_type == MSG_EXEC {
+                        // Atomic rename: mv temp → target
+                        let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
+                        assert!(decoded.command.contains("mv -f"));
+                        assert!(decoded.command.contains("/tmp/big.bin.vm0tmp"));
+                        assert!(decoded.command.contains("/tmp/big.bin"));
+
+                        let payload = vsock_proto::encode_exec_result(0, &[], &[]);
+                        let resp = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                        // Done — verify chunks and return
+                        assert_eq!(chunks_received.len(), 2);
+                        assert!(!chunks_received[0].0); // first: create
+                        assert_eq!(chunks_received[0].1.len(), chunk_limit);
+                        assert!(chunks_received[1].0); // second: append
+                        assert_eq!(chunks_received[1].1.len(), 100);
+                        let mut reassembled = chunks_received[0].1.clone();
+                        reassembled.extend_from_slice(&chunks_received[1].1);
+                        assert_eq!(reassembled, content_clone);
+                        return;
+                    }
+                }
+            }
+            panic!("guest loop ended without receiving exec (mv)");
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        host.write_file("/tmp/big.bin", &content, false)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
+        let (host_stream, mut guest) = make_pair();
+
+        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let content = vec![0xABu8; chunk_limit + 100];
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = vec![0u8; chunk_limit + 4096];
+            let mut chunk_count = 0u32;
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                for msg in msgs {
+                    if msg.msg_type == MSG_WRITE_FILE {
+                        chunk_count += 1;
+                        let (success, err) = if chunk_count == 2 {
+                            (false, "disk full")
+                        } else {
+                            (true, "")
+                        };
+                        let payload = vsock_proto::encode_write_file_result(success, err);
+                        let resp =
+                            vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                    } else if msg.msg_type == MSG_EXEC {
+                        // Cleanup: rm -f temp file
+                        let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
+                        assert!(decoded.command.contains("rm -f"));
+                        let payload = vsock_proto::encode_exec_result(0, &[], &[]);
+                        let resp = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                        return;
+                    }
+                }
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let err = host
+            .write_file("/tmp/big.bin", &content, false)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("disk full"));
+    }
+
+    #[tokio::test]
+    async fn test_write_file_chunked_cleans_up_on_mv_failure() {
+        let (host_stream, mut guest) = make_pair();
+
+        let chunk_limit = VsockHost::WRITE_FILE_CHUNK_LIMIT;
+        let content = vec![0xABu8; chunk_limit + 100];
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = vec![0u8; chunk_limit + 4096];
+            let mut exec_count = 0u32;
+            loop {
+                let n = guest.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                let msgs = decoder.decode(&buf[..n]).unwrap();
+                for msg in msgs {
+                    if msg.msg_type == MSG_WRITE_FILE {
+                        let payload = vsock_proto::encode_write_file_result(true, "");
+                        let resp =
+                            vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
+                        guest.write_all(&resp).await.unwrap();
+                    } else if msg.msg_type == MSG_EXEC {
+                        exec_count += 1;
+                        let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
+                        if decoded.command.contains("mv -f") {
+                            // mv fails
+                            let payload =
+                                vsock_proto::encode_exec_result(1, &[], b"permission denied");
+                            let resp =
+                                vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
+                            guest.write_all(&resp).await.unwrap();
+                        } else {
+                            // cleanup rm
+                            assert!(decoded.command.contains("rm -f"));
+                            let payload = vsock_proto::encode_exec_result(0, &[], &[]);
+                            let resp =
+                                vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
+                            guest.write_all(&resp).await.unwrap();
+                            assert_eq!(exec_count, 2); // mv then rm
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let err = host
+            .write_file("/tmp/big.bin", &content, false)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("permission denied"));
     }
 
     #[tokio::test]

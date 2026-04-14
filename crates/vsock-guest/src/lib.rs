@@ -369,14 +369,15 @@ fn handle_exec(
 }
 
 /// Handle write_file message
-fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, String) {
+fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -> (bool, String) {
     log(
         "INFO",
         &format!(
-            "write_file: path={} size={} sudo={}",
+            "write_file: path={} size={} sudo={} append={}",
             path,
             content.len(),
-            use_sudo
+            use_sudo,
+            append,
         ),
     );
 
@@ -384,24 +385,29 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool) -> (bool, Strin
     // Use subprocess instead of direct fs::write to run as user
     const WRITE_TIMEOUT_MS: u32 = 30_000;
 
+    let escaped_path = path.replace('\'', "'\\''");
+
     // Build the write command: tee for privileged writes (build_exec_command
     // handles root elevation), cat for normal writes with parent dir creation.
     let write_cmd = if use_sudo {
-        format!("tee '{}'", path.replace('\'', "'\\''"))
+        let tee_flag = if append { "-a " } else { "" };
+        format!("tee {tee_flag}'{escaped_path}'")
+    } else if append {
+        // Append mode: parent directory already exists from the first chunk.
+        format!("cat >> '{escaped_path}'")
     } else {
         // Create parent directory if needed, then write
         if let Some(parent) = std::path::Path::new(path).parent() {
             if !parent.as_os_str().is_empty() {
                 format!(
-                    "mkdir -p '{}' && cat > '{}'",
+                    "mkdir -p '{}' && cat > '{escaped_path}'",
                     parent.display().to_string().replace('\'', "'\\''"),
-                    path.replace('\'', "'\\''")
                 )
             } else {
-                format!("cat > '{}'", path.replace('\'', "'\\''"))
+                format!("cat > '{escaped_path}'")
             }
         } else {
-            format!("cat > '{}'", path.replace('\'', "'\\''"))
+            format!("cat > '{escaped_path}'")
         }
     };
 
@@ -793,9 +799,9 @@ fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
             vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
         )),
         MSG_WRITE_FILE => {
-            let (path, content, use_sudo) =
+            let (path, content, use_sudo, append) =
                 vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
-            let (success, error) = handle_write_file(path, content, use_sudo);
+            let (success, error) = handle_write_file(path, content, use_sudo, append);
             let payload = vsock_proto::encode_write_file_result(success, &error);
             Ok(Some(
                 vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload)
