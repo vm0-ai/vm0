@@ -599,6 +599,38 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
+    slug: "competitor-pricing-monitor",
+    color: "#7cbeab",
+    avatar: {
+      rotation: 5,
+      skin: 2,
+      hairStyle: 4,
+      hairColor: 1,
+      expression: 4,
+      intensity: "d",
+    },
+    roles: ["product", "ops"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [NOTION, SLACK],
+    integrations: [
+      { connector: NOTION, required: true },
+      { connector: SLACK, required: false },
+    ],
+    relatedSlugs: [
+      "competitor-audit",
+      "kol-cold-outreach",
+      "product-health-briefing",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
     slug: "error-triage-daily",
     color: "#9abe7c",
     avatar: {

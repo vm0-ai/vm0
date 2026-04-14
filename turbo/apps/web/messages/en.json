@@ -1295,6 +1295,88 @@
           "Run a catch-up scan first to seed the database with baseline data before setting up the recurring schedule."
         ]
       },
+      "competitor-pricing-monitor": {
+        "title": "Monitor competitor pricing pages and flag changes weekly",
+        "description": "Give Zero a list of competitor pricing URLs. It scrapes each page every Monday, diffs it against last week's Notion snapshot, writes an impact summary for every change found, saves the full report to Notion, and posts a digest to Slack.",
+        "timeSaved": "~2 hrs saved per week",
+        "headings": {
+          "scenario": "Why pricing changes catch teams off guard",
+          "prompt": "How to set up weekly competitor pricing monitoring with Zero",
+          "steps": "How Zero scrapes, diffs, and reports pricing changes",
+          "nextActions": "Drill into a specific change, adjust the watchlist, or share with leadership",
+          "integrations": "Required integrations: Notion and Slack",
+          "tips": "Best practices for automated pricing intelligence"
+        },
+        "scenario": "A competitor quietly drops their free tier. Another one adds a new enterprise plan. You find out three weeks later from a prospect who already chose them. Zero checks your competitor pricing pages every Monday, compares what changed since last week, writes a clear impact summary for every change found, and posts a digest to Slack before your team's week kicks off.",
+        "promptVariants": [
+          {
+            "label": "Set up weekly monitoring",
+            "prompt": "@Zero every Monday at 9am, scrape the pricing pages of e2b.dev, daytona.io, cursor.com, and replit.com. Compare against last week's Notion snapshot. Flag any changes to tiers, prices, or CTAs, write a 2–3 sentence impact summary for each, save the full report to Notion under Competitor Pricing Log, and post a digest to #competitive."
+          },
+          {
+            "label": "Run a one-off check",
+            "prompt": "@Zero scrape the pricing pages of e2b.dev and daytona.io right now. Compare against the last saved Notion snapshot and tell me what changed."
+          },
+          {
+            "label": "Deep dive on one competitor",
+            "prompt": "@Zero pull the full pricing history for cursor.com from the Competitor Pricing Log in Notion. Summarize how their tiers and CTAs have evolved over time."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero every Monday at 9am, scrape competitor pricing pages and compare against last week's Notion snapshot. Post a digest to #competitive."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Pricing Digest — Apr 14\n\nCursor: Added new Ultra tier at $200/month. Signals growing confidence in a high-willingness-to-pay power-user segment.\nDaytona: Increased startup credit offer from $25K to $50K. Signals aggressive developer acquisition push.\n\nNo changes detected: E2B, Replit\n\nFull report saved to Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scrapes each pricing page",
+            "description": "Zero fetches the current content of every pricing URL you specified, extracting tier names, prices, feature lists, trial offers, and CTAs."
+          },
+          {
+            "title": "Zero diffs against last week's Notion snapshot",
+            "description": "Zero compares today's content against the version saved in Notion last week. It flags any change to pricing tiers, plan names, included features, trial terms, or calls to action."
+          },
+          {
+            "title": "Impact summaries saved and digest posted",
+            "description": "For each change found, Zero writes a 2–3 sentence impact summary covering what changed, what it signals, and what to consider. The full report is saved to Notion and a concise digest is posted to Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Drill into a specific change",
+            "description": "Get more context on a single competitor move",
+            "examplePrompt": "@Zero pull up everything we have on Cursor's pricing history in Notion. Summarize how they've repositioned their tiers since Q1."
+          },
+          {
+            "title": "Add a new competitor to the watchlist",
+            "description": "Expand the pages being monitored",
+            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the baseline."
+          },
+          {
+            "title": "Share a rollup with leadership",
+            "description": "Send a quarterly summary of pricing shifts",
+            "examplePrompt": "@Zero summarize all competitor pricing changes logged in Notion this quarter and post a report to #leadership."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero saves weekly pricing snapshots and change reports to your Notion workspace for long-term tracking and diffing."
+          },
+          {
+            "description": "Zero posts a concise weekly digest to the Slack channel you specify."
+          }
+        ],
+        "tips": [
+          "Run an initial scrape first to set the baseline snapshot in Notion. Without it, Zero has nothing to diff against and will treat everything as a change.",
+          "Be specific about what to flag. 'Watch for changes to pricing tiers, plan names, trial offers, and CTAs' gives tighter results than a general sweep.",
+          "Structure your Notion log with properties like Competitor, Change Type, and Date so you can filter by what changed and when across the full history."
+        ]
+      },
       "error-triage-daily": {
         "title": "Triage production errors every morning without touching Sentry",
         "description": "Schedule Zero to run daily. It pulls unresolved errors from Sentry and Axiom, deduplicates across sources, opens a GitHub issue with the full stack trace, and assigns it to the right engineer automatically.",
