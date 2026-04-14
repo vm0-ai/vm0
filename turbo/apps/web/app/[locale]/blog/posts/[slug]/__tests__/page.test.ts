@@ -115,7 +115,7 @@ describe("blog post page metadata", () => {
     });
 
     expect(metadata.alternates?.canonical).toBe(
-      "https://test.vm0.ai/en/blog/posts/test-post",
+      "https://www.vm0.ai/en/blog/posts/test-post",
     );
   });
 
@@ -125,7 +125,7 @@ describe("blog post page metadata", () => {
     });
 
     expect(metadata.alternates?.canonical).toBe(
-      "https://test.vm0.ai/ja/blog/posts/test-post",
+      "https://www.vm0.ai/ja/blog/posts/test-post",
     );
   });
 

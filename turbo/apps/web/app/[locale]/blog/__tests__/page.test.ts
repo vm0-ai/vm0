@@ -84,7 +84,14 @@ describe("blog list page metadata", () => {
       params: Promise.resolve({ locale: "en" }),
     });
 
-    expect(metadata.alternates?.canonical).toBe("https://test.vm0.ai/en/blog");
+    expect(metadata.alternates?.canonical).toBe("https://www.vm0.ai/en/blog");
+    expect(metadata.alternates?.languages).toMatchObject({
+      en: "https://www.vm0.ai/en/blog",
+      de: "https://www.vm0.ai/de/blog",
+      ja: "https://www.vm0.ai/ja/blog",
+      es: "https://www.vm0.ai/es/blog",
+      "x-default": "https://www.vm0.ai/en/blog",
+    });
   });
 
   it("constructs canonical URL for non-English locale", async () => {
@@ -92,6 +99,6 @@ describe("blog list page metadata", () => {
       params: Promise.resolve({ locale: "ja" }),
     });
 
-    expect(metadata.alternates?.canonical).toBe("https://test.vm0.ai/ja/blog");
+    expect(metadata.alternates?.canonical).toBe("https://www.vm0.ai/ja/blog");
   });
 });
