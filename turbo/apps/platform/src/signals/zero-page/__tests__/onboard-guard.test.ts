@@ -8,6 +8,8 @@ import { pathname } from "../../location.ts";
 
 const context = testContext();
 
+const CHOOSE_ORG_PATH = "/sign-in/tasks/choose-organization";
+
 function mockOnboardingStatus(body: {
   needsOnboarding: boolean;
   hasOrg: boolean;
@@ -61,7 +63,7 @@ describe("onboardGuard$", () => {
     expect(pathname()).toBe("/onboarding");
   });
 
-  it("should redirect to /select-org when org is deleted but user has other memberships", async () => {
+  it("should redirect to choose-organization when org is deleted but user has other memberships", async () => {
     mockOnboardingStatus({
       needsOnboarding: true,
       hasOrg: false,
@@ -81,7 +83,7 @@ describe("onboardGuard$", () => {
     const redirected = await context.store.set(onboardGuard$, context.signal);
 
     expect(redirected).toBeTruthy();
-    expect(pathname()).toBe("/select-org");
+    expect(window.location.href).toContain(CHOOSE_ORG_PATH);
   });
 
   it("should redirect to /onboarding when org is deleted and user has no memberships", async () => {

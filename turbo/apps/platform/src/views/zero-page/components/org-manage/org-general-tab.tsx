@@ -22,7 +22,7 @@ import {
   type OrgResponse,
 } from "@vm0/core";
 import { org$, isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
-import { clerk$ } from "../../../../signals/auth.ts";
+import { clerk$, resolveWebOrigin } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
 import { fetch$ } from "../../../../signals/fetch.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -408,7 +408,7 @@ function DangerZoneSection({
             // of; otherwise Clerk may revoke the session and log the user out.
             await clerk?.setActive({ organization: null });
             toast.success("You have left the workspace");
-            window.location.href = "/select-org";
+            window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
           } else {
             toast.error(
               extractErrorMessage(result, `Failed to leave (${result.status})`),
@@ -438,7 +438,7 @@ function DangerZoneSection({
             // revoke the session and log the user out.
             await clerk?.setActive({ organization: null });
             toast.success("Workspace deleted");
-            window.location.href = "/select-org";
+            window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
           } else {
             toast.error(
               extractErrorMessage(

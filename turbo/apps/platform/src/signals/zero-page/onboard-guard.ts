@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { clerk$ } from "../auth.ts";
+import { clerk$, resolveWebOrigin } from "../auth.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import {
   zeroOnboardingStatus$,
@@ -13,8 +13,8 @@ import {
  * `false` otherwise.
  *
  * When the backend cannot resolve the current org (e.g. it was deleted) but the
- * user still belongs to other orgs, redirect to `/select-org` instead of
- * `/onboarding` so they can pick a valid org.
+ * user still belongs to other orgs, redirect to the web app's
+ * choose-organization page instead of `/onboarding` so they can pick a valid org.
  */
 export const onboardGuard$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
@@ -37,7 +37,7 @@ export const onboardGuard$ = command(
       signal.throwIfAborted();
       const memberships = clerk.user?.organizationMemberships ?? [];
       if (memberships.length > 0) {
-        set(detachedNavigateTo$, "/select-org", { replace: true });
+        window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
         return true;
       }
     }

@@ -1,6 +1,5 @@
 export const ROUTES = {
   home: "/",
-  selectOrg: "/select-org",
   agents: "/agents",
   agentDetail: "/agents/:agentId",
   agentChat: "/agents/:agentId/chat",

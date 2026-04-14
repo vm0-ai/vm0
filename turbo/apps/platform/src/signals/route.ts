@@ -1,7 +1,7 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "../types/route.ts";
-import { clerk$, needsOrgSelection$ } from "./auth.ts";
+import { clerk$, needsOrgSelection$, resolveWebOrigin } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
@@ -222,7 +222,8 @@ const setupPageWrapper = (fn: Command<Promise<void> | void, [AbortSignal]>) => {
 /**
  * Wraps a page setup function with authentication requirement.
  * Opens sign-in dialog if user is not authenticated.
- * Also redirects to /select-org when the user needs to choose an organization.
+ * Also redirects to the web app's choose-organization page when the user
+ * needs to select an organization.
  */
 export const setupAuthPageWrapper = (
   fn: Command<Promise<void> | void, [AbortSignal]>,
@@ -237,16 +238,15 @@ export const setupAuthPageWrapper = (
       return;
     }
 
-    // Redirect to org selection if needed (skip if already on /select-org)
-    if (pathname() !== "/select-org") {
-      const needsSelection = await get(needsOrgSelection$);
-      signal.throwIfAborted();
+    const needsSelection = await get(needsOrgSelection$);
+    signal.throwIfAborted();
 
-      if (needsSelection) {
-        L.debug("redirect to /select-org because org selection is needed");
-        set(detachedNavigateTo$, "/select-org");
-        return;
-      }
+    if (needsSelection) {
+      L.debug(
+        "redirect to choose-organization because org selection is needed",
+      );
+      window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
+      return;
     }
 
     await set(setupPageWrapper(fn), signal);

@@ -11,7 +11,6 @@ import { ROUTES, type RoutePath } from "./route-paths.ts";
 
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
-import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
 import { setupQueuePage$ } from "./queue-page/queue-page-setup.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
@@ -85,10 +84,6 @@ function redirectWithId(target: RoutePath, targetParam: string) {
 
 const ROUTE_CONFIG = [
   // --- New routes ---
-  {
-    path: ROUTES.selectOrg,
-    setup: setupAuthPageWrapper(setupSelectOrgPage$),
-  },
   {
     path: ROUTES.chatList,
     setup: setupAuthPageWrapper(setupChatListPage$),
