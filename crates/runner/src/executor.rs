@@ -260,37 +260,12 @@ async fn execute_reused_sandbox(
     // Re-register proxy with new run credentials
     register_proxy(config, context, source_ip).await;
 
-    // Fix clock drift and reseed entropy (always needed after idle period).
-    // On failure, return the sandbox so the caller can still stop + destroy it.
-    if let Err(e) = fix_guest_clock(sandbox.as_ref()).await {
-        warn!(run_id = %context.run_id, error = %e, "fix_guest_clock failed on reused sandbox");
-        unregister_proxy(config, context, source_ip).await;
-        return ExecuteOutcome {
-            exit_code: 1,
-            error: Some(e.to_string()),
-            sandbox: Some(sandbox),
-            source_ip: source_ip.to_string(),
-            guest_session_id: None,
-        };
-    }
-    if let Err(e) = reseed_guest_entropy(sandbox.as_ref()).await {
-        warn!(run_id = %context.run_id, error = %e, "reseed_guest_entropy failed on reused sandbox");
-        unregister_proxy(config, context, source_ip).await;
-        return ExecuteOutcome {
-            exit_code: 1,
-            error: Some(e.to_string()),
-            sandbox: Some(sandbox),
-            source_ip: source_ip.to_string(),
-            guest_session_id: None,
-        };
-    }
-
-    // Run job — clock/entropy already handled.
+    // Run job — clock/entropy fixed inside run_in_sandbox (always needed after idle).
     let result = run_in_sandbox(
         sandbox.as_ref(),
         context,
         config,
-        false, // clock/entropy already handled
+        true,
         Some(prev_storage),
         telemetry,
         cancel,
@@ -388,7 +363,7 @@ async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     config: &ExecutorConfig,
-    use_snapshot: bool,
+    restore_guest_state: bool,
     prev_storage: Option<&crate::idle_pool::StorageFingerprints>,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
@@ -399,8 +374,9 @@ async fn run_in_sandbox(
         context.run_id
     );
 
-    // 1. Fix guest clock after snapshot restore (must happen before HTTPS calls)
-    if use_snapshot {
+    // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
+    //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
+    if restore_guest_state {
         fix_guest_clock(sandbox).await?;
         reseed_guest_entropy(sandbox).await?;
     }
