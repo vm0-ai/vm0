@@ -622,11 +622,15 @@ fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
     let idx = line
         .match_indices(flag)
         .find(|&(i, _)| {
-            let before_ok = i == 0 || line.as_bytes().get(i - 1).is_some_and(|&b| b == b' ');
+            let before_ok = i == 0
+                || line
+                    .as_bytes()
+                    .get(i - 1)
+                    .is_some_and(|b| b.is_ascii_whitespace());
             let after_ok = line
                 .as_bytes()
                 .get(i + flag.len())
-                .is_none_or(|&b| b == b' ' || b == b'=');
+                .is_none_or(|b| b.is_ascii_whitespace() || *b == b'=');
             before_ok && after_ok
         })?
         .0;
@@ -1578,6 +1582,15 @@ mod tests {
     fn parse_config_unclosed_quote_returns_none() {
         let line = r#""/usr/bin/runner" start --config "/data/no-close"#;
         assert_eq!(parse_exec_start_config(line), None);
+    }
+
+    #[test]
+    fn parse_config_tab_separated() {
+        let line = "\"/usr/bin/runner\" start --config\t/data/runner.yaml";
+        assert_eq!(
+            parse_exec_start_config(line),
+            Some(PathBuf::from("/data/runner.yaml"))
+        );
     }
 
     #[test]
