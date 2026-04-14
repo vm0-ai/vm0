@@ -514,12 +514,13 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
           }
           trap cleanup EXIT
 
-          # Clean up any residual transient unit from a previous CI run
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
+          # Clean up any residual transient unit from a previous CI run.
+          # stop() returns Ok when no service exists, so no need for || true.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -772,12 +773,13 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
           }
           trap cleanup EXIT
 
-          # Clean up any residual transient unit from a previous CI run
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
+          # Clean up any residual transient unit from a previous CI run.
+          # stop() returns Ok when no service exists, so no need for || true.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -884,12 +886,13 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
           }
           trap cleanup EXIT
 
-          # Clean up any residual transient unit from a previous CI run
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
+          # Clean up any residual transient unit from a previous CI run.
+          # stop() returns Ok when no service exists, so no need for || true.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -1196,12 +1199,13 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
           }
           trap cleanup EXIT
 
-          # Clean up any residual transient unit from a previous CI run
-          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force 2>/dev/null || true
+          # Clean up any residual transient unit from a previous CI run.
+          # stop() returns Ok when no service exists, so no need for || true.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 
           # Start transient runner service
           echo "--- Starting runner ---"

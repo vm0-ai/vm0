@@ -1637,9 +1637,9 @@ jobs:
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
             # Stop any existing service from a previous run (e.g., re-run after test failure).
-            # Ignore errors if not running.
+            # stop() returns Ok when no service exists, so no need for || true.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME} --force" 2>/dev/null || true
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME} --force"
 
             # Start as systemd transient service
             # shellcheck disable=SC2029
