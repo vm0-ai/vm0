@@ -945,7 +945,11 @@ async fn is_lock_free(lock_path: &str) -> bool {
         use std::fs::File;
         let file = match File::open(&lock_path) {
             Ok(f) => f,
-            Err(_) => return true, // no lock file → not held
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
+            Err(e) => {
+                tracing::warn!("cannot open lock file {lock_path}: {e}, assuming held");
+                return false;
+            }
         };
         // Try exclusive lock without blocking
         match nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock) {
