@@ -79,17 +79,49 @@ impl Drop for DnsProxy {
     }
 }
 
-/// Find an available UDP port by binding to port 0.
+/// Find an available port by binding to port 0.
+///
+/// Checks both TCP and UDP because dnsmasq binds both protocols.
 fn find_available_port() -> std::io::Result<u16> {
-    let socket = std::net::UdpSocket::bind("0.0.0.0:0")?;
-    Ok(socket.local_addr()?.port())
+    let tcp = std::net::TcpListener::bind("0.0.0.0:0")?;
+    let port = tcp.local_addr()?.port();
+    let _udp = std::net::UdpSocket::bind(("0.0.0.0", port))?;
+    Ok(port)
 }
 
 /// Start dnsmasq and spawn a background task to parse its query log.
 ///
 /// dnsmasq listens on a dynamically allocated port and forwards to upstream DNS.
+/// Retries up to 3 times with a fresh port if the initial bind fails (TOCTOU race).
 pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
-    let port = find_available_port()?;
+    const MAX_ATTEMPTS: u32 = 3;
+    let mut last_err = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        let port = match find_available_port() {
+            Ok(p) => p,
+            Err(e) => {
+                warn!(attempt, error = %e, "failed to find available port");
+                last_err = Some(e);
+                continue;
+            }
+        };
+        match try_start(port, &ip_log_map).await {
+            Ok(proxy) => return Ok(proxy),
+            Err(e) => {
+                if attempt < MAX_ATTEMPTS {
+                    warn!(port, attempt, error = %e, "dnsmasq failed to start, retrying with new port");
+                } else {
+                    warn!(port, attempt, error = %e, "dnsmasq failed to start, all attempts exhausted");
+                }
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("dnsmasq failed to start")))
+}
+
+/// Try to start dnsmasq on the given port. Returns the proxy handle on success.
+async fn try_start(port: u16, ip_log_map: &IpLogMap) -> std::io::Result<DnsProxy> {
     let port_str = port.to_string();
 
     let mut child = tokio::process::Command::new("dnsmasq")
@@ -134,6 +166,7 @@ pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
 
     let cancel = CancellationToken::new();
     let token = cancel.clone();
+    let ip_log_map = ip_log_map.clone();
     let task = tokio::spawn(async move {
         if let Err(e) = tail_stderr(stderr, &ip_log_map, token).await {
             warn!(error = %e, "dns log monitor exited");
