@@ -13,6 +13,7 @@ export async function findTestStorageByName(
   orgId: string,
   name: string,
 ): Promise<{ id: string; name: string; s3Prefix: string } | undefined> {
+  initServices();
   const [result] = await globalThis.services.db
     .select({
       id: storages.id,
@@ -43,6 +44,7 @@ export async function findTestStorage(
 ): Promise<
   { id: string; name: string; userId: string; s3Prefix: string } | undefined
 > {
+  initServices();
   const [result] = await globalThis.services.db
     .select({
       id: storages.id,
@@ -66,6 +68,7 @@ export async function findTestStorage(
  * Find a single system storage by name.
  */
 export async function findTestSystemStorageByName(name: string) {
+  initServices();
   const [storage] = await globalThis.services.db
     .select()
     .from(storages)

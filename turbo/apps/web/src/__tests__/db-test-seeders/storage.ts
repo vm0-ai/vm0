@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { VOLUME_ORG_USER_ID } from "@vm0/core";
+import { initServices } from "../../lib/init-services";
 import { storages, storageVersions } from "../../db/schema/storage";
 import { hashFileContent } from "../../lib/infra/storage/content-hash";
 import { uniqueId } from "../test-helpers";
@@ -22,6 +23,7 @@ export async function createTestVolumeForOrg(
   orgId: string,
   name: string,
 ): Promise<{ storageId: string; versionId: string }> {
+  initServices();
   const versionId = randomUUID().replace(/-/g, "").repeat(2).slice(0, 64);
   const s3Key = `${orgId}/${name}/${versionId}`;
 
@@ -72,6 +74,7 @@ export async function insertStorageVersion(
   storageName: string,
   versionId: string,
 ): Promise<void> {
+  initServices();
   const [storage] = await globalThis.services.db
     .select()
     .from(storages)
@@ -110,6 +113,7 @@ export async function insertTestArtifactStorage(
   orgId: string,
   name: string,
 ) {
+  initServices();
   const versionId = hashFileContent(Buffer.from(uniqueId("sv")));
 
   const [storage] = await globalThis.services.db
@@ -155,6 +159,7 @@ export async function insertTestStorage(params: {
   name: string;
   type?: string;
 }): Promise<{ id: string }> {
+  initServices();
   const [row] = await globalThis.services.db
     .insert(storages)
     .values({
@@ -179,6 +184,7 @@ export async function insertTestStorageVersion(params: {
   storageId: string;
   createdBy: string;
 }): Promise<void> {
+  initServices();
   await globalThis.services.db.insert(storageVersions).values({
     id: uniqueId("sv"),
     storageId: params.storageId,
