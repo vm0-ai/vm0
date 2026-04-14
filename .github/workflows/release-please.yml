@@ -826,6 +826,7 @@ jobs:
           # *** in all logs, keeping the passphrase invisible.
           PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
         run: |
+          set -euo pipefail
           # GitHub redacts raw secret values AND their base64 encodings
           # from job outputs, so we AES-encrypt them before writing.
           # The ciphertext does not match any registered secret and
@@ -952,9 +953,16 @@ jobs:
           _ENC_AK: ${{ needs.resolve-image-cache.outputs.r2-access-key-id }}
           _ENC_SK: ${{ needs.resolve-image-cache.outputs.r2-secret-access-key }}
         run: |
+          set -euo pipefail
+          AK=$(echo -n "$_ENC_AK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          SK=$(echo -n "$_ENC_SK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          if [ -z "$AK" ] || [ -z "$SK" ]; then
+            echo "::error::R2 credential decryption produced empty values"
+            exit 1
+          fi
           {
-            echo "R2_ACCESS_KEY_ID=$(echo -n "$_ENC_AK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)"
-            echo "R2_SECRET_ACCESS_KEY=$(echo -n "$_ENC_SK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)"
+            echo "R2_ACCESS_KEY_ID=$AK"
+            echo "R2_SECRET_ACCESS_KEY=$SK"
           } >> "$GITHUB_ENV"
 
       - name: Deploy to production with Ansible
