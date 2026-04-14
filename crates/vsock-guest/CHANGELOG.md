@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.4](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.3...vsock-guest-v0.9.4) (2026-04-14)
+
+
+### Bug Fixes
+
+* **vsock-guest:** eliminate timeout kill race with thread join ([#9281](https://github.com/vm0-ai/vm0/issues/9281)) ([63807f2](https://github.com/vm0-ai/vm0/commit/63807f2dad96e0bead71aba716d3c42ac5e2c379)), closes [#9271](https://github.com/vm0-ai/vm0/issues/9271)
+
 ## [0.9.3](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.2...vsock-guest-v0.9.3) (2026-04-13)
 
 
