@@ -22,6 +22,8 @@ import {
 import { setupOnboardingPage$ } from "../../onboarding-page/onboarding-page-setup.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../utils.ts";
+import { pinnedAgents$ } from "../zero-pinned-agents.ts";
+import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 
 const context = testContext();
 
@@ -843,5 +845,67 @@ describe("completeMemberOnboarding$ body", () => {
     await context.store.set(onboardingContinueWeb$, context.signal);
 
     expect(receivedBody).toStrictEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pinned agents refresh after onboarding completion (#9308)
+// ---------------------------------------------------------------------------
+
+describe("pinned agents refresh after onboarding", () => {
+  it("should refresh pinnedAgents$ after onboardingContinueWeb$ completes for admin", async () => {
+    mockAdminOnboarding();
+    mockAdminCompletionApis();
+
+    let adminStatusCalls = 0;
+    server.use(
+      http.get("*/api/zero/onboarding/status", () => {
+        adminStatusCalls++;
+        if (adminStatusCalls <= 1) {
+          return HttpResponse.json({
+            needsOnboarding: true,
+            isAdmin: true,
+            hasOrg: true,
+            hasDefaultAgent: false,
+            defaultAgentId: null,
+            defaultAgentMetadata: null,
+          });
+        }
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: MOCK_AGENT_ID,
+          defaultAgentMetadata: null,
+        });
+      }),
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: MOCK_AGENT_ID,
+            displayName: "My Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      }),
+    );
+
+    setMockUserPreferences({ pinnedAgentIds: [MOCK_AGENT_ID] });
+
+    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
+
+    await context.store.set(onboardingContinueWeb$, context.signal);
+
+    const pinned = await context.store.get(pinnedAgents$);
+    expect(
+      pinned.map((a) => {
+        return a.id;
+      }),
+    ).toContain(MOCK_AGENT_ID);
   });
 });

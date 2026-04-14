@@ -93,3 +93,9 @@ export const updatePinnedAgentIds$ = command(
     });
   },
 );
+
+export const reloadPinnedAgents$ = command(({ set }) => {
+  set(reloadPinned$, (x) => {
+    return x + 1;
+  });
+});
