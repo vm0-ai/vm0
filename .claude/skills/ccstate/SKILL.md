@@ -765,9 +765,7 @@ export interface ChatThreadSignals {
   messages$: Computed<Promise<ZeroChatMessage[]>>;
   allFinished$: Computed<Promise<boolean>>;
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
-  resetLocalMessages$: Command<void, []>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
-  autoScroll$: Command<void, []>;
   draft: DraftSignals;
 }
 ```
@@ -777,10 +775,6 @@ export interface ChatThreadSignals {
 ```typescript
 function createMessageState(threadData$: Computed<Promise<ThreadData | null>>) {
   const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
-
-  const resetLocalMessages$ = command(({ set }) => {
-    set(internalLocalMessages$, []);
-  });
 
   const messages$ = computed(async (get) => {
     const serverMsgs = (await get(threadData$))?.chatMessages ?? [];
@@ -794,7 +788,6 @@ function createMessageState(threadData$: Computed<Promise<ThreadData | null>>) {
 
   return {
     internalLocalMessages$,
-    resetLocalMessages$,
     messages$,
     allFinished$,
   };
@@ -812,12 +805,7 @@ function createScrollSignals() {
     }),
   );
 
-  const autoScroll$ = command(({ get }) => {
-    const scrollEl = get(container$);
-    // ... scroll logic ...
-  });
-
-  return { setScrollContainer$, autoScroll$ };
+  return { setScrollContainer$ };
 }
 ```
 
@@ -831,11 +819,10 @@ export function createChatThreadSignals(
   const { threadData$, reloadThread$ } = createThreadData(threadId);
   const {
     internalLocalMessages$,
-    resetLocalMessages$,
     messages$,
     allFinished$,
   } = createMessageState(threadData$);
-  const { setScrollContainer$, autoScroll$ } = createScrollSignals();
+  const { setScrollContainer$ } = createScrollSignals();
   const draft = existingDraft ?? createDraftSignals();
 
   const { sendMessage$ } = createMessageCommands({
@@ -850,9 +837,7 @@ export function createChatThreadSignals(
     messages$,
     allFinished$,
     sendMessage$,
-    resetLocalMessages$,
     setScrollContainer$,
-    autoScroll$,
     draft,
   };
 }
