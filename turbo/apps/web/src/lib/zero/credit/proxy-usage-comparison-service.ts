@@ -164,17 +164,31 @@ async function compareProxyUsage(
     const client = clientByRun.get(runId);
 
     if (!proxy) {
-      log.error("Proxy usage missing for run with client data", {
-        orgId,
-        runId,
-      });
+      const hasNonZero = client
+        ? fields.some((f) => {
+            return (client[f] ?? 0) > 0;
+          })
+        : false;
+      if (hasNonZero) {
+        log.error("Proxy usage missing for run with client data", {
+          orgId,
+          runId,
+        });
+      }
       continue;
     }
     if (!client) {
-      log.error("Client usage missing for run with proxy data", {
-        orgId,
-        runId,
-      });
+      const hasNonZero = proxy
+        ? fields.some((f) => {
+            return (proxy[f] ?? 0) > 0;
+          })
+        : false;
+      if (hasNonZero) {
+        log.error("Client usage missing for run with proxy data", {
+          orgId,
+          runId,
+        });
+      }
       continue;
     }
 
