@@ -292,12 +292,8 @@ export async function notifyConnectSuccess(params: {
     agentName = agent?.displayName ?? agent?.name;
   }
 
-  const agentLine = agentName
-    ? `Your workspace agent is *${agentName}*.`
-    : `No workspace agent configured yet.`;
-
   const blocks = buildSuccessMessage(
-    `You're connected! :tada:\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
+    `You're connected! :tada:\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
   );
 
   if (channelId) {
@@ -321,17 +317,18 @@ export async function notifyConnectSuccess(params: {
         threadTs: connectMsg.ts,
         blocks: buildWelcomeMessage(agentName),
       });
-    }
 
-    if (pendingPrompt) {
-      // Wrap in a code block to prevent Slack mrkdwn injection
-      // (mentions, links, formatting) from user-controlled input.
-      const safePrompt = `\`\`\`${pendingPrompt.replaceAll("`", "\u2018")}\`\`\``;
-      await postMessage(
-        client,
-        slackUserId,
-        `By the way, would you like me to run this for you?\n\n${safePrompt}\n\nJust paste it in a message and I'll get started!`,
-      );
+      if (pendingPrompt) {
+        // Wrap in a code block to prevent Slack mrkdwn injection
+        // (mentions, links, formatting) from user-controlled input.
+        const safePrompt = `\`\`\`${pendingPrompt.replaceAll("`", "\u2018")}\`\`\``;
+        await postMessage(
+          client,
+          slackUserId,
+          `By the way, would you like me to run this for you?\n\n${safePrompt}\n\nJust paste it in a message and I'll get started!`,
+          { threadTs: connectMsg.ts },
+        );
+      }
     }
 
     await globalThis.services.db

@@ -279,6 +279,16 @@ describe("connect-service", () => {
       >;
       // Should send: connect DM, welcome thread, and pending prompt DM
       expect(postMessageFn.mock.calls.length).toBeGreaterThanOrEqual(3);
+
+      // The first call is the connect DM — grab its returned ts so we can
+      // verify that the prompt DM is sent in the same thread.
+      const connectCallArgs = postMessageFn.mock.calls[0]?.[0] as {
+        thread_ts?: string;
+      };
+      const connectTs = connectCallArgs?.thread_ts;
+      // Connect DM is top-level, not a thread reply.
+      expect(connectTs).toBeUndefined();
+
       const promptCall = postMessageFn.mock.calls.find((call: unknown[]) => {
         return (
           typeof call[0] === "object" &&
@@ -292,6 +302,11 @@ describe("connect-service", () => {
       // Verify the prompt is wrapped in a code block (mrkdwn sanitization)
       const promptText = (promptCall![0] as { text: string }).text;
       expect(promptText).toContain("```");
+
+      // The prompt DM must be a thread reply to the connect DM (same thread
+      // as the welcome message), not a standalone top-level message.
+      const promptCallArgs = promptCall![0] as { thread_ts?: string };
+      expect(promptCallArgs.thread_ts).toBeDefined();
     });
 
     it("does not send pending prompt DM when pendingPrompt is null", async () => {
