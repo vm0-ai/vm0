@@ -630,13 +630,13 @@ fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
             let after_ok = line
                 .as_bytes()
                 .get(i + flag.len())
-                .is_none_or(|b| b.is_ascii_whitespace() || *b == b'=');
+                .is_none_or(|b| b.is_ascii_whitespace() || b == &b'=');
             before_ok && after_ok
         })?
         .0;
     let after = line.get(idx + flag.len()..)?;
     // Strip an optional `=` separator, then whitespace.
-    let after = after.strip_prefix('=').unwrap_or(after).trim_start();
+    let after = after.strip_prefix('=').unwrap_or(after).trim_ascii_start();
     if after.is_empty() {
         return None;
     }
@@ -645,8 +645,10 @@ fn extract_flag_value(line: &str, flag: &str) -> Option<PathBuf> {
         let end = after.get(1..)?.find('"')?;
         after.get(1..1 + end)?
     } else {
-        // Unquoted value: take until next whitespace or end-of-string.
-        let end = after.find(char::is_whitespace).unwrap_or(after.len());
+        // Unquoted value: take until next ASCII whitespace or end-of-string.
+        let end = after
+            .find(|c: char| c.is_ascii_whitespace())
+            .unwrap_or(after.len());
         after.get(..end)?
     };
     Some(PathBuf::from(path_str))
