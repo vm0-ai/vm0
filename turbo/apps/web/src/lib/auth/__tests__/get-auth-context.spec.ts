@@ -367,11 +367,11 @@ describe("getAuthContext with zero token and acceptAnySandboxCapability", () => 
         "agent:read",
         "agent:write",
         "agent-run:read",
-        "agent-run:write",
         "schedule:read",
         "schedule:write",
         "slack:write",
       ]),
     );
+    expect(result?.capabilities).not.toContain("agent-run:write");
   });
 });

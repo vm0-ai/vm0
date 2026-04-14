@@ -264,12 +264,12 @@ describe("sandbox-token", () => {
         "agent:read",
         "agent:write",
         "agent-run:read",
-        "agent-run:write",
         "schedule:read",
         "schedule:write",
         "slack:write",
         "connector:read",
       ]);
+      expect(auth?.capabilities).not.toContain("agent-run:write");
       expect(auth?.capabilities).not.toContain("computer-use:write");
       expect(auth?.capabilities).not.toContain("voice-chat:write");
     });
@@ -286,7 +286,6 @@ describe("sandbox-token", () => {
         "agent:read",
         "agent:write",
         "agent-run:read",
-        "agent-run:write",
         "schedule:read",
         "schedule:write",
         "slack:write",
