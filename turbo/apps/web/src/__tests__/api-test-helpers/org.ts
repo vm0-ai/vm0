@@ -2,13 +2,15 @@ import { and, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { orgCache } from "../../db/schema/org-cache";
-import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { modelProviders } from "../../db/schema/model-provider";
 import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { getTestAuthContext } from "./core";
+import { insertOrgCacheEntry, ensureOrgRow } from "../test-helpers";
+
+export { insertOrgCacheEntry, ensureOrgRow };
 
 /**
  * Create a test org by inserting into org_cache.
@@ -44,18 +46,6 @@ export async function createTestOrg(
   await ensureOrgRow(orgId);
 
   return { id: orgId, slug };
-}
-
-/**
- * Ensure an org row exists in the `org` table.
- * Inserts with defaults if missing, does nothing if already present.
- */
-export async function ensureOrgRow(orgId: string): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(orgMetadata)
-    .values({ orgId })
-    .onConflictDoNothing();
 }
 
 /**
@@ -138,34 +128,6 @@ export async function setDefaultAgentByComposeId(
 }
 
 /**
- * Insert a row into org_cache for testing cache behavior.
- */
-export async function insertOrgCacheEntry(entry: {
-  orgId: string;
-  slug: string;
-  name?: string;
-  cachedAt?: Date;
-}): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(orgCache)
-    .values({
-      orgId: entry.orgId,
-      slug: entry.slug,
-      name: entry.name ?? entry.slug,
-      cachedAt: entry.cachedAt ?? new Date(),
-    })
-    .onConflictDoUpdate({
-      target: orgCache.orgId,
-      set: {
-        slug: entry.slug,
-        name: entry.name ?? entry.slug,
-        cachedAt: entry.cachedAt ?? new Date(),
-      },
-    });
-}
-
-/**
  * Delete an org_cache row by orgId.
  * Useful for testing cache-miss behavior after createTestOrg pre-populates cache.
  */
@@ -187,60 +149,11 @@ export async function getOrgCacheEntry(orgId: string) {
   return row ?? null;
 }
 
-/**
- * Insert an org_members_cache entry for testing cache behavior.
- */
-export async function insertOrgMembersCacheEntry(entry: {
-  orgId: string;
-  userId: string;
-  role?: string;
-  cachedAt?: Date;
-}): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(orgMembersCache)
-    .values({
-      orgId: entry.orgId,
-      userId: entry.userId,
-      role: entry.role ?? "member",
-      cachedAt: entry.cachedAt ?? new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersCache.orgId, orgMembersCache.userId],
-      set: {
-        role: entry.role ?? "member",
-        cachedAt: entry.cachedAt ?? new Date(),
-      },
-    });
-}
-
-export async function findOrgMembersCacheEntry(orgId: string, userId: string) {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select()
-    .from(orgMembersCache)
-    .where(
-      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
-    )
-    .limit(1);
-  return row;
-}
-
-/**
- * Delete a cached membership entry. Useful for tests that need to change
- * a user's role mid-test (the cache would otherwise serve the stale role).
- */
-export async function clearOrgMembersCacheEntry(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .delete(orgMembersCache)
-    .where(
-      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
-    );
-}
+export {
+  insertOrgMembersCacheEntry,
+  findOrgMembersCacheEntry,
+  clearOrgMembersCacheEntry,
+} from "../db-test-seeders/org-members-cache";
 
 /**
  * Insert an org_members entry for testing member preferences.

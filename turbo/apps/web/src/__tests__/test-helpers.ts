@@ -48,11 +48,12 @@ import { inArray } from "drizzle-orm";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
-import { insertOrgCacheEntry, ensureOrgRow } from "./api-test-helpers";
 import * as s3Client from "../lib/infra/s3/s3-client";
 import * as axiomClient from "../lib/shared/axiom/client";
 import { agentComposes } from "../db/schema/agent-compose";
 import { connectors } from "../db/schema/connector";
+import { orgCache } from "../db/schema/org-cache";
+import { orgMetadata } from "../db/schema/org-metadata";
 import { userCache } from "../db/schema/user-cache";
 
 /**
@@ -184,6 +185,46 @@ interface TestContext {
 export interface UserContext {
   readonly userId: string;
   readonly orgId: string;
+}
+
+/**
+ * Insert a row into org_cache for testing cache behavior.
+ */
+export async function insertOrgCacheEntry(entry: {
+  orgId: string;
+  slug: string;
+  name?: string;
+  cachedAt?: Date;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(orgCache)
+    .values({
+      orgId: entry.orgId,
+      slug: entry.slug,
+      name: entry.name ?? entry.slug,
+      cachedAt: entry.cachedAt ?? new Date(),
+    })
+    .onConflictDoUpdate({
+      target: orgCache.orgId,
+      set: {
+        slug: entry.slug,
+        name: entry.name ?? entry.slug,
+        cachedAt: entry.cachedAt ?? new Date(),
+      },
+    });
+}
+
+/**
+ * Ensure an org row exists in the `org` table.
+ * Inserts with defaults if missing, does nothing if already present.
+ */
+export async function ensureOrgRow(orgId: string): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(orgMetadata)
+    .values({ orgId })
+    .onConflictDoNothing();
 }
 
 /**
