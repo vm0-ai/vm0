@@ -1112,4 +1112,197 @@ describe("mission control page", () => {
     // Task card still renders (the task itself is still in the list)
     expect(screen.getByText("Already Read Task")).toBeInTheDocument();
   });
+
+  // ---------------------------------------------------------------------------
+  // refreshPanel$ tests
+  // ---------------------------------------------------------------------------
+
+  it("should swap activity panel to new run when latestRunId changes while panel is open", async () => {
+    // Start with run-v1. After the panel opens we switch the mock to run-v2
+    // so the next task-loop poll triggers refreshPanel$ to swap the entry.
+    server.use(
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({
+          tasks: [
+            {
+              id: "task-refresh",
+              type: "schedule",
+              title: "Refresh Panel Task",
+              summary: null,
+              agent: createAgent(),
+              latestRunId: "run-refresh-v1",
+              status: "completed",
+              scheduleId: "sched-refresh",
+              createdAt: "2026-04-10T10:00:00Z",
+              updatedAt: "2026-04-10T10:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    mockActivityAPIs("run-refresh-v1");
+    mockActivityAPIs("run-refresh-v2");
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    // Open the panel — it should show run-refresh-v1
+    const title = await waitFor(() => {
+      return screen.getByText("Refresh Panel Task");
+    });
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
+    });
+
+    // Confirm the panel entry is tracking run-refresh-v1 before the swap
+    await waitFor(async () => {
+      const signals = await context.store.get(taskSignals$);
+      const ts = signals.find((s) => {
+        return s.taskId === "task-refresh";
+      });
+      const entry = context.store.get(ts!.panelEntry$);
+      expect(entry?.kind).toBe("activity");
+      expect(entry?.kind === "activity" && entry.runId).toBe("run-refresh-v1");
+    });
+
+    // Switch the task API to return run-v2, simulating a new run arriving
+    server.use(
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({
+          tasks: [
+            {
+              id: "task-refresh",
+              type: "schedule",
+              title: "Refresh Panel Task",
+              summary: null,
+              agent: createAgent(),
+              latestRunId: "run-refresh-v2",
+              status: "completed",
+              scheduleId: "sched-refresh",
+              createdAt: "2026-04-10T10:00:00Z",
+              updatedAt: "2026-04-10T10:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    // The page's background task loop will pick up the new latestRunId and
+    // call refreshPanel$, swapping the panel entry to run-refresh-v2.
+    await waitFor(async () => {
+      const signals = await context.store.get(taskSignals$);
+      const ts = signals.find((s) => {
+        return s.taskId === "task-refresh";
+      });
+      const entry = context.store.get(ts!.panelEntry$);
+      return entry?.kind === "activity" && entry.runId === "run-refresh-v2";
+    });
+
+    // Final confirmation: panel entry is now pointing at run-refresh-v2
+    const signalsAfter = await context.store.get(taskSignals$);
+    const taskTsAfter = signalsAfter.find((ts) => {
+      return ts.taskId === "task-refresh";
+    });
+    const entryAfter = context.store.get(taskTsAfter!.panelEntry$);
+    expect(entryAfter?.kind).toBe("activity");
+    expect(entryAfter?.kind === "activity" && entryAfter.runId).toBe(
+      "run-refresh-v2",
+    );
+  });
+
+  it("should clear panel entry and abort polling when closeTask$ is invoked", async () => {
+    mockTasksAPI([
+      {
+        id: "task-close",
+        type: "schedule",
+        title: "Close Panel Task",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: "run-close-1",
+        status: "running",
+        scheduleId: "sched-close",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    // Track how many times polling is called — after close, no more calls
+    let pollCallCount = 0;
+    server.use(
+      http.get("*/api/zero/logs/run-close-1", () => {
+        return HttpResponse.json({
+          id: "run-close-1",
+          displayName: "Test Agent",
+          status: "running",
+          agentId: "agent-1",
+          sessionId: null,
+          triggerSource: null,
+          triggerAgentName: null,
+          modelProvider: null,
+          selectedModel: null,
+          framework: null,
+          prompt: null,
+          appendSystemPrompt: null,
+          error: null,
+          createdAt: "2026-04-10T10:00:00Z",
+          startedAt: "2026-04-10T10:00:01Z",
+          completedAt: null,
+          artifact: null,
+        });
+      }),
+      http.get("*/api/zero/runs/run-close-1/telemetry/agent", () => {
+        pollCallCount++;
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    // Open the panel
+    const title = await waitFor(() => {
+      return screen.getByText("Close Panel Task");
+    });
+    await user.click(title);
+
+    const closeBtn = await waitFor(() => {
+      return screen.getByLabelText("Close task");
+    });
+
+    // Panel entry should be set before closing
+    const signalsBefore = await context.store.get(taskSignals$);
+    const taskTs = signalsBefore.find((ts) => {
+      return ts.taskId === "task-close";
+    });
+    expect(taskTs).toBeDefined();
+    expect(context.store.get(taskTs!.panelEntry$)).not.toBeNull();
+    expect(context.store.get(taskTs!.open$)).toBeTruthy();
+
+    // Close the panel
+    await user.click(closeBtn);
+
+    // Panel entry and open state should be cleared
+    await waitFor(() => {
+      expect(context.store.get(taskTs!.open$)).toBeFalsy();
+    });
+    expect(context.store.get(taskTs!.panelEntry$)).toBeNull();
+
+    // Capture poll count right after close; no further polling should occur
+    const countAfterClose = pollCallCount;
+    expect(countAfterClose).toBeGreaterThan(0);
+
+    // Polling is driven by resetPanelPolling$ abort — after close the signal
+    // is aborted so startPolling$ exits. Confirm count stays stable.
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 50);
+    });
+    expect(pollCallCount).toBe(countAfterClose);
+  });
 });
