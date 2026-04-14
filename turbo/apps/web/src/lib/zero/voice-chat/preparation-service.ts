@@ -11,7 +11,7 @@ import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat:preparation");
 
-const PREPARATION_FRESHNESS_MS = 60 * 60 * 1000; // 1 hour
+const PREPARATION_FRESHNESS_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export async function findFreshPreparation(
   orgId: string,
