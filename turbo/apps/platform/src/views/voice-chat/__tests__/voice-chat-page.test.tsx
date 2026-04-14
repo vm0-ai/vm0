@@ -86,7 +86,7 @@ describe("voice-chat page - idle state model selector (VC-002)", () => {
     expect(mini).toBeLessThan(full);
   });
 
-  it("gpt realtime mini tab is selected by default when voiceChat is enabled", async () => {
+  it("gpt realtime tab is selected by default when voiceChat is enabled", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockVoiceChatPrepareEndpoint();
     detachedSetupPage({ context, path: "/voice-chat" });
@@ -101,8 +101,9 @@ describe("voice-chat page - idle state model selector (VC-002)", () => {
     });
 
     // Verify the default model signal value — more reliable than querying
-    // aria-selected which can race with async store initialization
-    expect(context.store.get(vcModel$)).toBe("gpt-realtime-mini");
+    // aria-selected which can race with async store initialization.
+    // Default changed back to gpt-realtime in #9292.
+    expect(context.store.get(vcModel$)).toBe("gpt-realtime");
   });
 });
 
