@@ -1483,10 +1483,10 @@ jobs:
           RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
           # R2 credentials for the runner build image cache. Inlined into the
           # remote sudo invocation below — sudo strips env by default.
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
         run: |
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/release"
 
