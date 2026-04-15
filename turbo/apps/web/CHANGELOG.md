@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.235.0](https://github.com/vm0-ai/vm0/compare/web-v12.234.0...web-v12.235.0) (2026-04-15)
+
+
+### Features
+
+* **connectors:** add Anthropic Managed Agents connector ([#9386](https://github.com/vm0-ai/vm0/issues/9386)) ([d4f7447](https://github.com/vm0-ai/vm0/commit/d4f7447083ed6dc406ff29c4a284b1badbd0c144))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.185.0
+
 ## [12.234.0](https://github.com/vm0-ai/vm0/compare/web-v12.233.0...web-v12.234.0) (2026-04-14)
 
 

@@ -721,6 +721,55 @@ describe("Zero Agents API", () => {
       // Then — sandbox tokens can no longer satisfy requiredCapability
       expect(response.status).toBe(403);
     });
+
+    it("sandbox token cannot create agent", async () => {
+      await insertOrgMembersCacheEntry({
+        userId: user.userId,
+        orgId: user.orgId,
+        role: "admin",
+      });
+
+      mockClerk({ userId: null, orgId: user.orgId });
+      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
+
+      const response = await postAgent({ connectors: [] }, sandboxToken);
+      expect(response.status).toBe(403);
+    });
+
+    it("sandbox token cannot update agent", async () => {
+      mockClerk({ userId: null });
+      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
+
+      const response = await putAgent(
+        "00000000-0000-0000-0000-000000000000",
+        { connectors: [] },
+        sandboxToken,
+      );
+      expect(response.status).toBe(403);
+    });
+
+    it("sandbox token cannot get instructions", async () => {
+      mockClerk({ userId: null });
+      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
+
+      const response = await getAgentInstructions(
+        "00000000-0000-0000-0000-000000000000",
+        sandboxToken,
+      );
+      expect(response.status).toBe(403);
+    });
+
+    it("sandbox token cannot update instructions", async () => {
+      mockClerk({ userId: null });
+      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
+
+      const response = await putAgentInstructions(
+        "00000000-0000-0000-0000-000000000000",
+        { content: "# Instructions" },
+        sandboxToken,
+      );
+      expect(response.status).toBe(403);
+    });
   });
 
   describe("GET /api/zero/agents", () => {

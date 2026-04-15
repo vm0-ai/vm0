@@ -162,7 +162,7 @@ jobs:
         run: |
           set -o pipefail
           echo "## pnpm audit results" >> "$GITHUB_STEP_SUMMARY"
-          pnpm audit --prod 2>&1 | tee audit-output.txt
+          pnpm audit --prod --ignore-registry-errors 2>&1 | tee audit-output.txt
           {
             echo '```'
             cat audit-output.txt

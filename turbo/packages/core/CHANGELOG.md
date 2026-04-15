@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.185.0](https://github.com/vm0-ai/vm0/compare/core-v8.184.0...core-v8.185.0) (2026-04-15)
+
+
+### Features
+
+* **connectors:** add Anthropic Managed Agents connector ([#9386](https://github.com/vm0-ai/vm0/issues/9386)) ([d4f7447](https://github.com/vm0-ai/vm0/commit/d4f7447083ed6dc406ff29c4a284b1badbd0c144))
+
 ## [8.184.0](https://github.com/vm0-ai/vm0/compare/core-v8.183.0...core-v8.184.0) (2026-04-14)
 
 
