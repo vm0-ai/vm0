@@ -8,6 +8,7 @@ import {
   testDeductFromExpiresRecords,
   testExpireCredits,
 } from "../../../../__tests__/api-test-helpers";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { getExpiresRecordsSummary } from "../credit-expires-service";
 
 const context = testContext();

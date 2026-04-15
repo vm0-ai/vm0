@@ -7,6 +7,7 @@ import {
   createTestOrg,
   insertUserCacheEntry,
 } from "../../../__tests__/api-test-helpers";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Internal infrastructure: no API route
 import { getCachedUser, getCachedUserIdByEmail } from "../user-cache-service";
 
 /**

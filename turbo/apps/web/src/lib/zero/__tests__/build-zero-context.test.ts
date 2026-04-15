@@ -12,9 +12,13 @@ import {
   findTestRunnerJobEntry,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { upsertOrgModelProvider } from "../model-provider/model-provider-service";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { upsertSecretByOrg } from "../secret/secret-service";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { setVariable } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { isNoModelProvider } from "../../shared/errors";

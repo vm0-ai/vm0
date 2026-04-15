@@ -9,6 +9,7 @@ import {
   updateOrgStripeFields,
 } from "../../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../env";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { getOrgMetadata, getOrgBillingPeriod } from "../org-metadata-service";
 
 // Mock stripe module (external dependency)

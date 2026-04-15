@@ -17,6 +17,7 @@ import {
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../env";
 import type { CreateRunParams } from "../../infra/run/run-service";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {
   drainOrgQueue,
   enqueueRun,

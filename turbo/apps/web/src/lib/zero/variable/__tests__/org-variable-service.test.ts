@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { testContext } from "../../../../__tests__/test-helpers";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {
   listOrgVariables,
   setOrgVariable,

@@ -13,6 +13,7 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../__tests__/db-test-seeders/agents";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun, createZeroRunRecord } from "../zero-run-service";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/core";

@@ -36,6 +36,7 @@ import {
 } from "../../../../__tests__/db-test-seeders/slack";
 import { countSlackConnectionRows } from "../../../../__tests__/db-test-assertions/slack";
 import { insertTestComposeJob } from "../../../../__tests__/db-test-seeders/agents";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { deleteUserData } from "../user-deletion-service";
 import { seedTestRun } from "../../../../__tests__/db-test-seeders/runs";
 

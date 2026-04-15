@@ -32,7 +32,9 @@ import {
 import { decryptSecretsMap } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import { reloadEnv } from "../../../../../src/env";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: no route exists for user preferences/feature switches
 import { updateUserPreferences } from "../../../../../src/lib/zero/user/user-preferences-service";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: no route exists for user preferences/feature switches
 import { updateUserFeatureSwitches } from "../../../../../src/lib/zero/user/feature-switches-service";
 import { FeatureSwitchKey } from "@vm0/core";
 import * as core from "@vm0/core";

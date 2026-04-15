@@ -1,4 +1,5 @@
 import { generateSandboxToken } from "../../lib/auth/sandbox-token";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Test helper: service access needed for test data setup
 import { enqueueRun } from "../../lib/zero/zero-run-queue-service";
 import { POST as createRunRoute } from "../../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../../app/api/agent/runs/[id]/route";

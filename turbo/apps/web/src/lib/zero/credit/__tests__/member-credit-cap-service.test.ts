@@ -10,6 +10,7 @@ import {
   updateOrgStripeFields,
 } from "../../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../env";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { evaluateMemberCaps } from "../member-credit-cap-service";
 
 // Mock stripe module (external dependency) — required because
