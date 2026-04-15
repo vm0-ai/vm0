@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
-import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../src/__tests__/test-helpers";
 import {
   createPhoneOrg,
   linkPhoneNumber,
+  insertPendingOutboundCall,
 } from "../../../../../../src/__tests__/db-test-seeders/phone";
+import { findPendingOutboundCall } from "../../../../../../src/__tests__/db-test-assertions/phone";
 import {
   insertOrgDefaultModelProvider,
   findMostRecentRunForUser,
@@ -180,5 +185,58 @@ describe("POST /api/zero/phone/webhook", () => {
     expect(run).toBeDefined();
     expect(run!.userId).toBe(user.userId);
     expect(run!.orgId).toBe(user.orgId);
+  });
+
+  it("should dispatch follow-up run for fire-and-forget outbound call", async () => {
+    const CALL_ID = uniqueId("call-outbound-ff");
+
+    // Set up org and agent
+    const user = await context.setupUser();
+    const { composeId } = await createPhoneOrg(user.orgId);
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic");
+
+    // Pre-register the pending outbound call (as if fire-and-forget POST already ran)
+    await insertPendingOutboundCall({
+      callId: CALL_ID,
+      orgId: user.orgId,
+      userId: user.userId,
+      agentId: composeId,
+    });
+
+    // Simulate the AgentPhone call_ended webhook for an outbound call
+    const request = createWebhookRequest({
+      event: "agent.call_ended",
+      channel: "voice",
+      agentId: "ap-agent-irrelevant-for-outbound",
+      data: {
+        conversationId: CALL_ID,
+        from: "+16067551512",
+        to: "+14155551234",
+        direction: "outbound",
+        durationSeconds: 45,
+        transcript: [
+          { role: "agent", content: "Hello, this is a follow-up call." },
+          { role: "user", content: "Yes, I remember." },
+        ],
+        summary: "Outbound follow-up call completed.",
+      },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(afterPromises.length).toBe(1);
+    await flushAfterCallbacks();
+
+    // Verify the pending row was consumed (deleted)
+    const remaining = await findPendingOutboundCall(CALL_ID);
+    expect(remaining).toBeUndefined();
+
+    // Verify a follow-up run was dispatched
+    const run = await findMostRecentRunForUser(user.userId, user.orgId);
+    expect(run).toBeDefined();
+    expect(run!.userId).toBe(user.userId);
+    expect(run!.orgId).toBe(user.orgId);
+    expect(run!.prompt).toContain("outbound call to +14155551234");
   });
 });

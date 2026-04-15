@@ -62,19 +62,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .where(eq(orgMetadata.orgId, org.orgId))
       .limit(1);
 
-    if (meta?.defaultAgentId) {
-      const existingSession = await lookupPhoneThreadSession(
-        authCtx.userId,
-        org.orgId,
+    if (!meta?.defaultAgentId) {
+      return NextResponse.json(
+        {
+          error:
+            "fire-and-forget mode requires a default agent to be configured for the org",
+        },
+        { status: 422 },
       );
-      await registerPendingOutboundCall({
-        callId: result.callId,
-        orgId: org.orgId,
-        userId: authCtx.userId,
-        agentId: meta.defaultAgentId,
-        sessionId: existingSession?.agentSessionId,
-      });
     }
+
+    const existingSession = await lookupPhoneThreadSession(
+      authCtx.userId,
+      org.orgId,
+    );
+    await registerPendingOutboundCall({
+      callId: result.callId,
+      orgId: org.orgId,
+      userId: authCtx.userId,
+      agentId: meta.defaultAgentId,
+      sessionId: existingSession?.agentSessionId,
+    });
   }
 
   return NextResponse.json(result, { status: 201 });

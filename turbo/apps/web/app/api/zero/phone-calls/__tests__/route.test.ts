@@ -5,12 +5,17 @@ import {
   createTestRequest,
   insertOrgDefaultModelProvider,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   createPhoneOrg,
   setOrgAgentphoneNumberId,
+  clearOrgDefaultAgent,
 } from "../../../../../src/__tests__/db-test-seeders/phone";
+import { findPendingOutboundCall } from "../../../../../src/__tests__/db-test-assertions/phone";
 import { server } from "../../../../../src/mocks/server";
 import { reloadEnv } from "../../../../../src/env";
 
@@ -112,6 +117,83 @@ describe("POST /api/zero/phone-calls", () => {
     const data = await response.json();
     expect((data as Record<string, string>).callId).toBe("call_new_456");
     expect((data as Record<string, string>).status).toBe("initiated");
+  });
+
+  it("should return 422 for fire-and-forget mode when org has no default agent", async () => {
+    const user = await context.setupUser();
+    // createPhoneOrg sets defaultAgentId; clear it to simulate unconfigured state
+    const { agentphoneAgentId } = await createPhoneOrg(user.orgId);
+    await setOrgAgentphoneNumberId(user.orgId, "num_test_abc");
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic");
+    await clearOrgDefaultAgent(user.orgId);
+
+    server.use(
+      http.post(`${AGENTPHONE_BASE}/v1/calls`, () => {
+        return HttpResponse.json({
+          id: "call_no_agent",
+          status: "initiated",
+          agentId: agentphoneAgentId,
+        });
+      }),
+    );
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/phone-calls",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toNumber: "+14155551234",
+          mode: "fire-and-forget",
+        }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(422);
+    const data = await response.json();
+    expect((data as Record<string, string>).error).toContain(
+      "fire-and-forget mode requires a default agent",
+    );
+  });
+
+  it("should register pending outbound call for fire-and-forget mode", async () => {
+    const user = await context.setupUser();
+    const { agentphoneAgentId } = await createPhoneOrg(user.orgId);
+    await setOrgAgentphoneNumberId(user.orgId, "num_test_ff");
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic");
+
+    const callId = uniqueId("call-ff");
+    server.use(
+      http.post(`${AGENTPHONE_BASE}/v1/calls`, () => {
+        return HttpResponse.json({
+          id: callId,
+          status: "initiated",
+          agentId: agentphoneAgentId,
+        });
+      }),
+    );
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/phone-calls",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toNumber: "+14155551234",
+          mode: "fire-and-forget",
+        }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+
+    // Verify the pending outbound call row was created
+    const pending = await findPendingOutboundCall(callId);
+    expect(pending).toBeDefined();
+    expect(pending!.userId).toBe(user.userId);
+    expect(pending!.orgId).toBe(user.orgId);
   });
 });
 

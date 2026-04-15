@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { phoneUserLinks } from "../../db/schema/phone-user-link";
+import { pendingOutboundCalls } from "../../db/schema/pending-outbound-call";
 import { uniqueId } from "../test-helpers";
 import { createTestCompose } from "../api-test-helpers/agents";
 import { ensureOrgRow } from "../api-test-helpers/org";
@@ -91,5 +92,43 @@ export async function linkPhoneNumber(
     orgId,
     vm0UserId: userId,
     verified: true,
+  });
+}
+
+/**
+ * Clear the default agent for an org, simulating a state where no default agent
+ * is configured. Used to test fire-and-forget validation paths.
+ *
+ * @why-db-direct No API endpoint to remove the default agent from org_metadata.
+ */
+export async function clearOrgDefaultAgent(orgId: string): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(orgMetadata)
+    .set({ defaultAgentId: null })
+    .where(eq(orgMetadata.orgId, orgId));
+}
+
+/**
+ * Insert a pending outbound call record for testing.
+ * Simulates the state set by fire-and-forget POST before the call_ended webhook fires.
+ *
+ * @why-db-direct No standalone API to insert pending_outbound_calls; the record
+ * is normally created as a side effect of the POST /api/zero/phone-calls route.
+ */
+export async function insertPendingOutboundCall(opts: {
+  callId: string;
+  orgId: string;
+  userId: string;
+  agentId: string;
+  sessionId?: string;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(pendingOutboundCalls).values({
+    callId: opts.callId,
+    orgId: opts.orgId,
+    userId: opts.userId,
+    agentId: opts.agentId,
+    sessionId: opts.sessionId ?? null,
   });
 }
