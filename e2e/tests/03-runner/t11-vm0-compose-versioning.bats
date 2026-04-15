@@ -141,7 +141,7 @@ EOF
 
     echo "# Running with specific version (version 1)..."
     run $VM0_CLI run "$AGENT_NAME:$VERSION1" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "echo hello"
     assert_success
 }
@@ -173,7 +173,7 @@ EOF
 
     echo "# Running with :latest tag..."
     run $VM0_CLI run "$AGENT_NAME:latest" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "echo hello"
     assert_success
 }
@@ -205,7 +205,7 @@ EOF
 
     echo "# Running without version specifier (should use HEAD)..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "echo hello"
     assert_success
 }

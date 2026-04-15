@@ -49,7 +49,7 @@ EOF
     # 2. ssh.github.com:443 — SSH on port 443 (previously intercepted as HTTPS)
     # Both must pass through mitmproxy as raw TCP without corruption.
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "echo PORT22=\$(timeout 5 bash -c 'head -1 < /dev/tcp/github.com/22') && echo PORT443=\$(timeout 5 bash -c 'head -1 < /dev/tcp/ssh.github.com/443')"
     assert_success
     assert_output --partial "● Bash("
@@ -73,7 +73,7 @@ EOF
     # DNS queries are intercepted by iptables REDIRECT to dnsmasq and logged
     # as type "dns". getent triggers a standard libc DNS lookup.
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "getent hosts example.com"
     assert_success
 
@@ -95,7 +95,7 @@ EOF
     # non-DNS UDP traffic is still logged via iptables LOG + /dev/kmsg.
     # DNS (UDP 53) is redirected to dnsmasq, but other UDP goes through FORWARD.
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "python3 -c \"import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(b'hello',('8.8.8.8',9999)); s.close(); print('UDP_SENT=true')\""
     assert_success
     assert_output --partial "UDP_SENT=true"
@@ -116,7 +116,7 @@ EOF
     # Run with --capture-network-bodies enabled. The CLI network log renderer
     # displays request_headers and response_body when present.
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         --capture-network-bodies \
         "curl -s -o /dev/null -w '%{http_code}' https://www.vm0.ai"
     assert_success

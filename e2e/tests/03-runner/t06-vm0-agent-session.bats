@@ -102,7 +102,7 @@ teardown_file() {
     # -- Step 2: Run agent to create session (was t06-2b) --
     echo "# Running agent to create session..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$artifact_name" \
+        --artifact "$artifact_name" \
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
 
     assert_success
@@ -174,7 +174,7 @@ teardown_file() {
     echo "# Running agent with --vars testKey=testValue..."
     run $VM0_CLI run "$AGENT_NAME" \
         --vars "testKey=testValue" \
-        --artifact-name "$artifact_name" \
+        --artifact "$artifact_name" \
         --verbose \
         "echo 'initial run' && cat testfile.txt"
 
@@ -262,7 +262,7 @@ EOF
     run $VM0_CLI run "$env_agent_name" \
         --vars "testVar=myTestVar" \
         --secrets "TEST_SECRET=initial-secret-value" \
-        --artifact-name "$artifact_name" \
+        --artifact "$artifact_name" \
         "echo 'test' && echo \$TEST_SECRET"
 
     assert_success

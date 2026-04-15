@@ -89,7 +89,7 @@ teardown() {
     # Step 2: Run agent
     echo "# Step 2: Running agent..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "echo 'hello from agent'"
     assert_success
     assert_output --partial "Run ID:"

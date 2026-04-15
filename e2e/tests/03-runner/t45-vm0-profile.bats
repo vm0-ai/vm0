@@ -37,7 +37,7 @@ EOF
     assert_success
 
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "claude --version && gh --version"
     assert_success
     assert_output --partial "claude"
@@ -65,7 +65,7 @@ EOF
     assert_success
 
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "agent-browser open https://github.com && agent-browser get title && agent-browser close"
     assert_success
     assert_output --partial "GitHub"

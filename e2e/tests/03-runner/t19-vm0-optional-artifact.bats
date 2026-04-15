@@ -2,7 +2,7 @@
 
 # Test VM0 optional artifact functionality
 # This test verifies that:
-# 1. Agent runs work without --artifact-name flag
+# 1. Agent runs work without --artifact flag
 # 2. Each run without artifact creates its own session (multi-session)
 # 3. Checkpoints are created even without artifact
 # 4. Continue works from session without artifact
@@ -54,7 +54,7 @@ teardown_file() {
 }
 
 @test "VM0 run without artifact: basic run succeeds" {
-    # This test verifies that vm0 run works without --artifact-name
+    # This test verifies that vm0 run works without --artifact
     # The agent should run, execute tasks, and complete successfully
 
     echo "# Running agent without artifact..."
