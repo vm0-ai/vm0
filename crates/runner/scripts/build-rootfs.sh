@@ -10,6 +10,17 @@
 # cp to ext4 mount). mkfs.ext4 -d populates the ext4 image directly from
 # the rootfs directory.
 #
+# The build runs inside a private mount namespace (via `unshare --mount
+# --propagation private`). Bind mounts of host /proc, /sys, /dev created
+# for chroot operations are confined to this namespace — the host never
+# sees them, and the kernel auto-unmounts everything when the script exits
+# (including on SIGKILL, where the EXIT trap would not fire).
+#
+# `rm -rf --one-file-system` in the cleanup trap is a hard safety net: even
+# if umount fails inside our namespace, rm refuses to cross the bind-mount
+# boundary, eliminating any risk of unlinking host /dev entries through the
+# shared devtmpfs superblock.
+#
 # Usage:
 #   bash build-rootfs.sh \
 #     --output-dir /path/to/output \
@@ -25,6 +36,22 @@
 #     [--mirror http://archive.ubuntu.com/ubuntu]
 
 set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Re-exec inside a private mount namespace
+# ---------------------------------------------------------------------------
+#
+# Uses a positional sentinel (not an env var) so we don't depend on sudoers
+# allowing env preservation.
+if [[ "${1:-}" != "--_unshared_" ]]; then
+  if ! command -v unshare &>/dev/null; then
+    echo "error: unshare not found (install util-linux)" >&2
+    exit 1
+  fi
+  exec sudo unshare --mount --propagation private \
+    -- bash "$0" "--_unshared_" "$@"
+fi
+shift
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -125,22 +152,51 @@ check_dependencies() {
 # ---------------------------------------------------------------------------
 
 cleanup_chroot() {
-  if [[ -n "$ROOTFS_DIR" ]]; then
-    # -R unmounts recursively — bind-mounting /dev brings in sub-mounts
-    # like /dev/shm, /dev/mqueue, /dev/hugepages that must be removed first.
-    sudo umount -R "$ROOTFS_DIR/dev" 2>/dev/null || true
-    sudo umount "$ROOTFS_DIR/sys" 2>/dev/null || true
-    sudo umount "$ROOTFS_DIR/proc" 2>/dev/null || true
+  if [[ -z "$ROOTFS_DIR" ]]; then
+    return
   fi
+  # -R unmounts recursively — bind-mounting /dev brings in sub-mounts
+  # like /dev/shm, /dev/mqueue, /dev/hugepages that must be removed first.
+  # Retry handles transient EBUSY from chroot subprocesses that haven't
+  # fully exited yet. The last attempt lets stderr through so CI logs show
+  # the root cause if it still fails.
+  local target attempt
+  for target in "$ROOTFS_DIR/dev" "$ROOTFS_DIR/sys" "$ROOTFS_DIR/proc"; do
+    for attempt in 1 2 3; do
+      if [[ $attempt -eq 3 ]]; then
+        # Surface stderr on the final attempt so CI logs capture the
+        # busy reason. set -e will abort if this fails — that is the
+        # desired behavior for the pre-mkfs call (polluted ext4 is
+        # worse than a failed build); the EXIT trap wraps in `|| true`
+        # to keep the rest of cleanup running.
+        sudo umount -R "$target"
+        break
+      fi
+      if sudo umount -R "$target" 2>/dev/null; then
+        break
+      fi
+      sleep 0.5
+    done
+  done
 }
 
 cleanup() {
   echo "cleaning up..."
-  cleanup_chroot
-  sudo rm -f "$TMP_ROOTFS_PATH" 2>/dev/null || true
+  # Best-effort umount on the failure path. Errors surface to stderr but
+  # `|| true` keeps the rest of cleanup running under set -e.
+  cleanup_chroot || true
   if [[ -n "$ROOTFS_DIR" ]]; then
-    sudo rm -rf "$ROOTFS_DIR" 2>/dev/null || true
+    # `--one-file-system`: if cleanup_chroot failed, $ROOTFS_DIR/{dev,sys,proc}
+    # still bind-mount host devtmpfs/procfs/sysfs. Because bind mounts share
+    # the source superblock (private propagation only confines mount events,
+    # not inode data), a plain `rm -rf` could unlink host /dev/null etc.
+    # This flag makes rm refuse to cross the bind-mount boundary, trading a
+    # leaked tmp dir for guaranteed host safety. The leak itself is bounded:
+    # the private mount namespace dies with this script and the kernel
+    # reclaims both the mounts and (via systemd-tmpfiles) the /tmp entry.
+    sudo rm -rf --one-file-system "$ROOTFS_DIR" || true
   fi
+  rm -f "$TMP_ROOTFS_PATH" || true
 }
 
 trap cleanup EXIT
