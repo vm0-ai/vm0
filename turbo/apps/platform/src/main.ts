@@ -40,6 +40,9 @@ async function main() {
         }
         const root = createRoot(rootEl);
         root.render(el);
+        rootSignal.addEventListener("abort", () => {
+          root.unmount();
+        });
       });
     },
     rootSignal,
