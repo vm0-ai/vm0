@@ -13,7 +13,7 @@ interface AxiomAgentEvent {
   eventData: Record<string, unknown>;
 }
 
-interface RunMeta {
+export interface RunMeta {
   id: string;
   status: string;
   error: string | null;

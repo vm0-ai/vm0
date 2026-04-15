@@ -7,7 +7,10 @@ import {
 } from "../../../db/schema/agent-compose";
 import { zeroAgents } from "../../../db/schema/zero-agent";
 import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
-import { assembleActivityLog } from "../../infra/run/activity-log-service";
+import {
+  assembleActivityLog,
+  type RunMeta,
+} from "../../infra/run/activity-log-service";
 import { listConnectors } from "../connector/connector-service";
 import { uploadS3Buffer, generatePresignedUrl } from "../../infra/s3/s3-client";
 import { createPlainSupportThread } from "./plain-service";
@@ -33,19 +36,8 @@ interface ChatHistoryEvent {
   _time: string;
 }
 
-interface DiagnosticRunRecord {
-  id: string;
-  status: string;
-  error: string | null;
-  prompt: string;
-  appendSystemPrompt: string | null;
-  createdAt: Date;
-  startedAt: Date | null;
-  completedAt: Date | null;
+interface DiagnosticRunRecord extends RunMeta {
   agentComposeVersionId: string | null;
-  runnerGroup: string | null;
-  continuedFromSessionId: string | null;
-  result: unknown;
 }
 
 interface DiagnosticBundleParams {
@@ -341,20 +333,6 @@ async function collectAgentConfig(
   };
 }
 
-interface SessionRunRecord {
-  id: string;
-  status: string;
-  error: string | null;
-  prompt: string;
-  appendSystemPrompt: string | null;
-  createdAt: Date;
-  startedAt: Date | null;
-  completedAt: Date | null;
-  runnerGroup: string | null;
-  continuedFromSessionId: string | null;
-  result: unknown;
-}
-
 const sessionRunSelect = {
   id: agentRuns.id,
   status: agentRuns.status,
@@ -373,7 +351,7 @@ async function collectSessionRuns(
   db: typeof globalThis.services.db,
   runId: string,
   sessionId: string | null,
-): Promise<SessionRunRecord[]> {
+): Promise<RunMeta[]> {
   if (sessionId) {
     return db
       .select(sessionRunSelect)
