@@ -87,15 +87,9 @@ const dropboxUpdater: Updater = {
       "https://api.github.com/repos/dropbox/dropbox-api-spec/contents/";
 
     // 1. List .stone files via GitHub API (Accept header required for v3 JSON)
-    const listRes = await fetch(listUrl, {
+    const listRes = await fetchRemote(listUrl, "Dropbox spec file list", {
       headers: { Accept: "application/vnd.github.v3+json" },
     });
-    if (!listRes.ok) {
-      await listRes.body?.cancel();
-      throw new Error(
-        `Failed to list Dropbox spec files: ${listRes.status} ${listRes.statusText}`,
-      );
-    }
     const listBody = await listRes.text();
     const json: unknown = JSON.parse(listBody);
     if (!Array.isArray(json)) {

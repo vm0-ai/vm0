@@ -242,9 +242,10 @@ export function logStats(permissions: PermissionGroup[]): void {
 export async function fetchRemote(
   url: string,
   label: string,
+  init?: RequestInit,
 ): Promise<Response> {
   console.error(`Downloading ${label}…`);
-  const res = await fetch(url);
+  const res = await fetch(url, init);
   if (!res.ok) {
     // Consume body to release the underlying socket connection
     await res.body?.cancel();
@@ -276,6 +277,9 @@ export const MAP_PATH = path.resolve(import.meta.dirname, "../specs-map.json");
 
 export type SpecsMap = Record<string, Record<string, string>>;
 
+// Cached at module load and never invalidated. The generator is a single-shot
+// CLI process — the map cannot change during a run. Do not import this module
+// in long-running contexts where the cache could become stale.
 let cachedMap: SpecsMap | null = null;
 let urlIndex: Map<string, { generator: string; hash: string }> | null = null;
 
