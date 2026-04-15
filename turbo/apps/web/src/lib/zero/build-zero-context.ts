@@ -15,6 +15,7 @@ import { badRequest, notFound } from "../shared/errors";
 import { logger } from "../shared/logger";
 import type { ExecutionContext, ResumeSession } from "../infra/run/types";
 import type { ArtifactSnapshot } from "../infra/checkpoint/types";
+import type { AdditionalVolume } from "../infra/storage/types";
 import { expandEnvironmentFromCompose } from "../infra/run/environment";
 import { getUserPreferences } from "./user/user-preferences-service";
 import { getApiTokenConnectorTypes } from "./connector/connector-service";
@@ -68,6 +69,7 @@ interface BuildZeroContextParams {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
+  additionalVolumes?: AdditionalVolume[];
   // Pre-loaded compose content — skips DB lookup in new-run path if provided
   agentCompose?: unknown;
   // Required
@@ -297,6 +299,7 @@ interface ResolvedCliContext {
   memoryName?: string;
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
+  additionalVolumes?: AdditionalVolume[];
   resumeSession?: ResumeSession;
   resumeArtifact?: ArtifactSnapshot;
 
@@ -354,6 +357,7 @@ export async function resolveCliRunContext(
   let memoryName: string | undefined = params.memoryName;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
+  let additionalVolumes: AdditionalVolume[] | undefined;
   let resumeSession: ResumeSession | undefined;
   let resumeArtifact: ArtifactSnapshot | undefined;
 
@@ -372,6 +376,7 @@ export async function resolveCliRunContext(
     memoryName = defaults.memoryName;
     vars = defaults.vars;
     volumeVersions = defaults.volumeVersions;
+    additionalVolumes = defaults.additionalVolumes;
     resumeSession = defaults.resumeSession;
     resumeArtifact = defaults.resumeArtifact;
   }
@@ -471,6 +476,7 @@ export async function resolveCliRunContext(
     memoryName,
     vars: mergedVars ?? vars,
     volumeVersions,
+    additionalVolumes,
     resumeSession,
     resumeArtifact,
     secrets,
@@ -516,6 +522,8 @@ export async function buildZeroExecutionContext(
   let memoryName: string | undefined = params.memoryName;
   let volumeVersions: Record<string, string> | undefined =
     params.volumeVersions;
+  let additionalVolumes: AdditionalVolume[] | undefined =
+    params.additionalVolumes;
   let resumeSession: ResumeSession | undefined;
   let resumeArtifact: ArtifactSnapshot | undefined;
 
@@ -535,6 +543,7 @@ export async function buildZeroExecutionContext(
     memoryName = defaults.memoryName;
     vars = defaults.vars;
     volumeVersions = defaults.volumeVersions;
+    additionalVolumes = params.additionalVolumes || defaults.additionalVolumes;
     resumeSession = defaults.resumeSession;
     resumeArtifact = defaults.resumeArtifact;
 
@@ -644,6 +653,7 @@ export async function buildZeroExecutionContext(
       artifactVersion,
       memoryName,
       volumeVersions,
+      additionalVolumes,
       environment,
       userTimezone,
       firewalls: permissionResult?.firewalls,

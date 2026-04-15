@@ -11,6 +11,7 @@ import { conversations } from "../../db/schema/conversation";
 import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
 import { usageDaily } from "../../db/schema/usage-daily";
 import { initServices } from "../../lib/init-services";
+import { enqueueRun } from "../../lib/zero/zero-run-queue-service";
 import { uniqueId } from "../test-helpers";
 import { generateCallbackSecret } from "../../lib/infra/callback/hmac";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
@@ -56,6 +57,11 @@ async function createRunDirect(
     startedAt?: Date;
     completedAt?: Date;
     result?: Record<string, unknown>;
+    additionalVolumes?: Array<{
+      name: string;
+      version?: string;
+      mountPath: string;
+    }>;
   },
 ): Promise<{ id: string }> {
   const [run] = await globalThis.services.db
@@ -67,6 +73,7 @@ async function createRunDirect(
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
+      additionalVolumes: options?.additionalVolumes ?? null,
       ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
       ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
       ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
@@ -107,6 +114,11 @@ export async function seedTestRun(
     startedAt?: Date;
     completedAt?: Date;
     result?: Record<string, unknown>;
+    additionalVolumes?: Array<{
+      name: string;
+      version?: string;
+      mountPath: string;
+    }>;
   },
 ): Promise<{ runId: string }> {
   initServices();
@@ -148,6 +160,7 @@ export async function seedTestRun(
       startedAt: options?.startedAt,
       completedAt: options?.completedAt,
       result: options?.result,
+      additionalVolumes: options?.additionalVolumes,
     },
   );
   return { runId: run.id };
@@ -486,6 +499,27 @@ export async function insertTestSandboxTelemetry(params: {
     .returning({ id: sandboxTelemetry.id });
 
   return { id: record!.id };
+}
+
+/**
+ * Enqueue a run for testing (wraps enqueueRun service function).
+ *
+ * @why-db-direct Enqueues a run with encryption and queue entry; the service
+ * encapsulates atomic DB inserts that cannot be replicated via a single API call.
+ */
+export async function enqueueTestRun(params: {
+  userId: string;
+  agentComposeVersionId: string;
+  orgId: string;
+  prompt: string;
+}): Promise<{ runId: string; status: string; queuedAt: Date }> {
+  initServices();
+  const result = await enqueueRun(params);
+  return {
+    runId: result.runId,
+    status: result.status,
+    queuedAt: result.createdAt,
+  };
 }
 
 /**

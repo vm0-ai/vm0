@@ -54,6 +54,16 @@ export async function resolveCheckpoint(
   const checkpointVolumeVersions =
     checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
+  // Extract additional volumes from enriched snapshot (pinned versions from checkpoint)
+  const checkpointAdditionalVolumes =
+    checkpointVolumeVersions?.additionalVolumes?.map((vol) => {
+      return {
+        name: vol.name,
+        version: vol.versionId,
+        mountPath: vol.mountPath,
+      };
+    });
+
   // Get version ID from snapshot
   const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
   if (!agentComposeVersionId) {
@@ -126,6 +136,7 @@ export async function resolveCheckpoint(
     memoryName: checkpointMemory?.memoryName,
     vars: agentComposeSnapshot.vars || {},
     volumeVersions: checkpointVolumeVersions?.versions,
+    additionalVolumes: checkpointAdditionalVolumes,
     buildResumeArtifact: !!checkpointArtifact, // Only build resumeArtifact if checkpoint has artifact
   };
 }

@@ -236,6 +236,20 @@ describe("getConnectorProvidedSecretNames", () => {
   });
 });
 
+describe("getConnectorOAuthConfig - google-meet scopes", () => {
+  it("uses meetings.space.readonly for google meet oauth scopes", () => {
+    const config = getConnectorOAuthConfig("google-meet");
+    expect(config).not.toBeNull();
+    const scopes = config!.scopes;
+    expect(scopes).toContain(
+      "https://www.googleapis.com/auth/meetings.space.readonly",
+    );
+    expect(scopes).not.toContain(
+      "https://www.googleapis.com/auth/meetings.conferencerecords.readonly",
+    );
+  });
+});
+
 describe("getConnectorTypeForSecretName", () => {
   it("finds connector type for OAuth env mapping key", () => {
     expect(getConnectorTypeForSecretName("GH_TOKEN")).toBe("github");

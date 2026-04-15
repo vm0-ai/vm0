@@ -15,6 +15,7 @@ export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   cli: "CLI",
   agent: "Agent",
   phone: "Phone",
+  imessage: "iMessage",
   "voice-chat": "Voice Chat",
 };
 

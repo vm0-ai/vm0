@@ -532,4 +532,163 @@ describe("groupedMessageCard", () => {
     await user.click(summary);
     expect(toolSummary.open).toBeFalsy();
   });
+
+  // ACT-D-075
+  it("merges task_started and task_notification into a single Task card", async () => {
+    await renderInspectPage();
+    await loadInspectData(
+      makeInspectData([
+        {
+          sequenceNumber: 0,
+          eventType: "system",
+          eventData: {
+            subtype: "task_started",
+            task_id: "task-abc-075",
+            tool_use_id: "tu-task-075",
+            description: "Run sub-agent task 075",
+          },
+          createdAt: "2026-03-10T14:56:02Z",
+        },
+        {
+          sequenceNumber: 1,
+          eventType: "system",
+          eventData: {
+            subtype: "task_notification",
+            task_id: "task-abc-075",
+            status: "completed",
+            summary: "Task finished successfully",
+          },
+          createdAt: "2026-03-10T14:56:05Z",
+        },
+      ]),
+    );
+
+    // Should render exactly one "Task" card, not two
+    await waitFor(() => {
+      const taskCards = screen.getAllByText("Task");
+      expect(taskCards).toHaveLength(1);
+    });
+  });
+
+  // ACT-D-076
+  it("absorbs task_progress heartbeats into the parent task row", async () => {
+    await renderInspectPage();
+    await loadInspectData(
+      makeInspectData([
+        {
+          sequenceNumber: 0,
+          eventType: "system",
+          eventData: {
+            subtype: "task_started",
+            task_id: "task-abc-076",
+            tool_use_id: "tu-task-076",
+            description: "Long running task 076",
+          },
+          createdAt: "2026-03-10T14:56:02Z",
+        },
+        {
+          sequenceNumber: 1,
+          eventType: "system",
+          eventData: {
+            subtype: "task_progress",
+            task_id: "task-abc-076",
+          },
+          createdAt: "2026-03-10T14:56:03Z",
+        },
+        {
+          sequenceNumber: 2,
+          eventType: "system",
+          eventData: {
+            subtype: "task_progress",
+            task_id: "task-abc-076",
+          },
+          createdAt: "2026-03-10T14:56:04Z",
+        },
+        {
+          sequenceNumber: 3,
+          eventType: "system",
+          eventData: {
+            subtype: "task_notification",
+            task_id: "task-abc-076",
+            status: "completed",
+            summary: "Done",
+          },
+          createdAt: "2026-03-10T14:56:05Z",
+        },
+      ]),
+    );
+
+    // All three task events collapse to one "Task" card
+    await waitFor(() => {
+      const taskCards = screen.getAllByText("Task");
+      expect(taskCards).toHaveLength(1);
+    });
+  });
+
+  // ACT-D-077
+  it("routes child assistant events into task childMessages and shows tool count", async () => {
+    const user = userEvent.setup();
+    await renderInspectPage();
+    await loadInspectData(
+      makeInspectData([
+        {
+          sequenceNumber: 0,
+          eventType: "system",
+          eventData: {
+            subtype: "task_started",
+            task_id: "task-abc-077",
+            tool_use_id: "tu-task-077",
+            description: "Sub-agent with tools",
+          },
+          createdAt: "2026-03-10T14:56:02Z",
+        },
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            parent_tool_use_id: "tu-task-077",
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tu-bash-077",
+                  name: "Bash",
+                  input: { command: "echo child-077" },
+                },
+              ],
+            },
+          },
+          createdAt: "2026-03-10T14:56:03Z",
+        },
+        {
+          sequenceNumber: 2,
+          eventType: "system",
+          eventData: {
+            subtype: "task_notification",
+            task_id: "task-abc-077",
+            status: "completed",
+            summary: "Done",
+          },
+          createdAt: "2026-03-10T14:56:04Z",
+        },
+      ]),
+    );
+
+    // Task card shows "1 steps" badge
+    await waitFor(() => {
+      expect(screen.getByText("1 steps")).toBeInTheDocument();
+    });
+
+    // Expand the task details to see child messages
+    const taskHeading = screen.getByText("Task");
+    const details = taskHeading.closest("details") as HTMLDetailsElement;
+    expect(details).not.toBeNull();
+    const summary = details.querySelector("summary")!;
+    await user.click(summary);
+
+    // Child bash tool should appear inside
+    await waitFor(() => {
+      expect(screen.getByText("Bash")).toBeInTheDocument();
+    });
+  });
 });

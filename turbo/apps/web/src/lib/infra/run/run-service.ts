@@ -394,6 +394,11 @@ interface InsertRunParams {
   appendSystemPrompt?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
+  additionalVolumes?: Array<{
+    name: string;
+    version?: string;
+    mountPath: string;
+  }>;
   resumedFromCheckpointId?: string;
   sessionId?: string;
 }
@@ -418,6 +423,7 @@ export async function insertRunRecord(
       appendSystemPrompt: params.appendSystemPrompt ?? null,
       vars: params.vars ?? null,
       secretNames: params.secrets ? Object.keys(params.secrets) : null,
+      additionalVolumes: params.additionalVolumes ?? null,
       resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
       continuedFromSessionId: params.sessionId ?? null,
       lastHeartbeatAt: new Date(),

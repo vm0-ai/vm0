@@ -1,4 +1,6 @@
+use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -79,8 +81,11 @@ pub async fn create_snapshot(
     //    cow.img) — the output directory may contain other files (e.g. rootfs.ext4
     //    in unified image builds) that must not be deleted.
     //
-    //    A failed run may leave stale bind mounts (cow-device-bind) that
-    //    cause rm to fail with EBUSY — umount them first.
+    //    Defensive umount: post-#9494 the COW-device bind runs inside
+    //    `unshare --mount` and dies with the FC process, so this should
+    //    never find anything. Kept for one release to clean up any residue
+    //    from older runner versions that may exist on a metal host's image
+    //    cache.
     let work = output.work_dir();
     let stale_bind = SandboxPaths::new(work.clone())
         .cow_device_bind()
@@ -177,6 +182,91 @@ pub async fn create_snapshot(
     result
 }
 
+/// Bash command run inside `unshare --mount` to bind the COW device into a
+/// private mount namespace and exec Firecracker. Positional args are:
+///   $1 = cow device path (e.g. /dev/nbdN)
+///   $2 = bind target path (cow-device-bind regular file)
+///   $3 = network namespace name
+///   $4 = firecracker binary path
+///   $5 = api socket path
+///
+/// The `&&` is load-bearing: if `mount --bind` fails, the chain short-circuits
+/// and bash exits with a non-zero status. This is what lets us detect spawn
+/// failures via `child.try_wait()` instead of an opaque API-ready timeout.
+const SPAWN_INNER_CMD: &str =
+    r#"mount --bind "$1" "$2" && exec ip netns exec "$3" "$4" --api-sock "$5""#;
+
+/// Number of recent stderr lines retained from the spawn chain, used to
+/// surface the underlying cause when the chain (`unshare → bash → ip netns
+/// exec → firecracker`) exits before the API socket appears. 32 is enough
+/// for a typical mount/unshare/netns error plus a few lines of bash/kernel
+/// noise, far less than the memory cost warrants worrying about.
+const STDERR_BUF_LINES: usize = 32;
+
+/// Time granted to the stderr forwarder task to drain buffered lines after
+/// the spawn chain has been observed to exit. Kept small: if the forwarder
+/// hasn't caught up in 100ms after the pipe's write end closed, the buffer
+/// we have is what the operator sees.
+const STDERR_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
+
+/// Shared bounded ring buffer of recent stderr lines from the spawn chain.
+type StderrBuf = Arc<Mutex<VecDeque<String>>>;
+
+/// Drain the captured stderr lines into a single newline-joined string.
+/// Used in error reporting when the spawn chain exits prematurely; always
+/// returns a non-empty string so the operator never sees a bare error.
+fn drain_stderr_buf(buf: &StderrBuf) -> String {
+    match buf.lock() {
+        Ok(g) => {
+            if g.is_empty() {
+                "<no stderr captured>".to_string()
+            } else {
+                g.iter().cloned().collect::<Vec<_>>().join("\n")
+            }
+        }
+        Err(_) => {
+            // Poisoning means the stderr forwarder task panicked while
+            // holding the lock — a real bug signal worth surfacing
+            // independently of the error message that carries this sentinel.
+            tracing::warn!("stderr buffer mutex poisoned during forwarder task");
+            "<stderr buffer poisoned>".to_string()
+        }
+    }
+}
+
+/// If the snapshot workflow returned an API error AND the firecracker
+/// spawn chain (unshare → bash → ip netns exec → firecracker) has
+/// already exited with a non-zero status, re-wrap the error with the
+/// captured stderr so the operator sees the underlying cause (e.g.
+/// `mount: bind failed`) instead of a generic API timeout.
+///
+/// In every other case the original result is returned unchanged:
+/// - `Ok(_)`: success — no rewrap.
+/// - `Err(non-Api)`: the error is already specific (Setup / Vsock / Io /
+///   Process) and shouldn't be replaced.
+/// - `Ok(None)` child status: firecracker is still running, so the API
+///   error is about API behavior, not a crashed spawn chain.
+/// - `Ok(Some(success))` child status: firecracker exited cleanly (rare
+///   at this point), not a mount/setup failure.
+/// - `Err(_)` child status: `try_wait` failed for an unrelated reason
+///   (EINTR, etc.); stay conservative and keep the original error.
+fn rewrap_spawn_chain_exit(
+    result: Result<SnapshotConfig, SnapshotError>,
+    child_status: std::io::Result<Option<std::process::ExitStatus>>,
+    stderr_buf: &StderrBuf,
+) -> Result<SnapshotConfig, SnapshotError> {
+    match (result, child_status) {
+        (Err(SnapshotError::Api(api_err)), Ok(Some(status))) if !status.success() => {
+            let stderr = drain_stderr_buf(stderr_buf);
+            Err(SnapshotError::Process(format!(
+                "firecracker spawn chain exited (status={status}): {stderr} \
+                 (original API error: {api_err})"
+            )))
+        }
+        (other, _) => other,
+    }
+}
+
 /// Inner workflow, separated so the caller can always run cleanup.
 async fn run_snapshot_workflow(
     config: &SnapshotCreateConfig,
@@ -186,6 +276,26 @@ async fn run_snapshot_workflow(
     netns_pool: &mut NetnsPool,
     mut cow_device: NbdCowDevice,
 ) -> Result<SnapshotConfig, SnapshotError> {
+    // Filesystem pre-requisites that don't require the netns: do these
+    // *before* `netns_pool.acquire()` so that a transient fs error
+    // (mkdir, write) doesn't leak an acquired netns. `PooledNetns` has
+    // no Drop impl — release must be explicit, and `netns_pool.cleanup()`
+    // only drains queued (not acquired) entries.
+    //
+    // The empty bind target file is consumed by `mount --bind` inside
+    // `unshare --mount` at spawn time; file content is irrelevant
+    // because the bind overlay is what FC reads.
+    tokio::fs::create_dir_all(sock_paths.dir())
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("mkdir sock dir: {e}")))?;
+    let api_sock = sock_paths.api_sock();
+
+    let drive_bind = paths.cow_device_bind();
+    tokio::fs::write(&drive_bind, b"")
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("create bind target: {e}")))?;
+
+    // 4. Acquire the network namespace and spawn Firecracker into it.
     let network = netns_pool
         .acquire()
         .await
@@ -193,11 +303,6 @@ async fn run_snapshot_workflow(
 
     info!(netns = %network.name, "namespace acquired");
 
-    // 4. Create socket directory and spawn Firecracker with --api-sock in the namespace.
-    tokio::fs::create_dir_all(sock_paths.dir())
-        .await
-        .map_err(|e| SnapshotError::Setup(format!("mkdir sock dir: {e}")))?;
-    let api_sock = sock_paths.api_sock();
     info!(
         netns = %network.name,
         binary = %config.binary_path.display(),
@@ -205,22 +310,44 @@ async fn run_snapshot_workflow(
         "spawning firecracker"
     );
 
-    let mut child = tokio::process::Command::new("ip")
-        .args(["netns", "exec"])
-        .arg(&network.name)
-        .arg(&config.binary_path)
-        .args(["--api-sock"])
-        .arg(&api_sock)
+    // Spawn Firecracker inside `unshare --mount` so the COW-device bind
+    // mount lives in a private mount namespace and dies with the process.
+    // Mirrors the spawn pattern in `sandbox.rs::start_from_snapshot`.
+    // Inner command is [`SPAWN_INNER_CMD`].
+    let cow_device_path = cow_device.device_path().to_path_buf();
+    let spawn_result = tokio::process::Command::new("unshare")
+        .args(["--mount", "bash", "-c", SPAWN_INNER_CMD, "_"])
+        .arg(&cow_device_path) // $1
+        .arg(&drive_bind) // $2
+        .arg(&network.name) // $3
+        .arg(&config.binary_path) // $4
+        .arg(&api_sock) // $5
         .current_dir(paths.workspace())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .process_group(0)
         .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| SnapshotError::Process(format!("spawn firecracker: {e}")))?;
+        .spawn();
+    let mut child = match spawn_result {
+        Ok(c) => c,
+        Err(e) => {
+            // Release the netns before returning — `PooledNetns` has no
+            // Drop impl, and `netns_pool.cleanup()` (called by the outer
+            // `create_snapshot`) only drains queued entries, not
+            // already-acquired ones.
+            if let Err(re) = netns_pool.release(network).await {
+                tracing::warn!(error = %re, "failed to release netns after spawn failure");
+            }
+            return Err(SnapshotError::Process(format!("spawn firecracker: {e}")));
+        }
+    };
 
     // Stream stdout/stderr lines to tracing (same pattern as sandbox.rs).
+    // Stderr is also retained in a bounded ring buffer so that an early
+    // spawn-chain exit (mount failure inside unshare bash, etc.) can be
+    // reported with its real cause instead of just an API timeout.
+    let stderr_buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
     if let Some(stdout) = child.stdout.take() {
         tokio::spawn(async move {
             let mut lines = tokio::io::BufReader::new(stdout).lines();
@@ -231,19 +358,46 @@ async fn run_snapshot_workflow(
             }
         });
     }
-    if let Some(stderr) = child.stderr.take() {
+    // The stderr forwarder handle is retained so that, on detected early
+    // exit, we can wait a bounded time for it to drain buffered lines
+    // before snapshotting the ring buffer for the error message. Without
+    // this join, the most informative lines (mount: bind failed, etc.)
+    // can race the `try_wait` observation and be missed.
+    let stderr_handle = child.stderr.take().map(|stderr| {
+        let buf = Arc::clone(&stderr_buf);
         tokio::spawn(async move {
             let mut lines = tokio::io::BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 if !line.is_empty() {
                     tracing::warn!(target: "firecracker", "stderr: {line}");
+                    if let Ok(mut g) = buf.lock() {
+                        if g.len() == STDERR_BUF_LINES {
+                            g.pop_front();
+                        }
+                        g.push_back(line);
+                    }
                 }
             }
-        });
-    }
+        })
+    });
 
-    // Guard: ensure process and bind mount cleanup on any exit path.
-    let result = run_with_firecracker(config, paths, sock_paths, output, &mut cow_device).await;
+    // Guard: ensure process and NBD cleanup on any exit path.
+    let result = run_with_firecracker(config, paths, sock_paths, output).await;
+
+    // Probe for early spawn-chain exit *before* killing the process. This
+    // distinguishes "firecracker is still running, error was an API/setup
+    // issue" (try_wait → None) from "firecracker already died, error is
+    // the downstream symptom of that" (try_wait → Some(non-zero)).
+    let child_status = child.try_wait();
+    if matches!(&child_status, Ok(Some(status)) if !status.success())
+        && let Some(handle) = stderr_handle
+    {
+        // Child's write end of stderr is closed; wait briefly for the
+        // forwarder to finish reading so the captured buffer contains
+        // the crash's final lines.
+        let _ = tokio::time::timeout(STDERR_DRAIN_TIMEOUT, handle).await;
+    }
+    let result = rewrap_spawn_chain_exit(result, child_status, &stderr_buf);
 
     // Kill Firecracker first — it holds the NBD device fd open.
     kill_process_group(&child);
@@ -256,20 +410,16 @@ async fn run_snapshot_workflow(
         tracing::warn!(error = %e, "failed to release netns");
     }
 
-    // Tear down: umount bind mount, then destroy NBD COW device.
+    // Tear down NBD COW device.
     //
-    // Both steps may fail transiently — after kill_process_group + child.wait(),
-    // the kernel may still be releasing the NBD device fd and bind mount
-    // reference. Retry both in a loop until all references are released.
-    let drive_bind_str = paths.cow_device_bind().display().to_string();
-
+    // After kill_process_group + child.wait(), the kernel may still be
+    // releasing the NBD device fd. Retry destroy until all references are
+    // released. The COW-device bind mount lived inside the FC process's
+    // private mount namespace and was auto-cleaned when the process exited.
     if result.is_ok() {
         let cow_file = cow_device.cow_file().to_owned();
         let mut last_err = None;
         for attempt in 0..DESTROY_RETRIES {
-            // Umount the bind mount first (may fail if FC still holds a ref).
-            command::exec_ignore_errors("umount", &[drive_bind_str.as_str()]).await;
-
             match cow_device.destroy_keep_cow().await {
                 Ok(()) => {
                     last_err = None;
@@ -301,9 +451,6 @@ async fn run_snapshot_workflow(
             let bitmap_dst = output.cow_bitmap();
             tokio::fs::rename(&bitmap_src, &bitmap_dst).await?;
         }
-    } else {
-        // Error path: best-effort umount before Drop cleans up the device.
-        command::exec_ignore_errors("umount", &[drive_bind_str.as_str()]).await;
     }
     // On error, cow_device is dropped → Drop calls destroy() (best-effort).
 
@@ -316,7 +463,6 @@ async fn run_with_firecracker(
     paths: &SandboxPaths,
     sock_paths: &SockPaths,
     output: &SnapshotOutputPaths,
-    cow_device: &mut NbdCowDevice,
 ) -> Result<SnapshotConfig, SnapshotError> {
     // 5. Wait for API socket ready.
     let api_sock = sock_paths.api_sock();
@@ -325,16 +471,10 @@ async fn run_with_firecracker(
 
     info!("firecracker API ready");
 
-    // Bind mount the COW device to a deterministic path so the snapshot
-    // records this path (not the ephemeral /dev/nbdN).
-    // On restore, the same path is used as the bind mount target.
-    let drive_bind = paths.cow_device_bind();
-    tokio::fs::write(&drive_bind, b"").await?;
-    let cow_device_str = cow_device.device_path().display().to_string();
-    let drive_bind_str = drive_bind.display().to_string();
-    command::exec("mount", &["--bind", &cow_device_str, &drive_bind_str])
-        .await
-        .map_err(|e| SnapshotError::Setup(format!("bind mount COW device: {e}")))?;
+    // The COW-device bind mount was established inside `unshare --mount`
+    // at spawn time; `configure_drive` only needs the path string FC will
+    // open inside its private mount namespace.
+    let drive_bind_str = paths.cow_device_bind().display().to_string();
 
     // 6. Configure VM via API (6 parallel PUT calls).
     let inv = InvariantConfig::new();
@@ -458,5 +598,276 @@ impl SnapshotProvider for FirecrackerSnapshotProvider {
             }
         }
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Empty stderr buffer should produce a sentinel string rather than
+    /// an empty error body. Verifies the early-exit error path is
+    /// always informative even with no captured output.
+    #[test]
+    fn drain_stderr_buf_reports_empty_with_sentinel() {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        let s = drain_stderr_buf(&buf);
+        assert!(s.contains("no stderr"), "got: {s}");
+    }
+
+    /// Captured lines are joined with newlines in insertion order.
+    #[test]
+    fn drain_stderr_buf_joins_lines() {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        {
+            let mut g = buf.lock().expect("lock");
+            g.push_back("mount: bind failed".into());
+            g.push_back("exit code 32".into());
+        }
+        assert_eq!(drain_stderr_buf(&buf), "mount: bind failed\nexit code 32");
+    }
+
+    /// Boundary: exactly `STDERR_BUF_LINES` entries — no eviction should
+    /// have happened, and all lines (including `line 0`) must be present.
+    /// Guards against off-by-one in the `if len == N { pop_front }` check.
+    #[test]
+    fn drain_stderr_buf_handles_exact_capacity() {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        {
+            let mut g = buf.lock().expect("lock");
+            for i in 0..STDERR_BUF_LINES {
+                if g.len() == STDERR_BUF_LINES {
+                    g.pop_front();
+                }
+                g.push_back(format!("line {i}"));
+            }
+        }
+        let joined = drain_stderr_buf(&buf);
+        assert!(
+            joined.contains("line 0"),
+            "line 0 should survive at exact capacity: {joined}"
+        );
+        assert!(
+            joined.contains(&format!("line {}", STDERR_BUF_LINES - 1)),
+            "last line should be present: {joined}"
+        );
+    }
+
+    /// Ring buffer drops oldest entries past the bound, keeping only the
+    /// most recent N lines — the relevant ones for diagnosing a recent crash.
+    #[test]
+    fn drain_stderr_buf_keeps_only_recent_lines_when_overflowing() {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        {
+            let mut g = buf.lock().expect("lock");
+            // Simulate the same eviction policy used by the stderr forwarder.
+            for i in 0..(STDERR_BUF_LINES + 5) {
+                if g.len() == STDERR_BUF_LINES {
+                    g.pop_front();
+                }
+                g.push_back(format!("line {i}"));
+            }
+        }
+        let joined = drain_stderr_buf(&buf);
+        assert!(
+            !joined.contains("line 0"),
+            "oldest line should be evicted: {joined}"
+        );
+        assert!(
+            joined.contains(&format!("line {}", STDERR_BUF_LINES + 4)),
+            "newest line should be retained: {joined}"
+        );
+    }
+
+    /// Build a placeholder `SnapshotConfig` for `Ok(_)` rewrap cases.
+    /// Values are irrelevant — the rewrap helper never inspects them.
+    fn placeholder_snapshot_config() -> SnapshotConfig {
+        SnapshotConfig {
+            snapshot_path: "/tmp/snapshot.bin".into(),
+            memory_path: "/tmp/memory.bin".into(),
+            cow_path: "/tmp/cow.img".into(),
+            drive_bind_path: "/tmp/cow-device-bind".into(),
+            vsock_bind_dir: "/tmp/vsock".into(),
+        }
+    }
+
+    /// Build a `std::process::ExitStatus` with a given raw value. On Unix
+    /// this encodes: `raw = (exit_code << 8) | signal`. Using
+    /// `ExitStatus::from_raw(0x100)` yields exit code 1 / success=false.
+    fn exit_status_nonzero() -> std::process::ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(0x100)
+    }
+
+    fn exit_status_zero() -> std::process::ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(0)
+    }
+
+    fn stderr_buf_with_lines(lines: &[&str]) -> StderrBuf {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        {
+            let mut g = buf.lock().expect("lock");
+            for line in lines {
+                g.push_back((*line).to_string());
+            }
+        }
+        buf
+    }
+
+    /// The target case: API error + child already exited non-zero → rewrap
+    /// into a Process error that names the captured stderr.
+    #[test]
+    fn rewrap_replaces_api_error_when_child_exited_nonzero() {
+        let api_err = ApiError::Other("timeout".into());
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(api_err)),
+            Ok(Some(exit_status_nonzero())),
+            &stderr_buf_with_lines(&["mount: bind failed", "exit 32"]),
+        )
+        .unwrap_err();
+        match err {
+            SnapshotError::Process(msg) => {
+                assert!(msg.contains("mount: bind failed"), "got: {msg}");
+                assert!(msg.contains("exit 32"), "got: {msg}");
+                assert!(msg.contains("original API error"), "got: {msg}");
+                // Exit status must appear in the message — operators need it
+                // to distinguish `exit 1` (mount denied) from `signal 9`
+                // (OOM kill) from `exit 32` (mount target missing).
+                assert!(msg.contains("status="), "should include exit status: {msg}");
+            }
+            other => panic!("expected Process error, got {other:?}"),
+        }
+    }
+
+    /// Even when the stderr buffer is empty, the rewrapped message should
+    /// still be informative — falling back to the `<no stderr captured>`
+    /// sentinel rather than a bare `status=...:  (original ...)` string.
+    #[test]
+    fn rewrap_uses_sentinel_when_stderr_empty() {
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(ApiError::Other("timeout".into()))),
+            Ok(Some(exit_status_nonzero())),
+            &stderr_buf_with_lines(&[]),
+        )
+        .unwrap_err();
+        match err {
+            SnapshotError::Process(msg) => {
+                assert!(
+                    msg.contains("no stderr"),
+                    "should fall back to sentinel when buffer is empty: {msg}"
+                );
+                assert!(msg.contains("status="), "got: {msg}");
+            }
+            other => panic!("expected Process error, got {other:?}"),
+        }
+    }
+
+    /// `try_wait` itself returning `Err` (EINTR or similar) must not be
+    /// mistaken for "spawn chain exited" — stay conservative and keep the
+    /// original error instead of asserting something we couldn't observe.
+    #[test]
+    fn rewrap_preserves_api_error_when_try_wait_fails() {
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(ApiError::Other("timeout".into()))),
+            Err(std::io::Error::from(std::io::ErrorKind::Interrupted)),
+            &stderr_buf_with_lines(&["would-be-rewrapped"]),
+        )
+        .unwrap_err();
+        assert!(matches!(err, SnapshotError::Api(_)), "got: {err:?}");
+    }
+
+    /// FC is still running (try_wait → None) → API error is genuine, keep it.
+    #[test]
+    fn rewrap_preserves_api_error_when_child_still_running() {
+        let api_err = ApiError::Other("misconfigured".into());
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(api_err)),
+            Ok(None),
+            &stderr_buf_with_lines(&[]),
+        )
+        .unwrap_err();
+        assert!(matches!(err, SnapshotError::Api(_)), "got: {err:?}");
+    }
+
+    /// FC exited with code 0 (rare but possible) → not a mount-style crash.
+    #[test]
+    fn rewrap_preserves_api_error_when_child_exited_zero() {
+        let api_err = ApiError::Other("timeout".into());
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(api_err)),
+            Ok(Some(exit_status_zero())),
+            &stderr_buf_with_lines(&["noise"]),
+        )
+        .unwrap_err();
+        assert!(matches!(err, SnapshotError::Api(_)), "got: {err:?}");
+    }
+
+    /// Non-API errors already carry their specific cause and should not
+    /// be replaced by a generic "spawn chain exited" message.
+    #[test]
+    fn rewrap_preserves_non_api_errors() {
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Setup("pre-warm failed".into())),
+            Ok(Some(exit_status_nonzero())),
+            &stderr_buf_with_lines(&["stderr junk"]),
+        )
+        .unwrap_err();
+        match err {
+            SnapshotError::Setup(msg) => assert_eq!(msg, "pre-warm failed"),
+            other => panic!("expected Setup error, got {other:?}"),
+        }
+    }
+
+    /// `Ok(_)` passes through untouched.
+    #[test]
+    fn rewrap_passes_ok_through() {
+        let result = rewrap_spawn_chain_exit(
+            Ok(placeholder_snapshot_config()),
+            Ok(Some(exit_status_nonzero())),
+            &stderr_buf_with_lines(&["noise"]),
+        );
+        assert!(result.is_ok(), "ok should pass through");
+    }
+
+    /// Structural assertion that the unshare inner_cmd uses positional
+    /// parameters (no path interpolation that could shell-inject) and
+    /// performs the bind-then-exec sequence.
+    ///
+    /// The bind mount must run inside `unshare --mount` so it auto-cleans
+    /// when the FC process dies — see issue #9494. This test guards against
+    /// refactor regressions before the kernel-interaction CI job runs.
+    #[test]
+    fn spawn_inner_cmd_uses_positional_args() {
+        // Only positional args, no $0 or unquoted vars.
+        assert!(!SPAWN_INNER_CMD.contains("$0"));
+        for arg in ["$1", "$2", "$3", "$4", "$5"] {
+            let quoted = format!(r#""{arg}""#);
+            assert!(
+                SPAWN_INNER_CMD.contains(&quoted),
+                "expected quoted positional {arg} in inner_cmd: {SPAWN_INNER_CMD}"
+            );
+        }
+        // Strictly 5 positional args — if someone adds a `$6`..`$9` without
+        // updating the spawn site's `.arg(...)` count, the bash call
+        // silently expands to empty strings and fails at runtime.
+        for unexpected in ["$6", "$7", "$8", "$9"] {
+            assert!(
+                !SPAWN_INNER_CMD.contains(unexpected),
+                "unexpected positional {unexpected} in inner_cmd: {SPAWN_INNER_CMD}"
+            );
+        }
+
+        // Flow: bind the device, then exec into ip netns exec firecracker.
+        // `exec` is critical so signals reach FC directly without an extra
+        // bash layer holding a process slot.
+        assert!(
+            SPAWN_INNER_CMD.starts_with("mount --bind"),
+            "inner_cmd must establish bind mount first: {SPAWN_INNER_CMD}"
+        );
+        assert!(
+            SPAWN_INNER_CMD.contains("&& exec ip netns exec"),
+            "inner_cmd must exec ip netns exec firecracker: {SPAWN_INNER_CMD}"
+        );
     }
 }

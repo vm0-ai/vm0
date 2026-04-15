@@ -1,5 +1,36 @@
 # Changelog
 
+## [8.188.0](https://github.com/vm0-ai/vm0/compare/core-v8.187.1...core-v8.188.0) (2026-04-15)
+
+
+### Features
+
+* add imessage integration for zero agents ([#9463](https://github.com/vm0-ai/vm0/issues/9463)) ([f0a8e7a](https://github.com/vm0-ai/vm0/commit/f0a8e7a7326f1a71a4742c2fa229fa193b14e6e2))
+
+
+### Refactoring
+
+* **firewalls:** generate *.generated.ts at build time ([#9508](https://github.com/vm0-ai/vm0/issues/9508)) ([01aab93](https://github.com/vm0-ai/vm0/commit/01aab93feebb6c34b79f7a54399cdc71120a064b))
+
+## [8.187.1](https://github.com/vm0-ai/vm0/compare/core-v8.187.0...core-v8.187.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* **connectors:** preserve meetings.conferencerecords.readonly scope for google meet ([#9456](https://github.com/vm0-ai/vm0/issues/9456)) ([702627b](https://github.com/vm0-ai/vm0/commit/702627b90a51586cad4036e119dfaf3b628b8ba4))
+
+## [8.187.0](https://github.com/vm0-ai/vm0/compare/core-v8.186.1...core-v8.187.0) (2026-04-15)
+
+
+### Features
+
+* add server-side additional volumes support in storage manifest ([#9485](https://github.com/vm0-ai/vm0/issues/9485)) ([c39a991](https://github.com/vm0-ai/vm0/commit/c39a9913c627e2a5a7003eaf401119377e2058bc))
+
+
+### Refactoring
+
+* **firewalls:** generate google-meet from discovery api ([#9492](https://github.com/vm0-ai/vm0/issues/9492)) ([6943faa](https://github.com/vm0-ai/vm0/commit/6943faa8e94eb94f1aa592fae1da86f88137a285))
+
 ## [8.186.1](https://github.com/vm0-ai/vm0/compare/core-v8.186.0...core-v8.186.1) (2026-04-15)
 
 

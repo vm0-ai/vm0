@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { FeatureSwitchKey } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -28,7 +29,7 @@ function createAgent() {
 function mockTasksAPI(
   tasks: {
     id: string;
-    type: "chat" | "schedule" | "slack" | "email";
+    type: "chat" | "schedule" | "slack" | "email" | "voice_chat" | "agent";
     title: string | null;
     summary: string | null;
     agent: {
@@ -43,6 +44,7 @@ function mockTasksAPI(
     scheduleId?: string;
     slackThreadSessionId?: string;
     emailThreadSessionId?: string;
+    voiceChatSessionId?: string;
     createdAt: string;
     updatedAt: string;
   }[],
@@ -878,6 +880,129 @@ describe("mission control page", () => {
       .getByText("Voice session with Zero")
       .closest("[role=button]") as HTMLElement;
     expect(card.querySelector(".tabler-icon-microphone")).not.toBeNull();
+  });
+
+  it("should open voice chat panel when clicking a voice_chat task", async () => {
+    mockTasksAPI([
+      {
+        id: "task-vc-open",
+        type: "voice_chat",
+        title: "Voice chat with Zero",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: "run-vc-open-1",
+        status: "running",
+        voiceChatSessionId: "vc-session-open",
+        createdAt: "2026-04-13T10:00:00Z",
+        updatedAt: "2026-04-13T10:00:00Z",
+      },
+    ]);
+
+    server.use(
+      http.get("*/api/zero/voice-chat/vc-session-open/context", () => {
+        return HttpResponse.json({ events: [] });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({
+      context,
+      path: "/_/mission-control",
+      featureSwitches: { [FeatureSwitchKey.VoiceChat]: true },
+    });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Voice chat with Zero");
+    });
+
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("No conversation events yet")).toBeInTheDocument();
+    expect(pathname()).toBe("/_/mission-control");
+  });
+
+  it("should hide empty state when voice chat panel receives events", async () => {
+    mockTasksAPI([
+      {
+        id: "task-vc-events",
+        type: "voice_chat",
+        title: "Live voice session",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: "run-vc-events-1",
+        status: "running",
+        voiceChatSessionId: "vc-session-events",
+        createdAt: "2026-04-13T10:00:00Z",
+        updatedAt: "2026-04-13T10:00:00Z",
+      },
+    ]);
+
+    server.use(
+      http.get(
+        "*/api/zero/voice-chat/vc-session-events/context",
+        ({ request }) => {
+          const url = new URL(request.url);
+          const after = Number(url.searchParams.get("after") ?? 0);
+          if (after === 0) {
+            return HttpResponse.json({
+              events: [
+                {
+                  id: "evt-a",
+                  seq: 1,
+                  source: "slow-brain",
+                  type: "thinking",
+                  content: "Analyzing context",
+                  createdAt: "2026-04-13T10:00:01Z",
+                },
+                {
+                  id: "evt-b",
+                  seq: 2,
+                  source: "slow-brain",
+                  type: "directive",
+                  content: "Be concise",
+                  createdAt: "2026-04-13T10:00:02Z",
+                },
+              ],
+            });
+          }
+          return HttpResponse.json({ events: [] });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({
+      context,
+      path: "/_/mission-control",
+      featureSwitches: { [FeatureSwitchKey.VoiceChat]: true },
+    });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Live voice session");
+    });
+
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
+    });
+
+    // Slow-brain labels rendered by SlowBrainIndicator
+    await waitFor(() => {
+      expect(screen.getByText("Thinking")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Directive")).toBeInTheDocument();
+    expect(screen.getByText("Analyzing context")).toBeInTheDocument();
+    expect(screen.getByText("Be concise")).toBeInTheDocument();
+    expect(
+      screen.queryByText("No conversation events yet"),
+    ).not.toBeInTheDocument();
+    expect(pathname()).toBe("/_/mission-control");
   });
 
   it("should open new chat dialog when c key is pressed", async () => {

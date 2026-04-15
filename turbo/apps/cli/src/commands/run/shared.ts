@@ -48,6 +48,66 @@ export function collectVolumeVersions(
 }
 
 /**
+ * Parse Docker-style volume declaration.
+ * Format: "name:/mount/path" (latest) or "name:version:/mount/path" (specific version)
+ *
+ * Parsing rule: split on ':', last segment starts with '/' = mount path,
+ * first = storage name, middle (if present) = version.
+ */
+export function parseVolume(value: string): {
+  name: string;
+  version?: string;
+  mountPath: string;
+} {
+  const parts = value.split(":");
+
+  if (parts.length < 2 || parts.length > 3) {
+    throw new Error(
+      `Invalid volume format: ${value} (expected name:/path or name:version:/path)`,
+    );
+  }
+
+  // After the length check above, parts has exactly 2 or 3 elements
+  const name = parts[0] as string;
+  const mountPath =
+    parts.length === 3 ? (parts[2] as string) : (parts[1] as string);
+
+  if (!name) {
+    throw new Error(`Invalid volume format: ${value} (name cannot be empty)`);
+  }
+
+  if (!mountPath.startsWith("/")) {
+    throw new Error(
+      `Invalid volume mount path: ${mountPath} (must start with /)`,
+    );
+  }
+
+  if (parts.length === 2) {
+    return { name, mountPath };
+  }
+
+  const version = parts[1] as string;
+  if (!version) {
+    throw new Error(
+      `Invalid volume format: ${value} (version cannot be empty)`,
+    );
+  }
+
+  return { name, version, mountPath };
+}
+
+/**
+ * Collector for repeatable --volume flags.
+ * Accumulates into an array of parsed volume objects.
+ */
+export function collectVolumes(
+  value: string,
+  previous: Array<{ name: string; version?: string; mountPath: string }>,
+): Array<{ name: string; version?: string; mountPath: string }> {
+  return [...previous, parseVolume(value)];
+}
+
+/**
  * Parse and validate --permission-policies JSON string.
  * Returns undefined when no value is provided.
  */

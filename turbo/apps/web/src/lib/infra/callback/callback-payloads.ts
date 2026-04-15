@@ -92,3 +92,13 @@ export interface PhoneCallbackPayload {
   agentId: string;
   existingSessionId: string | null;
 }
+
+export interface IMessageCallbackPayload {
+  messageId: string;
+  fromNumber: string;
+  userId: string;
+  orgId: string;
+  agentId: string;
+  agentphoneAgentId: string;
+  existingSessionId: string | null;
+}

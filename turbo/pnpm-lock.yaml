@@ -39,6 +39,9 @@ importers:
       '@vitest/ui':
         specifier: ^4.1.4
         version: 4.1.4(vitest@4.1.4)
+      '@vm0/firewalls-generator':
+        specifier: workspace:*
+        version: link:packages/firewalls-generator
       dotenv-cli:
         specifier: ^7.4.2
         version: 7.4.4

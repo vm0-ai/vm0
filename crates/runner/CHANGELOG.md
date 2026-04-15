@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.79.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.9...runner-rs-v0.79.10) (2026-04-15)
+
+
+### Bug Fixes
+
+* **runner:** escape % in systemd values to prevent specifier expansion ([#9499](https://github.com/vm0-ai/vm0/issues/9499)) ([5eb4e12](https://github.com/vm0-ai/vm0/commit/5eb4e12fbe3fb652a0969c163357875ac1c25766))
+
+## [0.79.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.8...runner-rs-v0.79.9) (2026-04-15)
+
+
+### Refactoring
+
+* **runner:** split mitm_addon.py into usage.py and body_utils.py ([#9478](https://github.com/vm0-ai/vm0/issues/9478)) ([7be4518](https://github.com/vm0-ai/vm0/commit/7be4518db26eeccad810c4d18b13f1b81c109975))
+
 ## [0.79.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.7...runner-rs-v0.79.8) (2026-04-15)
 
 

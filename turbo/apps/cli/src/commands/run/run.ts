@@ -9,6 +9,7 @@ import {
 import {
   collectKeyValue,
   collectVolumeVersions,
+  collectVolumes,
   isUUID,
   extractVarNames,
   extractSecretNames,
@@ -74,6 +75,12 @@ export const mainRunCommand = new Command()
     collectVolumeVersions,
     {},
   )
+  .option(
+    "--volume <volume>",
+    "Mount a volume (repeatable, format: name:/path or name:version:/path)",
+    collectVolumes,
+    [],
+  )
   .option("--memory <name>", "Memory storage name")
   .option(
     "--conversation <id>",
@@ -120,6 +127,7 @@ export const mainRunCommand = new Command()
           artifactVersion?: string;
           memory?: string;
           volumeVersion: Record<string, string>;
+          volume: Array<{ name: string; version?: string; mountPath: string }>;
           conversation?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
@@ -174,7 +182,7 @@ export const mainRunCommand = new Command()
             agentComposeVersionId = versionInfo.versionId;
           } catch (error) {
             throw new Error(`Version not found: ${version}`, {
-              cause: error instanceof Error ? error : undefined,
+              cause: error,
             });
           }
         }
@@ -213,7 +221,15 @@ export const mainRunCommand = new Command()
           );
         }
 
-        // 6. Call unified API (server handles all variable expansion)
+        // 6. Prepare optional fields
+        const volumeVersions =
+          Object.keys(options.volumeVersion).length > 0
+            ? options.volumeVersion
+            : undefined;
+        const additionalVolumes =
+          options.volume.length > 0 ? options.volume : undefined;
+
+        // 7. Call unified API (server handles all variable expansion)
         const response = await createRun({
           // Use agentComposeVersionId if resolved, otherwise use agentComposeId (resolves to HEAD)
           ...(agentComposeVersionId
@@ -225,10 +241,8 @@ export const mainRunCommand = new Command()
           artifactName,
           artifactVersion,
           memoryName: options.memory,
-          volumeVersions:
-            Object.keys(options.volumeVersion).length > 0
-              ? options.volumeVersion
-              : undefined,
+          volumeVersions,
+          additionalVolumes,
           conversationId: options.conversation,
           appendSystemPrompt: options.appendSystemPrompt,
           disallowedTools: options.disallowedTools,

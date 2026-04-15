@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.240.0](https://github.com/vm0-ai/vm0/compare/app-v0.239.0...app-v0.240.0) (2026-04-15)
+
+
+### Features
+
+* add imessage integration for zero agents ([#9463](https://github.com/vm0-ai/vm0/issues/9463)) ([f0a8e7a](https://github.com/vm0-ai/vm0/commit/f0a8e7a7326f1a71a4742c2fa229fa193b14e6e2))
+
+
+### Bug Fixes
+
+* prevent credit usage numbers from wrapping ([#9515](https://github.com/vm0-ai/vm0/issues/9515)) ([#9517](https://github.com/vm0-ai/vm0/issues/9517)) ([fa05e39](https://github.com/vm0-ai/vm0/commit/fa05e397a756ad9e43e7e99285278e7071fb359f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.188.0
+
+## [0.239.0](https://github.com/vm0-ai/vm0/compare/app-v0.238.5...app-v0.239.0) (2026-04-15)
+
+
+### Features
+
+* **mission-control:** add voice chat panel for voice_chat tasks ([#9442](https://github.com/vm0-ai/vm0/issues/9442)) ([db92144](https://github.com/vm0-ai/vm0/commit/db9214426c95035206ca73102f5f5b0fb92636fc))
+
+## [0.238.5](https://github.com/vm0-ai/vm0/compare/app-v0.238.4...app-v0.238.5) (2026-04-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.187.1
+
+## [0.238.4](https://github.com/vm0-ai/vm0/compare/app-v0.238.3...app-v0.238.4) (2026-04-15)
+
+
+### Bug Fixes
+
+* **platform:** defer auto-scroll until after optimistic message is flushed ([#9479](https://github.com/vm0-ai/vm0/issues/9479)) ([679772c](https://github.com/vm0-ai/vm0/commit/679772cce595ff42315ae8da0620f59f190e4aa5))
+* **platform:** track tts playback by run id instead of message id ([#9490](https://github.com/vm0-ai/vm0/issues/9490)) ([fbf0adf](https://github.com/vm0-ai/vm0/commit/fbf0adfefdb443efdbeb420d2fe709721872d4c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.187.0
+
 ## [0.238.3](https://github.com/vm0-ai/vm0/compare/app-v0.238.2...app-v0.238.3) (2026-04-15)
 
 

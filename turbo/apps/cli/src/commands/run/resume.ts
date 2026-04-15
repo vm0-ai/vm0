@@ -3,6 +3,7 @@ import { getCheckpoint, createRun } from "../../lib/api";
 import {
   collectKeyValue,
   collectVolumeVersions,
+  collectVolumes,
   isUUID,
   loadValues,
   parseArtifact,
@@ -43,6 +44,12 @@ export const resumeCommand = new Command()
   .option(
     "--artifact <name[:version]>",
     "Artifact storage (format: name or name:version)",
+  )
+  .option(
+    "--volume <volume>",
+    "Mount a volume (repeatable, format: name:/path or name:version:/path)",
+    collectVolumes,
+    [],
   )
   .option(
     "--append-system-prompt <text>",
@@ -94,6 +101,7 @@ export const resumeCommand = new Command()
           secrets: Record<string, string>;
           volumeVersion: Record<string, string>;
           artifact?: string;
+          volume: Array<{ name: string; version?: string; mountPath: string }>;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -130,18 +138,25 @@ export const resumeCommand = new Command()
           options.artifact || allOpts.artifact,
         );
 
-        // 5. Call unified API with checkpointId
+        // 5. Prepare optional fields
+        const resolvedVars = Object.keys(vars).length > 0 ? vars : undefined;
+        const volumeVersions =
+          Object.keys(allOpts.volumeVersion).length > 0
+            ? allOpts.volumeVersion
+            : undefined;
+        const additionalVolumes =
+          allOpts.volume.length > 0 ? allOpts.volume : undefined;
+
+        // 6. Call unified API with checkpointId
         const response = await createRun({
           checkpointId,
           prompt,
-          vars: Object.keys(vars).length > 0 ? vars : undefined,
+          vars: resolvedVars,
           secrets: loadedSecrets,
           artifactName: artifactParsed?.artifactName,
           artifactVersion: artifactParsed?.artifactVersion,
-          volumeVersions:
-            Object.keys(allOpts.volumeVersion).length > 0
-              ? allOpts.volumeVersion
-              : undefined,
+          volumeVersions,
+          additionalVolumes,
           appendSystemPrompt:
             options.appendSystemPrompt || allOpts.appendSystemPrompt,
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,
@@ -151,7 +166,7 @@ export const resumeCommand = new Command()
             options.permissionPolicies || allOpts.permissionPolicies,
           ),
           debugNoMockClaude:
-            options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,
+            options.debugNoMockClaude || allOpts.debugNoMockClaude,
         });
 
         // 4. Check for immediate failure (e.g., missing secrets)

@@ -1,5 +1,52 @@
 # Changelog
 
+## [9.116.1](https://github.com/vm0-ai/vm0/compare/cli-v9.116.0...cli-v9.116.1) (2026-04-15)
+
+
+### Refactoring
+
+* update compose and cook commands to use unified --artifact flag ([#9518](https://github.com/vm0-ai/vm0/issues/9518)) ([da63885](https://github.com/vm0-ai/vm0/commit/da638853fc80d06769ed39ae1a137b96774d1006))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.188.0
+
+## [9.116.0](https://github.com/vm0-ai/vm0/compare/cli-v9.115.0...cli-v9.116.0) (2026-04-15)
+
+
+### Features
+
+* **cli:** add --volume flag for dynamic volume mounting ([#9497](https://github.com/vm0-ai/vm0/issues/9497)) ([9425d41](https://github.com/vm0-ai/vm0/commit/9425d41eacc0501aa103e838b02e0459eb8ac62b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.187.1
+
+## [9.115.0](https://github.com/vm0-ai/vm0/compare/cli-v9.114.1...cli-v9.115.0) (2026-04-15)
+
+
+### Features
+
+* **phone:** add fire-and-forget mode for outbound calls ([#9465](https://github.com/vm0-ai/vm0/issues/9465)) ([86196f2](https://github.com/vm0-ai/vm0/commit/86196f26596e9eb74b4635c120487a9deeb270ec))
+
+
+### Refactoring
+
+* **cli:** unify --artifact flag to docker-style name:version syntax ([#9481](https://github.com/vm0-ai/vm0/issues/9481)) ([9cc09cd](https://github.com/vm0-ai/vm0/commit/9cc09cd1ecd51b2fb1d07be88c34cca14fe6b29c)), closes [#9474](https://github.com/vm0-ai/vm0/issues/9474)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.187.0
+
 ## [9.114.1](https://github.com/vm0-ai/vm0/compare/cli-v9.114.0...cli-v9.114.1) (2026-04-15)
 
 
