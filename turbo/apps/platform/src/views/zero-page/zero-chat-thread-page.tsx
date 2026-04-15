@@ -30,7 +30,7 @@ import {
 import { FeatureSwitchKey, RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
-  ttsPlayingMessageId$,
+  ttsPlayingRunId$,
   playTts$,
   stopTts$,
 } from "../../signals/voice-io/voice-io-tts.ts";
@@ -807,8 +807,8 @@ function AssistantMessageActions({
 
   const features = useLastResolved(featureSwitch$);
   const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
-  const playingId = useGet(ttsPlayingMessageId$);
-  const isPlayingThis = playingId === message.id;
+  const playingRunId = useGet(ttsPlayingRunId$);
+  const isPlayingThis = playingRunId === message.legacyRunId;
   const playTts = useSet(playTts$);
   const stopTts = useSet(stopTts$);
 
@@ -827,7 +827,10 @@ function AssistantMessageActions({
     if (isPlayingThis) {
       detach(stopTts(), Reason.DomCallback);
     } else {
-      detach(playTts(message.id, content, pageSignal), Reason.DomCallback);
+      detach(
+        playTts(message.legacyRunId!, content, pageSignal),
+        Reason.DomCallback,
+      );
     }
   };
 
