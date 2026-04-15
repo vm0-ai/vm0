@@ -314,11 +314,117 @@ _BILLABLE_CONNECTORS = frozenset({"x"})
 def is_billable_connector(firewall_name: str) -> bool:
     """Return True when this firewall is on the billable-connector list.
 
-    Used by ``mitm_addon.responseheaders`` to disable buffer truncation for
-    these firewalls so ``log_connector_usage`` can parse the full response
-    body in ``response()``.
+    Used by ``mitm_addon.responseheaders`` to choose the response-body
+    handling strategy:
+
+    - **Non-stream endpoints**: disable buffer truncation so
+      ``log_connector_usage`` can ``json.loads`` the full body in
+      ``response()``.
+    - **Stream endpoints** (see :data:`_X_STREAM_ENDPOINTS`): register an
+      incremental NDJSON parser via :func:`create_x_ndjson_extractor` so
+      we never buffer the (potentially multi-GB) stream body.
     """
     return firewall_name in _BILLABLE_CONNECTORS
+
+
+# X v2 NDJSON streaming endpoint paths (exact match — ``/2/tweets/search/stream/rules``
+# is a regular request/response endpoint for rules management, NOT a stream).
+# Streams deliver one JSON object per line, possibly for hours; responseheaders
+# registers an incremental NDJSON parser as the stream callback so we never
+# buffer the response body.
+_X_STREAM_ENDPOINTS = frozenset(
+    {
+        "/2/tweets/search/stream",
+        "/2/tweets/sample/stream",
+        "/2/tweets/sample10/stream",
+        "/2/tweets/compliance/stream",
+        "/2/users/compliance/stream",
+    }
+)
+
+
+def is_x_stream_path(path: str) -> bool:
+    """Return True when *path* is one of the X v2 NDJSON streaming endpoints.
+
+    Exact match only — ``/2/tweets/search/stream/rules`` (rules management)
+    must NOT match because it's a regular JSON request/response, not a stream.
+    """
+    return path in _X_STREAM_ENDPOINTS
+
+
+# Single NDJSON line cap — matches ``LARGE_RESPONSE_DECOMPRESS_LIMIT`` in
+# ``body_utils.py``.  A real X tweet line (``data`` + ``includes`` +
+# ``matching_rules`` with full expansion) should never approach this size;
+# exceeding it indicates malformed or hostile upstream data, so the parser
+# drops ``line_buf`` to protect memory.
+MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+def create_x_ndjson_extractor():
+    """Create an incremental NDJSON parser for X v2 streaming responses.
+
+    X v2 streaming endpoints deliver one JSON object per line separated by
+    ``\\n`` (or ``\\r\\n``), with blank lines as keep-alives.  Each tweet
+    line typically has the shape::
+
+        {"data": {...tweet...}, "includes": {...}, "matching_rules": [...]}
+
+    Returns ``(parse_chunk, state)`` where *parse_chunk* processes raw
+    response bytes incrementally (so we never buffer the full body) and
+    *state* is a dict that accumulates:
+
+    - ``data_count``: int — number of lines whose top-level ``data`` is a
+      dict (one tweet per line).  Lines whose ``data`` is an array or
+      absent contribute 0 to this counter but still bump ``lines_parsed``.
+    - ``includes``: dict[str, int] — running sum across all lines of
+      ``len(includes.<key>)`` for each expansion resource key.
+    - ``lines_parsed``: int — JSON-parseable non-blank lines.
+    - ``lines_failed``: int — lines that failed JSON decoding.
+
+    The parser keeps a ``line_buf`` holding the in-flight partial line
+    across chunk boundaries.  If a single line ever exceeds
+    :data:`MAX_NDJSON_LINE_BYTES` the buffer is reset (malformed / hostile
+    upstream).  A truncated trailing line at connection close (no final
+    ``\\n``) stays in the buffer uncounted — worst-case under-count is 1.
+    """
+    state: dict = {
+        "data_count": 0,
+        "includes": {},
+        "lines_parsed": 0,
+        "lines_failed": 0,
+    }
+    line_buf = bytearray()
+
+    def parse_chunk(chunk: bytes) -> None:
+        line_buf.extend(chunk)
+        while b"\n" in line_buf:
+            raw, _, rest = line_buf.partition(b"\n")
+            line_buf[:] = rest
+            line = raw.rstrip(b"\r")
+            if not line:
+                continue  # keep-alive blank line
+            try:
+                obj = json.loads(line)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                state["lines_failed"] += 1
+                continue
+            state["lines_parsed"] += 1
+            if not isinstance(obj, dict):
+                continue
+            if isinstance(obj.get("data"), dict):
+                state["data_count"] += 1
+            inc = obj.get("includes")
+            if isinstance(inc, dict):
+                for k, v in inc.items():
+                    if isinstance(v, list):
+                        state["includes"][k] = state["includes"].get(k, 0) + len(v)
+        # Defense: if a single line exceeds MAX_NDJSON_LINE_BYTES (malformed
+        # or hostile upstream) reset line_buf so we don't hold unbounded
+        # memory.  Subsequent lines parse normally.
+        if len(line_buf) > MAX_NDJSON_LINE_BYTES:
+            line_buf[:] = b""
+
+    return parse_chunk, state
 
 
 def _parse_x_request_metadata(flow: http.HTTPFlow) -> dict:
@@ -333,6 +439,8 @@ def _parse_x_request_metadata(flow: http.HTTPFlow) -> dict:
       - ``has_expansions``: bool — whether ``?expansions=`` is present.
       - ``max_results``: int | None — value of ``?max_results=``, used
         as an upper-bound fallback when the response body cannot be parsed.
+      - ``is_stream``: bool — True when the request path is one of the X v2
+        NDJSON streaming endpoints (see :data:`_X_STREAM_ENDPOINTS`).
 
     Reads from ``flow.metadata["original_url"]`` (set by the request handler
     via ``url_utils.get_original_url``) rather than ``pretty_url`` to stay
@@ -353,6 +461,7 @@ def _parse_x_request_metadata(flow: http.HTTPFlow) -> dict:
         "request_ids_count": ids_count,
         "has_expansions": "expansions" in qs,
         "max_results": max_results,
+        "is_stream": is_x_stream_path(parsed.path),
     }
 
 
@@ -372,6 +481,15 @@ def _parse_x_response_metadata(flow: http.HTTPFlow) -> dict:
         ``meta``).  Both fields are alternative spellings of the same
         billing dimension, so we collapse them into one log key.
 
+    For X NDJSON streaming endpoints, ``responseheaders`` registers an
+    incremental parser that populates ``flow.metadata["x_ndjson_state"]``
+    as response bytes arrive.  When that state is present we return its
+    accumulated counters directly (``body_format: "ndjson"``) and skip
+    the full-body ``json.loads`` path, since stream buffers are capped
+    at ``STREAM_BUFFER_LIMIT`` and don't contain the full response.
+    For streams ``body_truncated`` is always ``False`` — the incremental
+    parser saw every byte even if the forensic ``stream_buffer`` filled up.
+
     Failures (truncated buffer, malformed JSON, unexpected shape) leave
     ``body_parsed=False`` and emit no count fields, so analysis can
     distinguish "field absent in response" from "we couldn't parse it".
@@ -379,6 +497,27 @@ def _parse_x_response_metadata(flow: http.HTTPFlow) -> dict:
     state = flow.metadata.get("stream_buffer_state") or {}
     truncated = bool(state.get("truncated", False))
     result: dict = {"body_parsed": False, "body_truncated": truncated}
+
+    # Streaming branch: NDJSON parser accumulated counts in flow.metadata
+    # during response chunks.  Use those directly — the stream_buffer is
+    # intentionally tiny (64 KB) for streams and does NOT hold the body.
+    #
+    # Override body_truncated to False: the stream_buffer-derived truncated
+    # flag reflects the forensic buffer cap, but the NDJSON parser processed
+    # every chunk regardless of that cap, so billing counts are complete.
+    # Reporting body_truncated=True here would misleadingly suggest the
+    # counts are unreliable when they are not.
+    ndjson_state = flow.metadata.get("x_ndjson_state")
+    if ndjson_state is not None:
+        result["body_parsed"] = True
+        result["body_truncated"] = False
+        result["body_format"] = "ndjson"
+        result["response_data_count"] = ndjson_state["data_count"]
+        if ndjson_state["includes"]:
+            result["response_includes"] = dict(ndjson_state["includes"])
+        result["ndjson_lines_parsed"] = ndjson_state["lines_parsed"]
+        result["ndjson_lines_failed"] = ndjson_state["lines_failed"]
+        return result
 
     buf = flow.metadata.get("stream_buffer")
     if not buf:

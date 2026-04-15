@@ -510,6 +510,145 @@ class TestResponseHeadersHandler:
 
         mitm_addon.responseheaders(flow)  # Should not raise
 
+    # ---- X NDJSON streaming parser registration (issue #9534) ----
+
+    def test_x_stream_endpoint_registers_ndjson_parser(self):
+        """X filtered-stream endpoint wires incremental NDJSON parser.
+
+        Note: X streams return ``content-type: application/json`` with chunked
+        transfer encoding — same as non-stream endpoints.  Stream detection is
+        URL-based, not content-type-based.
+        """
+        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        assert "x_ndjson_state" in flow.metadata
+        callback = flow.response.stream
+        callback(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
+        callback(b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}\n')
+        state = flow.metadata["x_ndjson_state"]
+        assert state["data_count"] == 2
+        assert state["includes"] == {"users": 2}
+
+    def test_x_stream_buffer_capped_at_stream_limit(self):
+        """Stream endpoint must NOT buffer multi-MB bodies — uses 64 KB cap."""
+        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        # First parseable line, then ~200 KB of junk.  Parser sees the first
+        # line; buffer truncates at STREAM_BUFFER_LIMIT.
+        callback(b'{"data":{"id":"1"}}\n' + b"x" * (200 * 1024))
+        assert len(flow.metadata["stream_buffer"]) <= body_utils.STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        assert flow.metadata["x_ndjson_state"]["data_count"] == 1
+
+    def test_x_non_stream_endpoint_keeps_unbounded_buffer(self):
+        """Non-stream X requests still need full body for json.loads."""
+        flow = _make_http_flow(host="api.x.com", path="/2/users/by")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["original_url"] = "https://api.x.com/2/users/by?ids=1,2,3"
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        callback(b"x" * (200 * 1024))
+        assert len(flow.metadata["stream_buffer"]) == 200 * 1024
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+        assert "x_ndjson_state" not in flow.metadata
+
+    def test_x_stream_rules_is_not_registered_as_stream(self):
+        """/2/tweets/search/stream/rules is rules mgmt, not a stream — no NDJSON parser."""
+        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream/rules")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream/rules"
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        # No NDJSON state registered; regular unbounded X buffer path
+        assert "x_ndjson_state" not in flow.metadata
+
+    def test_x_stream_error_response_keeps_unbounded_buffer(self):
+        """4xx/5xx on stream endpoints must preserve full error body (no NDJSON parser).
+
+        Error responses on stream endpoints return a single JSON error object,
+        not NDJSON.  The NDJSON parser gate on 2xx prevents the stream buffer
+        from being capped at 64 KB so forensic logging sees the full body.
+        """
+        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.response = MagicMock()
+        flow.response.status_code = 401  # unauthorized — returns JSON error, not NDJSON
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        # No NDJSON parser — error body would fail NDJSON parsing anyway.
+        assert "x_ndjson_state" not in flow.metadata
+        callback = flow.response.stream
+        # Unbounded X buffer retains the full error body for forensic logging.
+        error_body = b'{"title":"Unauthorized","detail":"' + b"x" * (200 * 1024) + b'"}'
+        callback(error_body)
+        assert len(flow.metadata["stream_buffer"]) == len(error_body)
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+    def test_x_stream_gzip_compressed_body(self):
+        """Gzip-encoded NDJSON stream: decompressor + parser wire up correctly."""
+        import gzip
+
+        ndjson_body = (
+            b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n'
+            b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}\n'
+            b'{"data":{"id":"3"},"includes":{"users":[{"id":"u3"}]}}\n'
+        )
+        compressed = gzip.compress(ndjson_body)
+
+        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {
+            "content-type": "application/json",
+            "content-encoding": "gzip",
+        }
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        # Feed compressed bytes in two chunks to exercise incremental decompression.
+        mid = len(compressed) // 2
+        callback(compressed[:mid])
+        callback(compressed[mid:])
+        state = flow.metadata["x_ndjson_state"]
+        assert state["data_count"] == 3
+        assert state["includes"] == {"users": 3}
+
 
 class TestResponseHandler:
     def setup_method(self):
@@ -915,6 +1054,107 @@ class TestSseUsageExtractor:
         assert usage["input_tokens"] == 100  # unchanged (not in delta)
 
 
+class TestNdjsonExtractor:
+    """Tests for create_x_ndjson_extractor incremental parser (issue #9534)."""
+
+    def test_single_line(self):
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
+        assert state["data_count"] == 1
+        assert state["includes"] == {"users": 1}
+        assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 0
+
+    def test_multiple_lines_aggregate_counts(self):
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
+        parse(b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"},{"id":"u3"}]}}\n')
+        assert state["data_count"] == 2
+        assert state["includes"] == {"users": 3}
+        assert state["lines_parsed"] == 2
+
+    def test_chunked_line_split_mid_json(self):
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b'{"data":{"id":"1"},"include')
+        parse(b's":{"users":[{"id":"u1"}]}}\n')
+        assert state["data_count"] == 1
+        assert state["includes"] == {"users": 1}
+        assert state["lines_parsed"] == 1
+
+    def test_keep_alive_blank_lines(self):
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b"\n\n")
+        parse(b'{"data":{"id":"1"}}\n')
+        parse(b"\n")
+        parse(b'{"data":{"id":"2"}}\n')
+        assert state["data_count"] == 2
+        assert state["lines_parsed"] == 2
+
+    def test_crlf_line_endings(self):
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b'{"data":{"id":"1"}}\r\n{"data":{"id":"2"}}\r\n')
+        assert state["data_count"] == 2
+        assert state["lines_parsed"] == 2
+
+    def test_malformed_line_increments_failures(self):
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b'{"data":{"id":"1"}}\n')
+        parse(b"not json at all\n")
+        parse(b'{"data":{"id":"2"}}\n')
+        assert state["data_count"] == 2
+        assert state["lines_parsed"] == 2
+        assert state["lines_failed"] == 1
+
+    def test_truncated_trailing_line_not_counted(self):
+        """Connection drops mid-line — partial trailing line stays in buf, not counted."""
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b'{"data":{"id":"1"}}\n{"data":{"id":"2"}')  # no trailing \n
+        assert state["data_count"] == 1
+        assert state["lines_parsed"] == 1
+
+    def test_empty_chunks_safe(self):
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b"")
+        parse(b'{"data":{"id":"1"}}\n')
+        parse(b"")
+        assert state["data_count"] == 1
+
+    def test_oversized_line_dropped(self):
+        """Line > MAX_NDJSON_LINE_BYTES is dropped; subsequent lines parse normally."""
+        parse, state = usage.create_x_ndjson_extractor()
+        big = b"x" * (usage.MAX_NDJSON_LINE_BYTES + 1024)
+        parse(big)
+        # line_buf should have been reset
+        parse(b'{"data":{"id":"after"}}\n')
+        assert state["data_count"] == 1
+        assert state["lines_parsed"] == 1
+
+    def test_includes_multiple_keys(self):
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(
+            b'{"data":{"id":"1"},"includes":'
+            b'{"users":[{"id":"u1"}],'
+            b'"tweets":[{"id":"t1"},{"id":"t2"}],'
+            b'"media":[{"id":"m1"}]}}\n'
+        )
+        assert state["includes"] == {"users": 1, "tweets": 2, "media": 1}
+
+    def test_data_array_not_counted(self):
+        """Line where top-level ``data`` is an array (not a dict) contributes 0 to data_count."""
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b'{"data":[1,2,3]}\n')
+        assert state["data_count"] == 0
+        assert state["lines_parsed"] == 1
+
+    def test_non_dict_top_level_skipped(self):
+        parse, state = usage.create_x_ndjson_extractor()
+        parse(b'"some string"\n')
+        parse(b"42\n")
+        parse(b'{"data":{"id":"1"}}\n')
+        assert state["lines_parsed"] == 3
+        assert state["data_count"] == 1
+
+
 class TestDoReportUsage:
     """Tests for _do_report_usage HTTP request construction."""
 
@@ -1192,6 +1432,7 @@ class TestResponseUsageReporting:
         """Billable connector responses should buffer the full body (no 64KB cap)."""
         flow = _make_http_flow(host="api.x.com")
         flow.response = MagicMock()
+        flow.response.status_code = 200
         flow.response.headers = {"content-type": "application/json"}
         flow.response.stream = False
         flow.metadata["firewall_name"] = "x"
@@ -1493,6 +1734,93 @@ class TestErrorHandler:
         assert "connection reset by peer" in content
         assert "slack.com" in content
 
+    def test_error_logs_connector_usage_for_x_stream(self, tmp_path):
+        """Mid-flight stream crash: partial counts still reported (issue #9534)."""
+        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        log_path = str(tmp_path / "network.jsonl")
+        proxy_log = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
+        flow.metadata["x_ndjson_state"] = {
+            "data_count": 23,
+            "includes": {"users": 5},
+            "lines_parsed": 23,
+            "lines_failed": 0,
+        }
+        flow.metadata["stream_buffer"] = bytearray()
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        # X streams return application/json with chunked transfer, not x-ndjson.
+        flow.response.headers = {"content-type": "application/json"}
+        flow.error = MagicMock()
+        flow.error.msg = "connection reset by peer"
+
+        mitm_addon.error(flow)
+
+        # proxy.jsonl should contain both the connection_error and the connector_usage entries
+        entries = [json.loads(ln) for ln in proxy_log.read_text().splitlines() if ln]
+        usage_entries = [e for e in entries if e.get("type") == "connector_usage"]
+        assert len(usage_entries) == 1
+        assert usage_entries[0]["response_data_count"] == 23
+        assert usage_entries[0]["body_format"] == "ndjson"
+        assert usage_entries[0]["is_stream"] is True
+
+    def test_full_pipeline_stream_error_midflight(self, tmp_path):
+        """End-to-end: responseheaders → partial chunks → error() logs observed counts.
+
+        Simulates a real scenario: stream opens successfully, a few tweets
+        arrive, then the connection resets.  No pre-populated state — the
+        incremental parser must have accumulated counts from the chunks.
+        """
+        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        log_path = str(tmp_path / "network.jsonl")
+        proxy_log = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        # 1. Register parser
+        mitm_addon.responseheaders(flow)
+        callback = flow.response.stream
+        assert "x_ndjson_state" in flow.metadata
+
+        # 2. Receive two complete tweets, then a partial third (cut off)
+        callback(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
+        callback(b'{"data":{"id":"2"}}\n')
+        callback(b'{"data":{"id":"3"}')  # no trailing \n — connection dies here
+
+        # 3. Connection aborts
+        flow.error = MagicMock()
+        flow.error.msg = "connection reset by peer"
+        mitm_addon.error(flow)
+
+        # 4. Log must reflect the 2 complete tweets (partial 3rd is dropped)
+        entries = [json.loads(ln) for ln in proxy_log.read_text().splitlines() if ln]
+        usage_entries = [e for e in entries if e.get("type") == "connector_usage"]
+        assert len(usage_entries) == 1
+        e = usage_entries[0]
+        assert e["body_format"] == "ndjson"
+        assert e["response_data_count"] == 2  # not 3 — partial trailing dropped
+        assert e["response_includes"] == {"users": 1}
+        assert e["is_stream"] is True
+        assert e["body_truncated"] is False  # billing is complete despite disconnect
+
 
 class TestMaybeReportProxyUsage:
     """Tests for maybe_report_proxy_usage helper."""
@@ -1596,6 +1924,28 @@ class TestMaybeReportProxyUsage:
 
         mock_enqueue.assert_not_called()
         assert proxy_log.exists()
+
+
+class TestIsXStreamPath:
+    """Tests for is_x_stream_path predicate (issue #9534)."""
+
+    def test_all_five_stream_endpoints_match(self):
+        assert usage.is_x_stream_path("/2/tweets/search/stream") is True
+        assert usage.is_x_stream_path("/2/tweets/sample/stream") is True
+        assert usage.is_x_stream_path("/2/tweets/sample10/stream") is True
+        assert usage.is_x_stream_path("/2/tweets/compliance/stream") is True
+        assert usage.is_x_stream_path("/2/users/compliance/stream") is True
+
+    def test_stream_rules_is_not_stream(self):
+        # Rules management is a regular JSON request/response endpoint.
+        assert usage.is_x_stream_path("/2/tweets/search/stream/rules") is False
+
+    def test_non_stream_paths_do_not_match(self):
+        assert usage.is_x_stream_path("/2/tweets/search/recent") is False
+        assert usage.is_x_stream_path("/2/users/by") is False
+        assert usage.is_x_stream_path("/2/tweets/1") is False
+        assert usage.is_x_stream_path("") is False
+        assert usage.is_x_stream_path("/") is False
 
 
 class TestLogConnectorUsage:
@@ -1917,6 +2267,172 @@ class TestLogConnectorUsage:
         assert entry["method"] == "POST"
         assert entry["billable_counts"] == {"tweet.write": 1}
 
+    # ---- is_stream request signal (issue #9534) ----
+
+    def test_is_stream_false_for_non_stream_endpoint(self, tmp_path):
+        """Regular request/response endpoints mark is_stream=False."""
+        body = json.dumps({"data": {"id": "1"}}).encode()
+        flow = self._make_x_flow(tmp_path, path="/2/tweets/1", body=body)
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["is_stream"] is False
+
+    def test_is_stream_true_for_filtered_stream_endpoint(self, tmp_path):
+        """/2/tweets/search/stream marks is_stream=True in log entry."""
+        body = json.dumps({"data": {"id": "1"}}).encode()  # single dict; real path uses NDJSON
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/stream",
+            body=body,
+            rule="GET /2/tweets/search/stream",
+        )
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["is_stream"] is True
+
+    def test_is_stream_true_with_query_params(self, tmp_path):
+        """Stream URL with realistic query params still marks is_stream=True.
+
+        X filtered streams are always called with expansions, tweet.fields, etc.
+        The URL parser must strip the query before matching against
+        _X_STREAM_ENDPOINTS — regression guard against future refactors that
+        accidentally use startswith/substring matching instead of exact path.
+        """
+        body = json.dumps({"data": {"id": "1"}}).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/stream",
+            query="expansions=author_id,referenced_tweets.id"
+            "&tweet.fields=created_at,public_metrics"
+            "&backfill_minutes=5",
+            body=body,
+            rule="GET /2/tweets/search/stream",
+        )
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["is_stream"] is True
+        assert entry["has_expansions"] is True
+
+    def test_is_stream_false_for_stream_rules(self, tmp_path):
+        """POST /2/tweets/search/stream/rules is NOT a stream (rules mgmt)."""
+        body = json.dumps({"data": [{"id": "r1", "value": "rule"}]}).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/stream/rules",
+            body=body,
+            status=201,
+            permission="tweet.read",
+            rule="POST /2/tweets/search/stream/rules",
+        )
+        flow.request.method = "POST"
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["is_stream"] is False
+
+    # ---- streaming: x_ndjson_state feeds billing directly (issue #9534) ----
+
+    def test_logs_x_stream_with_ndjson_state(self, tmp_path):
+        """Stream with pre-populated x_ndjson_state logs aggregated counts."""
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/stream",
+            body=b"",  # stream_buffer is empty — NDJSON parser handled the body
+            rule="GET /2/tweets/search/stream",
+        )
+        flow.metadata["x_ndjson_state"] = {
+            "data_count": 50,
+            "includes": {"users": 47, "tweets": 12},
+            "lines_parsed": 50,
+            "lines_failed": 1,
+        }
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["body_parsed"] is True
+        assert entry["body_format"] == "ndjson"
+        assert entry["response_data_count"] == 50
+        assert entry["response_includes"] == {"users": 47, "tweets": 12}
+        assert entry["ndjson_lines_parsed"] == 50
+        assert entry["ndjson_lines_failed"] == 1
+        assert entry["is_stream"] is True
+        # billable_counts: primary max(0,50,0,0,1)=50; users.read=47; tweets→tweet.read
+        # (tweet.read primary 50 + 12 from includes = 62)
+        assert entry["billable_counts"]["tweet.read"] == 62
+        assert entry["billable_counts"]["users.read"] == 47
+
+    def test_logs_x_stream_empty_no_fallback(self, tmp_path):
+        """Stream that delivered 0 tweets bills 1 (min), NOT _X_UNPARSEABLE_READ_FALLBACK."""
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/stream",
+            body=b"",
+            rule="GET /2/tweets/search/stream",
+        )
+        flow.metadata["x_ndjson_state"] = {
+            "data_count": 0,
+            "includes": {},
+            "lines_parsed": 0,
+            "lines_failed": 0,
+        }
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["body_parsed"] is True
+        assert entry["body_format"] == "ndjson"
+        assert entry["response_data_count"] == 0
+        # No fallback — body_parsed=True so _X_UNPARSEABLE_READ_FALLBACK is not triggered.
+        # primary = max(0,0,0,0,1) = 1
+        assert entry["billable_counts"] == {"tweet.read": 1}
+
+    def test_logs_x_stream_ignores_buffer_when_ndjson_state_present(self, tmp_path):
+        """When x_ndjson_state is present, stream_buffer contents are ignored."""
+        # Put junk in the buffer that would fail json.loads — NDJSON path should
+        # win and return the accumulated state without trying to parse the buffer.
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/stream",
+            body=b"this-is-not-json-at-all",
+            rule="GET /2/tweets/search/stream",
+        )
+        flow.metadata["x_ndjson_state"] = {
+            "data_count": 7,
+            "includes": {},
+            "lines_parsed": 7,
+            "lines_failed": 0,
+        }
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["body_parsed"] is True
+        assert entry["body_format"] == "ndjson"
+        assert entry["response_data_count"] == 7
+
+    def test_logs_x_stream_body_truncated_false_even_when_buffer_truncated(self, tmp_path):
+        """Stream with truncated forensic buffer still reports body_truncated=False.
+
+        The 64 KB stream_buffer cap is for forensic logging only; the NDJSON
+        parser processed every chunk incrementally, so billing counts are
+        complete.  Reporting body_truncated=True here would misleadingly
+        suggest counts are unreliable.
+        """
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/stream",
+            body=b"whatever-forensic-bytes",
+            rule="GET /2/tweets/search/stream",
+        )
+        # Simulate a long-lived stream where the forensic buffer filled up
+        # while the parser kept accumulating state.
+        flow.metadata["stream_buffer_state"] = {"truncated": True}
+        flow.metadata["x_ndjson_state"] = {
+            "data_count": 50000,
+            "includes": {"users": 12000},
+            "lines_parsed": 50000,
+            "lines_failed": 0,
+        }
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["body_parsed"] is True
+        assert entry["body_truncated"] is False  # NOT True — billing is complete
+        assert entry["response_data_count"] == 50000
+
     # ---- forensic / parser-state cases ----
 
     def test_handles_truncated_buffer(self, tmp_path):
@@ -2042,6 +2558,62 @@ class TestLogConnectorUsage:
             mitm_addon.response(flow)
 
         mock_log_connector.assert_called_once_with(flow, "run-abc-123")
+
+    # ---- full pipeline: responseheaders → stream chunks → response (issue #9534) ----
+
+    def test_full_streaming_pipeline_filtered_stream(self, tmp_path):
+        """End-to-end: responseheaders registers parser, chunks accumulate, response() logs."""
+        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        # X streams return application/json with chunked transfer, not x-ndjson.
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        # 1. responseheaders — registers NDJSON parser
+        mitm_addon.responseheaders(flow)
+        callback = flow.response.stream
+        assert "x_ndjson_state" in flow.metadata
+
+        # 2. Stream chunks (including keep-alives and a mid-line split)
+        chunks = [
+            b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n',
+            b"\n",  # keep-alive
+            b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}\n',
+            b'{"data":{"id":"3"}',  # split mid-line
+            b',"includes":{"users":[{"id":"u3"}]}}\n',
+        ]
+        for chunk in chunks:
+            callback(chunk)
+
+        # 3. Simulated disconnect — response() fires and logs
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.response(flow)
+
+        # 4. Verify the log entry
+        entries = [
+            json.loads(ln) for ln in (tmp_path / "proxy.jsonl").read_text().splitlines() if ln
+        ]
+        usage_entries = [e for e in entries if e.get("type") == "connector_usage"]
+        assert len(usage_entries) == 1
+        e = usage_entries[0]
+        assert e["body_format"] == "ndjson"
+        assert e["response_data_count"] == 3
+        assert e["response_includes"] == {"users": 3}
+        assert e["is_stream"] is True
+        # billable_counts: primary max(0,3,0,0,1)=3; users from includes=3
+        assert e["billable_counts"]["tweet.read"] == 3
+        assert e["billable_counts"]["users.read"] == 3
 
 
 class TestErrorUsageReporting:

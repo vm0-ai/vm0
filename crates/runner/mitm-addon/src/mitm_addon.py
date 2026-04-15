@@ -268,9 +268,33 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # full JSON body is available for usage extraction in response().
     sse_parser = None
     sse_decompressor = None
+    ndjson_parser = None
+    ndjson_decompressor = None
     firewall_name = flow.metadata.get("firewall_name", "")
     is_model_provider = firewall_name.startswith("model-provider:")
     is_billable_connector = usage.is_billable_connector(firewall_name)
+
+    # Classify X NDJSON streams early so we can register an incremental parser
+    # and avoid buffering the (potentially multi-GB) stream body.  Only a
+    # cheap path-only check happens here — full request metadata is parsed
+    # later in response() by log_connector_usage.
+    #
+    # Gated on 2xx status so error responses (4xx/5xx on stream endpoints
+    # return JSON, not NDJSON) fall through to the existing unbounded-buffer
+    # path and preserve the full error body for forensic inspection in
+    # network logs.  log_connector_usage already skips non-2xx responses
+    # so no billing record is affected either way.
+    #
+    # Reads ``original_url`` with no fallback — kept consistent with
+    # :func:`usage._parse_x_request_metadata` so the log entry's
+    # ``is_stream`` field cannot diverge from the parser registration
+    # decision.  For any billable connector flow, ``request()`` has
+    # already populated ``original_url`` before ``responseheaders`` fires.
+    is_x_stream = False
+    if is_billable_connector and 200 <= flow.response.status_code < 300:
+        stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
+        is_x_stream = usage.is_x_stream_path(stream_path)
+
     if is_model_provider:
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
@@ -278,13 +302,25 @@ def responseheaders(flow: http.HTTPFlow) -> None:
             sse_parser = parser_fn
             flow.metadata["proxy_usage"] = usage_dict
             sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
+    elif is_x_stream:
+        parser_fn, ndjson_state = usage.create_x_ndjson_extractor()
+        ndjson_parser = parser_fn
+        # Deliberately NOT "proxy_usage" — that key would route through
+        # maybe_report_proxy_usage and trigger the model-provider webhook.
+        # x_ndjson_state is only consumed by log_connector_usage.
+        flow.metadata["x_ndjson_state"] = ndjson_state
+        ndjson_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
 
-    # Model provider and billable connector responses are never truncated so
-    # usage extraction always has the complete body.  Other responses use the
-    # 64 KB limit.
-    buf_limit = (
-        None if (is_model_provider or is_billable_connector) else body_utils.STREAM_BUFFER_LIMIT
-    )
+    # Buffer cap policy:
+    # - Model providers: unbounded — need full body for non-SSE JSON usage extraction.
+    # - X non-stream billable connectors: unbounded — full body feeds json.loads.
+    # - X stream endpoints: STREAM_BUFFER_LIMIT (64 KB) — parser handles bytes
+    #   incrementally; the buffer is kept only for forensic network logging.
+    # - Everything else: STREAM_BUFFER_LIMIT (default 64 KB).
+    if is_model_provider or (is_billable_connector and not is_x_stream):
+        buf_limit = None
+    else:
+        buf_limit = body_utils.STREAM_BUFFER_LIMIT
 
     def stream_and_buffer(chunk: bytes) -> bytes:
         if not state["truncated"]:
@@ -300,6 +336,9 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         if sse_parser is not None:
             plaintext = sse_decompressor(chunk) if sse_decompressor else chunk
             sse_parser(plaintext)
+        elif ndjson_parser is not None:
+            plaintext = ndjson_decompressor(chunk) if ndjson_decompressor else chunk
+            ndjson_parser(plaintext)
         return chunk
 
     flow.response.stream = stream_and_buffer
@@ -463,6 +502,14 @@ def error(flow: http.HTTPFlow) -> None:
     # The SSE parser may have partially populated proxy_usage before the
     # connection error occurred.  Partial data is better than none.
     usage.maybe_report_proxy_usage(flow, run_id)
+
+    # Billable connector usage for X NDJSON streams that crash mid-flight
+    # (issue #9534): the incremental parser populated x_ndjson_state during
+    # chunks; log what was observed so partial streams aren't silently
+    # dropped from billing.  log_connector_usage no-ops when there's no
+    # response or the status is non-2xx, so normal model-provider errors
+    # are unaffected.
+    usage.log_connector_usage(flow, run_id)
 
     log_proxy_entry(
         proxy_log_path,
