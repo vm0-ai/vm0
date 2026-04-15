@@ -30,11 +30,7 @@ export const anthropicManagedAgentsFirewall = {
         {
           name: "agents:write",
           description: "Create, update, and delete agent definitions",
-          rules: [
-            "POST /v1/agents",
-            "PUT /v1/agents/*",
-            "DELETE /v1/agents/*",
-          ],
+          rules: ["POST /v1/agents", "PUT /v1/agents/*", "DELETE /v1/agents/*"],
         },
         {
           name: "environments:read",
@@ -68,11 +64,7 @@ export const anthropicManagedAgentsFirewall = {
         {
           name: "vaults:write",
           description: "Create and manage credential vaults",
-          rules: [
-            "POST /v1/vaults",
-            "PUT /v1/vaults/*",
-            "DELETE /v1/vaults/*",
-          ],
+          rules: ["POST /v1/vaults", "PUT /v1/vaults/*", "DELETE /v1/vaults/*"],
         },
       ],
     },

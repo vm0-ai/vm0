@@ -206,8 +206,7 @@ const CONNECTOR_TYPES_DEF = {
   "anthropic-managed-agents": {
     label: "Anthropic Managed Agents",
     environmentMapping: {
-      ANTHROPIC_MANAGED_AGENTS_TOKEN:
-        "$secrets.ANTHROPIC_MANAGED_AGENTS_TOKEN",
+      ANTHROPIC_MANAGED_AGENTS_TOKEN: "$secrets.ANTHROPIC_MANAGED_AGENTS_TOKEN",
     },
     helpText:
       "Connect to Anthropic Managed Agents API to programmatically create and run AI agents in cloud environments",

@@ -10,9 +10,7 @@ describe("connector/providers/anthropic-managed-agents", () => {
           "https://example.com",
           "state",
         );
-      }).rejects.toThrow(
-        "Anthropic Managed Agents does not support OAuth",
-      );
+      }).rejects.toThrow("Anthropic Managed Agents does not support OAuth");
     });
   });
 
@@ -25,9 +23,7 @@ describe("connector/providers/anthropic-managed-agents", () => {
           "code",
           "https://example.com",
         );
-      }).rejects.toThrow(
-        "Anthropic Managed Agents does not support OAuth",
-      );
+      }).rejects.toThrow("Anthropic Managed Agents does not support OAuth");
     });
   });
 });
