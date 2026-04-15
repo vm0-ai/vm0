@@ -1375,6 +1375,319 @@
           "Use Sentry's project tags or environments to narrow Zero's query to production only, not staging.",
           "Chain this with the product health briefing: run triage at 8:45, include output in the 9:00 brief so the team sees everything in one place."
         ]
+      },
+      "i18n-gap-fixer": {
+        "title": "Auto-detect and fix missing i18n strings across your codebase",
+        "description": "Ask Zero to scan your repo for untranslated string keys, cross-reference them against your locale files, write the missing translations, and open a PR — all in one command.",
+        "timeSaved": "~45 min saved per release cycle",
+        "headings": {
+          "scenario": "Why i18n gaps slip through until QA",
+          "prompt": "How to ask Zero to audit and patch missing translations",
+          "steps": "How Zero scans, matches, and writes missing locale strings",
+          "nextActions": "Review the PR, expand to new locales, or schedule recurring audits",
+          "integrations": "Required integrations: GitHub. Optional: Notion, Slack",
+          "tips": "Best practices for automated i18n maintenance"
+        },
+        "scenario": "A developer adds a new feature and hard-codes three strings. They forget to add the keys to the locale files. QA catches it two days later when the staging site shows raw key names in Spanish. Zero can catch this before it reaches QA. Point it at the repo, tell it which locales to check, and it returns a diff of every missing key with suggested translations ready to merge.",
+        "promptVariants": [
+          {
+            "label": "Full audit",
+            "prompt": "@Zero scan the vm0-ai/vm0 repo for any translation keys in en.json that are missing from de.json, es.json, and ja.json. Write translations for each missing key, open a PR with the changes, and post the PR link to #engineering."
+          },
+          {
+            "label": "Single locale",
+            "prompt": "@Zero check which keys are in en.json but missing from ja.json in turbo/apps/web/messages. Write Japanese translations for the missing keys and open a draft PR."
+          },
+          {
+            "label": "Pre-release check",
+            "prompt": "@Zero before we cut the release branch, audit all locale files in turbo/apps/web/messages for missing keys vs en.json and list any gaps in a Notion page under 'Release Checklist'."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero scan the repo for i18n gaps vs en.json in de, es, and ja. Write translations and open a PR."
+          },
+          {
+            "name": "Zero",
+            "text": "Found 6 missing keys across de.json, es.json, ja.json.\n\nMissing in all 3: useCases.content.daily-engineering-brief, useCases.content.competitor-pricing-monitor (4 more)\n\nWrote translations and opened PR #9430.\nhttps://github.com/vm0-ai/vm0/pull/9430"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scans the locale files",
+            "description": "Zero reads the source locale file (typically en.json) and all target locale files. It builds a key map for each and identifies every key present in the source but absent in one or more targets."
+          },
+          {
+            "title": "Missing translations written",
+            "description": "For each missing key, Zero generates a translation appropriate for the target locale using the English value as source. It preserves the exact JSON structure, array lengths, and nested key hierarchy from the English file."
+          },
+          {
+            "title": "PR opened with the changes",
+            "description": "Zero commits the updated locale files to a new branch, opens a pull request against the main branch, and posts the PR link to Slack if configured. The PR description lists every key added per locale."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Review and merge the PR",
+            "description": "Check the generated translations before merging",
+            "examplePrompt": "@Zero show me the translations you wrote for the missing keys in ja.json — highlight any that might need a native speaker review."
+          },
+          {
+            "title": "Add a new locale",
+            "description": "Extend coverage to a new language",
+            "examplePrompt": "@Zero add a zh.json locale file to turbo/apps/web/messages, populate it with translations for all keys in en.json, and open a PR."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads locale files, writes translation patches, and opens pull requests directly against the repository."
+          },
+          {
+            "description": "Zero logs the audit report to a Notion page for tracking translation gaps over time. Optional."
+          }
+        ],
+        "tips": [
+          "Run the audit against a specific directory path to avoid false positives from locale files outside the web app.",
+          "Ask Zero to flag keys where the English value contains placeholders (like {name} or %s) so those translations get extra review before merging.",
+          "Schedule a weekly i18n audit to keep locale files in sync with fast-moving feature development."
+        ]
+      },
+      "competitor-price-monitor": {
+        "title": "Track competitor pricing changes and get weekly alerts",
+        "description": "Give Zero a list of competitor pricing pages. It scrapes them on a schedule, diffs each against the Notion snapshot from last week, writes an impact summary for every change, and posts a digest to Slack every Monday before your week begins.",
+        "timeSaved": "~2 hrs saved per week",
+        "headings": {
+          "scenario": "Why pricing intel arrives too late to act on",
+          "prompt": "How to set up automated competitor price tracking with Zero",
+          "steps": "How Zero scrapes, compares, and reports weekly pricing changes",
+          "nextActions": "Deep dive on a change, update the watchlist, or share the digest",
+          "integrations": "Required integrations: Firecrawl and Notion. Optional: Slack",
+          "tips": "Best practices for automated competitive pricing intelligence"
+        },
+        "scenario": "You find out a competitor dropped their entry price because a prospect mentioned it on a call. You check their pricing page and realise it changed three weeks ago. That kind of lag costs deals. Zero scrapes your competitor list every Monday, compares each page to the Notion snapshot from last week, writes a plain-language impact note for every change it finds, and posts a digest to Slack before anyone opens their inbox.",
+        "promptVariants": [
+          {
+            "label": "Weekly monitor",
+            "prompt": "@Zero every Monday at 8am, scrape the pricing pages for e2b.dev, daytona.io, cursor.com, and replit.com using Firecrawl. Compare against last week's Notion snapshot, flag any changes to tiers, prices, or CTAs, write a 2-sentence impact note for each change, save the full report to Notion under 'Competitor Pricing Log', and post a digest to #competitive."
+          },
+          {
+            "label": "On-demand check",
+            "prompt": "@Zero scrape cursor.com/pricing right now using Firecrawl, compare it to the last snapshot in Notion, and tell me what changed."
+          },
+          {
+            "label": "Historical summary",
+            "prompt": "@Zero pull all entries from the Competitor Pricing Log in Notion for the past 90 days and summarize how each competitor's pricing has shifted."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero run the weekly pricing monitor and post the digest to #competitive."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Pricing Digest — Apr 14\n\nCursor: Added Ultra tier at $200/mo — targets high-willingness-to-pay power users.\nDaytona: Raised startup credit from $25K to $50K — land-and-expand before monetization.\n\nNo changes: E2B, Replit\n\nFull report saved to Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scrapes each pricing page via Firecrawl",
+            "description": "Zero uses Firecrawl to fetch the rendered content of every pricing URL on the watchlist, extracting tier names, prices, feature highlights, trial terms, and CTAs."
+          },
+          {
+            "title": "Content diffed against Notion snapshot",
+            "description": "Zero compares this week's scraped content against the version saved in Notion last week. It flags any change to plan names, pricing tiers, included features, trial periods, or calls to action."
+          },
+          {
+            "title": "Report saved and digest posted",
+            "description": "For each change found, Zero writes a 2-sentence impact note covering what changed and what it signals. The full report is saved to the Notion log and a concise digest is posted to the Slack channel you specified."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Deep dive on one competitor",
+            "description": "Get the full pricing history for a single competitor",
+            "examplePrompt": "@Zero pull everything from the Competitor Pricing Log in Notion for Cursor and summarize how their pricing has evolved since Q1."
+          },
+          {
+            "title": "Add to the watchlist",
+            "description": "Include a new competitor in the weekly scrape",
+            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the Notion baseline."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero uses Firecrawl to render and extract structured content from competitor pricing pages, bypassing JavaScript-heavy pages that standard scrapers miss."
+          },
+          {
+            "description": "Zero saves weekly pricing snapshots and change reports to Notion for long-term tracking and week-over-week diffing."
+          }
+        ],
+        "tips": [
+          "Run an initial scrape first before scheduling. Zero needs a baseline snapshot in Notion to diff against — without it, every field looks like a change.",
+          "Be explicit about what to flag. Listing 'tier names, prices, trial terms, and CTAs' keeps the diff focused and reduces noise from minor copy edits.",
+          "Add a Slack channel to the prompt so the digest lands where your team already checks every Monday."
+        ]
+      },
+      "contract-renewal-alert": {
+        "title": "Get alerted before vendor contracts expire so nothing renews by surprise",
+        "description": "Point Zero at your contract spreadsheet in Google Sheets. It checks for upcoming renewals on a schedule, calculates days remaining for each contract, and sends a formatted alert to Slack — and a draft email to Gmail — for every contract expiring within your specified window.",
+        "timeSaved": "~1 hr saved per renewal cycle",
+        "headings": {
+          "scenario": "Why contracts renew before anyone reviews them",
+          "prompt": "How to set up automated contract renewal alerts with Zero",
+          "steps": "How Zero reads your contracts, calculates deadlines, and sends alerts",
+          "nextActions": "Draft the renewal email, update the sheet, or escalate to legal",
+          "integrations": "Required integrations: Google Sheets and Gmail. Optional: Slack",
+          "tips": "Best practices for automated contract renewal tracking"
+        },
+        "scenario": "A $40K annual contract auto-renewed last Tuesday. Nobody flagged it because the renewal date was buried in row 73 of a spreadsheet nobody opened. Zero reads your contracts sheet every week, calculates which renewals are coming up in the next 30 days, and sends a Slack alert with the vendor name, contract value, and deadline — plus a draft renewal or cancellation email to your Gmail drafts, ready to send.",
+        "promptVariants": [
+          {
+            "label": "Weekly renewal check",
+            "prompt": "@Zero every Monday at 9am, read the 'Vendor Contracts' sheet in Google Sheets, find any contracts expiring in the next 30 days, post a Slack alert with vendor name, contract value, and expiry date, and create a draft email in Gmail for each one asking to schedule a review call."
+          },
+          {
+            "label": "Immediate audit",
+            "prompt": "@Zero check the 'Vendor Contracts' sheet right now and list everything expiring in the next 60 days, sorted by days remaining."
+          },
+          {
+            "label": "Custom window",
+            "prompt": "@Zero read the Vendor Contracts sheet and alert me to anything expiring in the next 14 days. For each, draft a cancellation notice email in Gmail."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Contract Renewal Alerts — Apr 14\n\n⚠️ Expiring in 14 days:\n• Firecrawl API — $12K/yr — expires Apr 28\n• Figma Team — $4.8K/yr — expires Apr 30\n\n📅 Expiring in 15–30 days:\n• Notion Business — $3.2K/yr — expires May 10\n\nDraft renewal emails created in Gmail for all 3."
+          },
+          {
+            "name": "Alex",
+            "text": "@Zero check Vendor Contracts for anything expiring in the next 30 days and draft renewal emails in Gmail."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads the contracts sheet",
+            "description": "Zero reads the specified Google Sheets tab, extracting vendor name, contract value, renewal date, and any notes column. It parses date fields and computes days until expiry for each row."
+          },
+          {
+            "title": "Upcoming renewals identified",
+            "description": "Zero filters for contracts expiring within the window you specified (e.g. 30 days). It sorts them by days remaining and groups them into urgent (under 14 days) and upcoming (14–30 days)."
+          },
+          {
+            "title": "Alerts sent and drafts created",
+            "description": "Zero posts a structured Slack message listing each expiring contract with vendor name, annual value, and exact expiry date. For each contract, it creates a draft email in Gmail addressed to the vendor contact if one is listed in the sheet."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Send the draft email",
+            "description": "Review and send the renewal or cancellation draft Zero prepared",
+            "examplePrompt": "@Zero show me the draft renewal email you created for the Firecrawl contract and update the tone to be more direct about our budget constraints."
+          },
+          {
+            "title": "Update the contract sheet",
+            "description": "Log the renewal decision back to Google Sheets",
+            "examplePrompt": "@Zero update the Vendor Contracts sheet to mark the Firecrawl contract as 'Under Review' and set the follow-up date to Apr 20."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads the contracts spreadsheet to extract vendor names, contract values, renewal dates, and contact information."
+          },
+          {
+            "description": "Zero creates draft emails for each expiring contract and places them in your Gmail drafts folder, ready to review and send."
+          }
+        ],
+        "tips": [
+          "Keep a consistent date format in your sheet (e.g. YYYY-MM-DD). Inconsistent formats cause Zero to misparse renewal dates.",
+          "Add a 'Contact Email' column to the sheet so Zero can address each draft email to the right vendor contact automatically.",
+          "Set the alert window to 30 days by default, but run a one-off 90-day audit at the start of each quarter to catch anything in the medium term."
+        ]
+      },
+      "support-to-github": {
+        "title": "Escalate support tickets to GitHub issues without losing context",
+        "description": "When a support ticket in Intercom reveals a reproducible bug or a legitimate feature request, ask Zero to create a GitHub issue with full context — conversation summary, steps to reproduce, affected users, and severity — and post a link back to the Intercom thread.",
+        "timeSaved": "~15 min saved per escalation",
+        "headings": {
+          "scenario": "Why support-to-engineering handoffs lose context",
+          "prompt": "How to ask Zero to escalate a support ticket to GitHub",
+          "steps": "How Zero reads the ticket, writes the issue, and closes the loop",
+          "nextActions": "Assign to engineering, link to a milestone, or notify the customer",
+          "integrations": "Required integrations: Intercom and GitHub. Optional: Slack",
+          "tips": "Best practices for support-to-engineering escalations"
+        },
+        "scenario": "A user reports that the Slack connector drops messages longer than 4000 characters. You confirm it is a real bug. Now you need to write a GitHub issue with enough context for engineering to reproduce it — conversation history, user plan, steps to reproduce, and severity. That write-up takes 15 minutes and lives in your head. Zero reads the Intercom thread, extracts the key context, writes a structured GitHub issue, and posts the link back to the Intercom conversation in under a minute.",
+        "promptVariants": [
+          {
+            "label": "Escalate to bug",
+            "prompt": "@Zero read Intercom conversation [ID] and create a GitHub issue in vm0-ai/vm0 labelled 'bug' with: a one-line title, reproduction steps, affected user info, and severity. Post the issue link back to the Intercom thread."
+          },
+          {
+            "label": "Escalate to feature request",
+            "prompt": "@Zero read Intercom conversation [ID] and create a GitHub issue labelled 'enhancement' with the user's feature request, their use case, and a note on frequency. Post the issue link to the Intercom thread and tag @product."
+          },
+          {
+            "label": "Batch escalation",
+            "prompt": "@Zero check all open Intercom conversations tagged 'bug-confirmed' and create a GitHub issue for each one. Post a summary list to #bug-report."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero read Intercom conversation 48291 and create a GitHub bug issue with reproduction steps. Post the link back to the thread."
+          },
+          {
+            "name": "Zero",
+            "text": "Created bug issue #9441 in vm0-ai/vm0.\n\nTitle: fix: Slack connector silently drops messages over 4000 chars\nSeverity: High — affects 12 users on Business plan\nReproduction: Send a message via @Zero with >4000 chars through a Slack connector. Message is truncated without error.\n\nPosted issue link to Intercom thread 48291."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads the Intercom conversation",
+            "description": "Zero fetches the full conversation thread from Intercom, including all customer messages, agent replies, tags, and any internal notes. It extracts user plan, reported behavior, and any reproduction details mentioned."
+          },
+          {
+            "title": "GitHub issue written with structured context",
+            "description": "Zero writes a GitHub issue following the standard bug or feature request template: one-line title, description, reproduction steps (or use case for features), affected user count and plan, and a severity or priority label."
+          },
+          {
+            "title": "Link posted back to Intercom",
+            "description": "After creating the issue, Zero posts the GitHub issue URL as a reply in the original Intercom conversation so the support agent can reference it, and optionally posts a summary to a Slack channel."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Assign to engineering",
+            "description": "Route the issue to the right team member",
+            "examplePrompt": "@Zero assign GitHub issue #9441 to @e7h4n and add it to the current sprint milestone."
+          },
+          {
+            "title": "Notify the customer",
+            "description": "Reply to the Intercom thread once the issue is triaged",
+            "examplePrompt": "@Zero reply to Intercom conversation 48291 to let the user know we've filed a bug report and they'll be notified when it's resolved."
+          },
+          {
+            "title": "Batch-create from tagged tickets",
+            "description": "Clear a queue of confirmed bugs at once",
+            "examplePrompt": "@Zero find all Intercom conversations tagged 'bug-confirmed' opened this week and create a GitHub issue for each one. Post a summary to #bug-report."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads the full conversation thread, including customer messages, internal notes, user plan, and tags to extract escalation context."
+          },
+          {
+            "description": "Zero creates the issue, applies labels, and can assign it or link it to a milestone directly from the escalation prompt."
+          }
+        ],
+        "tips": [
+          "Include the Intercom conversation ID in your prompt for precise targeting — Zero can find it in the conversation URL.",
+          "Ask Zero to add a severity label based on the number of affected users or the user's plan tier. This saves the triage step for engineering.",
+          "Use the batch escalation variant at the end of each support shift to clear a queue of confirmed bugs in one prompt rather than one at a time."
+        ]
       }
     }
   },

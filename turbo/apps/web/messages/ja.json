@@ -874,6 +874,319 @@
           "既存のUIパターンを名前で参照 — 「VS Codeのコマンドパレットのように」や「Notionのスラッシュメニューのように」 — v0の生成を導きます。",
           "最初の結果の直後にイテレーションプロンプトを使いましょう。1回の改良で通常90%の完成度に達します。"
         ]
+      },
+      "i18n-gap-fixer": {
+        "title": "コードベース全体で不足しているi18n文字列を自動検出・修正",
+        "description": "Zeroにリポジトリをスキャンして未翻訳の文字列キーを検出させ、ロケールファイルと照合し、不足している翻訳を作成してPRを開くまで、すべて1つのコマンドで実行できます。",
+        "timeSaved": "リリースサイクルあたり約45分の節約",
+        "headings": {
+          "scenario": "i18nの漏れがQAまで見過ごされる理由",
+          "prompt": "Zeroに翻訳の監査と不足分の補完を依頼する方法",
+          "steps": "Zeroがスキャン・照合・不足ロケール文字列を書き込む仕組み",
+          "nextActions": "PRをレビュー、新しいロケールに拡張、または定期監査をスケジュール",
+          "integrations": "必須連携: GitHub。オプション: Notion、Slack",
+          "tips": "i18n自動メンテナンスのベストプラクティス"
+        },
+        "scenario": "開発者が新機能を追加し、3つの文字列をハードコードします。ロケールファイルへのキー追加を忘れてしまいます。QAが2日後にステージングサイトでスペイン語の未翻訳キー名が表示されているのを発見します。ZeroはこれをQAに届く前に検出できます。リポジトリを指定し、チェック対象のロケールを指示すれば、不足しているすべてのキーのdiffと、マージ可能な翻訳候補が返されます。",
+        "promptVariants": [
+          {
+            "label": "完全監査",
+            "prompt": "@Zero scan the vm0-ai/vm0 repo for any translation keys in en.json that are missing from de.json, es.json, and ja.json. Write translations for each missing key, open a PR with the changes, and post the PR link to #engineering."
+          },
+          {
+            "label": "単一ロケール",
+            "prompt": "@Zero check which keys are in en.json but missing from ja.json in turbo/apps/web/messages. Write Japanese translations for the missing keys and open a draft PR."
+          },
+          {
+            "label": "リリース前チェック",
+            "prompt": "@Zero before we cut the release branch, audit all locale files in turbo/apps/web/messages for missing keys vs en.json and list any gaps in a Notion page under 'Release Checklist'."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero scan the repo for i18n gaps vs en.json in de, es, and ja. Write translations and open a PR."
+          },
+          {
+            "name": "Zero",
+            "text": "Found 6 missing keys across de.json, es.json, ja.json.\n\nMissing in all 3: useCases.content.daily-engineering-brief, useCases.content.competitor-pricing-monitor (4 more)\n\nWrote translations and opened PR #9430.\nhttps://github.com/vm0-ai/vm0/pull/9430"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroがロケールファイルをスキャン",
+            "description": "Zeroはソースロケールファイル（通常en.json）とすべてのターゲットロケールファイルを読み取ります。各ファイルのキーマップを構築し、ソースには存在するが1つ以上のターゲットに存在しないキーをすべて特定します。"
+          },
+          {
+            "title": "不足している翻訳を作成",
+            "description": "不足しているキーごとに、Zeroは英語の値をソースとしてターゲットロケールに適切な翻訳を生成します。英語ファイルの正確なJSON構造、配列の長さ、ネストされたキー階層を保持します。"
+          },
+          {
+            "title": "変更を含むPRを作成",
+            "description": "Zeroは更新されたロケールファイルを新しいブランチにコミットし、メインブランチに対してプルリクエストを開き、設定されていればSlackにPRリンクを投稿します。PR説明にはロケールごとに追加されたすべてのキーが記載されます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "PRをレビューしてマージ",
+            "description": "マージ前に生成された翻訳を確認",
+            "examplePrompt": "@Zero show me the translations you wrote for the missing keys in ja.json — highlight any that might need a native speaker review."
+          },
+          {
+            "title": "新しいロケールを追加",
+            "description": "新しい言語へのカバレッジを拡張",
+            "examplePrompt": "@Zero add a zh.json locale file to turbo/apps/web/messages, populate it with translations for all keys in en.json, and open a PR."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zeroはロケールファイルの読み取り、翻訳パッチの作成、リポジトリへのプルリクエストの直接作成を行います。"
+          },
+          {
+            "description": "Zeroは監査レポートをNotionページに記録し、翻訳の欠落を経時的に追跡します。オプションです。"
+          }
+        ],
+        "tips": [
+          "Webアプリ外のロケールファイルによる誤検出を避けるため、特定のディレクトリパスに対して監査を実行してください。",
+          "英語の値にプレースホルダー（{name}や%sなど）が含まれるキーをZeroにフラグ付けさせ、それらの翻訳はマージ前に追加レビューを行ってください。",
+          "週次のi18n監査をスケジュールして、ロケールファイルを迅速な機能開発と同期させましょう。"
+        ]
+      },
+      "competitor-price-monitor": {
+        "title": "競合の価格変更を追跡し、週次アラートを受け取る",
+        "description": "Zeroに競合の価格ページリストを渡してください。スケジュールに従ってスクレイピングし、先週のNotionスナップショットと比較し、各変更の影響サマリーを作成して、毎週月曜日に週の始まる前にSlackにダイジェストを投稿します。",
+        "timeSaved": "週あたり約2時間の節約",
+        "headings": {
+          "scenario": "価格情報が行動に間に合わないほど遅れて届く理由",
+          "prompt": "Zeroで競合の価格追跡を自動化する設定方法",
+          "steps": "Zeroが週次の価格変更をスクレイピング・比較・レポートする仕組み",
+          "nextActions": "変更の深掘り、ウォッチリストの更新、またはダイジェストの共有",
+          "integrations": "必須連携: FirecrawlとNotion。オプション: Slack",
+          "tips": "競合価格インテリジェンス自動化のベストプラクティス"
+        },
+        "scenario": "商談中に見込み客が言及したことで、競合がエントリー価格を下げていたことが判明します。競合の価格ページを確認すると、3週間前に変更されていたことがわかります。この遅れは商談の損失につながります。Zeroは毎週月曜日に競合リストをスクレイピングし、各ページを先週のNotionスナップショットと比較し、見つかった変更ごとにわかりやすい影響メモを作成して、誰もメールを開く前にSlackにダイジェストを投稿します。",
+        "promptVariants": [
+          {
+            "label": "週次モニタリング",
+            "prompt": "@Zero every Monday at 8am, scrape the pricing pages for e2b.dev, daytona.io, cursor.com, and replit.com using Firecrawl. Compare against last week's Notion snapshot, flag any changes to tiers, prices, or CTAs, write a 2-sentence impact note for each change, save the full report to Notion under 'Competitor Pricing Log', and post a digest to #competitive."
+          },
+          {
+            "label": "オンデマンドチェック",
+            "prompt": "@Zero scrape cursor.com/pricing right now using Firecrawl, compare it to the last snapshot in Notion, and tell me what changed."
+          },
+          {
+            "label": "履歴サマリー",
+            "prompt": "@Zero pull all entries from the Competitor Pricing Log in Notion for the past 90 days and summarize how each competitor's pricing has shifted."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero run the weekly pricing monitor and post the digest to #competitive."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Pricing Digest — Apr 14\n\nCursor: Added Ultra tier at $200/mo — targets high-willingness-to-pay power users.\nDaytona: Raised startup credit from $25K to $50K — land-and-expand before monetization.\n\nNo changes: E2B, Replit\n\nFull report saved to Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "ZeroがFirecrawlで各価格ページをスクレイピング",
+            "description": "ZeroはFirecrawlを使用してウォッチリスト上のすべての価格URLのレンダリング済みコンテンツを取得し、プラン名、価格、機能ハイライト、試用条件、CTAを抽出します。"
+          },
+          {
+            "title": "Notionスナップショットとコンテンツを比較",
+            "description": "Zeroは今週のスクレイピング内容を先週Notionに保存したバージョンと比較します。プラン名、価格帯、含まれる機能、試用期間、CTAへの変更をフラグ付けします。"
+          },
+          {
+            "title": "レポート保存とダイジェスト投稿",
+            "description": "見つかった変更ごとに、Zeroは何が変わったか、それが何を意味するかを網羅した2文の影響メモを作成します。完全なレポートはNotionログに保存され、簡潔なダイジェストが指定したSlackチャンネルに投稿されます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "1社の競合を深掘り分析",
+            "description": "単一の競合の完全な価格履歴を取得",
+            "examplePrompt": "@Zero pull everything from the Competitor Pricing Log in Notion for Cursor and summarize how their pricing has evolved since Q1."
+          },
+          {
+            "title": "ウォッチリストに追加",
+            "description": "週次スクレイピングに新しい競合を追加",
+            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the Notion baseline."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "ZeroはFirecrawlを使用して競合の価格ページから構造化コンテンツをレンダリング・抽出し、標準的なスクレイパーでは対応できないJavaScript多用ページにも対応します。"
+          },
+          {
+            "description": "Zeroは週次の価格スナップショットと変更レポートをNotionに保存し、長期的な追跡と週ごとの比較を可能にします。"
+          }
+        ],
+        "tips": [
+          "スケジュールを設定する前に初回スクレイピングを実行してください。Zeroは比較のためにNotionにベースラインスナップショットが必要です。ないと、すべてのフィールドが変更として表示されます。",
+          "フラグ付けする対象を明確に指定してください。「プラン名、価格、試用条件、CTA」とリストアップすることでdiffが焦点を絞り、軽微なコピー編集によるノイズを軽減できます。",
+          "プロンプトにSlackチャンネルを追加して、毎週月曜日にチームが既にチェックしている場所にダイジェストが届くようにしましょう。"
+        ]
+      },
+      "contract-renewal-alert": {
+        "title": "ベンダー契約の期限切れ前にアラートを受け取り、意図しない自動更新を防止",
+        "description": "ZeroをGoogle Sheetsの契約スプレッドシートに向けてください。スケジュールに従って更新予定をチェックし、各契約の残日数を計算して、指定した期間内に期限切れとなるすべての契約についてSlackにフォーマットされたアラートを送信し、Gmailに下書きメールを作成します。",
+        "timeSaved": "更新サイクルあたり約1時間の節約",
+        "headings": {
+          "scenario": "誰もレビューしないうちに契約が更新されてしまう理由",
+          "prompt": "Zeroで契約更新アラートの自動化を設定する方法",
+          "steps": "Zeroが契約を読み取り、期限を計算し、アラートを送信する仕組み",
+          "nextActions": "更新メールを下書き、シートを更新、または法務にエスカレーション",
+          "integrations": "必須連携: Google SheetsとGmail。オプション: Slack",
+          "tips": "契約更新追跡の自動化のベストプラクティス"
+        },
+        "scenario": "年間$40Kの契約が先週の火曜日に自動更新されました。更新日が誰も開かないスプレッドシートの73行目に埋もれていたため、誰もフラグを立てませんでした。Zeroは毎週契約シートを読み取り、今後30日以内に更新予定の契約を計算し、ベンダー名、契約金額、期限を含むSlackアラートを送信します。さらに、Gmailの下書きに更新または解約メールを作成して、すぐに送信できる状態にします。",
+        "promptVariants": [
+          {
+            "label": "週次更新チェック",
+            "prompt": "@Zero every Monday at 9am, read the 'Vendor Contracts' sheet in Google Sheets, find any contracts expiring in the next 30 days, post a Slack alert with vendor name, contract value, and expiry date, and create a draft email in Gmail for each one asking to schedule a review call."
+          },
+          {
+            "label": "即時監査",
+            "prompt": "@Zero check the 'Vendor Contracts' sheet right now and list everything expiring in the next 60 days, sorted by days remaining."
+          },
+          {
+            "label": "カスタム期間",
+            "prompt": "@Zero read the Vendor Contracts sheet and alert me to anything expiring in the next 14 days. For each, draft a cancellation notice email in Gmail."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Contract Renewal Alerts — Apr 14\n\n⚠️ Expiring in 14 days:\n• Firecrawl API — $12K/yr — expires Apr 28\n• Figma Team — $4.8K/yr — expires Apr 30\n\n📅 Expiring in 15–30 days:\n• Notion Business — $3.2K/yr — expires May 10\n\nDraft renewal emails created in Gmail for all 3."
+          },
+          {
+            "name": "Alex",
+            "text": "@Zero check Vendor Contracts for anything expiring in the next 30 days and draft renewal emails in Gmail."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroが契約シートを読み取り",
+            "description": "Zeroは指定されたGoogle Sheetsのタブを読み取り、ベンダー名、契約金額、更新日、備考列を抽出します。日付フィールドを解析し、各行の期限までの残日数を計算します。"
+          },
+          {
+            "title": "更新予定の契約を特定",
+            "description": "Zeroは指定された期間（例: 30日）内に期限切れとなる契約をフィルタリングします。残日数でソートし、緊急（14日以内）と近日中（14～30日）にグループ分けします。"
+          },
+          {
+            "title": "アラート送信と下書き作成",
+            "description": "Zeroは期限切れの各契約について、ベンダー名、年間金額、正確な期限日を記載した構造化されたSlackメッセージを投稿します。各契約について、シートにベンダー連絡先が記載されていればその宛先にGmailの下書きメールを作成します。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "下書きメールを送信",
+            "description": "Zeroが準備した更新または解約の下書きを確認して送信",
+            "examplePrompt": "@Zero show me the draft renewal email you created for the Firecrawl contract and update the tone to be more direct about our budget constraints."
+          },
+          {
+            "title": "契約シートを更新",
+            "description": "更新判断をGoogle Sheetsに記録",
+            "examplePrompt": "@Zero update the Vendor Contracts sheet to mark the Firecrawl contract as 'Under Review' and set the follow-up date to Apr 20."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zeroは契約スプレッドシートを読み取り、ベンダー名、契約金額、更新日、連絡先情報を抽出します。"
+          },
+          {
+            "description": "Zeroは期限切れの各契約について下書きメールを作成し、Gmailの下書きフォルダに配置して、レビューと送信の準備を整えます。"
+          }
+        ],
+        "tips": [
+          "シートで一貫した日付形式を使用してください（例: YYYY-MM-DD）。形式が不統一だと、Zeroが更新日を誤って解析する原因になります。",
+          "シートに「連絡先メールアドレス」列を追加すると、Zeroが各下書きメールを適切なベンダー連絡先に自動で宛てることができます。",
+          "アラート期間はデフォルトで30日に設定し、各四半期の初めに90日の一回限りの監査を実行して、中期的な契約も見逃さないようにしましょう。"
+        ]
+      },
+      "support-to-github": {
+        "title": "サポートチケットをコンテキストを失わずにGitHub issueにエスカレーション",
+        "description": "Intercomのサポートチケットで再現可能なバグや正当な機能リクエストが明らかになった場合、Zeroに完全なコンテキスト（会話サマリー、再現手順、影響を受けるユーザー、重大度）を含むGitHub issueを作成させ、Intercomスレッドにリンクを投稿させることができます。",
+        "timeSaved": "エスカレーションあたり約15分の節約",
+        "headings": {
+          "scenario": "サポートからエンジニアリングへの引き継ぎでコンテキストが失われる理由",
+          "prompt": "Zeroにサポートチケットのエスカレーションを依頼する方法",
+          "steps": "Zeroがチケットを読み取り、issueを作成し、フォローアップする仕組み",
+          "nextActions": "エンジニアリングに割り当て、マイルストーンにリンク、または顧客に通知",
+          "integrations": "必須連携: IntercomとGitHub。オプション: Slack",
+          "tips": "サポートからエンジニアリングへのエスカレーションのベストプラクティス"
+        },
+        "scenario": "ユーザーがSlackコネクターで4000文字を超えるメッセージが消失すると報告します。実際のバグであることを確認します。次に、エンジニアリングが再現できるよう十分なコンテキスト（会話履歴、ユーザープラン、再現手順、重大度）を含むGitHub issueを書く必要があります。この記述には15分かかり、あなたの頭の中にしかありません。ZeroはIntercomスレッドを読み取り、重要なコンテキストを抽出し、構造化されたGitHub issueを作成して、1分以内にIntercomの会話にリンクを投稿します。",
+        "promptVariants": [
+          {
+            "label": "バグとしてエスカレーション",
+            "prompt": "@Zero read Intercom conversation [ID] and create a GitHub issue in vm0-ai/vm0 labelled 'bug' with: a one-line title, reproduction steps, affected user info, and severity. Post the issue link back to the Intercom thread."
+          },
+          {
+            "label": "機能リクエストとしてエスカレーション",
+            "prompt": "@Zero read Intercom conversation [ID] and create a GitHub issue labelled 'enhancement' with the user's feature request, their use case, and a note on frequency. Post the issue link to the Intercom thread and tag @product."
+          },
+          {
+            "label": "一括エスカレーション",
+            "prompt": "@Zero check all open Intercom conversations tagged 'bug-confirmed' and create a GitHub issue for each one. Post a summary list to #bug-report."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero read Intercom conversation 48291 and create a GitHub bug issue with reproduction steps. Post the link back to the thread."
+          },
+          {
+            "name": "Zero",
+            "text": "Created bug issue #9441 in vm0-ai/vm0.\n\nTitle: fix: Slack connector silently drops messages over 4000 chars\nSeverity: High — affects 12 users on Business plan\nReproduction: Send a message via @Zero with >4000 chars through a Slack connector. Message is truncated without error.\n\nPosted issue link to Intercom thread 48291."
+          }
+        ],
+        "steps": [
+          {
+            "title": "ZeroがIntercomの会話を読み取り",
+            "description": "ZeroはIntercomから完全な会話スレッドを取得します。すべての顧客メッセージ、エージェントの返信、タグ、内部メモを含みます。ユーザープラン、報告された動作、記載された再現の詳細を抽出します。"
+          },
+          {
+            "title": "構造化されたコンテキストでGitHub issueを作成",
+            "description": "Zeroは標準的なバグまたは機能リクエストテンプレートに従ってGitHub issueを作成します: 1行のタイトル、説明、再現手順（機能の場合はユースケース）、影響を受けるユーザー数とプラン、重大度または優先度ラベル。"
+          },
+          {
+            "title": "Intercomにリンクを投稿",
+            "description": "issue作成後、ZeroはGitHub issueのURLを元のIntercom会話に返信として投稿し、サポートエージェントが参照できるようにします。オプションでSlackチャンネルにサマリーを投稿することもできます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "エンジニアリングに割り当て",
+            "description": "適切なチームメンバーにissueをルーティング",
+            "examplePrompt": "@Zero assign GitHub issue #9441 to @e7h4n and add it to the current sprint milestone."
+          },
+          {
+            "title": "顧客に通知",
+            "description": "issueがトリアージされたらIntercomスレッドに返信",
+            "examplePrompt": "@Zero reply to Intercom conversation 48291 to let the user know we've filed a bug report and they'll be notified when it's resolved."
+          },
+          {
+            "title": "タグ付きチケットからの一括作成",
+            "description": "確認済みバグのキューを一度に処理",
+            "examplePrompt": "@Zero find all Intercom conversations tagged 'bug-confirmed' opened this week and create a GitHub issue for each one. Post a summary to #bug-report."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zeroは顧客メッセージ、内部メモ、ユーザープラン、タグを含む完全な会話スレッドを読み取り、エスカレーションのコンテキストを抽出します。"
+          },
+          {
+            "description": "Zeroはissueを作成し、ラベルを適用し、エスカレーションプロンプトから直接担当者の割り当てやマイルストーンへのリンクを行えます。"
+          }
+        ],
+        "tips": [
+          "正確にターゲットするため、プロンプトにIntercomの会話IDを含めてください。Zeroは会話URLからIDを見つけることができます。",
+          "影響を受けるユーザー数やユーザーのプランに基づいて重大度ラベルを追加するようZeroに依頼してください。エンジニアリングのトリアージ工程を省略できます。",
+          "各サポートシフトの終わりに一括エスカレーションを使用して、確認済みバグのキューを1つずつではなく1つのプロンプトで一括処理しましょう。"
+        ]
       }
     }
   },

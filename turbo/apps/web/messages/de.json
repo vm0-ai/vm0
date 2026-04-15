@@ -874,6 +874,319 @@
           "Referenzieren Sie bestehende UI-Muster beim Namen – ‚wie die VS Code Befehlspalette‘ oder ‚wie Notions Slash-Menü‘ – um v0s Generierung zu verankern.",
           "Nutzen Sie den Iterieren-Prompt direkt nach dem ersten Ergebnis. Eine Runde Verfeinerung bringt Sie meistens 90 % ans Ziel."
         ]
+      },
+      "i18n-gap-fixer": {
+        "title": "Fehlende i18n-Strings in deiner Codebasis automatisch erkennen und beheben",
+        "description": "Lass Zero dein Repository nach nicht übersetzten String-Keys durchsuchen, diese mit deinen Locale-Dateien abgleichen, die fehlenden Übersetzungen schreiben und einen PR öffnen — alles in einem Befehl.",
+        "timeSaved": "~45 Min. gespart pro Release-Zyklus",
+        "headings": {
+          "scenario": "Warum i18n-Lücken erst bei der QA auffallen",
+          "prompt": "So beauftragst du Zero, fehlende Übersetzungen zu prüfen und zu ergänzen",
+          "steps": "So scannt, vergleicht und ergänzt Zero fehlende Locale-Strings",
+          "nextActions": "PR überprüfen, auf neue Sprachen erweitern oder regelmäßige Audits einplanen",
+          "integrations": "Erforderliche Integrationen: GitHub. Optional: Notion, Slack",
+          "tips": "Best Practices für die automatisierte i18n-Pflege"
+        },
+        "scenario": "Ein Entwickler fügt ein neues Feature hinzu und schreibt drei Strings direkt in den Code. Er vergisst, die Keys zu den Locale-Dateien hinzuzufügen. Die QA entdeckt es zwei Tage später, als die Staging-Seite auf Spanisch rohe Key-Namen anzeigt. Zero kann das erkennen, bevor es die QA erreicht. Richte es auf das Repository, gib an, welche Locales geprüft werden sollen, und du erhältst einen Diff aller fehlenden Keys mit vorgeschlagenen Übersetzungen, die sofort gemergt werden können.",
+        "promptVariants": [
+          {
+            "label": "Vollständiger Audit",
+            "prompt": "@Zero scan the vm0-ai/vm0 repo for any translation keys in en.json that are missing from de.json, es.json, and ja.json. Write translations for each missing key, open a PR with the changes, and post the PR link to #engineering."
+          },
+          {
+            "label": "Einzelne Sprache",
+            "prompt": "@Zero check which keys are in en.json but missing from ja.json in turbo/apps/web/messages. Write Japanese translations for the missing keys and open a draft PR."
+          },
+          {
+            "label": "Pre-Release-Prüfung",
+            "prompt": "@Zero before we cut the release branch, audit all locale files in turbo/apps/web/messages for missing keys vs en.json and list any gaps in a Notion page under 'Release Checklist'."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero scan the repo for i18n gaps vs en.json in de, es, and ja. Write translations and open a PR."
+          },
+          {
+            "name": "Zero",
+            "text": "Found 6 missing keys across de.json, es.json, ja.json.\n\nMissing in all 3: useCases.content.daily-engineering-brief, useCases.content.competitor-pricing-monitor (4 more)\n\nWrote translations and opened PR #9430.\nhttps://github.com/vm0-ai/vm0/pull/9430"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scannt die Locale-Dateien",
+            "description": "Zero liest die Quell-Locale-Datei (typischerweise en.json) und alle Ziel-Locale-Dateien. Es erstellt eine Key-Map für jede Datei und identifiziert jeden Key, der in der Quelle vorhanden, aber in einem oder mehreren Zielen fehlend ist."
+          },
+          {
+            "title": "Fehlende Übersetzungen geschrieben",
+            "description": "Für jeden fehlenden Key generiert Zero eine passende Übersetzung für die Zielsprache basierend auf dem englischen Wert. Es bewahrt die exakte JSON-Struktur, Array-Längen und verschachtelte Key-Hierarchie der englischen Datei."
+          },
+          {
+            "title": "PR mit den Änderungen geöffnet",
+            "description": "Zero committet die aktualisierten Locale-Dateien in einen neuen Branch, öffnet einen Pull Request gegen den Main-Branch und postet den PR-Link in Slack, falls konfiguriert. Die PR-Beschreibung listet jeden hinzugefügten Key pro Locale auf."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "PR überprüfen und mergen",
+            "description": "Prüfe die generierten Übersetzungen vor dem Mergen",
+            "examplePrompt": "@Zero show me the translations you wrote for the missing keys in ja.json — highlight any that might need a native speaker review."
+          },
+          {
+            "title": "Neue Sprache hinzufügen",
+            "description": "Abdeckung auf eine weitere Sprache erweitern",
+            "examplePrompt": "@Zero add a zh.json locale file to turbo/apps/web/messages, populate it with translations for all keys in en.json, and open a PR."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero liest Locale-Dateien, schreibt Übersetzungspatches und öffnet Pull Requests direkt gegen das Repository."
+          },
+          {
+            "description": "Zero protokolliert den Audit-Bericht auf einer Notion-Seite zur Nachverfolgung von Übersetzungslücken über die Zeit. Optional."
+          }
+        ],
+        "tips": [
+          "Führe den Audit gegen einen bestimmten Verzeichnispfad aus, um Fehlalarme durch Locale-Dateien außerhalb der Web-App zu vermeiden.",
+          "Bitte Zero, Keys zu markieren, bei denen der englische Wert Platzhalter enthält (wie {name} oder %s), damit diese Übersetzungen vor dem Mergen besonders geprüft werden.",
+          "Plane einen wöchentlichen i18n-Audit, um Locale-Dateien mit der schnellen Feature-Entwicklung synchron zu halten."
+        ]
+      },
+      "competitor-price-monitor": {
+        "title": "Preisänderungen der Konkurrenz verfolgen und wöchentliche Benachrichtigungen erhalten",
+        "description": "Gib Zero eine Liste von Preisseiten deiner Wettbewerber. Es scrapt sie nach Zeitplan, vergleicht jede mit dem Notion-Snapshot der Vorwoche, schreibt eine Auswirkungsanalyse für jede Änderung und postet jeden Montag eine Zusammenfassung in Slack, bevor deine Woche beginnt.",
+        "timeSaved": "~2 Std. gespart pro Woche",
+        "headings": {
+          "scenario": "Warum Preisinformationen zu spät eintreffen, um darauf zu reagieren",
+          "prompt": "So richtest du automatisiertes Wettbewerber-Preismonitoring mit Zero ein",
+          "steps": "So scrapt, vergleicht und meldet Zero wöchentliche Preisänderungen",
+          "nextActions": "Eine Änderung im Detail analysieren, die Watchlist aktualisieren oder die Zusammenfassung teilen",
+          "integrations": "Erforderliche Integrationen: Firecrawl und Notion. Optional: Slack",
+          "tips": "Best Practices für automatisierte Wettbewerbspreis-Analyse"
+        },
+        "scenario": "Du erfährst, dass ein Wettbewerber seinen Einstiegspreis gesenkt hat, weil ein Interessent es in einem Gespräch erwähnt. Du prüfst deren Preisseite und stellst fest, dass sich die Änderung vor drei Wochen ereignet hat. Diese Verzögerung kostet Deals. Zero scrapt deine Wettbewerberliste jeden Montag, vergleicht jede Seite mit dem Notion-Snapshot der Vorwoche, schreibt eine verständliche Auswirkungsnotiz für jede gefundene Änderung und postet eine Zusammenfassung in Slack, bevor jemand seinen Posteingang öffnet.",
+        "promptVariants": [
+          {
+            "label": "Wöchentliches Monitoring",
+            "prompt": "@Zero every Monday at 8am, scrape the pricing pages for e2b.dev, daytona.io, cursor.com, and replit.com using Firecrawl. Compare against last week's Notion snapshot, flag any changes to tiers, prices, or CTAs, write a 2-sentence impact note for each change, save the full report to Notion under 'Competitor Pricing Log', and post a digest to #competitive."
+          },
+          {
+            "label": "Sofort-Prüfung",
+            "prompt": "@Zero scrape cursor.com/pricing right now using Firecrawl, compare it to the last snapshot in Notion, and tell me what changed."
+          },
+          {
+            "label": "Historische Zusammenfassung",
+            "prompt": "@Zero pull all entries from the Competitor Pricing Log in Notion for the past 90 days and summarize how each competitor's pricing has shifted."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero run the weekly pricing monitor and post the digest to #competitive."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Pricing Digest — Apr 14\n\nCursor: Added Ultra tier at $200/mo — targets high-willingness-to-pay power users.\nDaytona: Raised startup credit from $25K to $50K — land-and-expand before monetization.\n\nNo changes: E2B, Replit\n\nFull report saved to Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scrapt jede Preisseite über Firecrawl",
+            "description": "Zero nutzt Firecrawl, um den gerenderten Inhalt jeder Preis-URL auf der Watchlist abzurufen und extrahiert Tarifnamen, Preise, Feature-Highlights, Testbedingungen und CTAs."
+          },
+          {
+            "title": "Inhalte mit dem Notion-Snapshot abgeglichen",
+            "description": "Zero vergleicht den gescrapten Inhalt dieser Woche mit der in Notion gespeicherten Version der Vorwoche. Es markiert jede Änderung an Tarifnamen, Preisstufen, enthaltenen Features, Testzeiträumen oder Handlungsaufforderungen."
+          },
+          {
+            "title": "Bericht gespeichert und Zusammenfassung gepostet",
+            "description": "Für jede gefundene Änderung schreibt Zero eine 2-Satz-Auswirkungsnotiz, die beschreibt, was sich geändert hat und was es signalisiert. Der vollständige Bericht wird im Notion-Log gespeichert und eine kompakte Zusammenfassung wird im von dir angegebenen Slack-Kanal gepostet."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einen Wettbewerber im Detail analysieren",
+            "description": "Die vollständige Preishistorie eines einzelnen Wettbewerbers abrufen",
+            "examplePrompt": "@Zero pull everything from the Competitor Pricing Log in Notion for Cursor and summarize how their pricing has evolved since Q1."
+          },
+          {
+            "title": "Zur Watchlist hinzufügen",
+            "description": "Einen neuen Wettbewerber in den wöchentlichen Scrape aufnehmen",
+            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the Notion baseline."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero nutzt Firecrawl, um strukturierte Inhalte von Wettbewerber-Preisseiten zu rendern und zu extrahieren und dabei JavaScript-lastige Seiten zu erfassen, die Standard-Scraper nicht verarbeiten können."
+          },
+          {
+            "description": "Zero speichert wöchentliche Preis-Snapshots und Änderungsberichte in Notion für langfristige Nachverfolgung und Woche-zu-Woche-Vergleiche."
+          }
+        ],
+        "tips": [
+          "Führe zuerst einen initialen Scrape durch, bevor du den Zeitplan einrichtest. Zero braucht einen Basis-Snapshot in Notion zum Vergleichen — ohne ihn sieht jedes Feld wie eine Änderung aus.",
+          "Sei präzise, was markiert werden soll. Die Angabe von 'Tarifnamen, Preise, Testbedingungen und CTAs' hält den Diff fokussiert und reduziert Rauschen durch kleinere Textänderungen.",
+          "Füge einen Slack-Kanal zum Prompt hinzu, damit die Zusammenfassung dort landet, wo dein Team bereits jeden Montag nachschaut."
+        ]
+      },
+      "contract-renewal-alert": {
+        "title": "Benachrichtigungen erhalten, bevor Lieferantenverträge auslaufen — keine unerwarteten Verlängerungen mehr",
+        "description": "Richte Zero auf deine Vertragstabelle in Google Sheets. Es prüft nach Zeitplan anstehende Verlängerungen, berechnet die verbleibenden Tage für jeden Vertrag und sendet eine formatierte Benachrichtigung an Slack — sowie einen E-Mail-Entwurf an Gmail — für jeden Vertrag, der innerhalb deines festgelegten Zeitfensters ausläuft.",
+        "timeSaved": "~1 Std. gespart pro Verlängerungszyklus",
+        "headings": {
+          "scenario": "Warum Verträge sich verlängern, bevor jemand sie prüft",
+          "prompt": "So richtest du automatisierte Vertragsverlängerungswarnungen mit Zero ein",
+          "steps": "So liest Zero deine Verträge, berechnet Fristen und sendet Benachrichtigungen",
+          "nextActions": "Verlängerungs-E-Mail entwerfen, Tabelle aktualisieren oder an die Rechtsabteilung eskalieren",
+          "integrations": "Erforderliche Integrationen: Google Sheets und Gmail. Optional: Slack",
+          "tips": "Best Practices für automatisierte Vertragsverlängerungsverfolgung"
+        },
+        "scenario": "Ein 40.000-$-Jahresvertrag hat sich letzten Dienstag automatisch verlängert. Niemand hat es gemeldet, weil das Verlängerungsdatum in Zeile 73 einer Tabelle vergraben war, die niemand geöffnet hat. Zero liest deine Vertragstabelle jede Woche, berechnet, welche Verlängerungen in den nächsten 30 Tagen anstehen, und sendet eine Slack-Benachrichtigung mit Anbietername, Vertragswert und Frist — plus einen Entwurf für eine Verlängerungs- oder Kündigungs-E-Mail in deinen Gmail-Entwürfen, versandbereit.",
+        "promptVariants": [
+          {
+            "label": "Wöchentliche Verlängerungsprüfung",
+            "prompt": "@Zero every Monday at 9am, read the 'Vendor Contracts' sheet in Google Sheets, find any contracts expiring in the next 30 days, post a Slack alert with vendor name, contract value, and expiry date, and create a draft email in Gmail for each one asking to schedule a review call."
+          },
+          {
+            "label": "Sofort-Audit",
+            "prompt": "@Zero check the 'Vendor Contracts' sheet right now and list everything expiring in the next 60 days, sorted by days remaining."
+          },
+          {
+            "label": "Benutzerdefiniertes Zeitfenster",
+            "prompt": "@Zero read the Vendor Contracts sheet and alert me to anything expiring in the next 14 days. For each, draft a cancellation notice email in Gmail."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Contract Renewal Alerts — Apr 14\n\n⚠️ Expiring in 14 days:\n• Firecrawl API — $12K/yr — expires Apr 28\n• Figma Team — $4.8K/yr — expires Apr 30\n\n📅 Expiring in 15–30 days:\n• Notion Business — $3.2K/yr — expires May 10\n\nDraft renewal emails created in Gmail for all 3."
+          },
+          {
+            "name": "Alex",
+            "text": "@Zero check Vendor Contracts for anything expiring in the next 30 days and draft renewal emails in Gmail."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero liest die Vertragstabelle",
+            "description": "Zero liest den angegebenen Google Sheets-Tab und extrahiert Anbietername, Vertragswert, Verlängerungsdatum und etwaige Notizspalten. Es parst Datumsfelder und berechnet die verbleibenden Tage bis zum Ablauf für jede Zeile."
+          },
+          {
+            "title": "Anstehende Verlängerungen identifiziert",
+            "description": "Zero filtert nach Verträgen, die innerhalb des von dir angegebenen Zeitfensters (z. B. 30 Tage) auslaufen. Es sortiert sie nach verbleibenden Tagen und gruppiert sie in dringend (unter 14 Tage) und anstehend (14–30 Tage)."
+          },
+          {
+            "title": "Benachrichtigungen gesendet und Entwürfe erstellt",
+            "description": "Zero postet eine strukturierte Slack-Nachricht mit jedem auslaufenden Vertrag samt Anbietername, Jahreswert und exaktem Ablaufdatum. Für jeden Vertrag erstellt es einen E-Mail-Entwurf in Gmail, adressiert an den Anbieterkontakt, sofern in der Tabelle vorhanden."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "E-Mail-Entwurf senden",
+            "description": "Den von Zero vorbereiteten Verlängerungs- oder Kündigungsentwurf prüfen und senden",
+            "examplePrompt": "@Zero show me the draft renewal email you created for the Firecrawl contract and update the tone to be more direct about our budget constraints."
+          },
+          {
+            "title": "Vertragstabelle aktualisieren",
+            "description": "Die Verlängerungsentscheidung zurück in Google Sheets dokumentieren",
+            "examplePrompt": "@Zero update the Vendor Contracts sheet to mark the Firecrawl contract as 'Under Review' and set the follow-up date to Apr 20."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero liest die Vertragstabelle, um Anbieternamen, Vertragswerte, Verlängerungsdaten und Kontaktinformationen zu extrahieren."
+          },
+          {
+            "description": "Zero erstellt E-Mail-Entwürfe für jeden auslaufenden Vertrag und legt sie in deinem Gmail-Entwurfsordner ab, bereit zum Überprüfen und Senden."
+          }
+        ],
+        "tips": [
+          "Verwende ein konsistentes Datumsformat in deiner Tabelle (z. B. JJJJ-MM-TT). Inkonsistente Formate führen dazu, dass Zero Verlängerungsdaten falsch parst.",
+          "Füge eine Spalte 'Kontakt-E-Mail' zur Tabelle hinzu, damit Zero jeden E-Mail-Entwurf automatisch an den richtigen Anbieterkontakt adressieren kann.",
+          "Setze das Benachrichtigungsfenster standardmäßig auf 30 Tage, führe aber zu Beginn jedes Quartals einen einmaligen 90-Tage-Audit durch, um mittelfristige Verlängerungen zu erfassen."
+        ]
+      },
+      "support-to-github": {
+        "title": "Support-Tickets an GitHub eskalieren, ohne Kontext zu verlieren",
+        "description": "Wenn ein Support-Ticket in Intercom einen reproduzierbaren Bug oder ein berechtigtes Feature-Request aufzeigt, beauftrage Zero, ein GitHub-Issue mit vollständigem Kontext zu erstellen — Gesprächszusammenfassung, Reproduktionsschritte, betroffene Nutzer und Schweregrad — und einen Link zurück in den Intercom-Thread zu posten.",
+        "timeSaved": "~15 Min. gespart pro Eskalation",
+        "headings": {
+          "scenario": "Warum bei Support-zu-Engineering-Übergaben Kontext verloren geht",
+          "prompt": "So beauftragst du Zero, ein Support-Ticket an GitHub zu eskalieren",
+          "steps": "So liest Zero das Ticket, erstellt das Issue und schließt den Kreis",
+          "nextActions": "An Engineering zuweisen, mit einem Meilenstein verknüpfen oder den Kunden benachrichtigen",
+          "integrations": "Erforderliche Integrationen: Intercom und GitHub. Optional: Slack",
+          "tips": "Best Practices für Support-zu-Engineering-Eskalationen"
+        },
+        "scenario": "Ein Nutzer meldet, dass der Slack-Connector Nachrichten über 4000 Zeichen verschluckt. Du bestätigst, dass es ein echter Bug ist. Jetzt musst du ein GitHub-Issue mit genug Kontext schreiben, damit Engineering es reproduzieren kann — Gesprächsverlauf, Nutzer-Plan, Reproduktionsschritte und Schweregrad. Dieses Zusammenschreiben dauert 15 Minuten und existiert nur in deinem Kopf. Zero liest den Intercom-Thread, extrahiert den relevanten Kontext, schreibt ein strukturiertes GitHub-Issue und postet den Link zurück in die Intercom-Konversation in unter einer Minute.",
+        "promptVariants": [
+          {
+            "label": "Als Bug eskalieren",
+            "prompt": "@Zero read Intercom conversation [ID] and create a GitHub issue in vm0-ai/vm0 labelled 'bug' with: a one-line title, reproduction steps, affected user info, and severity. Post the issue link back to the Intercom thread."
+          },
+          {
+            "label": "Als Feature-Request eskalieren",
+            "prompt": "@Zero read Intercom conversation [ID] and create a GitHub issue labelled 'enhancement' with the user's feature request, their use case, and a note on frequency. Post the issue link to the Intercom thread and tag @product."
+          },
+          {
+            "label": "Batch-Eskalation",
+            "prompt": "@Zero check all open Intercom conversations tagged 'bug-confirmed' and create a GitHub issue for each one. Post a summary list to #bug-report."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero read Intercom conversation 48291 and create a GitHub bug issue with reproduction steps. Post the link back to the thread."
+          },
+          {
+            "name": "Zero",
+            "text": "Created bug issue #9441 in vm0-ai/vm0.\n\nTitle: fix: Slack connector silently drops messages over 4000 chars\nSeverity: High — affects 12 users on Business plan\nReproduction: Send a message via @Zero with >4000 chars through a Slack connector. Message is truncated without error.\n\nPosted issue link to Intercom thread 48291."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero liest die Intercom-Konversation",
+            "description": "Zero ruft den vollständigen Konversations-Thread aus Intercom ab, einschließlich aller Kundennachrichten, Agentenantworten, Tags und interner Notizen. Es extrahiert den Nutzer-Plan, das gemeldete Verhalten und alle genannten Reproduktionsdetails."
+          },
+          {
+            "title": "GitHub-Issue mit strukturiertem Kontext geschrieben",
+            "description": "Zero schreibt ein GitHub-Issue nach dem Standard-Bug- oder Feature-Request-Template: einzeilige Überschrift, Beschreibung, Reproduktionsschritte (oder Anwendungsfall für Features), Anzahl betroffener Nutzer und Plan sowie ein Schweregrad- oder Prioritätslabel."
+          },
+          {
+            "title": "Link zurück in Intercom gepostet",
+            "description": "Nach Erstellung des Issues postet Zero die GitHub-Issue-URL als Antwort in der ursprünglichen Intercom-Konversation, damit der Support-Agent sie referenzieren kann, und postet optional eine Zusammenfassung in einem Slack-Kanal."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "An Engineering zuweisen",
+            "description": "Das Issue an das richtige Teammitglied weiterleiten",
+            "examplePrompt": "@Zero assign GitHub issue #9441 to @e7h4n and add it to the current sprint milestone."
+          },
+          {
+            "title": "Den Kunden benachrichtigen",
+            "description": "Im Intercom-Thread antworten, sobald das Issue gesichtet wurde",
+            "examplePrompt": "@Zero reply to Intercom conversation 48291 to let the user know we've filed a bug report and they'll be notified when it's resolved."
+          },
+          {
+            "title": "Batch-Erstellung aus getaggten Tickets",
+            "description": "Eine Warteschlange bestätigter Bugs auf einmal abarbeiten",
+            "examplePrompt": "@Zero find all Intercom conversations tagged 'bug-confirmed' opened this week and create a GitHub issue for each one. Post a summary to #bug-report."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero liest den vollständigen Konversations-Thread, einschließlich Kundennachrichten, interner Notizen, Nutzer-Plan und Tags, um den Eskalationskontext zu extrahieren."
+          },
+          {
+            "description": "Zero erstellt das Issue, vergibt Labels und kann es direkt aus dem Eskalations-Prompt einem Bearbeiter zuweisen oder mit einem Meilenstein verknüpfen."
+          }
+        ],
+        "tips": [
+          "Gib die Intercom-Konversations-ID in deinem Prompt an, um präzise zu zielen — Zero findet sie in der Konversations-URL.",
+          "Bitte Zero, ein Schweregrad-Label basierend auf der Anzahl betroffener Nutzer oder dem Plan des Nutzers hinzuzufügen. Das spart den Triage-Schritt für Engineering.",
+          "Nutze die Batch-Eskalation am Ende jeder Support-Schicht, um eine Warteschlange bestätigter Bugs in einem Prompt abzuarbeiten, statt einzeln."
+        ]
       }
     }
   },
