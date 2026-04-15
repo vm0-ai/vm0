@@ -27,23 +27,7 @@ import { randomUUID } from "crypto";
 import * as axiomModule from "../../../../../../src/lib/shared/axiom";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../../src/env";
-
-// Mock Ably (external dependency) to capture published signals
-const mockPublish = vi.fn().mockResolvedValue(undefined);
-vi.mock("ably", () => {
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: vi.fn() },
-          channels: {
-            get: vi.fn().mockReturnValue({ publish: mockPublish }),
-          },
-        };
-      }),
-    },
-  };
-});
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
 
@@ -55,7 +39,7 @@ describe("POST /api/webhooks/agent/events", () => {
   let ingestToAxiomSpy: MockInstance<typeof axiomModule.ingestToAxiom>;
 
   beforeEach(async () => {
-    mockPublish.mockClear();
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
 
@@ -1123,7 +1107,7 @@ describe("POST /api/webhooks/agent/events", () => {
       // Flush the after() callback to trigger signal publishing
       await context.mocks.flushAfter();
 
-      expect(mockPublish).toHaveBeenCalledWith(`thread:${testRunId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(`thread:${testRunId}`, null);
     });
   });
 });

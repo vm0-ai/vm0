@@ -14,44 +14,7 @@ import { getTestZeroAgentId } from "../../../../../../../src/__tests__/db-test-a
 import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../../../src/env";
-
-// Mock Ably (external dependency) to capture published signals
-const mockPublish = vi.fn().mockResolvedValue(undefined);
-vi.mock("ably", () => {
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: vi.fn() },
-          channels: {
-            get: vi.fn().mockReturnValue({ publish: mockPublish }),
-          },
-        };
-      }),
-    },
-  };
-});
-
-// Mock Next.js after() to capture and flush callbacks in tests
-const afterCallbacks: Array<() => Promise<unknown> | unknown> = [];
-vi.mock("next/server", async (importOriginal) => {
-  const original = await importOriginal<typeof import("next/server")>();
-  return {
-    ...original,
-    after: (callback: () => Promise<unknown> | unknown) => {
-      afterCallbacks.push(callback);
-    },
-  };
-});
-
-async function flushAfterCallbacks() {
-  await Promise.all(
-    afterCallbacks.map((cb) => {
-      return cb();
-    }),
-  );
-  afterCallbacks.length = 0;
-}
+import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
 
@@ -74,9 +37,8 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
   let agentId: string;
 
   beforeEach(async () => {
-    mockPublish.mockClear();
+    mockAblyPublish.mockClear();
     context.setupMocks();
-    afterCallbacks.length = 0;
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("vcp-cmp"));
     agentId = await getTestZeroAgentId(user.orgId, compose.name);
@@ -182,9 +144,12 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
     expect(response.status).toBe(200);
 
     // Flush the after() callback to trigger signal publishing
-    await flushAfterCallbacks();
+    await context.mocks.flushAfter();
 
-    expect(mockPublish).toHaveBeenCalledOnce();
-    expect(mockPublish).toHaveBeenCalledWith(`voice:prep:${user.userId}`, null);
+    expect(mockAblyPublish).toHaveBeenCalledOnce();
+    expect(mockAblyPublish).toHaveBeenCalledWith(
+      `voice:prep:${user.userId}`,
+      null,
+    );
   });
 });

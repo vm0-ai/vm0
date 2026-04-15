@@ -640,10 +640,13 @@ const POLL_FAILURE_THRESHOLD = 3;
 const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
   let consecutiveFailures = 0;
   const sid = get(internalSessionId$);
+  if (!sid) {
+    throw new Error("startPoll$ called before session ID is set");
+  }
   const ablyNotify = get(ablyNotify$);
 
   await ablyNotify(
-    `voice:${sid ?? "unknown"}`,
+    `voice:${sid}`,
     async (signal: AbortSignal) => {
       const sid = get(internalSessionId$);
       if (!sid) {
@@ -1142,7 +1145,12 @@ const awaitChatPreparation$ = command(
     const chatAblyNotify = get(ablyNotify$);
     const clerkInstance = await get(clerk$);
     signal.throwIfAborted();
-    const prepUserId = clerkInstance.user?.id ?? "unknown";
+    const prepUserId = clerkInstance.user?.id;
+    if (!prepUserId) {
+      throw new Error(
+        "awaitChatPreparation$ called without authenticated user",
+      );
+    }
     await chatAblyNotify(
       `voice:prep:${prepUserId}`,
       async (loopSignal: AbortSignal) => {

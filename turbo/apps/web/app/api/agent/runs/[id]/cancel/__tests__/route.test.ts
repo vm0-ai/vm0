@@ -23,23 +23,7 @@ import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../../../src/env";
 import { insertOrgMembersCacheEntry } from "../../../../../../../src/__tests__/db-test-seeders/org-members-cache";
-
-// Mock Ably (external dependency) to capture published signals
-const mockPublish = vi.fn().mockResolvedValue(undefined);
-vi.mock("ably", () => {
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: vi.fn() },
-          channels: {
-            get: vi.fn().mockReturnValue({ publish: mockPublish }),
-          },
-        };
-      }),
-    },
-  };
-});
+import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
 
@@ -48,7 +32,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
   let testComposeId: string;
 
   beforeEach(async () => {
-    mockPublish.mockClear();
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
 
@@ -378,8 +362,8 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       // Flush the after() callback to trigger signal publishing
       await context.mocks.flushAfter();
 
-      expect(mockPublish).toHaveBeenCalledWith(`thread:${run.runId}`, null);
-      expect(mockPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(`thread:${run.runId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
     });
   });
 });

@@ -334,7 +334,10 @@ export const setupTasksLoop$ = command(
     const ablyNotify = get(ablyNotify$);
     const clerk = await get(clerk$);
     signal.throwIfAborted();
-    const orgId = clerk.organization?.id ?? "unknown";
+    const orgId = clerk.organization?.id;
+    if (!orgId) {
+      throw new Error("setupTasksLoop$ called without active organization");
+    }
 
     await ablyNotify(
       `tasks:${orgId}`,

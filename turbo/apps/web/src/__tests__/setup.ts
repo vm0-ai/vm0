@@ -256,6 +256,26 @@ vi.mock("@axiomhq/logging", () => {
   };
 });
 
+// Mock Ably (external real-time service)
+// Uses shared spy instances from ably-mock.ts so test files can import
+// mockAblyPublish / mockAblyCreateTokenRequest without repeating vi.mock.
+vi.mock("ably", async () => {
+  const { mockAblyPublish, mockAblyCreateTokenRequest } =
+    await import("./ably-mock");
+  return {
+    default: {
+      Rest: vi.fn().mockImplementation(function () {
+        return {
+          auth: { createTokenRequest: mockAblyCreateTokenRequest },
+          channels: {
+            get: vi.fn().mockReturnValue({ publish: mockAblyPublish }),
+          },
+        };
+      }),
+    },
+  };
+});
+
 // MSW server lifecycle
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });

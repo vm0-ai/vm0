@@ -33,23 +33,7 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
-
-// Mock Ably (external dependency) to capture published signals
-const mockPublish = vi.fn().mockResolvedValue(undefined);
-vi.mock("ably", () => {
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: vi.fn() },
-          channels: {
-            get: vi.fn().mockReturnValue({ publish: mockPublish }),
-          },
-        };
-      }),
-    },
-  };
-});
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
 
@@ -60,7 +44,7 @@ describe("POST /api/webhooks/agent/complete", () => {
   let testToken: string;
 
   beforeEach(async () => {
-    mockPublish.mockClear();
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
 
@@ -911,8 +895,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Flush the after() callback to trigger signal publishing
       await context.mocks.flushAfter();
 
-      expect(mockPublish).toHaveBeenCalledWith(`thread:${testRunId}`, null);
-      expect(mockPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(`thread:${testRunId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
     });
   });
 });

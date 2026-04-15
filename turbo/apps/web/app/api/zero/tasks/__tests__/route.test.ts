@@ -20,23 +20,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { insertOrgMembersCacheEntry } from "../../../../../src/__tests__/db-test-seeders/org-members-cache";
 import { reloadEnv } from "../../../../../src/env";
-
-// Mock Ably (external dependency) to capture published signals
-const mockPublish = vi.fn().mockResolvedValue(undefined);
-vi.mock("ably", () => {
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: vi.fn() },
-          channels: {
-            get: vi.fn().mockReturnValue({ publish: mockPublish }),
-          },
-        };
-      }),
-    },
-  };
-});
+import { mockAblyPublish } from "../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
 
@@ -528,7 +512,7 @@ describe("POST /api/zero/tasks/archive", () => {
   let user: UserContext;
 
   beforeEach(async () => {
-    mockPublish.mockClear();
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
   });
@@ -755,7 +739,7 @@ describe("POST /api/zero/tasks/archive", () => {
     // Flush the after() callback to trigger signal publishing
     await context.mocks.flushAfter();
 
-    expect(mockPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
+    expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
   });
 });
 
@@ -763,7 +747,7 @@ describe("POST /api/zero/tasks/unarchive", () => {
   let user: UserContext;
 
   beforeEach(async () => {
-    mockPublish.mockClear();
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
   });
@@ -870,7 +854,7 @@ describe("POST /api/zero/tasks/unarchive", () => {
     );
 
     // Clear publish calls from the archive operation
-    mockPublish.mockClear();
+    mockAblyPublish.mockClear();
     globalThis.nextAfterCallbacks = [];
 
     const unarchiveRes = await POST(
@@ -885,6 +869,6 @@ describe("POST /api/zero/tasks/unarchive", () => {
     // Flush the after() callback to trigger signal publishing
     await context.mocks.flushAfter();
 
-    expect(mockPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
+    expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
   });
 });

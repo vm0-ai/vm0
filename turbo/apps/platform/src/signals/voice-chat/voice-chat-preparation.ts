@@ -91,7 +91,12 @@ export const triggerPreparation$ = command(
     const ablyNotify = get(ablyNotify$);
     const clerkInstance = await get(clerk$);
     signal.throwIfAborted();
-    const userId = clerkInstance.user?.id ?? "unknown";
+    const userId = clerkInstance.user?.id;
+    if (!userId) {
+      throw new Error(
+        "voice-chat-preparation called without authenticated user",
+      );
+    }
     await ablyNotify(
       `voice:prep:${userId}`,
       async (loopSignal: AbortSignal) => {

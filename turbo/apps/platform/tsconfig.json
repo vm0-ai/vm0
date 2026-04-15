@@ -16,9 +16,7 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "paths": {
-      "ably": [
-        "../../node_modules/.pnpm/ably@2.21.0_react-dom@19.2.4_react@19.2.4__react@19.2.4/node_modules/ably/ably.d.ts"
-      ]
+      "ably": ["../../node_modules/.pnpm/node_modules/ably/ably.d.ts"]
     },
 
     "strict": true,

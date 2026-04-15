@@ -3,36 +3,14 @@ import { POST } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { mockAblyCreateTokenRequest } from "../../../../../../src/__tests__/ably-mock";
 import { reloadEnv } from "../../../../../../src/env";
-
-// Mock Ably (third-party external dependency)
-const mockCreateTokenRequest = vi.fn().mockResolvedValue({
-  keyName: "test-key",
-  timestamp: 1700000000000,
-  capability: '{"user:test-user-id":["subscribe"]}',
-  nonce: "test-nonce",
-  mac: "test-mac",
-});
-
-vi.mock("ably", () => {
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: mockCreateTokenRequest },
-          channels: { get: vi.fn() },
-        };
-      }),
-    },
-  };
-});
 
 const context = testContext();
 
 describe("POST /api/zero/realtime/token", () => {
   beforeEach(async () => {
-    vi.clearAllMocks();
-    mockCreateTokenRequest.mockResolvedValue({
+    mockAblyCreateTokenRequest.mockResolvedValue({
       keyName: "test-key",
       timestamp: 1700000000000,
       capability: '{"user:test-user-id":["subscribe"]}',
