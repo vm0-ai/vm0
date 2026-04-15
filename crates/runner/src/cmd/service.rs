@@ -147,17 +147,37 @@ fn resolve_config_path(path: &Path) -> RunnerResult<PathBuf> {
     })
 }
 
-/// Escape a value for use inside systemd `Environment="..."`.
+/// Escape a string for use inside a double-quoted systemd value.
 ///
-/// Inside a double-quoted `Environment=` value, systemd requires `"` to be
-/// written as `\"` and `\` as `\\`. The order matters: `\` MUST be escaped
-/// first, otherwise the `\` we insert while escaping `"` gets re-escaped,
-/// turning each original `"` into `\\"` (invalid).
-fn escape_systemd_env_value(entry: &str) -> String {
-    entry.replace('\\', "\\\\").replace('"', "\\\"")
+/// Three characters need escaping:
+/// - `\` and `"`: required by systemd's quoted-string syntax; without
+///   escape, the closing `"` is misparsed and the unit file is corrupted.
+/// - `%`: systemd performs **specifier expansion** on directive values
+///   (`%H` → hostname, `%n` → unit name, `%i` → instance, etc.), so an
+///   unescaped `%` followed by a specifier letter gets silently rewritten.
+///   `%%` is the literal-`%` escape and is safe across all systemd versions.
+///
+/// Single-pass iteration intentionally avoids chained `replace` calls:
+/// the previous `\\` → `"` order was a hidden contract that future
+/// additions to this set could easily get wrong.
+fn escape_systemd_value(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '\\' => out.push_str(r"\\"),
+            '"' => out.push_str("\\\""),
+            '%' => out.push_str("%%"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Generate the systemd unit file content.
+///
+/// All double-quoted values (`ExecStart=` paths, `Environment=` values) go
+/// through [`escape_systemd_value`] so that user-controllable input cannot
+/// break out of the quotes or trigger systemd specifier expansion.
 fn generate_unit_file(
     unit: &str,
     exe_path: &Path,
@@ -167,10 +187,12 @@ fn generate_unit_file(
 ) -> String {
     let mut env_lines = String::new();
     for entry in env_vars {
-        let escaped = escape_systemd_env_value(entry);
+        let escaped = escape_systemd_value(entry);
         env_lines.push_str(&format!("Environment=\"{escaped}\"\n"));
     }
     let local_flag = if local { " --local" } else { "" };
+    let exe = escape_systemd_value(&exe_path.display().to_string());
+    let config = escape_systemd_value(&config_path.display().to_string());
     format!(
         "\
 [Unit]
@@ -192,8 +214,6 @@ SyslogIdentifier={unit}
 [Install]
 WantedBy=multi-user.target
 ",
-        exe = exe_path.display(),
-        config = config_path.display(),
     )
 }
 
@@ -805,33 +825,59 @@ mod tests {
     }
 
     #[test]
-    fn test_escape_systemd_env_value() {
+    fn test_escape_systemd_value() {
         // Empty input — degenerate but callable (helper is independent of
-        // validate); guards against future `replace` behavior changes.
-        assert_eq!(escape_systemd_env_value(""), "");
+        // validate); guards against future implementation changes.
+        assert_eq!(escape_systemd_value(""), "");
 
         // No special chars — identity.
-        assert_eq!(escape_systemd_env_value("KEY=value"), "KEY=value");
+        assert_eq!(escape_systemd_value("KEY=value"), "KEY=value");
 
         // Double quotes.
-        assert_eq!(
-            escape_systemd_env_value(r#"MSG=say "hi""#),
-            r#"MSG=say \"hi\""#,
-        );
+        assert_eq!(escape_systemd_value(r#"MSG=say "hi""#), r#"MSG=say \"hi\""#,);
 
         // Backslashes.
         assert_eq!(
-            escape_systemd_env_value(r"PATH=C:\Users\test"),
+            escape_systemd_value(r"PATH=C:\Users\test"),
             r"PATH=C:\\Users\\test",
         );
 
         // Mixed `\` and `"` — regressions here catch reversed-order bugs
         // (each character alone would still pass the tests above).
-        assert_eq!(escape_systemd_env_value(r#"K=a\b"c"#), r#"K=a\\b\"c"#,);
+        assert_eq!(escape_systemd_value(r#"K=a\b"c"#), r#"K=a\\b\"c"#);
 
         // Trailing `\`: without escape, the generated line `"K=foo\"` would
         // swallow the closing quote and corrupt the unit file.
-        assert_eq!(escape_systemd_env_value(r"K=foo\"), r"K=foo\\");
+        assert_eq!(escape_systemd_value(r"K=foo\"), r"K=foo\\");
+
+        // Single `%` — without escape, systemd would treat `%X` as a
+        // specifier (e.g. `%H` → hostname). `%%` is the literal-`%` escape.
+        assert_eq!(escape_systemd_value("MSG=50% done"), "MSG=50%% done");
+
+        // `%` followed by a known specifier letter — concrete reproduction
+        // of issue #9470: without escape, systemd silently rewrites this
+        // to the host's actual hostname.
+        assert_eq!(escape_systemd_value("MSG=host=%H"), "MSG=host=%%H");
+
+        // Already-escaped `%%` in user input — must be doubled again to
+        // `%%%%`, otherwise systemd unescapes it back to a single `%`
+        // which then specifier-expands.
+        assert_eq!(escape_systemd_value("K=100%%"), "K=100%%%%");
+
+        // All three escape classes in one value — catches any single-char
+        // regression that the targeted tests would miss.
+        assert_eq!(escape_systemd_value(r#"K=a\b"c%d"#), r#"K=a\\b\"c%%d"#,);
+
+        // Trailing `%`: arguably the most version-sensitive case. Older
+        // systemd may preserve a trailing `%`, newer versions may warn or
+        // error; escaping to `%%` is safe everywhere.
+        assert_eq!(escape_systemd_value("KEY=trailing%"), "KEY=trailing%%");
+
+        // Non-ASCII / UTF-8 input: characters outside the escape set must
+        // pass through as their original UTF-8 bytes. Guards against any
+        // future refactor that switches from `chars()` to byte-level
+        // iteration and breaks multi-byte characters.
+        assert_eq!(escape_systemd_value("MSG=任务完成 ✓"), "MSG=任务完成 ✓");
     }
 
     #[test]
@@ -843,6 +889,9 @@ mod tests {
             // the helper-to-format! interaction that the helper-only test
             // would miss (e.g. accidental extra escaping at the call site).
             r#"K=a"\b"#.to_string(),
+            // `%H` in user input must reach the runner process literally,
+            // not be expanded to the host's hostname by systemd. See #9470.
+            "MSG=job %H done".to_string(),
         ];
         let content = generate_unit_file(
             "vm0-runner-v0.1.0",
@@ -854,6 +903,24 @@ mod tests {
         assert!(content.contains(r#"Environment="MSG=say \"hi\"""#));
         assert!(content.contains(r#"Environment="PATH=C:\\Users""#));
         assert!(content.contains(r#"Environment="K=a\"\\b""#));
+        assert!(content.contains(r#"Environment="MSG=job %%H done""#));
+    }
+
+    #[test]
+    fn test_generate_unit_file_escapes_exec_paths() {
+        // A `%` in the config or exe path would otherwise be subject to
+        // systemd specifier expansion (e.g. `%H` → hostname), pointing
+        // ExecStart at the wrong file. Same root cause as #9470.
+        let content = generate_unit_file(
+            "vm0-runner-v0.1.0",
+            Path::new("/opt/runner-v1%2.0/bin/runner"),
+            Path::new("/etc/cache%20.yaml"),
+            &[],
+            false,
+        );
+        assert!(content.contains(
+            r#"ExecStart="/opt/runner-v1%%2.0/bin/runner" start --config "/etc/cache%%20.yaml""#
+        ));
     }
 
     #[test]
@@ -862,10 +929,11 @@ mod tests {
         assert!(validate_env_vars(&["KEY=VALUE".to_string()]).is_ok());
         assert!(validate_env_vars(&["K=".to_string()]).is_ok());
         assert!(validate_env_vars(&["K=V=W".to_string()]).is_ok());
-        // `"` and `\` are valid at the validate layer — they get escaped
-        // later in `escape_systemd_env_value`.
+        // `"`, `\`, and `%` are valid at the validate layer — they get
+        // escaped later in `escape_systemd_value`.
         assert!(validate_env_vars(&[r#"MSG=say "hi""#.to_string()]).is_ok());
         assert!(validate_env_vars(&[r"PATH=C:\Users".to_string()]).is_ok());
+        assert!(validate_env_vars(&["MSG=50% done".to_string()]).is_ok());
         // Tab is intentionally NOT rejected: it is valid inside a systemd
         // quoted `Environment=` value. Locking this in so a future "let's
         // reject all whitespace control chars" change is an explicit choice.
