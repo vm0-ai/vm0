@@ -11,7 +11,6 @@ use nbd_cow::NbdCowDevice;
 use sandbox::{SnapshotCreateConfig, SnapshotOutput, SnapshotProvider};
 
 use crate::api::{ApiClient, ApiError};
-use crate::command;
 use crate::config::SnapshotConfig;
 use crate::factory::{InvariantConfig, config_hash};
 use crate::network::{NetnsPool, NetnsPoolConfig};
@@ -80,18 +79,7 @@ pub async fn create_snapshot(
     //    Only remove snapshot-specific artifacts (work/, snapshot.bin, memory.bin,
     //    cow.img) — the output directory may contain other files (e.g. rootfs.ext4
     //    in unified image builds) that must not be deleted.
-    //
-    //    Defensive umount: post-#9494 the COW-device bind runs inside
-    //    `unshare --mount` and dies with the FC process, so this should
-    //    never find anything. Kept for one release to clean up any residue
-    //    from older runner versions that may exist on a metal host's image
-    //    cache.
     let work = output.work_dir();
-    let stale_bind = SandboxPaths::new(work.clone())
-        .cow_device_bind()
-        .display()
-        .to_string();
-    command::exec_ignore_errors("umount", &[stale_bind.as_str()]).await;
 
     // Remove stale snapshot artifacts individually (not rm -rf on the
     // entire output directory) — work dir tree first, then individual files.
