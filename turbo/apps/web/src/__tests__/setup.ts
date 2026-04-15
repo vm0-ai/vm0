@@ -48,7 +48,6 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");
     // AgentPhone integration
     vi.stubEnv("AGENTPHONE_API_KEY", "test-agentphone-api-key");
-    vi.stubEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     // App UI URL

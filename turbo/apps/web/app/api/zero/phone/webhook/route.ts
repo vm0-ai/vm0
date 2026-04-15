@@ -54,10 +54,10 @@ function extractMessageData(body: Record<string, unknown>): {
   const fromNumber = typeof data.from === "string" ? data.from : "";
   const toNumber = typeof data.to === "string" ? data.to : "";
   const messageBody =
-    typeof data.body === "string"
-      ? data.body
-      : typeof data.text === "string"
-        ? data.text
+    typeof data.message === "string"
+      ? data.message
+      : typeof data.body === "string"
+        ? data.body
         : "";
 
   return {
