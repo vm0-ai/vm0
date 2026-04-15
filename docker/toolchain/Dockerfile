@@ -46,6 +46,25 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /usr/local/rustup/toolchains/*/share/man \
     && rustc --version && cargo --version
 
+# Install mold linker for faster linking of the runner crate.
+# Used by CI via CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C link-arg=-fuse-ld=mold".
+# The aarch64-linux-gnu-ld.mold symlink is required so aarch64-linux-gnu-gcc
+# (the linker driver in crates/.cargo/config.toml) finds mold under its
+# triple-prefixed name. mold 2.x supports cross-linking aarch64 from any host,
+# so a single binary works for both the host and the cross-compile target.
+ARG MOLD_VERSION=2.41.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in \
+        amd64) MOLD_ARCH="x86_64" ;; \
+        arm64) MOLD_ARCH="aarch64" ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-${MOLD_ARCH}-linux.tar.gz" \
+       | tar xz --strip-components=2 -C /usr/local/bin "mold-${MOLD_VERSION}-${MOLD_ARCH}-linux/bin/mold" \
+    && ln -sf /usr/local/bin/mold /usr/local/bin/ld.mold \
+    && ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold \
+    && mold --version
+
 # Stage 3: Development environment with additional tools
 FROM toolchain-rust AS development
 
