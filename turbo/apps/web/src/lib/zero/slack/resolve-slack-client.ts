@@ -17,6 +17,7 @@ type ApiErrorResponse = {
 type SlackClientResult = {
   orgId: string;
   client: WebClient;
+  botToken: string;
   authRunId: string | undefined;
 };
 
@@ -86,7 +87,7 @@ export async function resolveSlackClient(
   );
   const client = createSlackClient(botToken);
 
-  return { orgId, client, authRunId: authCtx.runId };
+  return { orgId, client, botToken, authRunId: authCtx.runId };
 }
 
 /**

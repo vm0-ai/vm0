@@ -167,6 +167,9 @@ vi.mock("@slack/web-api", () => {
     users: {
       info: vi.fn().mockResolvedValue({ ok: true, user: undefined }),
     },
+    files: {
+      info: vi.fn().mockResolvedValue({ ok: false, error: "file_not_found" }),
+    },
     assistant: {
       threads: {
         setStatus: vi.fn().mockResolvedValue({ ok: true }),

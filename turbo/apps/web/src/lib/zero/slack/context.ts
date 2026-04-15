@@ -1,39 +1,8 @@
 import type { WebClient } from "@slack/web-api";
 import { logger } from "../../shared/logger";
-import { uploadS3Buffer, generatePresignedUrl } from "../../infra/s3/s3-client";
-import { env } from "../../../env";
 import { type SlackUserInfo, formatSenderBlock } from "./client";
 
 const log = logger("slack:context");
-
-/**
- * Trusted Slack file download hostnames.
- * Using an explicit allowlist rather than endsWith(".slack.com") to prevent
- * SSRF via unintended subdomains.
- */
-const ALLOWED_SLACK_DOWNLOAD_HOSTNAMES = new Set([
-  "files.slack.com",
-  "files-pri.slack.com",
-  "cdn.slack.com",
-]);
-
-/**
- * Validate that a Slack file download URL is from a trusted Slack domain.
- */
-function isValidSlackDownloadUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.protocol === "https:" &&
-      ALLOWED_SLACK_DOWNLOAD_HOSTNAMES.has(parsed.hostname)
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** Maximum file size to download and upload (100MB) */
-const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
 export interface SlackFile {
   id?: string;
@@ -271,117 +240,23 @@ export function extractTextFromBlocks(
   return result.length > 0 ? result : undefined;
 }
 
-/**
- * Download a Slack file and upload to R2 temporary storage
- * Returns a presigned URL that Claude Code can access directly
- */
-async function downloadAndUploadSlackFile(
-  file: SlackFile,
-  botToken: string,
-  sessionId: string,
-): Promise<string | null> {
-  const downloadUrl = file.url_private_download;
-  if (!downloadUrl || !isValidSlackDownloadUrl(downloadUrl)) {
-    log.warn("Rejected non-Slack download URL", {
-      fileId: file.id,
-      downloadUrl,
-    });
-    return null;
-  }
-
-  // Check file size before downloading
-  if (file.size && file.size > MAX_FILE_SIZE_BYTES) {
-    log.debug("File too large to upload", {
-      fileId: file.id,
-      size: file.size,
-      maxSize: MAX_FILE_SIZE_BYTES,
-    });
-    return null;
-  }
-
-  try {
-    log.debug("Downloading Slack file", {
-      fileId: file.id,
-      downloadUrl,
-    });
-
-    const response = await fetch(downloadUrl, {
-      headers: {
-        Authorization: `Bearer ${botToken}`,
-      },
-    });
-
-    log.debug("Slack download response", {
-      fileId: file.id,
-      status: response.status,
-      contentType: response.headers.get("content-type"),
-      contentLength: response.headers.get("content-length"),
-    });
-
-    if (!response.ok) {
-      log.debug("Failed to download Slack file", {
-        fileId: file.id,
-        status: response.status,
-      });
-      return null;
-    }
-
-    // Reject HTML responses — Slack returns login pages when bot tokens expire
-    const responseContentType = response.headers.get("content-type") || "";
-    if (responseContentType.includes("text/html")) {
-      log.debug("Rejected HTML response from Slack (likely expired token)", {
-        fileId: file.id,
-        contentType: responseContentType,
-      });
-      return null;
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Upload to R2 temporary storage with correct MIME type
-    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-    const filename = file.name || file.id || "file";
-    const s3Key = `slack-files/${sessionId}/${file.id || Date.now()}-${filename}`;
-    const contentType = file.mimetype || "application/octet-stream";
-
-    await uploadS3Buffer(bucketName, s3Key, buffer, contentType);
-
-    // Generate presigned URL (valid for 1 hour)
-    const presignedUrl = await generatePresignedUrl(bucketName, s3Key, 3600);
-
-    log.debug("Uploaded Slack file to R2", {
-      fileId: file.id,
-      name: filename,
-      size: buffer.length,
-      s3Key,
-      presignedUrl,
-    });
-
-    return presignedUrl;
-  } catch (error) {
-    log.debug("Error downloading/uploading Slack file", {
-      fileId: file.id,
-      error,
-    });
-    return null;
-  }
-}
-
 function isVideoMimeType(mimetype: string | undefined): boolean {
   if (!mimetype) return false;
   return mimetype.startsWith("video/");
 }
 
 /**
- * Format file information for context with file upload to R2
- * Uploads files to R2 and provides presigned URLs for agent access
+ * Format a Slack file reference for the agent prompt.
+ *
+ * Emits a three-step instruction block that guides the agent to:
+ *   1. Download via `zero slack download-file`
+ *   2. (videos only) Extract frames with ffmpeg
+ *   3. Read the file using the appropriate tool
+ *
+ * The file is NOT fetched server-side; the agent pulls bytes on demand
+ * through the bot-token-authenticated backend proxy.
  */
-async function formatFileInfoWithUpload(
-  file: SlackFile,
-  botToken: string | undefined,
-  sessionId: string,
-): Promise<string> {
+function formatFileInfo(file: SlackFile): string {
   const parts: string[] = [];
 
   const name = file.name || file.title || "Untitled";
@@ -392,45 +267,46 @@ async function formatFileInfoWithUpload(
     parts.push(`   Dimensions: ${file.original_w}x${file.original_h}`);
   }
 
-  // Try to upload file to R2 and get presigned URL
-  if (botToken) {
-    const presignedUrl = await downloadAndUploadSlackFile(
-      file,
-      botToken,
-      sessionId,
-    );
-    if (presignedUrl) {
-      const filename = `${file.id || "file"}.${file.filetype || "bin"}`;
-      parts.push(`   Download: curl -sS -o /tmp/${filename} "${presignedUrl}"`);
-
-      if (isVideoMimeType(file.mimetype)) {
-        parts.push(
-          `   Video: To analyze this video, extract key frames with ffmpeg:`,
-        );
-        parts.push(
-          `     ffmpeg -i /tmp/${filename} -vf "fps=1" -q:v 2 /tmp/${file.id || "video"}_frame_%03d.jpg`,
-        );
-        parts.push(
-          `     Then view the extracted frames to understand the video content.`,
-        );
-      }
-
-      return parts.join("\n");
+  if (!file.id) {
+    // Without a file id the agent cannot fetch via the backend proxy.
+    // Fall back to an informational URL reference if available.
+    const url =
+      file.permalink_public ||
+      file.thumb_480 ||
+      file.thumb_360 ||
+      file.permalink;
+    if (url) {
+      parts.push(`   URL: ${url}`);
     }
+    return parts.join("\n");
   }
 
-  // Fallback to original URL reference (may not be accessible)
-  const url =
-    file.permalink_public || file.thumb_480 || file.thumb_360 || file.permalink;
-  if (url) {
-    parts.push(`   URL: ${url}`);
+  const ext = file.filetype || "bin";
+  const localPath = `/tmp/${file.id}.${ext}`;
+
+  parts.push(
+    `   Step 1 - Download: zero slack download-file ${file.id} -o ${localPath}`,
+  );
+
+  if (isVideoMimeType(file.mimetype)) {
+    const framePattern = `/tmp/${file.id}_frame_%03d.jpg`;
+    parts.push(
+      `   Step 2 - Extract frames: ffmpeg -i ${localPath} -vf "fps=1" -q:v 2 ${framePattern}`,
+    );
+    parts.push(
+      `   Step 3 - Read: view the extracted frames to understand the video content`,
+    );
+  } else {
+    parts.push(`   Step 2 - Read: open ${localPath} with the appropriate tool`);
   }
 
   return parts.join("\n");
 }
 
 /**
- * Format attachment with image for context
+ * Format attachment with image for context (URL unfurl, not an uploaded file).
+ * Attachments are external images referenced in the message — they use a
+ * different mechanism than uploaded SlackFiles and stay on curl.
  */
 function formatAttachmentImage(attachment: SlackAttachment): string | null {
   if (!attachment.image_url && !attachment.thumb_url) {
@@ -538,71 +414,59 @@ const CONTEXT_PREAMBLE = [
   "- Match the tone of the conversation — casual messages deserve casual replies.",
   "- Only provide technical analysis when explicitly asked a technical question.",
   "- Keep responses proportional to the message length and complexity.",
+  "- When a message includes a [file] block, follow the numbered Step instructions to download and read the file before responding about its contents.",
 ].join("\n");
 
 /**
- * Format messages into context for agent prompt with file upload
- * Uploads files to R2 and provides presigned URLs for agent access
+ * Format messages into context for the agent prompt.
+ *
+ * File attachments are rendered with three-step instructions that point the
+ * agent at `zero slack download-file <id>`; no bytes are fetched here.
  *
  * @param messages - Array of Slack messages
- * @param botToken - Bot token for downloading private files
- * @param sessionId - Session ID for organizing uploaded images
- * @param botUserId - Bot user ID (kept for API compatibility, no longer used for filtering)
  * @param contextType - Type of context: "thread" or "channel"
  * @param userInfoMap - Pre-resolved map of Slack user ID → user info
- * @returns Formatted context string with image URLs
  */
-export async function formatContextForAgentWithImages(
+export function formatContextForAgent(
   messages: SlackMessage[],
-  botToken: string,
-  sessionId: string,
-  botUserId?: string,
   contextType: "thread" | "channel" = "thread",
   userInfoMap?: Map<string, SlackUserInfo>,
-): Promise<string> {
+): string {
   if (messages.length === 0) {
     return "";
   }
 
   const totalMessages = messages.length;
 
-  // Include all messages (don't filter bot messages)
-  const formattedMessages = await Promise.all(
-    messages.map(async (msg, index) => {
-      const relativeIndex = index - totalMessages;
+  const formattedMessages = messages.map((msg, index) => {
+    const relativeIndex = index - totalMessages;
 
-      const fileParts: string[] = [];
+    const fileParts: string[] = [];
 
-      // Format files with image upload
-      if (msg.files && msg.files.length > 0) {
-        for (const file of msg.files) {
-          const fileInfo = await formatFileInfoWithUpload(
-            file,
-            botToken,
-            sessionId,
-          );
-          fileParts.push(fileInfo);
+    // Format uploaded Slack files — agent fetches via `zero slack download-file`
+    if (msg.files && msg.files.length > 0) {
+      for (const file of msg.files) {
+        fileParts.push(formatFileInfo(file));
+      }
+    }
+
+    // Format attachments with images (URL unfurls — usually public)
+    if (msg.attachments && msg.attachments.length > 0) {
+      for (const attachment of msg.attachments) {
+        const attachmentInfo = formatAttachmentImage(attachment);
+        if (attachmentInfo) {
+          fileParts.push(attachmentInfo);
         }
       }
+    }
 
-      // Format attachments with images (URL unfurls - these are usually public)
-      if (msg.attachments && msg.attachments.length > 0) {
-        for (const attachment of msg.attachments) {
-          const attachmentInfo = formatAttachmentImage(attachment);
-          if (attachmentInfo) {
-            fileParts.push(attachmentInfo);
-          }
-        }
-      }
-
-      return formatMessageWithMetadata(
-        msg,
-        relativeIndex,
-        fileParts,
-        userInfoMap,
-      );
-    }),
-  );
+    return formatMessageWithMetadata(
+      msg,
+      relativeIndex,
+      fileParts,
+      userInfoMap,
+    );
+  });
 
   const header =
     contextType === "thread"
@@ -610,7 +474,7 @@ export async function formatContextForAgentWithImages(
       : "# Recent Channel Messages";
 
   const result = `${header}\n\n${CONTEXT_PREAMBLE}\n\n${formattedMessages.join("\n\n")}\n\n---`;
-  log.debug("Formatted messages for context with images", {
+  log.debug("Formatted messages for context", {
     messageCount: formattedMessages.length,
     contextType,
     resultLength: result.length,
@@ -620,17 +484,11 @@ export async function formatContextForAgentWithImages(
 
 /**
  * Format files attached to the current message for inclusion in the prompt.
- * Uploads files to R2 and returns formatted file descriptions.
  */
-export async function formatCurrentMessageFiles(
-  files: SlackFile[],
-  botToken: string,
-  sessionId: string,
-): Promise<string> {
+export function formatCurrentMessageFiles(files: SlackFile[]): string {
   const parts: string[] = [];
   for (const file of files) {
-    const fileInfo = await formatFileInfoWithUpload(file, botToken, sessionId);
-    parts.push(fileInfo);
+    parts.push(formatFileInfo(file));
   }
   return parts.join("\n");
 }

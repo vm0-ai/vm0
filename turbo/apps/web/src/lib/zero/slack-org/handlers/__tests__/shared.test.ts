@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import type { WebClient } from "@slack/web-api";
-import { HttpResponse } from "msw";
 import {
   buildOrgConnectUrl,
   buildLogsUrl,
@@ -8,9 +7,6 @@ import {
   enrichMessageContent,
   fetchConversationContexts,
 } from "../shared";
-import { testContext } from "../../../../../__tests__/test-helpers";
-import { server } from "../../../../../mocks/server";
-import { http } from "../../../../../__tests__/msw";
 
 describe("buildOrgConnectUrl", () => {
   it("should point to platform slack connect page", () => {
@@ -96,9 +92,6 @@ describe("enrichMessageContent", () => {
     const result = await enrichMessageContent({
       messageContent: "Hello world",
       files: undefined,
-      botToken: "xoxb-test",
-      channelId: "C123",
-      threadTs: "1234567890.001",
       client,
       userId: "U123",
     });
@@ -116,9 +109,6 @@ describe("enrichMessageContent", () => {
     const result = await enrichMessageContent({
       messageContent: "Hello world",
       files: undefined,
-      botToken: "xoxb-test",
-      channelId: "C123",
-      threadTs: "1234567890.001",
       client,
       userId: "U999",
     });
@@ -140,9 +130,6 @@ describe("enrichMessageContent", () => {
     const result = await enrichMessageContent({
       messageContent: "My message",
       files: undefined,
-      botToken: "xoxb-test",
-      channelId: "C123",
-      threadTs: "1234567890.001",
       client,
       userId: "U123",
     });
@@ -175,15 +162,36 @@ describe("enrichMessageContent", () => {
     const result = await enrichMessageContent({
       messageContent: "Hey <@U456>, please review this",
       files: undefined,
-      botToken: "xoxb-test",
-      channelId: "C123",
-      threadTs: "1234567890.001",
       client,
       userId: "U123",
     });
 
     expect(result.prompt).toContain("@Bob (U456)");
     expect(result.prompt).not.toContain("<@U456>");
+  });
+
+  it("should append download-file instructions for attached files", async () => {
+    const client = createMockSlackClient({ ok: false });
+
+    const result = await enrichMessageContent({
+      messageContent: "take a look",
+      files: [
+        {
+          id: "F1",
+          name: "diagram.png",
+          mimetype: "image/png",
+          filetype: "png",
+        },
+      ],
+      client,
+      userId: "U123",
+    });
+
+    expect(result.prompt).toContain("take a look");
+    expect(result.prompt).toContain("[file]: diagram.png (image/png)");
+    expect(result.prompt).toContain(
+      "Step 1 - Download: zero slack download-file F1 -o /tmp/F1.png",
+    );
   });
 });
 
@@ -225,8 +233,6 @@ describe("fetchConversationContexts", () => {
       client,
       "C-chan",
       "100.0", // threadTs
-      "BBOT",
-      "xoxb-token",
       "100.1", // currentMessageTs excluded from context
     );
 
@@ -246,13 +252,7 @@ describe("fetchConversationContexts", () => {
       channelMessages: [{ user: "U300", text: "Before thread", ts: "99.0" }],
     });
 
-    await fetchConversationContexts(
-      client,
-      "C-chan",
-      "100.0",
-      "BBOT",
-      "xoxb-token",
-    );
+    await fetchConversationContexts(client, "C-chan", "100.0");
 
     // conversations.history should be called with latest=threadTs
     const historyMock = client.conversations.history as ReturnType<
@@ -277,8 +277,6 @@ describe("fetchConversationContexts", () => {
       client,
       "C-chan",
       "100.0",
-      "BBOT",
-      "xoxb-token",
       "100.2", // currentMessageTs
     );
 
@@ -302,8 +300,6 @@ describe("fetchConversationContexts", () => {
       client,
       "C-chan",
       undefined, // no threadTs → channel mention
-      "BBOT",
-      "xoxb-token",
       "2.0",
     );
 
@@ -324,8 +320,6 @@ describe("fetchConversationContexts", () => {
       client,
       "D-dm-channel", // DM channel ID starts with "D"
       undefined, // no threadTs
-      "BBOT",
-      "xoxb-token",
     );
 
     expect(executionContext).toBe("");
@@ -347,8 +341,6 @@ describe("fetchConversationContexts", () => {
       client,
       "D-dm-channel", // DM channel ID
       "100.0", // threadTs
-      "BBOT",
-      "xoxb-token",
       "100.1", // currentMessageTs
     );
 
@@ -360,63 +352,36 @@ describe("fetchConversationContexts", () => {
     expect(client.conversations.history).not.toHaveBeenCalled();
   });
 
-  describe("image upload in channel context prefix", () => {
-    const context = testContext();
-
-    it("should upload images in channel messages to S3 for thread", async () => {
-      context.setupMocks();
-
-      const downloadHandler = http.get(
-        "https://files.slack.com/files-pri/T123-F999/download/screenshot.png",
-        () => {
-          return new HttpResponse(Buffer.from("fake-png-data"), {
-            headers: { "content-type": "image/png" },
-          });
+  it("should render file attachments as download-file instructions in channel prefix", async () => {
+    const client = createMockConversationClient({
+      threadMessages: [{ user: "U100", text: "Thread parent", ts: "100.0" }],
+      channelMessages: [
+        {
+          user: "U200",
+          text: "Look at this",
+          ts: "99.0",
+          files: [
+            {
+              id: "F999",
+              name: "screenshot.png",
+              mimetype: "image/png",
+              filetype: "png",
+            },
+          ],
         },
-      );
-      server.use(downloadHandler.handler);
-
-      context.mocks.s3.generatePresignedUrl.mockResolvedValue(
-        "https://mock-presigned-url/screenshot.png",
-      );
-
-      const client = createMockConversationClient({
-        threadMessages: [{ user: "U100", text: "Thread parent", ts: "100.0" }],
-        channelMessages: [
-          {
-            user: "U200",
-            text: "Look at this",
-            ts: "99.0",
-            files: [
-              {
-                id: "F999",
-                name: "screenshot.png",
-                mimetype: "image/png",
-                filetype: "png",
-                url_private_download:
-                  "https://files.slack.com/files-pri/T123-F999/download/screenshot.png",
-              },
-            ],
-          },
-        ],
-      });
-
-      const { executionContext } = await fetchConversationContexts(
-        client,
-        "C-chan",
-        "100.0",
-        "BBOT",
-        "xoxb-token",
-      );
-
-      // S3 upload should have been triggered for the channel message image
-      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalled();
-      expect(context.mocks.s3.generatePresignedUrl).toHaveBeenCalled();
-
-      // executionContext should contain the presigned URL, not a raw Slack permalink
-      expect(executionContext).toContain("https://mock-presigned-url");
-      expect(executionContext).not.toContain("permalink_public");
-      expect(executionContext).toContain("# Recent Channel Messages");
+      ],
     });
+
+    const { executionContext } = await fetchConversationContexts(
+      client,
+      "C-chan",
+      "100.0",
+    );
+
+    expect(executionContext).toContain("# Recent Channel Messages");
+    expect(executionContext).toContain("[file]: screenshot.png (image/png)");
+    expect(executionContext).toContain(
+      "Step 1 - Download: zero slack download-file F999 -o /tmp/F999.png",
+    );
   });
 });

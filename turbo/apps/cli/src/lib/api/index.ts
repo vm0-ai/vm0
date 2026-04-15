@@ -131,6 +131,7 @@ export {
   sendSlackMessage,
   initSlackFileUpload,
   completeSlackFileUpload,
+  downloadSlackFile,
 } from "./domains/integrations-slack";
 
 // Domain modules - Zero Schedules

@@ -119,9 +119,6 @@ export async function handleOrgMention(
     {
       messageContent: context.messageText,
       files: context.files,
-      botToken,
-      channelId: context.channelId,
-      threadTs,
       client,
       userId: context.userId,
     },
@@ -155,8 +152,6 @@ export async function handleOrgMention(
     client,
     context.channelId,
     context.threadTs,
-    botUserId,
-    botToken,
     context.messageTs,
   );
 
