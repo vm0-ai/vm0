@@ -1,5 +1,12 @@
 import { command, computed, state } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/core";
+import {
+  Realtime,
+  type RealtimeChannel,
+  type ErrorInfo,
+  type TokenRequest,
+  type TokenDetails,
+} from "ably";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { IN_VITEST } from "../env.ts";
@@ -12,10 +19,6 @@ const L = logger("Realtime");
 // Ably client singleton
 // ---------------------------------------------------------------------------
 
-type AblyRealtime = import("ably").Realtime;
-type RealtimeChannel = import("ably").RealtimeChannel;
-
-const internalAblyClient$ = state<AblyRealtime | null>(null);
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
 
 /**
@@ -44,25 +47,33 @@ export const setupRealtime$ = command(
       return;
     }
 
-    const { Realtime } = await import("ably");
     signal.throwIfAborted();
 
     const fetchToken = () => {
       return accept(client.create({ body: {} }), [200], { toast: false });
     };
 
+    type AblyCallbackFn = (
+      error: ErrorInfo | string | null,
+      tokenRequestOrDetails: TokenDetails | TokenRequest | string | null,
+    ) => void;
+
+    const resolveAblyToken = (callbackFn: AblyCallbackFn) => {
+      fetchToken()
+        .then((resp) => {
+          callbackFn(null, resp.body);
+        })
+        .catch((error: unknown) => {
+          callbackFn(
+            error instanceof Error ? error.message : "Token request failed",
+            null,
+          );
+        });
+    };
+
     const ably = new Realtime({
       authCallback: (_params, callback) => {
-        fetchToken()
-          .then((resp) => {
-            callback(null, resp.body);
-          })
-          .catch((error: unknown) => {
-            callback(
-              error instanceof Error ? error.message : "Token request failed",
-              null,
-            );
-          });
+        resolveAblyToken(callback);
       },
       autoConnect: true,
       disconnectedRetryTimeout: 5000,
@@ -71,7 +82,6 @@ export const setupRealtime$ = command(
 
     signal.addEventListener("abort", () => {
       ably.close();
-      set(internalAblyClient$, null);
       set(internalUserChannel$, null);
     });
 
@@ -96,8 +106,6 @@ export const setupRealtime$ = command(
       });
     });
     signal.throwIfAborted();
-
-    set(internalAblyClient$, ably);
 
     // Subscribe to the user's channel (clientId is set by the token)
     const channelName = `user:${ably.auth.clientId}`;
@@ -162,15 +170,8 @@ export const ablyNotify$ = computed((get) => {
               }
             })
             .catch((error: unknown) => {
-              if (signal.aborted) {
-                cleanup();
-                reject(signal.reason);
-              } else {
-                L.warn(
-                  `ablyNotify: transient error on topic "${topic}"`,
-                  error,
-                );
-              }
+              cleanup();
+              reject(error);
             });
         } else if (result) {
           cleanup();
@@ -181,14 +182,14 @@ export const ablyNotify$ = computed((get) => {
       // Subscribe to this specific event name on the channel.
       // channel is guaranteed non-null here (checked at function entry).
       const ch = channel;
-      void ch
-        .subscribe(topic, messageHandler)
-        .catch((subscribeError: unknown) => {
-          L.warn(
-            `ablyNotify: failed to subscribe to topic "${topic}"`,
-            subscribeError,
-          );
-        });
+      ch.subscribe(topic, messageHandler).catch((subscribeError: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        L.warn(
+          `ablyNotify: failed to subscribe to topic "${topic}"`,
+          subscribeError,
+        );
+        reject(subscribeError);
+      });
       signal.addEventListener("abort", onAbort, { once: true });
 
       function cleanup() {
