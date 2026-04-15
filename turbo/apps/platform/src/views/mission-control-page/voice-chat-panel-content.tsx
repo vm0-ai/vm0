@@ -27,14 +27,18 @@ function categorizeEvent(event: VoiceChatEvent): EventCategory {
 
 function slowBrainLabel(type: string): string {
   switch (type) {
-    case "directive":
+    case "directive": {
       return "Directive";
-    case "thinking":
+    }
+    case "thinking": {
       return "Thinking";
-    case "observation":
+    }
+    case "observation": {
       return "Observation";
-    default:
+    }
+    default: {
       return type;
+    }
   }
 }
 
@@ -97,14 +101,18 @@ function SlowBrainIndicator({
 function VoiceChatEventItem({ event }: { event: VoiceChatEvent }) {
   const category = categorizeEvent(event);
   switch (category) {
-    case "user":
+    case "user": {
       return <VoiceUserBubble content={event.content ?? ""} />;
-    case "assistant":
+    }
+    case "assistant": {
       return <VoiceAssistantBubble content={event.content ?? ""} />;
-    case "slow-brain":
+    }
+    case "slow-brain": {
       return <SlowBrainIndicator type={event.type} content={event.content} />;
-    case "system":
+    }
+    case "system": {
       return null;
+    }
   }
 }
 
