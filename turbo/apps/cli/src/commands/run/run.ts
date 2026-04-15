@@ -182,7 +182,7 @@ export const mainRunCommand = new Command()
             agentComposeVersionId = versionInfo.versionId;
           } catch (error) {
             throw new Error(`Version not found: ${version}`, {
-              cause: error instanceof Error ? error : undefined,
+              cause: error,
             });
           }
         }
@@ -221,7 +221,15 @@ export const mainRunCommand = new Command()
           );
         }
 
-        // 6. Call unified API (server handles all variable expansion)
+        // 6. Prepare optional fields
+        const volumeVersions =
+          Object.keys(options.volumeVersion).length > 0
+            ? options.volumeVersion
+            : undefined;
+        const additionalVolumes =
+          options.volume.length > 0 ? options.volume : undefined;
+
+        // 7. Call unified API (server handles all variable expansion)
         const response = await createRun({
           // Use agentComposeVersionId if resolved, otherwise use agentComposeId (resolves to HEAD)
           ...(agentComposeVersionId
@@ -233,12 +241,8 @@ export const mainRunCommand = new Command()
           artifactName,
           artifactVersion,
           memoryName: options.memory,
-          volumeVersions:
-            Object.keys(options.volumeVersion).length > 0
-              ? options.volumeVersion
-              : undefined,
-          additionalVolumes:
-            options.volume.length > 0 ? options.volume : undefined,
+          volumeVersions,
+          additionalVolumes,
           conversationId: options.conversation,
           appendSystemPrompt: options.appendSystemPrompt,
           disallowedTools: options.disallowedTools,
