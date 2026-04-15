@@ -5,6 +5,7 @@ import {
   IconArrowsMinimize,
 } from "@tabler/icons-react";
 import { processShortcut } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/core";
 import {
   visibleTasks$,
   closeAndFocusNextInput$,
@@ -17,6 +18,7 @@ import {
   toggleMaximizeTask$,
 } from "../../signals/mission-control-page/mission-control-panels.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { ZeroChatThreadPageInner } from "../zero-page/zero-chat-thread-page.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import { ActivityPanelContent } from "./activity-panel-content.tsx";
@@ -169,6 +171,7 @@ function TaskPanelContent({ taskSignals }: { taskSignals: TaskSignals }) {
 }
 
 function TaskPanelEntryContent({ entry }: { entry: TaskPanelEntry }) {
+  const features = useLastResolved(featureSwitch$);
   switch (entry.kind) {
     case "chat": {
       return (
@@ -179,6 +182,9 @@ function TaskPanelEntryContent({ entry }: { entry: TaskPanelEntry }) {
       return <ActivityPanelContent signals={entry.signals} />;
     }
     case "voice": {
+      if (!features?.[FeatureSwitchKey.VoiceChat]) {
+        return null;
+      }
       return <VoiceChatPanelContent signals={entry.signals} />;
     }
   }
