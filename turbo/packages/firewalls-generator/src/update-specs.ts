@@ -29,6 +29,9 @@ interface Updater {
 
 // ── Static URL helper ───────────────────────────────────────────────────
 
+// Fetches in this file are sequential (not Promise.all) to stay polite with
+// external APIs and avoid rate limits (e.g. unauthenticated GitHub is 60/hr).
+// update-specs is a one-off manual command, so the extra latency is fine.
 function staticUpdater(name: string, urls: string[]): Updater {
   return {
     name,
