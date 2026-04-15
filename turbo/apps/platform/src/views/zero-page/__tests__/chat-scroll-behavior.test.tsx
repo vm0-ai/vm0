@@ -84,10 +84,8 @@ describe("zero chat thread page - autoScroll skips when user scrolled up", () =>
     // Simulate user scrolling down to 500, then back up to 200.
     // The upward scroll disables auto-scroll.
     scrollContainer.scrollTop = 500;
-    // eslint-disable-next-line ccstate/prefer-user-event -- scroll events are not supported by userEvent; simulating scroll position for auto-scroll state
     scrollContainer.dispatchEvent(new Event("scroll"));
     scrollContainer.scrollTop = 200;
-    // eslint-disable-next-line ccstate/prefer-user-event -- scroll events are not supported by userEvent; simulating scroll position for auto-scroll state
     scrollContainer.dispatchEvent(new Event("scroll"));
 
     await sendMessageInUI(user, textarea, "Hello");

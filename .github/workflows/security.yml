@@ -162,6 +162,9 @@ jobs:
         run: |
           set -o pipefail
           echo "## pnpm audit results" >> "$GITHUB_STEP_SUMMARY"
+          # --ignore-registry-errors: temporary workaround for transient npm registry
+          # connectivity failures in CI that cause false audit failures unrelated to
+          # actual vulnerability findings.
           pnpm audit --prod --ignore-registry-errors 2>&1 | tee audit-output.txt
           {
             echo '```'

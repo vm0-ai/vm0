@@ -78,7 +78,14 @@ export default [
   {
     files: ["**/__tests__/**/*.{ts,tsx}"],
     rules: {
-      "ccstate/prefer-user-event": "error",
+      "ccstate/prefer-user-event": [
+        "error",
+        {
+          // scroll events cannot be simulated by userEvent; allow dispatchEvent
+          // with new Event("scroll") for tests that verify auto-scroll behaviour.
+          allowedEventTypes: ["scroll"],
+        },
+      ],
       "ccstate/no-test-delay": "error",
       "ccstate/no-get-by-role-name": "error",
       "ccstate/no-user-clear-tab": "error",
