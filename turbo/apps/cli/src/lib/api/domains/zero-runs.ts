@@ -3,9 +3,11 @@ import {
   zeroRunsMainContract,
   zeroRunsByIdContract,
   zeroRunAgentEventsContract,
+  zeroRunContextContract,
   type CreateRunResponse,
   type GetRunResponse,
   type AgentEventsResponse,
+  type RunContextResponse,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -49,4 +51,14 @@ export async function getZeroRunAgentEvents(
   });
   if (result.status === 200) return result.body;
   handleError(result, `Failed to get zero run events for "${id}"`);
+}
+
+export async function getZeroRunContext(
+  id: string,
+): Promise<RunContextResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroRunContextContract, config);
+  const result = await client.getContext({ params: { id } });
+  if (result.status === 200) return result.body;
+  handleError(result, `Failed to get zero run context for "${id}"`);
 }

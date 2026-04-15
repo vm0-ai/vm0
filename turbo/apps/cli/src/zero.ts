@@ -111,7 +111,7 @@ program
     "after",
     `
 Examples:
-  Missing a token?       zero doctor missing-token <TOKEN_NAME>
+  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>
   Send a Slack message?  zero slack message send --help
   Set up a schedule?     zero schedule setup --help
   Update yourself?       zero agent --help

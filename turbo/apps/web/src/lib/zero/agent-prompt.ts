@@ -69,7 +69,7 @@ function buildAgentToolsPrompt(): string {
     "- Discover available commands: `zero --help`.",
     "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
     "- Slack messaging and file uploads: `zero slack --help`. Your replies are automatically sent to the originating thread — only use these commands for different channels/threads. Never use SLACK_TOKEN directly — it's a user OAuth token.",
-    "- Diagnose missing tokens or expired connectors: `zero doctor missing-token --help`.",
+    "- Diagnose connector health (token presence, firewall rules, permission policies): `zero doctor check-connector --help`.",
     "- Troubleshoot permission denials: `zero doctor permission-deny --help` to identify which permission covers a blocked request.",
     "- Request permission changes: `zero doctor permission-change --help` to enable or disable a permission.",
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
