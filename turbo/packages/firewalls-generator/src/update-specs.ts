@@ -19,7 +19,6 @@ import {
   hashContent,
   writeSpecFile,
 } from "./codegen";
-import type { GitHubContent } from "./dropbox";
 
 type SpecEntries = Map<string, string>; // key → content
 
@@ -51,7 +50,7 @@ const deelUpdater: Updater = {
   fetch: async () => {
     const indexUrl = "https://developer.deel.com/openapi.json";
 
-    // 1. Fetch HTML index to discover spec IDs
+    // 1. Fetch HTML index to discover spec IDs (not cached — ephemeral discovery)
     const res = await fetchRemote(indexUrl, "Deel spec index");
     const html = await res.text();
     const ids = [
@@ -64,9 +63,8 @@ const deelUpdater: Updater = {
     }
     console.error(`  Discovered ${ids.length} spec IDs`);
 
-    // 2. Cache the index page + each discovered spec
+    // 2. Cache each discovered spec
     const entries = new Map<string, string>();
-    entries.set(indexUrl, html);
     for (const id of ids) {
       const url = `${indexUrl}?api=${id}`;
       const specRes = await fetchRemote(url, `deel: ${id.slice(0, 8)}`);
@@ -76,18 +74,22 @@ const deelUpdater: Updater = {
   },
 };
 
+interface GitHubContent {
+  name: string;
+  download_url: string;
+}
+
 const dropboxUpdater: Updater = {
   name: "dropbox",
   fetch: async () => {
     const listUrl =
       "https://api.github.com/repos/dropbox/dropbox-api-spec/contents/";
 
-    // 1. List .stone files via GitHub API (Accept header required for v3 JSON)
+    // 1. List .stone files via GitHub API (not cached — ephemeral discovery)
     const listRes = await fetchRemote(listUrl, "Dropbox spec file list", {
       headers: { Accept: "application/vnd.github.v3+json" },
     });
-    const listBody = await listRes.text();
-    const json: unknown = JSON.parse(listBody);
+    const json: unknown = await listRes.json();
     if (!Array.isArray(json)) {
       throw new Error("Expected array from GitHub contents API");
     }
@@ -96,9 +98,8 @@ const dropboxUpdater: Updater = {
     );
     console.error(`  Found ${files.length} .stone files`);
 
-    // 2. Cache the listing + each .stone file
+    // 2. Cache each .stone file
     const entries = new Map<string, string>();
-    entries.set(listUrl, listBody);
     for (const file of files) {
       const res = await fetchRemote(file.download_url, file.name);
       entries.set(file.download_url, await res.text());

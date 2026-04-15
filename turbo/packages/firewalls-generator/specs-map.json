@@ -6,18 +6,16 @@
     "https://axiom.co/docs/restapi/versions/v2.json": "eb322168e3592b1bdc56ebd9f6b5357a0e80dc293c42cced2e2a95cf2b972ca4"
   },
   "deel": {
-    "https://developer.deel.com/openapi.json": "87d086556c6d4176dc314bed6b57c88388c21f3eaa62b341512f785d9710cb52",
-    "https://developer.deel.com/openapi.json?api=1cb04b30-d7d2-420e-9c22-93b4c390771f": "93e17e53cd26dc733532013af526978a4e33da778e667eec164af761f0623b5e",
-    "https://developer.deel.com/openapi.json?api=2582cd24-47d1-4b25-8afc-f2504fdf48a7": "3987609ad717036fc97d26f5b37be0835faf92d8d033ad449fe385a7da252005",
-    "https://developer.deel.com/openapi.json?api=512bea61-d455-4b59-aaf3-f7285ee45010": "5ab02261f55af60be5dfe5acc3fb888acf00065d6c96d0c34778bfbe526fa5d5",
-    "https://developer.deel.com/openapi.json?api=5242ebce-e952-4c74-adaa-c2e317e1bb01": "06884b13fa7d564c519100e375120053eab21883322955f670261377c6e24f36",
-    "https://developer.deel.com/openapi.json?api=95665375-bb75-43e9-9b02-53ce8a917661": "98473f4271fc3172bb89ec08a5d66a6f220ee491639f3f8f1547ac12fe695d3d",
-    "https://developer.deel.com/openapi.json?api=9db7230e-77a3-4e5b-bd7f-6f97dc548bf3": "2bacf3ebaf3cc6d13acb5a1c2c78b5fa638c66826bf4d0d808b24ef28729dc16",
-    "https://developer.deel.com/openapi.json?api=dda0dec2-d034-4f4b-9825-648bfb7bc4d1": "5b90d33c8ed27b5e1e8e09c9323c2af830febdc0cd199d55950f25f1816df958",
-    "https://developer.deel.com/openapi.json?api=f24ff412-6667-487b-ac75-9a53a3398e1d": "e2381c4f048bb853cdaea4e3f6ee4d3a6bbbba7d479e0c3722ddecf03981c239"
+    "https://developer.deel.com/openapi.json?api=11887c88-0ae7-4136-a89a-c7ec2a37111c": "2bacf3ebaf3cc6d13acb5a1c2c78b5fa638c66826bf4d0d808b24ef28729dc16",
+    "https://developer.deel.com/openapi.json?api=1b19aad5-5d4e-451f-a856-70d017cc05ef": "589d38656bd24a9c1b17e518097157c0248d342cd0ae0e1c962ebfa042200dc4",
+    "https://developer.deel.com/openapi.json?api=1df8a33e-b2d5-40f5-ad49-84b811c0182d": "06884b13fa7d564c519100e375120053eab21883322955f670261377c6e24f36",
+    "https://developer.deel.com/openapi.json?api=a2a28d13-2c78-4064-98e6-a27a98ed2765": "3987609ad717036fc97d26f5b37be0835faf92d8d033ad449fe385a7da252005",
+    "https://developer.deel.com/openapi.json?api=b9134dcb-9585-499a-ba52-2ec5a367eacf": "e2381c4f048bb853cdaea4e3f6ee4d3a6bbbba7d479e0c3722ddecf03981c239",
+    "https://developer.deel.com/openapi.json?api=c4dc8021-70d8-4a15-a47e-bda362aa80a5": "99fff1c6825d4481bac679054c53272f5aecb9f8fce90f6e5a6a5c87510c2ddf",
+    "https://developer.deel.com/openapi.json?api=d77ee460-9777-44ac-a6c5-6cece49ed471": "93e17e53cd26dc733532013af526978a4e33da778e667eec164af761f0623b5e",
+    "https://developer.deel.com/openapi.json?api=d9743636-81c5-4737-b651-51191064873d": "5ab02261f55af60be5dfe5acc3fb888acf00065d6c96d0c34778bfbe526fa5d5"
   },
   "dropbox": {
-    "https://api.github.com/repos/dropbox/dropbox-api-spec/contents/": "db63be01fcf541bd568f3144013de9d4e5b564fa09fd9de503345f281efb6916",
     "https://raw.githubusercontent.com/dropbox/dropbox-api-spec/main/account.stone": "ee9b769728ebce249810e3ad7a0c6ad51743f1f104c9edfd1ecfc204b6f1747a",
     "https://raw.githubusercontent.com/dropbox/dropbox-api-spec/main/async.stone": "a7ec227d75fb6e5d5b07912e2d63c2b4bb311266592c0ea73c7e8d5e03ef0923",
     "https://raw.githubusercontent.com/dropbox/dropbox-api-spec/main/auth.stone": "567735fa9c8d2432c6ab86d8464c29adde5397f35b864864f69f5cc430063c4d",
