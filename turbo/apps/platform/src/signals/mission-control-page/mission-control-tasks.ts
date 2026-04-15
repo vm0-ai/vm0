@@ -18,6 +18,10 @@ import {
   createActivitySignals,
   type ActivitySignals,
 } from "./create-activity-signals.ts";
+import {
+  createVoiceChatPanelSignals,
+  type VoiceChatPanelSignals,
+} from "./create-voice-chat-panel-signals.ts";
 import { maximizedTaskId$ } from "./mission-control-panels.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 
@@ -45,7 +49,8 @@ const OPTIMISTIC_TTL_MS = 30_000;
 
 export type TaskPanelEntry =
   | { kind: "chat"; signals: ChatThreadSignals }
-  | { kind: "activity"; signals: ActivitySignals };
+  | { kind: "activity"; signals: ActivitySignals }
+  | { kind: "voice"; signals: VoiceChatPanelSignals };
 
 // ---------------------------------------------------------------------------
 // TaskSignals — per-task signal bundle
@@ -201,7 +206,14 @@ function createPanelSignals(
         await set(signals.loadMessages$, signal);
         return;
       }
-      if (task.latestRunId) {
+      if (task.type === "voice_chat" && task.voiceChatSessionId) {
+        const panelSignal = set(resetPanelPolling$, signal);
+        const signals = createVoiceChatPanelSignals(task.voiceChatSessionId);
+        set(internalPanelEntry$, { kind: "voice", signals });
+        set(internalOpenedAt$, Date.now());
+        set(internalOpen$, true);
+        await set(signals.startPolling$, panelSignal);
+      } else if (task.latestRunId) {
         const panelSignal = set(resetPanelPolling$, signal);
         const signals = createActivitySignals(task.latestRunId);
         set(internalPanelEntry$, { kind: "activity", signals });

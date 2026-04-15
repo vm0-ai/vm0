@@ -20,6 +20,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ZeroChatThreadPageInner } from "../zero-page/zero-chat-thread-page.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import { ActivityPanelContent } from "./activity-panel-content.tsx";
+import { VoiceChatPanelContent } from "./voice-chat-panel-content.tsx";
 import { TaskTypeIcon } from "./task-card.tsx";
 
 export function TaskPanel() {
@@ -176,6 +177,9 @@ function TaskPanelEntryContent({ entry }: { entry: TaskPanelEntry }) {
     }
     case "activity": {
       return <ActivityPanelContent signals={entry.signals} />;
+    }
+    case "voice": {
+      return <VoiceChatPanelContent signals={entry.signals} />;
     }
   }
 }
