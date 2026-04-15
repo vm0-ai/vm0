@@ -14,6 +14,7 @@ import { setLoop } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import { reloadChatThreads$ } from "../agent-chat.ts";
+import { autoScrollActivityDetail$ } from "./activity-detail-scroll.ts";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -254,7 +255,9 @@ export const setupActivityLogLoop$ = command(
     set(internalActiveRunLoop$, run);
     await setLoop(
       (sig) => {
-        return set(run.checkFinished$, sig);
+        const finished = set(run.checkFinished$, sig);
+        set(autoScrollActivityDetail$);
+        return finished;
       },
       3000,
       signal,

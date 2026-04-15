@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.237.0](https://github.com/vm0-ai/vm0/compare/app-v0.236.0...app-v0.237.0) (2026-04-15)
+
+
+### Features
+
+* **connectors:** add Anthropic Managed Agents connector ([#9386](https://github.com/vm0-ai/vm0/issues/9386)) ([d4f7447](https://github.com/vm0-ai/vm0/commit/d4f7447083ed6dc406ff29c4a284b1badbd0c144))
+* **voice-chat:** change default model to gpt-realtime-mini ([ff02915](https://github.com/vm0-ai/vm0/commit/ff029158615ac91dc5f75618b07695ef940bdb2d))
+* **voice-chat:** change default model to gpt-realtime-mini ([#9387](https://github.com/vm0-ai/vm0/issues/9387)) ([1b09311](https://github.com/vm0-ai/vm0/commit/1b093117a9f7b54b6582ff6dfb3e9ecfa4721035))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.185.0
+
 ## [0.236.0](https://github.com/vm0-ai/vm0/compare/app-v0.235.5...app-v0.236.0) (2026-04-14)
 
 

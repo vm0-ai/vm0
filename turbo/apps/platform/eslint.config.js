@@ -70,7 +70,14 @@ export default [
       ],
       "ccstate/no-get-signal": "error",
       "ccstate/computed-const-args-package-scope": "error",
-      "ccstate/no-store-in-params": "error",
+      "ccstate/no-store-in-params": [
+        "error",
+        {
+          // setupRouter is the app-boundary bootstrap function that must bridge
+          // the Store instance into React's StoreProvider context system.
+          allowedFunctions: ["setupRouter"],
+        },
+      ],
       "ccstate/command-async-signal": "error",
       "ccstate/no-getter-setter-params": "error",
     },
@@ -78,7 +85,14 @@ export default [
   {
     files: ["**/__tests__/**/*.{ts,tsx}"],
     rules: {
-      "ccstate/prefer-user-event": "error",
+      "ccstate/prefer-user-event": [
+        "error",
+        {
+          // scroll events cannot be simulated by userEvent; allow dispatchEvent
+          // with new Event("scroll") for tests that verify auto-scroll behaviour.
+          allowedEventTypes: ["scroll"],
+        },
+      ],
       "ccstate/no-test-delay": "error",
       "ccstate/no-get-by-role-name": "error",
       "ccstate/no-user-clear-tab": "error",

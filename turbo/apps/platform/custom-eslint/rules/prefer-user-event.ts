@@ -19,9 +19,18 @@
  *   const user = userEvent.setup();
  *   await user.click(button);
  *   await user.keyboard("{Enter}");
+ *
+ * Options:
+ *   allowedEventTypes: string[] — event constructor names whose dispatchEvent
+ *     calls are permitted. Use sparingly for events userEvent cannot simulate
+ *     (e.g. "scroll"). The first argument to dispatchEvent must be a `new`
+ *     expression whose constructor name matches one of the allowed types.
+ *
+ * Example config:
+ *   "ccstate/prefer-user-event": ["error", { allowedEventTypes: ["scroll"] }]
  */
 
-import { ESLintUtils } from "@typescript-eslint/utils";
+import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
 const createRule = ESLintUtils.RuleCreator(
   (name) =>
@@ -30,7 +39,11 @@ const createRule = ESLintUtils.RuleCreator(
 
 type MessageIds = "noFireEvent" | "noDispatchEvent";
 
-export default createRule<[], MessageIds>({
+interface Options {
+  allowedEventTypes?: string[];
+}
+
+export default createRule<[Options?], MessageIds>({
   name: "prefer-user-event",
   meta: {
     type: "problem",
@@ -38,7 +51,18 @@ export default createRule<[], MessageIds>({
       description:
         "Enforce userEvent over fireEvent and dispatchEvent in tests",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          allowedEventTypes: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       noFireEvent:
         "Do not import fireEvent from @testing-library/react. Use userEvent from @testing-library/user-event instead.",
@@ -46,8 +70,49 @@ export default createRule<[], MessageIds>({
         "Do not call .dispatchEvent() directly. Use userEvent from @testing-library/user-event instead.",
     },
   },
-  defaultOptions: [],
+  defaultOptions: [{}],
   create(context) {
+    const [options] = context.options;
+    const allowedEventTypes = new Set(
+      (options?.allowedEventTypes ?? []).map((t) => {
+        return t.toLowerCase();
+      }),
+    );
+
+    function isAllowedDispatchEvent(node: TSESTree.CallExpression): boolean {
+      if (allowedEventTypes.size === 0) {
+        return false;
+      }
+      const arg = node.arguments[0];
+      if (!arg || arg.type !== "NewExpression") {
+        return false;
+      }
+      const callee = arg.callee;
+      if (callee.type !== "Identifier") {
+        return false;
+      }
+      // Event("scroll") and ScrollEvent both match "scroll" in the allowlist.
+      // We compare the constructor name itself (e.g. "Event") and also the
+      // first string argument when the constructor is the generic "Event".
+      const ctorName = callee.name.toLowerCase();
+
+      // Generic Event constructor: check first string argument (the event type)
+      if (ctorName === "event" || ctorName === "customevent") {
+        const firstArg = arg.arguments[0];
+        if (
+          firstArg &&
+          firstArg.type === "Literal" &&
+          typeof firstArg.value === "string" &&
+          allowedEventTypes.has(firstArg.value.toLowerCase())
+        ) {
+          return true;
+        }
+      }
+
+      // Specific event constructors like ScrollEvent, WheelEvent
+      return allowedEventTypes.has(ctorName);
+    }
+
     return {
       ImportDeclaration(node) {
         if (node.source.value !== "@testing-library/react") {
@@ -63,7 +128,12 @@ export default createRule<[], MessageIds>({
           }
         }
       },
-      "CallExpression[callee.property.name='dispatchEvent']"(node) {
+      "CallExpression[callee.property.name='dispatchEvent']"(
+        node: TSESTree.CallExpression,
+      ) {
+        if (isAllowedDispatchEvent(node)) {
+          return;
+        }
         context.report({ node, messageId: "noDispatchEvent" });
       },
     };

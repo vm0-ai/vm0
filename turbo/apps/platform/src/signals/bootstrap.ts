@@ -1,5 +1,7 @@
 import { command } from "ccstate";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
+import { initTheme$ } from "./theme.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
@@ -7,6 +9,7 @@ import {
   setupAuthPageWrapper,
   pathParams$,
 } from "./route.ts";
+import { registerServiceWorker$ } from "../lib/push-notifications.ts";
 import { ROUTES, type RoutePath } from "./route-paths.ts";
 
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
@@ -39,10 +42,9 @@ import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupPhonePage$ } from "./phone-page/phone-page-setup.ts";
 import { setupVoiceChatPage$ } from "./voice-chat/voice-chat-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
-import { initSlackOrg$ } from "./zero-page/zero-slack.ts";
+import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
-import { throwIfNotAbort } from "./utils.ts";
 import { pollUserInvitations$ } from "./user-invitations.ts";
 import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
 
@@ -258,19 +260,63 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
 
+const handleBillingRedirect$ = command(() => {
+  const url = new URL(window.location.href);
+  const billing = url.searchParams.get("billing");
+  if (!billing) {
+    return;
+  }
+
+  url.searchParams.delete("billing");
+  window.history.replaceState(null, "", url.toString());
+
+  // Defer toast until Toaster component is mounted
+  if (billing === "success") {
+    window.addEventListener(
+      "load",
+      () => {
+        toast.success("Upgraded to Max! Your credits have been added.");
+      },
+      { once: true },
+    );
+  }
+});
+
+const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
+  const handler = (event: MessageEvent) => {
+    if (event.data?.type === "NOTIFICATION_CLICK" && event.data.url) {
+      const match = /^\/chats\/(.+)$/.exec(event.data.url as string);
+      if (match) {
+        set(detachedNavigateTo$, "/chats/:threadId", {
+          pathParams: { threadId: match[1] },
+        });
+      }
+    }
+  };
+  navigator.serviceWorker?.addEventListener("message", handler);
+  signal.addEventListener("abort", () => {
+    navigator.serviceWorker?.removeEventListener("message", handler);
+  });
+});
+
 export const bootstrap$ = command(
   async ({ set }, render: () => void, signal: AbortSignal) => {
+    set(initTheme$);
     set(setRootSignal$, signal);
 
     set(setupLoggers$);
 
     render();
 
-    void set(startSkeletonCycling$, signal).catch(throwIfNotAbort);
-    void set(pollUserInvitations$, signal).catch(throwIfNotAbort);
+    set(handleBillingRedirect$);
+    set(handleSlackRedirect$);
 
     await Promise.all([
       set(setupGlobalMethod$, signal),
+      set(registerServiceWorker$, signal),
+      set(setupNotificationListener$, signal),
+      set(startSkeletonCycling$, signal),
+      set(pollUserInvitations$, signal),
       (async () => {
         await set(setupClerk$, signal);
         await set(watchOrgSwitch$, signal);
@@ -279,7 +325,5 @@ export const bootstrap$ = command(
     ]);
 
     signal.throwIfAborted();
-
-    set(initSlackOrg$);
   },
 );

@@ -67,6 +67,7 @@ import {
   loadNetworkLogsNextPage$,
 } from "../../signals/activity-page/activity-network-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { setActivityDetailScrollContainer$ } from "../../signals/activity-page/activity-detail-scroll.ts";
 import { ContextContent } from "./components/context-content.tsx";
 import { NetworkContent } from "./components/network-content.tsx";
 import { Markdown } from "../components/markdown.tsx";
@@ -575,6 +576,7 @@ function ActivityDetailContent({
   const fetchExtra = useSet(fetchDownloadExtra$);
   const startChatFromScheduleRun = useSet(startChatFromScheduleRun$);
   const pageSignal = useGet(pageSignal$);
+  const setScrollContainer = useSet(setActivityDetailScrollContainer$);
 
   const events: AgentEvent[] = eventsData;
   const { showModelDetail } = prepareRenderData(
@@ -597,7 +599,10 @@ function ActivityDetailContent({
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
-      <div className="flex-1 flex flex-col min-h-0 overflow-auto">
+      <div
+        ref={setScrollContainer}
+        className="flex-1 flex flex-col min-h-0 overflow-auto"
+      >
         <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           {features?.[FeatureSwitchKey.ActivityLogList] && (
             <>

@@ -1,8 +1,7 @@
-import { createElement, type ReactNode } from "react";
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { command, type Store } from "ccstate";
-import { StoreProvider } from "ccstate-react";
+import { command } from "ccstate";
+
 import type { TestContext } from "../signals/__tests__/test-helpers";
 import {
   clearMockedAuth,
@@ -103,15 +102,12 @@ export async function setupPage(options: {
     await options.context.store.set(
       bootstrap$,
       () => {
-        setupRouter(
-          createTestStoreProvider(options.context.store),
-          (element) => {
-            const { unmount } = render(element);
-            options.context.signal.addEventListener("abort", () => {
-              unmount();
-            });
-          },
-        );
+        setupRouter(options.context.store, (element) => {
+          const { unmount } = render(element);
+          options.context.signal.addEventListener("abort", () => {
+            unmount();
+          });
+        });
       },
       options.context.signal,
     );
@@ -184,10 +180,4 @@ export async function fill(element: Element, value: string): Promise<void> {
   await fastUser.click(element);
   await fastUser.keyboard("{Control>}a{/Control}");
   await fastUser.paste(value);
-}
-
-function createTestStoreProvider(store: Store) {
-  return function TestStoreProvider({ children }: { children: ReactNode }) {
-    return createElement(StoreProvider, { value: store }, children);
-  };
 }

@@ -7,16 +7,19 @@ import {
   vi,
   type MockInstance,
 } from "vitest";
-import { testContext } from "../../../../__tests__/test-helpers";
-import { compareRecentRunsProxyUsage } from "../proxy-usage-comparison-service";
+import { GET } from "../route";
 import {
+  createTestRequest,
   createCompletedRun,
   insertTestCreditUsageForRun,
   insertTestClientCreditUsage,
-} from "../../../../__tests__/api-test-helpers";
-import { logger } from "../../../shared/logger";
+} from "../../../../../src/__tests__/api-test-helpers";
+import { testContext } from "../../../../../src/__tests__/test-helpers";
+import { reloadEnv } from "../../../../../src/env";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const context = testContext();
+const cronSecret = "test-cron-secret";
 
 function errorMessagesForOrg(
   spy: MockInstance,
@@ -34,11 +37,21 @@ function errorMessagesForOrg(
     });
 }
 
-describe("compareRecentRunsProxyUsage", () => {
+async function callCronRoute(): Promise<Response> {
+  return GET(
+    createTestRequest("http://localhost:3000/api/cron/compare-proxy-usage", {
+      headers: { Authorization: `Bearer ${cronSecret}` },
+    }),
+  );
+}
+
+describe("GET /api/cron/compare-proxy-usage", () => {
   let logSpy: MockInstance;
 
   beforeEach(() => {
     context.setupMocks();
+    vi.stubEnv("CRON_SECRET", cronSecret);
+    reloadEnv();
     logSpy = vi.spyOn(logger("service:proxy-usage-comparison"), "error");
   });
 
@@ -50,7 +63,8 @@ describe("compareRecentRunsProxyUsage", () => {
 
   it("does nothing when no runs in window", async () => {
     const { orgId } = await context.setupUser({ prefix: "empty" });
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
+    expect(response.status).toBe(200);
     expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
@@ -73,8 +87,9 @@ describe("compareRecentRunsProxyUsage", () => {
       inputTokens: 100,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
@@ -97,8 +112,9 @@ describe("compareRecentRunsProxyUsage", () => {
       inputTokens: 100,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
@@ -127,8 +143,9 @@ describe("compareRecentRunsProxyUsage", () => {
       outputTokens: 50,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     const entries = errorMessagesForOrg(logSpy, orgId);
     expect(entries).toHaveLength(1);
     expect(entries[0]!.message).toBe("Proxy usage undercount");
@@ -160,8 +177,9 @@ describe("compareRecentRunsProxyUsage", () => {
       inputTokens: 100,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
@@ -186,8 +204,9 @@ describe("compareRecentRunsProxyUsage", () => {
       outputTokens: 50,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
@@ -206,8 +225,9 @@ describe("compareRecentRunsProxyUsage", () => {
       inputTokens: 100,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     const entries = errorMessagesForOrg(logSpy, orgId);
     expect(entries).toHaveLength(1);
     expect(entries[0]!.message).toBe(
@@ -230,8 +250,9 @@ describe("compareRecentRunsProxyUsage", () => {
       inputTokens: 100,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     const entries = errorMessagesForOrg(logSpy, orgId);
     expect(entries).toHaveLength(1);
     expect(entries[0]!.message).toBe(
@@ -262,8 +283,9 @@ describe("compareRecentRunsProxyUsage", () => {
       webSearchRequests: 0,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
@@ -286,8 +308,9 @@ describe("compareRecentRunsProxyUsage", () => {
       webSearchRequests: 0,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
@@ -329,8 +352,9 @@ describe("compareRecentRunsProxyUsage", () => {
       inputTokens: 60,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     // Proxy sum (120) > client (60) → no undercount alert
     expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
   });
@@ -378,8 +402,9 @@ describe("compareRecentRunsProxyUsage", () => {
       inputTokens: 100,
     });
 
-    await compareRecentRunsProxyUsage();
+    const response = await callCronRoute();
 
+    expect(response.status).toBe(200);
     expect(errorMessagesForOrg(logSpy, user1.orgId)).toHaveLength(0);
     expect(errorMessagesForOrg(logSpy, user2.orgId)).toHaveLength(1);
   });

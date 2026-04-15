@@ -1,10 +1,10 @@
-import {
-  consumeCaptureNetworkBodies,
-  getUserPreferences,
-  updateUserPreferences,
-} from "../../lib/zero/user/user-preferences-service";
+import { consumeCaptureNetworkBodies } from "../../lib/zero/user/user-preferences-service";
 import { getVm0ApiKey } from "../../lib/zero/vm0-key/vm0-key-service";
 import { POST as registerPushSubscriptionRoute } from "../../../app/api/zero/push-subscriptions/route";
+import {
+  GET as getUserPreferencesRoute,
+  POST as updateUserPreferencesRoute,
+} from "../../../app/api/zero/user-preferences/route";
 import { randomUUID } from "crypto";
 import { createTestRequest } from "./core";
 
@@ -85,39 +85,54 @@ export async function consumeTestCaptureNetworkBodies(
 }
 
 /**
- * Get the full user preferences object for testing.
- * Wraps getUserPreferences from user-preferences-service.
+ * Get the full user preferences object for testing via the
+ * GET /api/zero/user-preferences route. The caller must be
+ * authenticated via mockClerk() before calling this function.
  */
-export async function getTestUserPreferencesAll(
-  orgId: string,
-  userId: string,
-): Promise<{
+export async function getTestUserPreferencesAll(): Promise<{
   timezone: string | null;
   pinnedAgentIds: string[];
   sendMode: string;
   captureNetworkBodiesRemaining: number;
 }> {
-  return getUserPreferences(orgId, userId);
+  const response = await getUserPreferencesRoute(
+    createTestRequest("http://localhost:3000/api/zero/user-preferences"),
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Failed to get user preferences: status ${response.status}`,
+    );
+  }
+  return response.json();
 }
 
 /**
- * Update user preferences for test setup.
- * Wraps updateUserPreferences from user-preferences-service.
+ * Update user preferences for test setup via the
+ * POST /api/zero/user-preferences route. The caller must be
+ * authenticated via mockClerk() before calling this function.
  */
-export async function updateTestUserPreferencesAll(
-  orgId: string,
-  userId: string,
-  prefs: {
-    timezone?: string;
-    pinnedAgentIds?: string[];
-    sendMode?: "enter" | "cmd-enter";
-    captureNetworkBodiesRemaining?: number;
-  },
-): Promise<{
+export async function updateTestUserPreferencesAll(prefs: {
+  timezone?: string;
+  pinnedAgentIds?: string[];
+  sendMode?: "enter" | "cmd-enter";
+  captureNetworkBodiesRemaining?: number;
+}): Promise<{
   timezone: string | null;
   pinnedAgentIds: string[];
   sendMode: string;
   captureNetworkBodiesRemaining: number;
 }> {
-  return updateUserPreferences(orgId, userId, prefs);
+  const response = await updateUserPreferencesRoute(
+    createTestRequest("http://localhost:3000/api/zero/user-preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(prefs),
+    }),
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Failed to update user preferences: status ${response.status}`,
+    );
+  }
+  return response.json();
 }
