@@ -1388,30 +1388,58 @@
       "seedBanner": "Lee nuestro blog sobre nuestra ronda semilla de $14M."
     },
     "worksForYou": {
-      "heading": "Lo que Zero realmente hace por ti",
+      "heading": "Lo que Zero puede asumir por tu equipo",
       "exploreMore": "Explorar más casos de uso"
     },
-    "teammateCard": {
-      "title": "Un compañero que lee, piensa y entrega.",
-      "description": "“Resume mi semana desde Calendario, Linear y Slack.” Zero extrae el contexto de tus herramientas, conecta los puntos y te entrega un informe terminado. Como informar a un colega, excepto que toma segundos.",
-      "tabSummarize": "Resumir mi semana laboral",
-      "tabLeads": "Encontrar y enviar correos a leads",
-      "tabTriage": "Triaje de errores de Sentry",
-      "ariaDaily": "Informe diario",
-      "ariaLeads": "Correos a leads",
-      "ariaSentry": "Informe de Sentry"
-    },
-    "slackCard": {
-      "title": "Pregunta en Slack, obtén respuestas de todas tus herramientas.",
-      "description": "@Zero en cualquier canal. Consulta tu calendario, correo, Linear, GitHub y responde con un resumen que tu equipo puede usar de verdad. Sin cambiar de pestaña, sin dashboards.",
-      "tagSlack": "Slack",
-      "tagTeamSync": "Sincronización de equipo"
-    },
-    "syncedToolsCard": {
-      "title": "Del descubrimiento al contacto, los agentes hacen el trabajo pesado.",
-      "description": "Dile a Zero a quién buscas. Sus agentes rastrean plataformas sociales, crean listas de prospectos y redactan contactos personalizados para que tu equipo se enfoque en cerrar, no en buscar.",
-      "tagMarketing": "Outreach de marketing",
-      "tagCrossPlatform": "Multiplataforma"
+    "roleShowcase": {
+      "founders": {
+        "label": "Fundadores & CEOs",
+        "tagline": "La carga que solo un fundador lleva.",
+        "bullet1Title": "Resumen diario del negocio",
+        "bullet1Desc": "Calendario, Linear, Slack y X reunidos en un digest matutino. Entregado antes del standup, sin iniciar sesión en dashboards.",
+        "bullet2Title": "Actualizaciones para inversores y junta directiva",
+        "bullet2Desc": "Email mensual redactado a partir de métricas en vivo y los lanzamientos del mes. Tú editas el tono, no los números.",
+        "bullet3Title": "Triaje de bandeja de entrada",
+        "bullet3Desc": "Zero prioriza tu correo, redacta respuestas en tu voz y destaca lo que solo tú puedes responder.",
+        "bullet4Title": "Registro de decisiones",
+        "bullet4Desc": "Cada \"decidimos X\" que se pierde en Slack se convierte en un registro buscable en Notion."
+      },
+      "sales": {
+        "label": "Ventas & Marketing",
+        "tagline": "Un SDR que investiga, escribe y envía.",
+        "bullet1Title": "Investigación de KOL y prospectos",
+        "bullet1Desc": "Zero rastrea X y la web abierta para crear un tracker en Notion con las personas adecuadas, bios, seguidores y señales de engagement.",
+        "bullet2Title": "Contacto personalizado",
+        "bullet2Desc": "Emails fríos escritos a partir del propio contenido de cada prospecto. Se lee como un humano atento, no como un envío masivo.",
+        "bullet3Title": "Seguimiento de leads",
+        "bullet3Desc": "Revisa leads de Gmail, evalúa la probabilidad de conversión y redacta seguimientos personalizados. Los vendedores solo tocan conversaciones calientes.",
+        "bullet4Title": "Pulso de marketing",
+        "bullet4Desc": "Resultados de campañas, engagement de contenido y analíticas del sitio resumidos en Slack cada lunes."
+      },
+      "engineering": {
+        "label": "Engineering",
+        "tagline": "Un compañero dev que cubre tu backlog de ingeniería.",
+        "bullet1Title": "Triaje de errores de Sentry",
+        "bullet1Desc": "Errores priorizados por impacto, stack traces expandidos, un análisis de causa raíz, no un volcado de logs.",
+        "bullet2Title": "Escáner de deuda técnica",
+        "bullet2Desc": "Escaneo semanal del repo que muestra archivos riesgosos como tickets de Linear con pasos de reproducción incluidos.",
+        "bullet3Title": "Reporte de bugs desde Slack",
+        "bullet3Desc": "Reportes de bugs en hilos de Slack se convierten en tickets de Linear con pasos de reproducción y responsables asignados.",
+        "bullet4Title": "Release notes & standups",
+        "bullet4Desc": "Actividad de Linear y PRs mergeados se convierten en notas listas para el changelog y resúmenes de standup."
+      },
+      "operations": {
+        "label": "Operaciones & Soporte",
+        "tagline": "El refuerzo de operaciones que puedes incorporar desde el día uno.",
+        "bullet1Title": "Informe de estado semanal",
+        "bullet1Desc": "Una semana de calendario, email y Linear convertida en un resumen listo para compartir, directamente en Slack.",
+        "bullet2Title": "Onboarding de empleados",
+        "bullet2Desc": "Checklist del día uno: cuentas, documentos, canales de Slack, invitaciones de calendario. Zero lo ejecuta sin intervención.",
+        "bullet3Title": "Resúmenes de reuniones",
+        "bullet3Desc": "Standups y all-hands se convierten en acciones rastreadas con responsables, seguidas hasta su cierre.",
+        "bullet4Title": "Recordatorios entre equipos",
+        "bullet4Desc": "Aprobaciones pendientes, datos faltantes y plazos de informes gestionados de forma silenciosa y programada."
+      }
     },
     "connectors": {
       "heading": "Funciona con más de 100 herramientas que ya usas",
@@ -1429,7 +1457,7 @@
     "intelligence": {
       "heading": "Se vuelve más inteligente cuanto más lo usas",
       "memoryTitle": "Recuerda tu contexto",
-      "memoryDesc": "Decisiones pasadas, contexto del proyecto, tus preferencias — Zero lo lleva todo consigo. Sin re-explicar, sin contexto perdido entre sesiones.",
+      "memoryDesc": "Zero lleva decisiones pasadas, contexto del proyecto y tus preferencias entre sesiones. Sin re-explicar, sin contexto perdido.",
       "scheduleTitle": "Inteligencia programada",
       "scheduleDesc": "Zero ejecuta tareas recurrentes autónomas — escaneos diarios de errores, informes de deuda técnica, briefings matutinos — sin necesidad de solicitarlo.",
       "subAgentsTitle": "Sub-agentes especializados",
@@ -1438,6 +1466,30 @@
       "toolOrchDesc": "Zero selecciona y encadena las herramientas adecuadas de más de 100 integraciones disponibles. Tú describes el objetivo; Zero determina los pasos.",
       "identityTitle": "Sabe quién eres",
       "identityDesc": "\"Mis PRs\", \"asignarme a mí.\" Zero resuelve tu identidad en GitHub, Slack y Linear automáticamente. Sin configuración necesaria."
+    },
+    "comparison": {
+      "label": "Por qué Zero",
+      "heading": "Diferente a cualquier alternativa que hayas probado.",
+      "manus": {
+        "label": "vs. Manus",
+        "heading": "Un compañero de trabajo con IA, no una herramienta individual.",
+        "body": "Manus trabaja solo en su propia nube. Zero es un compañero al que todo tu equipo @menciona en Slack y le asigna roles reales."
+      },
+      "openclaw": {
+        "label": "vs. OpenClaw",
+        "heading": "Alojado y seguro, sin montaje propio.",
+        "body": "OpenClaw es un framework que tú despliegas y gestionas. Zero está alojado, con permisos más seguros, listo para quienes no son desarrolladores."
+      },
+      "zapier": {
+        "label": "vs. Zapier",
+        "heading": "Un compañero, no un disparador.",
+        "body": "Zapier ejecuta reglas rígidas de si-esto-entonces-aquello. Zero lee el contexto, elige las herramientas y toma las decisiones que Zapier no puede."
+      },
+      "claudeCode": {
+        "label": "vs. Claude Code",
+        "heading": "Para equipos, no para terminales.",
+        "body": "Claude Code vive en la terminal para un solo ingeniero. Zero vive en Slack para todo el equipo, en todos los roles."
+      }
     },
     "cta": {
       "title": "Tú decides qué importa. Zero se encarga del resto.",

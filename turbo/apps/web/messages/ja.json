@@ -1388,30 +1388,58 @@
       "seedBanner": "$14Mシードラウンドの資金調達ブログをご覧ください。"
     },
     "worksForYou": {
-      "heading": "Zeroがあなたのために実際にすること",
+      "heading": "Zeroがチームのために担えること",
       "exploreMore": "さらにユースケースを探す"
     },
-    "teammateCard": {
-      "title": "読んで、考えて、成果を出すチームメイト。",
-      "description": "“カレンダー、Linear、Slackから今週のまとめを作って。” Zeroはツールからコンテキストを引き出し、点と点をつなぎ、完成したレポートを渡します。同僚にブリーフィングするように、ただし数秒で。",
-      "tabSummarize": "仕事の週間サマリー",
-      "tabLeads": "リードを見つけてメール送信",
-      "tabTriage": "Sentryエラーのトリアージ",
-      "ariaDaily": "日次レポート",
-      "ariaLeads": "メールリード",
-      "ariaSentry": "Sentryレポート"
-    },
-    "slackCard": {
-      "title": "Slackで質問し、すべてのツールから回答を取得。",
-      "description": "任意のチャンネルで@Zero。カレンダー、メール、Linear、GitHubから情報を取得し、チームが実際に使えるサマリーで返信します。タブ切り替え不要、ダッシュボード不要。",
-      "tagSlack": "Slack",
-      "tagTeamSync": "チーム同期"
-    },
-    "syncedToolsCard": {
-      "title": "発見からアウトリーチまで、エージェントが下準備をします。",
-      "description": "Zeroに探している人を伝えてください。エージェントがソーシャルプラットフォームを巡回し、見込み客リストを作成し、パーソナライズされたアウトリーチを下書きします。チームは検索ではなく、クロージングに集中できます。",
-      "tagMarketing": "マーケティングアウトリーチ",
-      "tagCrossPlatform": "クロスプラットフォーム"
+    "roleShowcase": {
+      "founders": {
+        "label": "創業者 & CEO",
+        "tagline": "創業者だけが抱えるオーバーフロー。",
+        "bullet1Title": "デイリービジネスブリーフ",
+        "bullet1Desc": "カレンダー、Linear、Slack、Xを1つの朝のダイジェストに集約。スタンドアップ前に届き、ダッシュボードへのログイン不要です。",
+        "bullet2Title": "投資家・取締役会向けアップデート",
+        "bullet2Desc": "ライブ指標と今月のリリースから月次メールを作成。あなたはトーンを編集するだけで、数字は触りません。",
+        "bullet3Title": "受信トレイのトリアージ",
+        "bullet3Desc": "Zeroがメールを優先度順に整理し、あなたの口調で返信を下書きし、あなたにしか答えられないものだけを表示します。",
+        "bullet4Title": "意思決定ログ",
+        "bullet4Desc": "Slackに埋もれた「Xに決定した」がすべて検索可能なNotionレコードになります。"
+      },
+      "sales": {
+        "label": "セールス & マーケティング",
+        "tagline": "リサーチし、書き、送信するSDR。",
+        "bullet1Title": "KOL・見込み客リサーチ",
+        "bullet1Desc": "ZeroがXとオープンウェブを巡回し、適切な人物のNotionトラッカーを作成。略歴、フォロワー数、エンゲージメントシグナル付き。",
+        "bullet2Title": "パーソナライズされたアウトリーチ",
+        "bullet2Desc": "各見込み客のコンテンツに基づいたコールドメール。一括送信ではなく、心のこもった人間が書いたように読めます。",
+        "bullet3Title": "リードフォローアップ",
+        "bullet3Desc": "Gmailのリードを確認し、コンバージョン確度を評価し、カスタマイズされたフォローアップを作成。営業担当は有望な会話だけに集中します。",
+        "bullet4Title": "マーケティングパルス",
+        "bullet4Desc": "キャンペーン結果、コンテンツエンゲージメント、サイト分析を毎週月曜にSlackへまとめて配信。"
+      },
+      "engineering": {
+        "label": "Engineering",
+        "tagline": "エンジニアリングバックログをカバーするDevチームメイト。",
+        "bullet1Title": "Sentryエラートリアージ",
+        "bullet1Desc": "影響度順にエラーを優先付け、スタックトレースを展開し、ログダンプではなく根本原因を分析します。",
+        "bullet2Title": "技術的負債スキャナー",
+        "bullet2Desc": "週次のリポジトリスキャンで、リスクのあるファイルを再現手順付きのLinearチケットとして表示します。",
+        "bullet3Title": "Slackからのバグ報告",
+        "bullet3Desc": "Slackスレッドのバグレポートが、再現手順と担当者付きのスコープされたLinearチケットになります。",
+        "bullet4Title": "リリースノート & スタンドアップ",
+        "bullet4Desc": "Linearのアクティビティとマージ済みPRが、チェンジログ用のノートとスタンドアップダイジェストになります。"
+      },
+      "operations": {
+        "label": "オペレーション & サポート",
+        "tagline": "初日から迎え入れられるOps人材。",
+        "bullet1Title": "週次ステータスレポート",
+        "bullet1Desc": "カレンダー、メール、Linearの1週間分を共有可能なサマリーにまとめ、Slackで直接配信します。",
+        "bullet2Title": "従業員オンボーディング",
+        "bullet2Desc": "初日チェックリスト: アカウント、ドキュメント、Slackチャンネル、カレンダー招待。Zeroが自動で実行します。",
+        "bullet3Title": "ミーティングダイジェスト",
+        "bullet3Desc": "スタンドアップやオールハンズが、担当者付きのアクションアイテムとなり、完了まで追跡されます。",
+        "bullet4Title": "チーム横断リマインダー",
+        "bullet4Desc": "保留中の承認、不足データ、レポート期限を、スケジュール通りに静かにフォローします。"
+      }
     },
     "connectors": {
       "heading": "既に使っている100以上のツールと連携",
@@ -1429,7 +1457,7 @@
     "intelligence": {
       "heading": "使えば使うほど賢くなる",
       "memoryTitle": "コンテキストを記憶",
-      "memoryDesc": "過去の決定、プロジェクトコンテキスト、あなたの好み — Zeroはすべてを引き継ぎます。再説明不要、セッション間でコンテキストが失われません。",
+      "memoryDesc": "Zeroは過去の決定、プロジェクトコンテキスト、あなたの好みをセッションをまたいで引き継ぎます。再説明不要、コンテキストが失われることもありません。",
       "scheduleTitle": "スケジュールされたインテリジェンス",
       "scheduleDesc": "Zeroは自律的な定期タスクを実行します — 毎日のエラースキャン、技術的負債レポート、朝のブリーフィング — プロンプト不要で。",
       "subAgentsTitle": "特化型サブエージェント",
@@ -1438,6 +1466,30 @@
       "toolOrchDesc": "Zeroは100以上の利用可能な連携から適切なツールを選択し連鎖させます。あなたが目標を述べれば、Zeroが手順を考えます。",
       "identityTitle": "あなたが誰かを知っている",
       "identityDesc": "\"自分のPR\"、\"自分にアサイン\"。ZeroはGitHub、Slack、Linearでのあなたのアイデンティティを自動的に解決します。セットアップ不要。"
+    },
+    "comparison": {
+      "label": "Zeroを選ぶ理由",
+      "heading": "これまで試したどの代替とも違います。",
+      "manus": {
+        "label": "vs. Manus",
+        "heading": "ソロツールではなく、AIの同僚。",
+        "body": "Manusは独自のクラウドで単独動作します。Zeroはチーム全員がSlackで@メンションし、実際の役割を任せられるチームメイトです。"
+      },
+      "openclaw": {
+        "label": "vs. OpenClaw",
+        "heading": "ホスト型で安全。自前構築は不要。",
+        "body": "OpenClawは自分でデプロイし運用するフレームワークです。Zeroはホスト型で、安全な権限管理を備え、開発者でなくてもすぐ使えます。"
+      },
+      "zapier": {
+        "label": "vs. Zapier",
+        "heading": "トリガーではなく、チームメイト。",
+        "body": "Zapierは固定的なif-this-then-thatルールを実行します。Zeroはコンテキストを読み、ツールを選び、Zapierにはできない判断を下します。"
+      },
+      "claudeCode": {
+        "label": "vs. Claude Code",
+        "heading": "ターミナルではなく、チームのために。",
+        "body": "Claude Codeはターミナル上で1人のエンジニア向けに動きます。ZeroはSlack上でチーム全体のために、あらゆる役割をまたいで動きます。"
+      }
     },
     "cta": {
       "title": "何が大事かはあなたが決める。残りはZeroにお任せ。",

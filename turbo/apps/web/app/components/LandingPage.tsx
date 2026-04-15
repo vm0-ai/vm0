@@ -90,7 +90,7 @@ function CtaButton({
   ctaHref: string;
   className?: string;
 }) {
-  const baseClassName = `inline-flex items-center justify-center rounded-xl px-14 py-3.5 text-base font-medium transition-all hover:bg-[#ff6a1f] ${className ?? ""}`;
+  const baseClassName = `inline-flex items-center justify-center whitespace-nowrap rounded-xl px-8 py-3.5 text-base font-medium transition-all hover:bg-[#ff6a1f] sm:px-14 ${className ?? ""}`;
   const style = {
     background: "#ed4e01",
     boxShadow: "inset 0 -2px 0 #a33703",
@@ -344,351 +344,172 @@ function useInView(threshold = 0.3) {
   return ref;
 }
 
-function SlackMockup() {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          el.classList.add("in-view");
-        } else {
-          el.classList.remove("in-view");
-        }
-      },
-      { threshold: 0.3 },
-    );
-    observer.observe(el);
-    return () => {
-      return observer.disconnect();
-    };
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      className="flex flex-1 items-center justify-center overflow-hidden bg-[#9a948d] md:h-[400px]"
-    >
-      <Image
-        alt="Slack thread showing Zero AI assistant"
-        src="/assets/mockup/atslack.png"
-        width={800}
-        height={400}
-        className="slack-thread-pop h-full w-full object-contain"
-        draggable={false}
-      />
-    </div>
-  );
+interface ComparisonItem {
+  key: string;
+  iconBg: string;
+  iconSrc?: string;
+  initial?: string;
 }
 
-function SlackCard({ t }: { t: (key: string) => string }) {
-  return (
-    <div className="overflow-hidden rounded-[20px] bg-white">
-      <div className="flex flex-col md:flex-row">
-        {/* Left text content */}
-        <div className="flex w-full flex-col justify-between gap-4 p-10 md:w-[421px] md:shrink-0">
-          <div className="flex flex-col gap-4">
-            <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-              {t("slackCard.title")}
-            </h3>
-            <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-              {t("slackCard.description")}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              {t("slackCard.tagSlack")}
-            </span>
-            <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              {t("slackCard.tagTeamSync")}
-            </span>
-          </div>
-        </div>
-        {/* Right Slack mockup */}
-        <SlackMockup />
-      </div>
-    </div>
-  );
-}
-
-function SyncedToolsIllustration() {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          el.classList.add("in-view");
-        } else {
-          el.classList.remove("in-view");
-        }
-      },
-      { threshold: 0.3 },
-    );
-    observer.observe(el);
-    return () => {
-      return observer.disconnect();
-    };
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      className="relative flex h-[400px] flex-1 items-center justify-center overflow-hidden rounded-bl-[10px] rounded-br-[10px] bg-[#39a2a3] py-3"
-    >
-      <div className="relative h-[355px] w-[500px]">
-        {/* Slack icon — top-left */}
-        <div className="absolute left-0 top-0 z-10 flex size-[26px] items-center justify-center rounded-[6px] border border-black/[0.08] bg-white p-1 shadow-[0px_7px_7px_0px_rgba(0,0,0,0.08)]">
-          <Image
-            alt="Slack"
-            src="/assets/tool-sync/slack-icon.png"
-            width={19}
-            height={19}
-            className="size-[19px]"
-          />
-        </div>
-
-        {/* Zero chat screenshot — left */}
-        <Image
-          alt="Zero chat creating a Notion database of KOLs"
-          src="/assets/tool-sync/zero-chat.png"
-          width={348}
-          height={400}
-          className="sync-chat absolute left-[8px] top-[9px] z-[1] w-[348px] rounded-[9px]"
-          draggable={false}
-        />
-
-        {/* Notion/download icon — above Notion screenshot */}
-        <div className="absolute left-[204px] top-[53px] z-10 flex size-[26px] items-center justify-center rounded-[6px] border border-black/[0.08] bg-white p-1 shadow-[0px_7px_7px_0px_rgba(0,0,0,0.08)]">
-          <Image
-            alt="Notion"
-            src="/assets/tool-sync/download-icon.png"
-            width={19}
-            height={19}
-            className="size-[19px]"
-          />
-        </div>
-
-        {/* Arrow connecting the two screenshots */}
-        <Image
-          alt=""
-          src="/assets/tool-sync/arrow.png"
-          width={75}
-          height={75}
-          className="sync-arrow absolute left-[155px] top-[147px] z-[5] w-[75px] -scale-y-100"
-          draggable={false}
-        />
-
-        {/* Notion database screenshot — right, overlapping */}
-        <Image
-          alt="Notion database showing KOL Tracker for AI & Dev Tools"
-          src="/assets/tool-sync/notion-db.png"
-          width={385}
-          height={300}
-          className="sync-notion absolute left-[215px] top-[63px] z-[2] w-[385px] rounded-[7px] shadow-[0px_0px_7px_7px_rgba(0,0,0,0.08)]"
-          draggable={false}
-        />
-      </div>
-    </div>
-  );
-}
-
-function SyncedToolsMockup() {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          el.classList.add("in-view");
-        } else {
-          el.classList.remove("in-view");
-        }
-      },
-      { threshold: 0.3 },
-    );
-    observer.observe(el);
-    return () => {
-      return observer.disconnect();
-    };
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      className="flex flex-1 items-center justify-center overflow-hidden bg-[#39A2A3] p-2 sm:p-8"
-    >
-      <Image
-        alt="Synced across tools"
-        src="/assets/mockup/across-tools.png"
-        width={800}
-        height={400}
-        className="synced-tools-pop h-full w-full object-cover"
-        draggable={false}
-      />
-    </div>
-  );
-}
-
-function SyncedToolsCard({ t }: { t: (key: string) => string }) {
-  return (
-    <div className="overflow-hidden rounded-[20px] bg-white">
-      <div className="flex flex-col md:flex-row">
-        {/* Left text content */}
-        <div className="flex w-full flex-col justify-between gap-4 p-10 md:w-[421px] md:shrink-0">
-          <div className="flex flex-col gap-4">
-            <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-              {t("syncedToolsCard.title")}
-            </h3>
-            <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-              {t("syncedToolsCard.description")}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              {t("syncedToolsCard.tagMarketing")}
-            </span>
-            <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              {t("syncedToolsCard.tagCrossPlatform")}
-            </span>
-          </div>
-        </div>
-        {/* Right illustration */}
-        <SyncedToolsMockup />
-      </div>
-    </div>
-  );
-}
-
-/* ── App UI carousel for "Teammate" card ── */
-
-const WEB_UI_CASES_SRCS = [
-  "/assets/mockup/web-ui-1.png",
-  "/assets/mockup/web-ui-2.png",
-  "/assets/mockup/web-ui-3.png",
+const COMPARISON_ITEMS: ComparisonItem[] = [
+  { key: "manus", iconSrc: "/assets/connectors/manus.svg", iconBg: "#F3F4F6" },
+  {
+    key: "openclaw",
+    iconSrc: "/assets/connectors/openclaw.svg",
+    iconBg: "#F3F4F6",
+  },
+  {
+    key: "zapier",
+    iconSrc: "/assets/connectors/zapier.svg",
+    iconBg: "#F3F4F6",
+  },
+  {
+    key: "claudeCode",
+    iconSrc: "/assets/connectors/anthropic.svg",
+    iconBg: "#F3F4F6",
+  },
 ];
 
-const WEB_UI_LABEL_KEYS = [
-  "teammateCard.tabSummarize",
-  "teammateCard.tabLeads",
-  "teammateCard.tabTriage",
-] as const;
-
-const WEB_UI_ARIA_KEYS = [
-  "teammateCard.ariaDaily",
-  "teammateCard.ariaLeads",
-  "teammateCard.ariaSentry",
-] as const;
-
-function AppMockupCarousel({ t }: { t: (key: string) => string }) {
-  const [active, setActive] = useState(0);
-  const ref = useInView();
-
+function CompetitorIcon({ item }: { item: ComparisonItem }) {
   return (
-    <div className="flex flex-col">
-      {/* Tabs */}
-      <div className="flex items-center gap-1 px-2 sm:px-6">
-        {WEB_UI_LABEL_KEYS.map((key, i) => {
-          const isActive = i === active;
-          const label = t(key);
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => {
-                return setActive(i);
-              }}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
-                isActive
-                  ? "bg-white/20 text-white"
-                  : "text-white/60 hover:text-white/90"
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Screenshot */}
-      <div
-        ref={ref}
-        className="relative mt-2 w-full overflow-hidden rounded-t-xl sm:mt-3"
-      >
-        {WEB_UI_CASES_SRCS.map((src, i) => {
-          return (
-            <Image
-              key={src}
-              alt={t(WEB_UI_LABEL_KEYS[i]!)}
-              src={src}
-              width={855}
-              height={600}
-              className={`webui-pop w-full select-none ${i === active ? "relative" : "absolute inset-0 opacity-0"}`}
-              draggable={false}
-            />
-          );
-        })}
-        {/* Clickable hotspots over sidebar chat items */}
-        <div className="absolute inset-0 z-20">
-          <button
-            type="button"
-            aria-label={t("teammateCard.ariaDaily")}
-            onClick={() => {
-              return setActive(0);
-            }}
-            className="absolute cursor-pointer"
-            style={{ left: "1%", top: "49%", width: "19%", height: "5%" }}
-          />
-          <button
-            type="button"
-            aria-label={t("teammateCard.ariaLeads")}
-            onClick={() => {
-              return setActive(1);
-            }}
-            className="absolute cursor-pointer"
-            style={{ left: "1%", top: "54%", width: "19%", height: "5%" }}
-          />
-          <button
-            type="button"
-            aria-label={t("teammateCard.ariaSentry")}
-            onClick={() => {
-              return setActive(2);
-            }}
-            className="absolute cursor-pointer"
-            style={{ left: "1%", top: "59%", width: "19%", height: "5%" }}
-          />
-        </div>
-        {/* Hand-drawn arrow pointer */}
+    <div
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
+      style={{ backgroundColor: item.iconBg }}
+    >
+      {item.iconSrc ? (
         <Image
-          src="/assets/mockup/arrow-pointer.svg"
+          src={item.iconSrc}
           alt=""
-          width={80}
-          height={80}
-          className="pointer-events-none absolute z-20 w-[10%]"
-          style={{ left: "18%", top: "40%", transform: "none" }}
-          draggable={false}
+          width={24}
+          height={24}
+          className="h-6 w-6"
         />
-      </div>
+      ) : (
+        <span className="text-base font-semibold text-[hsl(var(--foreground))]">
+          {item.initial}
+        </span>
+      )}
     </div>
   );
 }
 
-function TeammateCard({ t }: { t: (key: string) => string }) {
+function RoleCard({
+  t,
+  roleKey,
+  image,
+  imageAlt,
+  imageBg,
+  imageLayout = "contain",
+}: {
+  t: (key: string) => string;
+  roleKey: string;
+  image: string;
+  imageAlt: string;
+  imageBg: string;
+  imageLayout?: "contain" | "bottom";
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
   return (
-    <div className="overflow-hidden rounded-[20px] bg-white">
-      <div className="flex flex-col gap-4 p-8 sm:p-10">
-        <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-          {t("teammateCard.title")}
-        </h3>
-        <p className="text-sm leading-6 text-[hsl(var(--muted-foreground))] sm:text-base">
-          {t("teammateCard.description")}
-        </p>
-      </div>
-      <div className="bg-[#d58341] px-2 pb-0 pt-3 sm:px-6 sm:pt-6">
-        <AppMockupCarousel t={t} />
+    <div className="overflow-hidden rounded-[20px] bg-white md:h-[440px]">
+      <div className="flex h-full flex-col md:flex-row">
+        {/* Left: Role header + internal accordion */}
+        <div className="flex w-full flex-col gap-4 p-7 sm:p-8 md:w-[480px] md:shrink-0">
+          <div className="flex flex-col gap-2.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#ed4e01]">
+              {t(`roleShowcase.${roleKey}.label`)}
+            </span>
+            <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
+              {t(`roleShowcase.${roleKey}.tagline`)}
+            </h3>
+          </div>
+
+          {/* Use-case accordion — 4 items, single-select, first open by default */}
+          <div className="flex flex-col">
+            {[0, 1, 2, 3].map((idx) => {
+              const i = idx + 1;
+              const isOpen = idx === activeIndex;
+              return (
+                <div
+                  key={i}
+                  className="border-t border-[hsl(var(--foreground)/0.06)] last:border-b"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      return setActiveIndex(idx);
+                    }}
+                    aria-expanded={isOpen}
+                    className="group flex w-full items-center gap-3 py-3 text-left"
+                  >
+                    <span className="flex-1 text-[15px] font-medium text-[hsl(var(--foreground))] transition-colors group-hover:text-[#ed4e01]">
+                      {t(`roleShowcase.${roleKey}.bullet${i}Title`)}
+                    </span>
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 14 14"
+                      fill="none"
+                      aria-hidden="true"
+                      className={`shrink-0 text-[hsl(var(--foreground)/0.35)] transition-[transform,color] duration-300 group-hover:text-[#ed4e01] ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                    >
+                      <path
+                        d="M3 5l4 4 4-4"
+                        stroke="currentColor"
+                        strokeWidth="1.25"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <div
+                    className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+                      isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <p className="pb-3 text-sm leading-5 text-[hsl(var(--muted-foreground))]">
+                        {t(`roleShowcase.${roleKey}.bullet${i}Desc`)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right: Static image for this role */}
+        {imageLayout === "bottom" ? (
+          <div
+            className="flex flex-1 items-end justify-center overflow-hidden px-6 pt-8 sm:px-10 sm:pt-10 md:h-full"
+            style={{ backgroundColor: imageBg }}
+          >
+            <Image
+              alt={imageAlt}
+              src={image}
+              width={800}
+              height={500}
+              className="h-auto max-h-full w-auto max-w-full"
+              draggable={false}
+            />
+          </div>
+        ) : (
+          <div
+            className="flex flex-1 items-center justify-center overflow-hidden p-4 sm:p-6 md:h-full"
+            style={{ backgroundColor: imageBg }}
+          >
+            <Image
+              alt={imageAlt}
+              src={image}
+              width={800}
+              height={500}
+              className="max-h-full max-w-full object-contain"
+              draggable={false}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1411,7 +1232,7 @@ export default function LandingPage({
             </div>
 
             {/* CTA Buttons — hero large */}
-            <div className="relative flex items-center gap-4">
+            <div className="relative flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center sm:gap-4">
               <CtaButton
                 isSignedIn={isSignedIn ?? false}
                 ctaText={ctaText}
@@ -1419,7 +1240,7 @@ export default function LandingPage({
               />
               <NextLink
                 href="/use-cases"
-                className="inline-flex items-center justify-center rounded-xl px-8 py-3.5 text-base font-medium text-[hsl(var(--foreground))] transition-all border border-[hsl(var(--gray-300))] hover:bg-[hsl(var(--gray-100))]"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-[hsl(var(--gray-300))] px-6 py-3.5 text-base font-medium text-[hsl(var(--foreground))] transition-all hover:bg-[hsl(var(--gray-100))] sm:px-8"
               >
                 {t("hero.seeUseCases")}
               </NextLink>
@@ -1436,13 +1257,41 @@ export default function LandingPage({
 
             <div className="mt-12 space-y-8 sm:mt-16">
               <div className="reveal">
-                <TeammateCard t={t} />
+                <RoleCard
+                  t={t}
+                  roleKey="founders"
+                  image="/assets/mockup/web-ui-1.png"
+                  imageAlt="Daily business brief generated by Zero"
+                  imageBg="#d58341"
+                />
               </div>
               <div className="reveal">
-                <SlackCard t={t} />
+                <RoleCard
+                  t={t}
+                  roleKey="sales"
+                  image="/assets/mockup/across-tools.png"
+                  imageAlt="KOL research synced from X into a Notion tracker"
+                  imageBg="#39A2A3"
+                />
               </div>
               <div className="reveal">
-                <SyncedToolsCard t={t} />
+                <RoleCard
+                  t={t}
+                  roleKey="engineering"
+                  image="/assets/mockup/web-ui-3.png"
+                  imageAlt="Sentry error triage report"
+                  imageBg="#546887"
+                />
+              </div>
+              <div className="reveal">
+                <RoleCard
+                  t={t}
+                  roleKey="operations"
+                  image="/assets/mockup/atslack.png"
+                  imageAlt="Weekly status summary written inside Slack"
+                  imageBg="#9a948d"
+                  imageLayout="bottom"
+                />
               </div>
 
               {/* More use cases link */}
@@ -1657,15 +1506,8 @@ export default function LandingPage({
             {/* Two large cards */}
             <div className="reveal grid w-full gap-6 md:grid-cols-2">
               {/* Persistent memory card */}
-              <div className="flex flex-col overflow-hidden rounded-[20px] bg-white">
-                <div className="flex flex-1 flex-col gap-4 px-8 pb-4 pt-8 sm:px-10 sm:pt-10">
-                  <Image
-                    alt=""
-                    src="/assets/agent-intelligence/memory-icon.svg"
-                    width={24}
-                    height={22}
-                    className="h-[22px] w-[24px] landing-icon-invert"
-                  />
+              <div className="flex h-full flex-col overflow-hidden rounded-[20px] bg-white">
+                <div className="flex flex-col gap-4 px-8 pb-6 pt-8 sm:px-10 sm:pt-10">
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
                     {t("intelligence.memoryTitle")}
                   </h3>
@@ -1677,15 +1519,8 @@ export default function LandingPage({
               </div>
 
               {/* Scheduled intelligence card */}
-              <div className="flex flex-col overflow-hidden rounded-[20px] bg-white">
-                <div className="flex flex-1 flex-col gap-4 px-8 pb-4 pt-8 sm:px-10 sm:pt-10">
-                  <Image
-                    alt=""
-                    src="/assets/agent-intelligence/schedule-icon.svg"
-                    width={24}
-                    height={24}
-                    className="size-[24px] landing-icon-invert"
-                  />
+              <div className="flex h-full flex-col overflow-hidden rounded-[20px] bg-white">
+                <div className="flex flex-col gap-4 px-8 pb-6 pt-8 sm:px-10 sm:pt-10">
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
                     {t("intelligence.scheduleTitle")}
                   </h3>
@@ -1722,6 +1557,41 @@ export default function LandingPage({
                     </h3>
                     <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
                       {t(item.descKey)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* ===== COMPARISON SECTION ===== */}
+        <section className="px-5 py-10 sm:px-6 sm:py-12 md:py-16">
+          <div className="mx-auto max-w-[1152px]">
+            <div className="reveal flex flex-col items-center">
+              <h2 className="landing-heading whitespace-nowrap text-center text-[22px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[28px] md:text-[36px]">
+                {t("comparison.heading")}
+              </h2>
+            </div>
+
+            <div className="mt-12 grid gap-6 sm:mt-16 md:grid-cols-2">
+              {COMPARISON_ITEMS.map((item) => {
+                return (
+                  <div
+                    key={item.key}
+                    className="reveal flex flex-col gap-3 rounded-[20px] bg-white p-8 sm:p-10"
+                  >
+                    <div className="flex items-center gap-3">
+                      <CompetitorIcon item={item} />
+                      <span className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#ed4e01]">
+                        {t(`comparison.${item.key}.label`)}
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-medium leading-7 text-[hsl(var(--foreground))] sm:text-2xl sm:leading-8">
+                      {t(`comparison.${item.key}.heading`)}
+                    </h3>
+                    <p className="text-[15px] leading-6 text-[hsl(var(--muted-foreground))]">
+                      {t(`comparison.${item.key}.body`)}
                     </p>
                   </div>
                 );
