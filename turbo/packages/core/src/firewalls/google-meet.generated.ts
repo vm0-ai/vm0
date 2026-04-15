@@ -33,7 +33,7 @@ export const googleMeetFirewall: FirewallConfig = {
           ],
         },
         {
-          name: "meetings.conferencerecords.readonly",
+          name: "meetings.space.readonly",
           description:
             "View Google Meet conference records, participants, recordings, and transcripts",
           rules: [
