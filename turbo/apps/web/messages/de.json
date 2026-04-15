@@ -98,7 +98,7 @@
     "free": {
       "description": "Starten Sie kostenlos mit Ihrem KI-Teamkollegen.",
       "features": {
-        "starterCredits": "10.000 Starter-Credits",
+        "starterCredits": "100.000 Starter-Credits",
         "concurrentRun": "1 gleichzeitige Ausführung",
         "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
         "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
@@ -179,7 +179,7 @@
       "prioritySupportDesc": "Dedizierter Support mit schnelleren Reaktionszeiten"
     },
     "tableValues": {
-      "starter": "10.000 Starter",
+      "starter": "100.000 Starter",
       "20k": "20.000",
       "120k": "120.000",
       "unlimited": "Unbegrenzt",

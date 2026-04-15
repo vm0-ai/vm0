@@ -98,7 +98,7 @@
     "free": {
       "description": "Get started with your AI teammate for free.",
       "features": {
-        "starterCredits": "10,000 starter credits",
+        "starterCredits": "100,000 starter credits",
         "concurrentRun": "1 concurrent run",
         "unlimitedAgents": "Unlimited total agents",
         "bringOwnLLM": "Bring your own LLM keys",
@@ -179,7 +179,7 @@
       "prioritySupportDesc": "Dedicated support with faster response times"
     },
     "tableValues": {
-      "starter": "10,000 starter",
+      "starter": "100,000 starter",
       "20k": "20,000",
       "120k": "120,000",
       "unlimited": "Unlimited",

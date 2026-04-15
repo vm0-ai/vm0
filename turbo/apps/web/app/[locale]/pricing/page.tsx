@@ -40,12 +40,12 @@ export async function generateMetadata({
   return {
     title: "Pricing",
     description:
-      "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
+      "Start free with VM0. Pay only for what you use — 100,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
     alternates: buildLocaleAlternates("/pricing", locale as Locale),
     openGraph: {
       title: "VM0 Pricing — Pay for What You Use",
       description:
-        "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
+        "Start free with VM0. Pay only for what you use — 100,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
       url,
       type: "website",
       images: [
@@ -61,7 +61,7 @@ export async function generateMetadata({
       card: "summary_large_image",
       title: "VM0 Pricing — Pay for What You Use",
       description:
-        "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required.",
+        "Start free with VM0. Pay only for what you use — 100,000 starter credits, no credit card required.",
       images: ["/og-image.png"],
       creator: "@vm0_ai",
       site: "@vm0_ai",
@@ -121,12 +121,12 @@ const pricingJsonLd = {
       price: "0",
       priceCurrency: "USD",
       description:
-        "10,000 starter credits, 1 agent at a time, community support",
+        "100,000 starter credits, 1 agent at a time, community support",
     },
     {
       "@type": "Offer",
       name: "Pro",
-      price: "40",
+      price: "20",
       priceCurrency: "USD",
       billingIncrement: "month",
       description:

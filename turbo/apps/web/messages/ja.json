@@ -98,7 +98,7 @@
     "free": {
       "description": "AIチームメイトと無料で始めましょう。",
       "features": {
-        "starterCredits": "10,000スタータークレジット",
+        "starterCredits": "100,000スタータークレジット",
         "concurrentRun": "1同時実行",
         "unlimitedAgents": "エージェント数無制限",
         "bringOwnLLM": "自分のLLMキーを使用",
@@ -179,7 +179,7 @@
       "prioritySupportDesc": "より速い応答時間の専用サポート"
     },
     "tableValues": {
-      "starter": "10,000スターター",
+      "starter": "100,000スターター",
       "20k": "20,000",
       "120k": "120,000",
       "unlimited": "無制限",
