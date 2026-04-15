@@ -539,6 +539,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "additional_volumes": {
+          "name": "additional_volumes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sandbox_id": {
           "name": "sandbox_id",
           "type": "varchar(255)",

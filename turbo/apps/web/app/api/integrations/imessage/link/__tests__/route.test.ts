@@ -10,17 +10,15 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { ensureOrgRow } from "../../../../../../src/__tests__/api-test-helpers";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
+import { env } from "../../../../../../src/env";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 
-const TEST_SIGNING_KEY =
-  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
 /**
- * Sign iMessage connect params with the test signing key.
+ * Sign iMessage connect params using the test signing key from env.
  * Mirrors signConnectParams in imessage-connect-token.ts.
  */
 function signConnectParams(
@@ -29,7 +27,9 @@ function signConnectParams(
   timestamp: number,
 ): string {
   const data = `imessage:${imessageHandle}:${orgId}:${timestamp}`;
-  return createHmac("sha256", TEST_SIGNING_KEY).update(data).digest("hex");
+  return createHmac("sha256", env().SECRETS_ENCRYPTION_KEY)
+    .update(data)
+    .digest("hex");
 }
 
 /**
