@@ -10,23 +10,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../../src/env";
-
-// Mock Ably (external dependency) to capture published signals
-const mockPublish = vi.fn().mockResolvedValue(undefined);
-vi.mock("ably", () => {
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: vi.fn() },
-          channels: {
-            get: vi.fn().mockReturnValue({ publish: mockPublish }),
-          },
-        };
-      }),
-    },
-  };
-});
+import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
 
 vi.mock("@vm0/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@vm0/core")>();
@@ -232,7 +216,7 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
   let userId: string;
 
   beforeEach(async () => {
-    mockPublish.mockClear();
+    mockAblyPublish.mockClear();
     context.setupMocks();
     const user = await context.setupUser();
     userId = user.userId;
@@ -464,6 +448,6 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
     // Flush the after() callback to trigger signal publishing
     await context.mocks.flushAfter();
 
-    expect(mockPublish).toHaveBeenCalledWith(`voice:${session.id}`, null);
+    expect(mockAblyPublish).toHaveBeenCalledWith(`voice:${session.id}`, null);
   });
 });

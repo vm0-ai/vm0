@@ -1211,18 +1211,17 @@ export const startVoiceChat$ = command(
 
     // Ensure preparation cache is populated before session creation.
     // If preparation is already cached ("ready"), this returns instantly.
-    // If preparation fails, we fall through to session creation which
+    // If preparation fails, fall through to session creation which
     // handles the unprepared case via inline slow-brain.
-    // eslint-disable-next-line no-restricted-syntax -- accept() throws on non-200; must catch to fall through gracefully
-    try {
-      await set(awaitChatPreparation$, agentId, signal);
-    } catch (error) {
-      throwIfAbort(error);
-      L.warn(
-        "Chat preparation failed, falling back to unprepared session",
-        error,
-      );
-    }
+    await set(awaitChatPreparation$, agentId, signal).catch(
+      (error: unknown) => {
+        throwIfAbort(error);
+        L.warn(
+          "Chat preparation failed, falling back to unprepared session",
+          error,
+        );
+      },
+    );
     signal.throwIfAborted();
 
     const sessionRes = await fetchFn("/api/zero/voice-chat", {
