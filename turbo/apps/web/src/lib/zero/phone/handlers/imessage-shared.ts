@@ -6,18 +6,14 @@ import { orgMetadata } from "../../../../db/schema/org-metadata";
 /**
  * Result of attempting to link an iMessage handle to an org/user.
  */
-type LinkIMessageHandleResult =
-  | { ok: true }
-  | { ok: false; conflict: true }
-  | { ok: false; conflict: false };
+type LinkIMessageHandleResult = { ok: true } | { ok: false; conflict: true };
 
 /**
  * Upsert an iMessage handle binding to a user/org.
  *
  * Returns:
- * - { ok: true }                          — handle was linked (new or updated)
- * - { ok: false, conflict: true }         — handle is already bound to a different org
- * - { ok: false, conflict: false }        — unexpected error (rethrows)
+ * - { ok: true }                      — handle was linked (new or updated)
+ * - { ok: false, conflict: true }     — handle is already bound to a different org
  *
  * This shared helper is used by both the API route (POST /api/integrations/imessage/link)
  * and the server action (linkIMessageAction) to keep the logic in one place.

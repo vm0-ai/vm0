@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { HttpResponse } from "msw";
 import { POST } from "../route";
 import {
   testContext,
@@ -12,14 +13,13 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { server } from "../../../../../../src/mocks/server";
+import { http } from "../../../../../../src/__tests__/msw";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
-
-// Mock fetch so sendIMessage does not hit the real AgentPhone API
-vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
 
 interface IMessageCallbackPayload {
   messageId: string;
@@ -32,6 +32,14 @@ interface IMessageCallbackPayload {
 }
 
 const context = testContext();
+
+// Register MSW handler for AgentPhone send-message endpoint used by sendIMessage()
+const { handler: agentphoneSendMessage } = http.post(
+  "https://api.agentphone.to/v1/messages",
+  () => {
+    return HttpResponse.json({ id: "msg_test", status: "sent" });
+  },
+);
 
 async function setupIMessageCallback() {
   const userId = uniqueId("user");
@@ -65,6 +73,7 @@ async function setupIMessageCallback() {
 describe("POST /api/internal/callbacks/imessage", () => {
   beforeEach(() => {
     context.setupMocks();
+    server.use(agentphoneSendMessage);
   });
 
   describe("Signature Verification", () => {

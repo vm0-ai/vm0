@@ -91,18 +91,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Send agent response back via iMessage
   if (status === "completed") {
-    const outputText = await getRunOutputText(runId).catch((err: unknown) => {
-      log.warn("Failed to extract run output text", { runId, err });
-      return null;
-    });
+    const outputText = await getRunOutputText(runId);
 
     if (outputText) {
       await sendIMessage({
         agentId: payload.agentphoneAgentId,
         toNumber: payload.fromNumber,
         body: outputText,
-      }).catch((err: unknown) => {
-        log.error("Failed to send iMessage reply", { runId, err });
       });
     }
   }

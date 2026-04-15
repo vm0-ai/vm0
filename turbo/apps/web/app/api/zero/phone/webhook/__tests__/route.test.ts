@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { HttpResponse } from "msw";
 import { POST } from "../route";
 import {
   testContext,
@@ -8,12 +9,15 @@ import {
   createPhoneOrg,
   linkPhoneNumber,
   insertPendingOutboundCall,
+  linkIMessageHandle,
 } from "../../../../../../src/__tests__/db-test-seeders/phone";
 import { findPendingOutboundCall } from "../../../../../../src/__tests__/db-test-assertions/phone";
 import {
   insertOrgDefaultModelProvider,
   findMostRecentRunForUser,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { server } from "../../../../../../src/mocks/server";
+import { http } from "../../../../../../src/__tests__/msw";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
@@ -39,6 +43,14 @@ async function flushAfterCallbacks() {
 
 const context = testContext();
 
+// MSW handler for AgentPhone send-message endpoint (used when sending connect links or replies)
+const { handler: agentphoneSendMessage } = http.post(
+  "https://api.agentphone.to/v1/messages",
+  () => {
+    return HttpResponse.json({ id: "msg_test", status: "sent" });
+  },
+);
+
 function createWebhookRequest(body: Record<string, unknown>): Request {
   return new Request("http://localhost:3000/api/zero/phone/webhook", {
     method: "POST",
@@ -51,6 +63,7 @@ describe("POST /api/zero/phone/webhook", () => {
   beforeEach(async () => {
     afterPromises.length = 0;
     context.setupMocks();
+    server.use(agentphoneSendMessage);
   });
 
   it("should reject invalid JSON body", async () => {
@@ -238,5 +251,101 @@ describe("POST /api/zero/phone/webhook", () => {
     expect(run!.userId).toBe(user.userId);
     expect(run!.orgId).toBe(user.orgId);
     expect(run!.prompt).toContain("outbound call to +14155551234");
+  });
+
+  it("should return 200 and ignore agent.message with missing required fields", async () => {
+    const request = createWebhookRequest({
+      event: "agent.message",
+      channel: "imessage",
+      // agentId and data.from are missing
+      data: {},
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).toBe("OK");
+    // No after() callback should have been registered for an incomplete event
+    expect(afterPromises.length).toBe(0);
+  });
+
+  it("should dispatch after() for agent.message with valid fields", async () => {
+    const request = createWebhookRequest({
+      event: "agent.message",
+      channel: "imessage",
+      agentId: "agent_imessage_unknown",
+      data: {
+        messageId: "msg_001",
+        from: "+14155550001",
+        to: "+18001234567",
+        body: "Hello from iMessage",
+      },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(afterPromises.length).toBe(1);
+    // Flush — org not found for unknown agentId, handler returns early gracefully
+    await flushAfterCallbacks();
+  });
+
+  it("should send connect link for agent.message from an unbound iMessage handle", async () => {
+    const TEST_FROM_NUMBER = "+14155550002";
+    const user = await context.setupUser();
+    const { agentphoneAgentId } = await createPhoneOrg(user.orgId);
+
+    const request = createWebhookRequest({
+      event: "agent.message",
+      channel: "imessage",
+      agentId: agentphoneAgentId,
+      data: {
+        messageId: "msg_002",
+        from: TEST_FROM_NUMBER,
+        to: "+18001234567",
+        body: "Hi there",
+      },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(afterPromises.length).toBe(1);
+    await flushAfterCallbacks();
+  });
+
+  it("should dispatch run for agent.message from a bound iMessage handle", async () => {
+    const TEST_FROM_NUMBER = `+1555${uniqueId("").replace(/-/g, "").slice(0, 7)}`;
+    const user = await context.setupUser();
+    const { agentphoneAgentId } = await createPhoneOrg(user.orgId);
+    await linkIMessageHandle(TEST_FROM_NUMBER, user.userId, user.orgId);
+    // linkIMessageHandle sends a success iMessage via after(); flush it before testing the webhook
+    await flushAfterCallbacks();
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic");
+
+    const request = createWebhookRequest({
+      event: "agent.message",
+      channel: "imessage",
+      agentId: agentphoneAgentId,
+      data: {
+        messageId: "msg_003",
+        from: TEST_FROM_NUMBER,
+        to: "+18001234567",
+        body: "What is the weather?",
+      },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(afterPromises.length).toBe(1);
+    await flushAfterCallbacks();
+
+    // Verify an agent run was created for the bound user
+    const run = await findMostRecentRunForUser(user.userId, user.orgId);
+    expect(run).toBeDefined();
+    expect(run!.userId).toBe(user.userId);
+    expect(run!.orgId).toBe(user.orgId);
   });
 });

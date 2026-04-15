@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { HttpResponse } from "msw";
 import { POST } from "../route";
 import {
   testContext,
@@ -7,14 +8,13 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { ensureOrgRow } from "../../../../../../src/__tests__/api-test-helpers";
+import { server } from "../../../../../../src/mocks/server";
+import { http } from "../../../../../../src/__tests__/msw";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
-
-// Mock fetch so sendIMessage does not hit the real AgentPhone API
-vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
 
 const TEST_SIGNING_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -42,6 +42,14 @@ function uniqueHandle(): string {
 
 const context = testContext();
 
+// Register MSW handler for AgentPhone send-message endpoint used by sendIMessage()
+const { handler: agentphoneSendMessage } = http.post(
+  "https://api.agentphone.to/v1/messages",
+  () => {
+    return HttpResponse.json({ id: "msg_test", status: "sent" });
+  },
+);
+
 function linkRequest(body: Record<string, unknown>) {
   return new Request("http://localhost:3000/api/integrations/imessage/link", {
     method: "POST",
@@ -53,6 +61,7 @@ function linkRequest(body: Record<string, unknown>) {
 describe("POST /api/integrations/imessage/link", () => {
   beforeEach(() => {
     context.setupMocks();
+    server.use(agentphoneSendMessage);
   });
 
   it("returns 401 when not authenticated", async () => {
