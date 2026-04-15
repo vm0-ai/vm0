@@ -326,7 +326,10 @@ def _parse_x_request_metadata(flow: http.HTTPFlow) -> dict:
 
     Returns a dict with:
       - ``request_ids_count``: int | None — total comma-separated count
-        across all ``?ids=`` params (None when the param is absent).
+        across all ``?ids=`` and ``?usernames=`` params (None when both
+        are absent).  ``usernames`` is folded in because ``GET /2/users/by``
+        uses it instead of ``ids`` for batch user lookup; both signal the
+        same "this many resources" billing dimension.
       - ``has_expansions``: bool — whether ``?expansions=`` is present.
       - ``max_results``: int | None — value of ``?max_results=``, used
         as an upper-bound fallback when the response body cannot be parsed.
@@ -337,8 +340,8 @@ def _parse_x_request_metadata(flow: http.HTTPFlow) -> dict:
     """
     parsed = urllib.parse.urlparse(flow.metadata.get("original_url", ""))
     qs = urllib.parse.parse_qs(parsed.query)
-    ids_values = qs.get("ids", [])
-    ids_count = sum(len(v.split(",")) for v in ids_values) if ids_values else None
+    id_like_values = qs.get("ids", []) + qs.get("usernames", [])
+    ids_count = sum(len(v.split(",")) for v in id_like_values) if id_like_values else None
     max_values = qs.get("max_results", [])
     max_results: int | None = None
     if max_values:
@@ -362,8 +365,12 @@ def _parse_x_response_metadata(flow: http.HTTPFlow) -> dict:
       - ``response_data_count``: int — ``len(data)`` for a list payload,
         ``1`` for a single object payload.
       - ``response_includes``: dict[str, int] — counts per ``includes.<key>``.
-      - ``response_result_count``: int — ``meta.result_count`` (search /
-        paginated endpoints).
+      - ``response_result_count``: int — total matched count.  Sourced
+        from ``meta.result_count`` (search / paginated endpoints) or
+        ``meta.total_tweet_count`` (``/2/tweets/counts/*``, where ``data``
+        carries time buckets, not tweets, and the real count lives in
+        ``meta``).  Both fields are alternative spellings of the same
+        billing dimension, so we collapse them into one log key.
 
     Failures (truncated buffer, malformed JSON, unexpected shape) leave
     ``body_parsed=False`` and emit no count fields, so analysis can
@@ -403,9 +410,15 @@ def _parse_x_response_metadata(flow: http.HTTPFlow) -> dict:
 
     meta = data.get("meta")
     if isinstance(meta, dict):
-        rc = meta.get("result_count")
-        if isinstance(rc, int):
-            result["response_result_count"] = rc
+        # ``result_count`` is the standard search/paginated field;
+        # ``total_tweet_count`` is the counts-endpoint variant where
+        # ``data`` is time buckets rather than tweets.  Prefer whichever
+        # is present (mutually exclusive in practice; if both appear,
+        # take the larger to stay on the safe side of billing).
+        candidates = [meta.get("result_count"), meta.get("total_tweet_count")]
+        rcs = [c for c in candidates if isinstance(c, int)]
+        if rcs:
+            result["response_result_count"] = max(rcs)
 
     return result
 

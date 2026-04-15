@@ -1827,6 +1827,65 @@ class TestLogConnectorUsage:
         entry = self._read_entry(tmp_path)
         assert entry["request_ids_count"] == 3
 
+    def test_logs_users_by_usernames_batch(self, tmp_path):
+        """GET /2/users/by?usernames=a,b,c → request_ids_count=3 (usernames
+        feed the same batch-count signal as ids)."""
+        body = json.dumps(
+            {"data": [{"id": "1", "username": "a"}, {"id": "2", "username": "b"}]}
+        ).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/users/by",
+            query="usernames=a,b,c",
+            body=body,
+            permission="users.read",
+            rule="GET /2/users/by",
+        )
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["request_ids_count"] == 3
+        # max(3 usernames, 2 returned) = 3 — over-count safe when one
+        # username is suspended/missing.
+        assert entry["billable_counts"] == {"users.read": 3}
+
+    def test_combines_ids_and_usernames(self, tmp_path):
+        """Defensive: if a request carries both ids and usernames, both
+        get summed.  Real X endpoints accept one or the other, but the
+        parser should not silently drop either signal."""
+        body = json.dumps({"data": []}).encode()
+        flow = self._make_x_flow(tmp_path, query="ids=1,2&usernames=a,b,c", body=body)
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["request_ids_count"] == 5
+
+    def test_logs_tweet_counts_total_tweet_count(self, tmp_path):
+        """GET /2/tweets/counts/recent: data is time buckets, real
+        billable count is meta.total_tweet_count."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 8000},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 4567},
+                ],
+                "meta": {"total_tweet_count": 12567},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="query=hello",
+            body=body,
+            rule="GET /2/tweets/counts/recent",
+        )
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        # data carries 2 bucket objects, but the real matched-tweet count
+        # lives in meta.total_tweet_count.
+        assert entry["response_data_count"] == 2
+        assert entry["response_result_count"] == 12567
+        # max(0, 2 buckets, 12567 tweets, 0, 1) = 12567
+        assert entry["billable_counts"] == {"tweet.read": 12567}
+
     def test_handles_gzip_body(self, tmp_path):
         """gzip-encoded response body decompresses before parsing."""
         import gzip
