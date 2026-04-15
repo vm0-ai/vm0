@@ -53,6 +53,7 @@ const router = tsr.router(zeroRunContextContract, {
       body: {
         prompt: snapshot.prompt,
         appendSystemPrompt: snapshot.appendSystemPrompt,
+        runId: params.id,
         sessionId: snapshot.sessionId ?? null,
         secretNames: snapshot.secretNames,
         vars: (run.vars as Record<string, string> | undefined) ?? null,

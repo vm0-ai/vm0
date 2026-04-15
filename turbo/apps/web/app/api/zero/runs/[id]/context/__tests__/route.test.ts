@@ -98,6 +98,7 @@ describe("GET /api/zero/runs/:id/context", () => {
 
     const data = await response.json();
     expect(data.prompt).toBe("test prompt");
+    expect(data.runId).toBe(runId);
     expect(data.sessionId).toBeNull();
     expect(data.secretNames).toEqual(["API_KEY", "DB_PASSWORD"]);
     expect(data.environment).toEqual({

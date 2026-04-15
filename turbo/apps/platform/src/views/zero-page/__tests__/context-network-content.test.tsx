@@ -65,6 +65,7 @@ function makeBaseContext(
   return {
     prompt: "Default prompt text",
     appendSystemPrompt: null,
+    runId: "run-test-id",
     sessionId: null,
     secretNames: [],
     vars: null,
