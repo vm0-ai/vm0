@@ -360,7 +360,7 @@ function createSendMessage(
     // into the DOM before we scroll. Without this the scroll fires against the
     // old layout and is effectively a no-op.
     await delay(0, { signal });
-    set(deps.autoScroll$);
+    set(deps.scrollToBottom$);
 
     const client = get(zeroClient$)(chatMessagesContract);
     const sendResult = await accept(

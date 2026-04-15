@@ -468,12 +468,12 @@ export function createActiveRunMessage(
 
   return {
     userMessage: {
-      id: crypto.randomUUID(),
+      id: `run-user-${runId}`,
       role: "user",
       content: prompt,
     },
     assistantMessage: {
-      id: crypto.randomUUID(),
+      id: `run-asst-${runId}`,
       role: "assistant",
       legacyRunId: runId,
       runLoop,
@@ -498,13 +498,13 @@ export function unsavedRunsToMessages(unsavedRuns: ChatThread["unsavedRuns"]): {
       run.status === "failed" || run.status === "timeout" || isCancelled;
     if (isFailed) {
       messages.push({
-        id: crypto.randomUUID(),
+        id: `run-user-${run.runId}`,
         role: "user",
         content: run.prompt,
         createdAt: run.createdAt,
       });
       messages.push({
-        id: crypto.randomUUID(),
+        id: `run-asst-${run.runId}`,
         role: "assistant",
         result$: computed(() => {
           return Promise.resolve("");
@@ -545,7 +545,7 @@ export interface ChatMessages {
 export function transformServerMessages(
   rawMessages: ChatThread["chatMessages"],
 ): ZeroChatMessage[] {
-  return rawMessages.map((m) => {
+  return rawMessages.map((m, i) => {
     const summaries =
       m.summaries && m.summaries.length > 0
         ? m.summaries.map((s) => {
@@ -560,7 +560,7 @@ export function transformServerMessages(
         : undefined;
 
     const base = {
-      id: crypto.randomUUID(),
+      id: `persisted-${i}`,
       ...(summaries && summaries.length > 0 ? { summaries } : {}),
     };
 

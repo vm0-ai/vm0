@@ -51,10 +51,6 @@ import {
   triggerPreparation$,
   clearPreparation$,
 } from "../../signals/voice-chat/voice-chat-preparation.ts";
-import {
-  useTranscriptAutoScroll,
-  useEventsAutoScroll,
-} from "./use-voice-chat-auto-scroll.ts";
 
 type ConnectionStatus =
   | "idle"
@@ -378,9 +374,6 @@ export function VoiceChatPage() {
   const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
   const setTranscriptContainer = useSet(setTranscriptScrollContainer$);
   const setEventsContainer = useSet(setEventsScrollContainer$);
-
-  useTranscriptAutoScroll(transcript.length);
-  useEventsAutoScroll(events.length);
 
   const elapsedSeconds = Math.floor(prepElapsedMs / 1000);
 
