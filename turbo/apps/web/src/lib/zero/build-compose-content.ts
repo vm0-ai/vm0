@@ -4,7 +4,6 @@ import {
   getConnectorEnvironmentMapping,
   getEligibleConnectorTypes,
   connectorTypeSchema,
-  getCustomSkillStorageName,
 } from "@vm0/core";
 import { SEED_SKILLS } from "./seed-skills";
 
@@ -19,18 +18,7 @@ import { SEED_SKILLS } from "./seed-skills";
  */
 export function buildComposeContent(
   agentName: string,
-  customSkills: Array<{ name: string }> = [],
 ): Record<string, unknown> {
-  // Validate custom skill names don't conflict with seed skills
-  const seedSet = new Set<string>(SEED_SKILLS);
-  for (const skill of customSkills) {
-    if (seedSet.has(skill.name)) {
-      throw new Error(
-        `Custom skill name "${skill.name}" conflicts with a built-in skill`,
-      );
-    }
-  }
-
   const eligibleConnectorTypes = getEligibleConnectorTypes();
 
   const allSkillNames = [
@@ -61,38 +49,20 @@ export function buildComposeContent(
     }
   }
 
-  // Build custom skill volumes
-  const volumes: Record<string, unknown> = {};
-  const agentVolumes: string[] = [];
-
-  for (const skill of customSkills) {
-    const volKey = `custom-skill-${skill.name}`;
-    const storageName = getCustomSkillStorageName(skill.name);
-    volumes[volKey] = { name: storageName, version: "latest" };
-    agentVolumes.push(`${volKey}:/home/user/.claude/skills/${skill.name}`);
-  }
-
   const agentDef: Record<string, unknown> = {
     framework: "claude-code",
     instructions: getInstructionsFilename("claude-code"),
     environment,
-    volumes: agentVolumes,
   };
 
   if (skills.length > 0) {
     agentDef.skills = skills;
   }
 
-  const result: Record<string, unknown> = {
+  return {
     version: "1",
     agents: {
       [agentName]: agentDef,
     },
   };
-
-  if (Object.keys(volumes).length > 0) {
-    result.volumes = volumes;
-  }
-
-  return result;
 }

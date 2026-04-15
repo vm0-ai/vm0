@@ -305,12 +305,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
         .where(eq(zeroAgents.id, agent.id));
 
       // Rebuild compose (best-effort — skill deletion proceeds even if compose rebuild fails)
-      const content = buildComposeContent(
-        agent.name,
-        updatedSkills.map((name) => {
-          return { name };
-        }),
-      );
+      const content = buildComposeContent(agent.name);
 
       try {
         await serverSideCompose({

@@ -150,13 +150,8 @@ const router = tsr.router(zeroAgentsByIdContract, {
       if (!validation.valid) return validation.error;
     }
 
-    // Build compose content (all connector skills included, plus custom skills)
-    const content = buildComposeContent(
-      existing.name,
-      customSkills.map((name) => {
-        return { name };
-      }),
-    );
+    // Build compose content (all connector skills included)
+    const content = buildComposeContent(existing.name);
 
     // Run synchronous compose
     const result = await serverSideCompose({

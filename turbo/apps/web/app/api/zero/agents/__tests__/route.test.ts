@@ -211,7 +211,7 @@ describe("Zero Agents API", () => {
       expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
     });
 
-    it("should create an agent with custom skills and include them in response and compose", async () => {
+    it("should create an agent with custom skills persisted in response", async () => {
       await createTestZeroSkill(user.orgId, "my-skill");
       await createTestZeroSkill(user.orgId, "data-tool");
 
@@ -224,19 +224,10 @@ describe("Zero Agents API", () => {
       const data = await response.json();
       expect(data.customSkills).toEqual(["my-skill", "data-tool"]);
 
-      // Verify compose content includes custom skill volumes
+      // Custom skill volumes are no longer in compose — they are injected
+      // as additionalVolumes at run creation time
       const content = await getTestComposeVersionContent(data.agentId);
-      const volumes = content?.volumes as
-        | Record<string, { name: string; version: string }>
-        | undefined;
-      expect(volumes?.["custom-skill-my-skill"]).toEqual({
-        name: "custom-skill@my-skill",
-        version: "latest",
-      });
-      expect(volumes?.["custom-skill-data-tool"]).toEqual({
-        name: "custom-skill@data-tool",
-        version: "latest",
-      });
+      expect(content?.volumes).toBeUndefined();
     });
 
     it("should reject non-existent custom skill names", async () => {
@@ -386,7 +377,7 @@ describe("Zero Agents API", () => {
       expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
     });
 
-    it("should update custom skills and reflect in compose volumes", async () => {
+    it("should update custom skills and persist them", async () => {
       await createTestZeroSkill(user.orgId, "my-skill");
       await createTestZeroSkill(user.orgId, "data-tool");
 
@@ -404,15 +395,9 @@ describe("Zero Agents API", () => {
       const fetched = await getRes.json();
       expect(fetched.customSkills).toEqual(["my-skill", "data-tool"]);
 
-      // Verify compose content includes custom skill volumes
+      // Custom skill volumes are no longer in compose
       const content = await getTestComposeVersionContent(created.agentId);
-      const volumes = content?.volumes as
-        | Record<string, { name: string; version: string }>
-        | undefined;
-      expect(volumes?.["custom-skill-my-skill"]).toEqual({
-        name: "custom-skill@my-skill",
-        version: "latest",
-      });
+      expect(content?.volumes).toBeUndefined();
     });
 
     it("should preserve existing custom skills when not provided in update", async () => {
@@ -547,7 +532,7 @@ describe("Zero Agents API", () => {
       expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
     });
 
-    it("should preserve custom skill volumes after instructions update", async () => {
+    it("should preserve custom skills after instructions update", async () => {
       await createTestZeroSkill(user.orgId, "my-skill");
 
       const createResponse = await postAgent(
@@ -563,20 +548,14 @@ describe("Zero Agents API", () => {
       );
       expect(response.status).toBe(200);
 
-      const content = await getTestComposeVersionContent(created.agentId);
-      const volumes = content?.volumes as
-        | Record<string, { name: string; version: string }>
-        | undefined;
-      expect(volumes?.["custom-skill-my-skill"]).toEqual({
-        name: "custom-skill@my-skill",
-        version: "latest",
-      });
+      // Verify skills still in agent record
+      const getRes = await getAgent(created.agentId, testCliToken);
+      const fetched = await getRes.json();
+      expect(fetched.customSkills).toEqual(["my-skill"]);
 
-      const agents = content?.agents as Record<string, { volumes: string[] }>;
-      const agentVolumes = Object.values(agents)[0]!.volumes;
-      expect(agentVolumes).toContain(
-        "custom-skill-my-skill:/home/user/.claude/skills/my-skill",
-      );
+      // Custom skill volumes are no longer in compose
+      const content = await getTestComposeVersionContent(created.agentId);
+      expect(content?.volumes).toBeUndefined();
     });
 
     it("should return 404 for unknown agent", async () => {

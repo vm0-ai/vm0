@@ -4,7 +4,7 @@ import { SEED_SKILLS } from "../seed-skills";
 import { resolveSkillRef, getInstructionsFilename } from "@vm0/core";
 
 describe("buildComposeContent", () => {
-  it("should return valid compose structure", () => {
+  it("should return valid compose structure without volumes", () => {
     const result = buildComposeContent("my-agent");
 
     expect(result).toEqual(
@@ -14,11 +14,18 @@ describe("buildComposeContent", () => {
           "my-agent": expect.objectContaining({
             framework: "claude-code",
             instructions: getInstructionsFilename("claude-code"),
-            volumes: [],
           }),
         }),
       }),
     );
+
+    // Custom skill volumes are no longer part of compose — they are injected
+    // as additionalVolumes at run creation time
+    const agent = (result.agents as Record<string, Record<string, unknown>>)[
+      "my-agent"
+    ]!;
+    expect(agent.volumes).toBeUndefined();
+    expect(result.volumes).toBeUndefined();
   });
 
   it("should include all seed skills", () => {

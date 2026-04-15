@@ -45,17 +45,12 @@ import { logger } from "../../../../../../src/lib/shared/logger";
 const log = logger("api:zero-agents:instructions");
 
 async function updateInstructions(
-  compose: { name: string; customSkills: string[] | null },
+  compose: { name: string },
   instructionsContent: string,
   userId: string,
   orgId: string,
 ) {
-  const content = buildComposeContent(
-    compose.name,
-    (compose.customSkills ?? []).map((name) => {
-      return { name };
-    }),
-  );
+  const content = buildComposeContent(compose.name);
 
   const result = await serverSideCompose({
     userId,

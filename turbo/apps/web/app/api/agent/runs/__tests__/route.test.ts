@@ -32,6 +32,7 @@ import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/r
 import { POST as pollRoute } from "../../../runners/poll/route";
 import type { AgentComposeYaml } from "../../../../../src/lib/infra/agent-compose/types";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
+import { bindCustomSkillToAgent } from "../../../../../src/__tests__/db-test-seeders/skills";
 import {
   generateSandboxToken,
   generateZeroToken,
@@ -1155,6 +1156,32 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const record = await findTestRunRecord(runId);
       expect(record).toBeDefined();
       expect(record!.additionalVolumes).toBeNull();
+    });
+
+    it("should inject custom skills as additionalVolumes for new runs", async () => {
+      // Bind custom skills to the agent (zero_agents row created by createTestCompose)
+      await bindCustomSkillToAgent(testComposeId, "my-skill");
+      await bindCustomSkillToAgent(testComposeId, "data-tool");
+
+      const { runId } = await createTestRun(
+        testComposeId,
+        "Run with custom skills",
+      );
+
+      const record = await findTestRunRecord(runId);
+      expect(record).toBeDefined();
+      expect(record!.additionalVolumes).toEqual(
+        expect.arrayContaining([
+          {
+            name: "custom-skill@my-skill",
+            mountPath: "/home/user/.claude/skills/my-skill",
+          },
+          {
+            name: "custom-skill@data-tool",
+            mountPath: "/home/user/.claude/skills/data-tool",
+          },
+        ]),
+      );
     });
   });
 
