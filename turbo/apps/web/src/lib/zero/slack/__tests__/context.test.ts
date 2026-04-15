@@ -1331,6 +1331,65 @@ describe("Feature: Format Current Message Files", () => {
       expect(result).toContain("URL: https://slack.com/files/bad.png");
       expect(result).not.toContain("Download: curl");
     });
+
+    it("should reject arbitrary subdomain of slack.com (regression: old endsWith check)", async () => {
+      const files = [
+        {
+          id: "F105",
+          name: "file.png",
+          mimetype: "image/png",
+          url_private_download: "https://arbitrary.slack.com/file.png",
+          permalink: "https://slack.com/files/file.png",
+        },
+      ];
+
+      const result = await formatCurrentMessageFiles(
+        files,
+        "xoxb-test-token",
+        "test-session-ssrf",
+      );
+
+      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
+      expect(result).toContain("URL: https://slack.com/files/file.png");
+      expect(result).not.toContain("Download: curl");
+    });
+
+    it("should accept cdn.slack.com download URL", async () => {
+      const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      const imageBuffer = Buffer.concat([
+        pngMagic,
+        Buffer.from("fake-content"),
+      ]);
+
+      const downloadHandler = http.get(
+        "https://cdn.slack.com/files/image.png",
+        () => {
+          return new HttpResponse(imageBuffer, {
+            headers: { "content-type": "image/png" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      const files = [
+        {
+          id: "F106",
+          name: "image.png",
+          mimetype: "image/png",
+          url_private_download: "https://cdn.slack.com/files/image.png",
+          permalink: "https://slack.com/files/image.png",
+        },
+      ];
+
+      const result = await formatCurrentMessageFiles(
+        files,
+        "xoxb-test-token",
+        "test-session-ssrf",
+      );
+
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalled();
+      expect(result).toContain("Download: curl");
+    });
   });
 });
 
