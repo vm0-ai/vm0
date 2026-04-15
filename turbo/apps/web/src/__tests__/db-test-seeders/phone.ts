@@ -122,6 +122,7 @@ export async function insertPendingOutboundCall(opts: {
   userId: string;
   agentId: string;
   sessionId?: string;
+  createdAt?: Date;
 }): Promise<void> {
   initServices();
   await globalThis.services.db.insert(pendingOutboundCalls).values({
@@ -130,5 +131,6 @@ export async function insertPendingOutboundCall(opts: {
     userId: opts.userId,
     agentId: opts.agentId,
     sessionId: opts.sessionId ?? null,
+    createdAt: opts.createdAt,
   });
 }
