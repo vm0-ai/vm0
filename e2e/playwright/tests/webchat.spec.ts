@@ -15,7 +15,7 @@ test("send a chat message and receive a response", async ({ page }) => {
   // Send a message — mock claude executes this as bash
   const marker = `e2e-${Date.now()}`;
   await textarea.fill(`echo ${marker}`);
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
   // Verify user message appears
   await expect(
