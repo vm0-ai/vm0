@@ -31,6 +31,14 @@ const context = testContext();
 
 describe("POST /api/zero/realtime/token", () => {
   beforeEach(async () => {
+    vi.clearAllMocks();
+    mockCreateTokenRequest.mockResolvedValue({
+      keyName: "test-key",
+      timestamp: 1700000000000,
+      capability: '{"user:test-user-id":["subscribe"]}',
+      nonce: "test-nonce",
+      mac: "test-mac",
+    });
     context.setupMocks();
     await context.setupUser();
   });

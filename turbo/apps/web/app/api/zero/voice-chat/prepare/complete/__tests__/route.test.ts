@@ -74,8 +74,8 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
   let agentId: string;
 
   beforeEach(async () => {
-    context.setupMocks();
     mockPublish.mockClear();
+    context.setupMocks();
     afterCallbacks.length = 0;
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("vcp-cmp"));

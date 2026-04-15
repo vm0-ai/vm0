@@ -23,6 +23,7 @@ import { createTestEmailThreadSession } from "../../../../../../src/__tests__/db
 import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
 import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
+import { insertOrgMembersCacheEntry } from "../../../../../../src/__tests__/db-test-seeders/org-members-cache";
 import {
   testContext,
   uniqueId,
@@ -33,6 +34,23 @@ import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 
+// Mock Ably (external dependency) to capture published signals
+const mockPublish = vi.fn().mockResolvedValue(undefined);
+vi.mock("ably", () => {
+  return {
+    default: {
+      Rest: vi.fn().mockImplementation(function () {
+        return {
+          auth: { createTokenRequest: vi.fn() },
+          channels: {
+            get: vi.fn().mockReturnValue({ publish: mockPublish }),
+          },
+        };
+      }),
+    },
+  };
+});
+
 const context = testContext();
 
 describe("POST /api/webhooks/agent/complete", () => {
@@ -42,6 +60,7 @@ describe("POST /api/webhooks/agent/complete", () => {
   let testToken: string;
 
   beforeEach(async () => {
+    mockPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
 
@@ -857,6 +876,43 @@ describe("POST /api/webhooks/agent/complete", () => {
           return c.attempts === 1;
         }),
       ).toBe(true);
+    });
+  });
+
+  describe("Signal Publishing", () => {
+    it("should publish thread and tasks signals after run completion", async () => {
+      vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+      reloadEnv();
+
+      // Add user to org members cache so the tasks signal has someone to notify
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            error: "Test failure",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Flush the after() callback to trigger signal publishing
+      await context.mocks.flushAfter();
+
+      expect(mockPublish).toHaveBeenCalledWith(`thread:${testRunId}`, null);
+      expect(mockPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
     });
   });
 });
