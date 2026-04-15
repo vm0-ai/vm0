@@ -179,6 +179,12 @@ const RESEND: ConnectorRef = {
   dark: true,
 };
 
+const STRAPI: ConnectorRef = {
+  id: "strapi",
+  label: "Strapi",
+  icon: "/assets/connectors/strapi.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -641,6 +647,38 @@ export const USE_CASES: UseCase[] = [
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 4,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "multilingual-cms-publishing",
+    color: "#8E75FF",
+    avatar: {
+      rotation: 2,
+      skin: 2,
+      hairStyle: 3,
+      hairColor: 1,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["product", "ops"],
+    capability: "instant",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, STRAPI, NOTION],
+    integrations: [
+      { connector: STRAPI, required: true },
+      { connector: NOTION, required: false },
+    ],
+    relatedSlugs: [
+      "kol-cold-outreach",
+      "document-decisions",
+      "competitor-audit",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
