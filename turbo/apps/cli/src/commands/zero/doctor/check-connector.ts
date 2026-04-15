@@ -23,6 +23,7 @@ import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
 interface CheckConnectorOptions {
   envName?: string;
   url?: string;
+  method: string;
   checkPermission?: string;
 }
 
@@ -128,13 +129,9 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   console.log("");
 
   const [connector, enabledTypes] = await Promise.all([
-    getZeroConnector(ctx.connectorType as ConnectorType).catch(() => {
-      return null;
-    }),
+    getZeroConnector(ctx.connectorType as ConnectorType),
     ctx.agentId
-      ? getZeroAgentUserConnectors(ctx.agentId).catch(() => {
-          return null;
-        })
+      ? getZeroAgentUserConnectors(ctx.agentId)
       : Promise.resolve(null),
   ]);
 
@@ -206,16 +203,7 @@ async function checkConnectorDomains(
     return null;
   }
 
-  const runContext = await getZeroRunContext(runId).catch(() => {
-    return null;
-  });
-  if (!runContext) {
-    console.log(
-      `Failed to fetch run context for run ${runId} — skipping base URL check.`,
-    );
-    console.log("");
-    return null;
-  }
+  const runContext = await getZeroRunContext(runId);
 
   printConnectorDomains(ctx, runContext);
   console.log("");
@@ -530,7 +518,7 @@ How connectors work:
         resolvePermissionFromUrl(
           connectorType,
           label,
-          (opts as { method: string }).method,
+          opts.method,
           urlLookup.relativePath,
           urlLookup.matchedBase,
           networkPolicies,
@@ -549,8 +537,8 @@ How connectors work:
       const args: string[] = [];
       if (opts.url) {
         args.push(`--url ${opts.url}`);
-        if ((opts as { method: string }).method !== "GET") {
-          args.push(`--method ${(opts as { method: string }).method}`);
+        if (opts.method !== "GET") {
+          args.push(`--method ${opts.method}`);
         }
       } else {
         args.push(`--env-name ${envName}`);

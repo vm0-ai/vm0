@@ -7,7 +7,7 @@
  * - Real (internal): All CLI code, connector mappings from @vm0/core
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { checkConnectorCommand } from "../check-connector";
@@ -104,12 +104,6 @@ describe("zero doctor check-connector command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("GH_TOKEN", "");
-  });
-
-  afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
   });
 
   function getOutput(): string {
