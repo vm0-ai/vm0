@@ -219,15 +219,13 @@ async function runAgent(
 ): Promise<void> {
   console.log();
   console.log(chalk.bold("Running agent:"));
-  printCommand(
-    `vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "${prompt}"`,
-  );
+  printCommand(`vm0 run ${agentName} --artifact ${ARTIFACT_DIR} "${prompt}"`);
   console.log();
 
   const runArgs = [
     "run",
     agentName,
-    "--artifact-name",
+    "--artifact",
     ARTIFACT_DIR,
     ...(options.envFile ? ["--env-file", options.envFile] : []),
     ...(options.verbose ? ["--verbose"] : []),
@@ -308,7 +306,7 @@ export const cookAction = new Command()
           console.log();
           console.log("To run your agent:");
           printCommand(
-            `vm0 run ${agentName} --artifact-name ${ARTIFACT_DIR} "your prompt"`,
+            `vm0 run ${agentName} --artifact ${ARTIFACT_DIR} "your prompt"`,
           );
         }
       },
