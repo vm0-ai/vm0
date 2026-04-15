@@ -44,6 +44,17 @@ const unifiedRunRequestSchema = z.object({
   volumeVersions: z.record(z.string(), z.string()).optional(),
   memoryName: z.string().optional(),
 
+  // Additional volumes passed directly at run time (bypass compose)
+  additionalVolumes: z
+    .array(
+      z.object({
+        name: z.string(),
+        version: z.string().optional(),
+        mountPath: z.string(),
+      }),
+    )
+    .optional(),
+
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
 

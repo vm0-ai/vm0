@@ -19,6 +19,11 @@ interface BuildInfraContextParams {
   artifactVersion?: string;
   memoryName?: string;
   volumeVersions?: Record<string, string>;
+  additionalVolumes?: Array<{
+    name: string;
+    version?: string;
+    mountPath: string;
+  }>;
   environment?: Record<string, string>;
   userTimezone?: string;
   firewalls?: Firewalls;
@@ -74,6 +79,7 @@ export function buildInfraExecutionContext(
     artifactVersion: params.artifactVersion,
     memoryName: params.memoryName,
     volumeVersions: params.volumeVersions,
+    additionalVolumes: params.additionalVolumes,
     environment,
     userTimezone: params.userTimezone,
     firewalls: params.firewalls,

@@ -78,6 +78,16 @@ export interface AgentVolumeConfig {
 }
 
 /**
+ * Volume passed directly at run time, bypassing compose.
+ * Always optional (skip without error if not found).
+ */
+export interface AdditionalVolume {
+  name: string; // Storage name
+  version?: string; // Version hash or "latest" (defaults to "latest")
+  mountPath: string; // Absolute path in sandbox
+}
+
+/**
  * Storage entry in manifest
  */
 export interface ManifestStorage {

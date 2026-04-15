@@ -5,7 +5,9 @@ import { logger } from "../../shared/logger";
 import { badRequest } from "../../shared/errors";
 import {
   DEFAULT_MEMORY_MOUNT_PATH,
+  type AdditionalVolume,
   type AgentVolumeConfig,
+  type ResolvedArtifact,
   type StorageManifest,
   type ManifestStorage,
   type ManifestArtifact,
@@ -263,6 +265,64 @@ async function resolveVersion(
 }
 
 /**
+ * Process a single additional volume: resolve version from runtime org and generate presigned URL.
+ * Always optional — returns null if the volume is not found.
+ */
+async function resolveAdditionalVolume(
+  vol: AdditionalVolume,
+  runtimeClerkOrgId: string,
+  bucketName: string,
+): Promise<ManifestStorage | null> {
+  const version = vol.version || "latest";
+  try {
+    const { versionId, s3Key } = await resolveVersion(
+      runtimeClerkOrgId,
+      vol.name,
+      "volume",
+      version,
+      VOLUME_ORG_USER_ID,
+    );
+    const archiveKey = `${s3Key}/archive.tar.gz`;
+    const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
+    return {
+      name: vol.name,
+      mountPath: vol.mountPath,
+      vasStorageName: vol.name,
+      vasVersionId: versionId,
+      archiveUrl,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not found")) {
+      log.warn(`Additional volume "${vol.name}" not found, skipping`);
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Determine the artifact source: use resumeArtifact if provided, otherwise fall back to resolved artifact.
+ */
+function resolveArtifactSource(
+  resolvedArtifact: ResolvedArtifact | null,
+  resumeArtifact: { artifactName: string; artifactVersion: string } | undefined,
+  resumeArtifactMountPath: string | undefined,
+): ResolvedArtifact | null {
+  if (!resumeArtifact) return resolvedArtifact;
+  if (!resumeArtifactMountPath) {
+    throw badRequest(
+      "resumeArtifactMountPath is required when resumeArtifact is provided (working_dir must be configured)",
+    );
+  }
+  return {
+    driver: "vas" as const,
+    vasStorageName: resumeArtifact.artifactName,
+    vasVersion: resumeArtifact.artifactVersion,
+    mountPath: resumeArtifactMountPath,
+  };
+}
+
+/**
  * Prepare storage manifest with presigned URLs for direct download to sandbox
  * This method generates presigned URLs instead of downloading files to local temp
  *
@@ -291,6 +351,7 @@ export async function prepareStorageManifest(
   resumeArtifact?: { artifactName: string; artifactVersion: string },
   resumeArtifactMountPath?: string,
   memoryName?: string,
+  additionalVolumes?: AdditionalVolume[],
 ): Promise<StorageManifest> {
   log.debug("Preparing storage manifest with presigned URLs...");
 
@@ -303,8 +364,13 @@ export async function prepareStorageManifest(
   // Skip artifact in resolveVolumes if we're using resumeArtifact (we'll handle it separately)
   const skipArtifact = !!resumeArtifact;
 
-  // If no agent config and no resume artifact and no memory, return empty manifest
-  if (!agentConfig && !resumeArtifact && !memoryName) {
+  // If no agent config and no resume artifact and no memory and no additional volumes, return empty manifest
+  if (
+    !agentConfig &&
+    !resumeArtifact &&
+    !memoryName &&
+    (!additionalVolumes || additionalVolumes.length === 0)
+  ) {
     return { storages: [], artifact: null, memory: null };
   }
 
@@ -416,22 +482,17 @@ export async function prepareStorageManifest(
     },
   );
 
+  // Process additional volumes (always optional, use Runtime Org)
+  const additionalPromises = (additionalVolumes ?? []).map((vol) => {
+    return resolveAdditionalVolume(vol, runtimeClerkOrgId, bucketName);
+  });
+
   // Handle artifact: either from resumeArtifact or from volumeResult
-  // Note: resumeArtifactMountPath is required when resumeArtifact is provided (no fallback)
-  let artifactSource = volumeResult.artifact;
-  if (resumeArtifact) {
-    if (!resumeArtifactMountPath) {
-      throw badRequest(
-        "resumeArtifactMountPath is required when resumeArtifact is provided (working_dir must be configured)",
-      );
-    }
-    artifactSource = {
-      driver: "vas" as const,
-      vasStorageName: resumeArtifact.artifactName,
-      vasVersion: resumeArtifact.artifactVersion,
-      mountPath: resumeArtifactMountPath,
-    };
-  }
+  const artifactSource = resolveArtifactSource(
+    volumeResult.artifact,
+    resumeArtifact,
+    resumeArtifactMountPath,
+  );
 
   const artifactPromise = artifactSource
     ? (async () => {
@@ -495,19 +556,42 @@ export async function prepareStorageManifest(
     : Promise.resolve(null);
 
   // Wait for all URL generation to complete in parallel
-  const [storageResults, artifact, memory] = await Promise.all([
-    Promise.all(volumePromises),
-    artifactPromise,
-    memoryPromise,
-  ]);
+  const [storageResults, additionalResults, artifact, memory] =
+    await Promise.all([
+      Promise.all(volumePromises),
+      Promise.all(additionalPromises),
+      artifactPromise,
+      memoryPromise,
+    ]);
 
-  // Filter out null results (skipped optional volumes)
-  const filteredStorages = storageResults.filter((s): s is ManifestStorage => {
-    return s !== null;
-  });
+  // Filter nulls from additional volumes
+  const resolvedAdditional = additionalResults.filter(
+    (s): s is ManifestStorage => {
+      return s !== null;
+    },
+  );
+
+  // Build set of additional volume mount paths for override
+  const additionalMountPaths = new Set(
+    resolvedAdditional.map((s) => {
+      return s.mountPath;
+    }),
+  );
+
+  // Filter compose volumes: remove any whose mount path conflicts with additional volumes
+  const filteredCompose = storageResults
+    .filter((s): s is ManifestStorage => {
+      return s !== null;
+    })
+    .filter((s) => {
+      return !additionalMountPaths.has(s.mountPath);
+    });
+
+  // Merge: compose (filtered) + additional
+  const filteredStorages = [...filteredCompose, ...resolvedAdditional];
 
   log.debug(
-    `Storage manifest prepared: ${filteredStorages.length} storages, ${artifact ? "1 artifact" : "no artifact"}, ${memory ? "1 memory" : "no memory"}`,
+    `Storage manifest prepared: ${filteredStorages.length} storages (${filteredCompose.length} compose + ${resolvedAdditional.length} additional), ${artifact ? "1 artifact" : "no artifact"}, ${memory ? "1 memory" : "no memory"}`,
   );
 
   return {

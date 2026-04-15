@@ -71,6 +71,13 @@ export interface ExecutionContext {
   // Volume version overrides (volume name -> version)
   volumeVersions?: Record<string, string>;
 
+  // Additional volumes passed at run time (bypass compose)
+  additionalVolumes?: Array<{
+    name: string;
+    version?: string;
+    mountPath: string;
+  }>;
+
   // Environment variables expanded server-side from compose's environment field
   // Uses vars and secrets to resolve ${{ vars.xxx }} and ${{ secrets.xxx }} references
   environment?: Record<string, string>;
