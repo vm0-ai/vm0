@@ -102,8 +102,8 @@ describe("voice-chat page - idle state model selector (VC-002)", () => {
 
     // Verify the default model signal value — more reliable than querying
     // aria-selected which can race with async store initialization.
-    // Default changed back to gpt-realtime in #9292.
-    expect(context.store.get(vcModel$)).toBe("gpt-realtime");
+    // Default changed to gpt-realtime-mini in #9387.
+    expect(context.store.get(vcModel$)).toBe("gpt-realtime-mini");
   });
 });
 
