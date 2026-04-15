@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.239.0](https://github.com/vm0-ai/vm0/compare/app-v0.238.5...app-v0.239.0) (2026-04-15)
+
+
+### Features
+
+* **mission-control:** add voice chat panel for voice_chat tasks ([#9442](https://github.com/vm0-ai/vm0/issues/9442)) ([db92144](https://github.com/vm0-ai/vm0/commit/db9214426c95035206ca73102f5f5b0fb92636fc))
+
 ## [0.238.5](https://github.com/vm0-ai/vm0/compare/app-v0.238.4...app-v0.238.5) (2026-04-15)
 
 
