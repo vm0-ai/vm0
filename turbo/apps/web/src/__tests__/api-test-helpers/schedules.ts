@@ -1,17 +1,17 @@
 import type { ScheduleResponse } from "../../lib/zero/schedule/schedule-service";
 import {
-  deploySchedule,
   getScheduleByName,
-  deleteSchedule,
-  enableSchedule,
-  disableSchedule,
   getScheduleRecentRuns,
 } from "../../lib/zero/schedule";
-import { getTestAuthContext } from "./core";
+import { POST as deployScheduleRoute } from "../../../app/api/zero/schedules/route";
+import { DELETE as deleteScheduleRoute } from "../../../app/api/zero/schedules/[name]/route";
+import { POST as enableScheduleRoute } from "../../../app/api/zero/schedules/[name]/enable/route";
+import { POST as disableScheduleRoute } from "../../../app/api/zero/schedules/[name]/disable/route";
+import { createTestRequest, getTestAuthContext } from "./core";
 import { resolveAgentIdFromCompose } from "../db-test-seeders/schedules";
 
 /**
- * Create a test schedule via the schedule service.
+ * Create a test schedule via the schedule API route.
  * Note: vars and secrets are now managed via server-side tables (vm0 secret set, vm0 var set)
  */
 export async function createTestSchedule(
@@ -27,7 +27,6 @@ export async function createTestSchedule(
     appendSystemPrompt?: string;
   },
 ): Promise<ScheduleResponse> {
-  const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
 
   // Default to cron if no trigger specified
@@ -36,18 +35,34 @@ export async function createTestSchedule(
     options?.atTime ||
     options?.intervalSeconds !== undefined;
 
-  const result = await deploySchedule(userId, orgId, {
-    name,
-    agentId,
-    timezone: options?.timezone ?? "UTC",
-    prompt: options?.prompt ?? "Test schedule prompt",
-    cronExpression: hasTrigger ? options?.cronExpression : "0 0 * * *",
-    atTime: options?.atTime,
-    intervalSeconds: options?.intervalSeconds,
-    description: options?.description,
-    appendSystemPrompt: options?.appendSystemPrompt,
-  });
-  return result.schedule;
+  const request = createTestRequest(
+    "http://localhost:3000/api/zero/schedules",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        agentId,
+        timezone: options?.timezone ?? "UTC",
+        prompt: options?.prompt ?? "Test schedule prompt",
+        cronExpression: hasTrigger ? options?.cronExpression : "0 0 * * *",
+        atTime: options?.atTime,
+        intervalSeconds: options?.intervalSeconds,
+        description: options?.description,
+        appendSystemPrompt: options?.appendSystemPrompt,
+      }),
+    },
+  );
+
+  const response = await deployScheduleRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create schedule: ${error.error?.message || response.status}`,
+    );
+  }
+  const data = await response.json();
+  return data.schedule;
 }
 
 /**
@@ -67,7 +82,7 @@ export async function getTestSchedule(
 }
 
 /**
- * Enable a test schedule via the schedule service.
+ * Enable a test schedule via the enable API route.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -77,13 +92,31 @@ export async function enableTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
-  const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
-  return enableSchedule(userId, orgId, agentId, name);
+
+  const request = createTestRequest(
+    `http://localhost:3000/api/zero/schedules/${name}/enable`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId }),
+    },
+  );
+
+  const response = await enableScheduleRoute(request, {
+    params: Promise.resolve({ name }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to enable schedule: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
 }
 
 /**
- * Disable a test schedule via the schedule service.
+ * Disable a test schedule via the disable API route.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -93,13 +126,31 @@ export async function disableTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
-  const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
-  return disableSchedule(userId, orgId, agentId, name);
+
+  const request = createTestRequest(
+    `http://localhost:3000/api/zero/schedules/${name}/disable`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId }),
+    },
+  );
+
+  const response = await disableScheduleRoute(request, {
+    params: Promise.resolve({ name }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to disable schedule: ${error.error?.message || response.status}`,
+    );
+  }
+  return response.json();
 }
 
 /**
- * Delete a test schedule via the schedule service.
+ * Delete a test schedule via the delete API route.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -108,9 +159,22 @@ export async function deleteTestSchedule(
   composeId: string,
   name: string,
 ): Promise<void> {
-  const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
-  await deleteSchedule(userId, orgId, agentId, name);
+
+  const request = createTestRequest(
+    `http://localhost:3000/api/zero/schedules/${name}?agentId=${agentId}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  const response = await deleteScheduleRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to delete schedule: ${error.error?.message || response.status}`,
+    );
+  }
 }
 
 /**

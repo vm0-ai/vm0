@@ -373,6 +373,98 @@ If your "pure function" test requires mocks or database access, either:
 
 ---
 
+## Acceptable Service-Level Test Exceptions
+
+While route integration tests are the default, some service-level tests are acceptable when no API route exists for the functionality. These tests still follow the same principles — real database, only mock external dependencies — but import service functions directly.
+
+### When Service-Level Tests Are Acceptable
+
+1. **No API route exists** — The function is internal infrastructure with no HTTP endpoint
+2. **Auth/middleware logic** — Runs before route handlers, can't be tested through routes alone
+3. **Internal state manipulation** — Queue operations, state machines, optimistic locking
+4. **Webhook/callback handlers** — Triggered by external services, not HTTP requests from clients
+5. **Cleanup/cascade operations** — Org/user deletion triggered by Clerk webhooks
+
+### Exception Categories
+
+#### Auth/Middleware
+
+Tests for auth context resolution, middleware validation, capability checking:
+
+- `auth/__tests__/get-auth-context-cli.test.ts`
+- `auth/__tests__/get-auth-context-zero.test.ts`
+- `auth/__tests__/get-auth-context.spec.ts`
+- `auth/__tests__/require-auth.test.ts`
+- `auth/__tests__/org-membership-cache.test.ts`
+
+#### Internal Infrastructure
+
+Tests for caching, scheduling, storage that have no API route:
+
+- `auth/__tests__/org-cache.test.ts`
+- `auth/__tests__/user-cache-service.test.ts`
+- `infra/callback/__tests__/dispatcher.test.ts`
+- `infra/run/__tests__/scheduling.test.ts`
+- `infra/storage/__tests__/instruction-upload.test.ts`
+- `infra/storage/__tests__/system-skill-resolution.test.ts`
+
+#### Complex Business Logic
+
+OAuth flows, message context building, webhook handlers:
+
+- `zero/connector/providers/__tests__/slack.test.ts`
+- `zero/connector/providers/__tests__/spotify.test.ts`
+- `zero/slack/__tests__/context.test.ts`
+- `zero/telegram/__tests__/context.test.ts`
+- `zero/slack-org/handlers/__tests__/shared.test.ts`
+
+#### Internal Queue/State Machine
+
+Tests requiring direct queue manipulation:
+
+- `zero/__tests__/build-zero-context.test.ts`
+- `zero/__tests__/run-queue-service.test.ts`
+- `zero/email/__tests__/outbox-service.test.ts`
+- `infra/run/__tests__/run-status.test.ts`
+- `zero/__tests__/credit-check.test.ts`
+
+#### Webhook-triggered Cascade Operations
+
+Clerk webhook handlers with complex cleanup:
+
+- `zero/org/__tests__/org-deletion-service.test.ts`
+- `zero/org/__tests__/org-external-cleanup.test.ts`
+- `zero/user/__tests__/user-deletion-service.test.ts`
+- `zero/user/__tests__/user-external-cleanup.test.ts`
+
+#### Org-level Functions Without API Routes
+
+Functions only accessible internally:
+
+- `zero/secret/__tests__/org-secret-service.test.ts`
+- `zero/variable/__tests__/org-variable-service.test.ts`
+- `zero/org/__tests__/org-service.test.ts`
+- `zero/user/__tests__/load-feature-switch-overrides.test.ts`
+- `zero/billing/__tests__/auto-recharge-service.test.ts`
+- `zero/credit/__tests__/credit-expiry.test.ts`
+- `zero/org/__tests__/org-metadata-service.test.ts`
+- `zero/credit/__tests__/member-credit-cap-service.test.ts`
+
+### How to Add a New Exception
+
+If the ESLint rule flags a service import in your test file:
+
+1. First verify no route exists — check `app/api/` for a handler that wraps the function
+2. If a route exists, migrate the test to use the route handler (see Web Route Integration Tests above)
+3. If no route exists, add an eslint-disable comment with a documented reason:
+
+```typescript
+// eslint-disable-next-line web/no-direct-db-in-tests -- Auth middleware has no route handler
+import { getAuthContext } from "../get-auth-context";
+```
+
+---
+
 ## Test Cleanup
 
 Don't manually delete - this creates order dependencies. `testContext()` handles user isolation, no cleanup needed.

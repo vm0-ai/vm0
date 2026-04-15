@@ -58,7 +58,7 @@ const PLANS = [
     cta: "Current plan",
     image: planFreeImg,
     features: [
-      "10,000 starter credits",
+      "100,000 starter credits",
       "1 concurrent run",
       "Unlimited total agents",
       "Bring your own LLM keys",
@@ -68,7 +68,7 @@ const PLANS = [
   {
     tier: "pro" as const,
     name: "Pro",
-    price: "$40",
+    price: "$20",
     period: "/month",
     description: "More power and seamless collaboration for your team.",
     cta: "Upgrade to Pro",

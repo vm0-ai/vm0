@@ -215,4 +215,21 @@ describe("playTts$", () => {
     await context.store.set(playTts$, "msg-4", "Hello again", context.signal);
     expect(getFetchCount()).toBe(1);
   });
+
+  it("should invoke cleanup function (reader.cancel + audioCtx.close) when stopTts$ is called", async () => {
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+    const { mockAudioContext } = mockWebAudio();
+    mockTtsEndpoint();
+
+    await context.store.set(playTts$, "msg-5", "Hello world", context.signal);
+
+    // AudioContext.close should not have been called during normal playback
+    expect(mockAudioContext.close).not.toHaveBeenCalled();
+
+    // stopTts$ triggers the stored cleanup function
+    context.store.set(stopTts$);
+
+    // The cleanup function should have called audioCtx.close()
+    expect(mockAudioContext.close).toHaveBeenCalledTimes(1);
+  });
 });

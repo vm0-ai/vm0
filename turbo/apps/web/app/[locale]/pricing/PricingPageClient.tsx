@@ -205,7 +205,7 @@ export default function PricingPageClient() {
               {/* Pro Plan */}
               <PricingCard
                 title="Pro"
-                price="$40"
+                price="$20"
                 period={t("perMonth")}
                 description={t("pro.description")}
                 features={[

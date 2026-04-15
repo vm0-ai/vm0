@@ -1,4 +1,6 @@
+// eslint-disable-next-line web/no-direct-db-in-tests -- Test helper: service access needed for test data setup
 import { consumeCaptureNetworkBodies } from "../../lib/zero/user/user-preferences-service";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Test helper: service access needed for test data setup
 import { getVm0ApiKey } from "../../lib/zero/vm0-key/vm0-key-service";
 import { POST as registerPushSubscriptionRoute } from "../../../app/api/zero/push-subscriptions/route";
 import {

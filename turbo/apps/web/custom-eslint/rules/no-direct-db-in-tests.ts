@@ -40,18 +40,60 @@ export default createRule({
         "Do not call initServices() in test files. Route handlers call it internally. See docs/testing/web-testing.md#no-initservices-in-route-tests",
       noDbSchemaImport:
         "Do not import from db/schema/* in test files. Use db-test-seeders or db-test-assertions instead.",
+      noServiceImport:
+        "Do not import service functions directly in test files. Test through route handlers instead. See docs/testing/web-testing.md#acceptable-service-level-test-exceptions",
     },
   },
   create(context) {
     return {
-      // Detect imports from db/schema/*
+      // Detect imports from db/schema/* and service modules
       ImportDeclaration(node: TSESTree.ImportDeclaration) {
         const source = node.source.value;
-        if (typeof source === "string" && /\/db\/schema\//.test(source)) {
+        if (typeof source !== "string") {
+          return;
+        }
+
+        // Check db/schema imports
+        if (/\/db\/schema\//.test(source)) {
           context.report({
             node,
             messageId: "noDbSchemaImport",
           });
+          return;
+        }
+
+        // Check service module imports
+        // Only flag relative imports (not packages)
+        if (!source.startsWith(".")) {
+          return;
+        }
+
+        // Skip type-only imports (import type { ... } from "...")
+        if (node.importKind === "type") {
+          return;
+        }
+
+        // Skip test infrastructure imports
+        if (/__tests__\//.test(source)) {
+          return;
+        }
+
+        // Flag imports from *-service modules (e.g., "../run-service", "./connect-service")
+        // The pattern matches filenames ending with -service (with optional path suffix)
+        if (/-service(\/|$)/.test(source)) {
+          // Check if ALL specifiers are type-only (inline type imports)
+          const hasValueImport = node.specifiers.some((spec) => {
+            return (
+              spec.type !== AST_NODE_TYPES.ImportSpecifier ||
+              spec.importKind !== "type"
+            );
+          });
+          if (hasValueImport) {
+            context.report({
+              node,
+              messageId: "noServiceImport",
+            });
+          }
         }
       },
 

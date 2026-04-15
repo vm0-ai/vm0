@@ -119,7 +119,7 @@ describe("queue drawer", () => {
     await waitFor(() => {
       expect(screen.getByText("Pro")).toBeInTheDocument();
       expect(screen.getByText("Upgrade to Pro")).toBeInTheDocument();
-      expect(screen.getByText("$40")).toBeInTheDocument();
+      expect(screen.getByText("$20")).toBeInTheDocument();
       expect(
         screen.getAllByText("2 concurrent runs").length,
       ).toBeGreaterThanOrEqual(1);

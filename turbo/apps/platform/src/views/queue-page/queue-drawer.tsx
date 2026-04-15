@@ -36,7 +36,7 @@ const UPGRADE_PATHS = {
     targetTier: "pro",
     targetLabel: "Pro",
     concurrentRuns: 2,
-    price: "$40",
+    price: "$20",
     description: "Run multiple tasks in parallel and skip the queue.",
     features: [
       "20,000 credits / month",

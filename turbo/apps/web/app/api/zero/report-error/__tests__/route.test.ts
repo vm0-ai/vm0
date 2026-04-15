@@ -237,7 +237,11 @@ describe("POST /api/zero/report-error", () => {
     expect(entryNames).toContain("environment.json");
     expect(entryNames).toContain("connectors.json");
     expect(entryNames).toContain("agent-config.json");
-    expect(entryNames).toContain("activity-log.json");
+    expect(
+      entryNames.some((n) => {
+        return n.startsWith("activity-log-");
+      }),
+    ).toBe(true);
   });
 
   it("should include system-log.txt when Axiom returns system log data", async () => {

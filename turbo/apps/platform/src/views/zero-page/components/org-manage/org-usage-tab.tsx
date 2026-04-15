@@ -47,7 +47,7 @@ import {
 
 function tierCreditReference(tier: BillingTier): number {
   if (tier === "free") {
-    return 10_000;
+    return 100_000;
   }
   if (tier === "pro") {
     return 20_000;

@@ -74,9 +74,9 @@ cmd_deploy() {
   log "Binary: $BINARY ($(du -h "$BINARY" | cut -f1))"
 
   # Stop old service before uploading (avoids "Text file busy").
-  # stop() returns Ok when no service exists, so no need for || true.
+  # Try --force first (new runner), fall back to no-flag (old runner).
   log "Stopping old service..."
-  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force"
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force" || ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME" || true
 
   # Upload
   log "Deploying to $SSH_USER@$HOST..."
@@ -160,7 +160,7 @@ cmd_exec() {
 cmd_remove() {
   log "Removing runner $RUNNER_NAME from $HOST..."
 
-  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force" || true
+  ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME --force" || ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME" || true
   ssh_cmd "sudo rm -rf $REMOTE_BIN_DIR $RUNNER_DIR"
 
   log "Done! Runner $RUNNER_NAME removed from $HOST"

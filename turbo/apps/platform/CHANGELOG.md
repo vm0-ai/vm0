@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.238.0](https://github.com/vm0-ai/vm0/compare/app-v0.237.1...app-v0.238.0) (2026-04-15)
+
+
+### Features
+
+* update pro plan pricing to $20/month and free credits to 100k ([#9422](https://github.com/vm0-ai/vm0/issues/9422)) ([b9e6989](https://github.com/vm0-ai/vm0/commit/b9e6989dafb2ae9e117febc6b8b9547074afd640))
+* **zero:** add run id to run context response ([#9433](https://github.com/vm0-ai/vm0/issues/9433)) ([410899f](https://github.com/vm0-ai/vm0/commit/410899f4dcb33b2f7b1cc8863f6343f9d91ddeb3))
+
+
+### Bug Fixes
+
+* **connectors:** add workflow scope to GitHub OAuth connector ([#9403](https://github.com/vm0-ai/vm0/issues/9403)) ([9785d10](https://github.com/vm0-ai/vm0/commit/9785d104a20867b4d4e423f5b9fe636f02222049))
+* **platform:** wrap tts cleanup fn in updater to prevent immediate execution ([#9439](https://github.com/vm0-ai/vm0/issues/9439)) ([130d7f5](https://github.com/vm0-ai/vm0/commit/130d7f53c0554fdbc94b899b6a04e8b51d16f73d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.186.0
+
+## [0.237.1](https://github.com/vm0-ai/vm0/compare/app-v0.237.0...app-v0.237.1) (2026-04-15)
+
+
+### Refactoring
+
+* **platform:** extract shared auto-scroll factory and improve scroll behavior ([#9388](https://github.com/vm0-ai/vm0/issues/9388)) ([91f6d67](https://github.com/vm0-ai/vm0/commit/91f6d67760b5a485c3b9c0d72b20876c94cb3b95))
+
+## [0.237.0](https://github.com/vm0-ai/vm0/compare/app-v0.236.0...app-v0.237.0) (2026-04-15)
+
+
+### Features
+
+* **connectors:** add Anthropic Managed Agents connector ([#9386](https://github.com/vm0-ai/vm0/issues/9386)) ([d4f7447](https://github.com/vm0-ai/vm0/commit/d4f7447083ed6dc406ff29c4a284b1badbd0c144))
+* **voice-chat:** change default model to gpt-realtime-mini ([ff02915](https://github.com/vm0-ai/vm0/commit/ff029158615ac91dc5f75618b07695ef940bdb2d))
+* **voice-chat:** change default model to gpt-realtime-mini ([#9387](https://github.com/vm0-ai/vm0/issues/9387)) ([1b09311](https://github.com/vm0-ai/vm0/commit/1b093117a9f7b54b6582ff6dfb3e9ecfa4721035))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.185.0
+
 ## [0.236.0](https://github.com/vm0-ai/vm0/compare/app-v0.235.5...app-v0.236.0) (2026-04-14)
 
 

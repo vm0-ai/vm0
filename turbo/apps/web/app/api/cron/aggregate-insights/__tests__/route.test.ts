@@ -184,8 +184,8 @@ describe("GET /api/cron/aggregate-insights", () => {
 
     const row = await findInsightsDaily(orgId, todayDateStr(), userId);
     expect(row).toBeDefined();
-    // ensureOrgRow inserts with default 10000 credits
-    expect(row!.data.creditBalance).toBe(10000);
+    // ensureOrgRow inserts with default 100000 credits
+    expect(row!.data.creditBalance).toBe(100000);
   });
 
   it("should include Axiom network data when available", async () => {

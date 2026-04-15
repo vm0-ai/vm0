@@ -250,7 +250,7 @@ const CONNECTOR_TYPES_DEF = {
     oauth: {
       authorizationUrl: "https://github.com/login/oauth/authorize",
       tokenUrl: "https://github.com/login/oauth/access_token",
-      scopes: ["repo", "project"],
+      scopes: ["repo", "project", "workflow"],
     },
   },
   notion: {
