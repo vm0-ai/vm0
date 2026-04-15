@@ -42,9 +42,7 @@ export async function sendIMessage(opts: {
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => {
-      return "unknown";
-    });
+    const text = await response.text();
     log.error("AgentPhone sendMessage failed", {
       status: response.status,
       body: text,

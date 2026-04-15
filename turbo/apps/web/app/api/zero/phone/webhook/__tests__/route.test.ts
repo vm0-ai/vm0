@@ -319,7 +319,7 @@ describe("POST /api/zero/phone/webhook", () => {
     const TEST_FROM_NUMBER = `+1555${uniqueId("").replace(/-/g, "").slice(0, 7)}`;
     const user = await context.setupUser();
     const { agentphoneAgentId } = await createPhoneOrg(user.orgId);
-    await linkIMessageHandle(TEST_FROM_NUMBER, user.userId, user.orgId);
+    await linkIMessageHandle(TEST_FROM_NUMBER, user.orgId);
     // linkIMessageHandle sends a success iMessage via after(); flush it before testing the webhook
     await flushAfterCallbacks();
     await insertOrgDefaultModelProvider(user.orgId, "anthropic");
