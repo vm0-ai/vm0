@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Internal infrastructure: no API route
 import { prepareStorageManifest } from "../storage-service";
-import {
-  createTestVolume,
-  createTestVolumeForOrg,
-} from "../../../../__tests__/api-test-helpers";
+import { createTestVolume } from "../../../../__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,

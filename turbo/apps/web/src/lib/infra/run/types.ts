@@ -1,4 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
+import type { AdditionalVolume } from "../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core";
 
 /**
@@ -72,11 +73,7 @@ export interface ExecutionContext {
   volumeVersions?: Record<string, string>;
 
   // Additional volumes passed at run time (bypass compose)
-  additionalVolumes?: Array<{
-    name: string;
-    version?: string;
-    mountPath: string;
-  }>;
+  additionalVolumes?: AdditionalVolume[];
 
   // Environment variables expanded server-side from compose's environment field
   // Uses vars and secrets to resolve ${{ vars.xxx }} and ${{ secrets.xxx }} references
