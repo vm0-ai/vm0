@@ -22,7 +22,10 @@ import {
   createVoiceChatPanelSignals,
   type VoiceChatPanelSignals,
 } from "./create-voice-chat-panel-signals.ts";
-import { maximizedTaskId$ } from "./mission-control-panels.ts";
+import {
+  maximizedTaskId$,
+  setActivePanelId$,
+} from "./mission-control-panels.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 
 // ---------------------------------------------------------------------------
@@ -203,6 +206,7 @@ function createPanelSignals(
         set(internalPanelEntry$, { kind: "chat", signals });
         set(internalOpenedAt$, Date.now());
         set(internalOpen$, true);
+        set(setActivePanelId$, taskId);
         await set(signals.loadMessages$, signal);
         return;
       }
@@ -212,6 +216,7 @@ function createPanelSignals(
         set(internalPanelEntry$, { kind: "voice", signals });
         set(internalOpenedAt$, Date.now());
         set(internalOpen$, true);
+        set(setActivePanelId$, taskId);
         await set(signals.startPolling$, panelSignal);
       } else if (task.latestRunId) {
         const panelSignal = set(resetPanelPolling$, signal);
@@ -219,6 +224,7 @@ function createPanelSignals(
         set(internalPanelEntry$, { kind: "activity", signals });
         set(internalOpenedAt$, Date.now());
         set(internalOpen$, true);
+        set(setActivePanelId$, taskId);
         await set(signals.startPolling$, panelSignal);
       }
     },
@@ -559,6 +565,17 @@ export const addOptimisticTask$ = command(
     return ts;
   },
 );
+
+// ---------------------------------------------------------------------------
+// Lookup by task ID (sync — used by global keyboard shortcuts)
+// ---------------------------------------------------------------------------
+
+export const focusTaskCard$ = command(({ get, set }, taskId: string) => {
+  const ts = get(internalTaskSignals$).get(taskId);
+  if (ts) {
+    set(ts.focusCard$);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Cross-task commands

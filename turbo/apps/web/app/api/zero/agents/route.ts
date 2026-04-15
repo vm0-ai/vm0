@@ -42,12 +42,7 @@ const router = tsr.router(zeroAgentsMainContract, {
     if (!validation.valid) return validation.error;
 
     // Build compose content (always includes all connector skills)
-    const content = buildComposeContent(
-      agentName,
-      customSkills.map((name) => {
-        return { name };
-      }),
-    );
+    const content = buildComposeContent(agentName);
 
     // Run synchronous compose (pass empty instructions so the
     // agent-instructions storage record is created — without it,

@@ -124,7 +124,7 @@ teardown_file() {
     # Note: --volume-version uses the volume ALIAS from config (test-volume), not the storage name
     echo "# Running agent with --volume-version override..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         --volume-version "$VOLUME_ALIAS=$VERSION1" \
         --verbose \
         "cat /home/user/data/data.txt"

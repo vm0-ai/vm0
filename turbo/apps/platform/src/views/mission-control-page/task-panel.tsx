@@ -14,7 +14,9 @@ import {
 } from "../../signals/mission-control-page/mission-control-tasks.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  activePanelId$,
   maximizedTaskId$,
+  setActivePanelId$,
   toggleMaximizeTask$,
 } from "../../signals/mission-control-page/mission-control-panels.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -56,16 +58,23 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
   const scrollCardIntoView = useSet(taskSignals.scrollCardIntoView$);
   const setInputFocused = useSet(taskSignals.setInputFocused$);
   const closeAndFocusNext = useSet(closeAndFocusNextInput$);
+  const setActivePanel = useSet(setActivePanelId$);
   const pageSignal = useGet(pageSignal$);
   const maximizedId = useGet(maximizedTaskId$);
+  const activeId = useGet(activePanelId$);
 
   const taskId = taskSignals.taskId;
   const isMaximized = maximizedId === taskId;
+  const isActive = activeId === taskId;
 
   return (
     <div
       className="flex flex-col h-full min-h-0"
+      onPointerDown={() => {
+        setActivePanel(taskId);
+      }}
       onFocus={(e) => {
+        setActivePanel(taskId);
         if (e.target instanceof HTMLTextAreaElement) {
           scrollCardIntoView();
           setInputFocused(true);
@@ -103,8 +112,10 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
         );
       }}
     >
-      <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-2 border-b bg-muted/30">
-        <TaskPanelTitle taskSignals={taskSignals} />
+      <div
+        className={`shrink-0 flex items-center justify-between gap-2 px-4 py-2 border-b transition-colors ${isActive ? "border-b-primary/50 bg-muted/50" : "bg-muted/30"}`}
+      >
+        <TaskPanelTitle taskSignals={taskSignals} active={isActive} />
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             type="button"
@@ -139,12 +150,20 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
   );
 }
 
-function TaskPanelTitle({ taskSignals }: { taskSignals: TaskSignals }) {
+function TaskPanelTitle({
+  taskSignals,
+  active,
+}: {
+  taskSignals: TaskSignals;
+  active: boolean;
+}) {
   const task = useGet(taskSignals.task$);
   const agentName = task.agent.displayName ?? task.agent.name;
 
   return (
-    <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground font-medium">
+    <div
+      className={`flex items-center gap-1.5 min-w-0 text-xs font-medium transition-colors ${active ? "text-foreground" : "text-muted-foreground"}`}
+    >
       <TaskTypeIcon task={task} />
       <AvatarFromUrl
         avatarUrl={task.agent.avatarUrl}

@@ -72,7 +72,7 @@ teardown_file() {
     run $VM0_CLI run "$AGENT_NAME" \
         --vars "testVar=${var_value}" \
         --secrets "TEST_SECRET=${secret_value}" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         --verbose \
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
     assert_success

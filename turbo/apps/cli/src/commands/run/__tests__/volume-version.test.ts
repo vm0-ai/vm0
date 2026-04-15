@@ -199,7 +199,7 @@ describe("--volume-version option", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
         "--volume-version",
         "test-volume=abc123",
@@ -229,7 +229,7 @@ describe("--volume-version option", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
         "--volume-version",
         "vol1=version1",
@@ -261,7 +261,7 @@ describe("--volume-version option", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 

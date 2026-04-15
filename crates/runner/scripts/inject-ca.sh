@@ -76,6 +76,34 @@ sudo chmod 644 "${MOUNT_DIR}/${CA_ROOTFS_DEST}"
 # Rebuild system CA bundle (updates /etc/ssl/certs/ca-certificates.crt)
 sudo chroot "$MOUNT_DIR" update-ca-certificates
 
+# Verify update-ca-certificates actually included our CA in the bundle.
+# `update-ca-certificates` can exit 0 while silently emitting a bundle
+# that does not contain our cert (e.g. if the source file was not
+# recognised as PEM). Without this check the failure would surface
+# later as an opaque snapshot-creation or VM-boot TLS error. Uses the
+# same 2nd-line fingerprint technique as verify-rootfs.sh.
+#
+# Reads don't need sudo: the bundle is 644 and our CA file is 644
+# (we chmod'd it above); the rootfs root is 755 (same assumption
+# verify-rootfs.sh makes).
+ca_line=$(sed -n '2p' "${MOUNT_DIR}/${CA_ROOTFS_DEST}")
+# Reject an empty line 2 or a PEM header/footer on line 2 (latter
+# happens when the source cert has a leading blank line). Matching
+# either against the bundle with `grep -F` would false-positive
+# because every cert in the bundle has BEGIN/END framing lines.
+if [[ -z "$ca_line" ]] \
+    || [[ "$ca_line" == -----BEGIN* ]] \
+    || [[ "$ca_line" == -----END* ]]; then
+    echo "error: proxy CA file malformed (line 2 is empty or a PEM framing line)" >&2
+    exit 1
+fi
+# `-- "$ca_line"` stops option parsing so a line starting with `-`
+# can never be mistaken for a grep flag.
+if ! grep -qF -- "$ca_line" "${MOUNT_DIR}/etc/ssl/certs/ca-certificates.crt"; then
+    echo "error: proxy CA not found in system bundle after update-ca-certificates" >&2
+    exit 1
+fi
+
 # Update Java keystore. Unlike build-rootfs.sh (which imports into a fresh
 # keystore where the alias doesn't exist), here the alias vm0-proxy-ca
 # already exists from the original build. keytool -importcert rejects

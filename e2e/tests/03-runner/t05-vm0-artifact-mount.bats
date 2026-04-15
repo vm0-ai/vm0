@@ -78,7 +78,7 @@ teardown() {
     # Step 2: Run agent with artifact, list files
     # Use extended timeout for CI environments which may be slower
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         --verbose \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
 
@@ -109,7 +109,7 @@ teardown() {
     # Simple run that should complete
     # Use extended timeout for CI environments which may be slower
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "echo done"
 
     assert_success

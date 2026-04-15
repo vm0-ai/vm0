@@ -90,7 +90,7 @@ teardown_file() {
     # Agent will: create agent-marker.txt, modify counter.txt from 100 to 101
     echo "# Running agent to modify artifact..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$artifact_name" \
+        --artifact "$artifact_name" \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
     assert_success

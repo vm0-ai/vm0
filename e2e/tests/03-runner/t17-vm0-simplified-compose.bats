@@ -260,7 +260,7 @@ EOF
     echo "# Running agent to verify instructions is mounted..."
     # The instructions is mounted at /home/user/.claude/CLAUDE.md
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "cat /home/user/.claude/CLAUDE.md"
     assert_success
 
@@ -296,7 +296,7 @@ EOF
     # The skill is mounted at /home/user/.claude/skills/github/
     # Provide mock GH_TOKEN since github skill requires it
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         --secrets "GH_TOKEN=mock-token-for-test" \
         "ls /home/user/.claude/skills/github/"
     assert_success
@@ -328,7 +328,7 @@ EOF
 
     echo "# Running agent to verify gh cli is installed in base image..."
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "gh --version"
     assert_success
 

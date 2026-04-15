@@ -1,4 +1,3 @@
-import chalk from "chalk";
 import { Command, Option } from "commander";
 import {
   getComposeById,
@@ -57,18 +56,6 @@ export const mainRunCommand = new Command()
     "--artifact <name[:version]>",
     "Artifact storage (format: name or name:version)",
   )
-  .addOption(
-    new Option(
-      "--artifact-name <name>",
-      "[deprecated: use --artifact] Artifact storage name",
-    ).hideHelp(),
-  )
-  .addOption(
-    new Option(
-      "--artifact-version <hash>",
-      "[deprecated: use --artifact] Artifact version hash",
-    ).hideHelp(),
-  )
   .option(
     "--volume-version <name=version>",
     "Volume version override (repeatable, format: volumeName=version)",
@@ -123,8 +110,6 @@ export const mainRunCommand = new Command()
           vars: Record<string, string>;
           secrets: Record<string, string>;
           artifact?: string;
-          artifactName?: string;
-          artifactVersion?: string;
           memory?: string;
           volumeVersion: Record<string, string>;
           volume: Array<{ name: string; version?: string; mountPath: string }>;
@@ -199,27 +184,8 @@ export const mainRunCommand = new Command()
           options.envFile,
         );
 
-        // 5. Resolve artifact: new --artifact flag vs deprecated --artifact-name/--artifact-version
-        let artifactName = options.artifactName;
-        let artifactVersion = options.artifactVersion;
-
-        if (options.artifact) {
-          if (options.artifactName || options.artifactVersion) {
-            throw new Error(
-              "Cannot use --artifact with --artifact-name or --artifact-version. Use --artifact <name[:version]> instead.",
-            );
-          }
-          // options.artifact is guaranteed truthy by the if-guard above
-          const parsed = parseArtifact(options.artifact)!;
-          artifactName = parsed.artifactName;
-          artifactVersion = parsed.artifactVersion;
-        } else if (options.artifactName) {
-          console.error(
-            chalk.yellow(
-              "⚠ --artifact-name is deprecated, use --artifact <name[:version]> instead",
-            ),
-          );
-        }
+        // 5. Parse artifact flag
+        const parsedArtifact = parseArtifact(options.artifact);
 
         // 6. Prepare optional fields
         const volumeVersions =
@@ -238,8 +204,8 @@ export const mainRunCommand = new Command()
           prompt,
           vars,
           secrets,
-          artifactName,
-          artifactVersion,
+          artifactName: parsedArtifact?.artifactName,
+          artifactVersion: parsedArtifact?.artifactVersion,
           memoryName: options.memory,
           volumeVersions,
           additionalVolumes,

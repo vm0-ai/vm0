@@ -8,6 +8,7 @@ import {
   ALL_RUN_STATUSES,
   type RunStatus,
   orgTierSchema,
+  getCustomSkillStorageName,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -15,6 +16,8 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import type { AdditionalVolume } from "../../../../src/lib/infra/storage/types";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {
   loadCompose,
@@ -48,6 +51,44 @@ import { getCachedUser } from "../../../../src/lib/auth/user-cache-service";
 import { env } from "../../../../src/env";
 
 const log = logger("api:runs");
+
+/**
+ * Resolve additional volumes for a run, including custom skill volumes.
+ *
+ * For new runs: injects the agent's custom skills as additional volumes,
+ * merged with any explicit volumes from the request body or resolved context.
+ *
+ * For checkpoint/session resume: skills are already captured in the resolved
+ * additionalVolumes from the original run — no re-injection needed.
+ */
+async function resolveRunAdditionalVolumes(params: {
+  composeId: string | undefined;
+  isResume: boolean;
+  bodyAdditionalVolumes: AdditionalVolume[] | undefined;
+  resolvedAdditionalVolumes: AdditionalVolume[] | undefined;
+}): Promise<AdditionalVolume[] | undefined> {
+  let skillVolumes: AdditionalVolume[] = [];
+  if (!params.isResume && params.composeId) {
+    const [agentRecord] = await globalThis.services.db
+      .select({ customSkills: zeroAgents.customSkills })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, params.composeId))
+      .limit(1);
+
+    skillVolumes = (agentRecord?.customSkills ?? []).map((name) => {
+      return {
+        name: getCustomSkillStorageName(name),
+        mountPath: `/home/user/.claude/skills/${name}`,
+      };
+    });
+  }
+
+  const merged = [
+    ...skillVolumes,
+    ...(params.bodyAdditionalVolumes ?? params.resolvedAdditionalVolumes ?? []),
+  ];
+  return merged.length > 0 ? merged : undefined;
+}
 
 /**
  * Gate captureNetworkBodies to @vm0.ai accounts in production.
@@ -313,7 +354,15 @@ const router = tsr.router(runsMainContract, {
         );
       }
 
-      // 6. Concurrency check + INSERT (transaction with advisory lock)
+      // 6. Resolve additional volumes (custom skills + explicit volumes)
+      const finalAdditionalVolumes = await resolveRunAdditionalVolumes({
+        composeId: composeMeta.composeId,
+        isResume: !!(body.checkpointId || body.sessionId),
+        bodyAdditionalVolumes: body.additionalVolumes,
+        resolvedAdditionalVolumes: resolved.additionalVolumes,
+      });
+
+      // 7. Concurrency check + INSERT (transaction with advisory lock)
       const run = await globalThis.services.db.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtext(${org.orgId}))`,
@@ -327,20 +376,19 @@ const router = tsr.router(runsMainContract, {
           appendSystemPrompt: body.appendSystemPrompt,
           vars: resolved.vars ?? body.vars,
           secrets: resolved.secrets ?? body.secrets,
-          additionalVolumes:
-            body.additionalVolumes ?? resolved.additionalVolumes,
+          additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
         });
       });
       const transactionTime = Date.now();
 
-      // 7. Generate sandbox token
+      // 8. Generate sandbox token
       const sandboxToken = await generateSandboxToken(userId, run.id);
       const tokenTime = Date.now();
 
       try {
-        // 8. Build execution context (pure infra — all business data pre-resolved)
+        // 9. Build execution context (pure infra — all business data pre-resolved)
         const { context } = buildInfraExecutionContext({
           runId: run.id,
           userId,
@@ -357,8 +405,7 @@ const router = tsr.router(runsMainContract, {
           artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
           memoryName: resolved.memoryName ?? body.memoryName,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
-          additionalVolumes:
-            body.additionalVolumes ?? resolved.additionalVolumes,
+          additionalVolumes: finalAdditionalVolumes,
           environment: resolved.environment,
           userTimezone: resolved.userTimezone,
           firewalls: resolved.firewalls,
@@ -375,7 +422,7 @@ const router = tsr.router(runsMainContract, {
           captureNetworkBodies: body.captureNetworkBodies,
         });
 
-        // 9. Dispatch
+        // 10. Dispatch
         const dispatchResult = await buildAndDispatchRun({
           runId: run.id,
           context,

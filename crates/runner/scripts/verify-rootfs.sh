@@ -173,11 +173,19 @@ bundle_path="${MOUNT_DIR}/etc/ssl/certs/ca-certificates.crt"
 if [[ ! -f "$bundle_path" ]]; then
   errors+=("system CA bundle not found at /etc/ssl/certs/ca-certificates.crt")
 elif [[ -f "$ca_path" ]]; then
-  # Read second line of CA cert as a unique identifier
+  # Read second line of CA cert as a unique identifier. Reject an
+  # empty line 2 or a PEM header/footer on line 2 (latter happens
+  # when the source cert has a leading blank line) — matching either
+  # against the bundle with `grep -F` would false-positive because
+  # every cert in the bundle has BEGIN/END framing lines. `-- "$pat"`
+  # also stops option parsing so a pattern starting with `-` can
+  # never be mistaken for a grep flag.
   ca_line=$(sed -n '2p' "$ca_path")
-  if [[ -z "$ca_line" ]]; then
-    errors+=("proxy CA cert appears empty or malformed")
-  elif grep -qF "$ca_line" "$bundle_path"; then
+  if [[ -z "$ca_line" ]] \
+      || [[ "$ca_line" == -----BEGIN* ]] \
+      || [[ "$ca_line" == -----END* ]]; then
+    errors+=("proxy CA cert appears empty or malformed (line 2 missing or PEM framing)")
+  elif grep -qF -- "$ca_line" "$bundle_path"; then
     echo "  proxy CA bundle: updated"
   else
     errors+=("proxy CA not found in system CA bundle (update-ca-certificates may have failed)")

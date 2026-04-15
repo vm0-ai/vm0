@@ -101,9 +101,10 @@ describe("zero chat thread page - autoScroll skips when user scrolled up", () =>
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
 
-    // scrollTop must remain 200 because the user scrolled up, which disabled
-    // auto-scroll. autoScroll$ checks the disabled state and returns early.
-    expect(scrollContainer.scrollTop).toBe(200);
+    // After sending a message, scrollToBottom$ fires unconditionally — even
+    // when auto-scroll was disabled by the user scrolling up. The user's own
+    // message should always be visible immediately after send.
+    expect(scrollContainer.scrollTop).toBe(scrollContainer.scrollHeight);
   });
 });
 

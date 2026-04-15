@@ -125,6 +125,7 @@ export async function insertPendingOutboundCall(opts: {
   userId: string;
   agentId: string;
   sessionId?: string;
+  createdAt?: Date;
 }): Promise<void> {
   initServices();
   await globalThis.services.db.insert(pendingOutboundCalls).values({
@@ -133,6 +134,7 @@ export async function insertPendingOutboundCall(opts: {
     userId: opts.userId,
     agentId: opts.agentId,
     sessionId: opts.sessionId ?? null,
+    createdAt: opts.createdAt,
   });
 }
 
@@ -146,7 +148,6 @@ export async function insertPendingOutboundCall(opts: {
  */
 export async function linkIMessageHandle(
   imessageHandle: string,
-  _userId: string,
   orgId: string,
 ): Promise<void> {
   const timestamp = Math.floor(Date.now() / 1000);

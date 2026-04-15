@@ -85,16 +85,14 @@ const router = tsr.router(zeroUserConnectorsContract, {
 
     const { org } = await resolveOrg(authCtx);
 
-    // Verify agent exists — also fetch compose name and customSkills for recompose
+    // Verify agent exists — also fetch compose name for recompose
     const [agent] = await globalThis.services.db
       .select({
         id: agentComposes.id,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
-        customSkills: zeroAgents.customSkills,
       })
       .from(agentComposes)
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
@@ -160,13 +158,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
     });
 
     // Recompose only if the compose is stale (missing new connector skills).
-    const customSkills = agent.customSkills ?? [];
-    const content = buildComposeContent(
-      agent.name,
-      customSkills.map((name) => {
-        return { name };
-      }),
-    );
+    const content = buildComposeContent(agent.name);
     const newVersionId = computeComposeVersionId(
       content as unknown as AgentComposeYaml,
     );

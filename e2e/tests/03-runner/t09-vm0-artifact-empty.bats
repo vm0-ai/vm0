@@ -77,7 +77,7 @@ teardown() {
     # Run agent with operation that doesn't create any files
     # This tests the storage webhook handling of empty zip uploads
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "echo 'hello world'"
 
     assert_success
@@ -103,7 +103,7 @@ teardown() {
     # Run agent that only reads files (no modifications)
     # The storage webhook should handle unchanged artifact content correctly
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         --verbose \
         "cat data.txt && cat subdir/nested.txt"
 
@@ -132,7 +132,7 @@ teardown() {
     # Run agent that deletes all files
     # This creates a checkpoint with empty artifact
     run $VM0_CLI run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact "$ARTIFACT_NAME" \
         "rm -rf delete-me.txt subdir"
 
     assert_success

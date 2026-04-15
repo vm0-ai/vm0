@@ -484,12 +484,12 @@ export function createActiveRunMessage(
 
   return {
     userMessage: {
-      id: crypto.randomUUID(),
+      id: `run-user-${runId}`,
       role: "user",
       content: prompt,
     },
     assistantMessage: {
-      id: crypto.randomUUID(),
+      id: `run-asst-${runId}`,
       role: "assistant",
       legacyRunId: runId,
       runLoop,

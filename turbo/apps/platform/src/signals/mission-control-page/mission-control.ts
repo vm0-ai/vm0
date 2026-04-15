@@ -1,12 +1,19 @@
 import { command, computed, state } from "ccstate";
-import { toggleTaskList$ } from "./mission-control-panels.ts";
+import { matchShortcut } from "@vm0/ui";
+import {
+  activePanelId$,
+  toggleMaximizeTask$,
+  toggleTaskList$,
+} from "./mission-control-panels.ts";
 import {
   addOptimisticTask$,
   archiveAndFocusNext$,
+  closeAndFocusNextInput$,
+  focusTaskCard$,
   setupTasksLoop$,
 } from "./mission-control-tasks.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
-import { onRef, throwIfNotAbort } from "../utils.ts";
+import { onDomEventFn, onRef, throwIfNotAbort } from "../utils.ts";
 import { agents$ } from "../agent.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { createNewChatThread$ } from "../chat-page/chat-message.ts";
@@ -150,6 +157,48 @@ export const setupMissionControlKeyboard$ = command(
         },
       },
       signal,
+    );
+
+    // Panel shortcuts — work from any context (including editable targets),
+    // targeting the active panel. Skipped if already handled by the panel's
+    // own onKeyDown (detected via e.defaultPrevented).
+    document.addEventListener(
+      "keydown",
+      onDomEventFn(async (e: KeyboardEvent) => {
+        if (e.defaultPrevented) {
+          return;
+        }
+        const activeId = get(activePanelId$);
+        if (!activeId) {
+          return;
+        }
+
+        if (matchShortcut("mod+shift+enter", e)) {
+          e.preventDefault();
+          set(toggleMaximizeTask$, activeId);
+          return;
+        }
+
+        if (matchShortcut("escape", e)) {
+          e.preventDefault();
+          set(focusTaskCard$, activeId);
+          return;
+        }
+
+        // ctrl+d — close active panel (panel-local handler covers the
+        // textarea-empty case; this covers everywhere else)
+        if (
+          e.key === "d" &&
+          e.ctrlKey &&
+          !e.metaKey &&
+          !e.shiftKey &&
+          !e.altKey
+        ) {
+          e.preventDefault();
+          await set(closeAndFocusNextInput$, activeId, signal);
+        }
+      }),
+      { signal },
     );
   },
 );

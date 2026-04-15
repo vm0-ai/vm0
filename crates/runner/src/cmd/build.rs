@@ -687,6 +687,24 @@ mod tests {
         );
     }
 
+    /// Guard: inject-ca.sh must verify the CA actually made it into the
+    /// system bundle after `update-ca-certificates`. `update-ca-certificates`
+    /// can exit 0 while silently omitting our cert (e.g. malformed PEM),
+    /// which would later surface as an opaque snapshot/VM-boot TLS error.
+    /// See #9482.
+    #[test]
+    fn inject_ca_verifies_bundle_after_update() {
+        assert!(
+            INJECT_CA_SCRIPT.contains("update-ca-certificates"),
+            "inject-ca.sh must call update-ca-certificates"
+        );
+        assert!(
+            INJECT_CA_SCRIPT.contains("proxy CA not found in system bundle"),
+            "inject-ca.sh must verify proxy CA landed in system bundle after \
+             update-ca-certificates (silent failure guard; see #9482)"
+        );
+    }
+
     #[tokio::test]
     async fn is_image_complete_nonexistent_dir() {
         let dir = tempfile::tempdir().unwrap();
