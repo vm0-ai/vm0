@@ -239,15 +239,14 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     let mut force_reupload = false;
     let mut rootfs_from_r2 = false;
 
-    // Clean up any incomplete image from a previous interrupted build (e.g.
-    // rootfs exists but snapshot is missing). A complete image was already
-    // caught above. try_download handles the case where output_dir already
-    // exists (finalize_staging replaces it), so this is safe for both paths.
-    if tokio::fs::try_exists(&output_dir).await.unwrap_or(false) {
-        tokio::fs::remove_dir_all(&output_dir)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("clean {}: {e}", output_dir.display())))?;
-    }
+    // No upfront `remove_dir_all(output_dir)` here: a previous interrupted
+    // build may have left stale bind mounts in `output_dir/work/` (snapshot.rs
+    // bind-mounts the NBD COW device there), which would cause EBUSY on a
+    // blanket removal. Downstream steps each handle their own cleanup:
+    //   - try_download's finalize_staging rename replaces output_dir atomically
+    //   - build-rootfs.sh writes rootfs via mkfs.ext4 -> rename (overwrites)
+    //   - snapshot.rs::create_snapshot umounts stale binds, then removes only
+    //     its own artifacts (snapshot.bin, memory.bin, cow.img, work/)
 
     // Try R2 download (rootfs only). try_download manages its own staging
     // directory and atomic rename, so output_dir stays absent on failure.
