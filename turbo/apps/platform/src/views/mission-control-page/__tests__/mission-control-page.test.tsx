@@ -921,17 +921,16 @@ describe("mission control page", () => {
   });
 
   it("should hide empty state when voice chat panel receives events", async () => {
-    // Use a unique session ID for this test
     mockTasksAPI([
       {
-        id: "task-vc-open",
+        id: "task-vc-events",
         type: "voice_chat",
         title: "Live voice session",
         summary: null,
         agent: createAgent(),
-        latestRunId: "run-vc-open-1",
+        latestRunId: "run-vc-events-1",
         status: "running",
-        voiceChatSessionId: "vc-session-open",
+        voiceChatSessionId: "vc-session-events",
         createdAt: "2026-04-13T10:00:00Z",
         updatedAt: "2026-04-13T10:00:00Z",
       },
@@ -939,7 +938,7 @@ describe("mission control page", () => {
 
     server.use(
       http.get(
-        "*/api/zero/voice-chat/vc-session-open/context",
+        "*/api/zero/voice-chat/vc-session-events/context",
         ({ request }) => {
           const url = new URL(request.url);
           const after = Number(url.searchParams.get("after") ?? 0);

@@ -91,6 +91,8 @@ export function createVoiceChatPanelSignals(
     );
   });
 
+  // No-op: satisfies the TaskPanelEntry.focusInput$ contract. Voice chat
+  // panels have no text input to focus.
   const focusInput$ = command(() => {});
 
   return {
