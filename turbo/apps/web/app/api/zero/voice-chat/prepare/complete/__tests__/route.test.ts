@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -13,6 +13,45 @@ import {
 import { getTestZeroAgentId } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
+import { reloadEnv } from "../../../../../../../src/env";
+
+// Mock Ably (external dependency) to capture published signals
+const mockPublish = vi.fn().mockResolvedValue(undefined);
+vi.mock("ably", () => {
+  return {
+    default: {
+      Rest: vi.fn().mockImplementation(function () {
+        return {
+          auth: { createTokenRequest: vi.fn() },
+          channels: {
+            get: vi.fn().mockReturnValue({ publish: mockPublish }),
+          },
+        };
+      }),
+    },
+  };
+});
+
+// Mock Next.js after() to capture and flush callbacks in tests
+const afterCallbacks: Array<() => Promise<unknown> | unknown> = [];
+vi.mock("next/server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("next/server")>();
+  return {
+    ...original,
+    after: (callback: () => Promise<unknown> | unknown) => {
+      afterCallbacks.push(callback);
+    },
+  };
+});
+
+async function flushAfterCallbacks() {
+  await Promise.all(
+    afterCallbacks.map((cb) => {
+      return cb();
+    }),
+  );
+  afterCallbacks.length = 0;
+}
 
 const context = testContext();
 
@@ -36,6 +75,8 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
 
   beforeEach(async () => {
     context.setupMocks();
+    mockPublish.mockClear();
+    afterCallbacks.length = 0;
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("vcp-cmp"));
     agentId = await getTestZeroAgentId(user.orgId, compose.name);
@@ -128,5 +169,22 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
     const prep = await getTestVoiceChatPreparation(preparationId);
     expect(prep?.status).toBe("ready");
     expect(prep?.directiveContent).toBe("User is a backend engineer...");
+  });
+
+  it("should publish user-scoped voice:prep signal after completion", async () => {
+    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    reloadEnv();
+    const { token } = await setupPreparationWithRun();
+
+    const response = await POST(
+      makeRequest(token, { content: "Test directive content" }),
+    );
+    expect(response.status).toBe(200);
+
+    // Flush the after() callback to trigger signal publishing
+    await flushAfterCallbacks();
+
+    expect(mockPublish).toHaveBeenCalledOnce();
+    expect(mockPublish).toHaveBeenCalledWith(`voice:prep:${user.userId}`, null);
   });
 });

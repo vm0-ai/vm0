@@ -150,7 +150,7 @@ export async function POST(request: Request) {
 
   // Notify the user that their voice chat preparation is ready
   after(() => {
-    return publishUserSignal([result.userId], `voice:prep`);
+    return publishUserSignal([result.userId], `voice:prep:${result.userId}`);
   });
 
   return NextResponse.json({

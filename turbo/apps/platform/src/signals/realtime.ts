@@ -35,18 +35,9 @@ export const setupRealtime$ = command(
     const client = createClient(platformRealtimeTokenContract);
 
     // Verify the token endpoint works before loading Ably
-    const tokenResp = await accept(client.create({ body: {} }), [200], {
+    await accept(client.create({ body: {} }), [200], {
       toast: false,
     });
-    signal.throwIfAborted();
-
-    if (!tokenResp.body) {
-      L.warn(
-        "Realtime token endpoint returned empty response, skipping Ably setup",
-      );
-      return;
-    }
-
     signal.throwIfAborted();
 
     const fetchToken = () => {
