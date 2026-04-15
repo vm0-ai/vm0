@@ -162,6 +162,12 @@ cleanup_chroot() {
   # the root cause if it still fails.
   local target attempt
   for target in "$ROOTFS_DIR/dev" "$ROOTFS_DIR/sys" "$ROOTFS_DIR/proc"; do
+    # Skip if never mounted (e.g. early failure before debootstrap_build
+    # installed the binds). Avoids retrying umount on plain dirs and
+    # polluting CI logs with "not mounted" errors from the final attempt.
+    if ! mountpoint -q "$target" 2>/dev/null; then
+      continue
+    fi
     for attempt in 1 2 3; do
       if [[ $attempt -eq 3 ]]; then
         # Surface stderr on the final attempt so CI logs capture the
@@ -523,7 +529,7 @@ create_ext4() {
 }
 
 # ---------------------------------------------------------------------------
-# Main
+# Main (runs inside the private mount namespace set up by the re-exec above)
 # ---------------------------------------------------------------------------
 
 check_dependencies
