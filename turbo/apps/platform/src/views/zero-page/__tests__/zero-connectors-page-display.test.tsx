@@ -53,7 +53,7 @@ describe("connectors page - connector status indicators", () => {
       {
         type: "github",
         needsReconnect: true,
-        oauthScopes: ["repo", "project"],
+        oauthScopes: ["repo", "project", "workflow"],
       },
     ]);
 
