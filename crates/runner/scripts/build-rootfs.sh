@@ -575,8 +575,13 @@ mv "$TMP_ROOTFS_PATH" "$ROOTFS_PATH"
 # (runner reading/replacing the file) don't need sudo. SUDO_USER is set
 # by the outer sudo at re-exec time; if it is missing or "root" the
 # chown is a no-op.
+#
+# Don't fail the build on chown error: the artifact is valid on disk and
+# mode 644 makes it world-readable, so a mis-ownership is cosmetic — the
+# runner can still consume it. Warn instead so operators can investigate.
 if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-  chown "$SUDO_USER" "$ROOTFS_PATH"
+  chown "$SUDO_USER" "$ROOTFS_PATH" \
+    || echo "warning: chown $SUDO_USER $ROOTFS_PATH failed; file remains root-owned" >&2
 fi
 
 # Report size
