@@ -606,7 +606,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     continue;
                 };
                 info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
-                status.add_run(run_id).await;
 
                 // Check idle pool for a reusable VM (same session + same profile).
                 // Only attempt reuse when the per-job sandboxReuse flag is on.
@@ -679,6 +678,17 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     None
                 };
 
+                // Determine sandbox_id after the reuse decision. On reuse,
+                // the sandbox keeps its original identity; on a fresh create,
+                // we allocate a new UUID that the executor will use when
+                // constructing the SandboxConfig. This is the join key for
+                // doctor (FC CWD basename) and kill (workspace dir).
+                let sandbox_id = match &reuse_entry {
+                    Some(entry) => entry.sandbox_id,
+                    None => Uuid::new_v4(),
+                };
+                status.add_run(run_id, sandbox_id).await;
+
                 let job_profile = JobProfile {
                     profile_name: profile_name.clone(),
                     vcpu: job_vcpu,
@@ -688,7 +698,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     cancel: job_cancel,
                 };
                 spawn_job(
-                    context, job_profile, reuse_entry, &spawn_ctx, &mut jobs,
+                    context, sandbox_id, job_profile, reuse_entry, &spawn_ctx, &mut jobs,
                 );
             }
             // Mitmproxy crash detection
@@ -721,10 +731,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     );
                 }
                 // Update status with current idle pool state
-                let idle_count = pool.len();
-                let idle_sessions = pool.held_sessions();
+                let idle_vms = pool.held_snapshot();
                 drop(pool);
-                status.set_idle_info(idle_count, idle_sessions).await;
+                status.set_idle_info(idle_vms).await;
                 for entry in expired {
                     let b = Arc::clone(&budget);
                     destroy_tasks.spawn(destroy_idle_entry(entry, b));
@@ -902,6 +911,7 @@ struct SpawnContext {
 /// of being destroyed.
 fn spawn_job(
     context: ExecutionContext,
+    sandbox_id: Uuid,
     job_profile: JobProfile,
     reuse_entry: Option<IdleEntry>,
     ctx: &SpawnContext,
@@ -945,7 +955,15 @@ fn spawn_job(
             if let Some(idle_entry) = reuse_entry {
                 executor::execute_job_reuse(idle_entry, context, &exec_config, cancel).await
             } else {
-                executor::execute_job(&**factory, context, &exec_config, &params, cancel).await
+                executor::execute_job(
+                    &**factory,
+                    context,
+                    sandbox_id,
+                    &exec_config,
+                    &params,
+                    cancel,
+                )
+                .await
             }
         });
 
@@ -1010,6 +1028,7 @@ fn spawn_job(
                         sandbox,
                         factory: factory_for_cleanup,
                         session_id: session_id.to_string(),
+                        sandbox_id,
                         profile_name,
                         vcpu,
                         memory_mb,
@@ -1021,13 +1040,24 @@ fn spawn_job(
                     match pool.park(session_id.to_string(), entry) {
                         ParkResult::Parked => {
                             info!(run_id = %run_id, session_id, "VM parked for reuse");
+                            // Push fresh idle state to status.json BEFORE
+                            // `status.remove_run` (below) clears the run_id
+                            // from active_runs. Without this, doctor would
+                            // briefly see the FC as unknown (neither active
+                            // nor idle) until the next idle_cleanup tick
+                            // (~10s), producing transient false-positive
+                            // FirecrackerNotInStatus warnings.
+                            let idle_vms = pool.held_snapshot();
                             drop(pool);
+                            status.set_idle_info(idle_vms).await;
                             park_notify.notify_one();
                             true
                         }
                         ParkResult::Evicted(evicted) => {
                             info!(run_id = %run_id, session_id, "VM parked, evicting previous");
+                            let idle_vms = pool.held_snapshot();
                             drop(pool);
+                            status.set_idle_info(idle_vms).await;
                             // Notify immediately — session is already in pool.
                             // Don't wait for stop_and_destroy which can be slow.
                             park_notify.notify_one();
@@ -1044,9 +1074,10 @@ fn spawn_job(
                         ParkResult::PoolFull(rejected) => {
                             info!(run_id = %run_id, session_id, "idle pool full, destroying VM");
                             drop(pool);
-                            // The rejected sandbox was just park()ed above;
-                            // destroying a parked sandbox is safe — see Evicted
-                            // arm for rationale.
+                            // Pool unchanged (park rejected) — no status
+                            // update needed. The rejected sandbox was just
+                            // park()ed above; destroying a parked sandbox is
+                            // safe — see Evicted arm for rationale.
                             rejected.stop_and_destroy().await;
                             false
                         }
@@ -1492,6 +1523,7 @@ mod tests {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: session_id.into(),
+            sandbox_id: Uuid::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 4096,
@@ -2350,6 +2382,7 @@ mod tests {
             sandbox: Box::new(MockSandbox::new("idle-test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: session_id.into(),
+            sandbox_id: Uuid::new_v4(),
             profile_name: profile_name.into(),
             vcpu,
             memory_mb,
@@ -3206,6 +3239,7 @@ mod tests {
                     sandbox,
                     factory: factory_arc,
                     session_id: "sess-unpark-fail".to_string(),
+                    sandbox_id: Uuid::new_v4(),
                     profile_name: "vm0/default".into(),
                     vcpu: 2,
                     memory_mb: 4096,

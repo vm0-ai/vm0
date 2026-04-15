@@ -1252,6 +1252,20 @@ jobs:
             || fail "Turn 3: marker file found — session isolation broken"
           echo "PASS: Turn 3 completed (new VM for different session)"
 
+          # Regression gate for sandbox_id/run_id conflation (#9552):
+          # at this point the runner has parked idle VMs whose FC workspace
+          # names (= sandbox_id) are divorced from any active run_id.
+          # `runner doctor --name <svc>` must still report 0 warnings.
+          # Scope to this CI run's runner name so that unrelated runners
+          # sharing the metal host don't contaminate the check.
+          echo "--- runner doctor --name $SVC (expect 0 warnings) ---"
+          DOCTOR_OUT=$(sudo "$BIN_DIR/runner" doctor --name "$SVC" 2>&1 || true)
+          echo "$DOCTOR_OUT"
+          if ! echo "$DOCTOR_OUT" | grep -q '^0 warning(s) found$'; then
+            fail "runner doctor reported warnings with parked idle VMs — regression for #9552"
+          fi
+          echo "PASS: runner doctor clean with parked VMs"
+
           # Stop transient service (drains idle pool)
           sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
           trap - EXIT

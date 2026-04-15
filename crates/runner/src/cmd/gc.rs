@@ -784,7 +784,7 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(
         .filter_map(|fc| {
             fc.base_dir
                 .as_ref()
-                .map(|bd| bd.join("workspaces").join(&fc.run_id))
+                .map(|bd| bd.join("workspaces").join(&fc.sandbox_id))
         })
         .collect();
 

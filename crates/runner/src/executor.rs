@@ -62,6 +62,7 @@ pub struct ExecuteOutcome {
 pub async fn execute_job(
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
+    sandbox_id: Uuid,
     config: &ExecutorConfig,
     params: &JobParams,
     cancel: CancellationToken,
@@ -75,6 +76,7 @@ pub async fn execute_job(
     let outcome = match execute_new_sandbox(
         factory,
         &context,
+        sandbox_id,
         config,
         params,
         &mut telemetry,
@@ -160,12 +162,12 @@ fn record_api_latency(context: &ExecutionContext, telemetry: &mut JobTelemetry) 
 async fn execute_new_sandbox(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
+    sandbox_id: Uuid,
     config: &ExecutorConfig,
     params: &JobParams,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<ExecuteOutcome> {
-    let sandbox_id = context.run_id;
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
         resources: sandbox::ResourceLimits {
@@ -2278,8 +2280,17 @@ mod tests {
     ) -> RunnerResult<(i32, Option<String>)> {
         let mut telemetry = test_telemetry(config, ctx);
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome =
-            execute_new_sandbox(factory, ctx, config, params, &mut telemetry, cancel).await?;
+        let sandbox_id = Uuid::new_v4();
+        let outcome = execute_new_sandbox(
+            factory,
+            ctx,
+            sandbox_id,
+            config,
+            params,
+            &mut telemetry,
+            cancel,
+        )
+        .await?;
         Ok((outcome.exit_code, outcome.error))
     }
 
@@ -2407,6 +2418,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
+            Uuid::new_v4(),
             &config,
             &default_params(),
             cancel,
@@ -2429,6 +2441,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
+            Uuid::new_v4(),
             &config,
             &default_params(),
             cancel,
@@ -2455,6 +2468,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
+            Uuid::new_v4(),
             &config,
             &default_params(),
             cancel,
@@ -2470,6 +2484,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "test-session".into(),
+            sandbox_id: Uuid::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2503,7 +2518,15 @@ mod tests {
         assert_eq!(ctx.session_id(), Some("test-session-abc"));
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job(&factory, ctx, &config, &default_params(), cancel).await;
+        let outcome = execute_job(
+            &factory,
+            ctx,
+            Uuid::new_v4(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
         assert_eq!(outcome.exit_code, 0);
         let sandbox = outcome.sandbox.expect("sandbox should be alive");
 
@@ -2514,6 +2537,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "test-session".into(),
+            sandbox_id: Uuid::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2553,6 +2577,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
+            Uuid::new_v4(),
             &config,
             &default_params(),
             cancel,
@@ -2573,6 +2598,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "test-session".into(),
+            sandbox_id: Uuid::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2615,6 +2641,7 @@ mod tests {
                 Box::new(sandbox_mock::MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "test-session".into(),
+            sandbox_id: Uuid::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2649,6 +2676,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "sess-1".into(),
+            sandbox_id: Uuid::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2690,6 +2718,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "sess-1".into(),
+            sandbox_id: Uuid::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2733,6 +2762,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "sess-abc".into(),
+            sandbox_id: Uuid::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2764,6 +2794,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
+            Uuid::new_v4(),
             &config,
             &default_params(),
             cancel,

@@ -20,7 +20,10 @@ pub struct RunnerProcessInfo {
 pub struct FirecrackerProcessInfo {
     pub pid: u32,
     pub ppid: Option<u32>,
-    pub run_id: String,
+    /// The sandbox identity, derived from the workspace dir basename
+    /// (`/proc/{pid}/cwd` = `{base_dir}/workspaces/{sandbox_id}/`). After
+    /// sandbox reuse this is stable across successive run_ids.
+    pub sandbox_id: String,
     pub base_dir: Option<PathBuf>,
 }
 
@@ -227,17 +230,17 @@ async fn scan_proc_cmdlines() -> Vec<(u32, String)> {
     result
 }
 
-/// Extract run_id and base_dir from a firecracker workspace CWD.
+/// Extract sandbox_id and base_dir from a firecracker workspace CWD.
 ///
-/// CWD is `{base_dir}/workspaces/{id}/`, so:
-/// - `id` is the last component (run_id)
+/// CWD is `{base_dir}/workspaces/{sandbox_id}/`, so:
+/// - `sandbox_id` is the last component
 /// - `base_dir` is the grandparent of `workspaces`
 fn parse_workspace_cwd(cwd: &Path) -> Option<(String, PathBuf)> {
-    let run_id = cwd.file_name()?.to_string_lossy().into_owned();
+    let sandbox_id = cwd.file_name()?.to_string_lossy().into_owned();
     let workspaces_dir = cwd.parent()?;
     if workspaces_dir.file_name().and_then(|n| n.to_str()) == Some("workspaces") {
         let base_dir = workspaces_dir.parent()?.to_path_buf();
-        Some((run_id, base_dir))
+        Some((sandbox_id, base_dir))
     } else {
         None
     }
@@ -275,21 +278,21 @@ pub async fn discover_all() -> DiscoveredProcesses {
         }
     }
 
-    // Resolve run_id + base_dir + ppid from CWD for firecracker processes
+    // Resolve sandbox_id + base_dir + ppid from CWD for firecracker processes
     let mut fc_infos = Vec::with_capacity(firecrackers.len());
     for pid in firecrackers {
         let cwd_info = read_cwd(pid)
             .await
             .and_then(|cwd| parse_workspace_cwd(&cwd));
         let ppid = read_ppid(pid).await;
-        let (run_id, base_dir) = match cwd_info {
+        let (sandbox_id, base_dir) = match cwd_info {
             Some((id, bd)) => (id, Some(bd)),
             None => (format!("pid-{pid}"), None),
         };
         fc_infos.push(FirecrackerProcessInfo {
             pid,
             ppid,
-            run_id,
+            sandbox_id,
             base_dir,
         });
     }
@@ -460,16 +463,16 @@ mod tests {
     #[test]
     fn parse_workspace_cwd_valid() {
         let cwd = Path::new("/data/runner-01/workspaces/550e8400");
-        let (run_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
-        assert_eq!(run_id, "550e8400");
+        let (sandbox_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(sandbox_id, "550e8400");
         assert_eq!(base_dir, Path::new("/data/runner-01"));
     }
 
     #[test]
     fn parse_workspace_cwd_uuid() {
         let cwd = Path::new("/data/r1/workspaces/550e8400-e29b-41d4-a716-446655440000");
-        let (run_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
-        assert_eq!(run_id, "550e8400-e29b-41d4-a716-446655440000");
+        let (sandbox_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(sandbox_id, "550e8400-e29b-41d4-a716-446655440000");
         assert_eq!(base_dir, Path::new("/data/r1"));
     }
 
