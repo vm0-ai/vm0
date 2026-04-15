@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { initServices } from "../../../src/lib/init-services";
@@ -75,13 +76,15 @@ export async function linkIMessageAction(
     .limit(1);
 
   if (org?.agentphoneAgentId) {
-    sendIMessage({
-      agentId: org.agentphoneAgentId,
-      toNumber: handle,
-      body: "Account linked successfully! You can now send messages directly to your agent.",
-    }).catch((err: unknown) => {
-      log.warn("Failed to send link success iMessage", { err });
-    });
+    after(
+      sendIMessage({
+        agentId: org.agentphoneAgentId,
+        toNumber: handle,
+        body: "Account linked successfully! You can now send messages directly to your agent.",
+      }).catch((err: unknown) => {
+        log.warn("Failed to send link success iMessage", { err });
+      }),
+    );
   }
 
   return { success: true, orgName: orgInfo?.name ?? undefined };
