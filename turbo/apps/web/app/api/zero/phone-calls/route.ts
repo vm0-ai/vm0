@@ -48,13 +48,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { toNumber, greeting, systemPrompt, mode } = parsed.data;
 
-  const result = await createOutboundCall(org.orgId, toNumber, {
-    greeting,
-    systemPrompt,
-  });
-
-  // For fire-and-forget calls, register so the call_ended webhook
-  // can trigger a follow-up run with the transcript.
+  // For fire-and-forget calls, validate the default agent BEFORE placing the call
+  // so we never dial a number and then return a validation error.
+  let defaultAgentId: string | undefined;
   if (mode === "fire-and-forget") {
     const [meta] = await globalThis.services.db
       .select({ defaultAgentId: orgMetadata.defaultAgentId })
@@ -72,6 +68,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    defaultAgentId = meta.defaultAgentId;
+  }
+
+  const result = await createOutboundCall(org.orgId, toNumber, {
+    greeting,
+    systemPrompt,
+  });
+
+  // Register the call so the call_ended webhook can trigger a follow-up run
+  // with the transcript once the conversation completes.
+  if (mode === "fire-and-forget" && defaultAgentId) {
     const existingSession = await lookupPhoneThreadSession(
       authCtx.userId,
       org.orgId,
@@ -80,7 +87,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       callId: result.callId,
       orgId: org.orgId,
       userId: authCtx.userId,
-      agentId: meta.defaultAgentId,
+      agentId: defaultAgentId,
       sessionId: existingSession?.agentSessionId,
     });
   }

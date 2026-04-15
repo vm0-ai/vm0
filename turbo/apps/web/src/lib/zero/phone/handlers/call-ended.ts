@@ -154,18 +154,20 @@ async function handleOutboundCallEnded(event: CallEndedEvent): Promise<void> {
   }
 
   const transcriptText = formatTranscript(event.transcript);
-  const summaryText = event.summary ? `\nSummary: ${event.summary}` : "";
+  const summaryLine = event.summary ? `\nSummary: ${event.summary}` : null;
 
   const prompt = [
     `You previously made an outbound call to ${event.toNumber}.`,
     `Here is the full conversation from that call:`,
     ``,
     transcriptText,
-    summaryText,
+    summaryLine,
     ``,
     `Based on the above conversation, decide what to do next.`,
   ]
-    .filter(Boolean)
+    .filter((line) => {
+      return line !== null;
+    })
     .join("\n");
   const phoneContext = buildPhoneContext({
     callerNumber: event.toNumber,
