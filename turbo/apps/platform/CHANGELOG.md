@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.238.0](https://github.com/vm0-ai/vm0/compare/app-v0.237.1...app-v0.238.0) (2026-04-15)
+
+
+### Features
+
+* update pro plan pricing to $20/month and free credits to 100k ([#9422](https://github.com/vm0-ai/vm0/issues/9422)) ([b9e6989](https://github.com/vm0-ai/vm0/commit/b9e6989dafb2ae9e117febc6b8b9547074afd640))
+* **zero:** add run id to run context response ([#9433](https://github.com/vm0-ai/vm0/issues/9433)) ([410899f](https://github.com/vm0-ai/vm0/commit/410899f4dcb33b2f7b1cc8863f6343f9d91ddeb3))
+
+
+### Bug Fixes
+
+* **connectors:** add workflow scope to GitHub OAuth connector ([#9403](https://github.com/vm0-ai/vm0/issues/9403)) ([9785d10](https://github.com/vm0-ai/vm0/commit/9785d104a20867b4d4e423f5b9fe636f02222049))
+* **platform:** wrap tts cleanup fn in updater to prevent immediate execution ([#9439](https://github.com/vm0-ai/vm0/issues/9439)) ([130d7f5](https://github.com/vm0-ai/vm0/commit/130d7f53c0554fdbc94b899b6a04e8b51d16f73d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.186.0
+
 ## [0.237.1](https://github.com/vm0-ai/vm0/compare/app-v0.237.0...app-v0.237.1) (2026-04-15)
 
 

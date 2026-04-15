@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.113.4](https://github.com/vm0-ai/vm0/compare/cli-v9.113.3...cli-v9.113.4) (2026-04-15)
+
+
+### Bug Fixes
+
+* **connectors:** add workflow scope to GitHub OAuth connector ([#9403](https://github.com/vm0-ai/vm0/issues/9403)) ([9785d10](https://github.com/vm0-ai/vm0/commit/9785d104a20867b4d4e423f5b9fe636f02222049))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.186.0
+
 ## [9.113.3](https://github.com/vm0-ai/vm0/compare/cli-v9.113.2...cli-v9.113.3) (2026-04-15)
 
 

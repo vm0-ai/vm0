@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.186.0](https://github.com/vm0-ai/vm0/compare/core-v8.185.0...core-v8.186.0) (2026-04-15)
+
+
+### Features
+
+* **zero:** add run id to run context response ([#9433](https://github.com/vm0-ai/vm0/issues/9433)) ([410899f](https://github.com/vm0-ai/vm0/commit/410899f4dcb33b2f7b1cc8863f6343f9d91ddeb3))
+
+
+### Bug Fixes
+
+* **connectors:** add workflow scope to GitHub OAuth connector ([#9403](https://github.com/vm0-ai/vm0/issues/9403)) ([9785d10](https://github.com/vm0-ai/vm0/commit/9785d104a20867b4d4e423f5b9fe636f02222049))
+
+
+### Refactoring
+
+* **firewalls:** move gmail manual divergence into generator ([#9383](https://github.com/vm0-ai/vm0/issues/9383)) ([72375f2](https://github.com/vm0-ai/vm0/commit/72375f2932da761f71fc4f6b1e08d593def29dd8))
+
 ## [8.185.0](https://github.com/vm0-ai/vm0/compare/core-v8.184.0...core-v8.185.0) (2026-04-15)
 
 

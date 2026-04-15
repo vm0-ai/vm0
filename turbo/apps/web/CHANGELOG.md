@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.236.0](https://github.com/vm0-ai/vm0/compare/web-v12.235.1...web-v12.236.0) (2026-04-15)
+
+
+### Features
+
+* update pro plan pricing to $20/month and free credits to 100k ([#9422](https://github.com/vm0-ai/vm0/issues/9422)) ([b9e6989](https://github.com/vm0-ai/vm0/commit/b9e6989dafb2ae9e117febc6b8b9547074afd640))
+* **zero:** add run id to run context response ([#9433](https://github.com/vm0-ai/vm0/issues/9433)) ([410899f](https://github.com/vm0-ai/vm0/commit/410899f4dcb33b2f7b1cc8863f6343f9d91ddeb3))
+
+
+### Refactoring
+
+* **test:** migrate credit-check to route integration test ([#9423](https://github.com/vm0-ai/vm0/issues/9423)) ([#9431](https://github.com/vm0-ai/vm0/issues/9431)) ([4773a39](https://github.com/vm0-ai/vm0/commit/4773a393204451ddffdbb639fa13c64b7c721d08))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.186.0
+
 ## [12.235.1](https://github.com/vm0-ai/vm0/compare/web-v12.235.0...web-v12.235.1) (2026-04-15)
 
 
