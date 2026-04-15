@@ -1,2 +1,5 @@
 # Build output for sandbox scripts
 src/sandbox/scripts/dist/
+
+# Generated firewall configs (produced by @vm0/firewalls-generator at build time)
+src/firewalls/*.generated.ts

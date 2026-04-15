@@ -2,6 +2,7 @@
   "name": "vm0",
   "private": true,
   "scripts": {
+    "postinstall": "pnpm -F @vm0/firewalls-generator generate",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "dev:auth": "bash ../scripts/dev-auth.sh",
@@ -26,6 +27,7 @@
     "@commitlint/cli": "^20.5.0",
     "@vitest/coverage-v8": "^4.1.4",
     "@vitest/ui": "^4.1.4",
+    "@vm0/firewalls-generator": "workspace:*",
     "dotenv-cli": "^7.4.2",
     "e2b": "^2.10.3",
     "knip": "^5.63.1",
