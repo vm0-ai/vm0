@@ -206,16 +206,19 @@ WantedBy=multi-user.target
 /// install time rather than letting `daemon-reload` fail obscurely later.
 fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
     for entry in vars {
+        // Check dangerous chars first so the KEY=VALUE error below can
+        // safely interpolate `entry` without leaking newlines/NUL into
+        // log output.
+        if entry.contains(['\n', '\r', '\0']) {
+            return Err(RunnerError::Config(
+                "invalid --env value: newline or NUL characters are not allowed".to_string(),
+            ));
+        }
         let eq_pos = entry.find('=');
         if eq_pos.is_none_or(|p| p == 0) {
             return Err(RunnerError::Config(format!(
                 "invalid --env value '{entry}': expected KEY=VALUE format"
             )));
-        }
-        if entry.contains(['\n', '\r', '\0']) {
-            return Err(RunnerError::Config(
-                "invalid --env value: newline or NUL characters are not allowed".to_string(),
-            ));
         }
     }
     Ok(())
