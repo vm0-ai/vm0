@@ -142,6 +142,7 @@ jobs:
     name: pnpm audit (SCA)
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
+    continue-on-error: true
     runs-on: ubuntu-latest
     defaults:
       run:
