@@ -402,12 +402,10 @@ inject_files() {
 
   # Import proxy CA into Java's separate trust store (cacerts keystore).
   # Java does not read the system CA bundle — it has its own PKCS12 keystore.
-  # In chroot, keytool can't find libjli.so via the default search path,
-  # so we locate it and add its directory to LD_LIBRARY_PATH.
-  local jli_dir
-  jli_dir=$(sudo chroot "$ROOTFS_DIR" find /usr/lib/jvm -name libjli.so -printf '%h' -quit)
-  sudo chroot "$ROOTFS_DIR" env LD_LIBRARY_PATH="$jli_dir" \
-    keytool -importcert -trustcacerts \
+  # keytool finds libjli.so via its baked-in RPATH [$ORIGIN:$ORIGIN/../lib];
+  # $ORIGIN resolves because debootstrap_build bind-mounts /proc into the
+  # chroot (glibc reads /proc/self/exe for $ORIGIN).
+  sudo chroot "$ROOTFS_DIR" keytool -importcert -trustcacerts \
     -keystore /etc/ssl/certs/java/cacerts \
     -storepass changeit -noprompt \
     -alias vm0-proxy-ca \
