@@ -236,7 +236,8 @@ function generateTypeScript(
 
 // ── Main ─────────────────────────────────────────────────────────────────
 
-interface GitHubContent {
+/** GitHub contents API response entry. */
+export interface GitHubContent {
   name: string;
   download_url: string;
 }

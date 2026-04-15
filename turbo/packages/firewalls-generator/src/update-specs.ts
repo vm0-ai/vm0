@@ -75,10 +75,7 @@ const deelUpdater: Updater = {
   },
 };
 
-interface GitHubContent {
-  name: string;
-  download_url: string;
-}
+import type { GitHubContent } from "./dropbox";
 
 const dropboxUpdater: Updater = {
   name: "dropbox",
@@ -119,8 +116,11 @@ const slackUpdater: Updater = {
     const tmpDir = fs.mkdtempSync("/tmp/slack-api-ref-");
     try {
       console.error("  Downloading slack-api-ref tarball...");
+      // -f makes curl exit non-zero on HTTP errors (otherwise -s would silently
+      // pipe an HTML error page into tar). --wildcards is GNU tar specific;
+      // macOS users need `brew install gnu-tar` and may need to symlink as `tar`.
       execSync(
-        `curl -sL "${tarballUrl}" | tar xz -C "${tmpDir}" --strip-components=1 --wildcards "*/docs.slack.dev/methods"`,
+        `curl -fsSL "${tarballUrl}" | tar xz -C "${tmpDir}" --strip-components=1 --wildcards "*/docs.slack.dev/methods"`,
         { stdio: ["pipe", "pipe", "inherit"] },
       );
 
