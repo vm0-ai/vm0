@@ -15,7 +15,6 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { serverSideCompose } from "../../../../../src/lib/infra/compose/server-side-compose";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { zeroSkills } from "../../../../../src/db/schema/zero-skill";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
@@ -24,7 +23,6 @@ import {
   storageVersions,
 } from "../../../../../src/db/schema/storage";
 import { eq, and, sql } from "drizzle-orm";
-import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
 import {
   uploadSkillServerSide,
   deleteSkillServerSide,
@@ -249,7 +247,6 @@ const router = tsr.router(zeroSkillsDetailContract, {
       requiredCapability: "agent:write",
     });
     if (isAuthError(authCtx)) return authCtx;
-    const { userId } = authCtx;
 
     const { org, member } = await resolveOrg(authCtx);
 
@@ -282,7 +279,6 @@ const router = tsr.router(zeroSkillsDetailContract, {
     const affectedAgents = await globalThis.services.db
       .select({
         id: agentComposes.id,
-        name: agentComposes.name,
         customSkills: zeroAgents.customSkills,
       })
       .from(agentComposes)
@@ -294,7 +290,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
         ),
       );
 
-    // Remove skill from each affected agent and rebuild compose
+    // Remove skill from each affected agent
     for (const agent of affectedAgents) {
       const updatedSkills = (agent.customSkills ?? []).filter((s) => {
         return s !== params.name;
@@ -303,21 +299,6 @@ const router = tsr.router(zeroSkillsDetailContract, {
         .update(zeroAgents)
         .set({ customSkills: updatedSkills, updatedAt: new Date() })
         .where(eq(zeroAgents.id, agent.id));
-
-      // Rebuild compose (best-effort — skill deletion proceeds even if compose rebuild fails)
-      const content = buildComposeContent(agent.name);
-
-      try {
-        await serverSideCompose({
-          userId,
-          orgId: org.orgId,
-          content,
-        });
-      } catch (e) {
-        log.warn(
-          `Failed to rebuild compose for agent ${agent.name} after skill deletion: ${e}`,
-        );
-      }
     }
 
     // Delete from zero_skills
