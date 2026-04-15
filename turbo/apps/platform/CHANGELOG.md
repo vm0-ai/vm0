@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.242.1](https://github.com/vm0-ai/vm0/compare/app-v0.242.0...app-v0.242.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* add robots.txt to platform app to block all crawlers ([#9548](https://github.com/vm0-ai/vm0/issues/9548)) ([67c896b](https://github.com/vm0-ai/vm0/commit/67c896b1851585600a7107b01f779f53a210229b)), closes [#9547](https://github.com/vm0-ai/vm0/issues/9547)
+
 ## [0.242.0](https://github.com/vm0-ai/vm0/compare/app-v0.241.0...app-v0.242.0) (2026-04-15)
 
 

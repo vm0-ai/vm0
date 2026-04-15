@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.79.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.12...runner-rs-v0.79.13) (2026-04-15)
+
+
+### Bug Fixes
+
+* **runner:** add missing doc comment on init_tracing_stderr ([#9553](https://github.com/vm0-ai/vm0/issues/9553)) ([ba44fd4](https://github.com/vm0-ai/vm0/commit/ba44fd497e8d2bb51f721ea7fdbd69a6863e874a))
+
 ## [0.79.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.11...runner-rs-v0.79.12) (2026-04-15)
 
 
