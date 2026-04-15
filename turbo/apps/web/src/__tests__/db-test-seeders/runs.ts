@@ -11,6 +11,7 @@ import { conversations } from "../../db/schema/conversation";
 import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
 import { usageDaily } from "../../db/schema/usage-daily";
 import { initServices } from "../../lib/init-services";
+import { enqueueRun } from "../../lib/zero/zero-run-queue-service";
 import { uniqueId } from "../test-helpers";
 import { generateCallbackSecret } from "../../lib/infra/callback/hmac";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
@@ -498,6 +499,27 @@ export async function insertTestSandboxTelemetry(params: {
     .returning({ id: sandboxTelemetry.id });
 
   return { id: record!.id };
+}
+
+/**
+ * Enqueue a run for testing (wraps enqueueRun service function).
+ *
+ * @why-db-direct Enqueues a run with encryption and queue entry; the service
+ * encapsulates atomic DB inserts that cannot be replicated via a single API call.
+ */
+export async function enqueueTestRun(params: {
+  userId: string;
+  agentComposeVersionId: string;
+  orgId: string;
+  prompt: string;
+}): Promise<{ runId: string; status: string; queuedAt: Date }> {
+  initServices();
+  const result = await enqueueRun(params);
+  return {
+    runId: result.runId,
+    status: result.status,
+    queuedAt: result.createdAt,
+  };
 }
 
 /**

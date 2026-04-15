@@ -1,6 +1,4 @@
 import { generateSandboxToken } from "../../lib/auth/sandbox-token";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Test helper: service access needed for test data setup
-import { enqueueRun } from "../../lib/zero/zero-run-queue-service";
 import { POST as createRunRoute } from "../../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../../app/api/agent/runs/[id]/route";
 import { POST as checkpointWebhook } from "../../../app/api/webhooks/agent/checkpoints/route";
@@ -21,6 +19,7 @@ export {
   insertTestConversation,
   insertTestSandboxTelemetry,
   insertTestUsageDaily,
+  enqueueTestRun,
 } from "../db-test-seeders/runs";
 
 // Re-exports: read-only assertions
@@ -234,21 +233,4 @@ export async function failTestRun(
       `Failed to fail run: ${(errorBody as { error?: { message?: string } }).error?.message || response.status}`,
     );
   }
-}
-
-/**
- * Enqueue a run for testing (test helper wrapping enqueueRun).
- */
-export async function enqueueTestRun(params: {
-  userId: string;
-  agentComposeVersionId: string;
-  orgId: string;
-  prompt: string;
-}): Promise<{ runId: string; status: string; queuedAt: Date }> {
-  const result = await enqueueRun(params);
-  return {
-    runId: result.runId,
-    status: result.status,
-    queuedAt: result.createdAt,
-  };
 }
