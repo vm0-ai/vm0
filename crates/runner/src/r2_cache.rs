@@ -777,7 +777,13 @@ async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Erro
             "{} already exists (likely stale from a partial run: {e}); replacing",
             final_dir.display()
         );
-        let _ = tokio::fs::remove_dir_all(final_dir).await;
+        if let Err(e) = tokio::fs::remove_dir_all(final_dir).await {
+            // Log but keep trying the rename — it may still succeed if the
+            // directory is empty/orphaned in a recoverable way.  EBUSY here
+            // typically indicates a stale bind mount from a crashed snapshot
+            // creation; the retry rename will then fail with the real cause.
+            tracing::warn!("remove_dir_all {}: {e}", final_dir.display());
+        }
         tokio::fs::rename(staging, final_dir).await?;
     }
     Ok(())

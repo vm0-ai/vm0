@@ -14,11 +14,32 @@ set -euo pipefail
 ROOTFS=""
 CA_DIR=""
 MOUNT_DIR=""
+LOOP_DEV=""
 
 cleanup() {
+    # Retry umount a few times — chroot subprocesses (update-ca-certificates,
+    # keytool) may briefly hold references after returning.  Final attempt
+    # lets stderr through so CI logs show the root cause if it still fails.
     if [[ -n "$MOUNT_DIR" ]]; then
-        sudo umount "$MOUNT_DIR" 2>/dev/null || true
+        for attempt in 1 2 3; do
+            if [[ $attempt -eq 3 ]]; then
+                sudo umount "$MOUNT_DIR" || true
+                break
+            fi
+            if sudo umount "$MOUNT_DIR" 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
         rmdir "$MOUNT_DIR" 2>/dev/null || true
+    fi
+    # Explicit loop device detach as a backstop. With LO_FLAGS_AUTOCLEAR
+    # (set by `losetup --find --show` via mount defaults), a successful
+    # umount already releases the device; this covers the umount-failed
+    # and SIGKILL-before-umount edge cases. Swallows errors because
+    # losetup -d on an already-detached device returns ENXIO.
+    if [[ -n "$LOOP_DEV" ]]; then
+        sudo losetup -d "$LOOP_DEV" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
@@ -42,9 +63,11 @@ CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 ca_cert="${CA_DIR}/${CA_CERT_FILE}"
 [[ -f "$ca_cert" ]] || { echo "error: CA cert not found: $ca_cert" >&2; exit 1; }
 
-# Mount rootfs read-write via loopback
+# Mount rootfs read-write via loopback.  Explicit losetup gives us the
+# device name for the cleanup fallback (mount -o loop doesn't expose it).
 MOUNT_DIR="$(mktemp -d)"
-sudo mount -o loop "$ROOTFS" "$MOUNT_DIR"
+LOOP_DEV="$(sudo losetup --find --show "$ROOTFS")"
+sudo mount "$LOOP_DEV" "$MOUNT_DIR"
 
 # Replace CA certificate
 sudo cp "$ca_cert" "${MOUNT_DIR}/${CA_ROOTFS_DEST}"
