@@ -1633,29 +1633,29 @@
         ]
       },
       "daily-engineering-brief": {
-        "title": "Daily engineering brief with anomaly detection",
-        "description": "Ask Zero to pull live data from GitHub, Linear, Sentry, and Plausible every morning, compute 7-day rolling averages, flag any anomalies, and post a formatted four-section brief to your Slack channel automatically.",
-        "timeSaved": "~20 min saved daily",
+        "title": "異常検知付きデイリーエンジニアリングブリーフ",
+        "description": "@Zeroに毎朝GitHub、Linear、Sentry、Plausibleからリアルタイムデータを取得させ、7日間の移動平均を算出し、異常値をフラグ付けして、フォーマットされた4セクションのブリーフをSlackチャンネルに自動投稿します。",
+        "timeSaved": "毎日約20分の時間削減",
         "headings": {
-          "scenario": "Why scattered dashboards slow down your morning sync",
-          "prompt": "How to set up a daily cross-tool engineering brief with Zero",
-          "steps": "How Zero pulls live data, computes baselines, and flags anomalies",
-          "nextActions": "Drill into anomalies, fix broken connectors, or expand the brief",
-          "integrations": "Required integrations: GitHub and Slack. Optional: Linear, Sentry, Plausible",
-          "tips": "Best practices for scheduled multi-tool engineering briefings"
+          "scenario": "分散したダッシュボードが朝の同期を遅らせる理由",
+          "prompt": "@Zeroでクロスツールのデイリーエンジニアリングブリーフを設定する方法",
+          "steps": "@Zeroがリアルタイムデータを取得し、ベースラインを算出し、異常を検知する仕組み",
+          "nextActions": "異常の深掘り、壊れたコネクタの修復、またはブリーフの拡張",
+          "integrations": "必須連携: GitHubとSlack。オプション: Linear、Sentry、Plausible",
+          "tips": "スケジュール型マルチツールエンジニアリングブリーフのベストプラクティス"
         },
-        "scenario": "Every morning someone opens four different tabs: GitHub for PR activity, Linear for sprint progress, Sentry for overnight errors, and Plausible for traffic trends. They manually compare today's numbers to what they remember from last week and try to spot anything unusual before the standup. That cross-referencing takes 15 to 20 minutes and relies on memory. Zero runs before standup, pulls live data from all four sources, computes 7-day rolling averages, flags anything that deviates significantly, and posts a clean four-section brief to Slack before anyone opens their laptop.",
+        "scenario": "毎朝誰かが4つのタブを開きます。GitHubでPRアクティビティ、Linearでスプリント進捗、Sentryで夜間エラー、Plausibleでトラフィック傾向を確認します。今日の数値を先週の記憶と手動で比較し、スタンドアップ前に異常がないか見つけようとします。この照合作業には15〜20分かかり、記憶に頼っています。@Zeroはスタンドアップ前に実行され、4つすべてのソースからリアルタイムデータを取得し、7日間の移動平均を算出し、大幅な偏差をフラグ付けし、誰もラップトップを開く前にSlackに整理された4セクションのブリーフを投稿します。",
         "promptVariants": [
           {
-            "label": "Full daily brief",
+            "label": "フルデイリーブリーフ",
             "prompt": "@Zero every weekday at 8:30am, pull live data from Plausible, Sentry, GitHub, and Linear, flag anomalies vs the 7-day rolling average, and post a formatted 4-section daily brief to #engineering."
           },
           {
-            "label": "GitHub and Linear only",
+            "label": "GitHubとLinearのみ",
             "prompt": "@Zero every morning at 9am, pull today's GitHub PR and issue stats for vm0-ai/vm0 and Linear sprint progress. Flag anything more than 2x above the 7-day average and post to #standup."
           },
           {
-            "label": "On demand",
+            "label": "オンデマンド",
             "prompt": "@Zero pull live data from GitHub and Linear right now, compare to the 7-day rolling average, and tell me what looks unusual today."
           }
         ],
@@ -1671,60 +1671,60 @@
         ],
         "steps": [
           {
-            "title": "Zero pulls live data from each source",
-            "description": "Zero queries GitHub for PRs merged, issues opened and closed, and commits. It pulls Linear for issues created, in-progress work, and backlog count. If configured, it also queries Sentry for error counts and Plausible for visitor and pageview metrics."
+            "title": "@Zeroが各ソースからリアルタイムデータを取得",
+            "description": "@ZeroはGitHubからマージされたPR、オープン・クローズされたissue、コミットを取得します。Linearからは作成されたissue、進行中の作業、バックログ数を取得します。設定されている場合、Sentryのエラー数やPlausibleの訪問者数・ページビュー指標も取得します。"
           },
           {
-            "title": "7-day rolling averages computed",
-            "description": "For each metric, Zero fetches the same data for the prior seven days and computes a daily average. This gives a stable baseline that accounts for weekends, deploys, and team size changes."
+            "title": "7日間の移動平均を算出",
+            "description": "各指標について、@Zeroは過去7日間の同じデータを取得し、日次平均を算出します。これにより、週末、デプロイ、チーム規模の変更を考慮した安定したベースラインが得られます。"
           },
           {
-            "title": "Anomalies flagged automatically",
-            "description": "Zero compares today's numbers to the rolling average and flags anything that deviates significantly. A spike in merged PRs might indicate a coordinated refactor; a drop in Plausible traffic might signal a deploy issue; a surge in issues opened might mean a new bug surface was discovered."
+            "title": "異常を自動的にフラグ付け",
+            "description": "@Zeroは今日の数値を移動平均と比較し、大幅な偏差をフラグ付けします。マージされたPRの急増は協調的なリファクタリングを示す可能性があり、Plausibleのトラフィック低下はデプロイの問題を示す可能性があり、オープンされたissueの急増は新たなバグ領域の発見を意味する可能性があります。"
           },
           {
-            "title": "Four-section brief posted to Slack",
-            "description": "Zero posts a structured message with one section per source: Web Traffic, Errors and Reliability, Engineering Activity, and Project Tracker. Each section lists today's numbers, the 7-day average, and a plain-language anomaly note where applicable."
+            "title": "4セクションのブリーフをSlackに投稿",
+            "description": "@Zeroはソースごとに1セクションの構造化されたメッセージを投稿します：Webトラフィック、エラーと信頼性、エンジニアリングアクティビティ、プロジェクトトラッカー。各セクションには今日の数値、7日間の平均、該当する場合は平易な言葉での異常ノートが記載されます。"
           }
         ],
         "nextActions": [
           {
-            "title": "Drill into an anomaly",
-            "description": "Ask Zero to investigate a spike directly from the brief thread",
+            "title": "異常を深掘りする",
+            "description": "ブリーフのスレッドから直接@Zeroにスパイクの調査を依頼",
             "examplePrompt": "@Zero the 572% PR spike in today's brief — list all those PRs and group them by label or title prefix so I can see what the team was shipping."
           },
           {
-            "title": "Fix a broken connector",
-            "description": "Resolve a missing token so all four sections have live data",
+            "title": "壊れたコネクタを修復する",
+            "description": "不足しているトークンを解決して4つすべてのセクションにライブデータを反映",
             "examplePrompt": "@Zero check which connectors are missing or misconfigured for the daily brief and tell me what tokens I need to set."
           },
           {
-            "title": "Add a custom threshold",
-            "description": "Only get alerted when a metric crosses a meaningful threshold",
+            "title": "カスタム閾値を追加する",
+            "description": "指標が意味のある閾値を超えた場合のみアラートを受け取る",
             "examplePrompt": "@Zero update the daily brief schedule to only flag anomalies that are more than 3x the 7-day average. For smaller deviations, just include the number without a flag."
           }
         ],
         "integrations": [
           {
-            "description": "Zero reads PRs merged, issues opened and closed, and commit counts. Required for the Engineering Activity section."
+            "description": "@ZeroはマージされたPR、オープン・クローズされたissue、コミット数を読み取ります。エンジニアリングアクティビティセクションに必須です。"
           },
           {
-            "description": "Zero posts the formatted brief and threads any follow-up analysis into the same message. Required for delivery."
+            "description": "@Zeroはフォーマットされたブリーフを投稿し、フォローアップの分析を同じメッセージのスレッドにまとめます。配信に必須です。"
           },
           {
-            "description": "Zero reads issue creation, in-progress work, and backlog count for the Project Tracker section. Optional."
+            "description": "@Zeroはissueの作成、進行中の作業、バックログ数をプロジェクトトラッカーセクション用に読み取ります。オプションです。"
           },
           {
-            "description": "Zero reads unresolved error counts and new issue volume for the Errors and Reliability section. Optional."
+            "description": "@Zeroは未解決のエラー数と新規issue数をエラーと信頼性セクション用に読み取ります。オプションです。"
           },
           {
-            "description": "Zero reads visitor counts, pageviews, and bounce rate for the Web Traffic section. Optional."
+            "description": "@Zeroは訪問者数、ページビュー、直帰率をWebトラフィックセクション用に読み取ります。オプションです。"
           }
         ],
         "tips": [
-          "Schedule the brief 15 to 20 minutes before your standup so the team can see it before the meeting starts.",
-          "Start with GitHub and Slack only. Once the brief is running reliably, add Sentry and Plausible one at a time to validate each connector before expanding.",
-          "Add a custom threshold note to your prompt to reduce noise. For example, only flag metrics that are more than 2x the rolling average so minor day-to-day variation does not trigger alerts."
+          "スタンドアップの15〜20分前にブリーフをスケジュールして、ミーティング開始前にチームが確認できるようにしましょう。",
+          "まずGitHubとSlackだけで始めましょう。ブリーフが安定して動作するようになったら、SentryとPlausibleを1つずつ追加して、拡張前に各コネクタを検証しましょう。",
+          "ノイズを減らすために、プロンプトにカスタム閾値の指示を追加しましょう。例えば、移動平均の2倍を超える指標のみフラグ付けすることで、日常的な小さな変動によるアラートを防げます。"
         ]
       }
     }

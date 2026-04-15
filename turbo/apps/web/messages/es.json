@@ -1551,29 +1551,29 @@
         ]
       },
       "daily-engineering-brief": {
-        "title": "Daily engineering brief with anomaly detection",
-        "description": "Ask Zero to pull live data from GitHub, Linear, Sentry, and Plausible every morning, compute 7-day rolling averages, flag any anomalies, and post a formatted four-section brief to your Slack channel automatically.",
-        "timeSaved": "~20 min saved daily",
+        "title": "Resumen diario de ingeniería con detección de anomalías",
+        "description": "Pide a @Zero que extraiga datos en tiempo real de GitHub, Linear, Sentry y Plausible cada mañana, calcule promedios móviles de 7 días, marque cualquier anomalía y publique automáticamente un resumen de cuatro secciones en tu canal de Slack.",
+        "timeSaved": "~20 min ahorrados al día",
         "headings": {
-          "scenario": "Why scattered dashboards slow down your morning sync",
-          "prompt": "How to set up a daily cross-tool engineering brief with Zero",
-          "steps": "How Zero pulls live data, computes baselines, and flags anomalies",
-          "nextActions": "Drill into anomalies, fix broken connectors, or expand the brief",
-          "integrations": "Required integrations: GitHub and Slack. Optional: Linear, Sentry, Plausible",
-          "tips": "Best practices for scheduled multi-tool engineering briefings"
+          "scenario": "Por qué los dashboards dispersos ralentizan tu sincronización matutina",
+          "prompt": "Cómo configurar un resumen diario de ingeniería multi-herramienta con @Zero",
+          "steps": "Cómo @Zero extrae datos en tiempo real, calcula líneas base y marca anomalías",
+          "nextActions": "Profundiza en anomalías, corrige conectores rotos o amplía el resumen",
+          "integrations": "Integraciones requeridas: GitHub y Slack. Opcionales: Linear, Sentry, Plausible",
+          "tips": "Mejores prácticas para reportes de ingeniería programados con múltiples herramientas"
         },
-        "scenario": "Every morning someone opens four different tabs: GitHub for PR activity, Linear for sprint progress, Sentry for overnight errors, and Plausible for traffic trends. They manually compare today's numbers to what they remember from last week and try to spot anything unusual before the standup. That cross-referencing takes 15 to 20 minutes and relies on memory. Zero runs before standup, pulls live data from all four sources, computes 7-day rolling averages, flags anything that deviates significantly, and posts a clean four-section brief to Slack before anyone opens their laptop.",
+        "scenario": "Cada mañana alguien abre cuatro pestañas diferentes: GitHub para la actividad de PRs, Linear para el progreso del sprint, Sentry para los errores nocturnos y Plausible para las tendencias de tráfico. Comparan manualmente los números de hoy con lo que recuerdan de la semana pasada e intentan detectar algo inusual antes del standup. Esa verificación cruzada toma de 15 a 20 minutos y depende de la memoria. @Zero se ejecuta antes del standup, extrae datos en tiempo real de las cuatro fuentes, calcula promedios móviles de 7 días, marca cualquier desviación significativa y publica un resumen limpio de cuatro secciones en Slack antes de que alguien abra su laptop.",
         "promptVariants": [
           {
-            "label": "Full daily brief",
+            "label": "Resumen diario completo",
             "prompt": "@Zero every weekday at 8:30am, pull live data from Plausible, Sentry, GitHub, and Linear, flag anomalies vs the 7-day rolling average, and post a formatted 4-section daily brief to #engineering."
           },
           {
-            "label": "GitHub and Linear only",
+            "label": "Solo GitHub y Linear",
             "prompt": "@Zero every morning at 9am, pull today's GitHub PR and issue stats for vm0-ai/vm0 and Linear sprint progress. Flag anything more than 2x above the 7-day average and post to #standup."
           },
           {
-            "label": "On demand",
+            "label": "Bajo demanda",
             "prompt": "@Zero pull live data from GitHub and Linear right now, compare to the 7-day rolling average, and tell me what looks unusual today."
           }
         ],
@@ -1589,60 +1589,60 @@
         ],
         "steps": [
           {
-            "title": "Zero pulls live data from each source",
-            "description": "Zero queries GitHub for PRs merged, issues opened and closed, and commits. It pulls Linear for issues created, in-progress work, and backlog count. If configured, it also queries Sentry for error counts and Plausible for visitor and pageview metrics."
+            "title": "@Zero extrae datos en tiempo real de cada fuente",
+            "description": "@Zero consulta GitHub para PRs fusionados, issues abiertos y cerrados, y commits. Extrae de Linear los issues creados, el trabajo en progreso y el conteo del backlog. Si están configurados, también consulta Sentry para el conteo de errores y Plausible para métricas de visitantes y páginas vistas."
           },
           {
-            "title": "7-day rolling averages computed",
-            "description": "For each metric, Zero fetches the same data for the prior seven days and computes a daily average. This gives a stable baseline that accounts for weekends, deploys, and team size changes."
+            "title": "Se calculan los promedios móviles de 7 días",
+            "description": "Para cada métrica, @Zero obtiene los mismos datos de los siete días anteriores y calcula un promedio diario. Esto proporciona una línea base estable que tiene en cuenta fines de semana, despliegues y cambios en el tamaño del equipo."
           },
           {
-            "title": "Anomalies flagged automatically",
-            "description": "Zero compares today's numbers to the rolling average and flags anything that deviates significantly. A spike in merged PRs might indicate a coordinated refactor; a drop in Plausible traffic might signal a deploy issue; a surge in issues opened might mean a new bug surface was discovered."
+            "title": "Las anomalías se marcan automáticamente",
+            "description": "@Zero compara los números de hoy con el promedio móvil y marca cualquier desviación significativa. Un pico en PRs fusionados podría indicar un refactoreo coordinado; una caída en el tráfico de Plausible podría señalar un problema de despliegue; un aumento en issues abiertos podría significar que se descubrió una nueva superficie de errores."
           },
           {
-            "title": "Four-section brief posted to Slack",
-            "description": "Zero posts a structured message with one section per source: Web Traffic, Errors and Reliability, Engineering Activity, and Project Tracker. Each section lists today's numbers, the 7-day average, and a plain-language anomaly note where applicable."
+            "title": "Se publica el resumen de cuatro secciones en Slack",
+            "description": "@Zero publica un mensaje estructurado con una sección por fuente: Tráfico Web, Errores y Confiabilidad, Actividad de Ingeniería y Seguimiento de Proyecto. Cada sección lista los números de hoy, el promedio de 7 días y una nota de anomalía en lenguaje claro cuando corresponda."
           }
         ],
         "nextActions": [
           {
-            "title": "Drill into an anomaly",
-            "description": "Ask Zero to investigate a spike directly from the brief thread",
+            "title": "Profundizar en una anomalía",
+            "description": "Pide a @Zero que investigue un pico directamente desde el hilo del resumen",
             "examplePrompt": "@Zero the 572% PR spike in today's brief — list all those PRs and group them by label or title prefix so I can see what the team was shipping."
           },
           {
-            "title": "Fix a broken connector",
-            "description": "Resolve a missing token so all four sections have live data",
+            "title": "Corregir un conector roto",
+            "description": "Resuelve un token faltante para que las cuatro secciones tengan datos en tiempo real",
             "examplePrompt": "@Zero check which connectors are missing or misconfigured for the daily brief and tell me what tokens I need to set."
           },
           {
-            "title": "Add a custom threshold",
-            "description": "Only get alerted when a metric crosses a meaningful threshold",
+            "title": "Agregar un umbral personalizado",
+            "description": "Recibe alertas solo cuando una métrica cruza un umbral significativo",
             "examplePrompt": "@Zero update the daily brief schedule to only flag anomalies that are more than 3x the 7-day average. For smaller deviations, just include the number without a flag."
           }
         ],
         "integrations": [
           {
-            "description": "Zero reads PRs merged, issues opened and closed, and commit counts. Required for the Engineering Activity section."
+            "description": "@Zero lee PRs fusionados, issues abiertos y cerrados, y conteo de commits. Requerido para la sección de Actividad de Ingeniería."
           },
           {
-            "description": "Zero posts the formatted brief and threads any follow-up analysis into the same message. Required for delivery."
+            "description": "@Zero publica el resumen formateado y agrupa cualquier análisis de seguimiento en el mismo mensaje. Requerido para la entrega."
           },
           {
-            "description": "Zero reads issue creation, in-progress work, and backlog count for the Project Tracker section. Optional."
+            "description": "@Zero lee la creación de issues, el trabajo en progreso y el conteo del backlog para la sección de Seguimiento de Proyecto. Opcional."
           },
           {
-            "description": "Zero reads unresolved error counts and new issue volume for the Errors and Reliability section. Optional."
+            "description": "@Zero lee los conteos de errores no resueltos y el volumen de nuevos issues para la sección de Errores y Confiabilidad. Opcional."
           },
           {
-            "description": "Zero reads visitor counts, pageviews, and bounce rate for the Web Traffic section. Optional."
+            "description": "@Zero lee el conteo de visitantes, páginas vistas y tasa de rebote para la sección de Tráfico Web. Opcional."
           }
         ],
         "tips": [
-          "Schedule the brief 15 to 20 minutes before your standup so the team can see it before the meeting starts.",
-          "Start with GitHub and Slack only. Once the brief is running reliably, add Sentry and Plausible one at a time to validate each connector before expanding.",
-          "Add a custom threshold note to your prompt to reduce noise. For example, only flag metrics that are more than 2x the rolling average so minor day-to-day variation does not trigger alerts."
+          "Programa el resumen de 15 a 20 minutos antes de tu standup para que el equipo pueda verlo antes de que comience la reunión.",
+          "Comienza solo con GitHub y Slack. Una vez que el resumen funcione de manera confiable, agrega Sentry y Plausible uno a la vez para validar cada conector antes de expandir.",
+          "Agrega una nota de umbral personalizado a tu prompt para reducir el ruido. Por ejemplo, marca solo métricas que superen 2x el promedio móvil para que la variación menor del día a día no genere alertas."
         ]
       }
     }
