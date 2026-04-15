@@ -122,6 +122,14 @@ describe("createVoiceChatPanelSignals", () => {
             },
             // null item — should be filtered out
             null,
+            // content is undefined (field absent) — should be filtered out
+            {
+              id: "evt-no-content",
+              seq: 4,
+              source: "user",
+              type: "speech",
+              createdAt: "2026-04-13T10:00:04Z",
+            },
           ],
         });
       }),
