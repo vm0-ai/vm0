@@ -15,6 +15,7 @@ import json
 import time
 import urllib.error
 import urllib.parse
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import TypedDict
 
@@ -66,7 +67,7 @@ def _extract_billing_usage(raw_usage, target: dict) -> None:
                 target["web_search_requests"] = wsr
 
 
-def create_sse_usage_extractor():
+def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
     """Create an incremental SSE parser that extracts usage from Anthropic API streams.
 
     All model providers in this system use the Anthropic Messages API streaming
@@ -382,7 +383,7 @@ class NdjsonState(TypedDict):
     """Lines that failed JSON decoding."""
 
 
-def create_x_ndjson_extractor():
+def create_x_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
     """Create an incremental NDJSON parser for X v2 streaming responses.
 
     X v2 streaming endpoints deliver one JSON object per line separated by
