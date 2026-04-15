@@ -481,6 +481,56 @@ jobs:
             --profile vm0/default \
             '(agent-browser open https://github.com/ && agent-browser get title && agent-browser close) || (sleep 2 && agent-browser open https://github.com/ && agent-browser get title && agent-browser close)'"
 
+  runner-snapshot-verify:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Verify CA certs not in snapshot page cache
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_IMAGE_HASH: ${{ needs.runner-build.outputs.default-image-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+          # shellcheck disable=SC2088
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-snapverify"
+
+          # Reuse config from runner-build (same image hash)
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --image-hash ${DEFAULT_IMAGE_HASH} \
+            --name ${JOB_REF}-snapverify \
+            --group vm0/development-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-snapverify \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          # Verify CA certificate files are NOT in the guest page cache
+          # after snapshot restore.  If they are, R2 cross-host image reuse
+          # breaks because the snapshot memory would serve stale CA data
+          # even after replacing the rootfs cert.  See issue #9331.
+          # fincore outputs "RES PAGES SIZE FILE" — assert RES=0 for all rows.
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner benchmark \
+            --config ${RUNNER_DIR}/runner.yaml \
+            --profile vm0/default \
+            'fincore /usr/local/share/ca-certificates/vm0-proxy-ca.crt /etc/ssl/certs/ca-certificates.crt | tee /dev/stderr | awk \"NR>1 && \\\$1!=0{print \\\"FAIL: \\\" \\\$NF \\\" has \\\" \\\$1 \\\" bytes cached\\\"; exit 1}\"'"
+
   runner-exec:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -1273,6 +1323,7 @@ jobs:
       - mitm-addon-test
       - runner-build
       - runner-benchmark
+      - runner-snapshot-verify
       - runner-exec
       - runner-balloon
       - runner-upgrade-local
@@ -1319,6 +1370,7 @@ jobs:
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
+          check_result "runner-snapshot-verify" "${{ needs.runner-snapshot-verify.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
           check_result "runner-balloon" "${{ needs.runner-balloon.result }}" "true"
           check_result "runner-upgrade-local" "${{ needs.runner-upgrade-local.result }}" "true"
@@ -1331,7 +1383,7 @@ jobs:
   runner-cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [runner-build, runner-benchmark, runner-exec, runner-cancel, runner-balloon, runner-upgrade-local, runner-keep-alive]
+    needs: [runner-build, runner-benchmark, runner-snapshot-verify, runner-exec, runner-cancel, runner-balloon, runner-upgrade-local, runner-keep-alive]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v6
