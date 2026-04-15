@@ -85,6 +85,7 @@ export const callCommand = new Command()
         const result = await createPhoneCall({
           toNumber,
           systemPrompt,
+          mode: options.mode,
         });
 
         console.log(chalk.green("Call initiated"));
