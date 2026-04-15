@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
@@ -89,16 +89,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // Send agent response back via iMessage
+  // Send agent response back via iMessage (fire-and-forget after response).
+  // The .catch() is intentional: a delivery failure must not cause a 500 that
+  // triggers AgentPhone retries and duplicate messages.
   if (status === "completed") {
     const outputText = await getRunOutputText(runId);
 
     if (outputText) {
-      await sendIMessage({
-        agentId: payload.agentphoneAgentId,
-        toNumber: payload.fromNumber,
-        body: outputText,
-      });
+      after(
+        sendIMessage({
+          agentId: payload.agentphoneAgentId,
+          toNumber: payload.fromNumber,
+          body: outputText,
+        }).catch((err: unknown) => {
+          log.warn("Failed to send iMessage reply", { err, runId });
+        }),
+      );
     }
   }
 

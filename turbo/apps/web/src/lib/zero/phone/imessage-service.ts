@@ -24,7 +24,10 @@ export async function sendIMessage(opts: {
     throw new Error("AGENTPHONE_API_KEY is not configured");
   }
 
-  const apiBase = env().AGENTPHONE_API_BASE_URL ?? "https://api.agentphone.to";
+  const apiBase = env().AGENTPHONE_API_BASE_URL;
+  if (!apiBase) {
+    throw new Error("AGENTPHONE_API_BASE_URL is not configured");
+  }
   const response = await fetch(`${apiBase}/v1/messages`, {
     method: "POST",
     headers: {

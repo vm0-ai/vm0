@@ -15,21 +15,12 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
+import type { IMessageCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
-
-interface IMessageCallbackPayload {
-  messageId: string;
-  fromNumber: string;
-  userId: string;
-  orgId: string;
-  agentId: string;
-  agentphoneAgentId: string;
-  existingSessionId: string | null;
-}
 
 const context = testContext();
 

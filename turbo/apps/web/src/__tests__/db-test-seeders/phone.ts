@@ -8,7 +8,7 @@ import { pendingOutboundCalls } from "../../db/schema/pending-outbound-call";
 import { uniqueId } from "../test-helpers";
 import { createTestCompose } from "../api-test-helpers/agents";
 import { ensureOrgRow } from "../api-test-helpers/org";
-import { linkIMessageAction } from "../../../app/imessage/connect/actions";
+import { POST as linkIMessageRoute } from "../../../app/api/integrations/imessage/link/route";
 
 // ============================================================================
 // Phone Seeders
@@ -139,10 +139,10 @@ export async function insertPendingOutboundCall(opts: {
 /**
  * Link an iMessage handle (phone number) to a user in an org for testing.
  *
- * Drives the real linkIMessageAction server action with a freshly signed
- * connect token so the same validation path used in production is exercised.
- * Requires the Clerk mock to be active for the target userId (e.g. via
- * context.setupUser()) so that auth() resolves correctly inside the action.
+ * Calls the real POST /api/integrations/imessage/link route handler with a
+ * freshly signed connect token so the same validation path used in production
+ * is exercised. Requires the Clerk mock to be active for the target userId
+ * (e.g. via context.setupUser()) so that auth() resolves correctly.
  */
 export async function linkIMessageHandle(
   imessageHandle: string,
@@ -154,14 +154,26 @@ export async function linkIMessageHandle(
   const data = `imessage:${imessageHandle}:${orgId}:${timestamp}`;
   const signature = createHmac("sha256", signingKey).update(data).digest("hex");
 
-  const result = await linkIMessageAction(
-    imessageHandle,
-    orgId,
-    timestamp,
-    signature,
+  const request = new Request(
+    "http://localhost/api/integrations/imessage/link",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        handle: imessageHandle,
+        orgId,
+        timestamp,
+        signature,
+      }),
+    },
   );
 
-  if (!result.success) {
-    throw new Error(`linkIMessageHandle seeder failed: ${result.error}`);
+  const response = await linkIMessageRoute(request);
+
+  if (!response.ok) {
+    const body = await response.json();
+    throw new Error(
+      `linkIMessageHandle seeder failed (${response.status}): ${JSON.stringify(body)}`,
+    );
   }
 }
