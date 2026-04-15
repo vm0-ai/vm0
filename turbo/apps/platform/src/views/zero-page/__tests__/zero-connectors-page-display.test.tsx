@@ -100,7 +100,7 @@ describe("connectors page - connector status indicators", () => {
   });
 
   it("connector shows scope mismatch state (CONN-D-005)", async () => {
-    // GitHub requires ["repo", "project"] scopes; empty array triggers mismatch
+    // GitHub requires ["repo", "project", "workflow"] scopes; empty array triggers mismatch
     mockConnectors([
       { type: "github", oauthScopes: [], needsReconnect: false },
     ]);
