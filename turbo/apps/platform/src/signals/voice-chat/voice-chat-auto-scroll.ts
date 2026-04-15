@@ -1,52 +1,15 @@
-import { command, state } from "ccstate";
-import { onRef } from "../utils.ts";
-
-const NEAR_BOTTOM_THRESHOLD = 80;
+import { createScrollSignals } from "../auto-scroll.ts";
 
 // --- Transcript panel ---
 
-const transcriptScrollContainer$ = state<HTMLElement | null>(null);
-
-export const setTranscriptScrollContainer$ = onRef(
-  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-    signal.addEventListener("abort", () => {
-      set(transcriptScrollContainer$, null);
-    });
-    set(transcriptScrollContainer$, el);
-  }),
-);
-
-export const autoScrollTranscript$ = command(({ get }) => {
-  const el = get(transcriptScrollContainer$);
-  if (!el) {
-    return;
-  }
-  const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-  if (distanceFromBottom < NEAR_BOTTOM_THRESHOLD) {
-    el.scrollTop = el.scrollHeight;
-  }
-});
+const transcriptScrollSignals = createScrollSignals();
+export const setTranscriptScrollContainer$ =
+  transcriptScrollSignals.setScrollContainer$;
+export const autoScrollTranscript$ = transcriptScrollSignals.autoScroll$;
 
 // --- Events panel ---
 
-const eventsScrollContainer$ = state<HTMLElement | null>(null);
-
-export const setEventsScrollContainer$ = onRef(
-  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-    signal.addEventListener("abort", () => {
-      set(eventsScrollContainer$, null);
-    });
-    set(eventsScrollContainer$, el);
-  }),
-);
-
-export const autoScrollEvents$ = command(({ get }) => {
-  const el = get(eventsScrollContainer$);
-  if (!el) {
-    return;
-  }
-  const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-  if (distanceFromBottom < NEAR_BOTTOM_THRESHOLD) {
-    el.scrollTop = el.scrollHeight;
-  }
-});
+const eventsScrollSignals = createScrollSignals();
+export const setEventsScrollContainer$ =
+  eventsScrollSignals.setScrollContainer$;
+export const autoScrollEvents$ = eventsScrollSignals.autoScroll$;
