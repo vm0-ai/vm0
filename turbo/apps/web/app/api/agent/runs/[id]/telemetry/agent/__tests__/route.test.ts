@@ -289,20 +289,20 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       );
     });
 
-    it("should include since filter in Axiom query", async () => {
+    it("should include sequenceNumber since filter in Axiom query", async () => {
       context.mocks.axiom.queryAxiom.mockResolvedValue([
         createAxiomAgentEvent(
           "2024-01-01T00:00:10Z",
-          1,
+          5,
           "recent_event",
           { type: "recent" },
           testRunId,
         ),
       ]);
 
-      const sinceTimestamp = Date.now() - 5000;
+      const sinceSequence = 3;
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent?since=${sinceTimestamp}&limit=10`,
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/agent?since=${sinceSequence}&limit=10`,
       );
 
       const response = await GET(request);
@@ -312,9 +312,11 @@ describe("GET /api/agent/runs/:id/telemetry/agent", () => {
       expect(data.events).toHaveLength(1);
       expect(data.events[0].eventType).toBe("recent_event");
 
-      // Verify since filter was included in APL query
+      // Verify since filter was included in APL query as a sequenceNumber
+      // comparison (exclusive cursor, not a timestamp — Axiom `_time` is
+      // stored at nanosecond precision which JS Date millis can't represent).
       expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
-        expect.stringContaining("where _time > datetime"),
+        expect.stringContaining(`where sequenceNumber > ${sinceSequence}`),
       );
     });
   });

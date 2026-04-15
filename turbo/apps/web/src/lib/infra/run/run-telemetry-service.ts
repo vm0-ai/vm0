@@ -73,13 +73,19 @@ export async function getRunAgentEvents(
   const { since, limit, order } = query;
 
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
-  const sinceFilter = since
-    ? `| where _time > datetime("${new Date(since).toISOString()}")`
-    : "";
+  // `since` is an exclusive sequenceNumber cursor (integer).
+  // Historically this filter used `_time`, but Axiom stores `_time` at
+  // nanosecond precision while JS Date is millisecond precision — passing
+  // the last-seen event's `createdAt` through `new Date(...).toISOString()`
+  // truncated sub-millisecond digits, so the server-side `>` comparison
+  // still matched the boundary event and returned it again. Using the
+  // integer `sequenceNumber` avoids any precision loss.
+  const sinceFilter =
+    since !== undefined ? `| where sequenceNumber > ${since}` : "";
   const apl = `['${dataset}']
 | where runId == "${runId}"
 ${sinceFilter}
-| order by _time ${order}
+| order by sequenceNumber ${order}
 | limit ${limit + 1}`;
 
   const events = await queryAxiom<AxiomAgentEvent>(apl);
