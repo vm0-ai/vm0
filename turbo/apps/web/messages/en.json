@@ -1549,6 +1549,88 @@
           "Keep each agent single-purpose. A worker that reviews PRs and also runs tests will drift on both. Narrow system prompts produce sharper output and easier orchestration.",
           "Chain workers with conditional prompts — 'when X finishes, launch Y on the output'. A fleet of focused agents becomes a pipeline without any extra infrastructure."
         ]
+      },
+      "multilingual-cms-publishing": {
+        "title": "Publish multilingual Strapi content from a single Zero prompt",
+        "description": "Tell Zero what to write. Zero drafts your content in English, Chinese, and Japanese — adapted per locale, not just translated — and pushes all three to Strapi as drafts in one shot.",
+        "timeSaved": "~60 min saved",
+        "headings": {
+          "scenario": "Why multilingual CMS publishing eats your afternoon",
+          "prompt": "How to ask Zero to create and publish multilingual content",
+          "steps": "How Zero writes, localizes, and syncs content to Strapi",
+          "nextActions": "Schedule recurring posts, batch a content calendar, or localize existing content",
+          "integrations": "Required integrations: Strapi and Notion",
+          "tips": "Best practices for AI-assisted multilingual content publishing"
+        },
+        "scenario": "Your product just shipped a new feature. It needs a write-up in three languages — English for the global site, Chinese for the Asia market, Japanese for the Japan blog. Normally that means: write the English version, open a translation tool, copy-paste into Strapi for each locale, fix formatting, check that no fields are missing. Forty-five minutes minimum, just for one post. You give Zero the bullet points and your target locales. Done.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero create a product announcement for our new Permission Isolation feature. Key points: agents can only access tools their owner authorized, no shared token leakage between agents, enterprise-grade isolation. Publish to Strapi in English, Simplified Chinese, and Japanese as drafts."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero write a short announcement for Permission Isolation and publish to Strapi in English, Chinese, and Japanese."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every time we ship a release to production, pull the release notes from GitHub and publish a localized announcement to Strapi in English, Chinese, and Japanese."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero create a product announcement for Permission Isolation — agents only access authorized tools, no cross-agent token leakage. Publish to Strapi in English, Chinese, and Japanese as drafts."
+          },
+          {
+            "name": "Zero",
+            "text": "Done. Entry #42 created in Strapi with 3 locales:\n• en — \"Introducing Permission Isolation\"\n• zh-Hans — \"权限隔离正式上线\"\n• ja — \"権限の分離機能リリース\"\n\nAll set to Draft. Review: cms.vm0.ai/admin/content-manager/use-cases/42"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero writes the English master",
+            "description": "Zero takes your bullet points and drafts a structured announcement: title, meta description, and body copy. It follows your brand tone and formats the content to match your Strapi collection schema."
+          },
+          {
+            "title": "Zero localizes per market",
+            "description": "Zero doesn't just run translations. It adapts each version for the cultural register of the target market — formal structure for Japanese, direct and informative for Chinese, conversational for English — so each post reads as native content, not a translation."
+          },
+          {
+            "title": "Zero syncs all locales to Strapi",
+            "description": "Zero calls the Strapi REST API, creates the master entry, then posts each localization in sequence. All three land as Drafts with correct locale tags and field mappings. You get a confirmation and a direct link to review in the Strapi admin."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Automate your release notes",
+            "description": "Connect to GitHub and publish automatically on every deploy",
+            "examplePrompt": "@Zero whenever a GitHub release is tagged in our repo, write a localized announcement and publish to Strapi in English, Chinese, and Japanese."
+          },
+          {
+            "title": "Localize existing content",
+            "description": "Translate a backlog of English-only posts",
+            "examplePrompt": "@Zero find all Strapi articles tagged 'en-only' and create Chinese and Japanese localizations for each. Publish as drafts."
+          },
+          {
+            "title": "Batch a content calendar",
+            "description": "Plan and publish a full week of posts from a Notion doc",
+            "examplePrompt": "@Zero read the content calendar in Notion and publish each planned post to Strapi in all three locales. Mark each as Draft."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "OAuth connection to your Strapi instance. Zero needs content-manager permissions to create and update entries across locales."
+          },
+          {
+            "description": "Optional. Use Notion as your content planning hub — brief, content calendar, or source material that Zero reads before drafting."
+          }
+        ],
+        "tips": [
+          "Give Zero your Strapi collection name and locale codes upfront. 'Publish to the announcements collection in en, zh-Hans, and ja' gets cleaner output than vague instructions.",
+          "Review before publishing. Zero creates Drafts by default — use the Strapi admin link Zero returns to spot-check each locale before going live.",
+          "Feed Zero brand context. Paste your brand voice guidelines or a sample post from the target locale — the output will be noticeably more on-brand."
+        ]
       }
     }
   },
