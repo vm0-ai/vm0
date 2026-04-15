@@ -3,16 +3,16 @@
 import base64
 from unittest.mock import MagicMock
 
-from mitm_addon import (
+from body_utils import (
     _STREAM_BUFFER_LIMIT,
     _add_capture_fields,
     _encode_body,
-    _extract_usage_from_json,
     _is_sensitive_header,
     _is_text_content,
     _redact_headers,
     _truncate_bytes_utf8_safe,
 )
+from usage import _extract_usage_from_json
 
 
 class TestIsTextContent:
