@@ -1644,6 +1644,88 @@
           "Comienza solo con GitHub y Slack. Una vez que el resumen funcione de manera confiable, agrega Sentry y Plausible uno a la vez para validar cada conector antes de expandir.",
           "Agrega una nota de umbral personalizado a tu prompt para reducir el ruido. Por ejemplo, marca solo métricas que superen 2x el promedio móvil para que la variación menor del día a día no genere alertas."
         ]
+      },
+      "competitor-pricing-monitor": {
+        "title": "Monitorea páginas de precios de competidores y marca cambios semanalmente",
+        "description": "Dale a @Zero una lista de URLs de precios de competidores. Extrae el contenido de cada página cada lunes, lo compara con la instantánea de la semana anterior en Notion, escribe un resumen de impacto para cada cambio encontrado, guarda el reporte completo en Notion y publica un resumen en Slack.",
+        "timeSaved": "~2 hrs ahorradas por semana",
+        "headings": {
+          "scenario": "Por qué los cambios de precios toman a los equipos por sorpresa",
+          "prompt": "Cómo configurar el monitoreo semanal de precios de competidores con @Zero",
+          "steps": "Cómo @Zero extrae, compara y reporta cambios de precios",
+          "nextActions": "Profundiza en un cambio específico, ajusta la lista de seguimiento o comparte con liderazgo",
+          "integrations": "Integraciones requeridas: Notion y Slack",
+          "tips": "Mejores prácticas para inteligencia de precios automatizada"
+        },
+        "scenario": "Un competidor elimina silenciosamente su plan gratuito. Otro agrega un nuevo plan empresarial. Te enteras tres semanas después por un prospecto que ya los eligió. @Zero revisa las páginas de precios de tus competidores cada lunes, compara qué cambió desde la semana pasada, escribe un resumen de impacto claro para cada cambio encontrado y publica un resumen en Slack antes de que la semana de tu equipo comience.",
+        "promptVariants": [
+          {
+            "label": "Configurar monitoreo semanal",
+            "prompt": "@Zero every Monday at 9am, scrape the pricing pages of e2b.dev, daytona.io, cursor.com, and replit.com. Compare against last week's Notion snapshot. Flag any changes to tiers, prices, or CTAs, write a 2–3 sentence impact summary for each, save the full report to Notion under Competitor Pricing Log, and post a digest to #competitive."
+          },
+          {
+            "label": "Ejecutar una verificación puntual",
+            "prompt": "@Zero scrape the pricing pages of e2b.dev and daytona.io right now. Compare against the last saved Notion snapshot and tell me what changed."
+          },
+          {
+            "label": "Análisis profundo de un competidor",
+            "prompt": "@Zero pull the full pricing history for cursor.com from the Competitor Pricing Log in Notion. Summarize how their tiers and CTAs have evolved over time."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero every Monday at 9am, scrape competitor pricing pages and compare against last week's Notion snapshot. Post a digest to #competitive."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Pricing Digest — Apr 14\n\nCursor: Added new Ultra tier at $200/month. Signals growing confidence in a high-willingness-to-pay power-user segment.\nDaytona: Increased startup credit offer from $25K to $50K. Signals aggressive developer acquisition push.\n\nNo changes detected: E2B, Replit\n\nFull report saved to Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "@Zero extrae cada página de precios",
+            "description": "@Zero obtiene el contenido actual de cada URL de precios que especificaste, extrayendo nombres de planes, precios, listas de funcionalidades, ofertas de prueba y CTAs."
+          },
+          {
+            "title": "@Zero compara contra la instantánea de la semana anterior en Notion",
+            "description": "@Zero compara el contenido de hoy contra la versión guardada en Notion la semana pasada. Marca cualquier cambio en planes de precios, nombres de planes, funcionalidades incluidas, términos de prueba o llamadas a la acción."
+          },
+          {
+            "title": "Se guardan los resúmenes de impacto y se publica el resumen",
+            "description": "Para cada cambio encontrado, @Zero escribe un resumen de impacto de 2 a 3 oraciones que cubre qué cambió, qué señala y qué considerar. El reporte completo se guarda en Notion y un resumen conciso se publica en Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Profundizar en un cambio específico",
+            "description": "Obtén más contexto sobre un movimiento de un competidor",
+            "examplePrompt": "@Zero pull up everything we have on Cursor's pricing history in Notion. Summarize how they've repositioned their tiers since Q1."
+          },
+          {
+            "title": "Agregar un nuevo competidor a la lista de seguimiento",
+            "description": "Amplía las páginas que se están monitoreando",
+            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the baseline."
+          },
+          {
+            "title": "Compartir un resumen acumulado con liderazgo",
+            "description": "Envía un resumen trimestral de cambios de precios",
+            "examplePrompt": "@Zero summarize all competitor pricing changes logged in Notion this quarter and post a report to #leadership."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "@Zero guarda instantáneas semanales de precios y reportes de cambios en tu espacio de trabajo de Notion para seguimiento a largo plazo y comparaciones."
+          },
+          {
+            "description": "@Zero publica un resumen semanal conciso en el canal de Slack que especifiques."
+          }
+        ],
+        "tips": [
+          "Ejecuta una extracción inicial primero para establecer la instantánea base en Notion. Sin ella, @Zero no tiene nada contra qué comparar y tratará todo como un cambio.",
+          "Sé específico sobre qué marcar. 'Vigila cambios en planes de precios, nombres de planes, ofertas de prueba y CTAs' da resultados más precisos que un escaneo general.",
+          "Estructura tu registro en Notion con propiedades como Competidor, Tipo de Cambio y Fecha para que puedas filtrar por qué cambió y cuándo a lo largo de todo el historial."
+        ]
       }
     }
   },

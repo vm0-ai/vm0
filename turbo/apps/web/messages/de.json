@@ -1644,6 +1644,88 @@
           "Starte nur mit GitHub und Slack. Sobald das Briefing zuverlässig läuft, füge Sentry und Plausible nacheinander hinzu, um jeden Konnektor einzeln zu validieren, bevor du erweiterst.",
           "Füge einen benutzerdefinierten Schwellenwert-Hinweis in deinen Prompt ein, um Rauschen zu reduzieren. Markiere zum Beispiel nur Metriken, die mehr als das 2-Fache des gleitenden Durchschnitts betragen, damit geringfügige tägliche Schwankungen keine Warnungen auslösen."
         ]
+      },
+      "competitor-pricing-monitor": {
+        "title": "Preisseiten von Wettbewerbern überwachen und Änderungen wöchentlich melden",
+        "description": "Gib Zero eine Liste von Preisseiten-URLs deiner Wettbewerber. Es scrapt jede Seite jeden Montag, vergleicht sie mit dem Notion-Snapshot der letzten Woche, schreibt eine Auswirkungsanalyse für jede gefundene Änderung, speichert den vollständigen Bericht in Notion und postet eine Zusammenfassung in Slack.",
+        "timeSaved": "~2 Std. pro Woche gespart",
+        "headings": {
+          "scenario": "Warum Preisänderungen Teams überraschen",
+          "prompt": "So richtest du eine wöchentliche Wettbewerber-Preisüberwachung mit Zero ein",
+          "steps": "So scrapt, vergleicht und meldet Zero Preisänderungen",
+          "nextActions": "Einzelne Änderung vertiefen, Watchlist anpassen oder Ergebnisse mit der Führungsebene teilen",
+          "integrations": "Erforderliche Integrationen: Notion und Slack",
+          "tips": "Best Practices für automatisierte Preis-Intelligence"
+        },
+        "scenario": "Ein Wettbewerber streicht stillschweigend sein kostenloses Angebot. Ein anderer führt einen neuen Enterprise-Plan ein. Du erfährst es drei Wochen später von einem Interessenten, der sich bereits für sie entschieden hat. Zero prüft jeden Montag deine Wettbewerber-Preisseiten, vergleicht, was sich seit letzter Woche geändert hat, schreibt eine klare Auswirkungsanalyse für jede gefundene Änderung und postet eine Zusammenfassung in Slack, bevor die Woche deines Teams richtig losgeht.",
+        "promptVariants": [
+          {
+            "label": "Wöchentliche Überwachung einrichten",
+            "prompt": "@Zero every Monday at 9am, scrape the pricing pages of e2b.dev, daytona.io, cursor.com, and replit.com. Compare against last week's Notion snapshot. Flag any changes to tiers, prices, or CTAs, write a 2–3 sentence impact summary for each, save the full report to Notion under Competitor Pricing Log, and post a digest to #competitive."
+          },
+          {
+            "label": "Einmalige Prüfung durchführen",
+            "prompt": "@Zero scrape the pricing pages of e2b.dev and daytona.io right now. Compare against the last saved Notion snapshot and tell me what changed."
+          },
+          {
+            "label": "Deep Dive zu einem Wettbewerber",
+            "prompt": "@Zero pull the full pricing history for cursor.com from the Competitor Pricing Log in Notion. Summarize how their tiers and CTAs have evolved over time."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero every Monday at 9am, scrape competitor pricing pages and compare against last week's Notion snapshot. Post a digest to #competitive."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Pricing Digest — Apr 14\n\nCursor: Added new Ultra tier at $200/month. Signals growing confidence in a high-willingness-to-pay power-user segment.\nDaytona: Increased startup credit offer from $25K to $50K. Signals aggressive developer acquisition push.\n\nNo changes detected: E2B, Replit\n\nFull report saved to Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scrapt jede Preisseite",
+            "description": "Zero ruft den aktuellen Inhalt jeder angegebenen Preis-URL ab und extrahiert Tarifnamen, Preise, Feature-Listen, Testangebote und CTAs."
+          },
+          {
+            "title": "Zero vergleicht mit dem Notion-Snapshot der Vorwoche",
+            "description": "Zero vergleicht den heutigen Inhalt mit der letzte Woche in Notion gespeicherten Version. Es markiert jede Änderung an Preisstufen, Plannamen, enthaltenen Features, Testbedingungen oder Handlungsaufforderungen."
+          },
+          {
+            "title": "Auswirkungsanalysen gespeichert und Zusammenfassung gepostet",
+            "description": "Für jede gefundene Änderung schreibt Zero eine 2–3-Satz-Auswirkungsanalyse, die beschreibt, was sich geändert hat, was es signalisiert und was zu beachten ist. Der vollständige Bericht wird in Notion gespeichert und eine kompakte Zusammenfassung in Slack gepostet."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einzelne Änderung vertiefen",
+            "description": "Mehr Kontext zu einem bestimmten Wettbewerber-Schritt erhalten",
+            "examplePrompt": "@Zero pull up everything we have on Cursor's pricing history in Notion. Summarize how they've repositioned their tiers since Q1."
+          },
+          {
+            "title": "Neuen Wettbewerber zur Watchlist hinzufügen",
+            "description": "Die überwachten Seiten erweitern",
+            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the baseline."
+          },
+          {
+            "title": "Zusammenfassung mit der Führungsebene teilen",
+            "description": "Eine Quartalszusammenfassung der Preisänderungen senden",
+            "examplePrompt": "@Zero summarize all competitor pricing changes logged in Notion this quarter and post a report to #leadership."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero speichert wöchentliche Preis-Snapshots und Änderungsberichte in deinem Notion-Workspace für langfristiges Tracking und Vergleiche."
+          },
+          {
+            "description": "Zero postet eine kompakte wöchentliche Zusammenfassung in den von dir angegebenen Slack-Channel."
+          }
+        ],
+        "tips": [
+          "Führe zuerst einen initialen Scrape durch, um den Baseline-Snapshot in Notion zu erstellen. Ohne diesen hat Zero nichts zum Vergleichen und behandelt alles als Änderung.",
+          "Sei konkret, was markiert werden soll. 'Achte auf Änderungen bei Preisstufen, Plannamen, Testangeboten und CTAs' liefert präzisere Ergebnisse als eine allgemeine Übersicht.",
+          "Strukturiere dein Notion-Log mit Eigenschaften wie Wettbewerber, Änderungstyp und Datum, damit du über die gesamte Historie filtern kannst, was sich wann geändert hat."
+        ]
       }
     }
   },

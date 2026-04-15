@@ -1726,6 +1726,88 @@
           "まずGitHubとSlackだけで始めましょう。ブリーフが安定して動作するようになったら、SentryとPlausibleを1つずつ追加して、拡張前に各コネクタを検証しましょう。",
           "ノイズを減らすために、プロンプトにカスタム閾値の指示を追加しましょう。例えば、移動平均の2倍を超える指標のみフラグ付けすることで、日常的な小さな変動によるアラートを防げます。"
         ]
+      },
+      "competitor-pricing-monitor": {
+        "title": "競合の料金ページを監視し、変更を毎週フラグ付け",
+        "description": "@Zeroに競合の料金ページURLリストを渡します。毎週月曜日に各ページをスクレイピングし、先週のNotionスナップショットと差分を比較し、検出された各変更のインパクトサマリーを作成し、完全なレポートをNotionに保存し、ダイジェストをSlackに投稿します。",
+        "timeSaved": "週あたり約2時間の時間削減",
+        "headings": {
+          "scenario": "料金変更がチームの不意を突く理由",
+          "prompt": "@Zeroで週次の競合料金モニタリングを設定する方法",
+          "steps": "@Zeroがスクレイピング、差分比較、レポート作成を行う仕組み",
+          "nextActions": "特定の変更を深掘り、監視リストを調整、またはリーダーシップと共有",
+          "integrations": "必須連携: NotionとSlack",
+          "tips": "自動化された料金インテリジェンスのベストプラクティス"
+        },
+        "scenario": "競合がひっそりと無料プランを廃止します。別の競合が新しいエンタープライズプランを追加します。3週間後、すでにその競合を選んだ見込み客から知ることになります。@Zeroは毎週月曜日に競合の料金ページをチェックし、先週からの変更を比較し、検出された各変更の明確なインパクトサマリーを作成し、チームの週が始まる前にSlackにダイジェストを投稿します。",
+        "promptVariants": [
+          {
+            "label": "週次モニタリングを設定",
+            "prompt": "@Zero every Monday at 9am, scrape the pricing pages of e2b.dev, daytona.io, cursor.com, and replit.com. Compare against last week's Notion snapshot. Flag any changes to tiers, prices, or CTAs, write a 2–3 sentence impact summary for each, save the full report to Notion under Competitor Pricing Log, and post a digest to #competitive."
+          },
+          {
+            "label": "単発チェックを実行",
+            "prompt": "@Zero scrape the pricing pages of e2b.dev and daytona.io right now. Compare against the last saved Notion snapshot and tell me what changed."
+          },
+          {
+            "label": "特定の競合を深掘り",
+            "prompt": "@Zero pull the full pricing history for cursor.com from the Competitor Pricing Log in Notion. Summarize how their tiers and CTAs have evolved over time."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero every Monday at 9am, scrape competitor pricing pages and compare against last week's Notion snapshot. Post a digest to #competitive."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Pricing Digest — Apr 14\n\nCursor: Added new Ultra tier at $200/month. Signals growing confidence in a high-willingness-to-pay power-user segment.\nDaytona: Increased startup credit offer from $25K to $50K. Signals aggressive developer acquisition push.\n\nNo changes detected: E2B, Replit\n\nFull report saved to Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "@Zeroが各料金ページをスクレイピング",
+            "description": "@Zeroは指定された各料金URLの現在のコンテンツを取得し、プラン名、価格、機能リスト、トライアルオファー、CTAを抽出します。"
+          },
+          {
+            "title": "@Zeroが先週のNotionスナップショットと差分比較",
+            "description": "@Zeroは今日のコンテンツを先週Notionに保存されたバージョンと比較します。料金プラン、プラン名、含まれる機能、トライアル条件、CTAの変更をフラグ付けします。"
+          },
+          {
+            "title": "インパクトサマリーを保存しダイジェストを投稿",
+            "description": "検出された各変更について、@Zeroは何が変わったか、何を示唆しているか、何を検討すべきかを網羅する2〜3文のインパクトサマリーを作成します。完全なレポートはNotionに保存され、簡潔なダイジェストがSlackに投稿されます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "特定の変更を深掘りする",
+            "description": "競合の動きについてより詳しいコンテキストを取得",
+            "examplePrompt": "@Zero pull up everything we have on Cursor's pricing history in Notion. Summarize how they've repositioned their tiers since Q1."
+          },
+          {
+            "title": "監視リストに新しい競合を追加する",
+            "description": "監視対象のページを拡張",
+            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the baseline."
+          },
+          {
+            "title": "リーダーシップにロールアップを共有する",
+            "description": "四半期の料金変更サマリーを送信",
+            "examplePrompt": "@Zero summarize all competitor pricing changes logged in Notion this quarter and post a report to #leadership."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "@Zeroは週次の料金スナップショットと変更レポートをNotionワークスペースに保存し、長期的な追跡と差分比較に活用します。"
+          },
+          {
+            "description": "@Zeroは指定したSlackチャンネルに簡潔な週次ダイジェストを投稿します。"
+          }
+        ],
+        "tips": [
+          "まず初回スクレイピングを実行してNotionにベースラインスナップショットを設定しましょう。これがないと@Zeroは差分比較対象がなく、すべてを変更として扱います。",
+          "何をフラグ付けするか具体的に指定しましょう。「料金プラン、プラン名、トライアルオファー、CTAの変更を監視」は、一般的なスキャンよりも精度の高い結果を得られます。",
+          "Notionログに競合名、変更タイプ、日付などのプロパティを設定して、履歴全体で何がいつ変わったかをフィルタリングできるようにしましょう。"
+        ]
       }
     }
   },
