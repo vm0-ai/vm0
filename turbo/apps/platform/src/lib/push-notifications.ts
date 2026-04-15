@@ -16,14 +16,17 @@ const subscribing$ = state(false);
  * Register the service worker. Safe to call multiple times.
  * No-ops if push is not supported in this browser.
  */
-export const registerServiceWorker$ = command(async ({ set }) => {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    return;
-  }
+export const registerServiceWorker$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return;
+    }
 
-  const registration = await navigator.serviceWorker.register("/sw.js");
-  set(swRegistration$, registration);
-});
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    signal.throwIfAborted();
+    set(swRegistration$, registration);
+  },
+);
 
 /**
  * Ensure the user has an active push subscription.
@@ -48,7 +51,9 @@ export const ensurePushSubscription$ = command(({ get, set }) => {
   function resetFlag() {
     set(subscribing$, false);
   }
-  doSubscribe(registration, clerkPromise, apiBase).then(resetFlag, resetFlag);
+  void doSubscribe(registration, clerkPromise, apiBase)
+    .then(resetFlag)
+    .catch(resetFlag);
 });
 
 async function doSubscribe(

@@ -70,7 +70,14 @@ export default [
       ],
       "ccstate/no-get-signal": "error",
       "ccstate/computed-const-args-package-scope": "error",
-      "ccstate/no-store-in-params": "error",
+      "ccstate/no-store-in-params": [
+        "error",
+        {
+          // setupRouter is the app-boundary bootstrap function that must bridge
+          // the Store instance into React's StoreProvider context system.
+          allowedFunctions: ["setupRouter"],
+        },
+      ],
       "ccstate/command-async-signal": "error",
       "ccstate/no-getter-setter-params": "error",
     },

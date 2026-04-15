@@ -7,7 +7,6 @@ import { Router } from "./router.tsx";
 import "./css/index.css";
 
 export const setupRouter = (
-  // eslint-disable-next-line ccstate/no-store-in-params -- THE react root container for whole app, confirmed by ethan
   store: Store,
   render: (children: React.ReactNode) => void,
 ) => {

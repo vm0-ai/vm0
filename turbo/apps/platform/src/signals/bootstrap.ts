@@ -313,7 +313,7 @@ export const bootstrap$ = command(
 
     await Promise.all([
       set(setupGlobalMethod$, signal),
-      set(registerServiceWorker$),
+      set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
       set(startSkeletonCycling$, signal),
       set(pollUserInvitations$, signal),
