@@ -61,20 +61,20 @@
     "https://raw.githubusercontent.com/figma/rest-api-spec/main/openapi/openapi.yaml": "5f2ac2822f4d4d1326ec5c9ebffe943d3cd450c0b2fcbf0177c6c88de1b7e676"
   },
   "gmail": {
-    "https://gmail.googleapis.com/$discovery/rest?version=v1": "ed3647ebf935feacc88d81330ab3fdfe9017957546b654f1f4a843102c0194d6"
+    "https://gmail.googleapis.com/$discovery/rest?version=v1": "c6560faec3edfa75cbdb63922b5870e804320afb84348838cb9504c92ef260f1"
   },
   "google-calendar": {
-    "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest": "20aa803a12b5c2b839313e4a55865a945159b5d231f7ac98b40de4ea334810b9"
+    "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest": "82c6b1d76456fe79c561f4c3f2f21a8306591347a9d8974fba3f5f27e4b6567d"
   },
   "google-docs": {
-    "https://docs.googleapis.com/$discovery/rest?version=v1": "bb04b6517d30e4deba4baf271115220daee6799e0a4b9489689594303d31e357"
+    "https://docs.googleapis.com/$discovery/rest?version=v1": "cd51b9ecc8179ee87f7948d93f0d7892c9e48fe59669b2081388a0ebeb59f95d"
   },
   "google-drive": {
-    "https://www.googleapis.com/discovery/v1/apis/drive/v2/rest": "ece64a6eb061a79744245c5029c7bcf299092a882d69b6552bd756548017f3b5",
-    "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest": "f2ede2217a32fadae63c5632ad270f28a824c7ac8e205d8e3d0d4faf80bf3f24"
+    "https://www.googleapis.com/discovery/v1/apis/drive/v2/rest": "6f2e160f2f34cac9d5e2d1123e0af1cf60b8eb1f06e0016ecb6cb443cbf72b8e",
+    "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest": "a651ddcc6c505ab7c3713625ef6e17651837c707fc99cf3ccc135bc230f5bd46"
   },
   "google-sheets": {
-    "https://sheets.googleapis.com/$discovery/rest?version=v4": "30b9462b94a843e86eed91dd3dc97717332ccdd9301c27ff5ea019c8d4287627"
+    "https://sheets.googleapis.com/$discovery/rest?version=v4": "0c6848d26f5e80d1482f1c552b8d371e01ef0d997a9b74c56b5a684cf9f55958"
   },
   "notion": {
     "https://developers.notion.com/openapi.json": "a17c0c6138c18e36c5acd21acd8747d657cbdcba724617ce729dde5760546192"
@@ -414,6 +414,6 @@
     "https://raw.githubusercontent.com/XeroAPI/Xero-OpenAPI/master/xero-projects.yaml": "28f51686f7b03425ad1a35234283be840f7efed8e071b29600bc45e52e1ac692"
   },
   "youtube": {
-    "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest": "212f4f0f19a9878eb052a81c4689e8710aad080d62deeb561f1f19839b2ec6f2"
+    "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest": "9fdbf618dfb9a7adcd9637a0b4dd33b14a1df0321dec1501ba784928aba38b66"
   }
 }
