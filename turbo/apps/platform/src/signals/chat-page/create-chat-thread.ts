@@ -416,11 +416,14 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
     const msgs = await get(deps.chatMessages$);
     signal.throwIfAborted();
 
+    // Yield one microtask tick so React can flush the message list render into
+    // the DOM before we trigger scrollToBottom$. Without this yield the scroll
+    // container may still reflect the old layout and scrollToBottom$ would be
+    // a no-op.
     await delay(0, { signal });
     set(deps.scrollToBottom$);
 
     if (!msgs?.activeRunMessages.length) {
-      L.debug("no active run messages");
       return;
     }
 
@@ -433,13 +436,10 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
     );
 
     if (assistantMessages.length === 0) {
-      L.debug("empty assistant messages");
       set(reloadChatThreads$);
       set(deps.reloadThread$);
       return;
     }
-
-    L.debug("scroll to bottom");
 
     await Promise.all(
       assistantMessages.map(async (message) => {

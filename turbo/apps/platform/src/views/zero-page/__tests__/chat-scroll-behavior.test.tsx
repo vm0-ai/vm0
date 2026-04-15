@@ -194,6 +194,51 @@ describe("zero chat thread page - scroll container is cleared on unmount", () =>
   });
 });
 
+// CHAT-SCROLL-006: scrollToBottom$ fires unconditionally after loadMessages$
+// resolves — ensures the user lands at the bottom of a completed conversation
+// when opening a chat that has no active runs.
+describe("zero chat thread page - scrolls to bottom after completed chat opens", () => {
+  it("sets scrollTop to scrollHeight after initial messages are loaded (CHAT-SCROLL-006)", async () => {
+    mockThread("thread-scroll-completed", [
+      { role: "user", content: "Completed user message" },
+      { role: "assistant", content: "Completed assistant reply" },
+    ]);
+
+    // Intercept the scroll container as soon as it mounts and give it non-zero
+    // scrollHeight so we can verify scrollToBottom$ actually ran.
+    const observer = new MutationObserver(() => {
+      const el = document.querySelector<HTMLElement>("[data-scroll-container]");
+      if (!el) {
+        return;
+      }
+      Object.defineProperty(el, "scrollHeight", {
+        get: () => {
+          return 800;
+        },
+        configurable: true,
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    detachedSetupPage({ context, path: "/chats/thread-scroll-completed" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Completed user message")).toBeInTheDocument();
+    });
+
+    observer.disconnect();
+
+    // scrollToBottom$ sets scrollTop = scrollHeight (800). Verify it fired.
+    const scrollContainer = document.querySelector<HTMLElement>(
+      "[data-scroll-container]",
+    );
+    expect(scrollContainer).not.toBeNull();
+    await waitFor(() => {
+      expect(scrollContainer!.scrollTop).toBe(800);
+    });
+  });
+});
+
 // CHAT-SCROLL-005: scroll container persists across thread navigation because
 // each thread creates its own ChatThreadSignals (and therefore its own
 // setScrollContainer$), so switching threads re-registers the container
