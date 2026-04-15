@@ -1132,6 +1132,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     // Note: "Missing required secrets" validation is tested in the Validation
     // describe block above.
 
+    // This test relies on the test agent having no customSkills bound.
+    // If customSkills are added in beforeEach, skill volumes will be prepended
+    // and the strict .toEqual() below will fail — update accordingly.
     it("should store additionalVolumes in run record", async () => {
       const additionalVolumes = [
         { name: "my-data", version: "latest", mountPath: "/data" },
@@ -1182,6 +1185,34 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           },
         ]),
       );
+    });
+
+    it("should merge custom skills with explicit additionalVolumes", async () => {
+      // Bind a custom skill to the agent
+      await bindCustomSkillToAgent(testComposeId, "my-skill");
+
+      // Provide explicit additionalVolumes in the request body
+      const explicitVolumes = [
+        { name: "my-data", version: "latest", mountPath: "/data" },
+      ];
+
+      const { runId } = await createTestRun(
+        testComposeId,
+        "Run with skills and volumes",
+        { additionalVolumes: explicitVolumes },
+      );
+
+      const record = await findTestRunRecord(runId);
+      expect(record).toBeDefined();
+
+      // Skill volumes should come first, then explicit volumes
+      expect(record!.additionalVolumes).toEqual([
+        {
+          name: "custom-skill@my-skill",
+          mountPath: "/home/user/.claude/skills/my-skill",
+        },
+        { name: "my-data", version: "latest", mountPath: "/data" },
+      ]);
     });
   });
 
