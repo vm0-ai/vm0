@@ -8,6 +8,7 @@ import type { PanelImperativeHandle } from "react-resizable-panels";
 const internalTaskListCollapsed$ = state(false);
 const internalMaximizedTaskId$ = state<string | null>(null);
 const internalTaskListPanelRef$ = state<PanelImperativeHandle | null>(null);
+const internalActivePanelId$ = state<string | null>(null);
 
 // ---------------------------------------------------------------------------
 // Computed (read-only)
@@ -19,6 +20,10 @@ export const taskListCollapsed$ = computed((get) => {
 
 export const maximizedTaskId$ = computed((get) => {
   return get(internalMaximizedTaskId$);
+});
+
+export const activePanelId$ = computed((get) => {
+  return get(internalActivePanelId$);
 });
 
 // ---------------------------------------------------------------------------
@@ -49,6 +54,14 @@ export const toggleTaskList$ = command(({ get }) => {
   } else {
     panelRef.collapse();
   }
+});
+
+// ---------------------------------------------------------------------------
+// Commands — active panel
+// ---------------------------------------------------------------------------
+
+export const setActivePanelId$ = command(({ set }, id: string | null) => {
+  set(internalActivePanelId$, id);
 });
 
 // ---------------------------------------------------------------------------

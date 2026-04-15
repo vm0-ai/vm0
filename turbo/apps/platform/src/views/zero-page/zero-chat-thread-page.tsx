@@ -812,7 +812,7 @@ function AssistantMessageActions({
   const playTts = useSet(playTts$);
   const stopTts = useSet(stopTts$);
 
-  if (!message.legacyRunId) {
+  if (!message.legacyRunId || isRunActive(message)) {
     return null;
   }
 

@@ -24,6 +24,7 @@ export {
   matchShortcut,
   processShortcut,
   getShortcutLabel,
+  getShortcutParts,
   isEditableTarget,
   type KeyboardEventLike,
 } from "./lib/keyboard-shortcuts";

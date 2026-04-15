@@ -4,7 +4,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  getShortcutLabel,
+  getShortcutParts,
 } from "@vm0/ui";
 
 export function ShortcutHelpDialog({
@@ -27,12 +27,12 @@ export function ShortcutHelpDialog({
           <ShortcutSection
             title="Global"
             shortcuts={[
+              { key: "shift+?", label: "Show shortcuts" },
               { key: "j", label: "Next task" },
               { key: "k", label: "Previous task" },
               { key: "mod+b", label: "Toggle task list" },
               { key: "c", label: "New chat" },
               { key: "y", label: "Archive task" },
-              { key: "shift+?", label: "Show shortcuts" },
             ]}
           />
           <ShortcutSection
@@ -65,7 +65,7 @@ function ShortcutSection({
 }) {
   return (
     <div>
-      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+      <h3 className="text-xs font-medium text-muted-foreground tracking-wide mb-2">
         {title}
       </h3>
       <div className="space-y-1">
@@ -76,9 +76,18 @@ function ShortcutSection({
               className="flex items-center justify-between py-1"
             >
               <span className="text-sm">{shortcut.label}</span>
-              <kbd className="ml-4 shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono text-muted-foreground">
-                {getShortcutLabel(shortcut.key)}
-              </kbd>
+              <div className="ml-4 shrink-0 flex items-center gap-1">
+                {getShortcutParts(shortcut.key).map((part) => {
+                  return (
+                    <kbd
+                      key={part}
+                      className="inline-flex items-center justify-center rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono text-muted-foreground min-w-[1.5rem]"
+                    >
+                      {part}
+                    </kbd>
+                  );
+                })}
+              </div>
             </div>
           );
         })}

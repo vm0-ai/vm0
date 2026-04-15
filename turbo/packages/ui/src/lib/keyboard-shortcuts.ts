@@ -184,3 +184,37 @@ export function getShortcutLabel(shortcut: string): string {
   parts.push(formatKey(parsed.key));
   return parts.join("+");
 }
+
+/**
+ * Returns individual key parts for rendering each as a separate element.
+ * All text is lowercase. Handles `ctrl` as a distinct modifier (not `mod`).
+ */
+export function getShortcutParts(shortcut: string): string[] {
+  const segments = shortcut.toLowerCase().split("+");
+  const result: string[] = [];
+  let key = "";
+
+  for (const segment of segments) {
+    switch (segment) {
+      case "mod":
+        result.push(isMac ? "⌘" : "ctrl");
+        break;
+      case "ctrl":
+        result.push(isMac ? "⌃" : "ctrl");
+        break;
+      case "shift":
+        result.push(isMac ? "⇧" : "shift");
+        break;
+      case "alt":
+        result.push(isMac ? "⌥" : "alt");
+        break;
+      default:
+        key = segment;
+    }
+  }
+
+  if (key) {
+    result.push(key);
+  }
+  return result;
+}
