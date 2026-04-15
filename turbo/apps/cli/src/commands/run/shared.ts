@@ -195,6 +195,30 @@ export function parseIdentifier(identifier: string): {
 }
 
 /**
+ * Parse artifact identifier: "name" or "name:version"
+ * Returns undefined when no value is provided.
+ * Examples:
+ *   "my-artifact"          → { artifactName: "my-artifact" }
+ *   "my-artifact:abc123"   → { artifactName: "my-artifact", artifactVersion: "abc123" }
+ */
+export function parseArtifact(value: string | undefined):
+  | {
+      artifactName: string;
+      artifactVersion?: string;
+    }
+  | undefined {
+  if (!value) return undefined;
+  const colonIndex = value.indexOf(":");
+  if (colonIndex > 0 && colonIndex < value.length - 1) {
+    return {
+      artifactName: value.slice(0, colonIndex),
+      artifactVersion: value.slice(colonIndex + 1),
+    };
+  }
+  return { artifactName: value };
+}
+
+/**
  * Display run created info (queued or started)
  */
 export function renderRunCreated(response: {

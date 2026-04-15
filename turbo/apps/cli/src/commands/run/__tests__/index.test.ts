@@ -2202,4 +2202,129 @@ describe("run command", () => {
       },
     );
   });
+
+  describe("--artifact flag", () => {
+    it("should send artifactName when using --artifact with name only", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--artifact",
+        "my-data",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          artifactName: "my-data",
+        }),
+      );
+      expect(capturedBody?.artifactVersion).toBeUndefined();
+    });
+
+    it("should send artifactName and artifactVersion when using --artifact with name:version", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--artifact",
+        "my-data:abc123",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          artifactName: "my-data",
+          artifactVersion: "abc123",
+        }),
+      );
+    });
+
+    it("should error when both --artifact and --artifact-name are provided", async () => {
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact",
+          "my-data",
+          "--artifact-name",
+          "other",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Cannot use --artifact with --artifact-name or --artifact-version",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error when both --artifact and --artifact-version are provided", async () => {
+      await expect(async () => {
+        await runCommand.parseAsync([
+          "node",
+          "cli",
+          testUuid,
+          "test prompt",
+          "--artifact",
+          "my-data",
+          "--artifact-version",
+          "v1",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Cannot use --artifact with --artifact-name or --artifact-version",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should show deprecation warning when using --artifact-name", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/agent/runs", () => {
+          return HttpResponse.json(defaultRunResponse, { status: 201 });
+        }),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--artifact-name",
+        "my-data",
+      ]);
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--artifact-name is deprecated"),
+      );
+    });
+  });
 });

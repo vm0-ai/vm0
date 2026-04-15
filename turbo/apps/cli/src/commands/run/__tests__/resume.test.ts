@@ -584,6 +584,70 @@ describe("run resume command", () => {
     });
   });
 
+  describe("--artifact flag", () => {
+    it("should send artifactName when using --artifact with name only", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await resumeCommand.parseAsync([
+        "node",
+        "cli",
+        testCheckpointId,
+        "test prompt",
+        "--artifact",
+        "my-data",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          checkpointId: testCheckpointId,
+          artifactName: "my-data",
+        }),
+      );
+      expect(capturedBody?.artifactVersion).toBeUndefined();
+    });
+
+    it("should send artifactName and artifactVersion when using --artifact with name:version", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await resumeCommand.parseAsync([
+        "node",
+        "cli",
+        testCheckpointId,
+        "test prompt",
+        "--artifact",
+        "my-data:abc123",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          checkpointId: testCheckpointId,
+          artifactName: "my-data",
+          artifactVersion: "abc123",
+        }),
+      );
+    });
+  });
+
   describe("next steps output", () => {
     it("should show next steps after successful completion", async () => {
       await resumeCommand.parseAsync([

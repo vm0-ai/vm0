@@ -289,6 +289,70 @@ describe("run continue command", () => {
     });
   });
 
+  describe("--artifact flag", () => {
+    it("should send artifactName when using --artifact with name only", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await continueCommand.parseAsync([
+        "node",
+        "cli",
+        testSessionId,
+        "test prompt",
+        "--artifact",
+        "my-data",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          sessionId: testSessionId,
+          artifactName: "my-data",
+        }),
+      );
+      expect(capturedBody?.artifactVersion).toBeUndefined();
+    });
+
+    it("should send artifactName and artifactVersion when using --artifact with name:version", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await continueCommand.parseAsync([
+        "node",
+        "cli",
+        testSessionId,
+        "test prompt",
+        "--artifact",
+        "my-data:abc123",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          sessionId: testSessionId,
+          artifactName: "my-data",
+          artifactVersion: "abc123",
+        }),
+      );
+    });
+  });
+
   describe("session ID validation", () => {
     it("should reject invalid session ID format", async () => {
       await expect(async () => {

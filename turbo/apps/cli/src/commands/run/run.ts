@@ -1,3 +1,4 @@
+import chalk from "chalk";
 import { Command, Option } from "commander";
 import {
   getComposeById,
@@ -14,6 +15,7 @@ import {
   loadValues,
   parsePermissionPolicies,
   parseIdentifier,
+  parseArtifact,
   pollEvents,
   showNextSteps,
   renderRunCreated,
@@ -50,10 +52,21 @@ export const mainRunCommand = new Command()
     collectKeyValue,
     {},
   )
-  .option("--artifact-name <name>", "Artifact storage name (required for run)")
   .option(
-    "--artifact-version <hash>",
-    "Artifact version hash (defaults to latest)",
+    "--artifact <name[:version]>",
+    "Artifact storage (format: name or name:version)",
+  )
+  .addOption(
+    new Option(
+      "--artifact-name <name>",
+      "[deprecated: use --artifact] Artifact storage name",
+    ).hideHelp(),
+  )
+  .addOption(
+    new Option(
+      "--artifact-version <hash>",
+      "[deprecated: use --artifact] Artifact version hash",
+    ).hideHelp(),
   )
   .option(
     "--volume-version <name=version>",
@@ -102,6 +115,7 @@ export const mainRunCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
+          artifact?: string;
           artifactName?: string;
           artifactVersion?: string;
           memory?: string;
@@ -177,7 +191,29 @@ export const mainRunCommand = new Command()
           options.envFile,
         );
 
-        // 5. Call unified API (server handles all variable expansion)
+        // 5. Resolve artifact: new --artifact flag vs deprecated --artifact-name/--artifact-version
+        let artifactName = options.artifactName;
+        let artifactVersion = options.artifactVersion;
+
+        if (options.artifact) {
+          if (options.artifactName || options.artifactVersion) {
+            throw new Error(
+              "Cannot use --artifact with --artifact-name or --artifact-version. Use --artifact <name[:version]> instead.",
+            );
+          }
+          // options.artifact is guaranteed truthy by the if-guard above
+          const parsed = parseArtifact(options.artifact)!;
+          artifactName = parsed.artifactName;
+          artifactVersion = parsed.artifactVersion;
+        } else if (options.artifactName) {
+          console.error(
+            chalk.yellow(
+              "⚠ --artifact-name is deprecated, use --artifact <name[:version]> instead",
+            ),
+          );
+        }
+
+        // 6. Call unified API (server handles all variable expansion)
         const response = await createRun({
           // Use agentComposeVersionId if resolved, otherwise use agentComposeId (resolves to HEAD)
           ...(agentComposeVersionId
@@ -186,8 +222,8 @@ export const mainRunCommand = new Command()
           prompt,
           vars,
           secrets,
-          artifactName: options.artifactName,
-          artifactVersion: options.artifactVersion,
+          artifactName,
+          artifactVersion,
           memoryName: options.memory,
           volumeVersions:
             Object.keys(options.volumeVersion).length > 0
@@ -205,7 +241,7 @@ export const mainRunCommand = new Command()
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });
 
-        // 4. Check for immediate failure (e.g., missing secrets)
+        // 7. Check for immediate failure (e.g., missing secrets)
         if (response.status === "failed") {
           throw new Error(
             "Run preparation failed",
@@ -213,10 +249,10 @@ export const mainRunCommand = new Command()
           );
         }
 
-        // 5. Display run started/queued info
+        // 8. Display run started/queued info
         renderRunCreated(response);
 
-        // 6. Poll for events and exit with appropriate code
+        // 9. Poll for events and exit with appropriate code
         const result = await pollEvents(response.runId, {
           verbose: options.verbose,
         });
