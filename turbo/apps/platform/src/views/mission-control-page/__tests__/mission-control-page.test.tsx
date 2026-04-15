@@ -920,6 +920,83 @@ describe("mission control page", () => {
     expect(pathname()).toBe("/_/mission-control");
   });
 
+  it("should hide empty state when voice chat panel receives events", async () => {
+    // Use a unique session ID for this test
+    mockTasksAPI([
+      {
+        id: "task-vc-open",
+        type: "voice_chat",
+        title: "Live voice session",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: "run-vc-open-1",
+        status: "running",
+        voiceChatSessionId: "vc-session-open",
+        createdAt: "2026-04-13T10:00:00Z",
+        updatedAt: "2026-04-13T10:00:00Z",
+      },
+    ]);
+
+    server.use(
+      http.get(
+        "*/api/zero/voice-chat/vc-session-open/context",
+        ({ request }) => {
+          const url = new URL(request.url);
+          const after = Number(url.searchParams.get("after") ?? 0);
+          if (after === 0) {
+            return HttpResponse.json({
+              events: [
+                {
+                  id: "evt-a",
+                  seq: 1,
+                  source: "slow-brain",
+                  type: "thinking",
+                  content: "Analyzing context",
+                  createdAt: "2026-04-13T10:00:01Z",
+                },
+                {
+                  id: "evt-b",
+                  seq: 2,
+                  source: "slow-brain",
+                  type: "directive",
+                  content: "Be concise",
+                  createdAt: "2026-04-13T10:00:02Z",
+                },
+              ],
+            });
+          }
+          return HttpResponse.json({ events: [] });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Live voice session");
+    });
+
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
+    });
+
+    // Slow-brain labels rendered by SlowBrainIndicator
+    await waitFor(() => {
+      expect(screen.getByText("Thinking")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Directive")).toBeInTheDocument();
+    expect(screen.getByText("Analyzing context")).toBeInTheDocument();
+    expect(screen.getByText("Be concise")).toBeInTheDocument();
+    expect(
+      screen.queryByText("No conversation events yet"),
+    ).not.toBeInTheDocument();
+    expect(pathname()).toBe("/_/mission-control");
+  });
+
   it("should open new chat dialog when c key is pressed", async () => {
     mockTasksAPI([]);
 

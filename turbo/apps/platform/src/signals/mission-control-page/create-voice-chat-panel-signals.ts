@@ -62,7 +62,19 @@ export function createVoiceChatPanelSignals(
           return false;
         }
 
-        const incoming = (json as { events: VoiceChatEvent[] }).events;
+        const rawEvents = (json as { events: unknown[] }).events;
+        const incoming = rawEvents.filter((e): e is VoiceChatEvent => {
+          if (typeof e !== "object" || e === null) {
+            return false;
+          }
+          const ev = e as Record<string, unknown>;
+          return (
+            typeof ev.id === "string" &&
+            typeof ev.seq === "number" &&
+            typeof ev.source === "string" &&
+            typeof ev.type === "string"
+          );
+        });
         if (incoming.length > 0) {
           set(events$, (prev) => {
             return [...prev, ...incoming];
