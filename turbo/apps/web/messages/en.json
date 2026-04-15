@@ -2094,7 +2094,7 @@
           "prompt": "How to set up a recurring content performance report with Zero",
           "steps": "How Zero pulls metrics, scores posts, and writes the narrative",
           "nextActions": "Pull on demand, compare content formats, or create an executive summary",
-          "integrations": "Required integrations: X (Twitter), Slack, and Notion",
+          "integrations": "Required integrations: X (Twitter), Slack, and Notion — plus Plausible for traffic correlation",
           "tips": "Best practices for automated content performance reporting"
         },
         "scenario": "You know you should be reviewing content performance weekly. You have not done it in three weeks because pulling numbers from X, formatting them, and writing a narrative takes 90 minutes you do not have on a Monday morning. Zero does the whole thing on a schedule. It pulls the numbers, runs the scoring formula, writes the narrative, posts it to Slack, and archives the raw data to Notion — all before your first meeting.",
@@ -2166,12 +2166,15 @@
           },
           {
             "description": "Zero archives the full report with a raw metrics table to the specified Notion page."
+          },
+          {
+            "description": "Zero correlates post engagement with actual site visits, surfacing which posts drove real traffic and not just social activity. Optional but recommended."
           }
         ],
         "tips": [
           "Run on Monday, not Sunday — X metrics for posts published in the last 48 hours are not stable yet and will shift by morning.",
-          "Use the format experiment debrief at the end of each 2-week sprint to decide which content formats to scale, iterate, or retire.",
-          "Add week-over-week comparison to the Notion archive to track trend direction across sprints — a single week of data rarely tells the full story."
+          "Add Plausible to see which posts drove real site visits — a post with a high engagement score but zero traffic clicks is a vanity win, not a growth win.",
+          "Use the format experiment debrief at the end of each 2-week sprint to decide which content formats to scale, iterate, or retire."
         ]
       }
     }
