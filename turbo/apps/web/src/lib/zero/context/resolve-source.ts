@@ -19,6 +19,7 @@ import {
 import { logger } from "../../shared/logger";
 import type { ResumeSession } from "../../infra/run/types";
 import type { ArtifactSnapshot } from "../../infra/checkpoint/types";
+import type { AdditionalVolume } from "../../infra/storage/types";
 import {
   resolveCheckpoint,
   resolveSession,
@@ -188,6 +189,7 @@ interface ApplyResolutionDefaultsParams {
   memoryName?: string;
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
+  additionalVolumes?: AdditionalVolume[];
 }
 
 /**
@@ -205,6 +207,7 @@ export function applyResolutionDefaults(
   memoryName: string | undefined;
   vars: Record<string, string> | undefined;
   volumeVersions: Record<string, string> | undefined;
+  additionalVolumes: AdditionalVolume[] | undefined;
   resumeSession: ResumeSession;
   resumeArtifact: ArtifactSnapshot | undefined;
 } {
@@ -229,6 +232,7 @@ export function applyResolutionDefaults(
     memoryName: params.memoryName || resolution.memoryName,
     vars: params.vars || resolution.vars,
     volumeVersions: params.volumeVersions || resolution.volumeVersions,
+    additionalVolumes: params.additionalVolumes || resolution.additionalVolumes,
     resumeSession: {
       sessionId: resolution.conversationData.cliAgentSessionId,
       sessionHistory: resolution.conversationData.cliAgentSessionHistory,

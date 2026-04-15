@@ -36,6 +36,11 @@ export const agentRuns = pgTable(
     vars: jsonb("vars"),
     // Secret names for validation (values never stored - must be provided at runtime)
     secretNames: jsonb("secret_names").$type<string[]>(),
+    // Additional volumes passed at run time (name, version, mountPath for checkpoint restore)
+    additionalVolumes:
+      jsonb("additional_volumes").$type<
+        Array<{ name: string; version?: string; mountPath: string }>
+      >(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
     result: jsonb("result"),
     error: text("error"),

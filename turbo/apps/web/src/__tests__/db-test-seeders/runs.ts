@@ -56,6 +56,11 @@ async function createRunDirect(
     startedAt?: Date;
     completedAt?: Date;
     result?: Record<string, unknown>;
+    additionalVolumes?: Array<{
+      name: string;
+      version?: string;
+      mountPath: string;
+    }>;
   },
 ): Promise<{ id: string }> {
   const [run] = await globalThis.services.db
@@ -67,6 +72,7 @@ async function createRunDirect(
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
+      additionalVolumes: options?.additionalVolumes ?? null,
       ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
       ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
       ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
@@ -107,6 +113,11 @@ export async function seedTestRun(
     startedAt?: Date;
     completedAt?: Date;
     result?: Record<string, unknown>;
+    additionalVolumes?: Array<{
+      name: string;
+      version?: string;
+      mountPath: string;
+    }>;
   },
 ): Promise<{ runId: string }> {
   initServices();
@@ -148,6 +159,7 @@ export async function seedTestRun(
       startedAt: options?.startedAt,
       completedAt: options?.completedAt,
       result: options?.result,
+      additionalVolumes: options?.additionalVolumes,
     },
   );
   return { runId: run.id };

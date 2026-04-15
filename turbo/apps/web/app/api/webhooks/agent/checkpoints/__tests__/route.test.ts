@@ -5,7 +5,9 @@ import {
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
+  findTestCheckpoint,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
   testContext,
   uniqueId,
@@ -14,6 +16,7 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
 import { createHash, randomUUID } from "crypto";
+import type { VolumeVersionsSnapshot } from "../../../../../../src/lib/infra/checkpoint/types";
 
 function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
@@ -498,6 +501,143 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
       const response2 = await POST(request2);
       expect(response2.status).toBe(200);
+    });
+  });
+
+  describe("Additional volumes enrichment", () => {
+    it("should enrich checkpoint snapshot with additional volumes from run record", async () => {
+      // Seed a run directly with additional volumes (bypasses storage resolution)
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+        prompt: "Run with additional volumes",
+        additionalVolumes: [
+          { name: "my-data", version: "latest", mountPath: "/data" },
+          { name: "my-config", mountPath: "/config" },
+        ],
+      });
+
+      const token = await createTestSandboxToken(user.userId, runId);
+
+      // Create checkpoint with volume versions snapshot (simulating runner report)
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-additional-volumes",
+            cliAgentSessionHistoryHash: sha256("additional-volumes-history"),
+            volumeVersionsSnapshot: {
+              versions: {
+                "my-data": "abc123hash",
+                "my-config": "def456hash",
+              },
+            },
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Verify checkpoint JSONB contains enriched additionalVolumes
+      const checkpoint = await findTestCheckpoint(runId);
+      expect(checkpoint).toBeDefined();
+
+      const snapshot = checkpoint!
+        .volumeVersionsSnapshot as unknown as VolumeVersionsSnapshot;
+      expect(snapshot.versions).toEqual({
+        "my-data": "abc123hash",
+        "my-config": "def456hash",
+      });
+      expect(snapshot.additionalVolumes).toEqual([
+        { name: "my-data", versionId: "abc123hash", mountPath: "/data" },
+        { name: "my-config", versionId: "def456hash", mountPath: "/config" },
+      ]);
+    });
+
+    it("should not include additionalVolumes in snapshot when run has no additional volumes", async () => {
+      // Create checkpoint for testRunId (which has no additional volumes)
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-no-additional",
+            cliAgentSessionHistoryHash: sha256("no-additional-history"),
+            volumeVersionsSnapshot: {
+              versions: { "compose-vol": "xyz789hash" },
+            },
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const checkpoint = await findTestCheckpoint(testRunId);
+      expect(checkpoint).toBeDefined();
+
+      const snapshot = checkpoint!
+        .volumeVersionsSnapshot as unknown as VolumeVersionsSnapshot;
+      expect(snapshot.versions).toEqual({ "compose-vol": "xyz789hash" });
+      expect(snapshot.additionalVolumes).toBeUndefined();
+    });
+
+    it("should fall back to run version when volume not in runner versions map", async () => {
+      // Seed a run with additional volume specifying a version
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+        prompt: "Run with versioned additional volume",
+        additionalVolumes: [
+          { name: "my-vol", version: "v1.0", mountPath: "/mnt" },
+        ],
+      });
+
+      const token = await createTestSandboxToken(user.userId, runId);
+
+      // Create checkpoint WITHOUT the additional volume in versions map
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-fallback",
+            cliAgentSessionHistoryHash: sha256("fallback-history"),
+            volumeVersionsSnapshot: {
+              versions: {}, // empty — volume not reported by runner
+            },
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const checkpoint = await findTestCheckpoint(runId);
+      const snapshot = checkpoint!
+        .volumeVersionsSnapshot as unknown as VolumeVersionsSnapshot;
+      // Should fall back to the version specified at run time
+      expect(snapshot.additionalVolumes).toEqual([
+        { name: "my-vol", versionId: "v1.0", mountPath: "/mnt" },
+      ]);
     });
   });
 });
