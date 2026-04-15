@@ -7,13 +7,25 @@ import { type SlackUserInfo, formatSenderBlock } from "./client";
 const log = logger("slack:context");
 
 /**
+ * Trusted Slack file download hostnames.
+ * Using an explicit allowlist rather than endsWith(".slack.com") to prevent
+ * SSRF via unintended subdomains.
+ */
+const ALLOWED_SLACK_DOWNLOAD_HOSTNAMES = new Set([
+  "files.slack.com",
+  "files-pri.slack.com",
+  "cdn.slack.com",
+]);
+
+/**
  * Validate that a Slack file download URL is from a trusted Slack domain.
  */
 function isValidSlackDownloadUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     return (
-      parsed.protocol === "https:" && parsed.hostname.endsWith(".slack.com")
+      parsed.protocol === "https:" &&
+      ALLOWED_SLACK_DOWNLOAD_HOSTNAMES.has(parsed.hostname)
     );
   } catch {
     return false;
