@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.238.4](https://github.com/vm0-ai/vm0/compare/app-v0.238.3...app-v0.238.4) (2026-04-15)
+
+
+### Bug Fixes
+
+* **platform:** defer auto-scroll until after optimistic message is flushed ([#9479](https://github.com/vm0-ai/vm0/issues/9479)) ([679772c](https://github.com/vm0-ai/vm0/commit/679772cce595ff42315ae8da0620f59f190e4aa5))
+* **platform:** track tts playback by run id instead of message id ([#9490](https://github.com/vm0-ai/vm0/issues/9490)) ([fbf0adf](https://github.com/vm0-ai/vm0/commit/fbf0adfefdb443efdbeb420d2fe709721872d4c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.187.0
+
 ## [0.238.3](https://github.com/vm0-ai/vm0/compare/app-v0.238.2...app-v0.238.3) (2026-04-15)
 
 

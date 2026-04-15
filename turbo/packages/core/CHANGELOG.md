@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.187.0](https://github.com/vm0-ai/vm0/compare/core-v8.186.1...core-v8.187.0) (2026-04-15)
+
+
+### Features
+
+* add server-side additional volumes support in storage manifest ([#9485](https://github.com/vm0-ai/vm0/issues/9485)) ([c39a991](https://github.com/vm0-ai/vm0/commit/c39a9913c627e2a5a7003eaf401119377e2058bc))
+
+
+### Refactoring
+
+* **firewalls:** generate google-meet from discovery api ([#9492](https://github.com/vm0-ai/vm0/issues/9492)) ([6943faa](https://github.com/vm0-ai/vm0/commit/6943faa8e94eb94f1aa592fae1da86f88137a285))
+
 ## [8.186.1](https://github.com/vm0-ai/vm0/compare/core-v8.186.0...core-v8.186.1) (2026-04-15)
 
 
