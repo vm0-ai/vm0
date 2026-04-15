@@ -66,6 +66,8 @@ export interface GroupedMessage {
   // For "todo" type: current state of all tasks
   todoState?: TodoItem[];
   eventData: unknown;
+  // For task system events: child messages from sub-agent
+  childMessages?: GroupedMessage[];
 }
 
 // ============ EVENT GROUPING ============
@@ -77,6 +79,7 @@ interface ToolResultMeta {
 
 export interface GroupingEventData {
   subtype?: string;
+  parent_tool_use_id?: string;
   message?: {
     content: MessageContent[] | null;
   };
@@ -305,9 +308,57 @@ interface GroupingContext {
     { operation: ToolOperation; message: GroupedMessage }
   >;
   todoState: Map<string, { content: string; status: string }>;
+  pendingTasks: Map<string, GroupedMessage>;
+  // Map from tool_use_id (that spawned the task) → task GroupedMessage
+  // Used to route child events via parent_tool_use_id
+  taskByToolUseId: Map<string, GroupedMessage>;
 }
 
 function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
+  const eventData = event.eventData as GroupingEventData;
+  const subtype = eventData.subtype;
+  const taskId = (event.eventData as Record<string, unknown>).task_id as
+    | string
+    | undefined;
+
+  // Merge task_started + task_notification into a single row by task_id
+  if (subtype === "task_started" && taskId) {
+    const toolUseId = (event.eventData as Record<string, unknown>)
+      .tool_use_id as string | undefined;
+    const message: GroupedMessage = {
+      type: "system",
+      sequenceNumber: event.sequenceNumber,
+      createdAt: event.createdAt,
+      eventData: event.eventData,
+    };
+    ctx.grouped.push(message);
+    ctx.pendingTasks.set(taskId, message);
+    if (toolUseId) {
+      ctx.taskByToolUseId.set(toolUseId, message);
+    }
+    return;
+  }
+
+  if (subtype === "task_notification" && taskId) {
+    const pending = ctx.pendingTasks.get(taskId);
+    if (pending) {
+      // Merge notification into the existing task_started message
+      const existingData = pending.eventData as Record<string, unknown>;
+      const notificationData = event.eventData as Record<string, unknown>;
+      existingData.task_status = notificationData.status;
+      existingData.task_summary = notificationData.summary;
+      existingData.task_completed_at = event.createdAt;
+      ctx.pendingTasks.delete(taskId);
+      return;
+    }
+    // Orphan notification — fall through to standalone
+  }
+
+  // task_progress is a heartbeat signal — absorb it into the parent task row
+  if (subtype === "task_progress" && taskId && ctx.pendingTasks.has(taskId)) {
+    return;
+  }
+
   ctx.grouped.push({
     type: "system",
     sequenceNumber: event.sequenceNumber,
@@ -325,11 +376,79 @@ function processResultEvent(event: AgentEvent, ctx: GroupingContext): void {
   });
 }
 
+/**
+ * Find the parent task for a child event via parent_tool_use_id.
+ * Returns the task GroupedMessage if found, null otherwise.
+ */
+function findParentTask(
+  eventData: GroupingEventData,
+  ctx: GroupingContext,
+): GroupedMessage | null {
+  const parentId = eventData.parent_tool_use_id;
+  if (!parentId) return null;
+  return ctx.taskByToolUseId.get(parentId) ?? null;
+}
+
+/**
+ * Append a child message to a task's childMessages array.
+ */
+function appendChildToTask(task: GroupedMessage, child: GroupedMessage): void {
+  if (!task.childMessages) {
+    task.childMessages = [];
+  }
+  task.childMessages.push(child);
+}
+
 function processAssistantEvent(
   event: AgentEvent,
   eventData: GroupingEventData,
   ctx: GroupingContext,
 ): void {
+  // Route child events into their parent task
+  const parentTask = findParentTask(eventData, ctx);
+  if (parentTask) {
+    const contents = eventData.message?.content ?? [];
+    const { textParts, toolOperations } = parseAssistantContent(contents);
+    const hasText = textParts.length > 0;
+    const hasTools = toolOperations.length > 0;
+
+    if (hasText || hasTools) {
+      // Merge tool-only events into the last child assistant message
+      if (!hasText && hasTools) {
+        const lastChild =
+          parentTask.childMessages?.[parentTask.childMessages.length - 1];
+        if (lastChild?.type === "assistant") {
+          if (!lastChild.toolOperations) lastChild.toolOperations = [];
+          lastChild.toolOperations.push(...toolOperations);
+          for (const op of toolOperations) {
+            ctx.pendingToolUses.set(op.toolUseId, {
+              operation: op,
+              message: lastChild,
+            });
+          }
+          return;
+        }
+      }
+
+      const child: GroupedMessage = {
+        type: "assistant",
+        sequenceNumber: event.sequenceNumber,
+        createdAt: event.createdAt,
+        textBefore: hasText ? textParts.join("\n\n") : undefined,
+        toolOperations: hasTools ? toolOperations : undefined,
+        eventData: event.eventData,
+      };
+      appendChildToTask(parentTask, child);
+      for (const op of toolOperations) {
+        ctx.pendingToolUses.set(op.toolUseId, {
+          operation: op,
+          message: child,
+        });
+      }
+    }
+    return;
+  }
+
   const contents = eventData.message?.content ?? [];
   const { textParts, toolOperations } = parseAssistantContent(contents);
   const hasText = textParts.length > 0;
@@ -396,6 +515,10 @@ function processUserEvent(
   eventData: GroupingEventData,
   ctx: GroupingContext,
 ): void {
+  // Child user events belong to a task — route orphan results there
+  const parentTask = findParentTask(eventData, ctx);
+  const target = parentTask?.childMessages ?? ctx.grouped;
+
   const contents = eventData.message?.content ?? [];
   const toolMeta = eventData.tool_use_result;
 
@@ -406,7 +529,7 @@ function processUserEvent(
         toolMeta,
         ctx.pendingToolUses,
         event,
-        ctx.grouped,
+        target,
       );
     }
   }
@@ -439,6 +562,8 @@ export function groupEventsIntoMessages(
     grouped: [],
     pendingToolUses: new Map(),
     todoState: new Map(),
+    pendingTasks: new Map(),
+    taskByToolUseId: new Map(),
   };
 
   for (const event of deduped) {
@@ -492,6 +617,14 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
   if (message.type === "system") {
     if (eventData.subtype) {
       parts.push(eventData.subtype);
+    }
+    // Include task description/summary for search
+    const rawData = message.eventData as Record<string, unknown>;
+    if (typeof rawData.description === "string") {
+      parts.push(rawData.description);
+    }
+    if (typeof rawData.task_summary === "string") {
+      parts.push(rawData.task_summary);
     }
     if (eventData.tools) {
       parts.push(...eventData.tools);

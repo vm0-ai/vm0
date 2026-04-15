@@ -59,6 +59,7 @@ export function GroupedMessageCard({
       <SystemMessageCard
         message={message}
         eventData={eventData}
+        searchTerm={searchTerm}
         showConnector={showConnector}
       />
     );
@@ -98,16 +99,143 @@ export function GroupedMessageCard({
   );
 }
 
+function TaskMessageCard({
+  message,
+  searchTerm,
+  showConnector = false,
+}: {
+  message: GroupedMessage;
+  searchTerm?: string;
+  showConnector?: boolean;
+}) {
+  const data = message.eventData as Record<string, unknown>;
+  const description = (data.description ?? data.task_summary ?? "") as string;
+  const taskStatus = data.task_status as string | undefined;
+  const isFailed = taskStatus === "error" || taskStatus === "failed";
+  const isRunning = !taskStatus;
+  const timestamp = formatEventTime(message.createdAt);
+  const children = message.childMessages ?? [];
+  const hasChildren = children.length > 0;
+
+  // Count tool operations across child messages
+  const toolCount = children.reduce((sum, child) => {
+    return sum + (child.toolOperations?.length ?? 0);
+  }, 0);
+
+  if (!hasChildren) {
+    return (
+      <div className={`${MESSAGE_SPACING} relative`}>
+        {showConnector && (
+          <div
+            className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
+            aria-hidden="true"
+          />
+        )}
+        <div className="flex gap-2 items-center relative">
+          {isRunning ? (
+            <IconLoader className="h-3 w-3 text-yellow-600 animate-spin shrink-0" />
+          ) : (
+            <StatusDot variant={isFailed ? "error" : "success"} />
+          )}
+          <span className="font-semibold text-sm text-foreground shrink-0">
+            Task
+          </span>
+          {description && (
+            <span className="text-sm text-muted-foreground truncate">
+              {description}
+            </span>
+          )}
+          <span className="flex-1" />
+          <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+            {timestamp}
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+          {timestamp}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {showConnector && (
+        <div
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
+          aria-hidden="true"
+        />
+      )}
+      <details className="group relative">
+        <summary className="cursor-pointer list-none relative py-2">
+          <div className="flex gap-2 items-center">
+            {isRunning ? (
+              <IconLoader className="h-3 w-3 text-yellow-600 animate-spin shrink-0" />
+            ) : (
+              <StatusDot variant={isFailed ? "error" : "success"} />
+            )}
+            <span className="font-semibold text-sm text-foreground shrink-0">
+              Task
+            </span>
+            {description && (
+              <span className="text-sm text-muted-foreground truncate">
+                {description}
+              </span>
+            )}
+            {toolCount > 0 && (
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {toolCount} steps
+              </span>
+            )}
+            <span className="flex-1" />
+            <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+              {timestamp}
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+            {timestamp}
+          </div>
+        </summary>
+        <div className="mt-1">
+          {children.map((child, i) => {
+            return (
+              <GroupedMessageCard
+                key={child.sequenceNumber ?? i}
+                message={child}
+                searchTerm={searchTerm}
+                showConnector={i < children.length - 1}
+              />
+            );
+          })}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function SystemMessageCard({
   message,
   eventData,
+  searchTerm,
   showConnector = false,
 }: {
   message: GroupedMessage;
   eventData: EventData;
+  searchTerm?: string;
   showConnector?: boolean;
 }) {
   const subtype = eventData.subtype;
+
+  // Task events are rendered by TaskMessageCard
+  if (subtype === "task_started" || subtype === "task_notification") {
+    return (
+      <TaskMessageCard
+        message={message}
+        searchTerm={searchTerm}
+        showConnector={showConnector}
+      />
+    );
+  }
+
   const timestamp = formatEventTime(message.createdAt);
   return (
     <div className={`${MESSAGE_SPACING} relative`}>
@@ -147,35 +275,27 @@ function ResultMessageCard({
 }) {
   const timestamp = formatEventTime(message.createdAt);
   return (
-    <div className="relative">
+    <div className={`${MESSAGE_SPACING} relative`}>
       {showConnector && (
         <div
           className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
           aria-hidden="true"
         />
       )}
-      <details className="group relative" open>
-        <summary className="cursor-pointer list-none relative py-2">
-          <div className="flex gap-2 items-center">
-            <StatusDot variant="primary" />
-            <span className="font-semibold text-sm text-foreground">
-              Summary
-            </span>
-            <span className="flex-1" />
-            <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
-              {timestamp}
-            </span>
-          </div>
-          <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
-            {timestamp}
-          </div>
-        </summary>
-        {/* Vertical line from dot to content */}
-        <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-border/70 group-open:block hidden" />
-        <div className="ml-[18px] mt-2 relative">
-          <ResultEventContent eventData={eventData} />
-        </div>
-      </details>
+      <div className="flex gap-2 items-center relative">
+        <StatusDot variant="primary" />
+        <span className="font-semibold text-sm text-foreground">Summary</span>
+        <span className="flex-1" />
+        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+          {timestamp}
+        </span>
+      </div>
+      <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+        {timestamp}
+      </div>
+      <div className="ml-[18px] mt-2 relative">
+        <ResultEventContent eventData={eventData} />
+      </div>
     </div>
   );
 }
