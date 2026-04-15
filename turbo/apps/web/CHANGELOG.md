@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.237.0](https://github.com/vm0-ai/vm0/compare/web-v12.236.0...web-v12.237.0) (2026-04-15)
+
+
+### Features
+
+* **cli:** replace missing-token with check-connector doctor command ([#9451](https://github.com/vm0-ai/vm0/issues/9451)) ([c45953f](https://github.com/vm0-ai/vm0/commit/c45953f7b1cff9eb02710d90fb8b1b5181732a49))
+
+
+### Bug Fixes
+
+* **zero:** left-align agent reply email container ([#9453](https://github.com/vm0-ai/vm0/issues/9453)) ([62e304b](https://github.com/vm0-ai/vm0/commit/62e304b75d74fd75db5db128c03171addf8a6404))
+
 ## [12.236.0](https://github.com/vm0-ai/vm0/compare/web-v12.235.1...web-v12.236.0) (2026-04-15)
 
 

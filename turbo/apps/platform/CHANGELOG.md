@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.238.2](https://github.com/vm0-ai/vm0/compare/app-v0.238.1...app-v0.238.2) (2026-04-15)
+
+
+### Bug Fixes
+
+* **platform:** auto-scroll to bottom on container resize ([#9462](https://github.com/vm0-ai/vm0/issues/9462)) ([4ea8503](https://github.com/vm0-ai/vm0/commit/4ea8503476fbc352b78b75f12c348daf087a0b9c))
+
 ## [0.238.1](https://github.com/vm0-ai/vm0/compare/app-v0.238.0...app-v0.238.1) (2026-04-15)
 
 
