@@ -302,7 +302,17 @@ function ChatThreadComposer({
   const send = useSet(thread.sendMessage$);
   const cancelRun = useSet(thread.cancelRun$);
   const setInputRef = useSet(thread.setInputRef$);
+  const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
+
+  const handleInputChange = (text: string) => {
+    setInput(text);
+    scheduleDraftSync(pageSignal);
+  };
+
+  const handleDraftChange = () => {
+    scheduleDraftSync(pageSignal);
+  };
 
   const handleSend = (text: string) => {
     setInput("");
@@ -319,7 +329,7 @@ function ChatThreadComposer({
         <ZeroChatComposer
           className="w-full min-w-0"
           input={input}
-          onInputChange={setInput}
+          onInputChange={handleInputChange}
           onSend={handleSend}
           sending={sending}
           onCancel={() => {
@@ -331,6 +341,7 @@ function ChatThreadComposer({
             !hasMessages &&
             !window.matchMedia("(pointer: coarse)").matches
           }
+          onDraftChange={handleDraftChange}
           draft={thread.draft}
           composerFileInput$={thread.composerFileInput$}
           setComposerFileInput$={thread.setComposerFileInput$}

@@ -18,6 +18,7 @@ import {
 } from "../../../../__tests__/db-test-assertions/email";
 import { uniqueId } from "../../../../__tests__/test-helpers";
 import { generateReplyToken } from "../handlers/shared";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {
   enqueueEmail,
   drainById,

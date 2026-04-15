@@ -9,6 +9,15 @@
  *
  * Bad:
  *   function processStore(store: Store) { ... }
+ *
+ * Options:
+ *   allowedFunctions: string[] — function/variable names whose Store
+ *     parameters are permitted. Use sparingly for app-boundary bootstrap
+ *     functions that must bridge Store into React's provider system
+ *     (e.g. "setupRouter").
+ *
+ * Example config:
+ *   "ccstate/no-store-in-params": ["error", { allowedFunctions: ["setupRouter"] }]
  */
 
 import {
@@ -19,7 +28,13 @@ import {
 import type { Type } from "typescript";
 import { createRule } from "../utils.ts";
 
-export default createRule({
+interface Options {
+  allowedFunctions?: string[];
+}
+
+type MessageIds = "noStoreInParams" | "noStoreInObjectParams";
+
+export default createRule<[Options?], MessageIds>({
   name: "no-store-in-params",
   defaultOptions: [],
   meta: {
@@ -29,7 +44,18 @@ export default createRule({
       recommended: true,
       requiresTypeChecking: true,
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          allowedFunctions: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       noStoreInParams:
         "Function parameters should not accept Store type: {{param}}",
@@ -39,6 +65,9 @@ export default createRule({
   },
 
   create(context) {
+    const options = context.options[0] ?? {};
+    const allowedFunctions = new Set(options.allowedFunctions ?? []);
+
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
 
@@ -172,8 +201,36 @@ export default createRule({
       checkTypeRecursively(type, param.name, param);
     }
 
-    function checkFunctionParams(params: TSESTree.Parameter[]) {
-      for (const param of params) {
+    function getFunctionName(
+      node:
+        | TSESTree.FunctionDeclaration
+        | TSESTree.ArrowFunctionExpression
+        | TSESTree.FunctionExpression,
+    ): string | undefined {
+      if (node.type === AST_NODE_TYPES.FunctionDeclaration) {
+        return node.id?.name;
+      }
+      // Arrow function or function expression assigned to a variable
+      if (
+        node.parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+        node.parent.id.type === AST_NODE_TYPES.Identifier
+      ) {
+        return node.parent.id.name;
+      }
+      return undefined;
+    }
+
+    function checkFunctionParams(
+      node:
+        | TSESTree.FunctionDeclaration
+        | TSESTree.ArrowFunctionExpression
+        | TSESTree.FunctionExpression,
+    ) {
+      const name = getFunctionName(node);
+      if (name !== undefined && allowedFunctions.has(name)) {
+        return;
+      }
+      for (const param of node.params) {
         checkParameter(param);
       }
     }
@@ -182,16 +239,16 @@ export default createRule({
       "FunctionDeclaration, ArrowFunctionExpression"(
         node: TSESTree.FunctionDeclaration | TSESTree.ArrowFunctionExpression,
       ) {
-        checkFunctionParams(node.params);
+        checkFunctionParams(node);
       },
       "FunctionExpression:not(MethodDefinition > FunctionExpression)"(
         node: TSESTree.FunctionExpression,
       ) {
-        checkFunctionParams(node.params);
+        checkFunctionParams(node);
       },
       MethodDefinition(node) {
         if (node.value.type === AST_NODE_TYPES.FunctionExpression) {
-          checkFunctionParams(node.value.params);
+          checkFunctionParams(node.value);
         }
       },
     };

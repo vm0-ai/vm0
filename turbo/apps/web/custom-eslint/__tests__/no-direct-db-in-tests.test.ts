@@ -31,6 +31,26 @@ ruleTester.run("no-direct-db-in-tests", rule, {
       // Importing from non-schema paths is fine
       code: 'import { foo } from "../../lib/services";',
     },
+    {
+      // Type-only import from service is fine
+      code: 'import type { RunStatus } from "../run-service";',
+    },
+    {
+      // Inline type import from service is fine
+      code: 'import { type RunStatus } from "../run-service";',
+    },
+    {
+      // Package import with "service" in name is fine (not relative)
+      code: 'import { WebClient } from "@slack/web-api";',
+    },
+    {
+      // Test infrastructure import is fine
+      code: 'import { createTestRun } from "../__tests__/api-test-helpers";',
+    },
+    {
+      // Non-service relative import is fine
+      code: 'import { formatPath } from "../path-utils";',
+    },
   ],
   invalid: [
     {
@@ -69,6 +89,18 @@ ruleTester.run("no-direct-db-in-tests", rule, {
     {
       code: 'import { agentRuns } from "../../db/schema/agent-run";',
       errors: [{ messageId: "noDbSchemaImport" }],
+    },
+    {
+      code: 'import { createZeroRun } from "../zero-run-service";',
+      errors: [{ messageId: "noServiceImport" }],
+    },
+    {
+      code: 'import { adminConnect } from "../../lib/zero/slack-org/connect-service";',
+      errors: [{ messageId: "noServiceImport" }],
+    },
+    {
+      code: 'import { type RunStatus, createRun } from "../run-service";',
+      errors: [{ messageId: "noServiceImport" }],
     },
   ],
 });

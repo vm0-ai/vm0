@@ -1,19 +1,21 @@
 import { Command } from "commander";
-import { missingTokenCommand } from "./missing-token";
+import { checkConnectorCommand } from "./check-connector";
 import { permissionDenyCommand } from "./permission-deny";
 import { permissionChangeCommand } from "./permission-change";
 
 export const zeroDoctorCommand = new Command()
   .name("doctor")
-  .description("Diagnose runtime issues (missing tokens, permission denials)")
-  .addCommand(missingTokenCommand)
+  .description("Diagnose runtime issues (connector health, permission denials)")
+  .addCommand(checkConnectorCommand)
   .addCommand(permissionDenyCommand)
   .addCommand(permissionChangeCommand)
   .addHelpText(
     "after",
     `
 Examples:
-  Missing an API key?    zero doctor missing-token GITHUB_TOKEN
+  Check a connector?     zero doctor check-connector --env-name GITHUB_TOKEN
+  Check a URL?           zero doctor check-connector --url https://api.github.com/repos/owner/repo
+  Check with permission? zero doctor check-connector --env-name SLACK_TOKEN --check-permission chat:write
   Permission denied?     zero doctor permission-deny github --method GET --path /repos/owner/repo
   Change a permission?   zero doctor permission-change github --permission contents:read --enable
 

@@ -16,6 +16,7 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import type { CreateRunParams } from "../../infra/run/run-service";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {
   enqueueRun,
   drainOrgQueue,

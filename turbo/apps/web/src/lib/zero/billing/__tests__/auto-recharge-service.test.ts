@@ -48,6 +48,7 @@ vi.mock("stripe", () => {
 });
 
 import { reloadEnv } from "../../../../env";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import {
   triggerAutoRecharge,
   handleAutoRechargeInvoicePaid,
@@ -125,7 +126,7 @@ describe("auto-recharge-service", () => {
         autoRechargeThreshold: 500,
         autoRechargeAmount: 5000,
       });
-      // Default credits = 10000, threshold = 500 → above threshold
+      // Default credits = 100000, threshold = 500 → above threshold
 
       await triggerAutoRecharge(user.orgId);
 
@@ -140,7 +141,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 11_000,
+        autoRechargeThreshold: 110_000,
         autoRechargeAmount: 5000,
         autoRechargePendingAt: new Date(), // just set now
       });
@@ -158,7 +159,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 11_000, // balance (10000) is below this
+        autoRechargeThreshold: 110_000, // balance (100000) is below this
         autoRechargeAmount: 10_000,
       });
 
@@ -203,7 +204,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 11_000,
+        autoRechargeThreshold: 110_000,
         autoRechargeAmount: 5000,
       });
 
@@ -227,7 +228,7 @@ describe("auto-recharge-service", () => {
       const staleTime = new Date(Date.now() - 15 * 60 * 1000);
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 11_000,
+        autoRechargeThreshold: 110_000,
         autoRechargeAmount: 5000,
         autoRechargePendingAt: staleTime,
       });
@@ -246,7 +247,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 11_000,
+        autoRechargeThreshold: 110_000,
         autoRechargeAmount: 5000,
       });
 
@@ -268,7 +269,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 11_000,
+        autoRechargeThreshold: 110_000,
         autoRechargeAmount: 5000,
       });
 
@@ -293,7 +294,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 11_000,
+        autoRechargeThreshold: 110_000,
         autoRechargeAmount: 5000,
       });
 
@@ -325,7 +326,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 11_000,
+        autoRechargeThreshold: 110_000,
         autoRechargeAmount: 5000,
       });
 

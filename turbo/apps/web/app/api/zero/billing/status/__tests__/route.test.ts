@@ -80,7 +80,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.tier).toBe("free");
-    expect(data.credits).toBe(10_000);
+    expect(data.credits).toBe(100_000);
     expect(data.hasSubscription).toBe(false);
     expect(data.subscriptionStatus).toBeNull();
     expect(data.currentPeriodEnd).toBeNull();
@@ -106,7 +106,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.tier).toBe("pro");
-    expect(data.credits).toBe(10_000);
+    expect(data.credits).toBe(100_000);
     expect(data.subscriptionStatus).toBe("active");
     expect(data.currentPeriodEnd).toBe(periodEnd.toISOString());
     expect(data.cancelAtPeriodEnd).toBe(false);

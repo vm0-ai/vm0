@@ -369,6 +369,41 @@ The `setupPage()` helper mirrors `main.ts` bootstrap: it sets the pathname, conf
 
 ---
 
+## AP-11: Testing Service Functions When a Route Exists
+
+When an API route wraps a service function, test through the route — not the service directly. Testing the service bypasses auth, validation, and request handling, creating false confidence that the API works correctly.
+
+```typescript
+// ❌ Bad — testing service function directly
+import { upsertOrgModelProvider } from "../../../lib/zero/model-provider/org-model-provider";
+
+it("should create a provider", async () => {
+  const result = await upsertOrgModelProvider(orgId, "anthropic-api-key", "sk-test");
+  expect(result.type).toBe("anthropic-api-key");
+});
+```
+
+```typescript
+// ✅ Good — testing through the route handler
+import { POST } from "../route";
+import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+
+it("should create a provider", async () => {
+  const request = createTestRequest(url, {
+    method: "POST",
+    body: JSON.stringify({ type: "anthropic-api-key", secret: "sk-test" }),
+  });
+  const response = await POST(request);
+  expect(response.status).toBe(201);
+});
+```
+
+The service test passes even if the route handler has a bug in request parsing, auth checking, or response formatting. The route test catches all of these.
+
+**Exception**: Some service functions have no route — see the [Acceptable Service-Level Test Exceptions](web-testing.md#acceptable-service-level-test-exceptions) section in `web-testing.md` for the approved list.
+
+---
+
 ## Quick Checklist
 
 When reviewing tests, watch for these patterns:
@@ -395,6 +430,10 @@ When reviewing tests, watch for these patterns:
 - [ ] Over-testing error status codes
 - [ ] Over-testing schema validation
 - [ ] Direct component rendering (use bootstrap$)
+
+**Service Import Issues**:
+
+- [ ] Testing service functions when a route handler exists (use route tests instead)
 
 **Required Practices**:
 

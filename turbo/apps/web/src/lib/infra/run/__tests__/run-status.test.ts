@@ -13,6 +13,17 @@ import { seedTestRun } from "../../../../__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
+// These tests verify the internal state-machine and database-level optimistic
+// locking guarantees of transitionRunStatus(). They are intentionally kept as
+// service-level tests because:
+// - Webhook routes add idempotency checks that bypass transitionRunStatus for
+//   terminal statuses, preventing route-level testing of rejection logic
+// - Webhook routes use fixed allowed-status lists (["pending", "running"]),
+//   so arbitrary status validation can't be tested via routes
+// - Concurrent transition testing requires direct parallel service calls
+//
+// Route-level tests for webhook completion behavior live in:
+//   app/api/webhooks/agent/complete/__tests__/route.test.ts
 describe("transitionRunStatus", () => {
   let user: UserContext;
   let composeId: string;

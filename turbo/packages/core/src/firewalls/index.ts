@@ -30,6 +30,7 @@ export {
 import { getConnectorEnvironmentMapping } from "../contracts/connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
 import { agentphoneFirewall } from "./agentphone.generated";
+import { anthropicManagedAgentsFirewall } from "./anthropic-managed-agents.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
 import { apolloFirewall } from "./apollo.generated";
@@ -164,6 +165,7 @@ import { zeptomailFirewall } from "./zeptomail.generated";
 const CONNECTOR_FIREWALLS = {
   agentmail: agentmailFirewall,
   agentphone: agentphoneFirewall,
+  "anthropic-managed-agents": anthropicManagedAgentsFirewall,
   ahrefs: ahrefsFirewall,
   airtable: airtableFirewall,
   apollo: apolloFirewall,

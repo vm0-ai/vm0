@@ -192,13 +192,12 @@ export function ingestRequestLog(entry: RequestLogEntry): void {
  * Snapshot of dynamically-computed execution context fields stored in Axiom.
  * Derived from the API response shape (defined by Zod schema in @vm0/core)
  * but excludes `vars` (which comes from agent_runs at query time) and adds
- * Axiom-only fields (runId, userId) that are not exposed to clients.
+ * Axiom-only field (userId) that is not exposed to clients.
  *
  * This keeps the Axiom storage type and the API response type in sync —
  * changes to the Zod schema in zero-runs.ts are automatically reflected here.
  */
 export interface RunContextSnapshot extends Omit<RunContextResponse, "vars"> {
-  runId: string;
   userId: string;
 }
 

@@ -145,6 +145,14 @@ export function processShortcut(
 // Display labels
 // ---------------------------------------------------------------------------
 
+const KEY_DISPLAY_NAMES: Record<string, string> = {
+  space: "Space",
+};
+
+function formatKey(key: string): string {
+  return KEY_DISPLAY_NAMES[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 export function getShortcutLabel(shortcut: string): string {
   const parsed = parseShortcut(shortcut);
 
@@ -159,7 +167,7 @@ export function getShortcutLabel(shortcut: string): string {
     if (parsed.alt) {
       parts.push("⌥");
     }
-    parts.push(parsed.key.charAt(0).toUpperCase() + parsed.key.slice(1));
+    parts.push(formatKey(parsed.key));
     return parts.join("");
   }
 
@@ -173,6 +181,6 @@ export function getShortcutLabel(shortcut: string): string {
   if (parsed.alt) {
     parts.push("Alt");
   }
-  parts.push(parsed.key.charAt(0).toUpperCase() + parsed.key.slice(1));
+  parts.push(formatKey(parsed.key));
   return parts.join("+");
 }

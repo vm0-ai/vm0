@@ -9,6 +9,7 @@ import {
   updateOrgStripeFields,
 } from "../../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../env";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { getOrgMetadata, getOrgBillingPeriod } from "../org-metadata-service";
 
 // Mock stripe module (external dependency)
@@ -70,7 +71,7 @@ describe("getOrgMetadata", () => {
     expect(result).toEqual({
       orgId,
       tier: "pro",
-      credits: 10_000,
+      credits: 100_000,
     });
 
     // Clerk API should NOT have been called
@@ -101,7 +102,7 @@ describe("getOrgMetadata", () => {
     expect(result).toEqual({
       orgId,
       tier: "free",
-      credits: 10_000,
+      credits: 100_000,
     });
   });
 });

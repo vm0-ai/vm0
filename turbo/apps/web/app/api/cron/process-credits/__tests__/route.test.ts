@@ -61,7 +61,7 @@ describe("GET /api/cron/process-credits", () => {
       expect(response.status).toBe(200);
 
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(10_000);
+      expect(credits).toBe(100_000);
     });
 
     it("processes a single pending record with correct calculation", async () => {
@@ -89,7 +89,7 @@ describe("GET /api/cron/process-credits", () => {
       expect(record!.processedAt).toBeInstanceOf(Date);
 
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(9998);
+      expect(credits).toBe(99_998);
     });
 
     it("processes multiple pending records in a batch", async () => {
@@ -123,7 +123,7 @@ describe("GET /api/cron/process-credits", () => {
       expect(record2!.creditsCharged).toBe(400);
 
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(9400);
+      expect(credits).toBe(99_400);
     });
 
     it("charges each proxy row for a run separately (subagent scenario, fix for #8825)", async () => {
@@ -188,7 +188,7 @@ describe("GET /api/cron/process-credits", () => {
 
       // Org debited by the sum (200 + 400 + 100 = 700)
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(10_000 - 700);
+      expect(credits).toBe(100_000 - 700);
     });
 
     it("skips already-processed records", async () => {
@@ -209,7 +209,7 @@ describe("GET /api/cron/process-credits", () => {
       expect(record!.creditsCharged).toBe(500);
 
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(10_000);
+      expect(credits).toBe(100_000);
     });
 
     it("marks records with no matching pricing as processed with zero charge", async () => {
@@ -257,7 +257,7 @@ describe("GET /api/cron/process-credits", () => {
       expect(record!.creditsCharged).toBe(6);
 
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(9994);
+      expect(credits).toBe(99_994);
     });
 
     it("charges only when model+provider matches pricing", async () => {
@@ -295,7 +295,7 @@ describe("GET /api/cron/process-credits", () => {
       expect(free!.creditsCharged).toBe(0);
 
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(9800);
+      expect(credits).toBe(99_800);
     });
 
     it("concurrent calls serialize via advisory lock (no double-processing)", async () => {
@@ -321,7 +321,7 @@ describe("GET /api/cron/process-credits", () => {
       expect(record!.creditsCharged).toBe(200);
 
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(9800);
+      expect(credits).toBe(99_800);
     });
 
     it("finds and processes all orgs with pending records", async () => {

@@ -1,5 +1,5 @@
 import { generateSandboxToken } from "../../lib/auth/sandbox-token";
-import { type CreateRunResult } from "../../lib/infra/run/run-service";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Test helper: service access needed for test data setup
 import { enqueueRun } from "../../lib/zero/zero-run-queue-service";
 import { POST as createRunRoute } from "../../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../../app/api/agent/runs/[id]/route";
@@ -7,12 +7,8 @@ import { POST as checkpointWebhook } from "../../../app/api/webhooks/agent/check
 import { POST as completeWebhook } from "../../../app/api/webhooks/agent/complete/route";
 import { createTestRequest } from "./core";
 
-export type { CreateRunResult };
-
 // Re-exports: DB-direct seeders
 export {
-  type CliRunParams,
-  createCliRun,
   markRunningRunsAsCompleted,
   setTestRunStatus,
   setTestRunModelProvider,

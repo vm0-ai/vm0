@@ -13,6 +13,11 @@ type Props = {
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
+
+  if (!locales.includes(params.locale as Locale)) {
+    return {};
+  }
+
   const locale = params.locale as Locale;
 
   const localeNames: Record<string, string> = {

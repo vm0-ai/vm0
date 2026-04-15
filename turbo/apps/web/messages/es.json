@@ -98,7 +98,7 @@
     "free": {
       "description": "Comienza gratis con tu compañero de IA.",
       "features": {
-        "starterCredits": "10.000 créditos iniciales",
+        "starterCredits": "100.000 créditos iniciales",
         "concurrentRun": "1 ejecución simultánea",
         "unlimitedAgents": "Agentes totales ilimitados",
         "bringOwnLLM": "Usa tus propias claves de LLM",
@@ -179,7 +179,7 @@
       "prioritySupportDesc": "Soporte dedicado con tiempos de respuesta más rápidos"
     },
     "tableValues": {
-      "starter": "10.000 iniciales",
+      "starter": "100.000 iniciales",
       "20k": "20.000",
       "120k": "120.000",
       "unlimited": "Ilimitado",

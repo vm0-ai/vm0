@@ -899,6 +899,28 @@ describe("mission control page", () => {
     });
   });
 
+  it("should open keyboard shortcuts help dialog when shift+? is pressed", async () => {
+    const user = userEvent.setup();
+    mockTasksAPI([]);
+
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    await waitFor(() => {
+      expect(screen.getByText("No active tasks")).toBeInTheDocument();
+    });
+
+    // "?" is not in userEvent's default keyMap; hold Shift explicitly so the
+    // keydown event carries shiftKey:true and key:"?" — matching the shift+? binding
+    await user.keyboard("{Shift>}?{/Shift}");
+
+    await waitFor(() => {
+      // ShortcutHelpDialog is rendered as a dialog with accessible name
+      expect(
+        screen.getByRole("dialog", { name: /keyboard shortcuts/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Unread tracking tests
   // ---------------------------------------------------------------------------

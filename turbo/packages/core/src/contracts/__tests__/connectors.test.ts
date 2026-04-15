@@ -32,15 +32,25 @@ describe("hasRequiredScopes", () => {
     expect(hasRequiredScopes("github", [])).toBe(false);
     expect(hasRequiredScopes("github", ["read:org"])).toBe(false);
     expect(hasRequiredScopes("github", ["repo"])).toBe(false);
+    // tokens without "workflow" scope (e.g. pre-existing tokens) must reconnect
+    expect(hasRequiredScopes("github", ["repo", "project"])).toBe(false);
   });
 
   it("returns true when all required scopes are present", () => {
-    expect(hasRequiredScopes("github", ["repo", "project"])).toBe(true);
+    expect(hasRequiredScopes("github", ["repo", "project", "workflow"])).toBe(
+      true,
+    );
   });
 
   it("returns true when stored scopes are a superset of required", () => {
     expect(
-      hasRequiredScopes("github", ["repo", "project", "read:org", "user"]),
+      hasRequiredScopes("github", [
+        "repo",
+        "project",
+        "workflow",
+        "read:org",
+        "user",
+      ]),
     ).toBe(true);
   });
 });

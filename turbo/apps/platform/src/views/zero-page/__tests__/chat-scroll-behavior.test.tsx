@@ -42,9 +42,9 @@ function mockThread(
   );
 }
 
-// CHAT-SCROLL-001: autoScroll$ gate — does NOT scroll when far from bottom
-describe("zero chat thread page - autoScroll skips when far from bottom", () => {
-  it("does not change scrollTop when distance from bottom exceeds threshold (CHAT-SCROLL-001)", async () => {
+// CHAT-SCROLL-001: autoScroll$ gate — does NOT scroll when user scrolled up
+describe("zero chat thread page - autoScroll skips when user scrolled up", () => {
+  it("does not change scrollTop when user has scrolled up (CHAT-SCROLL-001)", async () => {
     const user = userEvent.setup();
     // Navigate directly to a thread page so ZeroChatThreadPageInner renders
     // immediately and setScrollContainer$ is called on mount.
@@ -67,9 +67,7 @@ describe("zero chat thread page - autoScroll skips when far from bottom", () => 
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    // Configure scroll container geometry so the user appears far from the bottom
-    // (distanceFromBottom = scrollHeight - scrollTop - clientHeight > 80px).
-    // autoScroll$ reads these values on every polling iteration inside sendMessage$.
+    // Configure scroll container geometry so the user is not at the bottom.
     Object.defineProperty(scrollContainer, "scrollHeight", {
       get: () => {
         return 1000;
@@ -82,8 +80,13 @@ describe("zero chat thread page - autoScroll skips when far from bottom", () => 
       },
       configurable: true,
     });
-    // distanceFromBottom = 1000 - 200 - 300 = 500 > 80
+
+    // Simulate user scrolling down to 500, then back up to 200.
+    // The upward scroll disables auto-scroll.
+    scrollContainer.scrollTop = 500;
+    scrollContainer.dispatchEvent(new Event("scroll"));
     scrollContainer.scrollTop = 200;
+    scrollContainer.dispatchEvent(new Event("scroll"));
 
     await sendMessageInUI(user, textarea, "Hello");
 
@@ -98,8 +101,8 @@ describe("zero chat thread page - autoScroll skips when far from bottom", () => 
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
 
-    // scrollTop must remain 200 because the user was far from the bottom on every
-    // polling iteration — autoScroll$ returns early without calling scrollToMessages.
+    // scrollTop must remain 200 because the user scrolled up, which disabled
+    // auto-scroll. autoScroll$ checks the disabled state and returns early.
     expect(scrollContainer.scrollTop).toBe(200);
   });
 });
@@ -129,15 +132,15 @@ describe("zero chat thread page - autoScroll scrolls when near bottom", () => {
     });
 
     // Keep default JSDOM geometry (scrollHeight=0, clientHeight=0) so
-    // distanceFromBottom = 0 - scrollTop - 0 = -scrollTop ≤ 80, meaning the
-    // threshold gate passes and scrollToMessages is called.
+    // distanceFromBottom = 0 - scrollTop - 0 = -scrollTop ≤ threshold, meaning the
+    // auto-scroll gate passes and scrollTop is set to scrollHeight.
     // Set a non-zero scrollTop to confirm autoScroll$ actually ran.
     scrollContainer.scrollTop = 50;
 
     await sendMessageInUI(user, textarea, "Hello");
 
     // Wait for at least one polling iteration — autoScroll$ is called each time.
-    // scrollToMessages sets scrollTop to userTop (= 0 in JSDOM), confirming it ran.
+    // scrollTop is set to scrollHeight (= 0 in JSDOM), confirming it ran.
     await waitFor(() => {
       expect(scrollContainer.scrollTop).toBe(0);
     });
@@ -191,8 +194,54 @@ describe("zero chat thread page - scroll container is cleared on unmount", () =>
   });
 });
 
-// CHAT-SCROLL-005: useAutoScrollOnce resets on thread change so forceScrollToBottom$
-// fires again for the new thread
+// CHAT-SCROLL-006: scrollToBottom$ fires unconditionally after loadMessages$
+// resolves — ensures the user lands at the bottom of a completed conversation
+// when opening a chat that has no active runs.
+describe("zero chat thread page - scrolls to bottom after completed chat opens", () => {
+  it("sets scrollTop to scrollHeight after initial messages are loaded (CHAT-SCROLL-006)", async () => {
+    mockThread("thread-scroll-completed", [
+      { role: "user", content: "Completed user message" },
+      { role: "assistant", content: "Completed assistant reply" },
+    ]);
+
+    // Intercept the scroll container as soon as it mounts and give it non-zero
+    // scrollHeight so we can verify scrollToBottom$ actually ran.
+    const observer = new MutationObserver(() => {
+      const el = document.querySelector<HTMLElement>("[data-scroll-container]");
+      if (!el) {
+        return;
+      }
+      Object.defineProperty(el, "scrollHeight", {
+        get: () => {
+          return 800;
+        },
+        configurable: true,
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    detachedSetupPage({ context, path: "/chats/thread-scroll-completed" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Completed user message")).toBeInTheDocument();
+    });
+
+    observer.disconnect();
+
+    // scrollToBottom$ sets scrollTop = scrollHeight (800). Verify it fired.
+    const scrollContainer = document.querySelector<HTMLElement>(
+      "[data-scroll-container]",
+    );
+    expect(scrollContainer).not.toBeNull();
+    await waitFor(() => {
+      expect(scrollContainer!.scrollTop).toBe(800);
+    });
+  });
+});
+
+// CHAT-SCROLL-005: scroll container persists across thread navigation because
+// each thread creates its own ChatThreadSignals (and therefore its own
+// setScrollContainer$), so switching threads re-registers the container
 describe("zero chat thread page - scroll fires for each new thread", () => {
   it("scroll container is present after navigating to a second thread (CHAT-SCROLL-005)", async () => {
     mockThread("thread-scroll-nav-a", [
@@ -209,9 +258,8 @@ describe("zero chat thread page - scroll fires for each new thread", () => {
       expect(screen.getByText("Thread nav-A message")).toBeInTheDocument();
     });
 
-    // Navigate to thread B — a new ChatThreadSignals is created, giving
-    // useAutoScrollOnce a new scroll command reference and resetting its
-    // fired flag so it can scroll for the new thread.
+    // Navigate to thread B — a new ChatThreadSignals is created for the new
+    // thread, which re-registers the scroll container via setScrollContainer$.
     context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-scroll-nav-b" },
     });
