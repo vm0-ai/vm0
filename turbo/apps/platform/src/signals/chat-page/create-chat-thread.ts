@@ -1,5 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { delay } from "signal-timers";
+import { animationFrame, delay } from "signal-timers";
 import { onRef, setLoop, resetSignal, throwIfNotAbort } from "../utils.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
 import { logger } from "../log.ts";
@@ -416,15 +416,6 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
     const msgs = await get(deps.chatMessages$);
     signal.throwIfAborted();
 
-    // Wait for React to render the initial messages, then scroll to bottom.
-    // This fires after chatMessages$ resolves (which also feeds messages$),
-    // so the component will have rendered the full message list by next frame.
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => resolve()),
-    );
-    signal.throwIfAborted();
-    set(deps.scrollToBottom$);
-
     if (!msgs?.activeRunMessages.length) {
       return;
     }
@@ -442,6 +433,8 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
       set(deps.reloadThread$);
       return;
     }
+
+    set(deps.scrollToBottom$);
 
     await Promise.all(
       assistantMessages.map(async (message) => {
