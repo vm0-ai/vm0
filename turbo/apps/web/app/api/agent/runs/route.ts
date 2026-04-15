@@ -327,7 +327,8 @@ const router = tsr.router(runsMainContract, {
           appendSystemPrompt: body.appendSystemPrompt,
           vars: resolved.vars ?? body.vars,
           secrets: resolved.secrets ?? body.secrets,
-          additionalVolumes: body.additionalVolumes,
+          additionalVolumes:
+            body.additionalVolumes ?? resolved.additionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
         });
