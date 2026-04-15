@@ -8,7 +8,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { ensurePushSubscription } from "../../lib/push-notifications.ts";
+import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconArrowUp,
   IconLoader2,
@@ -610,6 +610,7 @@ export function ZeroChatComposer({
     setDragOver,
   } = resolved;
 
+  const ensurePushSubscription = useSet(ensurePushSubscription$);
   const { signal: rootSignal } = useGet(rootSignal$);
 
   // File upload handlers (paste / drag-drop)

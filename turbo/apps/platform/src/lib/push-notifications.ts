@@ -1,12 +1,11 @@
 /**
- * Web Push notification helpers for the platform PWA.
+ * Web Push notification signals for the platform PWA.
  *
- * - registerServiceWorker() — called once on app startup
- * - ensurePushSubscription() — fire-and-forget on each send
+ * - registerServiceWorker$ — called once on app startup
+ * - ensurePushSubscription$ — fire-and-forget on each send
  */
 
-import { state } from "ccstate";
-import { appStore } from "../signals/app-store.ts";
+import { command, state } from "ccstate";
 import { clerk$ } from "../signals/auth.ts";
 import { apiBase$ } from "../signals/fetch.ts";
 
@@ -15,17 +14,16 @@ const subscribing$ = state(false);
 
 /**
  * Register the service worker. Safe to call multiple times.
- * Returns null if push is not supported in this browser.
+ * No-ops if push is not supported in this browser.
  */
-export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+export const registerServiceWorker$ = command(async ({ set }) => {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    return null;
+    return;
   }
 
   const registration = await navigator.serviceWorker.register("/sw.js");
-  appStore.set(swRegistration$, registration);
-  return registration;
-}
+  set(swRegistration$, registration);
+});
 
 /**
  * Ensure the user has an active push subscription.
@@ -34,25 +32,31 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
  * sends the subscription to the backend. Silently no-ops on denial or
  * when push is unsupported.
  *
- * This is fire-and-forget — callers should NOT await it.
+ * This is fire-and-forget — the async work runs detached.
  */
-export function ensurePushSubscription(): void {
-  if (appStore.get(subscribing$)) {
+export const ensurePushSubscription$ = command(({ get, set }) => {
+  if (get(subscribing$)) {
     return;
   }
-  const registration = appStore.get(swRegistration$);
+  const registration = get(swRegistration$);
   if (!registration) {
     return;
   }
-  appStore.set(subscribing$, true);
+  set(subscribing$, true);
+  const clerkPromise = get(clerk$);
+  const apiBase = get(apiBase$);
   function resetFlag() {
-    appStore.set(subscribing$, false);
+    set(subscribing$, false);
   }
-  doSubscribe(registration).then(resetFlag).catch(resetFlag);
-}
+  doSubscribe(registration, clerkPromise, apiBase).then(resetFlag, resetFlag);
+});
 
 async function doSubscribe(
   registration: ServiceWorkerRegistration,
+  clerkPromise: Promise<{
+    session?: { getToken(): Promise<string | null> } | null;
+  }>,
+  apiBase: string,
 ): Promise<void> {
   const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as
     | string
@@ -87,9 +91,8 @@ async function doSubscribe(
   });
 
   // Send subscription to backend
-  const clerk = await appStore.get(clerk$);
+  const clerk = await clerkPromise;
   const token = await clerk.session?.getToken();
-  const apiBase = appStore.get(apiBase$);
 
   await fetch(`${apiBase}/api/zero/push-subscriptions`, {
     method: "POST",
