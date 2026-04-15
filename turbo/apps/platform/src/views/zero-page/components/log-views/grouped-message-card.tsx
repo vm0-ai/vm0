@@ -1,6 +1,10 @@
 import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
 import { Markdown } from "../../../components/markdown.tsx";
-import type { GroupedMessage, ToolOperation } from "./log-detail-utils.ts";
+import {
+  isTaskEventData,
+  type GroupedMessage,
+  type ToolOperation,
+} from "./log-detail-utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
 import {
   SystemInitContent,
@@ -108,9 +112,11 @@ function TaskMessageCard({
   searchTerm?: string;
   showConnector?: boolean;
 }) {
-  const data = message.eventData as Record<string, unknown>;
-  const description = (data.description ?? data.task_summary ?? "") as string;
-  const taskStatus = data.task_status as string | undefined;
+  const taskData = isTaskEventData(message.eventData)
+    ? message.eventData
+    : null;
+  const description = taskData?.description ?? taskData?.task_summary ?? "";
+  const taskStatus = taskData?.task_status;
   const isFailed = taskStatus === "error" || taskStatus === "failed";
   const isRunning = !taskStatus;
   const timestamp = formatEventTime(message.createdAt);
@@ -275,27 +281,35 @@ function ResultMessageCard({
 }) {
   const timestamp = formatEventTime(message.createdAt);
   return (
-    <div className={`${MESSAGE_SPACING} relative`}>
+    <div className="relative">
       {showConnector && (
         <div
           className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
           aria-hidden="true"
         />
       )}
-      <div className="flex gap-2 items-center relative">
-        <StatusDot variant="primary" />
-        <span className="font-semibold text-sm text-foreground">Summary</span>
-        <span className="flex-1" />
-        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
-          {timestamp}
-        </span>
-      </div>
-      <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
-        {timestamp}
-      </div>
-      <div className="ml-[18px] mt-2 relative">
-        <ResultEventContent eventData={eventData} />
-      </div>
+      <details className="group relative" open>
+        <summary className="cursor-pointer list-none relative py-2">
+          <div className="flex gap-2 items-center">
+            <StatusDot variant="primary" />
+            <span className="font-semibold text-sm text-foreground">
+              Summary
+            </span>
+            <span className="flex-1" />
+            <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+              {timestamp}
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+            {timestamp}
+          </div>
+        </summary>
+        {/* Vertical line from dot to content */}
+        <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-border/70 group-open:block hidden" />
+        <div className="ml-[18px] mt-2 relative">
+          <ResultEventContent eventData={eventData} />
+        </div>
+      </details>
     </div>
   );
 }

@@ -92,6 +92,31 @@ export interface GroupingEventData {
 }
 
 /**
+ * Shape of task-related system event data (task_started, task_notification, task_progress).
+ */
+interface TaskEventData extends GroupingEventData {
+  task_id: string;
+  // Present in task_started
+  tool_use_id?: string;
+  description?: string;
+  // Present in task_notification
+  status?: string;
+  summary?: string;
+  // Augmented in-place when a notification is merged into a started event
+  task_status?: string;
+  task_summary?: string;
+  task_completed_at?: string;
+}
+
+export function isTaskEventData(data: unknown): data is TaskEventData {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    typeof (data as Record<string, unknown>).task_id === "string"
+  );
+}
+
+/**
  * Extract the key parameter from tool input for display in summary
  */
 function extractKeyParam(
@@ -317,45 +342,52 @@ interface GroupingContext {
 function processSystemEvent(event: AgentEvent, ctx: GroupingContext): void {
   const eventData = event.eventData as GroupingEventData;
   const subtype = eventData.subtype;
-  const taskId = (event.eventData as Record<string, unknown>).task_id as
-    | string
-    | undefined;
 
-  // Merge task_started + task_notification into a single row by task_id
-  if (subtype === "task_started" && taskId) {
-    const toolUseId = (event.eventData as Record<string, unknown>)
-      .tool_use_id as string | undefined;
-    const message: GroupedMessage = {
+  if (!isTaskEventData(event.eventData)) {
+    ctx.grouped.push({
       type: "system",
       sequenceNumber: event.sequenceNumber,
       createdAt: event.createdAt,
       eventData: event.eventData,
+    });
+    return;
+  }
+
+  const taskData = event.eventData;
+  const taskId = taskData.task_id;
+
+  // Merge task_started + task_notification into a single row by task_id
+  if (subtype === "task_started") {
+    const message: GroupedMessage = {
+      type: "system",
+      sequenceNumber: event.sequenceNumber,
+      createdAt: event.createdAt,
+      eventData: taskData,
     };
     ctx.grouped.push(message);
     ctx.pendingTasks.set(taskId, message);
-    if (toolUseId) {
-      ctx.taskByToolUseId.set(toolUseId, message);
+    if (taskData.tool_use_id) {
+      ctx.taskByToolUseId.set(taskData.tool_use_id, message);
     }
     return;
   }
 
-  if (subtype === "task_notification" && taskId) {
+  if (subtype === "task_notification") {
     const pending = ctx.pendingTasks.get(taskId);
     if (pending) {
       // Merge notification into the existing task_started message
-      const existingData = pending.eventData as Record<string, unknown>;
-      const notificationData = event.eventData as Record<string, unknown>;
-      existingData.task_status = notificationData.status;
-      existingData.task_summary = notificationData.summary;
+      const existingData = pending.eventData as TaskEventData;
+      existingData.task_status = taskData.status;
+      existingData.task_summary = taskData.summary;
       existingData.task_completed_at = event.createdAt;
       ctx.pendingTasks.delete(taskId);
       return;
     }
-    // Orphan notification — fall through to standalone
+    // Orphan notification (no matching task_started) — fall through to standalone
   }
 
   // task_progress is a heartbeat signal — absorb it into the parent task row
-  if (subtype === "task_progress" && taskId && ctx.pendingTasks.has(taskId)) {
+  if (subtype === "task_progress" && ctx.pendingTasks.has(taskId)) {
     return;
   }
 
@@ -648,12 +680,13 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
       parts.push(eventData.subtype);
     }
     // Include task description/summary for search
-    const rawData = message.eventData as Record<string, unknown>;
-    if (typeof rawData.description === "string") {
-      parts.push(rawData.description);
-    }
-    if (typeof rawData.task_summary === "string") {
-      parts.push(rawData.task_summary);
+    if (isTaskEventData(message.eventData)) {
+      if (message.eventData.description) {
+        parts.push(message.eventData.description);
+      }
+      if (message.eventData.task_summary) {
+        parts.push(message.eventData.task_summary);
+      }
     }
     if (eventData.tools) {
       parts.push(...eventData.tools);
