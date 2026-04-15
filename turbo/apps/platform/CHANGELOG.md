@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.241.0](https://github.com/vm0-ai/vm0/compare/app-v0.240.0...app-v0.241.0) (2026-04-15)
+
+
+### Features
+
+* **platform:** add active panel tracking and global keyboard shortcuts ([#9529](https://github.com/vm0-ai/vm0/issues/9529)) ([cebbb50](https://github.com/vm0-ai/vm0/commit/cebbb502458018b6d4493ae86a7b1c8b716f84bb))
+
+
+### Bug Fixes
+
+* **platform:** scroll to bottom immediately after sending chat message ([#9500](https://github.com/vm0-ai/vm0/issues/9500)) ([cda94c1](https://github.com/vm0-ai/vm0/commit/cda94c138bf95d2af35fae005ee909ec383b12cb))
+
+
+### Refactoring
+
+* **voice-chat:** use shared createScrollSignals factory for auto-scroll ([#9522](https://github.com/vm0-ai/vm0/issues/9522)) ([0500ad4](https://github.com/vm0-ai/vm0/commit/0500ad482fb3c62841ed8ac5f2e7ab160faf6ecb))
+
 ## [0.240.0](https://github.com/vm0-ai/vm0/compare/app-v0.239.0...app-v0.240.0) (2026-04-15)
 
 

@@ -1,23 +1,34 @@
 """Proxy-side usage extraction and reporting.
 
-Extracts billing-relevant fields from model-provider responses (SSE streams
-and non-streaming JSON) and reports them to the platform webhook through a
-background thread pool.
+Two paths:
+
+- Model-provider responses (SSE streams and non-streaming JSON): extract
+  Anthropic token counts and report them to the platform webhook through
+  a background thread pool.
+- Billable connector responses (X API; see :data:`_BILLABLE_CONNECTORS`):
+  emit a multi-dimensional ``connector_usage`` entry to the per-run proxy
+  log for stage-0 observation (issue #9504).  Not yet forwarded to the
+  platform.
 """
 
 import json
 import time
 import urllib.error
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
 from mitmproxy import http
 
+import body_utils
 from auth import _opener, get_api_url, make_api_request
 from body_utils import decompress_body
 from logging_utils import log_proxy_entry
 
 # ---------------------------------------------------------------------------
-# Proxy-side usage extraction (for billing verification)
+# Anthropic usage parsing primitives
+#
+# Pure parsers shared by both the SSE streaming path and the non-streaming
+# JSON fallback.
 # ---------------------------------------------------------------------------
 
 # Only extract known billing fields to avoid capturing unrelated numerics.
@@ -157,7 +168,7 @@ def extract_usage_from_json(body: bytes, headers) -> dict | None:
     Returns ``None`` when the body is not valid JSON or contains no usage.
     """
     if headers:
-        body = decompress_body(body, headers)
+        body = decompress_body(body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT)
     try:
         data = json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
@@ -175,6 +186,16 @@ def extract_usage_from_json(body: bytes, headers) -> dict | None:
     if message_id:
         usage["message_id"] = message_id
     return usage
+
+
+# ---------------------------------------------------------------------------
+# Webhook delivery (HTTP + thread pool)
+#
+# Background thread pool processes usage reports in parallel; done() flushes
+# pending items before mitmproxy exits (SIGKILL at 15 s is the hard stop).
+# Falls back to synchronous delivery if the executor has been shut down
+# (drain/shutdown race) so reports are not silently lost.
+# ---------------------------------------------------------------------------
 
 
 def _do_report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
@@ -215,12 +236,6 @@ def _report_usage_with_retry(
                 )
 
 
-# ---------------------------------------------------------------------------
-# Usage reporting thread pool — replaces fire-and-forget daemon threads.
-# ThreadPoolExecutor processes reports in parallel; done() flushes pending
-# items before mitmproxy exits (SIGKILL at 15 s is the hard stop).
-# ---------------------------------------------------------------------------
-
 usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
 
@@ -241,6 +256,11 @@ def _enqueue_usage(
         # Executor shut down (done() already called during drain).
         # Fall back to synchronous delivery with retry.
         _report_usage_with_retry(api_url, sandbox_token, run_id, copied, proxy_log_path)
+
+
+# ---------------------------------------------------------------------------
+# Model-provider entry point
+# ---------------------------------------------------------------------------
 
 
 def maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
@@ -271,3 +291,269 @@ def maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
         )
         return
     _enqueue_usage(api_url, sandbox_token, run_id, proxy_usage, proxy_log_path)
+
+
+# ---------------------------------------------------------------------------
+# Billable connector usage observation (issue #9504, stage 0 of #9269).
+#
+# Records a diagnostic log entry per successful request through a billable
+# connector firewall.  Multi-dimensional fields are captured (request `ids`
+# count, response `data`/`includes`/`meta.result_count`) so a server-side
+# billing formula can be chosen later without redeploying the proxy.  No
+# usage is reported to the platform yet.
+# ---------------------------------------------------------------------------
+
+# Non-model-provider firewalls whose traffic we intend to bill.  Listing a
+# firewall here triggers full-body buffering in mitm_addon.responseheaders
+# (so log_connector_usage can parse the JSON in response()) and routes the
+# flow through log_connector_usage.  Start with X; expand once observation
+# data validates the pipeline.
+_BILLABLE_CONNECTORS = frozenset({"x"})
+
+
+def is_billable_connector(firewall_name: str) -> bool:
+    """Return True when this firewall is on the billable-connector list.
+
+    Used by ``mitm_addon.responseheaders`` to disable buffer truncation for
+    these firewalls so ``log_connector_usage`` can parse the full response
+    body in ``response()``.
+    """
+    return firewall_name in _BILLABLE_CONNECTORS
+
+
+def _parse_x_request_metadata(flow: http.HTTPFlow) -> dict:
+    """Extract billing-relevant query params from an X API request.
+
+    Returns a dict with:
+      - ``request_ids_count``: int | None — total comma-separated count
+        across all ``?ids=`` and ``?usernames=`` params (None when both
+        are absent).  ``usernames`` is folded in because ``GET /2/users/by``
+        uses it instead of ``ids`` for batch user lookup; both signal the
+        same "this many resources" billing dimension.
+      - ``has_expansions``: bool — whether ``?expansions=`` is present.
+      - ``max_results``: int | None — value of ``?max_results=``, used
+        as an upper-bound fallback when the response body cannot be parsed.
+
+    Reads from ``flow.metadata["original_url"]`` (set by the request handler
+    via ``url_utils.get_original_url``) rather than ``pretty_url`` to stay
+    consistent with the rest of the addon.
+    """
+    parsed = urllib.parse.urlparse(flow.metadata.get("original_url", ""))
+    qs = urllib.parse.parse_qs(parsed.query)
+    id_like_values = qs.get("ids", []) + qs.get("usernames", [])
+    ids_count = sum(len(v.split(",")) for v in id_like_values) if id_like_values else None
+    max_values = qs.get("max_results", [])
+    max_results: int | None = None
+    if max_values:
+        try:
+            max_results = int(max_values[0])
+        except ValueError:
+            max_results = None
+    return {
+        "request_ids_count": ids_count,
+        "has_expansions": "expansions" in qs,
+        "max_results": max_results,
+    }
+
+
+def _parse_x_response_metadata(flow: http.HTTPFlow) -> dict:
+    """Extract billing-relevant fields from an X API response body.
+
+    Returns a dict with at least ``body_parsed`` and ``body_truncated``
+    markers, plus optional fields when the JSON is parseable:
+
+      - ``response_data_count``: int — ``len(data)`` for a list payload,
+        ``1`` for a single object payload.
+      - ``response_includes``: dict[str, int] — counts per ``includes.<key>``.
+      - ``response_result_count``: int — total matched count.  Sourced
+        from ``meta.result_count`` (search / paginated endpoints) or
+        ``meta.total_tweet_count`` (``/2/tweets/counts/*``, where ``data``
+        carries time buckets, not tweets, and the real count lives in
+        ``meta``).  Both fields are alternative spellings of the same
+        billing dimension, so we collapse them into one log key.
+
+    Failures (truncated buffer, malformed JSON, unexpected shape) leave
+    ``body_parsed=False`` and emit no count fields, so analysis can
+    distinguish "field absent in response" from "we couldn't parse it".
+    """
+    state = flow.metadata.get("stream_buffer_state") or {}
+    truncated = bool(state.get("truncated", False))
+    result: dict = {"body_parsed": False, "body_truncated": truncated}
+
+    buf = flow.metadata.get("stream_buffer")
+    if not buf:
+        return result
+    headers = flow.response.headers if flow.response else None
+    body = decompress_body(
+        bytes(buf), headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
+    )
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        return result
+    if not isinstance(data, dict):
+        return result
+
+    result["body_parsed"] = True
+
+    payload = data.get("data")
+    if isinstance(payload, list):
+        result["response_data_count"] = len(payload)
+    elif isinstance(payload, dict):
+        result["response_data_count"] = 1
+
+    includes = data.get("includes")
+    if isinstance(includes, dict):
+        counts = {k: len(v) for k, v in includes.items() if isinstance(v, list)}
+        if counts:
+            result["response_includes"] = counts
+
+    meta = data.get("meta")
+    if isinstance(meta, dict):
+        # ``result_count`` is the standard search/paginated field;
+        # ``total_tweet_count`` is the counts-endpoint variant where
+        # ``data`` is time buckets rather than tweets.  Prefer whichever
+        # is present (mutually exclusive in practice; if both appear,
+        # take the larger to stay on the safe side of billing).
+        candidates = [meta.get("result_count"), meta.get("total_tweet_count")]
+        rcs = [c for c in candidates if isinstance(c, int)]
+        if rcs:
+            result["response_result_count"] = max(rcs)
+
+    return result
+
+
+# Conservative upper bound for GET requests whose body we couldn't parse and
+# whose URL carried no count hints.  X v2 read endpoints cap max_results at
+# 100 for most collections (search, timelines, liking_users, ...); using 100
+# as the floor avoids silent undercount if X ever changes response schema
+# or returns unparseable JSON.  Higher-capacity endpoints (search/all=500,
+# followers=1000) are still over-counted relative to reality — acceptable
+# for a rare edge case that should also trigger server-side monitoring.
+_X_UNPARSEABLE_READ_FALLBACK = 100
+
+
+# Mapping from X v2 ``includes.<key>`` resource types to firewall
+# permission names.  Listed explicitly for reviewability; unknown future
+# keys fall back to ``<key>.read`` in :func:`_compute_x_billable_counts`.
+# The ``tweets`` → ``tweet.read`` entry is the one irregular case
+# (includes key is plural, firewall permission is singular) — without it
+# referenced tweets would land on a separate ``tweets.read`` key.
+_INCLUDES_TO_PERMISSION = {
+    "users": "users.read",
+    "tweets": "tweet.read",
+    "media": "media.read",
+    "polls": "polls.read",
+    "places": "places.read",
+    "topics": "topics.read",
+}
+
+
+def _compute_x_billable_counts(method: str, req_meta: dict, resp_meta: dict, endpoint: str) -> dict:
+    """Derive per-permission billable resource counts for an X request.
+
+    Returns a dict mapping firewall permission name → resource count.
+    Keys are always existing X firewall permissions so the server's
+    ``credit_pricing`` table doesn't need separate entries for expansion
+    resources.
+
+    Writes (non-GET) always count as ``{endpoint: 1}`` regardless of
+    response shape — X write endpoints don't support expansions.
+
+    Reads (GET):
+
+    - **Primary**: ``max(ids_count, data_count, result_count,
+      max_results, 1)``.  When the body can't be parsed and no URL hints
+      exist, falls back to :data:`_X_UNPARSEABLE_READ_FALLBACK` (100) to
+      avoid silent undercount.
+    - **Includes**: each ``includes.<key>`` is mapped via
+      :data:`_INCLUDES_TO_PERMISSION` when that type has a dedicated
+      firewall permission (``users`` → ``users.read``, ``tweets`` →
+      ``tweet.read``).  Unknown types fall back to a synthetic
+      ``<key>.read`` permission (e.g. ``future_widget`` →
+      ``future_widget.read``) so the server can price (or ignore) new
+      expansion types without a proxy redeploy.  Counts at the same
+      permission are summed.
+    """
+    if method != "GET":
+        return {endpoint: 1}
+
+    ids = req_meta.get("request_ids_count") or 0
+    max_r = req_meta.get("max_results") or 0
+    data = resp_meta.get("response_data_count") or 0
+    result = resp_meta.get("response_result_count") or 0
+    primary = max(ids, data, result, max_r, 1)
+
+    # Body parse failed AND no URL or response count hints available →
+    # conservative fallback.  Without this, max(...) degenerates to 1 and
+    # a search returning dozens of results would be billed as a single
+    # read.
+    if not resp_meta.get("body_parsed") and not any((ids, data, result, max_r)):
+        primary = max(primary, _X_UNPARSEABLE_READ_FALLBACK)
+
+    counts: dict = {endpoint: primary}
+
+    # Map each includes.<key> to a billing permission and accumulate.
+    # Known types use :data:`_INCLUDES_TO_PERMISSION`; unknown future
+    # types get a synthetic ``<key>.read`` key via the same convention so
+    # the server sees a consistent naming and can price (or ignore) them
+    # without a proxy redeploy.
+    includes = resp_meta.get("response_includes") or {}
+    for key, n in includes.items():
+        if n <= 0:
+            continue
+        permission = _INCLUDES_TO_PERMISSION.get(key, f"{key}.read")
+        counts[permission] = counts.get(permission, 0) + n
+
+    return counts
+
+
+def log_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
+    """Emit a billable-connector usage observation entry.
+
+    Diagnostic-only; not yet forwarded to the platform.  Stage 0 of #9269 —
+    records per-permission billable resource counts (``billable_counts``;
+    a dict keyed by firewall permission name) derived from the request
+    and response, alongside the raw signals (``request_ids_count``,
+    ``response_data_count``, ``response_includes``, ...).  The server
+    can either use ``billable_counts`` directly for per-call billing, or
+    re-derive a different formula from the raw fields if needed.
+
+    Skipped when:
+
+    - ``run_id`` is empty (no billing attribution)
+    - ``firewall_name`` is not in :data:`_BILLABLE_CONNECTORS`
+    - response status is outside 2xx (failures aren't billable)
+    - ``firewall_permission`` is empty (unknown-endpoint-allow has no
+      stable pricing key)
+    """
+    if not run_id:
+        return
+    firewall_name = flow.metadata.get("firewall_name", "")
+    if not is_billable_connector(firewall_name):
+        return
+    if not flow.response or not (200 <= flow.response.status_code < 300):
+        return
+    endpoint = flow.metadata.get("firewall_permission", "")
+    if not endpoint:
+        return
+
+    req_meta = _parse_x_request_metadata(flow)
+    resp_meta = _parse_x_response_metadata(flow)
+    billable_counts = _compute_x_billable_counts(flow.request.method, req_meta, resp_meta, endpoint)
+
+    log_proxy_entry(
+        flow.metadata.get("vm_proxy_log_path", ""),
+        "info",
+        f"Connector usage: {firewall_name}/{endpoint}",
+        type="connector_usage",
+        connector=firewall_name,
+        endpoint=endpoint,
+        rule=flow.metadata.get("firewall_rule_match", ""),
+        method=flow.request.method,
+        flow_id=flow.id,
+        status=flow.response.status_code,
+        billable_counts=billable_counts,
+        **req_meta,
+        **resp_meta,
+    )

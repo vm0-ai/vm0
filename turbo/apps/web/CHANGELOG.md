@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.240.0](https://github.com/vm0-ai/vm0/compare/web-v12.239.0...web-v12.240.0) (2026-04-15)
+
+
+### Features
+
+* **web:** inject custom skills as additional volumes at run creation ([#9532](https://github.com/vm0-ai/vm0/issues/9532)) ([d08f529](https://github.com/vm0-ai/vm0/commit/d08f5291e9748a0a17a43b0196d98020962254d3))
+
+
+### Bug Fixes
+
+* restore og:image and twitter:card on homepage ([#9509](https://github.com/vm0-ai/vm0/issues/9509)) ([689c747](https://github.com/vm0-ai/vm0/commit/689c747ee85fe5bd9b98ab27d424acbf70b727b5))
+
 ## [12.239.0](https://github.com/vm0-ai/vm0/compare/web-v12.238.1...web-v12.239.0) (2026-04-15)
 
 

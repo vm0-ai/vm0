@@ -279,7 +279,7 @@ describe("POST /api/zero/phone/webhook", () => {
         messageId: "msg_001",
         from: "+14155550001",
         to: "+18001234567",
-        body: "Hello from iMessage",
+        message: "Hello from iMessage",
       },
     });
 
@@ -304,7 +304,7 @@ describe("POST /api/zero/phone/webhook", () => {
         messageId: "msg_002",
         from: TEST_FROM_NUMBER,
         to: "+18001234567",
-        body: "Hi there",
+        message: "Hi there",
       },
     });
 
@@ -332,7 +332,7 @@ describe("POST /api/zero/phone/webhook", () => {
         messageId: "msg_003",
         from: TEST_FROM_NUMBER,
         to: "+18001234567",
-        body: "What is the weather?",
+        message: "What is the weather?",
       },
     });
 

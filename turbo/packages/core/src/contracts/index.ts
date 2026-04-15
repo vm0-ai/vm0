@@ -331,6 +331,8 @@ export {
 export {
   runnerRealtimeTokenContract,
   type RunnerRealtimeTokenContract,
+  platformRealtimeTokenContract,
+  type PlatformRealtimeTokenContract,
 } from "./realtime";
 
 export {

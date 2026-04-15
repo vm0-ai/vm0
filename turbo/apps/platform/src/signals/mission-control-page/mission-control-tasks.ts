@@ -2,13 +2,9 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { tasksContract, type TaskItem } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
-import {
-  jsonParseOr,
-  onRef,
-  resetSignal,
-  setLoop,
-  throwIfNotAbort,
-} from "../utils.ts";
+import { jsonParseOr, onRef, resetSignal, throwIfNotAbort } from "../utils.ts";
+import { ablyNotify$ } from "../realtime.ts";
+import { clerk$ } from "../auth.ts";
 import {
   createChatThreadSignals,
   ensureDraft$,
@@ -353,7 +349,16 @@ const internalTaskSignals$ = state<Map<string, TaskSignals>>(new Map());
 
 export const setupTasksLoop$ = command(
   async ({ set, get }, signal: AbortSignal) => {
-    await setLoop(
+    const ablyNotify = get(ablyNotify$);
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const orgId = clerk.organization?.id;
+    if (!orgId) {
+      throw new Error("setupTasksLoop$ called without active organization");
+    }
+
+    await ablyNotify(
+      `tasks:${orgId}`,
       async () => {
         set(reloadTasks$);
         const tasks = await get(tasks$);

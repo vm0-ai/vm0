@@ -15,6 +15,9 @@
     "jsx": "react-jsx",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "paths": {
+      "ably": ["../../node_modules/.pnpm/node_modules/ably/ably.d.ts"]
+    },
 
     "strict": true,
     "noUnusedLocals": true,

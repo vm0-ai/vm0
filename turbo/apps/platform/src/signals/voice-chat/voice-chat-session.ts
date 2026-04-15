@@ -8,6 +8,8 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { delay } from "signal-timers";
 import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
+import { ablyNotify$ } from "../realtime.ts";
+import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { logger } from "../log.ts";
@@ -637,8 +639,14 @@ const POLL_FAILURE_THRESHOLD = 3;
 
 const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
   let consecutiveFailures = 0;
+  const sid = get(internalSessionId$);
+  if (!sid) {
+    throw new Error("startPoll$ called before session ID is set");
+  }
+  const ablyNotify = get(ablyNotify$);
 
-  await setLoop(
+  await ablyNotify(
+    `voice:${sid}`,
     async (signal: AbortSignal) => {
       const sid = get(internalSessionId$);
       if (!sid) {
@@ -1015,7 +1023,9 @@ const prepareActivateConnect$ = command(
     const heartbeatPromise = set(startHeartbeat$, sessionSignal);
 
     // Poll for preparation-ready event with timeout
-    await setLoop(
+    const ablyNotify = get(ablyNotify$);
+    await ablyNotify(
+      `voice:${sessionId}`,
       async (loopSignal: AbortSignal) => {
         const elapsed = Date.now() - startTime;
         set(internalPrepElapsedMs$, elapsed);
@@ -1108,6 +1118,60 @@ const prepareActivateConnect$ = command(
   },
 );
 
+// --- Chat preparation helper ---
+
+/**
+ * Ensures the chat preparation cache is populated before session creation.
+ * If preparation is already cached ("ready"), returns immediately.
+ * If still preparing, polls until ready or timeout.
+ * Falls through on failure so session creation can handle the unprepared case.
+ */
+const awaitChatPreparation$ = command(
+  async ({ get }, agentId: string, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const prepClient = createClient(zeroVoiceChatPrepareTriggerContract);
+    const prepRes = await accept(
+      prepClient.trigger({ body: { agentId, mode: "chat" } }),
+      [200],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+
+    if (prepRes.body.preparation.status === "ready") {
+      return;
+    }
+
+    const prepStart = Date.now();
+    const chatAblyNotify = get(ablyNotify$);
+    const clerkInstance = await get(clerk$);
+    signal.throwIfAborted();
+    const prepUserId = clerkInstance.user?.id;
+    if (!prepUserId) {
+      throw new Error(
+        "awaitChatPreparation$ called without authenticated user",
+      );
+    }
+    await chatAblyNotify(
+      `voice:prep:${prepUserId}`,
+      async (loopSignal: AbortSignal) => {
+        if (Date.now() - prepStart > PREP_TIMEOUT_CHAT_MS) {
+          return true; // Timeout — proceed without cache
+        }
+        const pollRes = await accept(
+          prepClient.trigger({ body: { agentId, mode: "chat" } }),
+          [200],
+          { toast: false },
+        );
+        loopSignal.throwIfAborted();
+        const status = pollRes.body.preparation.status;
+        return status === "ready" || status === "failed";
+      },
+      POLL_INTERVAL_MS,
+      signal,
+    );
+  },
+);
+
 // --- Exported commands ---
 
 export const startVoiceChat$ = command(
@@ -1147,47 +1211,17 @@ export const startVoiceChat$ = command(
 
     // Ensure preparation cache is populated before session creation.
     // If preparation is already cached ("ready"), this returns instantly.
-    // If preparation fails, we fall through to session creation which
+    // If preparation fails, fall through to session creation which
     // handles the unprepared case via inline slow-brain.
-    // eslint-disable-next-line no-restricted-syntax -- accept() throws on non-200; must catch to fall through gracefully
-    try {
-      const createClient = get(zeroClient$);
-      const prepClient = createClient(zeroVoiceChatPrepareTriggerContract);
-      const prepRes = await accept(
-        prepClient.trigger({ body: { agentId, mode: "chat" } }),
-        [200],
-        { toast: false },
-      );
-      signal.throwIfAborted();
-
-      if (prepRes.body.preparation.status !== "ready") {
-        // Preparation in progress — poll until ready or timeout
-        const prepStart = Date.now();
-        await setLoop(
-          async (loopSignal: AbortSignal) => {
-            if (Date.now() - prepStart > PREP_TIMEOUT_CHAT_MS) {
-              return true; // Timeout — proceed without cache
-            }
-            const pollRes = await accept(
-              prepClient.trigger({ body: { agentId, mode: "chat" } }),
-              [200],
-              { toast: false },
-            );
-            loopSignal.throwIfAborted();
-            const status = pollRes.body.preparation.status;
-            return status === "ready" || status === "failed";
-          },
-          POLL_INTERVAL_MS,
-          signal,
+    await set(awaitChatPreparation$, agentId, signal).catch(
+      (error: unknown) => {
+        throwIfAbort(error);
+        L.warn(
+          "Chat preparation failed, falling back to unprepared session",
+          error,
         );
-      }
-    } catch (error) {
-      throwIfAbort(error);
-      L.warn(
-        "Chat preparation failed, falling back to unprepared session",
-        error,
-      );
-    }
+      },
+    );
     signal.throwIfAborted();
 
     const sessionRes = await fetchFn("/api/zero/voice-chat", {

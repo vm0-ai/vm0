@@ -14,6 +14,12 @@ export default defineConfig({
         __dirname,
         "./src/test/mocks/clerk-react.ts",
       ),
+      // Resolve ably via the stable pnpm virtual store path.
+      // Vitest does not read tsconfig paths, so an explicit alias is required.
+      ably: path.resolve(
+        __dirname,
+        "../../node_modules/.pnpm/node_modules/ably",
+      ),
     },
   },
   define: {

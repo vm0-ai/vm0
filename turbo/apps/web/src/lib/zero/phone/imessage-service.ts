@@ -1,6 +1,7 @@
 import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 
+const AGENTPHONE_API_BASE = "https://api.agentphone.to";
 const log = logger("phone:imessage");
 
 interface SendMessageResult {
@@ -24,11 +25,7 @@ export async function sendIMessage(opts: {
     throw new Error("AGENTPHONE_API_KEY is not configured");
   }
 
-  const apiBase = env().AGENTPHONE_API_BASE_URL;
-  if (!apiBase) {
-    throw new Error("AGENTPHONE_API_BASE_URL is not configured");
-  }
-  const response = await fetch(`${apiBase}/v1/messages`, {
+  const response = await fetch(`${AGENTPHONE_API_BASE}/v1/messages`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

@@ -1,6 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { createRunLoop } from "../zero-page/polling.ts";
-import { setLoop } from "../utils.ts";
+import { ablyNotify$ } from "../realtime.ts";
 import type { LogDetail, AgentEvent } from "../zero-page/log-types.ts";
 
 // ---------------------------------------------------------------------------
@@ -51,8 +51,10 @@ export function createActivitySignals(runId: string): ActivitySignals {
     set(internalStepSearch$, value);
   });
 
-  const startPolling$ = command(async ({ set }, signal: AbortSignal) => {
-    await setLoop(
+  const startPolling$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const ablyNotify = get(ablyNotify$);
+    await ablyNotify(
+      `thread:${runId}`,
       (sig) => {
         return set(runLoop.checkFinished$, sig);
       },

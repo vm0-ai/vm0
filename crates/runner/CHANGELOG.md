@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.79.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.10...runner-rs-v0.79.11) (2026-04-15)
+
+
+### Bug Fixes
+
+* **runner:** verify ca landed in system bundle after inject-ca ([#9530](https://github.com/vm0-ai/vm0/issues/9530)) ([951aa87](https://github.com/vm0-ai/vm0/commit/951aa87ff5862db4e8df710677b6d61e9257bcec))
+
 ## [0.79.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.9...runner-rs-v0.79.10) (2026-04-15)
 
 

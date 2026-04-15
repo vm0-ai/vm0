@@ -11,6 +11,8 @@ import {
   readEvents,
   appendEvent,
 } from "../../../../../../src/lib/zero/voice-chat/context-service";
+import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
+import { after } from "next/server";
 
 const VALID_SOURCES = ["system", "user", "fast-brain", "slow-brain"] as const;
 const VALID_TYPES = [
@@ -166,6 +168,12 @@ export async function POST(
 
   try {
     const event = await appendEvent(id, source, type, content);
+
+    // Notify session participants that context changed
+    after(() => {
+      return publishUserSignal([authCtx.userId], `voice:${id}`);
+    });
+
     return NextResponse.json({ event });
   } catch (err) {
     const error = err as { message: string; code?: string };

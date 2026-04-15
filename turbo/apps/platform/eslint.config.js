@@ -171,6 +171,7 @@ export default [
       "src/polyfill.ts",
       "src/signals/__tests__/test-helpers.ts",
       "src/signals/__tests__/utils.test.ts",
+      "src/signals/__tests__/realtime.test.ts",
       "src/signals/zero-page/__tests__/poll-slack-connection.test.ts",
     ],
     rules: {

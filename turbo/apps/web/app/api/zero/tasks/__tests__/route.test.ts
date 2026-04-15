@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET, POST } from "../route";
 import {
   createTestRequest,
@@ -18,6 +18,9 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
+import { insertOrgMembersCacheEntry } from "../../../../../src/__tests__/db-test-seeders/org-members-cache";
+import { reloadEnv } from "../../../../../src/env";
+import { mockAblyPublish } from "../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
 
@@ -509,6 +512,7 @@ describe("POST /api/zero/tasks/archive", () => {
   let user: UserContext;
 
   beforeEach(async () => {
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
   });
@@ -701,12 +705,49 @@ describe("POST /api/zero/tasks/archive", () => {
       }),
     ).toBe(false);
   });
+
+  it("should publish org-scoped tasks signal after archive", async () => {
+    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    reloadEnv();
+
+    // Add user to org members cache so publishUserSignal has someone to notify
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+    });
+
+    const { composeId } = await createTestCompose(uniqueId("arc-signal"));
+    const threadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Signal Test",
+    );
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      status: "completed",
+    });
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    const archiveRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/tasks/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: threadId, taskType: "chat", runId }),
+      }),
+    );
+    expect(archiveRes.status).toBe(200);
+
+    // Flush the after() callback to trigger signal publishing
+    await context.mocks.flushAfter();
+
+    expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
+  });
 });
 
 describe("POST /api/zero/tasks/unarchive", () => {
   let user: UserContext;
 
   beforeEach(async () => {
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
   });
@@ -780,5 +821,54 @@ describe("POST /api/zero/tasks/unarchive", () => {
         return t.id === threadId;
       }),
     ).toBe(true);
+  });
+
+  it("should publish org-scoped tasks signal after unarchive", async () => {
+    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    reloadEnv();
+
+    // Add user to org members cache so publishUserSignal has someone to notify
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+    });
+
+    const { composeId } = await createTestCompose(uniqueId("unarc-signal"));
+    const threadId = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "Unarchive Signal Test",
+    );
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      status: "completed",
+    });
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    // Archive first so we can unarchive
+    await POST(
+      createTestRequest("http://localhost:3000/api/zero/tasks/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: threadId, taskType: "chat", runId }),
+      }),
+    );
+
+    // Clear publish calls from the archive operation
+    mockAblyPublish.mockClear();
+    globalThis.nextAfterCallbacks = [];
+
+    const unarchiveRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/tasks/unarchive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: threadId, taskType: "chat" }),
+      }),
+    );
+    expect(unarchiveRes.status).toBe(200);
+
+    // Flush the after() callback to trigger signal publishing
+    await context.mocks.flushAfter();
+
+    expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
   });
 });

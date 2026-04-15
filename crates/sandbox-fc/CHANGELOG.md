@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.1...sandbox-fc-v0.25.2) (2026-04-15)
+
+
+### Refactoring
+
+* **sandbox-fc:** spawn snapshot-creation firecracker in unshare --mount ([#9506](https://github.com/vm0-ai/vm0/issues/9506)) ([9b40cec](https://github.com/vm0-ai/vm0/commit/9b40cec89aa5a987f0f9bc7b5f9ab1fde148bc21)), closes [#9494](https://github.com/vm0-ai/vm0/issues/9494)
+
 ## [0.25.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.0...sandbox-fc-v0.25.1) (2026-04-14)
 
 ## [0.25.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.24.0...sandbox-fc-v0.25.0) (2026-04-14)

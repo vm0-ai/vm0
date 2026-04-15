@@ -20,6 +20,13 @@ from mitmproxy import ctx, http
 # Cap for non-model-provider response body buffering and decompression output.
 STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
 
+# Decompression cap for response bodies that need full parsing for usage
+# extraction (model-provider non-SSE JSON, billable-connector JSON).  Larger
+# than STREAM_BUFFER_LIMIT (which guards capture-mode body logging) so large
+# search/timeline payloads decompress fully.  Still bounded so a malicious
+# upstream cannot exhaust memory via a decompression bomb.
+LARGE_RESPONSE_DECOMPRESS_LIMIT = 5 * 1024 * 1024  # 5 MB
+
 
 # ---------------------------------------------------------------------------
 # Body capture helpers (opt-in per run via captureNetworkBodies registry flag)

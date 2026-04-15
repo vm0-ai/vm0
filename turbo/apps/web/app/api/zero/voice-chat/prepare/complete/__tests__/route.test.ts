@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -13,6 +13,8 @@ import {
 import { getTestZeroAgentId } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
+import { reloadEnv } from "../../../../../../../src/env";
+import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
 
@@ -35,6 +37,7 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
   let agentId: string;
 
   beforeEach(async () => {
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("vcp-cmp"));
@@ -128,5 +131,25 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
     const prep = await getTestVoiceChatPreparation(preparationId);
     expect(prep?.status).toBe("ready");
     expect(prep?.directiveContent).toBe("User is a backend engineer...");
+  });
+
+  it("should publish user-scoped voice:prep signal after completion", async () => {
+    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    reloadEnv();
+    const { token } = await setupPreparationWithRun();
+
+    const response = await POST(
+      makeRequest(token, { content: "Test directive content" }),
+    );
+    expect(response.status).toBe(200);
+
+    // Flush the after() callback to trigger signal publishing
+    await context.mocks.flushAfter();
+
+    expect(mockAblyPublish).toHaveBeenCalledOnce();
+    expect(mockAblyPublish).toHaveBeenCalledWith(
+      `voice:prep:${user.userId}`,
+      null,
+    );
   });
 });

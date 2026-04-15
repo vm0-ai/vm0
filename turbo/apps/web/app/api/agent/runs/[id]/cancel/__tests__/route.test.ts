@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import { randomUUID } from "crypto";
 import {
@@ -21,6 +21,9 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
+import { reloadEnv } from "../../../../../../../src/env";
+import { insertOrgMembersCacheEntry } from "../../../../../../../src/__tests__/db-test-seeders/org-members-cache";
+import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
 
@@ -29,6 +32,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
   let testComposeId: string;
 
   beforeEach(async () => {
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
 
@@ -332,6 +336,34 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
       // Should pass auth (not 403) — returns 404 because sandbox token's runId doesn't exist
       expect(response.status).not.toBe(403);
+    });
+  });
+
+  describe("Signal Publishing", () => {
+    it("should publish thread and tasks signals after cancel", async () => {
+      vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+      reloadEnv();
+
+      // Add user to org members cache so the tasks signal has someone to notify
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+      });
+
+      const run = await createTestRun(testComposeId, "Run to cancel");
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
+        { method: "POST" },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Flush the after() callback to trigger signal publishing
+      await context.mocks.flushAfter();
+
+      expect(mockAblyPublish).toHaveBeenCalledWith(`thread:${run.runId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
     });
   });
 });

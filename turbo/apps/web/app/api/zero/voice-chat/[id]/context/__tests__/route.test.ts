@@ -9,6 +9,8 @@ import {
   uniqueId,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../../../src/env";
+import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
 
 vi.mock("@vm0/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@vm0/core")>();
@@ -214,6 +216,7 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
   let userId: string;
 
   beforeEach(async () => {
+    mockAblyPublish.mockClear();
     context.setupMocks();
     const user = await context.setupUser();
     userId = user.userId;
@@ -421,5 +424,30 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
     const body2 = await res2.json();
 
     expect(body2.event.seq).toBeGreaterThan(body1.event.seq);
+  });
+
+  it("should publish voice session signal after appending context event", async () => {
+    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    reloadEnv();
+
+    const session = await createSession(orgId, userId);
+    const response = await POST(
+      createTestRequest(contextUrl(session.id), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "user",
+          type: "speech",
+          content: "hello",
+        }),
+      }),
+      paramsFor(session.id),
+    );
+    expect(response.status).toBe(200);
+
+    // Flush the after() callback to trigger signal publishing
+    await context.mocks.flushAfter();
+
+    expect(mockAblyPublish).toHaveBeenCalledWith(`voice:${session.id}`, null);
   });
 });

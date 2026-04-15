@@ -48,7 +48,6 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");
     // AgentPhone integration
     vi.stubEnv("AGENTPHONE_API_KEY", "test-agentphone-api-key");
-    vi.stubEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     // App UI URL
@@ -256,6 +255,26 @@ vi.mock("@axiomhq/logging", () => {
       };
     }),
     AxiomJSTransport: vi.fn(),
+  };
+});
+
+// Mock Ably (external real-time service)
+// Uses shared spy instances from ably-mock.ts so test files can import
+// mockAblyPublish / mockAblyCreateTokenRequest without repeating vi.mock.
+vi.mock("ably", async () => {
+  const { mockAblyPublish, mockAblyCreateTokenRequest } =
+    await import("./ably-mock");
+  return {
+    default: {
+      Rest: vi.fn().mockImplementation(function () {
+        return {
+          auth: { createTokenRequest: mockAblyCreateTokenRequest },
+          channels: {
+            get: vi.fn().mockReturnValue({ publish: mockAblyPublish }),
+          },
+        };
+      }),
+    },
   };
 });
 

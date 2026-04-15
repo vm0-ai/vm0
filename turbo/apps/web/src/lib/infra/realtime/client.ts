@@ -33,6 +33,61 @@ function getRunnerGroupChannelName(group: string): string {
 }
 
 /**
+ * Get channel name for a platform user's push signal channel.
+ */
+function getUserChannelName(userId: string): string {
+  return `user:${userId}`;
+}
+
+/**
+ * Generate an Ably token for a platform user's channel (subscribe only).
+ * Used by the frontend to subscribe to invalidation signals.
+ */
+export async function generatePlatformUserToken(
+  userId: string,
+): Promise<Ably.TokenRequest | null> {
+  const client = getAblyClient();
+  if (!client) {
+    log.debug("Ably not configured, cannot generate platform user token");
+    return null;
+  }
+
+  const channelName = getUserChannelName(userId);
+  const tokenRequest = await client.auth.createTokenRequest({
+    capability: {
+      [channelName]: ["subscribe"],
+    },
+    ttl: 3600000, // 1 hour
+    clientId: userId,
+  });
+  log.debug(`Generated platform token for user:${userId}`);
+  return tokenRequest;
+}
+
+/**
+ * Publish an invalidation signal to specific users' channels.
+ * Used by server-side code to notify frontend clients that data has changed.
+ */
+export async function publishUserSignal(
+  userIds: string[],
+  topic: string,
+): Promise<void> {
+  const client = getAblyClient();
+  if (!client) {
+    log.debug("Ably not configured, skipping user signal");
+    return;
+  }
+
+  await Promise.all(
+    userIds.map(async (userId) => {
+      const channel = client.channels.get(getUserChannelName(userId));
+      await channel.publish(topic, null);
+    }),
+  );
+  log.debug(`Published signal "${topic}" to ${userIds.length} user(s)`);
+}
+
+/**
  * Generate an Ably token for a specific runner group channel (subscribe only).
  * Used by runners to authenticate and subscribe to job notifications.
  */

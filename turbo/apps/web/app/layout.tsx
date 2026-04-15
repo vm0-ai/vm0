@@ -58,7 +58,7 @@ export function generateMetadata(): Metadata {
       template: "%s | VM0",
     },
     description:
-      "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for individuals and teams to do more together.",
+      "Zero, your trustworthy AI teammate for real work. Connects to 100+ tools and does the work — reports, triage, outreach, research — in Slack or on the web.",
     keywords: [
       "AI teammate",
       "AI agents",
@@ -93,7 +93,7 @@ export function generateMetadata(): Metadata {
       url: "https://www.vm0.ai",
       title: "VM0 - Your Trustworthy AI Teammate",
       description:
-        "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for individuals and teams to do more together.",
+        "Zero, your trustworthy AI teammate for real work. Connects to 100+ tools and does the work — reports, triage, outreach, research — in Slack or on the web.",
       siteName: "VM0",
       images: [
         {
@@ -108,7 +108,7 @@ export function generateMetadata(): Metadata {
       card: "summary_large_image",
       title: "VM0 - Your Trustworthy AI Teammate",
       description:
-        "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for teams.",
+        "Zero connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
       images: ["/og-image.png"],
       creator: "@vm0_ai",
       site: "@vm0_ai",

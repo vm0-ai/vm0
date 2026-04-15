@@ -9,31 +9,8 @@ import {
   testContext,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
+import { mockAblyCreateTokenRequest } from "../../../../../../src/__tests__/ably-mock";
 import { reloadEnv } from "../../../../../../src/env";
-
-// Shared mock for Ably createTokenRequest - kept outside vi.mock so tests can
-// override it (the ablyClient singleton means the constructor runs only once)
-const mockCreateTokenRequest = vi.fn().mockResolvedValue({
-  keyName: "test-key",
-  timestamp: 1700000000000,
-  capability: '{"runner-group:vm0/production":["subscribe"]}',
-  nonce: "test-nonce",
-  mac: "test-mac",
-});
-
-// Mock Ably (third-party external dependency)
-vi.mock("ably", () => {
-  return {
-    default: {
-      Rest: vi.fn().mockImplementation(function () {
-        return {
-          auth: { createTokenRequest: mockCreateTokenRequest },
-          channels: { get: vi.fn() },
-        };
-      }),
-    },
-  };
-});
 
 const context = testContext();
 
@@ -61,6 +38,13 @@ describe("POST /api/runners/realtime/token", () => {
   let user: UserContext;
 
   beforeEach(async () => {
+    mockAblyCreateTokenRequest.mockResolvedValue({
+      keyName: "test-key",
+      timestamp: 1700000000000,
+      capability: '{"runner-group:vm0/production":["subscribe"]}',
+      nonce: "test-nonce",
+      mac: "test-mac",
+    });
     context.setupMocks();
     user = await context.setupUser();
   });
@@ -193,7 +177,7 @@ describe("POST /api/runners/realtime/token", () => {
       const token = `vm0_official_${OFFICIAL_RUNNER_SECRET}`;
 
       // Make the shared mock reject for the next call
-      mockCreateTokenRequest.mockRejectedValueOnce(
+      mockAblyCreateTokenRequest.mockRejectedValueOnce(
         new Error("Token gen failed"),
       );
 

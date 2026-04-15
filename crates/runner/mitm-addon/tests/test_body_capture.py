@@ -1,6 +1,7 @@
 """Tests for HTTP body capture helpers in mitm_addon."""
 
 import base64
+import json
 from unittest.mock import MagicMock
 
 from body_utils import (
@@ -641,3 +642,31 @@ class TestExtractUsageFromJson:
         result = extract_usage_from_json(body, None)
         assert result["web_search_requests"] == 2
         assert result["input_tokens"] == 10
+
+    def test_handles_large_gzipped_body(self):
+        """Body that decompresses past the legacy 64 KB cap should still parse.
+
+        Regression test for the silent 64 KB default in body_utils.decompress_body
+        which used to truncate large model-provider non-SSE responses and cause
+        usage extraction to silently fail.
+        """
+        import gzip
+
+        # Raw body > 64 KB (legacy STREAM_BUFFER_LIMIT) so the bug, if reintroduced,
+        # would truncate decompression output and break json.loads below.
+        big_text = "x" * (100 * 1024)
+        payload = json.dumps(
+            {
+                "id": "msg_1",
+                "model": "claude-sonnet-4-6",
+                "content": [{"type": "text", "text": big_text}],
+                "usage": {"input_tokens": 50, "output_tokens": 100},
+            }
+        ).encode()
+        compressed = gzip.compress(payload)
+        headers = MagicMock()
+        headers.get = lambda k, d="": "gzip" if k == "content-encoding" else d
+        result = extract_usage_from_json(compressed, headers)
+        assert result is not None
+        assert result["input_tokens"] == 50
+        assert result["output_tokens"] == 100

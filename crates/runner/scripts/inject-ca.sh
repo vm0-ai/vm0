@@ -21,6 +21,9 @@ cleanup() {
     # keytool) may briefly hold references after returning.  Final attempt
     # lets stderr through so CI logs show the root cause if it still fails.
     if [[ -n "$MOUNT_DIR" ]]; then
+        # Umount /proc bind first (avoid EBUSY on outer umount).  No-op if
+        # the bind was never established; swallowed either way.
+        sudo umount "${MOUNT_DIR}/proc" 2>/dev/null || true
         for attempt in 1 2 3; do
             if [[ $attempt -eq 3 ]]; then
                 sudo umount "$MOUNT_DIR" || true
@@ -69,6 +72,14 @@ MOUNT_DIR="$(mktemp -d)"
 LOOP_DEV="$(sudo losetup --find --show "$ROOTFS")"
 sudo mount "$LOOP_DEV" "$MOUNT_DIR"
 
+# Bind-mount /proc so keytool's RPATH [$ORIGIN:$ORIGIN/../lib] resolves —
+# glibc derives $ORIGIN from readlink(/proc/self/exe).  DO NOT remove:
+# without /proc, libjli.so lookup fails with an opaque linker error.
+# Exposes host /proc inside the chroot; acceptable here because only our
+# trusted keytool/update-ca-certificates run against this rootfs.  If you
+# add more chroot commands below, reconsider (consider `unshare --pid`).
+sudo mount --bind /proc "${MOUNT_DIR}/proc"
+
 # Replace CA certificate
 sudo cp "$ca_cert" "${MOUNT_DIR}/${CA_ROOTFS_DEST}"
 sudo chmod 644 "${MOUNT_DIR}/${CA_ROOTFS_DEST}"
@@ -108,17 +119,13 @@ fi
 # keystore where the alias doesn't exist), here the alias vm0-proxy-ca
 # already exists from the original build. keytool -importcert rejects
 # duplicate aliases, so we must delete first then re-import.
-# keytool requires libjli.so on the library path; locate it dynamically.
 # `|| true` handles the (unexpected) case where the alias is absent; stderr
 # is NOT suppressed so real keystore errors surface in CI logs.
-jli_dir=$(sudo chroot "$MOUNT_DIR" find /usr/lib/jvm -name libjli.so -printf '%h' -quit)
-sudo chroot "$MOUNT_DIR" env LD_LIBRARY_PATH="$jli_dir" \
-    keytool -delete \
+sudo chroot "$MOUNT_DIR" keytool -delete \
     -keystore /etc/ssl/certs/java/cacerts \
     -storepass changeit \
     -alias vm0-proxy-ca || true
-sudo chroot "$MOUNT_DIR" env LD_LIBRARY_PATH="$jli_dir" \
-    keytool -importcert -trustcacerts \
+sudo chroot "$MOUNT_DIR" keytool -importcert -trustcacerts \
     -keystore /etc/ssl/certs/java/cacerts \
     -storepass changeit -noprompt \
     -alias vm0-proxy-ca \

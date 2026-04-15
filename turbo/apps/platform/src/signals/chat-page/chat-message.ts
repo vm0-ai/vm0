@@ -1,6 +1,7 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "../zero-page/log-types.ts";
-import { onRef, resetSignal, setLoop } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
+import { ablyNotify$ } from "../realtime.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
@@ -632,6 +633,7 @@ const chatMessages$ = computed(async (get): Promise<ChatMessages | null> => {
 export const loadChatMessages$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     L.debug("Loading messages");
+    const ablyNotify = get(ablyNotify$);
     const messages = await get(chatMessages$);
     signal.throwIfAborted();
     if (!messages?.activeRunMessages.length) {
@@ -661,7 +663,8 @@ export const loadChatMessages$ = command(
 
         set(markMessageLoading$, message.legacyRunId!);
 
-        await setLoop(
+        await ablyNotify(
+          `thread:${message.legacyRunId}`,
           (sig) => {
             set(reloadThinkingMessage$, (x) => {
               return x + 1;
@@ -942,7 +945,9 @@ export const sendExistingThreadMessage$ = command(
       return;
     }
 
-    await setLoop(
+    const ablyNotify = get(ablyNotify$);
+    await ablyNotify(
+      `thread:${runId}`,
       (sig) => {
         set(reloadChatThreads$);
         set(reloadCurrentChatThread$);

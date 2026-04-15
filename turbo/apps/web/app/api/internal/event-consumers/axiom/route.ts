@@ -4,6 +4,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { verifyEventConsumer } from "../../../../../src/lib/infra/event-consumer";
 import {
   ingestToAxiom,
+  flushAxiom,
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/shared/axiom";
@@ -36,6 +37,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const axiomDataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   ingestToAxiom(axiomDataset, axiomEvents);
+  // Flush explicitly: this route uses NextResponse (not ts-rest-handler), so
+  // flushAxiom() is not called automatically at the response boundary.
+  // Without this, the SDK buffer is never flushed during this serverless
+  // function's lifetime, and the CLI sees no events when polling Axiom.
+  await flushAxiom();
 
   return NextResponse.json({ received: events.length });
 }

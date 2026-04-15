@@ -7,7 +7,9 @@ import {
 import { zeroClient$ } from "../api-client.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
-import { setLoop, throwIfAbort } from "../utils.ts";
+import { throwIfAbort } from "../utils.ts";
+import { ablyNotify$ } from "../realtime.ts";
+import { clerk$ } from "../auth.ts";
 
 type PreparationStatus = "idle" | "preparing" | "ready" | "failed";
 
@@ -85,9 +87,18 @@ export const triggerPreparation$ = command(
     }
 
     // Poll until ready or failed.
-    // setLoop handles transient errors (including ApiError from accept())
-    // with fibonacci backoff retry.
-    await setLoop(
+    // ablyNotify handles transient errors with fibonacci backoff retry via fallback.
+    const ablyNotify = get(ablyNotify$);
+    const clerkInstance = await get(clerk$);
+    signal.throwIfAborted();
+    const userId = clerkInstance.user?.id;
+    if (!userId) {
+      throw new Error(
+        "voice-chat-preparation called without authenticated user",
+      );
+    }
+    await ablyNotify(
+      `voice:prep:${userId}`,
       async (loopSignal: AbortSignal) => {
         const pollRes = await accept(
           client.trigger({ body: { agentId, mode: "meeting", prompt } }),

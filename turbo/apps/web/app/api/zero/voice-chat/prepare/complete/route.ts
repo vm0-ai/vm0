@@ -5,6 +5,8 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { voiceChatPreparations } from "../../../../../../src/db/schema/voice-chat";
 import { logger } from "../../../../../../src/lib/shared/logger";
+import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
+import { after } from "next/server";
 
 const bodySchema = z.object({
   content: z.string().min(1),
@@ -61,6 +63,7 @@ export async function POST(request: Request) {
         id: voiceChatPreparations.id,
         status: voiceChatPreparations.status,
         orgId: voiceChatPreparations.orgId,
+        userId: voiceChatPreparations.userId,
       })
       .from(voiceChatPreparations)
       .where(eq(voiceChatPreparations.runId, runId))
@@ -92,7 +95,7 @@ export async function POST(request: Request) {
       return { error: "UPDATE_FAILED" } as const;
     }
 
-    return { updated } as const;
+    return { updated, userId: preparation.userId } as const;
   });
 
   if ("error" in result) {
@@ -143,6 +146,11 @@ export async function POST(request: Request) {
   log.info("Preparation completed", {
     preparationId: result.updated.id,
     runId,
+  });
+
+  // Notify the user that their voice chat preparation is ready
+  after(() => {
+    return publishUserSignal([result.userId], `voice:prep:${result.userId}`);
   });
 
   return NextResponse.json({
