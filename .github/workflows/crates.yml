@@ -58,7 +58,7 @@ jobs:
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260404
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260415
     outputs:
       any-changed: ${{ steps.detect.outputs.any-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
@@ -162,7 +162,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260404
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260415
     needs: [detect]
     if: needs.detect.outputs.any-changed == 'true'
     steps:
@@ -237,7 +237,7 @@ jobs:
   nbd-cow-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260404
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260415
     needs: [detect]
     if: |
       needs.detect.outputs.ci-changed == 'true' ||
@@ -285,7 +285,7 @@ jobs:
   runner-build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260404
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260415
     needs: [detect]
     if: |
       needs.detect.outputs.ci-changed == 'true' ||
@@ -320,12 +320,11 @@ jobs:
           cargo build --release --target "$TARGET_TRIPLE" \
             -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
 
-      - uses: ./.github/actions/install-mold
-
       - name: Cross-compile runner with embedded guests for ARM64
         env:
-          # Override .cargo/config.toml to use mold for faster runner linking.
-          # Only runner uses this — guests use the default linker for image_hash consistency.
+          # Override .cargo/config.toml to use mold (pre-installed in toolchain-rust
+          # image) for faster runner linking. Only runner uses this — guests use the
+          # default linker for image_hash consistency.
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
         run: |
           cd crates
