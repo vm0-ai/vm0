@@ -215,7 +215,7 @@ function initEnv() {
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
       // AgentPhone (platform-level phone channel)
       AGENTPHONE_API_KEY: z.string().min(1).optional(),
-      AGENTPHONE_API_BASE_URL: z.url().default("https://api.agentphone.to"),
+      AGENTPHONE_API_BASE_URL: z.url().optional(),
       // Plain.com (developer support thread creation) — optional, falls back to email
       PLAIN_API_KEY: z.string().min(1).optional(),
     },

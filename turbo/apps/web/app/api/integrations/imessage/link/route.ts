@@ -106,7 +106,9 @@ export async function POST(request: Request) {
     userId,
   });
 
-  // Send success message via iMessage (non-blocking)
+  // Send success message via iMessage (fire-and-forget after response).
+  // The .catch() is intentional: a delivery failure must not roll back the
+  // already-committed DB link or return an error to the caller.
   const [org] = await globalThis.services.db
     .select({ agentphoneAgentId: orgMetadata.agentphoneAgentId })
     .from(orgMetadata)

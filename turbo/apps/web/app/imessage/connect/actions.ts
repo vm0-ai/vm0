@@ -68,7 +68,9 @@ export async function linkIMessageAction(
   // Get org name for display
   const orgInfo = await getOrgNameAndSlug(orgId);
 
-  // Send success message via iMessage (non-blocking)
+  // Send success message via iMessage (fire-and-forget after response).
+  // The .catch() is intentional: a delivery failure must not roll back the
+  // already-committed DB link or surface an error to the user.
   const [org] = await globalThis.services.db
     .select({ agentphoneAgentId: orgMetadata.agentphoneAgentId })
     .from(orgMetadata)
