@@ -117,12 +117,17 @@ export async function createCheckpoint(
         ...(runAdditionalVolumes && runAdditionalVolumes.length > 0
           ? {
               additionalVolumes: runAdditionalVolumes.map((vol) => {
+                const versionId =
+                  request.volumeVersionsSnapshot!.versions[vol.name] ??
+                  vol.version;
+                if (!versionId) {
+                  log.warn(
+                    `Additional volume "${vol.name}" has no resolved version from runner and no version specified at run time, defaulting to "latest"`,
+                  );
+                }
                 return {
                   name: vol.name,
-                  versionId:
-                    request.volumeVersionsSnapshot!.versions[vol.name] ??
-                    vol.version ??
-                    "latest",
+                  versionId: versionId ?? "latest",
                   mountPath: vol.mountPath,
                 };
               }),
