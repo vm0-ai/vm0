@@ -116,10 +116,8 @@ type NotifyBody = (signal: AbortSignal) => Promise<boolean> | boolean;
 /**
  * Subscribe to `topic` on `channel` and invoke `body` on each message.
  * Resolves when `body` returns `true`, rejects on abort or subscribe failure.
- *
- * Exported for unit testing independent of ccstate store and IN_VITEST guard.
  */
-export async function ablyChannelNotify(
+async function ablyChannelNotify(
   channel: RealtimeChannel,
   topic: string,
   body: NotifyBody,
@@ -199,7 +197,7 @@ export const ablyNotify$ = computed((get) => {
     interval: number,
     signal: AbortSignal,
   ): Promise<void> {
-    if (!channel || IN_VITEST) {
+    if (!channel) {
       return setLoop(body, interval, signal);
     }
     return ablyChannelNotify(channel, topic, body, signal);

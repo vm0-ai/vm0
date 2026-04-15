@@ -67,31 +67,24 @@ export async function generatePlatformUserToken(
 /**
  * Publish an invalidation signal to specific users' channels.
  * Used by server-side code to notify frontend clients that data has changed.
- * Non-blocking — logs errors but doesn't throw.
  */
 export async function publishUserSignal(
   userIds: string[],
   topic: string,
-): Promise<boolean> {
+): Promise<void> {
   const client = getAblyClient();
   if (!client) {
     log.debug("Ably not configured, skipping user signal");
-    return false;
+    return;
   }
 
-  try {
-    await Promise.all(
-      userIds.map(async (userId) => {
-        const channel = client.channels.get(getUserChannelName(userId));
-        await channel.publish(topic, null);
-      }),
-    );
-    log.debug(`Published signal "${topic}" to ${userIds.length} user(s)`);
-    return true;
-  } catch (error) {
-    log.error(`Ably user signal failed for topic "${topic}":`, error);
-    return false;
-  }
+  await Promise.all(
+    userIds.map(async (userId) => {
+      const channel = client.channels.get(getUserChannelName(userId));
+      await channel.publish(topic, null);
+    }),
+  );
+  log.debug(`Published signal "${topic}" to ${userIds.length} user(s)`);
 }
 
 /**
