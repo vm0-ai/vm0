@@ -3,8 +3,6 @@ import { logger } from "../../shared/logger";
 
 const log = logger("phone:imessage");
 
-const AGENTPHONE_API_BASE = "https://api.agentphone.to";
-
 interface SendMessageResult {
   messageId: string;
   status: string;
@@ -26,7 +24,8 @@ export async function sendIMessage(opts: {
     throw new Error("AGENTPHONE_API_KEY is not configured");
   }
 
-  const response = await fetch(`${AGENTPHONE_API_BASE}/v1/messages`, {
+  const apiBase = env().AGENTPHONE_API_BASE_URL;
+  const response = await fetch(`${apiBase}/v1/messages`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

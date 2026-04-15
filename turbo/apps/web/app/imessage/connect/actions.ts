@@ -3,12 +3,15 @@
 import { eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { initServices } from "../../../src/lib/init-services";
-import { imessageUserLinks } from "../../../src/db/schema/imessage-user-link";
 import { orgMetadata } from "../../../src/db/schema/org-metadata";
 import { verifyConnectSignature } from "../../../src/lib/zero/phone/imessage-connect-token";
 import { sendIMessage } from "../../../src/lib/zero/phone/imessage-service";
 import { getMemberRole } from "../../../src/lib/auth/org-membership-cache";
 import { getOrgNameAndSlug } from "../../../src/lib/auth/org-cache";
+import { linkIMessageHandle } from "../../../src/lib/zero/phone/handlers/imessage-shared";
+import { logger } from "../../../src/lib/shared/logger";
+
+const log = logger("imessage:connect-action");
 
 interface LinkResult {
   success: boolean;
@@ -48,39 +51,18 @@ export async function linkIMessageAction(
     };
   }
 
-  // Check if this handle is already bound to a different org
-  const [existing] = await globalThis.services.db
-    .select({
-      orgId: imessageUserLinks.orgId,
-      vm0UserId: imessageUserLinks.vm0UserId,
-    })
-    .from(imessageUserLinks)
-    .where(eq(imessageUserLinks.imessageHandle, handle))
-    .limit(1);
+  // Link (or update) the handle, checking for cross-org conflicts
+  const linkResult = await linkIMessageHandle(handle, orgId, userId);
 
-  if (existing && existing.orgId !== orgId) {
-    return {
-      success: false,
-      error: "This iMessage account is already linked to another organization.",
-    };
+  if (!linkResult.ok) {
+    if (linkResult.conflict) {
+      return {
+        success: false,
+        error:
+          "This iMessage account is already linked to another organization.",
+      };
+    }
   }
-
-  // Create or update the binding
-  await globalThis.services.db
-    .insert(imessageUserLinks)
-    .values({
-      imessageHandle: handle,
-      orgId,
-      vm0UserId: userId,
-    })
-    .onConflictDoUpdate({
-      target: [imessageUserLinks.imessageHandle],
-      set: {
-        orgId,
-        vm0UserId: userId,
-        updatedAt: new Date(),
-      },
-    });
 
   // Get org name for display
   const orgInfo = await getOrgNameAndSlug(orgId);
@@ -97,8 +79,8 @@ export async function linkIMessageAction(
       agentId: org.agentphoneAgentId,
       toNumber: handle,
       body: "Account linked successfully! You can now send messages directly to your agent.",
-    }).catch(() => {
-      // non-blocking
+    }).catch((err: unknown) => {
+      log.warn("Failed to send link success iMessage", { err });
     });
   }
 

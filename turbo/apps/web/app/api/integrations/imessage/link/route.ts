@@ -3,11 +3,11 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
-import { imessageUserLinks } from "../../../../../src/db/schema/imessage-user-link";
 import { orgMetadata } from "../../../../../src/db/schema/org-metadata";
 import { verifyConnectSignature } from "../../../../../src/lib/zero/phone/imessage-connect-token";
 import { sendIMessage } from "../../../../../src/lib/zero/phone/imessage-service";
 import { getMemberRole } from "../../../../../src/lib/auth/org-membership-cache";
+import { linkIMessageHandle } from "../../../../../src/lib/zero/phone/handlers/imessage-shared";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:imessage:link");
@@ -82,45 +82,23 @@ export async function POST(request: Request) {
     );
   }
 
-  // Check if this handle is already bound to a different org
-  const [existing] = await globalThis.services.db
-    .select({
-      orgId: imessageUserLinks.orgId,
-      vm0UserId: imessageUserLinks.vm0UserId,
-    })
-    .from(imessageUserLinks)
-    .where(eq(imessageUserLinks.imessageHandle, body.handle))
-    .limit(1);
+  // Link (or update) the handle, checking for cross-org conflicts
+  const linkResult = await linkIMessageHandle(body.handle, body.orgId, userId);
 
-  if (existing && existing.orgId !== body.orgId) {
-    return NextResponse.json(
-      {
-        error: {
-          message:
-            "This iMessage account is already linked to another organization",
-          code: "CONFLICT",
+  if (!linkResult.ok) {
+    if (linkResult.conflict) {
+      return NextResponse.json(
+        {
+          error: {
+            message:
+              "This iMessage account is already linked to another organization",
+            code: "CONFLICT",
+          },
         },
-      },
-      { status: 409 },
-    );
+        { status: 409 },
+      );
+    }
   }
-
-  // Create or update the binding
-  await globalThis.services.db
-    .insert(imessageUserLinks)
-    .values({
-      imessageHandle: body.handle,
-      orgId: body.orgId,
-      vm0UserId: userId,
-    })
-    .onConflictDoUpdate({
-      target: [imessageUserLinks.imessageHandle],
-      set: {
-        orgId: body.orgId,
-        vm0UserId: userId,
-        updatedAt: new Date(),
-      },
-    });
 
   log.info("iMessage handle linked", {
     handle: body.handle,

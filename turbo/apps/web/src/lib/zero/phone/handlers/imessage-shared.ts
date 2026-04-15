@@ -4,6 +4,61 @@ import { imessageThreadSessions } from "../../../../db/schema/imessage-thread-se
 import { orgMetadata } from "../../../../db/schema/org-metadata";
 
 /**
+ * Result of attempting to link an iMessage handle to an org/user.
+ */
+type LinkIMessageHandleResult =
+  | { ok: true }
+  | { ok: false; conflict: true }
+  | { ok: false; conflict: false };
+
+/**
+ * Upsert an iMessage handle binding to a user/org.
+ *
+ * Returns:
+ * - { ok: true }                          — handle was linked (new or updated)
+ * - { ok: false, conflict: true }         — handle is already bound to a different org
+ * - { ok: false, conflict: false }        — unexpected error (rethrows)
+ *
+ * This shared helper is used by both the API route (POST /api/integrations/imessage/link)
+ * and the server action (linkIMessageAction) to keep the logic in one place.
+ */
+export async function linkIMessageHandle(
+  imessageHandle: string,
+  orgId: string,
+  vm0UserId: string,
+): Promise<LinkIMessageHandleResult> {
+  const [existing] = await globalThis.services.db
+    .select({
+      orgId: imessageUserLinks.orgId,
+    })
+    .from(imessageUserLinks)
+    .where(eq(imessageUserLinks.imessageHandle, imessageHandle))
+    .limit(1);
+
+  if (existing && existing.orgId !== orgId) {
+    return { ok: false, conflict: true };
+  }
+
+  await globalThis.services.db
+    .insert(imessageUserLinks)
+    .values({
+      imessageHandle,
+      orgId,
+      vm0UserId,
+    })
+    .onConflictDoUpdate({
+      target: [imessageUserLinks.imessageHandle],
+      set: {
+        orgId,
+        vm0UserId,
+        updatedAt: new Date(),
+      },
+    });
+
+  return { ok: true };
+}
+
+/**
  * Look up an existing iMessage thread session by (userId, orgId).
  */
 export async function lookupIMessageThreadSession(
