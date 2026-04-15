@@ -36,8 +36,7 @@ import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: direct service call for data setup in webhook complete tests
-import { updateAssistantMessageByRunId } from "../../../../../../src/lib/zero/chat-thread/chat-message-service";
+import { updateTestAssistantMessageByRunId } from "../../../../../../src/__tests__/db-test-seeders/agents";
 
 const context = testContext();
 
@@ -896,7 +895,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         },
         ["pending", "running"],
       );
-      await updateAssistantMessageByRunId(runId, cronMessage, cronMessage);
+      await updateTestAssistantMessageByRunId(runId, cronMessage, cronMessage);
 
       // Sandbox finally reports a failure → webhook should override the
       // timeout state with the report-error link, not bail.
@@ -956,7 +955,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         },
         ["pending", "running"],
       );
-      await updateAssistantMessageByRunId(runId, cronMessage, cronMessage);
+      await updateTestAssistantMessageByRunId(runId, cronMessage, cronMessage);
 
       // Checkpoint is required for exitCode=0 completion.
       const token = await createTestSandboxToken(user.userId, runId);

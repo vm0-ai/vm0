@@ -32,7 +32,6 @@ const router = tsr.router(chatThreadByIdContract, {
       const thread = await getChatThread(params.id, userId);
       const { chatMessages, latestSessionId } = await getChatThreadMessages(
         params.id,
-        userId,
       );
 
       return {

@@ -15,8 +15,7 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: direct service call for data setup in chat-thread detail tests
-import { insertAssistantEventMessages } from "../../../../../../src/lib/zero/chat-thread/chat-message-service";
+import { insertTestAssistantEventMessages } from "../../../../../../src/__tests__/db-test-seeders/agents";
 
 const context = testContext();
 
@@ -301,7 +300,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
       prompt: "multi-step prompt",
     });
     await addTestRunToThread(threadId, runId, testUserId);
-    await insertAssistantEventMessages(runId, threadId, [
+    await insertTestAssistantEventMessages(runId, threadId, [
       { sequenceNumber: 0, content: "First partial response" },
       { sequenceNumber: 1, content: "Second partial response" },
     ]);

@@ -179,10 +179,7 @@ type ChatMessage = {
  * Returns all rows as flat chatMessages with optional run status.
  * The frontend uses the status field to detect active runs and start polling.
  */
-export async function getChatThreadMessages(
-  threadId: string,
-  _userId: string,
-): Promise<{
+export async function getChatThreadMessages(threadId: string): Promise<{
   chatMessages: ChatMessage[];
   latestSessionId: string | null;
 }> {

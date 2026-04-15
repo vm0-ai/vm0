@@ -3,9 +3,6 @@ import type { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyEventConsumer } from "../../../../../src/lib/infra/event-consumer";
 import { upsertCreditUsage } from "../../../../../src/lib/zero/credit/credit-usage-service";
-import { logger } from "../../../../../src/lib/shared/logger";
-
-const log = logger("event-consumer:credit");
 
 /**
  * POST /api/internal/event-consumers/credit
@@ -23,21 +20,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { runId, events, context } = result.data;
 
-  try {
-    await upsertCreditUsage(
-      runId,
-      context.orgId,
-      context.userId,
-      events,
-      context.modelProvider,
-      context.selectedModel,
-    );
-  } catch (err) {
-    log.error("Failed to upsert client credit usage", {
-      runId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+  await upsertCreditUsage(
+    runId,
+    context.orgId,
+    context.userId,
+    events,
+    context.modelProvider,
+    context.selectedModel,
+  );
 
   return NextResponse.json({ received: events.length });
 }

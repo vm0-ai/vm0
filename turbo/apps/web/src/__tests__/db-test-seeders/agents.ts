@@ -16,6 +16,12 @@ import {
 } from "../../db/schema/zero-agent-session";
 import { composeJobs } from "../../db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
+import {
+  insertChatMessage,
+  getMessagesByThreadId,
+  insertAssistantEventMessages,
+  updateAssistantMessageByRunId,
+} from "../../lib/zero/chat-thread/chat-message-service";
 
 /**
  * @why-db-direct Creates compose + zero_agents WITHOUT a version — API always
@@ -425,4 +431,94 @@ export async function insertTestChatThread(
     .values({ userId, agentComposeId, title })
     .returning({ id: chatThreads.id });
   return thread!.id;
+}
+
+// ---------------------------------------------------------------------------
+// Chat message seeders (service wrappers for test data setup)
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert a chat message directly into the chat_messages table.
+ *
+ * @why-db-direct Chat messages are created by the run flow and event
+ * consumers, not a standalone API endpoint. Tests need direct seeding.
+ */
+export async function insertTestChatMessage(params: {
+  chatThreadId: string;
+  role: "user" | "assistant";
+  content: string | null;
+  runId?: string | null;
+}): Promise<{ id: string; createdAt: Date }> {
+  return insertChatMessage({
+    chatThreadId: params.chatThreadId,
+    role: params.role,
+    content: params.content,
+    runId: params.runId ?? null,
+  });
+}
+
+/**
+ * Get chat messages for a thread from the chat_messages table.
+ *
+ * @why-db-direct No API route returns raw chat_messages rows with
+ * run status; tests need this for assertion.
+ */
+export async function getTestChatMessagesByThread(
+  threadId: string,
+): Promise<Awaited<ReturnType<typeof getMessagesByThreadId>>> {
+  return getMessagesByThreadId(threadId);
+}
+
+/**
+ * Link a run to a chat thread by inserting chat messages (user + assistant placeholder).
+ *
+ * @why-db-direct Run-to-thread linking happens inside the chat messages
+ * API route during run dispatch. Tests need direct seeding for isolated setup.
+ */
+export async function addTestRunToThread(
+  threadId: string,
+  runId: string,
+  _userId: string,
+  prompt?: string,
+): Promise<void> {
+  await insertChatMessage({
+    chatThreadId: threadId,
+    role: "user",
+    content: prompt ?? "test prompt",
+    runId: null,
+  });
+  await insertChatMessage({
+    chatThreadId: threadId,
+    role: "assistant",
+    content: null,
+    runId,
+  });
+}
+
+/**
+ * Insert event-backed assistant messages for a run.
+ *
+ * @why-db-direct Event-backed messages are inserted by the chat-assistant
+ * event consumer, not an API endpoint. Tests need direct seeding.
+ */
+export async function insertTestAssistantEventMessages(
+  runId: string,
+  threadId: string,
+  items: { sequenceNumber: number; content: string }[],
+): Promise<number> {
+  return insertAssistantEventMessages(runId, threadId, items);
+}
+
+/**
+ * Update an assistant placeholder message with content/error from the run callback.
+ *
+ * @why-db-direct Placeholder updates happen inside the chat callback
+ * route handler. Tests need direct seeding for setup.
+ */
+export async function updateTestAssistantMessageByRunId(
+  runId: string,
+  content: string | null,
+  error: string | undefined,
+): Promise<void> {
+  return updateAssistantMessageByRunId(runId, content, error);
 }

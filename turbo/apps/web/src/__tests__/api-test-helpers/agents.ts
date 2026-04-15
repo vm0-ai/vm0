@@ -1,9 +1,4 @@
 import { updateChatThreadTitle } from "../../lib/zero/chat-thread";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Test helper: service access needed for test data setup
-import {
-  insertChatMessage,
-  getMessagesByThreadId,
-} from "../../lib/zero/chat-thread/chat-message-service";
 import { POST as createComposeRoute } from "../../../app/api/agent/composes/route";
 import { POST as upsertOrgModelProviderRoute } from "../../../app/api/zero/model-providers/route";
 import {
@@ -30,6 +25,11 @@ export {
   insertTestAgentSessionWithMessages,
   appendTestChatMessages,
   insertTestChatThread,
+  insertTestChatMessage,
+  getTestChatMessagesByThread,
+  addTestRunToThread,
+  insertTestAssistantEventMessages,
+  updateTestAssistantMessageByRunId,
 } from "../db-test-seeders/agents";
 
 export {
@@ -167,61 +167,6 @@ export async function createTestOrgMultiAuthModelProvider(
   }
   const data = await response.json();
   return data.provider;
-}
-
-// ---------------------------------------------------------------------------
-// Service wrappers.
-//
-// These wrap internal service functions and are valid API-level helpers.
-// ---------------------------------------------------------------------------
-
-/**
- * Link a run to a chat thread by inserting chat messages (user + assistant placeholder).
- */
-export async function addTestRunToThread(
-  threadId: string,
-  runId: string,
-  _userId: string,
-  prompt?: string,
-): Promise<void> {
-  await insertChatMessage({
-    chatThreadId: threadId,
-    role: "user",
-    content: prompt ?? "test prompt",
-    runId: null,
-  });
-  await insertChatMessage({
-    chatThreadId: threadId,
-    role: "assistant",
-    content: null,
-    runId,
-  });
-}
-
-/**
- * Get chat messages for a thread from the chat_messages table.
- */
-export async function getTestChatMessagesByThread(
-  threadId: string,
-): Promise<Awaited<ReturnType<typeof getMessagesByThreadId>>> {
-  return getMessagesByThreadId(threadId);
-}
-
-/**
- * Insert a chat message directly into the chat_messages table.
- */
-export async function insertTestChatMessage(params: {
-  chatThreadId: string;
-  role: "user" | "assistant";
-  content: string | null;
-  runId?: string | null;
-}): Promise<{ id: string; createdAt: Date }> {
-  return insertChatMessage({
-    chatThreadId: params.chatThreadId,
-    role: params.role,
-    content: params.content,
-    runId: params.runId ?? null,
-  });
 }
 
 /**
