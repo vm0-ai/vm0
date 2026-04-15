@@ -3,16 +3,16 @@
 import base64
 from unittest.mock import MagicMock
 
-from mitm_addon import (
-    _STREAM_BUFFER_LIMIT,
-    _add_capture_fields,
+from body_utils import (
+    STREAM_BUFFER_LIMIT,
     _encode_body,
-    _extract_usage_from_json,
     _is_sensitive_header,
     _is_text_content,
     _redact_headers,
     _truncate_bytes_utf8_safe,
+    add_capture_fields,
 )
+from usage import extract_usage_from_json
 
 
 class TestIsTextContent:
@@ -202,7 +202,7 @@ class TestAddCaptureFields:
     def test_captures_request_body(self):
         flow = self._make_flow(request_body=b'{"prompt": "hello"}')
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["request_body"] == '{"prompt": "hello"}'
         assert entry["request_body_encoding"] == "utf-8"
         assert "request_body_truncated" not in entry
@@ -210,14 +210,14 @@ class TestAddCaptureFields:
     def test_captures_response_body(self):
         flow = self._make_flow(response_body=b'{"result": "ok"}')
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "ok"}'
         assert entry["response_body_encoding"] == "utf-8"
 
     def test_captures_request_headers(self):
         flow = self._make_flow()
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "request_headers" in entry
         assert entry["request_headers"]["Content-Type"] == "application/json"
         assert entry["request_headers"]["Host"] == "api.example.com"
@@ -225,7 +225,7 @@ class TestAddCaptureFields:
     def test_captures_response_headers(self):
         flow = self._make_flow()
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "response_headers" in entry
         assert entry["response_headers"]["Content-Type"] == "application/json"
         assert entry["response_headers"]["X-Request-Id"] == "req-123"
@@ -238,7 +238,7 @@ class TestAddCaptureFields:
             else iter([])
         )
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_headers"]["Set-Cookie"] == "***"
         assert entry["response_headers"]["Content-Type"] == "text/html"
 
@@ -246,31 +246,31 @@ class TestAddCaptureFields:
         flow = self._make_flow()
         flow.response = None
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "response_headers" not in entry
 
     def test_truncates_large_request_body(self):
-        body = b"x" * (_STREAM_BUFFER_LIMIT + 1000)
+        body = b"x" * (STREAM_BUFFER_LIMIT + 1000)
         flow = self._make_flow(request_body=body, request_ct="text/plain")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["request_body_truncated"] is True
-        assert len(entry["request_body"]) == _STREAM_BUFFER_LIMIT
+        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
 
     def test_truncates_large_response_body(self):
-        body = b"y" * (_STREAM_BUFFER_LIMIT + 1000)
+        body = b"y" * (STREAM_BUFFER_LIMIT + 1000)
         flow = self._make_flow(response_body=body, response_ct="text/plain")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body_truncated"] is True
-        assert len(entry["response_body"]) == _STREAM_BUFFER_LIMIT
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
 
     def test_no_body_fields_when_empty(self):
         flow = self._make_flow(request_body=None, response_body=None)
         # response.content is None
         flow.response.content = None
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "request_body" not in entry
         assert "request_body_encoding" not in entry  # no body = no encoding
         assert "response_body" not in entry
@@ -287,7 +287,7 @@ class TestAddCaptureFields:
             lambda self: (_ for _ in ()).throw(zlib.error("decompression failed"))
         )
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "request_body" in entry  # request body still captured
         assert "response_headers" in entry  # headers captured before body access
         assert "response_body" not in entry  # response body skipped
@@ -296,7 +296,7 @@ class TestAddCaptureFields:
     def test_binary_request_body_marks_encoding(self):
         flow = self._make_flow(request_body=b"\x89PNG\r\n", request_ct="image/png")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "request_body" not in entry
         assert entry["request_body_encoding"] == "binary"
         assert "request_headers" in entry  # headers still captured
@@ -306,25 +306,25 @@ class TestAddCaptureFields:
             response_body=b"\x00\x01\x02", response_ct="application/octet-stream"
         )
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "response_body" not in entry
         assert entry["response_body_encoding"] == "binary"
 
     def test_request_body_exactly_at_limit_not_truncated(self):
-        body = b"x" * _STREAM_BUFFER_LIMIT
+        body = b"x" * STREAM_BUFFER_LIMIT
         flow = self._make_flow(request_body=body, request_ct="text/plain")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "request_body_truncated" not in entry
-        assert len(entry["request_body"]) == _STREAM_BUFFER_LIMIT
+        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
 
     def test_response_body_exactly_at_limit_not_truncated(self):
-        body = b"y" * _STREAM_BUFFER_LIMIT
+        body = b"y" * STREAM_BUFFER_LIMIT
         flow = self._make_flow(response_body=body, response_ct="text/plain")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "response_body_truncated" not in entry
-        assert len(entry["response_body"]) == _STREAM_BUFFER_LIMIT
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
 
     def test_duplicate_headers_keeps_first(self):
         headers = MagicMock()
@@ -339,15 +339,15 @@ class TestAddCaptureFields:
         assert len(result) == 2
 
     def test_truncation_preserves_utf8_boundary(self):
-        # Body is _STREAM_BUFFER_LIMIT + a 3-byte char "€" (\xe2\x82\xac)
-        body = b"x" * _STREAM_BUFFER_LIMIT + "\u20ac".encode("utf-8")
+        # Body is STREAM_BUFFER_LIMIT + a 3-byte char "€" (\xe2\x82\xac)
+        body = b"x" * STREAM_BUFFER_LIMIT + "\u20ac".encode("utf-8")
         flow = self._make_flow(request_body=body, request_ct="text/plain")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["request_body_truncated"] is True
         # Should be valid UTF-8 (truncated at char boundary, not mid-char)
         assert entry["request_body_encoding"] == "utf-8"
-        assert len(entry["request_body"]) == _STREAM_BUFFER_LIMIT  # all ASCII before the €
+        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT  # all ASCII before the €
 
     def test_text_request_with_binary_response(self):
         flow = self._make_flow(
@@ -357,7 +357,7 @@ class TestAddCaptureFields:
             response_ct="image/png",
         )
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["request_body"] == '{"q": "test"}'
         assert "response_body" not in entry
         assert entry["response_body_encoding"] == "binary"
@@ -370,7 +370,7 @@ class TestAddCaptureFields:
             response_ct="application/gzip",
         )
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "request_body" not in entry
         assert entry["request_body_encoding"] == "binary"
         assert "response_body" not in entry
@@ -384,7 +384,7 @@ class TestAddCaptureFields:
             response_body=b'{"a": "result"}',
         )
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["request_body"] == '{"q": "test"}'
         assert entry["response_body"] == '{"a": "result"}'
         assert entry["request_headers"]["Host"] == "api.example.com"
@@ -396,7 +396,7 @@ class TestAddCaptureFields:
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {"truncated": False}
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"streamed": true}'
         assert entry["response_body_encoding"] == "utf-8"
         assert "response_body_truncated" not in entry
@@ -407,19 +407,19 @@ class TestAddCaptureFields:
         flow.metadata["stream_buffer"] = bytearray()
         flow.metadata["stream_buffer_state"] = {"truncated": False}
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "response_body" not in entry
         assert "response_body_encoding" not in entry
         assert "response_headers" in entry  # headers still captured
 
     def test_stream_buffer_truncated_marks_truncation(self):
         """When stream_buffer was truncated, response_body_truncated should be set."""
-        body = b"x" * _STREAM_BUFFER_LIMIT
+        body = b"x" * STREAM_BUFFER_LIMIT
         flow = self._make_flow()
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {"truncated": True}
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body_truncated"] is True
 
     def test_stream_buffer_gzip_decompressed(self):
@@ -435,13 +435,13 @@ class TestAddCaptureFields:
         flow.metadata["stream_buffer"] = bytearray(compressed)
         flow.metadata["stream_buffer_state"] = {"truncated": False}
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "ok"}'
         assert entry["response_body_encoding"] == "utf-8"
 
 
 class TestDecompression:
-    """Integration tests for decompression through _add_capture_fields."""
+    """Integration tests for decompression through add_capture_fields."""
 
     def _make_flow_with_compressed_buffer(self, data, encoding, content_type="application/json"):
         flow = MagicMock()
@@ -468,13 +468,13 @@ class TestDecompression:
     def test_no_encoding_captures_plain_text(self):
         flow = self._make_flow_with_compressed_buffer(b'{"ok": true}', "")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"ok": true}'
 
     def test_identity_encoding_captures_body(self):
         flow = self._make_flow_with_compressed_buffer(b'{"ok": true}', "identity")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"ok": true}'
 
     def test_gzip_decompressed(self):
@@ -483,7 +483,7 @@ class TestDecompression:
         original = b'{"result": "hello world"}'
         flow = self._make_flow_with_compressed_buffer(gzip.compress(original), "gzip")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "hello world"}'
         assert entry["response_body_encoding"] == "utf-8"
 
@@ -493,7 +493,7 @@ class TestDecompression:
         original = b'{"result": "hello world"}'
         flow = self._make_flow_with_compressed_buffer(zlib.compress(original), "deflate")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "hello world"}'
 
     def test_brotli_decompressed(self):
@@ -502,7 +502,7 @@ class TestDecompression:
         original = b'{"result": "hello world"}'
         flow = self._make_flow_with_compressed_buffer(brotli.compress(original), "br")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "hello world"}'
 
     def test_zstd_decompressed(self):
@@ -512,7 +512,7 @@ class TestDecompression:
         compressed = zstandard.ZstdCompressor().compress(original)
         flow = self._make_flow_with_compressed_buffer(compressed, "zstd")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "hello world"}'
 
     def test_invalid_gzip_marks_binary(self):
@@ -521,7 +521,7 @@ class TestDecompression:
             b"not gzip at all", "gzip", content_type="text/plain"
         )
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         # Original compressed bytes are not valid UTF-8 text, but this happens
         # to be valid UTF-8 so it gets captured as-is
         assert "response_body" in entry
@@ -530,7 +530,7 @@ class TestDecompression:
     def test_unknown_encoding_passes_through(self):
         flow = self._make_flow_with_compressed_buffer(b'{"ok": true}', "x-custom")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"ok": true}'
 
     def test_truncated_gzip_partial_decompress(self):
@@ -543,7 +543,7 @@ class TestDecompression:
         flow = self._make_flow_with_compressed_buffer(truncated, "gzip", "text/plain")
         flow.metadata["stream_buffer_state"]["truncated"] = True
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert "response_body" in entry
         assert entry["response_body_truncated"] is True
 
@@ -555,12 +555,12 @@ class TestDecompression:
         original = b"\x00" * (1024 * 1024)
         compressed = gzip.compress(original)
         # Compressed data fits in buffer limit
-        assert len(compressed) < _STREAM_BUFFER_LIMIT
+        assert len(compressed) < STREAM_BUFFER_LIMIT
         flow = self._make_flow_with_compressed_buffer(compressed, "gzip", "text/plain")
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         # Body should be capped, not 1MB
-        assert len(entry.get("response_body", "")) <= _STREAM_BUFFER_LIMIT
+        assert len(entry.get("response_body", "")) <= STREAM_BUFFER_LIMIT
 
     def test_truncated_brotli_falls_back(self):
         """Truncated brotli data should fall back gracefully."""
@@ -572,7 +572,7 @@ class TestDecompression:
         flow = self._make_flow_with_compressed_buffer(truncated, "br", "text/plain")
         flow.metadata["stream_buffer_state"]["truncated"] = True
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         # Should not crash; body is either partial decompressed or original
         assert entry.get("response_body_truncated") is True or "response_body" not in entry
 
@@ -586,16 +586,16 @@ class TestDecompression:
         flow = self._make_flow_with_compressed_buffer(truncated, "zstd", "text/plain")
         flow.metadata["stream_buffer_state"]["truncated"] = True
         entry = {}
-        _add_capture_fields(flow, entry)
+        add_capture_fields(flow, entry)
         assert entry.get("response_body_truncated") is True or "response_body" not in entry
 
 
 class TestExtractUsageFromJson:
-    """Tests for _extract_usage_from_json helper."""
+    """Tests for extract_usage_from_json helper."""
 
     def test_extracts_model_and_tokens(self):
         body = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":500}}'
-        result = _extract_usage_from_json(body, None)
+        result = extract_usage_from_json(body, None)
         assert result == {
             "model": "claude-sonnet-4-6",
             "input_tokens": 100,
@@ -608,7 +608,7 @@ class TestExtractUsageFromJson:
             b'{"input_tokens":10,"output_tokens":5,'
             b'"cache_read_input_tokens":50,"cache_creation_input_tokens":0}}'
         )
-        result = _extract_usage_from_json(body, None)
+        result = extract_usage_from_json(body, None)
         assert result["cache_read_input_tokens"] == 50
         assert result["cache_creation_input_tokens"] == 0
 
@@ -619,18 +619,18 @@ class TestExtractUsageFromJson:
         compressed = gzip.compress(original)
         headers = MagicMock()
         headers.get = lambda k, d="": "gzip" if k == "content-encoding" else d
-        result = _extract_usage_from_json(compressed, headers)
+        result = extract_usage_from_json(compressed, headers)
         assert result["model"] == "test"
         assert result["input_tokens"] == 42
 
     def test_invalid_json_returns_none(self):
-        assert _extract_usage_from_json(b"not json", None) is None
+        assert extract_usage_from_json(b"not json", None) is None
 
     def test_no_usage_field_returns_none(self):
-        assert _extract_usage_from_json(b'{"id":"msg_1"}', None) is None
+        assert extract_usage_from_json(b'{"id":"msg_1"}', None) is None
 
     def test_non_dict_returns_none(self):
-        assert _extract_usage_from_json(b"[1,2,3]", None) is None
+        assert extract_usage_from_json(b"[1,2,3]", None) is None
 
     def test_extracts_web_search_requests(self):
         body = (
@@ -638,6 +638,6 @@ class TestExtractUsageFromJson:
             b'{"input_tokens":10,"output_tokens":5,'
             b'"server_tool_use":{"web_search_requests":2}}}'
         )
-        result = _extract_usage_from_json(body, None)
+        result = extract_usage_from_json(body, None)
         assert result["web_search_requests"] == 2
         assert result["input_tokens"] == 10

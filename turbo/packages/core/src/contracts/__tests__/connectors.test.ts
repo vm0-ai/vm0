@@ -237,16 +237,15 @@ describe("getConnectorProvidedSecretNames", () => {
 });
 
 describe("getConnectorOAuthConfig - google-meet scopes", () => {
-  it("uses meetings.conferencerecords.readonly (not meetings.space.readonly) for conference record access", () => {
+  it("uses meetings.space.readonly for google meet oauth scopes", () => {
     const config = getConnectorOAuthConfig("google-meet");
     expect(config).not.toBeNull();
     const scopes = config!.scopes;
     expect(scopes).toContain(
-      "https://www.googleapis.com/auth/meetings.conferencerecords.readonly",
-    );
-    // meetings.space.readonly only covers space metadata, not /v2/conferenceRecords/* endpoints
-    expect(scopes).not.toContain(
       "https://www.googleapis.com/auth/meetings.space.readonly",
+    );
+    expect(scopes).not.toContain(
+      "https://www.googleapis.com/auth/meetings.conferencerecords.readonly",
     );
   });
 });

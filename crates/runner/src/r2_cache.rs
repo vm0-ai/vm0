@@ -1,25 +1,26 @@
-//! R2 cache for unified `runner build` image artifacts.
+//! R2 cache for `runner build` rootfs artifacts.
 //!
 //! Single-key bundle per image hash: `runner-images/{hash}.tar.zst` in the
-//! existing `R2_USER_STORAGES_BUCKET_NAME` bucket. The 4 files from
-//! `ImagePaths::expected_files()` are packed dense (no sparse-tar handling);
-//! `cow.img` sparseness is restored on unpack via best-effort
-//! `fallocate(FALLOC_FL_PUNCH_HOLE)`.
+//! existing `R2_USER_STORAGES_BUCKET_NAME` bucket. Only rootfs.ext4 is
+//! cached in R2; snapshot files are always created locally because they
+//! contain host-specific state (page cache, kernel metadata).
 //!
 //! ## Lifecycle
 //!
-//! 1. `runner build` computes hash and checks local cache (existing logic).
+//! 1. `runner build` computes a rootfs-only hash and checks local cache.
 //! 2. On miss, after acquiring `image_lock(hash)`, it tries `try_download`.
-//! 3. On download miss, it does the local rootfs+snapshot build (existing logic).
-//! 4. After `is_image_complete()` succeeds, it calls `upload`.
+//! 3. On download hit, the caller injects the local CA into the rootfs and
+//!    creates a snapshot locally.
+//! 4. On download miss, it does the local rootfs build, then `upload`s the
+//!    rootfs, then creates a snapshot locally.
 //!
 //! Atomicity guarantees:
 //! - Multipart upload is atomic from consumer POV (object only appears after
 //!   `CompleteMultipartUpload`); abandoned segments are auto-cleaned by R2's
 //!   default 7-day lifecycle.
 //! - Download unpacks into a `{hash}.tmp/` staging directory then `rename`s
-//!   to `{hash}/` — partial unpack from a crash never produces a false-positive
-//!   `is_image_complete()` hit.
+//!   to `{hash}/` — partial unpack from a crash never produces a directory
+//!   that looks like a successful download.
 //!
 //! Configuration semantics: `from_env` returns `Ok(None)` only when **all four**
 //! `R2_*` env vars are unset or empty (dev/test path). Setting 1-3 of 4 is a
@@ -81,17 +82,17 @@
 //!
 //! ## Corrupt-object eviction
 //!
-//! A structurally-valid archive whose extracted content fails
-//! `is_image_complete` (e.g. uploaded by an old/buggy producer, or
-//! attacker-controlled IAM key writing a bogus tar to a predicted hash
-//! key) would otherwise dead-lock the fleet's cache for that hash: every
-//! host downloads → unpacks → fails completeness → rebuilds locally →
-//! `upload`'s `exists()` dedup-skips → the bad object stays, forever.
+//! A structurally-valid archive whose extracted content lacks rootfs.ext4
+//! (e.g. uploaded by an old/buggy producer, or attacker-controlled IAM
+//! key writing a bogus tar to a predicted hash key) would otherwise
+//! dead-lock the fleet's cache for that hash: every host downloads →
+//! unpacks → finds no rootfs → rebuilds locally → `upload`'s `exists()`
+//! dedup-skips → the bad object stays, forever.
 //!
 //! `cmd::build::run_build` defends by passing `force = true` to `upload`
-//! whenever it observes "download Ok(true) but is_image_complete=false".
-//! That bypasses the dedup check and atomically overwrites the bad object
-//! in a single PUT — robust against `s3:DeleteObject` permission being
+//! whenever it observes "download Ok(true) but rootfs missing". That
+//! bypasses the dedup check and atomically overwrites the bad object in
+//! a single PUT — robust against `s3:DeleteObject` permission being
 //! revoked or transiently failing (which a `delete + retry-upload`
 //! sequence would not be).
 //!
@@ -102,9 +103,9 @@
 //!
 //! 1. **Path traversal (`..` components) is silently dropped**. Verified by
 //!    `unpack_rejects_path_traversal`. The malicious entry is skipped; the
-//!    staging dir ends up missing one or more expected files;
-//!    `is_image_complete()` (in `cmd::build`) rejects the partial result; the
-//!    caller falls back to local build. Safe.
+//!    staging dir ends up missing rootfs.ext4; the caller's post-download
+//!    check (rootfs presence) rejects the result and falls back to local
+//!    build. Safe.
 //!
 //! 2. **Symlink and hardlink entries are rejected**. `unpack_from_reader`
 //!    iterates entries and rejects any whose type is not `Regular`,
@@ -112,13 +113,15 @@
 //!    devices, FIFOs, and extended-header pseudo-entries all cause an
 //!    immediate error, preventing an attacker with R2 write access from
 //!    crafting a tar where expected filenames are symlinks to host paths.
-//!    (`GNUSparse` is allowed because `cow.img` is a sparse file and
-//!    `tar::Builder` uses this entry type for it.)
+//!    (`GNUSparse` is retained for forward compatibility with any future
+//!    sparse file in the archive; rootfs.ext4 itself is packed as a
+//!    regular file.)
 //!
-//! **Maintenance note**: `is_image_complete()` is the structural check that
-//! catches case (1). If you add a new file to the image, you MUST extend
-//! `is_image_complete()` accordingly — otherwise an attacker-controlled tar
-//! that omits the new file would still pass the completeness check.
+//! **Maintenance note**: the caller (`cmd::build::run_build`) checks
+//! rootfs presence after download and sets `force_reupload = true` if it
+//! is missing. If you add a new file to the R2 archive, you MUST extend
+//! that check accordingly — otherwise an attacker-controlled tar that
+//! omits the new file would go undetected.
 
 use std::path::{Path, PathBuf};
 
@@ -256,8 +259,8 @@ impl R2ImageCache {
 
     /// Try to download `runner-images/{hash}.tar.zst`, streaming directly
     /// through zstd decode + tar unpack into a sibling staging directory,
-    /// then best-effort sparse-restore `cow.img`, then atomic rename to
-    /// `final_dir`. No temp file — bounded memory regardless of image size.
+    /// then atomic rename to `final_dir`. No temp file — bounded memory
+    /// regardless of image size.
     ///
     /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
     /// outer call sites (CI/systemd) bound total wall time.
@@ -313,11 +316,11 @@ impl R2ImageCache {
     ///
     /// **`force = true`**: skip the dedup check and always upload, atomically
     /// replacing whatever is currently at the key. Used by `cmd::build` after
-    /// detecting a corrupt prior upload (download succeeded but
-    /// `is_image_complete` failed). Going through `delete + dedup-upload`
-    /// would deadlock the fleet's cache if `DeleteObject` permission is
-    /// missing or transiently failing — `force` is a single-round-trip atomic
-    /// overwrite that doesn't depend on `s3:DeleteObject`.
+    /// detecting a corrupt prior upload (download succeeded but rootfs.ext4
+    /// is missing). Going through `delete + dedup-upload` would deadlock the
+    /// fleet's cache if `DeleteObject` permission is missing or transiently
+    /// failing — `force` is a single-round-trip atomic overwrite that doesn't
+    /// depend on `s3:DeleteObject`.
     ///
     /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
     /// outer call sites (CI/systemd) bound total wall time.
@@ -702,8 +705,9 @@ fn zstd_workers() -> u32 {
 /// GNU sparse file (symlinks, hardlinks, devices, etc.). An attacker with
 /// R2 write access
 /// could otherwise craft a tar where expected filenames are symlinks to
-/// host paths, bypassing `is_image_complete` and exposing host files to
-/// Firecracker. See module-level "Tar entry security" docs.
+/// host paths, bypassing the caller's post-download rootfs check and
+/// exposing host files to Firecracker. See module-level "Tar entry
+/// security" docs.
 fn unpack_from_reader<R: std::io::Read>(reader: R, dest: &Path) -> Result<(), R2Error> {
     let zr = zstd::stream::read::Decoder::new(reader)?;
     let mut archive = tar::Archive::new(zr);
@@ -743,31 +747,24 @@ where
     .map_err(|e| R2Error::Io(io_other(e)))?
 }
 
-/// Finish the unpack: best-effort sparse-restore `cow.img`, then atomic rename
-/// `staging` to `final_dir`. Same-parent rename is atomic on ext4/xfs.
+/// Finish the unpack: atomic rename `staging` to `final_dir`. Same-parent
+/// rename is atomic on ext4/xfs.
 async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Error> {
-    let cow = staging.join("cow.img");
-    if let Ok(meta) = tokio::fs::metadata(&cow).await {
-        let len = meta.len();
-        if len > 0 {
-            let result = tokio::task::spawn_blocking(move || punch_hole(&cow, len))
-                .await
-                .map_err(|e| R2Error::Io(io_other(e)))?;
-            if let Err(e) = result {
-                tracing::warn!("punch_hole on cow.img failed: {e}");
-            }
-        }
-    }
-
     if let Err(e) = tokio::fs::rename(staging, final_dir).await {
         // Expected recovery path: a previous `runner build` for this hash
-        // crashed after creating final_dir but before is_image_complete
-        // would pass. Wipe the stale directory and retry the rename.
+        // crashed after creating final_dir but before the build finished.
+        // Wipe the stale directory and retry the rename.
         tracing::info!(
             "{} already exists (likely stale from a partial run: {e}); replacing",
             final_dir.display()
         );
-        let _ = tokio::fs::remove_dir_all(final_dir).await;
+        if let Err(e) = tokio::fs::remove_dir_all(final_dir).await {
+            // Log but keep trying the rename — it may still succeed if the
+            // directory is empty/orphaned in a recoverable way.  EBUSY here
+            // typically indicates a stale bind mount from a crashed snapshot
+            // creation; the retry rename will then fail with the real cause.
+            tracing::warn!("remove_dir_all {}: {e}", final_dir.display());
+        }
         tokio::fs::rename(staging, final_dir).await?;
     }
     Ok(())
@@ -808,38 +805,6 @@ async fn read_full<R: tokio::io::AsyncRead + Unpin>(
             .ok_or_else(|| R2Error::Io(io_other("read offset overflow")))?;
     }
     Ok(total)
-}
-
-/// Best-effort `FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE` over the whole file.
-/// Logs and swallows EOPNOTSUPP (tmpfs); returns Err for other failures.
-fn punch_hole(path: &Path, len: u64) -> Result<(), R2Error> {
-    let f = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
-    let len_i64 = i64::try_from(len).map_err(|_| {
-        R2Error::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("file size too large for fallocate: {len}"),
-        ))
-    })?;
-    match nix::fcntl::fallocate(
-        &f,
-        nix::fcntl::FallocateFlags::FALLOC_FL_PUNCH_HOLE
-            | nix::fcntl::FallocateFlags::FALLOC_FL_KEEP_SIZE,
-        0,
-        len_i64,
-    ) {
-        Ok(()) => Ok(()),
-        Err(nix::Error::EOPNOTSUPP) => {
-            tracing::warn!(
-                "filesystem doesn't support FALLOC_FL_PUNCH_HOLE; cow.img will remain dense \
-                 ({len} bytes on disk)"
-            );
-            Ok(())
-        }
-        Err(e) => Err(R2Error::Io(std::io::Error::other(e.to_string()))),
-    }
 }
 
 #[cfg(test)]
@@ -1108,45 +1073,13 @@ mod tests {
 
     // ---- pack / unpack round-trip --------------------------------------
 
-    /// Write the four canonical image files into `dir` with the same byte
-    /// content for both packing and verification. cow.img is sparse (16 MiB
-    /// logical, only first 1 MiB written).
+    /// Write the rootfs file (the only file cached in R2) into `dir`.
     async fn write_mock_image_files(dir: &Path) -> Vec<PathBuf> {
         let rootfs = dir.join("rootfs.ext4");
-        let snapshot = dir.join("snapshot.bin");
-        let memory = dir.join("memory.bin");
-        let cow = dir.join("cow.img");
-
-        // Distinct content per file so cross-contamination shows up as a diff.
         tokio::fs::write(&rootfs, b"rootfs-content".repeat(1024))
             .await
             .unwrap();
-        tokio::fs::write(&snapshot, b"snapshot-bin").await.unwrap();
-        tokio::fs::write(&memory, vec![0u8; 4 * 1024 * 1024])
-            .await
-            .unwrap();
-
-        // Sparse cow.img: 16 MiB logical, 1 MiB at the front.
-        let cow_file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&cow)
-            .unwrap();
-        cow_file.set_len(16 * 1024 * 1024).unwrap();
-        drop(cow_file);
-        tokio::fs::write(&cow, vec![0xAB; 1024 * 1024])
-            .await
-            .unwrap();
-        // Re-truncate to logical size after writing data — write() truncates.
-        std::fs::OpenOptions::new()
-            .write(true)
-            .open(&cow)
-            .unwrap()
-            .set_len(16 * 1024 * 1024)
-            .unwrap();
-
-        vec![rootfs, snapshot, memory, cow]
+        vec![rootfs]
     }
 
     /// Helper: full atomic unpack from an on-disk archive (test-only path).
@@ -1164,7 +1097,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pack_then_unpack_round_trips_4_files() {
+    async fn pack_then_unpack_round_trips_rootfs() {
         let src_dir = tempfile::tempdir().unwrap();
         let dst_root = tempfile::tempdir().unwrap();
         let final_dir = dst_root.path().join("hash-abc");
@@ -1186,19 +1119,12 @@ mod tests {
             .await
             .unwrap();
 
-        // All 4 file names exist and round-trip the prefix bytes.
-        for name in ["rootfs.ext4", "snapshot.bin", "memory.bin", "cow.img"] {
-            let dst = final_dir.join(name);
-            let src = src_dir.path().join(name);
-            assert!(dst.exists(), "{name} should exist after unpack");
-            let dst_meta = std::fs::metadata(&dst).unwrap();
-            let src_meta = std::fs::metadata(&src).unwrap();
-            assert_eq!(
-                dst_meta.len(),
-                src_meta.len(),
-                "{name} logical size mismatch"
-            );
-        }
+        let dst = final_dir.join("rootfs.ext4");
+        let src = src_dir.path().join("rootfs.ext4");
+        assert!(dst.exists(), "rootfs.ext4 should exist after unpack");
+        let dst_meta = std::fs::metadata(&dst).unwrap();
+        let src_meta = std::fs::metadata(&src).unwrap();
+        assert_eq!(dst_meta.len(), src_meta.len(), "rootfs size mismatch");
 
         // Staging directory should no longer exist after the rename.
         assert!(!staging_dir(&final_dir).exists());
@@ -1448,34 +1374,9 @@ mod tests {
         assert_unpack_rejects_typeflag(b'1', b"/etc/passwd").await;
     }
 
-    /// `finalize_staging` skips `punch_hole` when `cow.img` is empty (size=0).
-    /// Different branch from `finalize_works_without_cow_img` — there the
-    /// file is absent; here it exists with zero length. Both must succeed
-    /// without invoking the fallocate syscall (which is undefined for len=0).
+    /// `finalize_staging` performs the atomic rename for a rootfs-only archive.
     #[tokio::test]
-    async fn finalize_skips_punch_hole_on_zero_byte_cow() {
-        let dst_root = tempfile::tempdir().unwrap();
-        let final_dir = dst_root.path().join("hash");
-        let staging = staging_dir(&final_dir);
-        tokio::fs::create_dir_all(&staging).await.unwrap();
-        tokio::fs::write(staging.join("cow.img"), b"")
-            .await
-            .unwrap();
-        tokio::fs::write(staging.join("rootfs.ext4"), b"data")
-            .await
-            .unwrap();
-
-        finalize_staging(&staging, &final_dir).await.unwrap();
-
-        let cow_meta = std::fs::metadata(final_dir.join("cow.img")).unwrap();
-        assert_eq!(cow_meta.len(), 0, "0-byte cow.img preserved as-is");
-        assert!(!staging.exists(), "staging consumed by rename");
-    }
-
-    /// `finalize_staging` skips `punch_hole` cleanly when `cow.img` is absent.
-    /// Defends against future producers that ship without cow.img.
-    #[tokio::test]
-    async fn finalize_works_without_cow_img() {
+    async fn finalize_renames_rootfs_only_staging() {
         let dst_root = tempfile::tempdir().unwrap();
         let final_dir = dst_root.path().join("hash");
         let staging = staging_dir(&final_dir);
@@ -1483,13 +1384,11 @@ mod tests {
         tokio::fs::write(staging.join("rootfs.ext4"), b"data")
             .await
             .unwrap();
-        // Intentionally: no cow.img.
 
         finalize_staging(&staging, &final_dir).await.unwrap();
 
         assert!(final_dir.exists());
         assert!(final_dir.join("rootfs.ext4").exists());
-        assert!(!final_dir.join("cow.img").exists());
         assert!(!staging.exists(), "staging consumed by rename");
     }
 
@@ -1575,8 +1474,8 @@ mod tests {
 
     /// Empty file list: pack succeeds and produces a valid (empty) tar.zst.
     /// Round-trip unpack gives an empty `final_dir`. This is degenerate but
-    /// must not panic — it's the canary for `is_image_complete()` invariants
-    /// changing in the future.
+    /// must not panic — it's the canary for the caller's post-download
+    /// completeness check (currently: rootfs.ext4 presence) to catch.
     #[tokio::test]
     async fn pack_unpack_empty_files_list() {
         let archive = tempfile::NamedTempFile::new().unwrap();
@@ -1654,9 +1553,10 @@ mod tests {
     }
 
     /// `force = true` MUST NOT call `head_object` — the corrupt-eviction
-    /// contract: after detecting a bad object via `is_image_complete=false`,
-    /// the caller relies on `upload(_, _, true)` to force-overwrite without
-    /// re-checking existence (which would still say "exists, skip").
+    /// contract: after detecting a bad object (download succeeded but
+    /// rootfs.ext4 missing), the caller relies on `upload(_, _, true)` to
+    /// force-overwrite without re-checking existence (which would still
+    /// say "exists, skip").
     #[tokio::test]
     async fn upload_force_true_bypasses_exists_check() {
         use aws_sdk_s3::Client;

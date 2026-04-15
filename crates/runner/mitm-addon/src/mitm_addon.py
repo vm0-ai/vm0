@@ -9,27 +9,29 @@ This addon runs on the runner HOST (not inside VMs) and:
 4. Logs network activity per-run to JSONL files
 """
 
-import base64
 import json
 import os
 import time
-import urllib.error
 import urllib.parse
-import zlib
-from concurrent.futures import ThreadPoolExecutor
 
-import brotli  # type: ignore[import-untyped]
-import zstandard
 from mitmproxy import ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
 
-# --- Sub-module imports (only symbols used in this file's own code) ---
+# --- Sub-module imports ---
+#
+# Usage/body_utils are imported by module (not selective `from X import ...`)
+# so that:
+#   1. Cross-module calls read as ``usage.X(...)`` / ``body_utils.X(...)``,
+#      making the module boundary visible at call sites.
+#   2. Tests can patch ``usage.name`` / ``body_utils.name`` in one place and
+#      it affects both direct callers in those modules and handler callers
+#      here — no mock-placement pitfalls.
+import body_utils
+import usage
 from auth import (
     _firewall_header_cache,
-    _opener,
     evict_stale_cache_keys,
     handle_firewall_request,
-    make_api_request,
 )
 from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
 from matching import FirewallAllow, FirewallBlock, match_firewall_request
@@ -240,264 +242,9 @@ async def request(flow: http.HTTPFlow) -> None:
     flow.metadata["firewall_action"] = "ALLOW"
 
 
-_STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
-
-
-# ---------------------------------------------------------------------------
-# Proxy-side usage extraction (for billing verification)
-# ---------------------------------------------------------------------------
-
-# Only extract known billing fields to avoid capturing unrelated numerics.
-_BILLING_FIELDS = frozenset(
-    (
-        "input_tokens",
-        "output_tokens",
-        "cache_read_input_tokens",
-        "cache_creation_input_tokens",
-    )
-)
-
-
-def _extract_billing_usage(raw_usage, target: dict) -> None:
-    """Extract known billing fields from an Anthropic usage object into *target*.
-
-    Handles both flat fields (input_tokens, etc.) and the nested
-    ``server_tool_use.web_search_requests`` field.
-
-    Only positive values overwrite existing entries — ``message_delta`` may
-    send ``0`` for fields already set correctly by ``message_start``.
-    """
-    if not raw_usage or not isinstance(raw_usage, dict):
-        return
-    for k, v in raw_usage.items():
-        if k in _BILLING_FIELDS and isinstance(v, (int, float)):
-            if v > 0 or k not in target:
-                target[k] = v
-    stu = raw_usage.get("server_tool_use")
-    if isinstance(stu, dict):
-        wsr = stu.get("web_search_requests")
-        if isinstance(wsr, (int, float)):
-            if wsr > 0 or "web_search_requests" not in target:
-                target["web_search_requests"] = wsr
-
-
-def _create_sse_usage_extractor():
-    """Create an incremental SSE parser that extracts usage from Anthropic API streams.
-
-    All model providers in this system use the Anthropic Messages API streaming
-    format.  Usage data appears in two SSE events:
-
-    - ``message_start`` — ``message.usage`` contains input token counts and
-      ``message.model`` identifies the model.
-    - ``message_delta`` — ``usage`` contains the final ``output_tokens`` count.
-
-    Returns ``(parse_chunk, usage)`` where *parse_chunk* processes raw bytes
-    incrementally and *usage* is a dict that accumulates extracted fields.
-    """
-    usage: dict = {}
-    line_buf = bytearray()
-    event_type = {"current": None}
-    # Events we need to parse — all others are skipped to avoid buffering
-    # large content_block_delta payloads.
-    _usage_events = frozenset(("message_start", "message_delta"))
-    # When True, discard incoming bytes until the next empty line (event
-    # boundary) to avoid buffering irrelevant data lines.
-    skipping = {"active": False}
-
-    def parse_chunk(chunk: bytes) -> None:
-        # In skip mode, scan for event boundary (empty line) without
-        # buffering the (potentially large) chunk.
-        if skipping["active"]:
-            # Look for \n\n or \r\n\r\n in existing buf + new chunk.
-            combined = line_buf + chunk
-            for sep in (b"\r\n\r\n", b"\n\n"):
-                idx = combined.find(sep)
-                if idx != -1:
-                    # Found event boundary — line_buf gets the remainder.
-                    # Do NOT extend again below; data is already in line_buf.
-                    after = idx + len(sep)
-                    line_buf[:] = combined[after:]
-                    skipping["active"] = False
-                    event_type["current"] = None
-                    break
-            else:
-                # No boundary found — discard everything except the
-                # last few bytes (could be a partial \r\n\r\n).
-                line_buf[:] = combined[-3:] if len(combined) > 3 else combined
-                return
-            # Boundary found — fall through to process line_buf contents.
-            # line_buf already has the data, so skip the extend.
-        else:
-            line_buf.extend(chunk)
-        while b"\n" in line_buf:
-            raw_line, _, remaining = line_buf.partition(b"\n")
-            line_buf[:] = remaining
-            line = raw_line.rstrip(b"\r").decode("utf-8", errors="replace")
-
-            # Blank line = event boundary.
-            if line == "":
-                event_type["current"] = None
-                skipping["active"] = False
-                continue
-
-            if skipping["active"]:
-                continue
-
-            if line.startswith("event: "):
-                evt_name = line[7:]
-                event_type["current"] = evt_name
-                if evt_name not in _usage_events:
-                    # Skip data lines of this event within line_buf.
-                    # Cross-chunk large data lines are handled by the
-                    # skip mode at the top of parse_chunk.
-                    skipping["active"] = True
-                    continue
-            elif line.startswith("data: "):
-                evt = event_type["current"]
-                if evt == "message_start":
-                    try:
-                        data = json.loads(line[6:])
-                        msg = data.get("message") or {}
-                        model = msg.get("model")
-                        if model:
-                            usage["model"] = model
-                        message_id = msg.get("id")
-                        if message_id:
-                            usage["message_id"] = message_id
-                        _extract_billing_usage(msg.get("usage"), usage)
-                    except (json.JSONDecodeError, AttributeError, TypeError):
-                        pass  # SSE data lines may be partial/malformed; best-effort extraction
-                elif evt == "message_delta":
-                    try:
-                        data = json.loads(line[6:])
-                        _extract_billing_usage(data.get("usage"), usage)
-                    except (json.JSONDecodeError, AttributeError, TypeError):
-                        pass  # SSE data lines may be partial/malformed; best-effort extraction
-
-    return parse_chunk, usage
-
-
-def _extract_usage_from_json(body: bytes, headers) -> dict | None:
-    """Extract usage from a non-streaming Anthropic API JSON response.
-
-    Falls back to decompressing the body if *headers* indicate compression.
-    Returns ``None`` when the body is not valid JSON or contains no usage.
-    """
-    if headers:
-        body = _decompress_body(body, headers)
-    try:
-        data = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    usage: dict = {}
-    model = data.get("model")
-    if model:
-        usage["model"] = model
-    _extract_billing_usage(data.get("usage"), usage)
-    if not usage:
-        return None
-    message_id = data.get("id")
-    if message_id:
-        usage["message_id"] = message_id
-    return usage
-
-
-def _do_report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
-    """POST extracted usage to the platform webhook.  Raises on failure."""
-    url = f"{api_url}/api/webhooks/agent/usage"
-    payload = json.dumps({"runId": run_id, "usage": usage}).encode()
-    req = make_api_request(url, payload, sandbox_token)
-    try:
-        resp = _opener.open(req, timeout=10)
-        resp.close()
-    except urllib.error.HTTPError as exc:
-        exc.close()  # HTTPError holds an open socket
-        raise
-
-
-def _report_usage_with_retry(
-    api_url: str,
-    sandbox_token: str,
-    run_id: str,
-    usage: dict,
-    proxy_log_path: str = "",
-    max_retries: int = 1,
-) -> None:
-    """Report usage with retry.  Swallows all exceptions after final attempt."""
-    for attempt in range(max_retries + 1):
-        try:
-            _do_report_usage(api_url, sandbox_token, run_id, usage)
-            return
-        except Exception as exc:
-            if attempt < max_retries:
-                time.sleep(0.5)
-            else:
-                log_proxy_entry(
-                    proxy_log_path,
-                    "warn",
-                    f"Usage report failed after {attempt + 1} attempts: {exc}",
-                    type="usage",
-                )
-
-
-# ---------------------------------------------------------------------------
-# Usage reporting thread pool — replaces fire-and-forget daemon threads.
-# ThreadPoolExecutor processes reports in parallel; done() flushes pending
-# items before mitmproxy exits (SIGKILL at 15 s is the hard stop).
-# ---------------------------------------------------------------------------
-
-_usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
-
-
-def _enqueue_usage(
-    api_url: str, sandbox_token: str, run_id: str, usage: dict, proxy_log_path: str = ""
-) -> None:
-    """Submit usage report to the thread pool.  Copies the dict to avoid mutation.
-
-    If the executor has already been shut down (drain/shutdown race),
-    falls back to synchronous delivery so the report is not silently lost.
-    """
-    copied = dict(usage)
-    try:
-        _usage_executor.submit(
-            _report_usage_with_retry, api_url, sandbox_token, run_id, copied, proxy_log_path
-        )
-    except RuntimeError:
-        # Executor shut down (done() already called during drain).
-        # Fall back to synchronous delivery with retry.
-        _report_usage_with_retry(api_url, sandbox_token, run_id, copied, proxy_log_path)
-
-
-def _maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
-    """Enqueue proxy-extracted usage for model provider responses if available."""
-    firewall_name = flow.metadata.get("firewall_name", "")
-    if not (firewall_name.startswith("model-provider:") and run_id):
-        return
-    proxy_usage = flow.metadata.get("proxy_usage")
-    if not proxy_usage:
-        return
-    # Fall back to flow.id when the upstream response did not carry an `id`
-    # field (non-Anthropic-shaped providers, malformed responses).  Without a
-    # stable per-flow key the server side cannot deduplicate retries, which
-    # would double-charge.  flow.id is unique per flow and stable across
-    # retries of the usage webhook (the usage dict is copied once in
-    # _enqueue_usage and reused).
-    if not proxy_usage.get("message_id"):
-        proxy_usage["message_id"] = flow.id
-    sandbox_token = flow.metadata.get("vm_sandbox_token", "")
-    api_url = get_api_url()
-    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
-    if not sandbox_token or not api_url:
-        log_proxy_entry(
-            proxy_log_path,
-            "warn",
-            "Cannot report usage: missing sandbox_token or api_url",
-            type="usage",
-        )
-        return
-    _enqueue_usage(api_url, sandbox_token, run_id, proxy_usage, proxy_log_path)
+# ============================================================================
+# HTTP Response Handlers
+# ============================================================================
 
 
 def responseheaders(flow: http.HTTPFlow) -> None:
@@ -505,7 +252,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     Enable response streaming with body buffering.
 
     Uses a callback to stream response data to the client immediately
-    while accumulating a copy in memory (up to ``_STREAM_BUFFER_LIMIT``).
+    while accumulating a copy in memory (up to ``STREAM_BUFFER_LIMIT``).
     Once the limit is exceeded, buffering stops but streaming continues
     uninterrupted.  The buffered body is available in the ``response()``
     hook via ``flow.metadata["stream_buffer"]``.
@@ -525,14 +272,14 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     if is_model_provider:
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
-            parser_fn, usage_dict = _create_sse_usage_extractor()
+            parser_fn, usage_dict = usage.create_sse_usage_extractor()
             sse_parser = parser_fn
             flow.metadata["proxy_usage"] = usage_dict
-            sse_decompressor = _create_stream_decompressor(flow.response.headers)
+            sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
 
     # Model provider responses are never truncated so usage extraction
     # always has the complete body.  Other responses use the 64 KB limit.
-    buf_limit = None if is_model_provider else _STREAM_BUFFER_LIMIT
+    buf_limit = None if is_model_provider else body_utils.STREAM_BUFFER_LIMIT
 
     def stream_and_buffer(chunk: bytes) -> bytes:
         if not state["truncated"]:
@@ -553,248 +300,6 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     flow.response.stream = stream_and_buffer
     flow.metadata["stream_buffer"] = buf
     flow.metadata["stream_buffer_state"] = state
-
-
-# ---------------------------------------------------------------------------
-# Body capture helpers (opt-in per run via captureNetworkBodies registry flag)
-# ---------------------------------------------------------------------------
-
-
-_TEXT_CONTENT_TYPES = (
-    "text/",
-    "application/json",
-    "application/xml",
-    "application/javascript",
-    "application/x-www-form-urlencoded",
-    "application/graphql",
-)
-
-# Header names containing any of these keywords (case-insensitive) are redacted.
-_SENSITIVE_HEADER_KEYWORDS = (
-    "auth",
-    "token",
-    "secret",
-    "api-key",
-    "apikey",
-    "credential",
-    "password",
-    "cookie",
-)
-
-
-def _create_stream_decompressor(headers: http.Headers):
-    """Create an incremental decompressor for streaming chunks.
-
-    Returns a callable that decompresses each chunk, maintaining state
-    across calls.  Returns None if the response is not compressed.
-    """
-    encoding = headers.get("content-encoding", "").strip().lower()
-    if not encoding or encoding == "identity":
-        return None
-    if encoding in ("gzip", "deflate"):
-        wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-        obj = zlib.decompressobj(wbits)
-
-        def decompress_zlib(chunk: bytes) -> bytes:
-            try:
-                return obj.decompress(chunk)
-            except zlib.error:
-                return b""
-
-        return decompress_zlib
-    if encoding == "br":
-        dec = brotli.Decompressor()
-
-        def decompress_br(chunk: bytes) -> bytes:
-            try:
-                return dec.process(chunk)
-            except brotli.error:
-                return b""
-
-        return decompress_br
-    if encoding == "zstd":
-        obj = zstandard.ZstdDecompressor().decompressobj()
-
-        def decompress_zstd(chunk: bytes) -> bytes:
-            try:
-                return obj.decompress(chunk)
-            except zstandard.ZstdError:
-                return b""
-
-        return decompress_zstd
-    return None
-
-
-def _decompress_body(
-    data: bytes, headers: http.Headers, max_output: int = _STREAM_BUFFER_LIMIT
-) -> bytes:
-    """Decompress response body based on Content-Encoding header.
-
-    The stream callback receives raw wire bytes.  When the server uses
-    gzip/deflate/br/zstd encoding, we must decompress before capturing.
-    Uses incremental decompression so truncated compressed data still
-    yields whatever decompressed bytes are available.
-
-    Output is capped at *max_output* bytes to guard against decompression
-    bombs (small compressed payload expanding to huge output).
-
-    Returns the original data unchanged if not compressed or on error.
-    """
-    encoding = headers.get("content-encoding", "").strip().lower()
-    if not encoding or encoding == "identity":
-        return data
-    try:
-        if encoding in ("gzip", "deflate"):
-            # wbits: gzip=16+MAX_WBITS, deflate=MAX_WBITS
-            wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-            obj = zlib.decompressobj(wbits)
-            result = obj.decompress(data, max_length=max_output)
-            return result if result else data
-        if encoding == "br":
-            dec = brotli.Decompressor()
-            result = dec.process(data)
-            return result[:max_output] if result else data
-        if encoding == "zstd":
-            obj = zstandard.ZstdDecompressor().decompressobj()
-            result = obj.decompress(data)
-            return result[:max_output] if result else data
-    except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
-        try:
-            ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
-        except AttributeError:
-            pass  # ctx.log unavailable outside mitmproxy runtime
-    return data
-
-
-def _is_text_content(content_type: str) -> bool:
-    """Check if content-type indicates text-like content worth capturing."""
-    if not content_type:
-        return True  # assume text when unspecified
-    ct = content_type.lower().split(";")[0].strip()
-    return any(ct.startswith(prefix) for prefix in _TEXT_CONTENT_TYPES)
-
-
-def _truncate_bytes_utf8_safe(data: bytes, max_size: int) -> bytes:
-    """Truncate bytes at a UTF-8 character boundary.
-
-    After slicing at *max_size*, checks whether the last character is
-    complete.  If not, removes the incomplete trailing bytes (at most 4).
-    """
-    if len(data) <= max_size:
-        return data
-    t = data[:max_size]
-    # Find the start of the last character by scanning backwards
-    # past continuation bytes (10xxxxxx = 0x80..0xBF).
-    i = len(t)
-    while i > 0 and (t[i - 1] & 0xC0) == 0x80:
-        i -= 1
-    if i == 0:
-        return t  # all continuation bytes — shouldn't happen in valid UTF-8
-    lead = t[i - 1]
-    # Determine the expected sequence length from the lead byte.
-    if lead < 0x80:
-        expected = 1
-    elif lead < 0xE0:
-        expected = 2
-    elif lead < 0xF0:
-        expected = 3
-    else:
-        expected = 4
-    # If the sequence starting at (i-1) has fewer bytes than expected,
-    # it was cut — remove the incomplete sequence.
-    actual = len(t) - (i - 1)
-    if actual < expected:
-        return t[: i - 1]
-    return t
-
-
-def _encode_body(content: bytes, content_type: str) -> tuple:
-    """Encode body content. Returns (encoded_string, encoding_type) or (None, None) for binary."""
-    if not _is_text_content(content_type):
-        return None, None  # skip binary bodies
-    try:
-        return content.decode("utf-8"), "utf-8"
-    except UnicodeDecodeError:
-        return base64.b64encode(content).decode("ascii"), "base64"
-
-
-def _is_sensitive_header(name: str) -> bool:
-    """Check if a header name likely carries sensitive data."""
-    lower = name.lower()
-    return any(kw in lower for kw in _SENSITIVE_HEADER_KEYWORDS)
-
-
-def _redact_headers(headers) -> dict:
-    """Build a dict of headers with sensitive values replaced by ***."""
-    result = {}
-    for name, value in headers.items(multi=True):
-        if name in result:
-            continue  # keep first occurrence only (headers.items gives all)
-        result[name] = "***" if _is_sensitive_header(name) else value
-    return result
-
-
-def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
-    """Add request/response headers and bodies to a log entry.
-
-    # [NETWORK_LOG_FIELDS] — capture-only fields, not part of the core schema.
-    # Fields: request_headers, request_body, request_body_encoding,
-    #         request_body_truncated, response_headers, response_body,
-    #         response_body_encoding, response_body_truncated
-    """
-    # Request headers (always available)
-    log_entry["request_headers"] = _redact_headers(flow.request.headers)
-
-    # Request body
-    if flow.request.content:
-        req_ct = flow.request.headers.get("content-type", "")
-        body = flow.request.content
-        truncated = len(body) > _STREAM_BUFFER_LIMIT
-        if truncated:
-            body = _truncate_bytes_utf8_safe(body, _STREAM_BUFFER_LIMIT)
-        encoded, encoding = _encode_body(body, req_ct)
-        if encoded is not None:
-            log_entry["request_body"] = encoded
-            log_entry["request_body_encoding"] = encoding
-            if truncated:
-                log_entry["request_body_truncated"] = True
-        else:
-            log_entry["request_body_encoding"] = "binary"
-
-    # Response headers
-    if flow.response:
-        log_entry["response_headers"] = _redact_headers(flow.response.headers)
-
-    # Response body — read from stream_buffer (available for all responses).
-    # The buffer contains raw wire bytes (possibly gzip/br/zstd compressed).
-    if flow.response:
-        stream_buf = flow.metadata.get("stream_buffer")
-        if stream_buf is not None:
-            body = _decompress_body(bytes(stream_buf), flow.response.headers)
-        else:
-            try:
-                body = flow.response.content
-            except (zlib.error, ValueError):
-                # ZlibError (decompression failure) or ValueError from mitmproxy
-                log_entry["response_body_encoding"] = "binary"
-                return
-        if not body:
-            return
-        stream_state = flow.metadata.get("stream_buffer_state")
-        res_ct = flow.response.headers.get("content-type", "")
-        # stream_buffer may already be truncated at _STREAM_BUFFER_LIMIT.
-        # Also check decompressed size in case it expanded beyond the limit.
-        truncated = (stream_state and stream_state["truncated"]) or len(body) > _STREAM_BUFFER_LIMIT
-        if truncated:
-            body = _truncate_bytes_utf8_safe(body, _STREAM_BUFFER_LIMIT)
-        encoded, encoding = _encode_body(body, res_ct)
-        if encoded is not None:
-            log_entry["response_body"] = encoded
-            log_entry["response_body_encoding"] = encoding
-            if truncated:
-                log_entry["response_body_truncated"] = True
-        else:
-            log_entry["response_body_encoding"] = "binary"
 
 
 def response(flow: http.HTTPFlow) -> None:
@@ -858,7 +363,7 @@ def response(flow: http.HTTPFlow) -> None:
 
         # Add request headers, request body, and response body when capture is enabled
         if flow.metadata.get("capture_body"):
-            _add_capture_fields(flow, log_entry)
+            body_utils.add_capture_fields(flow, log_entry)
 
         log_network_entry(network_log_path, log_entry)
 
@@ -868,13 +373,13 @@ def response(flow: http.HTTPFlow) -> None:
     if not flow.metadata.get("proxy_usage") and stream_buf and run_id:
         firewall_name = flow.metadata.get("firewall_name", "")
         if firewall_name.startswith("model-provider:"):
-            json_usage = _extract_usage_from_json(
+            json_usage = usage.extract_usage_from_json(
                 bytes(stream_buf),
                 flow.response.headers if flow.response else None,
             )
             if json_usage:
                 flow.metadata["proxy_usage"] = json_usage
-    _maybe_report_proxy_usage(flow, run_id)
+    usage.maybe_report_proxy_usage(flow, run_id)
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers
     if flow.response and flow.response.status_code == 401 and flow.metadata.get("firewall_base"):
@@ -949,7 +454,7 @@ def error(flow: http.HTTPFlow) -> None:
     # Report proxy-extracted usage for model provider responses.
     # The SSE parser may have partially populated proxy_usage before the
     # connection error occurred.  Partial data is better than none.
-    _maybe_report_proxy_usage(flow, run_id)
+    usage.maybe_report_proxy_usage(flow, run_id)
 
     log_proxy_entry(
         proxy_log_path,
@@ -972,7 +477,7 @@ def done():
     ``shutdown(wait=True)`` blocks until all submitted futures complete;
     SIGKILL is the hard stop if any report takes too long.
     """
-    _usage_executor.shutdown(wait=True)
+    usage.usage_executor.shutdown(wait=True)
 
 
 # ============================================================================

@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { playTts$, stopTts$, ttsPlayingMessageId$ } from "../voice-io-tts.ts";
+import { playTts$, stopTts$, ttsPlayingRunId$ } from "../voice-io-tts.ts";
 import { createDeferredPromise, resetSignal } from "../../utils.ts";
 
 function mockWebAudio() {
@@ -78,7 +78,7 @@ function mockTtsEndpoint() {
 describe("playTts$", () => {
   const context = testContext();
 
-  it("should not trigger a second fetch when called twice with the same messageId", async () => {
+  it("should not trigger a second fetch when called twice with the same runId", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
     const { getFetchCount } = mockTtsEndpoint();
@@ -101,7 +101,7 @@ describe("playTts$", () => {
     expect(AudioContext).toHaveBeenCalledTimes(1);
   });
 
-  it("should allow playback for a different messageId", async () => {
+  it("should allow playback for a different runId", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
     const { getFetchCount } = mockTtsEndpoint();
@@ -112,7 +112,7 @@ describe("playTts$", () => {
     expect(getFetchCount()).toBe(2);
   });
 
-  it("should reset playingMessageId on fetch failure", async () => {
+  it("should reset playingRunId on fetch failure", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
 
@@ -127,11 +127,11 @@ describe("playTts$", () => {
 
     await context.store.set(playTts$, "msg-1", "Hello world", context.signal);
 
-    const playingId = context.store.get(ttsPlayingMessageId$);
+    const playingId = context.store.get(ttsPlayingRunId$);
     expect(playingId).toBeNull();
   });
 
-  it("should reset playingMessageId after pre-aborted signal", async () => {
+  it("should reset playingRunId after pre-aborted signal", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
     mockTtsEndpoint();
@@ -140,10 +140,10 @@ describe("playTts$", () => {
       context.store.set(playTts$, "msg-1", "Hello world", AbortSignal.abort()),
     ).rejects.toThrow();
 
-    expect(context.store.get(ttsPlayingMessageId$)).toBeNull();
+    expect(context.store.get(ttsPlayingRunId$)).toBeNull();
   });
 
-  it("should reset playingMessageId after signal abort during fetch", async () => {
+  it("should reset playingRunId after signal abort during fetch", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
 
@@ -167,7 +167,7 @@ describe("playTts$", () => {
     context.store.set(pageReset$, context.signal);
 
     await expect(playPromise).rejects.toThrow();
-    expect(context.store.get(ttsPlayingMessageId$)).toBeNull();
+    expect(context.store.get(ttsPlayingRunId$)).toBeNull();
   });
 
   it("should allow replaying the same message after a previous abort", async () => {
@@ -194,7 +194,7 @@ describe("playTts$", () => {
       // expected abort
     }
 
-    expect(context.store.get(ttsPlayingMessageId$)).toBeNull();
+    expect(context.store.get(ttsPlayingRunId$)).toBeNull();
 
     // Second attempt with fresh signal — must succeed
     const { getFetchCount } = mockTtsEndpoint();
@@ -209,7 +209,7 @@ describe("playTts$", () => {
 
     await context.store.set(playTts$, "msg-4", "Hello world", context.signal);
     context.store.set(stopTts$);
-    expect(context.store.get(ttsPlayingMessageId$)).toBeNull();
+    expect(context.store.get(ttsPlayingRunId$)).toBeNull();
 
     const { getFetchCount } = mockTtsEndpoint();
     await context.store.set(playTts$, "msg-4", "Hello again", context.signal);

@@ -79,6 +79,9 @@ done
 # ---------------------------------------------------------------------------
 
 ROOTFS_FILE="rootfs.ext4"
+# [sync:ca-constants] Keep in sync with: crates/runner/scripts/inject-ca.sh
+# and verify-rootfs.sh. Enforced by the `ca_constants_in_sync_across_scripts`
+# test in cmd/build.rs at compile time.
 CA_CERT_FILE="mitmproxy-ca-cert.pem"
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 

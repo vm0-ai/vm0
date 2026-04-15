@@ -32,6 +32,9 @@ fi
 # Constants
 # ---------------------------------------------------------------------------
 
+# [sync:ca-constants] Keep in sync with: crates/runner/scripts/build-rootfs.sh
+# and inject-ca.sh. Enforced by the `ca_constants_in_sync_across_scripts`
+# test in cmd/build.rs at compile time.
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ export function AgentReplyEmail({
     <Html>
       <Head />
       <Body style={bodyStyle}>
-        <Container style={containerStyle}>
+        <Container align="left" style={containerStyle}>
           <Markdown
             markdownContainerStyles={markdownContainerStyle}
             markdownCustomStyles={markdownCustomStyles}
@@ -57,9 +57,8 @@ const bodyStyle = {
 };
 
 const containerStyle = {
-  margin: "0 auto",
+  margin: "0",
   padding: "0 24px",
-  maxWidth: "600px",
 };
 
 const markdownContainerStyle = {

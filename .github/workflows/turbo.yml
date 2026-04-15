@@ -1371,7 +1371,8 @@ jobs:
         with:
           workspaces: crates -> target
           shared-key: aarch64-musl-release
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # Read-only: crates.yml runner-build is the sole writer for this key
+          save-if: false
 
       # IMPORTANT: these compile settings (--release, default linker, no
       # custom RUSTFLAGS) must match release-please.yml so image_hash is

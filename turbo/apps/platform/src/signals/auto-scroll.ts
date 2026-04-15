@@ -20,7 +20,7 @@ export function createScrollSignals() {
   const autoScrollDisabled$ = state(false);
 
   const setScrollContainer$ = onRef(
-    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       set(internalScrollContainer$, el);
 
       let lastKnownScrollTop = el.scrollTop;
@@ -37,7 +37,16 @@ export function createScrollSignals() {
       };
 
       el.addEventListener("scroll", onScroll, { passive: true });
+
+      const resizeObserver = new ResizeObserver(() => {
+        if (!get(autoScrollDisabled$)) {
+          el.scrollTop = el.scrollHeight;
+        }
+      });
+      resizeObserver.observe(el);
+
       signal.addEventListener("abort", () => {
+        resizeObserver.disconnect();
         el.removeEventListener("scroll", onScroll);
         set(internalScrollContainer$, null);
       });

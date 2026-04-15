@@ -118,6 +118,75 @@ export const result$ = computed((get) => {
 
 This is especially relevant for signal factories: a `computed` that calls `createSomeSignals(id)` won't re-create the signals unless `id` actually changes.
 
+## Storing Function Values in State — The Updater Gotcha
+
+When you call `set(atom$, value)`, ccstate checks if `value` is a function. If it is, ccstate treats it as an **updater** — it calls `value(previousValue)` and stores the **return value**, not the function itself. This is the same convention as React's `setState(fn)`.
+
+This means **you cannot directly store a function in a `state()` atom using `set()`**. The function will be executed immediately instead of stored.
+
+### The problem
+
+```typescript
+const cleanup$ = state<(() => void) | null>(null);
+
+// ❌ BUG: ccstate calls the arrow function as an updater
+// It executes: (() => { reader.cancel(); audioCtx.close(); })(previousValue)
+// The return value (undefined) is stored, and the side effects fire immediately
+set(cleanup$, () => {
+  reader.cancel();
+  audioCtx.close();
+});
+```
+
+This is especially dangerous because:
+1. The side effects (cancel, close) execute **immediately** instead of being deferred
+2. The stored value becomes `undefined` (the return value of the arrow function), not the function
+3. There is no runtime error at the `set()` call site — the bug is silent
+
+### The fix: wrap in an updater that returns the function
+
+```typescript
+const cleanup$ = state<(() => void) | null>(null);
+
+// ✅ Outer arrow is the updater; it returns the cleanup function to store
+const cleanupFn = () => {
+  reader.cancel();
+  audioCtx.close();
+};
+set(cleanup$, () => cleanupFn);
+```
+
+The outer `() => cleanupFn` is called as the updater — it receives `previousValue` (ignored) and returns `cleanupFn`, which is then stored in the atom.
+
+### Why this happens
+
+From ccstate's core (`ccstate/core/index.js`):
+
+```javascript
+if (typeof val === 'function') {
+  var updater = val;
+  newValue = updater(previousValue);
+} else {
+  newValue = val;
+}
+```
+
+This is by design — it mirrors React's `useState` updater pattern:
+
+```typescript
+// React: setState(prev => prev + 1) — function is an updater, not the value
+// ccstate: set(count$, prev => prev + 1) — same convention
+```
+
+### When to watch out
+
+Any time a `state()` atom holds a function type:
+- `state<(() => void) | null>(null)` — cleanup callbacks
+- `state<(arg: T) => R>(defaultFn)` — configurable handlers
+- `state<Function | null>(null)` — generic function storage
+
+In all these cases, use the updater wrapper: `set(atom$, () => theFn)`.
+
 ## Reactive Async Computed vs Imperative Fetch Commands
 
 Prefer reactive `computed(async ...)` over imperative fetch-and-store commands.

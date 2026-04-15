@@ -4,6 +4,7 @@ import {
   collectKeyValue,
   isUUID,
   loadValues,
+  parseArtifact,
   parsePermissionPolicies,
   pollEvents,
   showNextSteps,
@@ -33,6 +34,10 @@ export const continueCommand = new Command()
     "Secrets for ${{ secrets.xxx }} (repeatable, falls back to --env-file or env vars)",
     collectKeyValue,
     {},
+  )
+  .option(
+    "--artifact <name[:version]>",
+    "Artifact storage (format: name or name:version)",
   )
   .option(
     "--append-system-prompt <text>",
@@ -65,6 +70,7 @@ export const continueCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
+          artifact?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -81,6 +87,7 @@ export const continueCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
+          artifact?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -112,12 +119,19 @@ export const continueCommand = new Command()
         const envFile = options.envFile || allOpts.envFile;
         const loadedSecrets = loadValues(secrets, requiredSecretNames, envFile);
 
-        // 4. Call unified API with sessionId
+        // 4. Parse artifact flag
+        const artifactParsed = parseArtifact(
+          options.artifact || allOpts.artifact,
+        );
+
+        // 5. Call unified API with sessionId
         const response = await createRun({
           sessionId: agentSessionId,
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,
           secrets: loadedSecrets,
+          artifactName: artifactParsed?.artifactName,
+          artifactVersion: artifactParsed?.artifactVersion,
           appendSystemPrompt:
             options.appendSystemPrompt || allOpts.appendSystemPrompt,
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,
