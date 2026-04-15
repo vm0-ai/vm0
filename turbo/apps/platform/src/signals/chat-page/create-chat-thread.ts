@@ -261,6 +261,7 @@ interface MessageCommandsInternalScope {
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
+  scrollToBottom$: Command<void, []>;
 }
 
 function createPrepareUserMessage(draft: DraftSignals) {
@@ -414,6 +415,16 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
     L.debug("Loading messages");
     const msgs = await get(deps.chatMessages$);
     signal.throwIfAborted();
+
+    // Wait for React to render the initial messages, then scroll to bottom.
+    // This fires after chatMessages$ resolves (which also feeds messages$),
+    // so the component will have rendered the full message list by next frame.
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    signal.throwIfAborted();
+    set(deps.scrollToBottom$);
+
     if (!msgs?.activeRunMessages.length) {
       return;
     }
@@ -818,6 +829,7 @@ export function createChatThreadSignals(
     cancelDraftSync$,
     flushDraftClear$,
     autoScroll$,
+    scrollToBottom$,
   });
 
   return {

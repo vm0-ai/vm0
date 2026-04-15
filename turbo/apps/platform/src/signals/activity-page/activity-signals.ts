@@ -14,7 +14,10 @@ import { setLoop } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import { reloadChatThreads$ } from "../agent-chat.ts";
-import { autoScrollActivityDetail$ } from "./activity-detail-scroll.ts";
+import {
+  autoScrollActivityDetail$,
+  scrollToBottomActivityDetail$,
+} from "./activity-detail-scroll.ts";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -253,6 +256,11 @@ export const setupActivityLogLoop$ = command(
 
     const run = createRunLoop(runId);
     set(internalActiveRunLoop$, run);
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    signal.throwIfAborted();
+    set(scrollToBottomActivityDetail$);
     await setLoop(
       (sig) => {
         const finished = set(run.checkFinished$, sig);
