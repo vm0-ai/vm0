@@ -39,7 +39,7 @@ export function ShortcutHelpDialog({
             title="Task Card"
             shortcuts={[
               { key: "enter", label: "Open task" },
-              { key: " ", label: "Toggle panel" },
+              { key: "space", label: "Toggle panel" },
             ]}
           />
           <ShortcutSection
