@@ -1371,6 +1371,7 @@ jobs:
         with:
           workspaces: crates -> target
           shared-key: aarch64-musl-release
+          # Read-only: crates.yml runner-build is the sole writer for this key
           save-if: false
 
       # IMPORTANT: these compile settings (--release, default linker, no
