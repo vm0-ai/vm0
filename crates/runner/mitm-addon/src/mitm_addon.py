@@ -23,7 +23,7 @@ from mitmproxy.addonmanager import Loader
 # so that:
 #   1. Cross-module calls read as ``usage.X(...)`` / ``body_utils.X(...)``,
 #      making the module boundary visible at call sites.
-#   2. Tests can patch ``usage._name`` / ``body_utils._name`` in one place and
+#   2. Tests can patch ``usage.name`` / ``body_utils.name`` in one place and
 #      it affects both direct callers in those modules and handler callers
 #      here — no mock-placement pitfalls.
 import body_utils
@@ -252,7 +252,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     Enable response streaming with body buffering.
 
     Uses a callback to stream response data to the client immediately
-    while accumulating a copy in memory (up to ``_STREAM_BUFFER_LIMIT``).
+    while accumulating a copy in memory (up to ``STREAM_BUFFER_LIMIT``).
     Once the limit is exceeded, buffering stops but streaming continues
     uninterrupted.  The buffered body is available in the ``response()``
     hook via ``flow.metadata["stream_buffer"]``.
@@ -272,14 +272,14 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     if is_model_provider:
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
-            parser_fn, usage_dict = usage._create_sse_usage_extractor()
+            parser_fn, usage_dict = usage.create_sse_usage_extractor()
             sse_parser = parser_fn
             flow.metadata["proxy_usage"] = usage_dict
-            sse_decompressor = body_utils._create_stream_decompressor(flow.response.headers)
+            sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
 
     # Model provider responses are never truncated so usage extraction
     # always has the complete body.  Other responses use the 64 KB limit.
-    buf_limit = None if is_model_provider else body_utils._STREAM_BUFFER_LIMIT
+    buf_limit = None if is_model_provider else body_utils.STREAM_BUFFER_LIMIT
 
     def stream_and_buffer(chunk: bytes) -> bytes:
         if not state["truncated"]:
@@ -363,7 +363,7 @@ def response(flow: http.HTTPFlow) -> None:
 
         # Add request headers, request body, and response body when capture is enabled
         if flow.metadata.get("capture_body"):
-            body_utils._add_capture_fields(flow, log_entry)
+            body_utils.add_capture_fields(flow, log_entry)
 
         log_network_entry(network_log_path, log_entry)
 
@@ -373,13 +373,13 @@ def response(flow: http.HTTPFlow) -> None:
     if not flow.metadata.get("proxy_usage") and stream_buf and run_id:
         firewall_name = flow.metadata.get("firewall_name", "")
         if firewall_name.startswith("model-provider:"):
-            json_usage = usage._extract_usage_from_json(
+            json_usage = usage.extract_usage_from_json(
                 bytes(stream_buf),
                 flow.response.headers if flow.response else None,
             )
             if json_usage:
                 flow.metadata["proxy_usage"] = json_usage
-    usage._maybe_report_proxy_usage(flow, run_id)
+    usage.maybe_report_proxy_usage(flow, run_id)
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers
     if flow.response and flow.response.status_code == 401 and flow.metadata.get("firewall_base"):
@@ -454,7 +454,7 @@ def error(flow: http.HTTPFlow) -> None:
     # Report proxy-extracted usage for model provider responses.
     # The SSE parser may have partially populated proxy_usage before the
     # connection error occurred.  Partial data is better than none.
-    usage._maybe_report_proxy_usage(flow, run_id)
+    usage.maybe_report_proxy_usage(flow, run_id)
 
     log_proxy_entry(
         proxy_log_path,
@@ -477,7 +477,7 @@ def done():
     ``shutdown(wait=True)`` blocks until all submitted futures complete;
     SIGKILL is the hard stop if any report takes too long.
     """
-    usage._usage_executor.shutdown(wait=True)
+    usage.usage_executor.shutdown(wait=True)
 
 
 # ============================================================================

@@ -2,12 +2,12 @@
 
 Exports:
 
-- ``_STREAM_BUFFER_LIMIT`` — 64 KB cap used by the streaming buffer in
+- ``STREAM_BUFFER_LIMIT`` — 64 KB cap used by the streaming buffer in
   ``mitm_addon.responseheaders`` and by the decompression safety cap.
 - Streaming / one-shot decompression for gzip, deflate, br, zstd.
 - UTF-8-safe truncation, text/binary content detection and encoding.
 - Header redaction for sensitive names (auth, token, cookie, …).
-- ``_add_capture_fields`` — composes capture-mode log entry fields.
+- ``add_capture_fields`` — composes capture-mode log entry fields.
 """
 
 import base64
@@ -18,7 +18,7 @@ import zstandard
 from mitmproxy import ctx, http
 
 # Cap for non-model-provider response body buffering and decompression output.
-_STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
+STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ _SENSITIVE_HEADER_KEYWORDS = (
 )
 
 
-def _create_stream_decompressor(headers: http.Headers):
+def create_stream_decompressor(headers: http.Headers):
     """Create an incremental decompressor for streaming chunks.
 
     Returns a callable that decompresses each chunk, maintaining state
@@ -91,8 +91,8 @@ def _create_stream_decompressor(headers: http.Headers):
     return None
 
 
-def _decompress_body(
-    data: bytes, headers: http.Headers, max_output: int = _STREAM_BUFFER_LIMIT
+def decompress_body(
+    data: bytes, headers: http.Headers, max_output: int = STREAM_BUFFER_LIMIT
 ) -> bytes:
     """Decompress response body based on Content-Encoding header.
 
@@ -200,7 +200,7 @@ def _redact_headers(headers) -> dict:
     return result
 
 
-def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
+def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Add request/response headers and bodies to a log entry.
 
     # [NETWORK_LOG_FIELDS] — capture-only fields, not part of the core schema.
@@ -215,9 +215,9 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     if flow.request.content:
         req_ct = flow.request.headers.get("content-type", "")
         body = flow.request.content
-        truncated = len(body) > _STREAM_BUFFER_LIMIT
+        truncated = len(body) > STREAM_BUFFER_LIMIT
         if truncated:
-            body = _truncate_bytes_utf8_safe(body, _STREAM_BUFFER_LIMIT)
+            body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
         encoded, encoding = _encode_body(body, req_ct)
         if encoded is not None:
             log_entry["request_body"] = encoded
@@ -236,7 +236,7 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     if flow.response:
         stream_buf = flow.metadata.get("stream_buffer")
         if stream_buf is not None:
-            body = _decompress_body(bytes(stream_buf), flow.response.headers)
+            body = decompress_body(bytes(stream_buf), flow.response.headers)
         else:
             try:
                 body = flow.response.content
@@ -248,11 +248,11 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             return
         stream_state = flow.metadata.get("stream_buffer_state")
         res_ct = flow.response.headers.get("content-type", "")
-        # stream_buffer may already be truncated at _STREAM_BUFFER_LIMIT.
+        # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.
         # Also check decompressed size in case it expanded beyond the limit.
-        truncated = (stream_state and stream_state["truncated"]) or len(body) > _STREAM_BUFFER_LIMIT
+        truncated = (stream_state and stream_state["truncated"]) or len(body) > STREAM_BUFFER_LIMIT
         if truncated:
-            body = _truncate_bytes_utf8_safe(body, _STREAM_BUFFER_LIMIT)
+            body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
         encoded, encoding = _encode_body(body, res_ct)
         if encoded is not None:
             log_entry["response_body"] = encoded

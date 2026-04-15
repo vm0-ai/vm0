@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from mitmproxy import http
 
 from auth import _opener, get_api_url, make_api_request
-from body_utils import _decompress_body
+from body_utils import decompress_body
 from logging_utils import log_proxy_entry
 
 # ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ def _extract_billing_usage(raw_usage, target: dict) -> None:
                 target["web_search_requests"] = wsr
 
 
-def _create_sse_usage_extractor():
+def create_sse_usage_extractor():
     """Create an incremental SSE parser that extracts usage from Anthropic API streams.
 
     All model providers in this system use the Anthropic Messages API streaming
@@ -150,14 +150,14 @@ def _create_sse_usage_extractor():
     return parse_chunk, usage
 
 
-def _extract_usage_from_json(body: bytes, headers) -> dict | None:
+def extract_usage_from_json(body: bytes, headers) -> dict | None:
     """Extract usage from a non-streaming Anthropic API JSON response.
 
     Falls back to decompressing the body if *headers* indicate compression.
     Returns ``None`` when the body is not valid JSON or contains no usage.
     """
     if headers:
-        body = _decompress_body(body, headers)
+        body = decompress_body(body, headers)
     try:
         data = json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
@@ -221,7 +221,7 @@ def _report_usage_with_retry(
 # items before mitmproxy exits (SIGKILL at 15 s is the hard stop).
 # ---------------------------------------------------------------------------
 
-_usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
+usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
 
 def _enqueue_usage(
@@ -234,7 +234,7 @@ def _enqueue_usage(
     """
     copied = dict(usage)
     try:
-        _usage_executor.submit(
+        usage_executor.submit(
             _report_usage_with_retry, api_url, sandbox_token, run_id, copied, proxy_log_path
         )
     except RuntimeError:
@@ -243,7 +243,7 @@ def _enqueue_usage(
         _report_usage_with_retry(api_url, sandbox_token, run_id, copied, proxy_log_path)
 
 
-def _maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
+def maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
     """Enqueue proxy-extracted usage for model provider responses if available."""
     firewall_name = flow.metadata.get("firewall_name", "")
     if not (firewall_name.startswith("model-provider:") and run_id):
