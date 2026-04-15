@@ -17,11 +17,8 @@
  * a valid token.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { execSync } from "node:child_process";
-
 import {
+  listCachedSpecs,
   logStats,
   renderDefaultAllowed,
   renderPermissions,
@@ -29,9 +26,6 @@ import {
   writeOutput,
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
-
-const REPO_TARBALL_URL =
-  "https://github.com/slack-ruby/slack-api-ref/archive/refs/heads/master.tar.gz";
 
 // ── Scope descriptions (from docs.slack.dev/reference/scopes/) ──────────
 
@@ -188,37 +182,23 @@ interface SlackMethodData {
   http_method?: string;
 }
 
-async function downloadMethods(): Promise<Map<string, SlackMethodData>> {
-  console.error("Downloading slack-api-ref…");
+function loadMethods(): Map<string, SlackMethodData> {
+  console.error("Loading slack-api-ref (cached)…");
 
-  // Download tarball and extract method JSON files using tar CLI
-  const tmpDir = fs.mkdtempSync("/tmp/slack-api-ref-");
-  try {
-    execSync(
-      `curl -sL "${REPO_TARBALL_URL}" | tar xz -C "${tmpDir}" --strip-components=1 --wildcards "*/docs.slack.dev/methods"`,
-      { stdio: ["pipe", "pipe", "inherit"] },
-    );
+  const specs = listCachedSpecs("slack");
+  const methods = new Map<string, SlackMethodData>();
 
-    const methodsDir = path.join(tmpDir, "docs.slack.dev", "methods");
-    const files = fs
-      .readdirSync(methodsDir)
-      .filter((f) => f.endsWith(".json") && f !== "methods.json");
-
-    const methods = new Map<string, SlackMethodData>();
-    for (const file of files) {
-      const methodName = file.replace(/\.json$/, "");
-      const content = fs.readFileSync(path.join(methodsDir, file), "utf-8");
-      const parsed = JSON.parse(content) as unknown;
-      if (typeof parsed === "object" && parsed !== null) {
-        methods.set(methodName, parsed as SlackMethodData);
-      }
+  for (const { key, content } of specs) {
+    // key is "methods/{name}.json"
+    const methodName = key.replace(/^methods\//, "").replace(/\.json$/, "");
+    const parsed = JSON.parse(content) as unknown;
+    if (typeof parsed === "object" && parsed !== null) {
+      methods.set(methodName, parsed as SlackMethodData);
     }
-
-    console.error(`  ${methods.size} methods`);
-    return methods;
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+
+  console.error(`  ${methods.size} methods`);
+  return methods;
 }
 
 // ── Grouping ─────────────────────────────────────────────────────────────
@@ -379,7 +359,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 export async function generate(): Promise<void> {
-  const methods = await downloadMethods();
+  const methods = loadMethods();
   const permissions = buildGroups(methods);
   const ts = generateTypeScript(permissions);
 

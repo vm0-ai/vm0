@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "check-types": "tsc --noEmit",
+    "update-specs": "tsx src/update-specs.ts",
     "generate": "tsx src/index.ts",
     "generate:agentmail": "tsx src/index.ts agentmail",
     "generate:agentphone": "tsx src/index.ts agentphone",

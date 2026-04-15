@@ -30,12 +30,7 @@ const SPEC_BASE = "https://developer.deel.com/openapi.json";
  * The page lists all API specs as `?api=<uuid>` links.
  */
 async function discoverSpecIds(): Promise<string[]> {
-  const res = await fetch(SPEC_BASE);
-  if (!res.ok) {
-    throw new Error(
-      `Failed to fetch Deel spec index: ${res.status} ${res.statusText}`,
-    );
-  }
+  const res = await fetchSpec(SPEC_BASE, "Deel spec index");
   const html = await res.text();
   const ids = [
     ...new Set([...html.matchAll(/\?api=([0-9a-f-]{36})/g)].map((m) => m[1]!)),

@@ -242,13 +242,10 @@ interface GitHubContent {
 }
 
 export async function generate(): Promise<void> {
-  console.error("Downloading Dropbox Stone API spec file list…");
-  const listRes = await fetch(SPEC_BASE_URL, {
-    headers: { Accept: "application/vnd.github.v3+json" },
-  });
-  if (!listRes.ok) {
-    throw new Error(`Failed to list spec files: ${listRes.status}`);
-  }
+  const listRes = await fetchSpec(
+    SPEC_BASE_URL,
+    "Dropbox Stone API spec file list",
+  );
   const json: unknown = await listRes.json();
   if (!Array.isArray(json)) {
     throw new Error("Expected array from GitHub contents API");
