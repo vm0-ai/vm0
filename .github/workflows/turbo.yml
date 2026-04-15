@@ -1371,7 +1371,7 @@ jobs:
         with:
           workspaces: crates -> target
           shared-key: aarch64-musl-release
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: false
 
       # IMPORTANT: these compile settings (--release, default linker, no
       # custom RUSTFLAGS) must match release-please.yml so image_hash is

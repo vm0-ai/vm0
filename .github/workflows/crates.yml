@@ -251,7 +251,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates -> target
-          shared-key: aarch64-musl-release
+          shared-key: aarch64-musl-nbd
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cross-compile nbd-cow tests for ARM64
