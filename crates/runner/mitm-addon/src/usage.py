@@ -420,26 +420,12 @@ def _parse_x_response_metadata(flow: http.HTTPFlow) -> dict:
 _X_UNPARSEABLE_READ_FALLBACK = 100
 
 
-# Mapping from X v2 ``includes.<key>`` resource types to billing
-# permission names.  All known X v2 includes keys are listed explicitly
-# so the complete set of billing assumptions is reviewable at a glance;
-# new includes keys added by X in the future automatically fall back to
-# ``<key>.read`` via :func:`_compute_x_billable_counts` using the same
-# naming convention.
-#
-# X's 24-hour dedup is documented to apply across request paths for the
-# same resource id, so includes-returned resources share the pricing
-# tier of the direct-lookup permission.
-#
-# - ``users`` / ``tweets`` align with the existing X firewall permissions
-#   (``users.read`` / ``tweet.read``) so counts add up with direct-request
-#   counts at the same tier.  Note ``tweets`` → ``tweet.read`` is the
-#   one irregular case: the includes key is plural but the firewall
-#   permission is singular; without the explicit entry, referenced
-#   tweets would be mis-routed to a separate ``tweets.read`` key.
-# - ``media`` / ``polls`` / ``places`` / ``topics`` have no pre-existing
-#   firewall permission and get a synthetic ``<type>.read`` key that
-#   the server prices explicitly (or leaves unpriced, meaning 0).
+# Mapping from X v2 ``includes.<key>`` resource types to firewall
+# permission names.  Listed explicitly for reviewability; unknown future
+# keys fall back to ``<key>.read`` in :func:`_compute_x_billable_counts`.
+# The ``tweets`` → ``tweet.read`` entry is the one irregular case
+# (includes key is plural, firewall permission is singular) — without it
+# referenced tweets would land on a separate ``tweets.read`` key.
 _INCLUDES_TO_PERMISSION = {
     "users": "users.read",
     "tweets": "tweet.read",
@@ -470,9 +456,11 @@ def _compute_x_billable_counts(method: str, req_meta: dict, resp_meta: dict, end
     - **Includes**: each ``includes.<key>`` is mapped via
       :data:`_INCLUDES_TO_PERMISSION` when that type has a dedicated
       firewall permission (``users`` → ``users.read``, ``tweets`` →
-      ``tweet.read``).  Unknown types fall back to ``endpoint`` (the
-      primary permission) so they're priced at the parent request's
-      tier.  Counts at the same permission are summed.
+      ``tweet.read``).  Unknown types fall back to a synthetic
+      ``<key>.read`` permission (e.g. ``future_widget`` →
+      ``future_widget.read``) so the server can price (or ignore) new
+      expansion types without a proxy redeploy.  Counts at the same
+      permission are summed.
     """
     if method != "GET":
         return {endpoint: 1}
