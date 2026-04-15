@@ -19,28 +19,18 @@ export async function generateMetadata({
   return {
     title: "VM0 - Your Trustworthy AI Teammate",
     description:
-      "Meet Zero, your AI teammate that runs in secure microVMs. Automate workflows in Slack, GitHub, and the web — with isolated execution, audit trails, and full transparency.",
+      "Zero, your trustworthy AI teammate for real work. Connects to 100+ tools and does the work — reports, triage, outreach, research — in Slack or on the web.",
     alternates: buildLocaleAlternates("", locale as Locale),
     openGraph: {
       title: "VM0 - Your Trustworthy AI Teammate",
       description:
-        "Meet Zero, your AI teammate that runs in secure microVMs. Automate workflows in Slack, GitHub, and the web — with isolated execution, audit trails, and full transparency.",
+        "Zero, your trustworthy AI teammate for real work. Connects to 100+ tools and does the work — reports, triage, outreach, research — in Slack or on the web.",
       url,
-      images: [
-        {
-          url: "/og-image.png",
-          width: 1200,
-          height: 630,
-          alt: "VM0 - Your Trustworthy AI Teammate",
-        },
-      ],
     },
     twitter: {
-      card: "summary_large_image",
       title: "VM0 - Your Trustworthy AI Teammate",
       description:
-        "Meet Zero, your AI teammate that runs in secure microVMs. Automate workflows in Slack, GitHub, and the web.",
-      images: ["/og-image.png"],
+        "Zero connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
     },
   };
 }
