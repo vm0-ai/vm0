@@ -469,6 +469,10 @@ const CONNECTOR_TYPES_DEF = {
       tokenUrl: "https://oauth2.googleapis.com/token",
       scopes: [
         "https://www.googleapis.com/auth/meetings.space.created",
+        // Use meetings.conferencerecords.readonly (not meetings.space.readonly) to access
+        // conference records, participants, recordings, and transcripts via the
+        // /v2/conferenceRecords/* endpoints. meetings.space.readonly only grants read
+        // access to space metadata and does not cover conference record data.
         "https://www.googleapis.com/auth/meetings.conferencerecords.readonly",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
