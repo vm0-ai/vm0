@@ -70,7 +70,7 @@ describe("getOrgMetadata", () => {
     expect(result).toEqual({
       orgId,
       tier: "pro",
-      credits: 10_000,
+      credits: 100_000,
     });
 
     // Clerk API should NOT have been called
@@ -101,7 +101,7 @@ describe("getOrgMetadata", () => {
     expect(result).toEqual({
       orgId,
       tier: "free",
-      credits: 10_000,
+      credits: 100_000,
     });
   });
 });

@@ -150,7 +150,7 @@ export async function checkOrgCredits(
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
-  // No org row → treat as sufficient (new org, default 10000 credits)
+  // No org row → treat as sufficient (new org, default 100000 credits)
   if (!orgRow) {
     return;
   }
