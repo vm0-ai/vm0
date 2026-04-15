@@ -493,7 +493,7 @@ describe("consumeCaptureNetworkBodies", () => {
   it("should decrement and return true when remaining > 0", async () => {
     const user = await context.setupUser();
 
-    await updateTestUserPreferencesAll(user.orgId, user.userId, {
+    await updateTestUserPreferencesAll({
       captureNetworkBodiesRemaining: 3,
     });
 
@@ -503,14 +503,14 @@ describe("consumeCaptureNetworkBodies", () => {
     );
     expect(consumed).toBe(true);
 
-    const prefs = await getTestUserPreferencesAll(user.orgId, user.userId);
+    const prefs = await getTestUserPreferencesAll();
     expect(prefs.captureNetworkBodiesRemaining).toBe(2);
   });
 
   it("should decrement to zero and stop", async () => {
     const user = await context.setupUser();
 
-    await updateTestUserPreferencesAll(user.orgId, user.userId, {
+    await updateTestUserPreferencesAll({
       captureNetworkBodiesRemaining: 1,
     });
 
