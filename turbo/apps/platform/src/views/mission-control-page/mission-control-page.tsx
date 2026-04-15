@@ -19,12 +19,15 @@ import {
   setTaskListRef$,
   newChatDialogOpen$,
   setNewChatDialogOpen$,
+  shortcutHelpOpen$,
+  setShortcutHelpOpen$,
   createAndShowChatTask$,
 } from "../../signals/mission-control-page/mission-control.ts";
 import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentListDialog } from "../zero-page/zero-sidebar-dialogs.tsx";
+import { ShortcutHelpDialog } from "./shortcut-help-dialog.tsx";
 import { TaskList } from "./task-list.tsx";
 import { TaskPanel } from "./task-panel.tsx";
 import { CollapsedTaskListBar } from "./collapsed-task-list-bar.tsx";
@@ -38,6 +41,8 @@ export function MissionControlPage() {
   const setListRef = useSet(setTaskListRef$);
   const newChatOpen = useGet(newChatDialogOpen$);
   const setNewChatOpen = useSet(setNewChatDialogOpen$);
+  const shortcutHelp = useGet(shortcutHelpOpen$);
+  const setShortcutHelp = useSet(setShortcutHelpOpen$);
   const subagents = useLastResolved(subagents$) ?? [];
   const displayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const createAndShowChatTask = useSet(createAndShowChatTask$);
@@ -126,6 +131,7 @@ export function MissionControlPage() {
         subagents={subagents}
         onNewChat={onNewChat}
       />
+      <ShortcutHelpDialog open={shortcutHelp} onOpenChange={setShortcutHelp} />
     </Group>
   );
 }

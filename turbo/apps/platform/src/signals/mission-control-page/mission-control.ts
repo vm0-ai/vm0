@@ -98,6 +98,18 @@ export const setNewChatDialogOpen$ = command(({ set }, open: boolean) => {
 });
 
 // ---------------------------------------------------------------------------
+// Keyboard shortcuts help dialog state
+// ---------------------------------------------------------------------------
+
+const internalShortcutHelpOpen$ = state(false);
+export const shortcutHelpOpen$ = computed((get) => {
+  return get(internalShortcutHelpOpen$);
+});
+export const setShortcutHelpOpen$ = command(({ set }, open: boolean) => {
+  set(internalShortcutHelpOpen$, open);
+});
+
+// ---------------------------------------------------------------------------
 // Keyboard shortcuts
 // ---------------------------------------------------------------------------
 
@@ -116,6 +128,9 @@ export const setupMissionControlKeyboard$ = command(
         },
         c: () => {
           set(setNewChatDialogOpen$, true);
+        },
+        "shift+?": () => {
+          set(setShortcutHelpOpen$, true);
         },
         y: () => {
           const container = get(internalTaskListRef$);
