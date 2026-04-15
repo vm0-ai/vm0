@@ -10,7 +10,7 @@ import { createCursorPagination } from "../cursor-pagination.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { createRunLoop } from "../zero-page/polling.ts";
-import { setLoop } from "../utils.ts";
+import { ablyNotify$ } from "../realtime.ts";
 import { accept } from "../../lib/accept.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import { reloadChatThreads$ } from "../agent-chat.ts";
@@ -252,7 +252,9 @@ export const setupActivityLogLoop$ = command(
 
     const run = createRunLoop(runId);
     set(internalActiveRunLoop$, run);
-    await setLoop(
+    const ablyNotify = get(ablyNotify$);
+    await ablyNotify(
+      `thread:${runId}`,
       (sig) => {
         return set(run.checkFinished$, sig);
       },

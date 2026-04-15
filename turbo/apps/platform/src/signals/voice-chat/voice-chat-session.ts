@@ -8,6 +8,7 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { delay } from "signal-timers";
 import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
+import { ablyNotify$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { logger } from "../log.ts";
@@ -637,8 +638,11 @@ const POLL_FAILURE_THRESHOLD = 3;
 
 const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
   let consecutiveFailures = 0;
+  const sid = get(internalSessionId$);
+  const ablyNotify = get(ablyNotify$);
 
-  await setLoop(
+  await ablyNotify(
+    `voice:${sid ?? "unknown"}`,
     async (signal: AbortSignal) => {
       const sid = get(internalSessionId$);
       if (!sid) {
@@ -1015,7 +1019,9 @@ const prepareActivateConnect$ = command(
     const heartbeatPromise = set(startHeartbeat$, sessionSignal);
 
     // Poll for preparation-ready event with timeout
-    await setLoop(
+    const ablyNotify = get(ablyNotify$);
+    await ablyNotify(
+      `voice:${sessionId}`,
       async (loopSignal: AbortSignal) => {
         const elapsed = Date.now() - startTime;
         set(internalPrepElapsedMs$, elapsed);
@@ -1163,7 +1169,9 @@ export const startVoiceChat$ = command(
       if (prepRes.body.preparation.status !== "ready") {
         // Preparation in progress — poll until ready or timeout
         const prepStart = Date.now();
-        await setLoop(
+        const chatAblyNotify = get(ablyNotify$);
+        await chatAblyNotify(
+          `voice:prep`,
           async (loopSignal: AbortSignal) => {
             if (Date.now() - prepStart > PREP_TIMEOUT_CHAT_MS) {
               return true; // Timeout — proceed without cache

@@ -21,6 +21,8 @@ import {
   isBadRequest,
 } from "../../../../../../src/lib/shared/errors";
 import { logger } from "../../../../../../src/lib/shared/logger";
+import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
+import { getOrgMemberUserIds } from "../../../../../../src/lib/infra/realtime/audience";
 import { after } from "next/server";
 
 const log = logger("api:runs:cancel");
@@ -74,6 +76,12 @@ const router = tsr.router(runsCancelContract, {
         if (shouldProcessCredits) {
           await processOrgCredits(result.orgId);
         }
+
+        // Notify run owner that run was cancelled
+        await publishUserSignal([userId], `thread:${runId}`);
+        // Notify org members that task list may have changed
+        const orgMembers = await getOrgMemberUserIds(result.orgId);
+        await publishUserSignal(orgMembers, `tasks:${result.orgId}`);
       });
 
       log.debug(

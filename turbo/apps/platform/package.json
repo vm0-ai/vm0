@@ -29,6 +29,7 @@
     "@uiw/react-markdown-preview": "^5.1.5",
     "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
+    "ably": "^2.21.0",
     "ccstate": "^5.2.3",
     "ccstate-react": "^5.2.3",
     "highlight.js": "^11.11.1",

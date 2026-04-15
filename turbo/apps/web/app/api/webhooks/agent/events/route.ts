@@ -16,6 +16,9 @@ import {
   DATASETS,
 } from "../../../../../src/lib/shared/axiom";
 import { upsertCreditUsage } from "../../../../../src/lib/zero/credit/credit-usage-service";
+import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
+import { after } from "next/server";
+
 const log = logger("webhook:events");
 
 const router = tsr.router(webhookEventsContract, {
@@ -114,6 +117,11 @@ const router = tsr.router(webhookEventsContract, {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+
+    // Notify run owner that new events are available
+    after(() => {
+      return publishUserSignal([userId], `thread:${body.runId}`);
+    });
 
     return {
       status: 200 as const,

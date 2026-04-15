@@ -7,7 +7,8 @@ import {
 import { zeroClient$ } from "../api-client.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
-import { setLoop, throwIfAbort } from "../utils.ts";
+import { throwIfAbort } from "../utils.ts";
+import { ablyNotify$ } from "../realtime.ts";
 
 type PreparationStatus = "idle" | "preparing" | "ready" | "failed";
 
@@ -85,9 +86,10 @@ export const triggerPreparation$ = command(
     }
 
     // Poll until ready or failed.
-    // setLoop handles transient errors (including ApiError from accept())
-    // with fibonacci backoff retry.
-    await setLoop(
+    // ablyNotify handles transient errors with fibonacci backoff retry via fallback.
+    const ablyNotify = get(ablyNotify$);
+    await ablyNotify(
+      `voice:prep`,
       async (loopSignal: AbortSignal) => {
         const pollRes = await accept(
           client.trigger({ body: { agentId, mode: "meeting", prompt } }),

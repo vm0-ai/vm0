@@ -1,6 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { delay } from "signal-timers";
-import { onRef, setLoop, resetSignal, throwIfNotAbort } from "../utils.ts";
+import { onRef, resetSignal, throwIfNotAbort } from "../utils.ts";
+import { ablyNotify$ } from "../realtime.ts";
 import { logger } from "../log.ts";
 import {
   createDraftSignals,
@@ -468,7 +469,9 @@ function createSendMessage(
       return;
     }
 
-    await setLoop(
+    const ablyNotify = get(ablyNotify$);
+    await ablyNotify(
+      `thread:${sendResult.body.runId}`,
       async (sig) => {
         set(reloadChatThreads$);
         set(deps.reloadThread$);
@@ -491,6 +494,7 @@ function createSendMessage(
 function createLoadMessages(deps: MessageCommandsInternalScope) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("Loading messages");
+    const ablyNotify = get(ablyNotify$);
     const msgs = await get(deps.chatMessages$);
     signal.throwIfAborted();
     if (!msgs?.activeRunMessages.length) {
@@ -520,7 +524,8 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
 
         set(markMessageLoading$, message.id);
 
-        await setLoop(
+        await ablyNotify(
+          `thread:${message.legacyRunId}`,
           (sig) => {
             set(deps.reloadThinkingMessage$);
             return set(runLoop.checkFinished$, sig);

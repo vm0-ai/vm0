@@ -25,6 +25,8 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
+import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
+import { getOrgMemberUserIds } from "../../../../../src/lib/infra/realtime/audience";
 import { after } from "next/server";
 import { env } from "../../../../../src/env";
 
@@ -37,6 +39,7 @@ function scheduleTerminalSideEffects(
   runId: string,
   status: "completed" | "failed",
   orgId: string,
+  userId: string,
   errorMsg?: string,
 ): void {
   after(async () => {
@@ -44,6 +47,12 @@ function scheduleTerminalSideEffects(
       return drainOrgQueue(orgId, dispatchQueuedZeroRun);
     });
     await processOrgCredits(orgId);
+
+    // Notify run owner that run state changed
+    await publishUserSignal([userId], `thread:${runId}`);
+    // Notify org members that task list may have changed
+    const orgMembers = await getOrgMemberUserIds(orgId);
+    await publishUserSignal(orgMembers, `tasks:${orgId}`);
   });
 }
 
@@ -166,6 +175,7 @@ const router = tsr.router(webhookCompleteContract, {
             body.runId,
             "failed",
             run.orgId,
+            userId,
             "Checkpoint for run not found",
           );
         }
@@ -247,6 +257,7 @@ const router = tsr.router(webhookCompleteContract, {
       body.runId,
       finalStatus,
       run.orgId,
+      userId,
       errorMessage,
     );
 
