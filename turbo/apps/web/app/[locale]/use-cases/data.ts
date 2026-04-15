@@ -115,6 +115,24 @@ const VM0: ConnectorRef = {
   icon: "/assets/connectors/vm0.svg",
 };
 
+const INTERCOM: ConnectorRef = {
+  id: "intercom",
+  label: "Intercom",
+  icon: "/assets/connectors/intercom.svg",
+};
+
+const GOOGLE_SHEETS: ConnectorRef = {
+  id: "google-sheets",
+  label: "Google Sheets",
+  icon: "/assets/connectors/google-sheets.svg",
+};
+
+const FIRECRAWL: ConnectorRef = {
+  id: "firecrawl",
+  label: "Firecrawl",
+  icon: "/assets/connectors/firecrawl.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -515,6 +533,134 @@ export const USE_CASES: UseCase[] = [
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "i18n-gap-fixer",
+    color: "#7a9eb5",
+    avatar: {
+      rotation: 3,
+      skin: 2,
+      hairStyle: 4,
+      hairColor: 2,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["engineering"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [GITHUB, NOTION, SLACK],
+    integrations: [
+      { connector: GITHUB, required: true },
+      { connector: NOTION, required: false },
+    ],
+    relatedSlugs: [
+      "tech-debt-scan",
+      "file-bugs-from-slack",
+      "product-health-briefing",
+    ],
+    stepCount: 3,
+    nextActionCount: 2,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "competitor-price-monitor",
+    color: "#b58a7a",
+    avatar: {
+      rotation: 1,
+      skin: 5,
+      hairStyle: 2,
+      hairColor: 4,
+      expression: 4,
+      intensity: "h",
+    },
+    roles: ["product"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [FIRECRAWL, NOTION, SLACK],
+    integrations: [
+      { connector: FIRECRAWL, required: true },
+      { connector: NOTION, required: true },
+    ],
+    relatedSlugs: [
+      "competitor-audit",
+      "kol-cold-outreach",
+      "document-decisions",
+    ],
+    stepCount: 3,
+    nextActionCount: 2,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "contract-renewal-alert",
+    color: "#8ab57a",
+    avatar: {
+      rotation: 5,
+      skin: 3,
+      hairStyle: 1,
+      hairColor: 5,
+      expression: 2,
+      intensity: "l",
+    },
+    roles: ["ops"],
+    capability: "scheduled",
+    model: "GPT-4o mini",
+    connectors: [GOOGLE_SHEETS, GMAIL, SLACK],
+    integrations: [
+      { connector: GOOGLE_SHEETS, required: true },
+      { connector: GMAIL, required: true },
+    ],
+    relatedSlugs: [
+      "employee-onboarding",
+      "standup-summary",
+      "document-decisions",
+    ],
+    stepCount: 3,
+    nextActionCount: 2,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "support-to-github",
+    color: "#b5a07a",
+    avatar: {
+      rotation: 4,
+      skin: 4,
+      hairStyle: 3,
+      hairColor: 1,
+      expression: 5,
+      intensity: "m",
+    },
+    roles: ["everyone"],
+    capability: "instant",
+    model: "Claude 4 Sonnet",
+    connectors: [INTERCOM, GITHUB, SLACK],
+    integrations: [
+      { connector: INTERCOM, required: true },
+      { connector: GITHUB, required: true },
+    ],
+    relatedSlugs: [
+      "file-bugs-from-slack",
+      "sentry-triage",
+      "slack-triage",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
