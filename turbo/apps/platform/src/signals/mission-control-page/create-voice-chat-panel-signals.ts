@@ -72,7 +72,8 @@ export function createVoiceChatPanelSignals(
             typeof ev.id === "string" &&
             typeof ev.seq === "number" &&
             typeof ev.source === "string" &&
-            typeof ev.type === "string"
+            typeof ev.type === "string" &&
+            (typeof ev.content === "string" || ev.content === null)
           );
         });
         if (incoming.length > 0) {
