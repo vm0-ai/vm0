@@ -952,6 +952,18 @@ export const sendExistingThreadMessage$ = command(
       signal,
     );
 
+    // After the poll loop exits, the last `reloadCurrentChatThread$` ran at
+    // the START of the final iteration — at that point the run's server-side
+    // status was still "queued"/"running", so `transformServerMessages`
+    // picked the assistant row as an active anchor and attached a fresh
+    // runLoop whose `detail$` cached that stale status. Without one more
+    // reload, the anchor's runLoop would stay stuck at the stale status,
+    // keeping `MessageRunActivityLine` mounted — which renders the
+    // "Thinking..." loader indefinitely whenever `summaries$` happens to be
+    // empty.
+    set(reloadChatThreads$);
+    set(reloadCurrentChatThread$);
+
     const content = await get(assistantMessage.result$);
     signal.throwIfAborted();
     if (content) {
