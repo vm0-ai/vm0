@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
+from typing import TypedDict
 
 from mitmproxy import http
 
@@ -79,6 +80,9 @@ def create_sse_usage_extractor():
     incrementally and *usage* is a dict that accumulates extracted fields.
     """
     usage: dict = {}
+    # Mutate in-place (``line_buf[:] = ...``, ``extend(...)``) throughout
+    # ``parse_chunk`` — captured by the closure.  Rebinding via
+    # ``line_buf = ...`` would create a new local and lose cross-call state.
     line_buf = bytearray()
     event_type = {"current": None}
     # Events we need to parse — all others are skipped to avoid buffering
@@ -360,6 +364,24 @@ def is_x_stream_path(path: str) -> bool:
 MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
+class NdjsonState(TypedDict):
+    """Accumulated parser state for an X NDJSON stream.
+
+    Populated by :func:`create_x_ndjson_extractor`'s ``parse_chunk`` and
+    read by :func:`_parse_x_response_metadata` when emitting the billing
+    log entry.
+    """
+
+    data_count: int
+    """Number of lines whose top-level ``data`` is a dict (one tweet per line)."""
+    includes: dict[str, int]
+    """Running sum of ``len(includes.<key>)`` across all lines, per key."""
+    lines_parsed: int
+    """JSON-parseable non-blank lines."""
+    lines_failed: int
+    """Lines that failed JSON decoding."""
+
+
 def create_x_ndjson_extractor():
     """Create an incremental NDJSON parser for X v2 streaming responses.
 
@@ -387,12 +409,15 @@ def create_x_ndjson_extractor():
     upstream).  A truncated trailing line at connection close (no final
     ``\\n``) stays in the buffer uncounted — worst-case under-count is 1.
     """
-    state: dict = {
+    state: NdjsonState = {
         "data_count": 0,
         "includes": {},
         "lines_parsed": 0,
         "lines_failed": 0,
     }
+    # Mutate in-place (``line_buf[:] = ...``, ``extend(...)``) throughout
+    # ``parse_chunk`` — captured by the closure.  Rebinding via
+    # ``line_buf = ...`` would create a new local and lose cross-call state.
     line_buf = bytearray()
 
     def parse_chunk(chunk: bytes) -> None:

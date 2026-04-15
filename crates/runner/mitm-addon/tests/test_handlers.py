@@ -1,6 +1,7 @@
 """Tests for HTTP/TLS/TCP handlers."""
 
 import asyncio
+import gzip
 import json
 import time
 from pathlib import Path
@@ -618,8 +619,6 @@ class TestResponseHeadersHandler:
 
     def test_x_stream_gzip_compressed_body(self):
         """Gzip-encoded NDJSON stream: decompressor + parser wire up correctly."""
-        import gzip
-
         ndjson_body = (
             b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n'
             b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}\n'
@@ -1238,8 +1237,6 @@ class TestResponseHeadersSseParser:
 
     def test_decompresses_gzip_sse_before_parsing(self):
         """Compressed SSE streams must be decompressed before usage extraction."""
-        import gzip
-
         flow = _make_http_flow(host="api.anthropic.com")
         flow.response = MagicMock()
         flow.response.headers = {
@@ -2238,8 +2235,6 @@ class TestLogConnectorUsage:
 
     def test_handles_gzip_body(self, tmp_path):
         """gzip-encoded response body decompresses before parsing."""
-        import gzip
-
         raw = json.dumps({"data": [{"id": "1"}], "meta": {"result_count": 1}}).encode()
         body = gzip.compress(raw)
         flow = self._make_x_flow(tmp_path, body=body, content_encoding="gzip")
