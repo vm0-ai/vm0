@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.235.1](https://github.com/vm0-ai/vm0/compare/web-v12.235.0...web-v12.235.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* include activity logs for all session runs in diagnostic bundle ([#9420](https://github.com/vm0-ai/vm0/issues/9420)) ([b5a8b3b](https://github.com/vm0-ai/vm0/commit/b5a8b3be876e03fb7f05b0d51ef018094191b915))
+* **security:** strengthen Slack download URL validation against SSRF ([#9389](https://github.com/vm0-ai/vm0/issues/9389)) ([b92110b](https://github.com/vm0-ai/vm0/commit/b92110b8f68abf1d199dfa64d5ea0bad146ae418))
+
+
+### Refactoring
+
+* **test:** document run-status.test.ts as service-level exception ([#9426](https://github.com/vm0-ai/vm0/issues/9426)) ([#9428](https://github.com/vm0-ai/vm0/issues/9428)) ([db64156](https://github.com/vm0-ai/vm0/commit/db6415653e68c64e2804c6ccc7d3df5f560eae68))
+* **test:** migrate connect-service tests to route integration test ([#9414](https://github.com/vm0-ai/vm0/issues/9414)) ([#9429](https://github.com/vm0-ai/vm0/issues/9429)) ([3afcd10](https://github.com/vm0-ai/vm0/commit/3afcd107c595c34aaf8899d8112341abf8af4f41))
+* **test:** migrate create-run.test.ts to route integration test ([#9415](https://github.com/vm0-ai/vm0/issues/9415)) ([#9427](https://github.com/vm0-ai/vm0/issues/9427)) ([41ba32d](https://github.com/vm0-ai/vm0/commit/41ba32dd2f3570d9c1dfe10d877429485d37ea56))
+* **test:** migrate org-model-provider tests to route integration test ([#9406](https://github.com/vm0-ai/vm0/issues/9406)) ([#9412](https://github.com/vm0-ai/vm0/issues/9412)) ([43a5a78](https://github.com/vm0-ai/vm0/commit/43a5a7846021ec7f2c32998a50cc7d15d4640a16))
+* **test:** migrate proxy-usage-comparison tests to route integration test ([#9407](https://github.com/vm0-ai/vm0/issues/9407)) ([#9411](https://github.com/vm0-ai/vm0/issues/9411)) ([47b9816](https://github.com/vm0-ai/vm0/commit/47b98162e52cc3a97f5fb4f58af52df900654445))
+* **test:** migrate resolve-org to route integration test ([#9409](https://github.com/vm0-ai/vm0/issues/9409)) ([#9421](https://github.com/vm0-ai/vm0/issues/9421)) ([f5e40f5](https://github.com/vm0-ai/vm0/commit/f5e40f5d7747c6b50fae36a75477238bb303160e))
+* **test:** migrate schedule helpers from service calls to route calls ([#9398](https://github.com/vm0-ai/vm0/issues/9398)) ([#9413](https://github.com/vm0-ai/vm0/issues/9413)) ([69ae318](https://github.com/vm0-ai/vm0/commit/69ae3183f584f9ec8edf5350b66d6087a97c0048))
+* **test:** migrate zero-run-service tests to route integration test ([#9416](https://github.com/vm0-ai/vm0/issues/9416)) ([#9425](https://github.com/vm0-ai/vm0/issues/9425)) ([83ae021](https://github.com/vm0-ai/vm0/commit/83ae0218b2929320ac654f3011930b2b89822584))
+
 ## [12.235.0](https://github.com/vm0-ai/vm0/compare/web-v12.234.0...web-v12.235.0) (2026-04-15)
 
 

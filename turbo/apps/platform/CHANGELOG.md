@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.237.1](https://github.com/vm0-ai/vm0/compare/app-v0.237.0...app-v0.237.1) (2026-04-15)
+
+
+### Refactoring
+
+* **platform:** extract shared auto-scroll factory and improve scroll behavior ([#9388](https://github.com/vm0-ai/vm0/issues/9388)) ([91f6d67](https://github.com/vm0-ai/vm0/commit/91f6d67760b5a485c3b9c0d72b20876c94cb3b95))
+
 ## [0.237.0](https://github.com/vm0-ai/vm0/compare/app-v0.236.0...app-v0.237.0) (2026-04-15)
 
 
