@@ -806,6 +806,10 @@ mod tests {
 
     #[test]
     fn test_escape_systemd_env_value() {
+        // Empty input — degenerate but callable (helper is independent of
+        // validate); guards against future `replace` behavior changes.
+        assert_eq!(escape_systemd_env_value(""), "");
+
         // No special chars — identity.
         assert_eq!(escape_systemd_env_value("KEY=value"), "KEY=value");
 
@@ -832,7 +836,14 @@ mod tests {
 
     #[test]
     fn test_generate_unit_file_escapes_env_values() {
-        let env = vec![r#"MSG=say "hi""#.to_string(), r"PATH=C:\Users".to_string()];
+        let env = vec![
+            r#"MSG=say "hi""#.to_string(),
+            r"PATH=C:\Users".to_string(),
+            // Both `"` and `\` in a single entry — catches regressions in
+            // the helper-to-format! interaction that the helper-only test
+            // would miss (e.g. accidental extra escaping at the call site).
+            r#"K=a"\b"#.to_string(),
+        ];
         let content = generate_unit_file(
             "vm0-runner-v0.1.0",
             Path::new("/usr/bin/runner"),
@@ -842,6 +853,7 @@ mod tests {
         );
         assert!(content.contains(r#"Environment="MSG=say \"hi\"""#));
         assert!(content.contains(r#"Environment="PATH=C:\\Users""#));
+        assert!(content.contains(r#"Environment="K=a\"\\b""#));
     }
 
     #[test]
@@ -854,6 +866,10 @@ mod tests {
         // later in `escape_systemd_env_value`.
         assert!(validate_env_vars(&[r#"MSG=say "hi""#.to_string()]).is_ok());
         assert!(validate_env_vars(&[r"PATH=C:\Users".to_string()]).is_ok());
+        // Tab is intentionally NOT rejected: it is valid inside a systemd
+        // quoted `Environment=` value. Locking this in so a future "let's
+        // reject all whitespace control chars" change is an explicit choice.
+        assert!(validate_env_vars(&["KEY=with\ttab".to_string()]).is_ok());
     }
 
     #[test]
