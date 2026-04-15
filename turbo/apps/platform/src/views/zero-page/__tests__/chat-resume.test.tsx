@@ -21,13 +21,16 @@ describe("chat resume", () => {
           content: "First reply",
           createdAt: "2026-03-10T00:00:01Z",
         },
-      ],
-      unsavedRuns: [
         {
+          role: "user",
+          content: "Follow up question",
+          createdAt: "2026-03-10T00:00:02Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-test-1",
           status: "running",
-          prompt: "Follow up question",
-          error: null,
           createdAt: "2026-03-10T00:00:02Z",
         },
       ],
@@ -65,13 +68,16 @@ describe("chat resume", () => {
           content: "Previous message",
           createdAt: "2026-03-10T00:00:00Z",
         },
-      ],
-      unsavedRuns: [
         {
+          role: "user",
+          content: "Active task",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-test-1",
           status: "running",
-          prompt: "Active task",
-          error: null,
           createdAt: "2026-03-10T00:00:01Z",
         },
       ],
@@ -99,13 +105,16 @@ describe("chat resume", () => {
           content: "Previous message",
           createdAt: "2026-03-10T00:00:00Z",
         },
-      ],
-      unsavedRuns: [
         {
+          role: "user",
+          content: "Active task",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-test-1",
           status: "running",
-          prompt: "Active task",
-          error: null,
           createdAt: "2026-03-10T00:00:01Z",
         },
       ],

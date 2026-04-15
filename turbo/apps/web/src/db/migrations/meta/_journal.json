@@ -1821,6 +1821,13 @@
       "when": 1776278400004,
       "tag": "0259_flowery_vampiro",
       "breakpoints": true
+    },
+    {
+      "idx": 260,
+      "version": "7",
+      "when": 1776278400005,
+      "tag": "0260_chat_messages_refactor",
+      "breakpoints": true
     }
   ]
 }

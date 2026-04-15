@@ -80,20 +80,24 @@ describe("chat title refresh", () => {
           title:
             threadDetailFetchCount > 1 ? "AI Generated Title" : "Old Title",
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [],
-          latestSessionId: null,
-          unsavedRuns:
+          chatMessages:
             threadDetailFetchCount > 1
               ? [
                   {
+                    role: "user",
+                    content: "Follow-up question",
+                    createdAt: "2026-03-10T00:00:01Z",
+                  },
+                  {
+                    role: "assistant",
+                    content: null,
                     runId: "run-test-1",
                     status: "running",
-                    prompt: "Follow-up question",
-                    error: null,
                     createdAt: "2026-03-10T00:00:01Z",
                   },
                 ]
               : [],
+          latestSessionId: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });

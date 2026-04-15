@@ -16,13 +16,16 @@ describe("activity line visibility while run is still running", () => {
           content: "Previous message",
           createdAt: "2026-03-10T00:00:00Z",
         },
-      ],
-      unsavedRuns: [
         {
+          role: "user",
+          content: "Do a complex multi-step task",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-test-1",
           status: "running",
-          prompt: "Do a complex multi-step task",
-          error: null,
           createdAt: "2026-03-10T00:00:01Z",
         },
       ],
@@ -74,13 +77,17 @@ describe("activity line visibility while run is still running", () => {
   it("should hide activity line only after run reaches terminal status", async () => {
     const ctrl = mockChatLifecycle({
       threadId: "thread-activity-terminal",
-      chatMessages: [],
-      unsavedRuns: [
+      chatMessages: [
         {
+          role: "user",
+          content: "Hello",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-test-1",
           status: "running",
-          prompt: "Hello",
-          error: null,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],

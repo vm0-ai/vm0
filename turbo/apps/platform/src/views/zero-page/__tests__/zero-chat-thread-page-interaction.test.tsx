@@ -129,43 +129,6 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
   });
 });
 
-// CHAT-I-051: Timeline expansion button toggles expandedIds
-describe("zero chat thread page - timeline expansion button", () => {
-  it("clicking Took N steps button expands and shows timeline summaries (CHAT-I-051)", async () => {
-    const user = userEvent.setup();
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "user",
-          content: "Run something",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "Done",
-          summaries: [{ kind: "tool", name: "Bash", input: { command: "ls" } }],
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    const expandButton = await waitFor(() => {
-      return screen.getByText(/Took 1 step/);
-    });
-
-    // Timeline items are collapsed initially - the step text is not visible
-    expect(screen.queryByText("Running a command...")).not.toBeInTheDocument();
-
-    await user.click(expandButton);
-
-    await waitFor(() => {
-      expect(screen.getByText("Running a command...")).toBeInTheDocument();
-    });
-  });
-});
-
 // CHAT-I-052: Copy message button writes message content to clipboard
 describe("zero chat thread page - copy message button", () => {
   it("clicking copy button writes message content to clipboard (CHAT-I-052)", async () => {

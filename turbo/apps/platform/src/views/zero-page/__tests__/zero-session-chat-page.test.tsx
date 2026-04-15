@@ -24,7 +24,6 @@ describe("userMessage line break rendering", () => {
             },
           ],
           latestSessionId: null,
-          unsavedRuns: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -64,7 +63,6 @@ describe("userMessage line break rendering", () => {
             },
           ],
           latestSessionId: null,
-          unsavedRuns: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -94,18 +92,23 @@ describe("provider incompatibility error", () => {
           id: "thread-provider-error",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [],
-          latestSessionId: null,
-          unsavedRuns: [
+          chatMessages: [
             {
+              role: "user",
+              content: "hello",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              role: "assistant",
+              content: null,
               runId: "run-incompatible",
               status: "failed",
-              prompt: "hello",
               error:
                 "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key.",
               createdAt: "2026-03-10T00:00:00Z",
             },
           ],
+          latestSessionId: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -130,17 +133,22 @@ describe("provider incompatibility error", () => {
           id: "thread-signature-error",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [],
-          latestSessionId: null,
-          unsavedRuns: [
+          chatMessages: [
             {
+              role: "user",
+              content: "hello",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              role: "assistant",
+              content: null,
               runId: "run-signature",
               status: "failed",
-              prompt: "hello",
               error: "Invalid signature in thinking block",
               createdAt: "2026-03-10T00:00:00Z",
             },
           ],
+          latestSessionId: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -169,7 +177,6 @@ describe("agent avatar link", () => {
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
-          unsavedRuns: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -195,12 +202,17 @@ describe("chat message activity line", () => {
   it("should keep activity line visible when result arrives but run is still running", async () => {
     const lifecycle = mockChatLifecycle({
       threadId: "thread-activity-running",
-      unsavedRuns: [
+      chatMessages: [
         {
+          role: "user",
+          content: "Do something",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-activity-1",
           status: "running",
-          prompt: "Do something",
-          error: null,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -236,12 +248,17 @@ describe("chat message activity line", () => {
   it("should hide activity line after run reaches terminal status", async () => {
     const lifecycle = mockChatLifecycle({
       threadId: "thread-activity-done",
-      unsavedRuns: [
+      chatMessages: [
         {
+          role: "user",
+          content: "Do something else",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-activity-2",
           status: "running",
-          prompt: "Do something else",
-          error: null,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],

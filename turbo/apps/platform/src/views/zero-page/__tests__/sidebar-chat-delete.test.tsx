@@ -61,7 +61,6 @@ function mockAPIs() {
         agentId: AGENT_ID,
         chatMessages: [],
         latestSessionId: null,
-        unsavedRuns: [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });
@@ -229,7 +228,6 @@ describe("sidebar chat delete", () => {
           agentId: AGENT_ID,
           chatMessages: [],
           latestSessionId: null,
-          unsavedRuns: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });

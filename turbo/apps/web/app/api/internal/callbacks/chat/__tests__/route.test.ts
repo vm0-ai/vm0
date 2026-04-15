@@ -13,7 +13,8 @@ import {
   createTestPushSubscription,
   getPushSubscriptionsByEndpoint,
   createSignedCallbackRequest,
-  getTestSessionChatMessages,
+  addTestRunToThread,
+  getTestChatMessagesByThread,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../../../../src/env";
@@ -64,7 +65,10 @@ describe("POST /api/internal/callbacks/chat", () => {
 
   /** Create a thread via route handler, then a run, session, and callback in DB. */
   async function setupRunAndThread(
-    options: { status?: "completed" | "failed" } = {},
+    options: {
+      status?: "completed" | "failed";
+      result?: Record<string, unknown>;
+    } = {},
   ) {
     const { status = "completed" } = options;
 
@@ -85,10 +89,14 @@ describe("POST /api/internal/callbacks/chat", () => {
     // Create a run in DB
     const { runId } = await seedTestRun(user.userId, agentId, {
       status,
+      result: options.result,
     });
 
-    // Create an agent session so findNewSessionId() returns a session
+    // Create an agent session (used for session continuity via run result)
     const session = await createTestAgentSession(user.userId, agentId);
+
+    // Link run to thread by inserting user + assistant placeholder in chat_messages
+    await addTestRunToThread(threadId, runId, user.userId);
 
     // Create a callback record
     const { secret } = await createTestCallback({
@@ -150,8 +158,12 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(sessionId).toBeNull();
   });
 
-  it("should update sessionId on completion when a matching session exists", async () => {
-    const { threadId, runId, secret, sessionId } = await setupRunAndThread();
+  it("should derive sessionId from run result when session exists", async () => {
+    // Create setup with the run's result containing agentSessionId
+    const session = await createTestAgentSession(user.userId, agentId);
+    const { threadId, runId, secret } = await setupRunAndThread({
+      result: { agentSessionId: session.id },
+    });
 
     // Mock Axiom to return empty (no result events)
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
@@ -172,9 +184,9 @@ describe("POST /api/internal/callbacks/chat", () => {
     const data = await response.json();
     expect(data.success).toBe(true);
 
-    // Verify sessionId was updated via thread detail API
+    // latestSessionId is now derived from the run's result.agentSessionId
     const threadSessionId = await getThreadSessionId(threadId);
-    expect(threadSessionId).toBe(sessionId);
+    expect(threadSessionId).toBe(session.id);
   });
 
   it("should be idempotent - calling twice does not break", async () => {
@@ -223,38 +235,18 @@ describe("POST /api/internal/callbacks/chat", () => {
   });
 
   describe("Chat Persistence", () => {
-    it("should persist user + assistant messages with summaries on completion", async () => {
-      const { threadId, runId, secret, sessionId } = await setupRunAndThread();
+    it("should persist user + assistant messages on completion", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
 
-      // Mock Axiom to return assistant events + result event
+      // Mock Axiom to return an assistant event with a text block
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
         {
-          eventType: "assistant",
-          eventData: {
-            message: {
-              content: [{ type: "tool_use", name: "Bash" }],
-            },
-          },
-        },
-        {
-          eventType: "assistant",
-          eventData: {
-            message: {
-              content: [{ type: "tool_use", name: "Read" }],
-            },
-          },
-        },
-        {
-          eventType: "assistant",
+          sequenceNumber: 0,
           eventData: {
             message: {
               content: [{ type: "text", text: "Done. Created 3 files." }],
             },
           },
-        },
-        {
-          eventType: "result",
-          eventData: { result: "Done. Created 3 files." },
         },
       ]);
 
@@ -272,43 +264,97 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // Verify session now has chat messages
-      type StoredMessage = {
-        role: string;
-        content: string;
-        runId?: string;
-        summaries?: Array<
-          { kind: "tool"; name: string } | { kind: "text"; text: string }
-        >;
-      };
-      const chatMessages = (await getTestSessionChatMessages(
-        sessionId,
-      )) as StoredMessage[];
+      // The placeholder is dropped when event-backed rows exist, leaving
+      // exactly: 1 user + 1 event-backed assistant row.
+      const chatMessages = await getTestChatMessagesByThread(threadId);
       expect(chatMessages).toHaveLength(2);
 
-      // Verify user message from prompt
       const userMsg = chatMessages.find((m) => {
         return m.role === "user";
       });
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("test prompt");
 
-      // Verify assistant message from Axiom result
       const assistantMsg = chatMessages.find((m) => {
         return m.role === "assistant";
       });
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.content).toBe("Done. Created 3 files.");
       expect(assistantMsg!.runId).toBe(runId);
-      // Last text event is skipped — only tool_use entries are extracted
-      expect(assistantMsg!.summaries).toEqual([
-        { kind: "tool", name: "Bash" },
-        { kind: "tool", name: "Read" },
+    });
+
+    it("should not duplicate assistant messages when callback runs concurrently", async () => {
+      // Regression: idempotent inserts via the (run_id, sequence_number)
+      // unique index must collapse concurrent callback invocations to a
+      // single row per event.
+      const { threadId, runId, secret } = await setupRunAndThread();
+
+      // Both concurrent callbacks see the same two assistant events from Axiom.
+      const axiomEvents = [
+        {
+          sequenceNumber: 0,
+          eventData: {
+            message: {
+              content: [
+                { type: "text", text: "Let me start by fetching the teams." },
+              ],
+            },
+          },
+        },
+        {
+          sequenceNumber: 1,
+          eventData: {
+            message: {
+              content: [
+                {
+                  type: "text",
+                  text: "Linear is not connected. Please connect it.",
+                },
+              ],
+            },
+          },
+        },
+      ];
+      context.mocks.axiom.queryAxiom.mockResolvedValue(axiomEvents);
+
+      const makeRequest = () => {
+        return POST(
+          createSignedCallbackRequest(
+            "http://localhost/api/internal/callbacks/chat",
+            {
+              runId,
+              status: "completed",
+              payload: { threadId, agentId },
+            },
+            secret,
+          ),
+        );
+      };
+
+      // Fire both handlers concurrently — ON CONFLICT DO NOTHING on the
+      // unique index must keep exactly one row per sequence_number.
+      const [r1, r2] = await Promise.all([makeRequest(), makeRequest()]);
+      expect(r1.status).toBe(200);
+      expect(r2.status).toBe(200);
+
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      // Exactly: 1 user + 2 assistant = 3 rows (placeholder dropped, no dups).
+      expect(chatMessages).toHaveLength(3);
+      const assistantContents = chatMessages
+        .filter((m) => {
+          return m.role === "assistant";
+        })
+        .map((m) => {
+          return m.content;
+        });
+      expect(assistantContents).toEqual([
+        "Let me start by fetching the teams.",
+        "Linear is not connected. Please connect it.",
       ]);
     });
 
-    it("should persist only user message when no result found in Axiom", async () => {
-      const { threadId, runId, secret, sessionId } = await setupRunAndThread();
+    it("should keep placeholder with null content when no events from Axiom", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
 
       // Axiom returns no events
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
@@ -327,127 +373,26 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // Verify session has only user message
-      type StoredMessage = { role: string; content: string };
-      const chatMessages = (await getTestSessionChatMessages(
-        sessionId,
-      )) as StoredMessage[];
-      expect(chatMessages).toHaveLength(1);
-      expect(chatMessages[0]!.role).toBe("user");
-      expect(chatMessages[0]!.content).toBe("test prompt");
-    });
+      // No event rows arrived → placeholder stays so the UI still renders
+      // an (empty) assistant bubble with terminal status.
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      expect(chatMessages).toHaveLength(2);
 
-    it("should not include summaries when Axiom returns no assistant events", async () => {
-      const { threadId, runId, secret, sessionId } = await setupRunAndThread();
-
-      // Combined Axiom query returns result event only (no assistant events)
-      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        {
-          eventType: "result",
-          eventData: { result: "All good." },
-        },
-      ]);
-
-      const response = await POST(
-        createSignedCallbackRequest(
-          "http://localhost/api/internal/callbacks/chat",
-          {
-            runId,
-            status: "completed",
-            payload: { threadId, agentId },
-          },
-          secret,
-        ),
-      );
-
-      expect(response.status).toBe(200);
-
-      type StoredMessage = {
-        role: string;
-        content: string;
-        summaries?: string[];
-      };
-      const chatMessages = (await getTestSessionChatMessages(
-        sessionId,
-      )) as StoredMessage[];
+      const userMsg = chatMessages.find((m) => {
+        return m.role === "user";
+      });
+      expect(userMsg).toBeDefined();
+      expect(userMsg!.content).toBe("test prompt");
 
       const assistantMsg = chatMessages.find((m) => {
         return m.role === "assistant";
       });
       expect(assistantMsg).toBeDefined();
-      expect(assistantMsg!.content).toBe("All good.");
-      // summaries should be undefined (not included when empty)
-      expect(assistantMsg!.summaries).toBeUndefined();
-    });
-
-    it("should truncate text summaries exceeding 80 characters", async () => {
-      const { threadId, runId, secret, sessionId } = await setupRunAndThread();
-
-      const longText = "x".repeat(100);
-
-      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        {
-          eventType: "assistant",
-          eventData: {
-            message: {
-              content: [{ type: "text", text: longText }],
-            },
-          },
-        },
-        {
-          eventType: "assistant",
-          eventData: {
-            message: {
-              content: [{ type: "text", text: "Done." }],
-            },
-          },
-        },
-        {
-          eventType: "result",
-          eventData: { result: "Done." },
-        },
-      ]);
-
-      const response = await POST(
-        createSignedCallbackRequest(
-          "http://localhost/api/internal/callbacks/chat",
-          {
-            runId,
-            status: "completed",
-            payload: { threadId, agentId },
-          },
-          secret,
-        ),
-      );
-
-      expect(response.status).toBe(200);
-
-      type StoredMessage = {
-        role: string;
-        summaries?: Array<
-          { kind: "tool"; name: string } | { kind: "text"; text: string }
-        >;
-      };
-      const chatMessages = (await getTestSessionChatMessages(
-        sessionId,
-      )) as StoredMessage[];
-
-      const assistantMsg = chatMessages.find((m) => {
-        return m.role === "assistant";
-      });
-      expect(assistantMsg).toBeDefined();
-      expect(assistantMsg!.summaries).toHaveLength(1);
-      const entry = assistantMsg!.summaries![0] as {
-        kind: "text";
-        text: string;
-      };
-      expect(entry.kind).toBe("text");
-      expect(entry.text.length).toBe(81); // 80 chars + "…"
-      expect(entry.text.endsWith("\u2026")).toBe(true);
+      expect(assistantMsg!.content).toBeNull();
     });
 
     it("should persist user + error messages on failed run", async () => {
-      const { threadId, runId, secret, sessionId } = await setupRunAndThread({
+      const { threadId, runId, secret } = await setupRunAndThread({
         status: "failed",
       });
 
@@ -466,14 +411,8 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      type StoredMessage = {
-        role: string;
-        content: string;
-        runId?: string;
-      };
-      const chatMessages = (await getTestSessionChatMessages(
-        sessionId,
-      )) as StoredMessage[];
+      // Verify chat_messages table: user msg + assistant msg with error
+      const chatMessages = await getTestChatMessagesByThread(threadId);
       expect(chatMessages).toHaveLength(2);
 
       const userMsg = chatMessages.find((m) => {
@@ -488,10 +427,11 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.content).toBe("Agent crashed");
       expect(assistantMsg!.runId).toBe(runId);
+      expect(assistantMsg!.error).toBe("Agent crashed");
     });
 
-    it("should update sessionId on failed run", async () => {
-      const { threadId, runId, secret, sessionId } = await setupRunAndThread({
+    it("should not derive sessionId on failed run without agentSessionId", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
         status: "failed",
       });
 
@@ -510,8 +450,9 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
+      // Failed runs don't have agentSessionId in result, so latestSessionId is null
       const threadSessionId = await getThreadSessionId(threadId);
-      expect(threadSessionId).toBe(sessionId);
+      expect(threadSessionId).toBeNull();
     });
   });
 

@@ -40,18 +40,10 @@ const summaryEntrySchema = z.union([
 
 const storedChatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
-  content: z.string(),
+  content: z.string().nullable(),
   runId: z.string().optional(),
   error: z.string().optional(),
-  summaries: z.array(summaryEntrySchema).optional(),
-  createdAt: z.string(),
-});
-
-const unsavedRunSchema = z.object({
-  runId: z.string(),
-  status: z.string(),
-  prompt: z.string(),
-  error: z.string().nullable(),
+  status: z.string().optional(),
   createdAt: z.string(),
 });
 
@@ -61,7 +53,6 @@ const chatThreadDetailSchema = z.object({
   agentId: z.string(),
   chatMessages: z.array(storedChatMessageSchema),
   latestSessionId: z.string().nullable(),
-  unsavedRuns: z.array(unsavedRunSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),

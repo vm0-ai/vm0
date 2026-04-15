@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadsContract,
-  type SummaryEntry,
   type PersistedAttachment,
 } from "@vm0/core";
 import { agentById, defaultAgentId$ } from "./agent.ts";
@@ -60,20 +59,13 @@ export interface ChatThread {
   title: string | null;
   chatMessages: {
     role: "user" | "assistant";
-    content: string;
+    content: string | null;
     runId?: string;
     error?: string;
-    summaries?: SummaryEntry[];
+    status?: string;
     createdAt: string;
   }[];
   latestSessionId: string | null;
-  unsavedRuns: {
-    runId: string;
-    status: string;
-    prompt: string;
-    error: string | null;
-    createdAt: string;
-  }[];
   isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
@@ -101,7 +93,6 @@ export const currentChatThread$ = computed(
       agentId: body.agentId,
       chatMessages: body.chatMessages ?? [],
       latestSessionId: body.latestSessionId ?? null,
-      unsavedRuns: body.unsavedRuns ?? [],
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,

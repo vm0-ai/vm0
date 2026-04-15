@@ -20,11 +20,13 @@ import { isApiError } from "../../../../../src/lib/shared/errors";
 import {
   createChatThread,
   getChatThread,
-  addRunToThread,
   updateChatThreadTitle,
-  getChatThreadContext,
-  threadHasNoRuns,
 } from "../../../../../src/lib/zero/chat-thread/chat-thread-service";
+import {
+  insertChatMessage,
+  getLatestSessionIdForThread,
+  getMessagesByThreadId,
+} from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { zeroRuns } from "../../../../../src/db/schema/zero-run";
@@ -86,8 +88,10 @@ const router = tsr.router(chatMessagesContract, {
     try {
       // Resolve or create thread
       let sessionId: string | undefined;
-      let previousContext: Awaited<ReturnType<typeof getChatThreadContext>> =
-        [];
+      let previousContext: Array<{
+        role: "user" | "assistant";
+        content: string;
+      }> = [];
       // Seeded once on the first run of a thread started from a scheduled run.
       // Subsequent runs inherit the session context so we don't re-apply it.
       let continueFromSchedulePrompt: string | undefined;
@@ -95,9 +99,22 @@ const router = tsr.router(chatMessagesContract, {
       if (body.threadId) {
         const thread = await getChatThread(body.threadId, authCtx.userId);
         threadId = thread.id;
-        sessionId = thread.sessionId ?? undefined;
-        previousContext = await getChatThreadContext(thread.id, authCtx.userId);
-        if (thread.sourceScheduleRunId && (await threadHasNoRuns(thread.id))) {
+        // Derive sessionId from latest completed run (for runner continuity)
+        sessionId = await getLatestSessionIdForThread(thread.id);
+        // Build previous context from chat_messages for title generation
+        const messages = await getMessagesByThreadId(thread.id);
+        previousContext = messages
+          .filter((m) => {
+            return m.content !== null;
+          })
+          .slice(-10)
+          .map((m) => {
+            return {
+              role: m.role as "user" | "assistant",
+              content: m.content as string,
+            };
+          });
+        if (thread.sourceScheduleRunId && messages.length === 0) {
           const [sourceSchedule] = await globalThis.services.db
             .select({ name: zeroAgentSchedules.name })
             .from(zeroRuns)
@@ -169,8 +186,19 @@ const router = tsr.router(chatMessagesContract, {
         callbacks: [chatCallback],
       });
 
-      // Associate run to thread
-      await addRunToThread(threadId, result.runId, authCtx.userId);
+      // Persist user message + assistant placeholder to chat_messages
+      await insertChatMessage({
+        chatThreadId: threadId,
+        role: "user",
+        content: body.prompt,
+        runId: null,
+      });
+      await insertChatMessage({
+        chatThreadId: threadId,
+        role: "assistant",
+        content: null,
+        runId: result.runId,
+      });
 
       // Defer the heavy dispatch pipeline (token generation, secret resolution,
       // OAuth refresh, storage manifest, runner dispatch) to after the response

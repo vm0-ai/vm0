@@ -89,12 +89,17 @@ describe("zero chat thread page display - attachment file preview", () => {
 describe("zero chat thread page display - run activity line summaries", () => {
   it("displays a tool-use summary in the run activity line", async () => {
     const ctrl = mockChatLifecycle({
-      unsavedRuns: [
+      chatMessages: [
         {
+          role: "user",
+          content: "Do task",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-1",
           status: "running",
-          prompt: "Do task",
-          error: null,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -113,12 +118,17 @@ describe("zero chat thread page display - run activity line summaries", () => {
 describe("zero chat thread page display - run activity line queue position", () => {
   it("displays an in-queue message with position info", async () => {
     const ctrl = mockChatLifecycle({
-      unsavedRuns: [
+      chatMessages: [
         {
+          role: "user",
+          content: "Do task",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-1",
           status: "queued",
-          prompt: "Do task",
-          error: null,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -140,43 +150,21 @@ describe("zero chat thread page display - run activity line queue position", () 
   });
 });
 
-// CHAT-D-042: Timeline of steps renders in ChatMessageRow
-describe("zero chat thread page display - timeline of steps", () => {
-  it("displays a collapsible timeline button showing the number of steps", async () => {
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "user",
-          content: "Run something",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "Done",
-          summaries: [{ kind: "tool", name: "Bash", input: { command: "ls" } }],
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Took 1 step/)).toBeInTheDocument();
-    });
-  });
-});
-
 // CHAT-D-043: Message status indicators render in ChatMessageRow
 describe("zero chat thread page display - message status indicators", () => {
   it("displays a Stop button status indicator when a run is active", async () => {
     mockChatLifecycle({
-      unsavedRuns: [
+      chatMessages: [
         {
+          role: "user",
+          content: "Hello",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-1",
           status: "running",
-          prompt: "Hello",
-          error: null,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],

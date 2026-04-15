@@ -1,16 +1,14 @@
-import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, isNull, desc } from "drizzle-orm";
 import { agentSessions } from "../../db/schema/agent-session";
 import {
   zeroAgentSessions,
   type StoredChatMessage,
 } from "../../db/schema/zero-agent-session";
-
-export type { StoredChatMessage };
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
-import { extractAndGroupVariables, type SummaryEntry } from "@vm0/core";
+import { extractAndGroupVariables } from "@vm0/core";
 import { notFound, forbidden } from "../shared/errors";
 import type { SessionResponse } from "@vm0/core";
 
@@ -66,63 +64,6 @@ export async function listSessionsWithMessages(
       messageCount: messages.length,
       preview: firstUserMsg ? firstUserMsg.content.slice(0, 100) : null,
     };
-  });
-}
-
-/**
- * Append chat messages to a session's chatMessages JSONB array.
- * Adds server-side createdAt timestamp to each message.
- * CRITICAL: preserves the transaction that writes to both agentSessions
- * (updatedAt) and zeroAgentSessions (chatMessages JSONB append).
- */
-export async function appendChatMessages(
-  sessionId: string,
-  userId: string,
-  messages: Array<{
-    role: "user" | "assistant";
-    content: string;
-    runId?: string;
-    summaries?: SummaryEntry[];
-  }>,
-): Promise<void> {
-  const now = new Date().toISOString();
-  const withTimestamps = messages.map((m) => {
-    return { ...m, createdAt: now };
-  });
-
-  await globalThis.services.db.transaction(async (tx) => {
-    // Verify session ownership
-    const [session] = await tx
-      .select({ id: agentSessions.id })
-      .from(agentSessions)
-      .where(
-        and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
-      )
-      .limit(1);
-
-    if (!session) {
-      throw notFound("Session not found or not owned by user");
-    }
-
-    // Upsert messages into extension table
-    await tx
-      .insert(zeroAgentSessions)
-      .values({
-        id: sessionId,
-        chatMessages: sql`${JSON.stringify(withTimestamps)}::jsonb`,
-      })
-      .onConflictDoUpdate({
-        target: zeroAgentSessions.id,
-        set: {
-          chatMessages: sql`COALESCE(${zeroAgentSessions.chatMessages}, '[]'::jsonb) || ${JSON.stringify(withTimestamps)}::jsonb`,
-        },
-      });
-
-    // Update session timestamp
-    await tx
-      .update(agentSessions)
-      .set({ updatedAt: new Date() })
-      .where(eq(agentSessions.id, sessionId));
   });
 }
 
@@ -198,26 +139,6 @@ export async function getSessionResponse(
     createdAt: session.createdAt.toISOString(),
     updatedAt: session.updatedAt.toISOString(),
   };
-}
-
-/**
- * Get chat messages for a session with ownership check.
- * Used by chat-thread-service to avoid direct zeroAgentSessions access.
- */
-export async function getChatMessagesForSession(
-  sessionId: string,
-  userId: string,
-): Promise<StoredChatMessage[]> {
-  const [session] = await globalThis.services.db
-    .select({ chatMessages: zeroAgentSessions.chatMessages })
-    .from(agentSessions)
-    .leftJoin(zeroAgentSessions, eq(agentSessions.id, zeroAgentSessions.id))
-    .where(
-      and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
-    )
-    .limit(1);
-
-  return (session?.chatMessages ?? []) as StoredChatMessage[];
 }
 
 /**

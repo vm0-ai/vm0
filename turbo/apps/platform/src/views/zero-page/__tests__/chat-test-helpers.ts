@@ -2,7 +2,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
-import type { SummaryEntry } from "@vm0/core";
+
 import { fill } from "../../../__tests__/page-helper.ts";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
@@ -41,7 +41,6 @@ export function mockSubagentThread(threadId: string) {
         agentId: SUB_AGENT_ID,
         chatMessages: [],
         latestSessionId: null,
-        unsavedRuns: [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });
@@ -136,17 +135,10 @@ export function mockChatLifecycle(options?: {
   threadId?: string;
   chatMessages?: {
     role: "user" | "assistant";
-    content: string;
+    content: string | null;
     runId?: string;
     error?: string;
-    summaries?: SummaryEntry[];
-    createdAt: string;
-  }[];
-  unsavedRuns?: {
-    runId: string;
-    status: string;
-    prompt: string;
-    error: string | null;
+    status?: string;
     createdAt: string;
   }[];
   threadTitle?: string | null;
@@ -154,7 +146,6 @@ export function mockChatLifecycle(options?: {
 }): MockLifecycleControl {
   const threadId = options?.threadId ?? "thread-test-1";
   const chatMessages = options?.chatMessages ?? [];
-  const unsavedRuns = options?.unsavedRuns;
 
   let runStatus = "running";
   let runError: string | null = null;
@@ -168,28 +159,32 @@ export function mockChatLifecycle(options?: {
 
   server.use(
     http.get("*/api/zero/chat-threads/:id", () => {
-      // After a run is associated, include it in unsavedRuns so the snapshot
-      // can reconstruct messages (mirrors real server behaviour).
-      const effectiveUnsavedRuns =
-        unsavedRuns ??
-        (runAssociated
-          ? [
-              {
-                runId: "a0000000-0000-4000-a000-000000000001",
-                status: runStatus,
-                prompt: runPrompt ?? "Hello",
-                error: runError,
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-            ]
-          : []);
+      // After a run is associated, include it as chatMessages rows
+      // (user + assistant placeholder) mirroring real server behaviour.
+      const effectiveMessages = runAssociated
+        ? [
+            ...chatMessages,
+            {
+              role: "user" as const,
+              content: runPrompt ?? "Hello",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              role: "assistant" as const,
+              content: null,
+              runId: "a0000000-0000-4000-a000-000000000001",
+              status: runStatus,
+              error: runError ?? undefined,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ]
+        : chatMessages;
       return HttpResponse.json({
         id: threadId,
         title: threadTitle,
         agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages,
+        chatMessages: effectiveMessages,
         latestSessionId: null,
-        unsavedRuns: effectiveUnsavedRuns,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });
@@ -295,8 +290,10 @@ export function mockChatLifecycle(options?: {
           ...events,
           {
             sequenceNumber: events.length + 1,
-            eventType: "result",
-            eventData: { result: content },
+            eventType: "assistant",
+            eventData: {
+              message: { content: [{ type: "text", text: content }] },
+            },
             createdAt: "2026-03-10T00:01:00Z",
           },
         ];

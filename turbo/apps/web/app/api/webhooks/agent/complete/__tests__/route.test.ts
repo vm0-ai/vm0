@@ -18,6 +18,9 @@ import {
   findTestQueueEntry,
   enqueueTestRun,
   getTestAgentSessionWithConversation,
+  addTestRunToThread,
+  insertTestChatThread,
+  getTestChatMessagesByThread,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../../../src/__tests__/db-test-seeders/email";
 import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
@@ -32,6 +35,9 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: direct service call for data setup in webhook complete tests
+import { updateAssistantMessageByRunId } from "../../../../../../src/lib/zero/chat-thread/chat-message-service";
 
 const context = testContext();
 
@@ -857,6 +863,157 @@ describe("POST /api/webhooks/agent/complete", () => {
           return c.attempts === 1;
         }),
       ).toBe(true);
+    });
+  });
+
+  // Race between cleanup-sandboxes cron and webhook/complete: the cron stamps
+  // `timeout` first with a generic heartbeat message, then the sandbox's own
+  // completion webhook arrives. The webhook must upgrade the run state AND
+  // refresh the chat placeholder so the user doesn't keep seeing "Run timed
+  // out (no heartbeat)" after the sandbox reports what actually happened.
+  describe("Timeout upgrade", () => {
+    it("should upgrade timed-out run to failed and replace chat placeholder error with report-error link", async () => {
+      // Thread + run + assistant placeholder (how chat runs normally dispatch)
+      const threadId = await insertTestChatThread(
+        user.userId,
+        testComposeId,
+        "Timeout upgrade thread",
+      );
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+      });
+      await addTestRunToThread(threadId, runId, user.userId);
+
+      // Simulate the cleanup cron stamping timeout on the run and the chat
+      // callback writing the timeout message onto the assistant placeholder.
+      const cronMessage = "Run timed out (no heartbeat)";
+      await transitionRunStatus(
+        runId,
+        {
+          status: "timeout",
+          completedAt: new Date(),
+          error: cronMessage,
+        },
+        ["pending", "running"],
+      );
+      await updateAssistantMessageByRunId(runId, cronMessage, cronMessage);
+
+      // Sandbox finally reports a failure → webhook should override the
+      // timeout state with the report-error link, not bail.
+      const token = await createTestSandboxToken(user.userId, runId);
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.status).toBe("failed");
+
+      // agent_runs state upgraded: status=failed, error carries report link
+      const run = await findTestRunRecord(runId);
+      expect(run!.status).toBe("failed");
+      expect(run!.error).toContain(`/runs/${runId}/report-error`);
+      expect(run!.error).not.toContain("Run timed out");
+
+      // chat_messages placeholder refreshed with the same report link
+      const messages = await getTestChatMessagesByThread(threadId);
+      const placeholder = messages.find((m) => {
+        return m.role === "assistant" && m.sequenceNumber === null;
+      });
+      expect(placeholder).toBeDefined();
+      expect(placeholder!.content).toContain(`/runs/${runId}/report-error`);
+      expect(placeholder!.error).toContain(`/runs/${runId}/report-error`);
+      expect(placeholder!.error).not.toContain("Run timed out");
+    });
+
+    it("should upgrade timed-out run to completed and clear the stale chat placeholder", async () => {
+      const threadId = await insertTestChatThread(
+        user.userId,
+        testComposeId,
+        "Timeout recovery thread",
+      );
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+      });
+      await addTestRunToThread(threadId, runId, user.userId);
+
+      const cronMessage = "Run timed out (no heartbeat)";
+      await transitionRunStatus(
+        runId,
+        {
+          status: "timeout",
+          completedAt: new Date(),
+          error: cronMessage,
+        },
+        ["pending", "running"],
+      );
+      await updateAssistantMessageByRunId(runId, cronMessage, cronMessage);
+
+      // Checkpoint is required for exitCode=0 completion.
+      const token = await createTestSandboxToken(user.userId, runId);
+      const checkpointResponse = await checkpointWebhook(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              runId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "recovery-session",
+              cliAgentSessionHistoryHash:
+                "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
+              artifactSnapshot: {
+                artifactName: "recovery-artifact",
+                artifactVersion: "v1",
+              },
+            }),
+          },
+        ),
+      );
+      expect(checkpointResponse.status).toBe(200);
+
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 0,
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.status).toBe("completed");
+
+      const run = await findTestRunRecord(runId);
+      expect(run!.status).toBe("completed");
+
+      // Placeholder cleared — UI falls back to event-backed assistant rows
+      // (if any) instead of rendering the stale timeout message.
+      const messages = await getTestChatMessagesByThread(threadId);
+      const placeholder = messages.find((m) => {
+        return m.role === "assistant" && m.sequenceNumber === null;
+      });
+      expect(placeholder).toBeDefined();
+      expect(placeholder!.content).toBeNull();
+      expect(placeholder!.error).toBeNull();
     });
   });
 });

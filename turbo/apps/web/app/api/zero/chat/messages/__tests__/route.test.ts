@@ -189,7 +189,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      // Verify the run is visible in thread detail (unsavedRuns for active runs)
+      // Verify the run is visible in thread detail as a chatMessage placeholder
       const threadResponse = await GET(
         createTestRequest(
           `http://localhost:3000/api/zero/chat-threads/${data.threadId}`,
@@ -198,8 +198,13 @@ describe("POST /api/zero/chat/messages", () => {
       );
       expect(threadResponse.status).toBe(200);
       const threadData = await threadResponse.json();
-      const allRunIds = threadData.unsavedRuns.map((r: { runId: string }) => {
-        return r.runId;
+      const assistantMsgs = threadData.chatMessages.filter(
+        (m: { role: string; runId?: string }) => {
+          return m.role === "assistant" && m.runId;
+        },
+      );
+      const allRunIds = assistantMsgs.map((m: { runId: string }) => {
+        return m.runId;
       });
       expect(allRunIds).toContain(data.runId);
     });

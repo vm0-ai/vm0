@@ -31,7 +31,6 @@ describe("chat session switch", () => {
               },
             ],
             latestSessionId: null,
-            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });
@@ -47,17 +46,15 @@ describe("chat session switch", () => {
               content: "Active task prompt",
               createdAt: "2026-03-10T00:00:00Z",
             },
-          ],
-          latestSessionId: null,
-          unsavedRuns: [
             {
+              role: "assistant",
+              content: null,
               runId: "run-active",
               status: "running",
-              prompt: "Active task prompt",
-              error: null,
               createdAt: "2026-03-10T00:00:01Z",
             },
           ],
+          latestSessionId: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -145,7 +142,6 @@ describe("chat session switch", () => {
             },
           ],
           latestSessionId: null,
-          unsavedRuns: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });

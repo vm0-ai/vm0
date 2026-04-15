@@ -173,12 +173,17 @@ describe("queue drawer", () => {
     const user = userEvent.setup();
 
     const ctrl = mockChatLifecycle({
-      unsavedRuns: [
+      chatMessages: [
         {
+          role: "user",
+          content: "Do something",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
           runId: "run-queue-1",
           status: "queued",
-          prompt: "Do something",
-          error: null,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],

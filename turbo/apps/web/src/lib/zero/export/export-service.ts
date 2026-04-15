@@ -14,6 +14,8 @@ import {
   downloadS3Buffer,
 } from "../../infra/s3/s3-client";
 import { getAllSessionsWithMessages } from "../zero-session-service";
+import { chatThreads } from "../../../db/schema/chat-thread";
+import { chatMessages } from "../../../db/schema/chat-message";
 import { resolveSessionHistory } from "../../infra/session-history/session-history-service";
 import { enqueueEmail } from "../email/outbox-service";
 import {
@@ -129,6 +131,35 @@ async function collectConversations(
   const entries: ZipEntry[] = [];
   let count = 0;
 
+  // Export chat thread messages from chat_messages table
+  const threads = await db
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
+    .where(eq(chatThreads.userId, userId));
+
+  for (const thread of threads) {
+    const messages = await db
+      .select({
+        role: chatMessages.role,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+        error: chatMessages.error,
+        createdAt: chatMessages.createdAt,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.chatThreadId, thread.id))
+      .orderBy(chatMessages.createdAt);
+
+    if (messages.length > 0) {
+      entries.push({
+        path: `conversations/chat-thread-${thread.id}.json`,
+        content: JSON.stringify(messages, null, 2),
+      });
+      count++;
+    }
+  }
+
+  // Export other channel sessions (Slack, Email, Telegram) from JSONB
   const sessions = await getAllSessionsWithMessages(userId);
 
   for (const session of sessions) {

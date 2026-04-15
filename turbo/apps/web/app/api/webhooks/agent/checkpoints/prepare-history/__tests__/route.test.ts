@@ -109,12 +109,15 @@ describe("POST /api/webhooks/agent/checkpoints/prepare-history", () => {
 
   describe("Success", () => {
     it("should return presigned URL for new blob", async () => {
-      const hash = createHash("sha256").update("test-content").digest("hex");
+      // Use a per-invocation unique content so repeated test runs against a
+      // shared dev DB don't collide with blobs pre-registered by prior runs.
+      const content = `test-content-${randomUUID()}`;
+      const hash = createHash("sha256").update(content).digest("hex");
 
       const request = makePrepareRequest(testToken, {
         runId: testRunId,
         hash,
-        size: 12,
+        size: content.length,
       });
 
       const response = await POST(request);

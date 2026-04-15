@@ -7,7 +7,6 @@ import {
   mockChatLifecycle,
   sendMessageInUI,
   PLACEHOLDER,
-  makeToolUseEvent,
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -63,47 +62,6 @@ describe("chat completion", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).toBeNull();
-    });
-  });
-
-  it("should collapse activity steps into expandable timeline", async () => {
-    const user = userEvent.setup();
-    const ctrl = mockChatLifecycle();
-
-    detachedSetupPage({
-      context,
-      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
-    });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-
-    await sendMessageInUI(user, textarea, "Hello");
-
-    // Wait for running state
-    await waitFor(() => {
-      const shimmer = document.querySelector(".zero-shimmer-text");
-      expect(shimmer).toBeInTheDocument();
-    });
-
-    // Add two activity events
-    ctrl.setEvents([
-      makeToolUseEvent("Bash", {}, 1),
-      makeToolUseEvent("Read", {}, 2),
-    ]);
-
-    // Wait for activity steps to appear
-    await waitFor(() => {
-      expect(screen.getByText("Running a command...")).toBeInTheDocument();
-    });
-
-    // Complete the run
-    ctrl.completeRun("Done");
-
-    // Wait for collapsed timeline
-    await waitFor(() => {
-      expect(screen.getByText(/Took \d+ steps?/)).toBeInTheDocument();
     });
   });
 

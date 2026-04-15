@@ -166,7 +166,6 @@ describe("zero-chat signals", () => {
             agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [],
             latestSessionId: "session-existing",
-            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });
@@ -247,7 +246,6 @@ describe("zero-chat signals", () => {
             agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [],
             latestSessionId: "session-error-recovery",
-            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });
@@ -342,7 +340,6 @@ describe("zero-chat signals", () => {
               agentId: "c0000000-0000-4000-a000-000000000001",
               chatMessages: [],
               latestSessionId: "session-dedup",
-              unsavedRuns: [],
               createdAt: "2026-03-10T00:00:00Z",
               updatedAt: "2026-03-10T00:00:00Z",
             });
@@ -366,7 +363,6 @@ describe("zero-chat signals", () => {
               },
             ],
             latestSessionId: "session-dedup",
-            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:01Z",
           });
@@ -514,7 +510,6 @@ describe("zero-chat signals", () => {
               },
             ],
             latestSessionId: "url-session",
-            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });
@@ -564,7 +559,6 @@ describe("zero-chat signals", () => {
               },
             ],
             latestSessionId: null,
-            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });

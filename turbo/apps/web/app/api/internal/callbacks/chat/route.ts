@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import type { SummaryEntry } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
-import { chatThreads } from "../../../../../src/db/schema/chat-thread";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { findNewSessionId } from "../../../../../src/lib/infra/session/find-new-session";
-import { queryRunEventsForChat } from "../../../../../src/lib/infra/run/extract-chat-events";
-import { appendChatMessages } from "../../../../../src/lib/zero/zero-session-service";
+import {
+  updateAssistantMessageByRunId,
+  insertAssistantEventMessages,
+  getChatThreadIdForRun,
+  cleanupAssistantPlaceholderIfEventsExist,
+} from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import {
   generateChatTitle,
   generateChatNotificationSummary,
@@ -16,6 +17,11 @@ import {
 import { updateChatThreadTitle } from "../../../../../src/lib/zero/chat-thread";
 import { sendUserPushNotifications } from "../../../../../src/lib/push/send-push";
 import { saveRunSummary } from "../../../../../src/lib/zero/run-summary";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+} from "../../../../../src/lib/shared/axiom";
 import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -30,87 +36,92 @@ function parsePayload(payload: unknown): ChatCallbackPayload | null {
   return { threadId: p.threadId, agentId: p.agentId };
 }
 
+interface ContentBlock {
+  type: string;
+  text?: string;
+}
+
+interface AxiomAssistantEvent {
+  sequenceNumber?: number;
+  eventData?: {
+    message?: { content?: ContentBlock[] };
+    sequenceNumber?: number;
+  };
+}
+
 /**
- * Persist chat messages to the session and update thread sessionId if needed.
+ * Query Axiom for every assistant event for this run and flatten them into
+ * `(sequenceNumber, content)` pairs. Used as the final sweep to backfill any
+ * events the live consumer dropped.
  */
-async function persistMessages(
-  sessionId: string,
-  userId: string,
-  messages: Array<{
-    role: "user" | "assistant";
-    content: string;
-    runId?: string;
-    summaries?: SummaryEntry[];
-  }>,
+async function queryAssistantEvents(
   runId: string,
-): Promise<void> {
-  await appendChatMessages(sessionId, userId, messages);
-  log.debug(`Persisted ${messages.length} chat messages for run ${runId}`);
-}
+): Promise<{ sequenceNumber: number; content: string }[]> {
+  const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+  const apl = `['${dataset}']
+| where runId == "${runId}"
+| where eventType == "assistant"
+| order by sequenceNumber asc
+| limit 200`;
 
-/**
- * Update sessionId on thread if not already set.
- */
-async function updateThreadSessionId(
-  threadId: string,
-  sessionId: string,
-): Promise<void> {
-  const [thread] = await globalThis.services.db
-    .select({ sessionId: chatThreads.sessionId })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
+  const events = await queryAxiom<AxiomAssistantEvent>(apl);
 
-  if (thread && !thread.sessionId) {
-    await globalThis.services.db
-      .update(chatThreads)
-      .set({ sessionId })
-      .where(eq(chatThreads.id, threadId));
+  const items: { sequenceNumber: number; content: string }[] = [];
+  for (const e of events) {
+    const seq = e.sequenceNumber ?? e.eventData?.sequenceNumber;
+    if (typeof seq !== "number") continue;
+    const content = e.eventData?.message?.content;
+    if (!content) continue;
+    const parts: string[] = [];
+    for (const block of content) {
+      if (block.type === "text" && typeof block.text === "string") {
+        parts.push(block.text);
+      }
+    }
+    if (parts.length === 0) continue;
+    items.push({
+      sequenceNumber: seq,
+      content: parts.length === 1 ? parts[0]! : parts.join("\n\n"),
+    });
   }
+  return items;
 }
 
 /**
- * Handle completed run: persist messages with summaries, update sessionId, generate title.
+ * Handle completed run: final sweep for any events the consumer missed,
+ * drop the placeholder, then generate title and push notification.
  */
 async function handleCompleted(
   runId: string,
-  sessionId: string | undefined,
-  userId: string,
   prompt: string,
   threadId: string,
+  userId: string,
 ): Promise<void> {
-  // Query Axiom for result text and summaries
-  const { resultText, summaries } = await queryRunEventsForChat(runId);
-
-  // Persist chat messages to session
-  if (sessionId) {
-    const messages: Array<{
-      role: "user" | "assistant";
-      content: string;
-      runId?: string;
-      summaries?: SummaryEntry[];
-    }> = [{ role: "user", content: prompt }];
-
-    if (resultText) {
-      messages.push({
-        role: "assistant",
-        content: resultText,
-        runId,
-        ...(summaries.length > 0 ? { summaries } : {}),
-      });
-    }
-
-    await persistMessages(sessionId, userId, messages, runId);
-    await updateThreadSessionId(threadId, sessionId);
+  // Final sweep: re-query Axiom and insert any events the live consumer
+  // missed. Inserts are idempotent via the `(run_id, sequence_number)`
+  // unique index, so concurrent writes from the consumer and this sweep
+  // cannot produce duplicates.
+  const items = await queryAssistantEvents(runId);
+  if (items.length > 0) {
+    const chatThreadId = (await getChatThreadIdForRun(runId)) ?? threadId;
+    await insertAssistantEventMessages(runId, chatThreadId, items);
   }
 
+  // If any event-backed rows landed, retire the placeholder so the UI
+  // doesn't render an empty assistant bubble alongside the real ones.
+  await cleanupAssistantPlaceholderIfEventsExist(runId);
+
+  // Use last assistant text for downstream (title, summary, notification)
+  const lastResultText =
+    items.length > 0 ? items[items.length - 1]!.content : null;
+
   // Generate run summary (best-effort — errors handled internally)
-  await saveRunSummary(runId, "chat", prompt, resultText ?? "");
+  await saveRunSummary(runId, "chat", prompt, lastResultText ?? "");
 
   // Generate and update chat thread title (best-effort — title is non-critical)
   try {
-    const previousMessages: TitleContextMessage[] = resultText
-      ? [{ role: "assistant", content: resultText }]
+    const previousMessages: TitleContextMessage[] = lastResultText
+      ? [{ role: "assistant", content: lastResultText }]
       : [];
     const title = await generateChatTitle(
       prompt,
@@ -126,8 +137,8 @@ async function handleCompleted(
   // Send push notification (best-effort)
   let summary: string | null = null;
   try {
-    summary = resultText
-      ? await generateChatNotificationSummary(prompt, resultText)
+    summary = lastResultText
+      ? await generateChatNotificationSummary(prompt, lastResultText)
       : null;
   } catch (err) {
     log.warn("Failed to generate notification summary", { err });
@@ -140,28 +151,17 @@ async function handleCompleted(
 }
 
 /**
- * Handle failed run: persist error messages, update sessionId.
+ * Handle failed run: update assistant placeholder with the error message.
  */
 async function handleFailed(
   runId: string,
-  sessionId: string | undefined,
-  userId: string,
   prompt: string,
   threadId: string,
+  userId: string,
   errorMessage: string,
 ): Promise<void> {
-  if (sessionId) {
-    await persistMessages(
-      sessionId,
-      userId,
-      [
-        { role: "user", content: prompt },
-        { role: "assistant", content: errorMessage, runId },
-      ],
-      runId,
-    );
-    await updateThreadSessionId(threadId, sessionId);
-  }
+  // Update the assistant placeholder (sequence_number IS NULL) with error.
+  await updateAssistantMessageByRunId(runId, errorMessage, errorMessage);
 
   // Send push notification (best-effort)
   await sendUserPushNotifications(userId, {
@@ -175,11 +175,9 @@ async function handleFailed(
  * POST /api/internal/callbacks/chat
  *
  * Chat callback handler for agent run completion.
- * Handles the full chat completion flow:
- * - Persists user + assistant messages (with summaries) to the session
- * - Sets sessionId on the chat thread
- * - Generates and updates the chat thread title (on completion only)
- * - Persists error messages on failure
+ * Final sweep: inserts any assistant events not yet written by the
+ * chat-assistant consumer (via `ON CONFLICT DO NOTHING`), cleans up the
+ * placeholder, then generates title and sends push notification.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
@@ -201,12 +199,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
-  // Fetch the run record for userId, prompt, createdAt, error
+  // Fetch the run record for userId, prompt, error
   const [run] = await globalThis.services.db
     .select({
       userId: agentRuns.userId,
       prompt: agentRuns.prompt,
-      createdAt: agentRuns.createdAt,
       error: agentRuns.error,
     })
     .from(agentRuns)
@@ -217,29 +214,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
-  // Resolve session for message persistence
-  const sessionId = await findNewSessionId(
-    run.userId,
-    payload.agentId,
-    run.createdAt,
-  );
-
   if (status === "completed") {
-    await handleCompleted(
-      runId,
-      sessionId,
-      run.userId,
-      run.prompt,
-      payload.threadId,
-    );
+    await handleCompleted(runId, run.prompt, payload.threadId, run.userId);
   } else if (status === "failed") {
     const errorMessage = error ?? run.error ?? "Run failed";
     await handleFailed(
       runId,
-      sessionId,
-      run.userId,
       run.prompt,
       payload.threadId,
+      run.userId,
       errorMessage,
     );
   }

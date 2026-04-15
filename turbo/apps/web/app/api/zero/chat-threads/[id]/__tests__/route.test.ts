@@ -4,10 +4,9 @@ import { GET as listThreads, POST } from "../../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestSessionWithConversation,
-  appendTestChatMessages,
   addTestRunToThread,
   updateTestChatThreadTitle,
+  insertTestChatMessage,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -15,6 +14,9 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: direct service call for data setup in chat-thread detail tests
+import { insertAssistantEventMessages } from "../../../../../../src/lib/zero/chat-thread/chat-message-service";
 
 const context = testContext();
 
@@ -82,14 +84,11 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(data.agentId).toBe(testComposeId);
     expect(data.chatMessages).toEqual([]);
     expect(data.latestSessionId).toBeNull();
-    expect(data.unsavedRuns).toEqual([]);
     expect(data.createdAt).toBeDefined();
     expect(data.updatedAt).toBeDefined();
   });
 
-  it("should return chat messages with summaries after run completes", async () => {
-    const userId = testUserId;
-
+  it("should return chat messages after run completes", async () => {
     // 1. Create thread
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
@@ -97,49 +96,32 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           agentId: testComposeId,
-          title: "Summaries thread",
+          title: "Messages thread",
         }),
       }),
     );
     const { id: threadId } = await createRes.json();
 
-    // 2. Create a session (linked to a conversation)
-    const session = await createTestSessionWithConversation(
-      userId,
-      testComposeId,
-    );
-
-    // 3. Create a completed run whose result references the session
-    const { runId } = await seedTestRun(userId, testComposeId, {
+    // 2. Create a completed run
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
       status: "completed",
       prompt: "What files changed?",
-      result: { agentSessionId: session.id },
     });
 
-    // 4. Append chat messages with summaries to the session
-    await appendTestChatMessages(session.id, [
-      {
-        role: "user",
-        content: "What files changed?",
-        createdAt: new Date().toISOString(),
-      },
-      {
-        role: "assistant",
-        content: "Here are the changed files.",
-        runId,
-        summaries: [
-          { kind: "tool", name: "Bash" },
-          { kind: "tool", name: "Read", input: { file_path: "src/index.ts" } },
-          { kind: "tool", name: "Grep" },
-        ],
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    // 3. Insert messages directly into chat_messages table
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "user",
+      content: "What files changed?",
+    });
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "Here are the changed files.",
+      runId,
+    });
 
-    // 5. Link run to thread
-    await addTestRunToThread(threadId, runId, testUserId);
-
-    // 6. GET thread detail — summaries should be present
+    // 4. GET thread detail — messages should be present
     const response = await GET(
       createTestRequest(
         `http://localhost:3000/api/zero/chat-threads/${threadId}`,
@@ -156,11 +138,6 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(assistantMsg).toBeDefined();
     expect(assistantMsg.content).toBe("Here are the changed files.");
     expect(assistantMsg.runId).toBe(runId);
-    expect(assistantMsg.summaries).toEqual([
-      { kind: "tool", name: "Bash" },
-      { kind: "tool", name: "Read", input: { file_path: "src/index.ts" } },
-      { kind: "tool", name: "Grep" },
-    ]);
   });
 
   it("should not return thread owned by another user", async () => {
@@ -254,7 +231,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(listData.threads[0].title).toBe("After AI update");
   });
 
-  it("should return createdAt on unsaved (cancelled) runs", async () => {
+  it("should return cancelled run as chat message with error", async () => {
     // Create a thread
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
@@ -274,7 +251,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
       prompt: "This was cancelled",
     });
 
-    // Link run to thread
+    // Link run to thread (creates user + assistant placeholder in chat_messages)
     await addTestRunToThread(threadId, runId, testUserId);
 
     // GET thread detail
@@ -286,14 +263,92 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.unsavedRuns).toHaveLength(1);
-    expect(data.unsavedRuns[0].runId).toBe(runId);
-    expect(data.unsavedRuns[0].status).toBe("cancelled");
-    expect(data.unsavedRuns[0].createdAt).toBeDefined();
+    // chatMessages has user msg + assistant msg (cancelled placeholder with status)
+    expect(data.chatMessages).toHaveLength(2);
+
+    const assistantMsg = data.chatMessages.find((m: { role: string }) => {
+      return m.role === "assistant";
+    });
+    expect(assistantMsg).toBeDefined();
+    expect(assistantMsg.runId).toBe(runId);
+    expect(assistantMsg.content).toBeNull();
+    expect(assistantMsg.status).toBe("cancelled");
+    expect(assistantMsg.createdAt).toBeDefined();
     // Verify it's a valid ISO 8601 date string
-    expect(new Date(data.unsavedRuns[0].createdAt).toISOString()).toBe(
-      data.unsavedRuns[0].createdAt,
+    expect(new Date(assistantMsg.createdAt).toISOString()).toBe(
+      assistantMsg.createdAt,
     );
+  });
+
+  it("should not mask event-backed assistant content with run-level timeout error", async () => {
+    // Create a thread
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Event-backed rows thread",
+        }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    // Simulate a run that produced event-backed assistant rows but then got
+    // stamped "timeout" by the cleanup cron (the race this test guards).
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "running",
+      prompt: "multi-step prompt",
+    });
+    await addTestRunToThread(threadId, runId, testUserId);
+    await insertAssistantEventMessages(runId, threadId, [
+      { sequenceNumber: 0, content: "First partial response" },
+      { sequenceNumber: 1, content: "Second partial response" },
+    ]);
+    await transitionRunStatus(
+      runId,
+      {
+        status: "timeout",
+        completedAt: new Date(),
+        error: "Run timed out (no heartbeat)",
+      },
+      ["pending", "running"],
+    );
+
+    // GET thread detail — event-backed rows must keep their own content and
+    // NOT inherit the run-level timeout error via the leftJoin fallback.
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    const eventRows = data.chatMessages.filter(
+      (m: { role: string; content: string | null }) => {
+        return m.role === "assistant" && m.content !== null;
+      },
+    );
+    expect(eventRows).toHaveLength(2);
+    for (const row of eventRows) {
+      expect(row.error).toBeUndefined();
+      expect(row.content).not.toContain("Run timed out");
+    }
+
+    // The placeholder row (sequence_number IS NULL, content IS NULL) keeps
+    // the fallback behavior — it inherits the run-level error because its
+    // own error is null. This covers the case where the terminal callback
+    // never delivered and chat_messages.error was never written.
+    const placeholder = data.chatMessages.find(
+      (m: { role: string; content: string | null; runId?: string }) => {
+        return (
+          m.role === "assistant" && m.content === null && m.runId === runId
+        );
+      },
+    );
+    expect(placeholder).toBeDefined();
+    expect(placeholder.error).toBe("Run timed out (no heartbeat)");
   });
 });
 

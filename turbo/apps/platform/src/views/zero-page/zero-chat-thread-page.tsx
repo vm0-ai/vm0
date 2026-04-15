@@ -13,7 +13,6 @@ import {
   IconPhoto,
   IconChartLine,
   IconPlayerStop,
-  IconChevronDown,
   IconCopy,
   IconCheck,
   IconPin,
@@ -265,9 +264,22 @@ export function ZeroChatThreadPageInner({
                 </p>
               </div>
             )}
-            {messages.map((msg) => {
+            {groupMessagesByRun(messages).map((entry) => {
+              if (Array.isArray(entry)) {
+                return (
+                  <AssistantMessageGroup
+                    key={entry[0].id}
+                    messages={entry}
+                    thread={thread}
+                  />
+                );
+              }
               return (
-                <ChatMessageRow key={msg.id} message={msg} thread={thread} />
+                <ChatMessageRow
+                  key={entry.id}
+                  message={entry}
+                  thread={thread}
+                />
               );
             })}
           </div>
@@ -386,6 +398,49 @@ function ChatSkeleton() {
       </div>
     </>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Message grouping — consecutive assistant messages with the same runId
+// are rendered inside a single block that shares one avatar and hover state.
+// ---------------------------------------------------------------------------
+
+function groupMessagesByRun(
+  messages: ZeroChatMessage[],
+): (ZeroChatMessage | AssistantChatMessage[])[] {
+  const result: (ZeroChatMessage | AssistantChatMessage[])[] = [];
+  let currentGroup: AssistantChatMessage[] = [];
+
+  function flushGroup() {
+    if (currentGroup.length === 0) {
+      return;
+    }
+    if (currentGroup.length === 1) {
+      result.push(currentGroup[0]);
+    } else {
+      result.push([...currentGroup]);
+    }
+    currentGroup = [];
+  }
+
+  for (const msg of messages) {
+    if (msg.role === "assistant" && msg.legacyRunId) {
+      if (
+        currentGroup.length > 0 &&
+        currentGroup[0].legacyRunId === msg.legacyRunId
+      ) {
+        currentGroup.push(msg);
+      } else {
+        flushGroup();
+        currentGroup = [msg];
+      }
+    } else {
+      flushGroup();
+      result.push(msg);
+    }
+  }
+  flushGroup();
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -645,82 +700,6 @@ function queueLabel(position: number): string {
   return `In queue, ${position - 1} task${position - 1 === 1 ? "" : "s"} ahead...`;
 }
 
-function CollapsibleTimeline({
-  message,
-  thread,
-}: {
-  message: AssistantChatMessage;
-  thread: ChatThreadSignals;
-}) {
-  const expandedIds = useGet(thread.timelineExpandedIds$);
-  const expanded = expandedIds.has(message.id);
-  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
-  const summaries = message.summaries ?? [];
-
-  if (summaries.length === 0) {
-    return null;
-  }
-
-  const rawItems = deduplicateSummaries(summaries);
-  const items = rawItems.map((summary, position) => {
-    return {
-      key: `${position}-${summary}`,
-      summary,
-    };
-  });
-
-  return (
-    <div className="mb-6">
-      <button
-        type="button"
-        onClick={() => {
-          return toggleExpanded(message.id);
-        }}
-        className="flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
-      >
-        <IconChevronDown
-          size={12}
-          stroke={1.5}
-          className={`shrink-0 transition-transform duration-200 ${expanded ? "" : "-rotate-90"}`}
-        />
-        <span className="font-medium">
-          Took {items.length} step{items.length === 1 ? "" : "s"}
-        </span>
-      </button>
-      {expanded && (
-        <div className="relative flex flex-col gap-3 mt-2">
-          {items.length > 1 && (
-            <div
-              className="absolute left-[5.5px] top-[6px] bottom-[6px] pointer-events-none"
-              aria-hidden
-            >
-              <div className="w-px h-full zero-dashed-line" />
-            </div>
-          )}
-          {items.map(({ key, summary }) => {
-            return (
-              <p
-                key={key}
-                className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground truncate"
-              >
-                <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">
-                  <span
-                    className="text-[8px] leading-none text-foreground/30"
-                    aria-hidden
-                  >
-                    ●
-                  </span>
-                </span>
-                <span className="truncate">{summary}</span>
-              </p>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function AssistantMessage({
   message,
   thread,
@@ -759,9 +738,6 @@ function ReactiveAssistantMessage({
   message: AssistantChatMessage;
   thread: ChatThreadSignals;
 }) {
-  const summariesLoadable = useLastLoadable(message.summaries$!);
-  const summaries =
-    summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
   const detailLoadable = useLastLoadable(message.runLoop!.detail$);
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
@@ -769,16 +745,71 @@ function ReactiveAssistantMessage({
     detail?.status === "failed" ||
     detail?.status === "timeout" ||
     detail?.status === "cancelled";
-  // Build an enriched message with reactive content for the static renderer
-  const enrichedMessage: AssistantChatMessage = {
-    ...message,
-    summaries: summaries.length > 0 ? summaries : message.summaries,
-    status: detail?.status ?? undefined,
-    error: isFailed
-      ? failedRunErrorMessage(detail?.status, detail?.error)
-      : undefined,
-  };
-  return <StaticAssistantMessage message={enrichedMessage} thread={thread} />;
+
+  // Only fall back to static rendering for failures — show error UI
+  if (isFailed) {
+    const enrichedMessage: AssistantChatMessage = {
+      ...message,
+      status: detail?.status ?? undefined,
+      error: failedRunErrorMessage(detail?.status, detail?.error),
+    };
+    return <StaticAssistantMessage message={enrichedMessage} thread={thread} />;
+  }
+
+  // Active or just-completed: render from the event stream.
+  // On completion the texts$ stay stable until reloadThread$ replaces with
+  // server-side grouped messages, avoiding the flash of a single result$.
+  const active = detail?.status !== "completed";
+  return (
+    <ReactiveRunContent message={message} thread={thread} active={active} />
+  );
+}
+
+/**
+ * Renders all intermediate text outputs from the event stream.
+ * When `active` is true, an activity line is appended at the bottom.
+ */
+function ReactiveRunContent({
+  message,
+  thread,
+  active,
+}: {
+  message: AssistantChatMessage;
+  thread: ChatThreadSignals;
+  active: boolean;
+}) {
+  const texts = useLastResolved(message.texts$!) ?? [];
+  const lastContent = texts[texts.length - 1] ?? "";
+
+  return (
+    <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <AssistantBubbleAvatar thread={thread} />
+        <div className="flex flex-col gap-3">
+          {texts.map((text) => {
+            return (
+              <div
+                key={text}
+                className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words animate-in fade-in slide-in-from-bottom-1 duration-300"
+              >
+                <Markdown source={text} />
+              </div>
+            );
+          })}
+          {active && (
+            <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+              <MessageRunActivityLine message={message} thread={thread} />
+            </div>
+          )}
+        </div>
+      </div>
+      <AssistantMessageActions
+        message={message}
+        content={lastContent}
+        thread={thread}
+      />
+    </div>
+  );
 }
 
 function isRunActive(message: AssistantChatMessage): boolean {
@@ -999,8 +1030,6 @@ function StaticAssistantMessage({
 
   const showActivityLine = isRunActive(message);
 
-  const hasSummaries = message.summaries && message.summaries.length > 0;
-
   if (message.error) {
     return (
       <div
@@ -1010,9 +1039,6 @@ function StaticAssistantMessage({
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           <AssistantBubbleAvatar thread={thread} />
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            {hasSummaries && (
-              <CollapsibleTimeline message={message} thread={thread} />
-            )}
             <AssistantErrorContent error={message.error} />
           </div>
         </div>
@@ -1031,9 +1057,6 @@ function StaticAssistantMessage({
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           <AssistantBubbleAvatar thread={thread} />
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            {hasSummaries && (
-              <CollapsibleTimeline message={message} thread={thread} />
-            )}
             <Markdown source={content} />
             {message.cancelled && (
               <div className="mt-3 pt-3 border-t flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1077,6 +1100,92 @@ function StaticAssistantMessage({
       <AssistantMessageActions
         message={message}
         content={content}
+        thread={thread}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Grouped assistant messages — multiple messages from the same run rendered
+// inside a single block with one avatar and shared hover state.
+// ---------------------------------------------------------------------------
+
+function AssistantMessageGroupItem({
+  message,
+  thread,
+}: {
+  message: AssistantChatMessage;
+  thread: ChatThreadSignals;
+}) {
+  const content = useLastResolved(message.result$) ?? "";
+  const showActivityLine = isRunActive(message);
+
+  if (message.error) {
+    return (
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
+        <AssistantErrorContent error={message.error} />
+      </div>
+    );
+  }
+
+  if (content && !showActivityLine) {
+    return (
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
+        <Markdown source={content} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+      {showActivityLine ? (
+        <MessageRunActivityLine message={message} thread={thread} />
+      ) : (
+        <div className="flex items-center gap-2 min-w-0">
+          <IconLoader2
+            size={14}
+            className="animate-spin text-foreground/50 shrink-0"
+          />
+          <p className="zero-shimmer-text text-xs truncate">Thinking...</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssistantMessageGroup({
+  messages,
+  thread,
+}: {
+  messages: AssistantChatMessage[];
+  thread: ChatThreadSignals;
+}) {
+  // Use the last message for action buttons (view logs link, copy, TTS).
+  // The last message's result$ is used as action content; when the group has
+  // multiple completed texts the user can copy individually via selection.
+  const lastMessage = messages[messages.length - 1];
+  const lastContent = useLastResolved(lastMessage.result$) ?? "";
+
+  return (
+    <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <AssistantBubbleAvatar thread={thread} />
+        <div className="flex flex-col gap-3">
+          {messages.map((msg) => {
+            return (
+              <AssistantMessageGroupItem
+                key={msg.id}
+                message={msg}
+                thread={thread}
+              />
+            );
+          })}
+        </div>
+      </div>
+      <AssistantMessageActions
+        message={lastMessage}
+        content={lastContent}
         thread={thread}
       />
     </div>

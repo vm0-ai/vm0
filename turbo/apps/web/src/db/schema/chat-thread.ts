@@ -4,18 +4,16 @@ import {
   text,
   timestamp,
   index,
-  uniqueIndex,
   jsonb,
 } from "drizzle-orm/pg-core";
 import type { PersistedAttachment } from "@vm0/core";
 import { agentComposes } from "./agent-compose";
-import { agentRuns } from "./agent-run";
-import { agentSessions } from "./agent-session";
 
 /**
  * Chat Threads table
  * User-facing conversation thread identity, created before any run starts.
  * Provides instant sidebar entries and stable URL routing.
+ * Messages are stored in the chat_messages table (1:N relationship).
  */
 export const chatThreads = pgTable(
   "chat_threads",
@@ -31,14 +29,6 @@ export const chatThreads = pgTable(
       )
       .notNull(),
     title: text("title"),
-    sessionId: uuid("session_id").references(
-      () => {
-        return agentSessions.id;
-      },
-      {
-        onDelete: "set null",
-      },
-    ),
     /**
      * ID of the scheduled agent run this thread was started from, if any.
      * When set, the first run created in this thread is seeded with a system
@@ -67,43 +57,6 @@ export const chatThreads = pgTable(
         table.agentComposeId,
         table.updatedAt.desc(),
       ),
-    ];
-  },
-);
-
-/**
- * Chat Thread Runs join table
- * Associates chat threads with agent runs (many-to-many).
- */
-export const chatThreadRuns = pgTable(
-  "chat_thread_runs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    chatThreadId: uuid("chat_thread_id")
-      .references(
-        () => {
-          return chatThreads.id;
-        },
-        { onDelete: "cascade" },
-      )
-      .notNull(),
-    runId: uuid("run_id")
-      .references(
-        () => {
-          return agentRuns.id;
-        },
-        { onDelete: "cascade" },
-      )
-      .notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => {
-    return [
-      uniqueIndex("idx_chat_thread_runs_unique").on(
-        table.chatThreadId,
-        table.runId,
-      ),
-      index("idx_chat_thread_runs_thread").on(table.chatThreadId),
     ];
   },
 );

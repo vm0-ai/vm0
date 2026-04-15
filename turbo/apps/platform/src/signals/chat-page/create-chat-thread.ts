@@ -25,7 +25,6 @@ import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
 import {
   createActiveRunMessage,
-  unsavedRunsToMessages,
   createPlaceholderAssistantMessage,
   transformServerMessages,
   THINKING_MESSAGES,
@@ -56,6 +55,7 @@ export interface ChatThreadSignals {
   loadMessages$: Command<Promise<void>, [AbortSignal]>;
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
+  resetLocalMessages$: Command<void, []>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
   scrollToBottom$: Command<void, []>;
@@ -103,7 +103,6 @@ function createThreadData(threadId: string) {
       agentId: body.agentId,
       chatMessages: body.chatMessages ?? [],
       latestSessionId: body.latestSessionId ?? null,
-      unsavedRuns: body.unsavedRuns ?? [],
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
@@ -126,36 +125,24 @@ function createThreadData(threadId: string) {
 function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
   const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
 
-  const currentChatMessages$ = computed(
-    async (get): Promise<ZeroChatMessage[]> => {
-      const messages = (await get(threadData$))?.chatMessages ?? [];
-      return transformServerMessages(messages);
-    },
-  );
+  const resetLocalMessages$ = command(({ set }) => {
+    set(internalLocalMessages$, []);
+  });
 
   const chatMessages$ = computed(async (get): Promise<ChatMessages | null> => {
     const thread = await get(threadData$);
     if (!thread) {
       return null;
     }
-    const {
-      messages: runMessages,
-      activeRunMessages,
-      lastActiveRunId: legacyLastActiveRunId,
-    } = unsavedRunsToMessages(thread.unsavedRuns);
 
-    const allMessages = [...(await get(currentChatMessages$)), ...runMessages];
-    allMessages.sort((a, b) => {
-      const aTime = a.createdAt ?? "";
-      const bTime = b.createdAt ?? "";
-      return aTime.localeCompare(bTime);
-    });
+    const { messages, activeRunMessages, lastActiveRunId } =
+      transformServerMessages(thread.chatMessages);
 
     return {
-      messages: allMessages,
+      messages,
       activeRunMessages,
       agentId: thread.agentId,
-      lastActiveRunId: legacyLastActiveRunId,
+      lastActiveRunId,
     };
   });
 
@@ -221,6 +208,7 @@ function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
 
   return {
     internalLocalMessages$,
+    resetLocalMessages$,
     chatMessages$,
     messages$,
     allFinished$,
@@ -777,8 +765,13 @@ export function createChatThreadSignals(
   draft: DraftSignals,
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const { internalLocalMessages$, messages$, chatMessages$, allFinished$ } =
-    createMessageState(threadData$);
+  const {
+    internalLocalMessages$,
+    resetLocalMessages$,
+    messages$,
+    chatMessages$,
+    allFinished$,
+  } = createMessageState(threadData$);
   const { setScrollContainer$, autoScroll$, scrollToBottom$ } =
     createScrollSignals();
   const { composerFileInput$, setComposerFileInput$ } =
@@ -843,6 +836,7 @@ export function createChatThreadSignals(
     loadMessages$,
     sendMessage$,
     cancelRun$,
+    resetLocalMessages$,
     setScrollContainer$,
     autoScroll$,
     scrollToBottom$,

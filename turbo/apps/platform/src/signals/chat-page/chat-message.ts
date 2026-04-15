@@ -53,15 +53,6 @@ export {
 
 const L = logger("ChatMessage");
 
-function isResultEventData(data: unknown): data is { result: string } {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "result" in data &&
-    typeof (data as { result: unknown }).result === "string"
-  );
-}
-
 async function createChatThread(
   createClient: ZeroClientFactory,
   agentId: string,
@@ -98,9 +89,10 @@ export interface AssistantChatMessage {
   status?: LogStatus;
   error?: string;
   cancelled?: boolean;
-  summaries?: string[];
   runLoop?: ReturnType<typeof createRunLoop>;
   summaries$?: Computed<Promise<string[]>>;
+  /** All intermediate text outputs from the run's event stream (live). */
+  texts$?: Computed<Promise<string[]>>;
   createdAt?: string;
 }
 
@@ -420,27 +412,45 @@ async function collectAllEvents(
   return allEvents;
 }
 
-function extractResult(events: AgentEvent[]): string {
-  let result = "";
+/**
+ * Extract ALL assistant text outputs from the event stream, in order.
+ */
+function extractTexts(events: AgentEvent[]): string[] {
+  const texts: string[] = [];
   for (const event of events) {
-    if (event.eventType === "result" && isResultEventData(event.eventData)) {
-      result = event.eventData.result;
+    if (event.eventType === "assistant") {
+      for (const block of getEventContent(event)) {
+        if (block.type === "text" && block.text) {
+          texts.push(block.text);
+        }
+      }
     }
   }
-  return result;
+  return texts;
+}
+
+function extractResult(events: AgentEvent[]): string {
+  const texts = extractTexts(events);
+  return texts[texts.length - 1] ?? "";
 }
 
 function extractSummaries(events: AgentEvent[]): string[] {
-  let lastTextIdx = -1;
+  // Segment the timeline by text: only show tool_use activities that happened
+  // after the most recent text block. Prior segments' activities are
+  // associated with the earlier text bubbles and no longer relevant.
+  let startIdx = 0;
   for (let i = events.length - 1; i >= 0; i--) {
     if (hasTextBlock(events[i])) {
-      lastTextIdx = i;
+      startIdx = i + 1;
       break;
     }
   }
+
+  const segment = events.slice(startIdx);
+
   const summaries: string[] = [];
-  for (let i = 0; i < events.length; i++) {
-    const s = summarizeEvent(events[i], i === lastTextIdx);
+  for (const event of segment) {
+    const s = summarizeEvent(event, true);
     if (s) {
       summaries.push(s);
     }
@@ -458,6 +468,12 @@ export function createActiveRunMessage(
     const pages = await get(runLoop.pagedEventsList$);
     const events = await collectAllEvents(pages, get);
     return extractResult(events);
+  });
+
+  const texts$ = computed(async (get) => {
+    const pages = await get(runLoop.pagedEventsList$);
+    const events = await collectAllEvents(pages, get);
+    return extractTexts(events);
   });
 
   const summaries$ = computed(async (get) => {
@@ -478,57 +494,20 @@ export function createActiveRunMessage(
       legacyRunId: runId,
       runLoop,
       result$,
+      texts$,
       summaries$,
     },
   };
 }
 
-export function unsavedRunsToMessages(unsavedRuns: ChatThread["unsavedRuns"]): {
-  messages: ZeroChatMessage[];
-  activeRunMessages: ZeroChatMessage[];
-  lastActiveRunId: string | null;
-} {
-  const messages: ZeroChatMessage[] = [];
-  const activeRunMessages: ZeroChatMessage[] = [];
-  let lastActiveRunId: string | null = null;
-
-  for (const run of unsavedRuns) {
-    const isCancelled = run.status === "cancelled";
-    const isFailed =
-      run.status === "failed" || run.status === "timeout" || isCancelled;
-    if (isFailed) {
-      messages.push({
-        id: crypto.randomUUID(),
-        role: "user",
-        content: run.prompt,
-        createdAt: run.createdAt,
-      });
-      messages.push({
-        id: crypto.randomUUID(),
-        role: "assistant",
-        result$: computed(() => {
-          return Promise.resolve("");
-        }),
-        legacyRunId: run.runId,
-        status: "failed",
-        error: isCancelled
-          ? "Run cancelled."
-          : (run.error ??
-            "Something went wrong. Check the activity logs for details."),
-        createdAt: run.createdAt,
-      });
-    } else {
-      const { userMessage, assistantMessage } = createActiveRunMessage(
-        run.runId,
-        run.prompt,
-      );
-      activeRunMessages.push(userMessage);
-      activeRunMessages.push(assistantMessage);
-      lastActiveRunId = run.runId;
-    }
-  }
-
-  return { messages, activeRunMessages, lastActiveRunId };
+/**
+ * An "active" status means the run is still in progress and the frontend
+ * should poll Axiom for live text/tool events. Missing/null status (e.g. a
+ * legacy row whose agentRuns row has been purged) is treated as static —
+ * NOT active — so the row's stored content renders directly.
+ */
+function isActiveStatus(status: string | undefined): boolean {
+  return status === "queued" || status === "pending" || status === "running";
 }
 
 export interface ChatMessages {
@@ -540,58 +519,98 @@ export interface ChatMessages {
 
 /**
  * Transform raw server chat messages into ZeroChatMessage[].
- * Extracted as a standalone function so the factory can reuse it.
+ * Active runs (assistant with runId + non-terminal status) get a runLoop for polling.
+ * Returns both the full message list and the active run messages for polling setup.
+ *
+ * Message ids are derived from the row's stable identifiers (createdAt / runId)
+ * rather than random UUIDs. Each poll cycle recomputes this transform; using
+ * fresh UUIDs would change React keys every 3s, unmount/remount every message
+ * component, and reset per-hook state (e.g. useLastLoadable's resolved-value
+ * ref) — which surfaced as the activity line flashing from "Running a
+ * command..." to "Just a moment..." on every poll.
  */
 export function transformServerMessages(
   rawMessages: ChatThread["chatMessages"],
-): ZeroChatMessage[] {
-  return rawMessages.map((m) => {
-    const summaries =
-      m.summaries && m.summaries.length > 0
-        ? m.summaries.map((s) => {
-            if (typeof s === "string") {
-              return TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s;
-            }
-            if (s.kind === "tool") {
-              return humanizeToolUse(s.name, s.input);
-            }
-            return s.text;
-          })
-        : undefined;
+): {
+  messages: ZeroChatMessage[];
+  activeRunMessages: ZeroChatMessage[];
+  lastActiveRunId: string | null;
+} {
+  // Pre-compute: for each active run (status === pending | running), pick
+  // the row index that will carry the reactive bubble. While a run is
+  // active the source of truth is Axiom (via runLoop.texts$), not the
+  // chat_messages table — the event consumer is still filling rows in, and
+  // rendering those rows alongside texts$ would duplicate every text block.
+  //
+  // We pick the FIRST assistant row for the run as the anchor and skip the
+  // rest. The anchor produces a single reactive message whose texts$ renders
+  // every assistant text from the run event stream.
+  const activeRunAnchorIndex = new Map<string, number>();
+  for (let i = 0; i < rawMessages.length; i++) {
+    const m = rawMessages[i];
+    if (
+      m.role === "assistant" &&
+      m.runId &&
+      isActiveStatus(m.status) &&
+      !activeRunAnchorIndex.has(m.runId)
+    ) {
+      activeRunAnchorIndex.set(m.runId, i);
+    }
+  }
 
-    const base = {
-      id: crypto.randomUUID(),
-      ...(summaries && summaries.length > 0 ? { summaries } : {}),
-    };
+  const messages: ZeroChatMessage[] = [];
+  const activeRunMessages: ZeroChatMessage[] = [];
+  let lastActiveRunId: string | null = null;
+
+  for (let i = 0; i < rawMessages.length; i++) {
+    const m = rawMessages[i];
 
     if (m.role === "user") {
-      return {
-        ...base,
-        role: "user" as const,
-        content: m.content,
+      const userMsg: UserChatMessage = {
+        id: `user:${m.createdAt}`,
+        role: "user",
+        content: m.content ?? "",
         createdAt: m.createdAt,
       };
+      messages.push(userMsg);
+      continue;
     }
 
-    return {
-      ...base,
+    // Anchor row for an active run → create polling loop (Axiom-driven)
+    if (m.runId && activeRunAnchorIndex.get(m.runId) === i) {
+      const { assistantMessage } = createActiveRunMessage(m.runId, "");
+      // Override the random id with a stable one keyed on the run itself —
+      // there is exactly one reactive bubble per active run regardless of
+      // how many DB rows back it — so the key survives across poll cycles.
+      assistantMessage.id = `run:${m.runId}`;
+      messages.push(assistantMessage);
+      activeRunMessages.push(assistantMessage);
+      lastActiveRunId = m.runId;
+      continue;
+    }
+
+    // Non-anchor row for an active run → skip. While the run is active the
+    // reactive bubble (anchor) already renders every text via texts$; showing
+    // filled-in rows would duplicate the same content.
+    if (m.runId && activeRunAnchorIndex.has(m.runId)) {
+      continue;
+    }
+
+    // Static assistant message (terminal run, or no run).
+    messages.push({
+      id: `assistant:${m.createdAt}`,
       role: "assistant" as const,
       result$: computed(() => {
-        return Promise.resolve(m.content);
+        return Promise.resolve(m.content ?? "");
       }),
       legacyRunId: m.runId,
       ...(m.error ? { status: "failed" as const, error: m.error } : {}),
       createdAt: m.createdAt,
-    };
-  });
-}
+    });
+  }
 
-const currentChatMessages$ = computed(
-  async (get): Promise<ZeroChatMessage[]> => {
-    const messages = (await get(currentChatThread$))?.chatMessages ?? [];
-    return transformServerMessages(messages);
-  },
-);
+  return { messages, activeRunMessages, lastActiveRunId };
+}
 
 const chatMessages$ = computed(async (get): Promise<ChatMessages | null> => {
   const thread = await get(currentChatThread$);
@@ -599,24 +618,14 @@ const chatMessages$ = computed(async (get): Promise<ChatMessages | null> => {
     return null;
   }
 
-  const {
-    messages: runMessages,
-    activeRunMessages,
-    lastActiveRunId: legacyLastActiveRunId,
-  } = unsavedRunsToMessages(thread.unsavedRuns);
-
-  const allMessages = [...(await get(currentChatMessages$)), ...runMessages];
-  allMessages.sort((a, b) => {
-    const aTime = a.createdAt ?? "";
-    const bTime = b.createdAt ?? "";
-    return aTime.localeCompare(bTime);
-  });
+  const { messages, activeRunMessages, lastActiveRunId } =
+    transformServerMessages(thread.chatMessages);
 
   return {
-    messages: allMessages,
+    messages,
     activeRunMessages,
     agentId: thread.agentId,
-    lastActiveRunId: legacyLastActiveRunId,
+    lastActiveRunId,
   };
 });
 
@@ -709,8 +718,7 @@ const internalCreateNewChatSession$ = command(
     if (
       currentThread &&
       currentThread.agentId === resolvedComposeId &&
-      currentThread.chatMessages.length === 0 &&
-      currentThread.unsavedRuns.length === 0
+      currentThread.chatMessages.length === 0
     ) {
       set(startNewZeroSession$);
       return currentThread.id;

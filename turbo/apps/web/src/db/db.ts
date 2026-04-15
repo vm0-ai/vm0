@@ -57,6 +57,7 @@ import * as phoneThreadSessionSchema from "./schema/phone-thread-session";
 import * as pendingOutboundCallSchema from "./schema/pending-outbound-call";
 import * as voiceChatSchema from "./schema/voice-chat";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
+import * as chatMessageSchema from "./schema/chat-message";
 
 export const schema = {
   ...userSchema,
@@ -118,4 +119,5 @@ export const schema = {
   ...pendingOutboundCallSchema,
   ...voiceChatSchema,
   ...userFeatureSwitchesSchema,
+  ...chatMessageSchema,
 };

@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, sql, desc } from "drizzle-orm";
 import type { TaskItem, RunStatus } from "@vm0/core";
-import { chatThreads, chatThreadRuns } from "../../../db/schema/chat-thread";
+import { chatThreads } from "../../../db/schema/chat-thread";
+import { chatMessages } from "../../../db/schema/chat-message";
 import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
@@ -272,10 +273,11 @@ async function listChatTasks(
       agentAvatarUrl: zeroAgents.avatarUrl,
       updatedAt: chatThreads.updatedAt,
       latestRunId: sql<string | null>`(
-        SELECT ${chatThreadRuns.runId}
-        FROM ${chatThreadRuns}
-        WHERE ${chatThreadRuns.chatThreadId} = ${chatThreads.id}
-        ORDER BY ${chatThreadRuns.createdAt} DESC
+        SELECT ${chatMessages.runId}
+        FROM ${chatMessages}
+        WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
+          AND ${chatMessages.runId} IS NOT NULL
+        ORDER BY ${chatMessages.createdAt} DESC
         LIMIT 1
       )`,
     })
