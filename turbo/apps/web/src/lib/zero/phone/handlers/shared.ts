@@ -2,6 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { phoneUserLinks } from "../../../../db/schema/phone-user-link";
 import { phoneThreadSessions } from "../../../../db/schema/phone-thread-session";
 import { orgMetadata } from "../../../../db/schema/org-metadata";
+import { pendingOutboundCalls } from "../../../../db/schema/pending-outbound-call";
 
 /**
  * Look up an existing phone thread session by (userId, orgId).
@@ -113,4 +114,55 @@ export async function resolveUserByPhone(
     .limit(1);
 
   return link?.vm0UserId ?? null;
+}
+
+/**
+ * Register an outbound call as pending follow-up.
+ * Called when a fire-and-forget outbound call is created so that the
+ * call_ended webhook can trigger a new run with the transcript.
+ */
+export async function registerPendingOutboundCall(opts: {
+  callId: string;
+  orgId: string;
+  userId: string;
+  agentId: string;
+  sessionId?: string;
+}): Promise<void> {
+  await globalThis.services.db
+    .insert(pendingOutboundCalls)
+    .values({
+      callId: opts.callId,
+      orgId: opts.orgId,
+      userId: opts.userId,
+      agentId: opts.agentId,
+      sessionId: opts.sessionId ?? null,
+    })
+    .onConflictDoNothing();
+}
+
+/**
+ * Consume a pending outbound call record.
+ * Returns the stored context and deletes the row atomically.
+ * Returns undefined if no pending record exists (e.g. onhold mode).
+ */
+export async function consumePendingOutboundCall(callId: string): Promise<
+  | {
+      orgId: string;
+      userId: string;
+      agentId: string;
+      sessionId: string | null;
+    }
+  | undefined
+> {
+  const [row] = await globalThis.services.db
+    .delete(pendingOutboundCalls)
+    .where(eq(pendingOutboundCalls.callId, callId))
+    .returning({
+      orgId: pendingOutboundCalls.orgId,
+      userId: pendingOutboundCalls.userId,
+      agentId: pendingOutboundCalls.agentId,
+      sessionId: pendingOutboundCalls.sessionId,
+    });
+
+  return row ?? undefined;
 }

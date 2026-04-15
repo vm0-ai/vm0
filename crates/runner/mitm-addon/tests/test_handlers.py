@@ -9,7 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import auth
+import body_utils
 import mitm_addon
+import usage
+from usage import create_sse_usage_extractor
 
 
 def _make_http_flow(client_ip="10.200.0.1", host="example.com", port=443, path="/"):
@@ -418,16 +421,16 @@ class TestResponseHeadersHandler:
 
         callback = flow.response.stream
         # Fill buffer to just under limit
-        chunk = b"x" * mitm_addon._STREAM_BUFFER_LIMIT
+        chunk = b"x" * body_utils.STREAM_BUFFER_LIMIT
         result = callback(chunk)
         assert result == chunk
-        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is False
 
         # Next chunk should trigger truncation
         result2 = callback(b"overflow")
         assert result2 == b"overflow"  # still forwarded to client
-        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
     def test_stream_callback_large_single_chunk(self):
@@ -440,10 +443,10 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         callback = flow.response.stream
-        big_chunk = b"A" * (mitm_addon._STREAM_BUFFER_LIMIT + 1000)
+        big_chunk = b"A" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
         result = callback(big_chunk)
         assert result == big_chunk  # full chunk forwarded to client
-        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
     def test_stream_callback_partial_fill_then_overflow(self):
@@ -456,14 +459,14 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         callback = flow.response.stream
-        half = mitm_addon._STREAM_BUFFER_LIMIT // 2
+        half = body_utils.STREAM_BUFFER_LIMIT // 2
         callback(b"A" * half)
         assert flow.metadata["stream_buffer_state"]["truncated"] is False
 
         # This chunk overflows — should capture up to the limit
-        callback(b"B" * mitm_addon._STREAM_BUFFER_LIMIT)
-        remaining = mitm_addon._STREAM_BUFFER_LIMIT - half
-        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        callback(b"B" * body_utils.STREAM_BUFFER_LIMIT)
+        remaining = body_utils.STREAM_BUFFER_LIMIT - half
+        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer"][:half] == bytearray(b"A" * half)
         assert flow.metadata["stream_buffer"][half:] == bytearray(b"B" * remaining)
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
@@ -662,7 +665,7 @@ class TestSseUsageExtractor:
     """Tests for the incremental SSE usage parser."""
 
     def test_extracts_usage_from_message_start(self):
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         chunk = (
             b"event: message_start\n"
             b'data: {"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4-6",'
@@ -678,7 +681,7 @@ class TestSseUsageExtractor:
         assert usage["output_tokens"] == 1
 
     def test_extracts_output_tokens_from_message_delta(self):
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         # First send message_start
         parse(
             b"event: message_start\n"
@@ -697,7 +700,7 @@ class TestSseUsageExtractor:
 
     def test_handles_chunked_lines(self):
         """SSE data split across multiple chunks mid-line should still parse."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         # Split the data line in the middle
         parse(b"event: message_start\n")
         parse(b'data: {"type":"message_start","message":{"model":"claude-opus-4-6"')
@@ -706,7 +709,7 @@ class TestSseUsageExtractor:
         assert usage["input_tokens"] == 200
 
     def test_skips_content_events(self):
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(
             b"event: content_block_delta\n"
             b'data: {"type":"content_block_delta",'
@@ -715,19 +718,19 @@ class TestSseUsageExtractor:
         assert usage == {}
 
     def test_resilient_to_malformed_json(self):
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(b"event: message_start\ndata: {invalid json}\n\n")
         assert usage == {}  # no crash, no data
 
     def test_empty_chunks(self):
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(b"")
         parse(b"")
         assert usage == {}
 
     def test_crlf_line_endings(self):
         """Servers may use \\r\\n line endings — parser should handle them."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         chunk = (
             b"event: message_start\r\n"
             b'data: {"type":"message_start","message":'
@@ -741,7 +744,7 @@ class TestSseUsageExtractor:
 
     def test_skips_content_block_data_without_buffering(self):
         """Large content_block_delta data should not accumulate in line_buf."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         # First, send message_start to get input tokens
         parse(
             b"event: message_start\n"
@@ -761,7 +764,7 @@ class TestSseUsageExtractor:
 
     def test_skip_recovery_same_chunk(self):
         """When skip mode finds boundary and next event in one chunk, both should parse."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         # Enter skip mode with content_block_delta
         parse(b"event: content_block_delta\n")
         # Single chunk: end of skipped event + message_delta
@@ -774,7 +777,7 @@ class TestSseUsageExtractor:
 
     def test_skip_with_leftover_in_line_buf(self):
         """Entering skip mode leaves unprocessed line_buf data; next chunk should handle it."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         # One chunk has event line + start of data (no newline yet) + another event
         # The while loop processes "event: content_block_start", sets skip, returns.
         # line_buf still has the partial "data: ..." from this chunk.
@@ -790,7 +793,7 @@ class TestSseUsageExtractor:
 
     def test_consecutive_skip_events(self):
         """Multiple non-usage events in a row should all be skipped."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(
             b"event: message_start\n"
             b'data: {"type":"message_start","message":'
@@ -812,7 +815,7 @@ class TestSseUsageExtractor:
 
     def test_empty_usage_dict_not_reported(self):
         """Empty proxy_usage (SSE ran but no usage found) should not trigger report."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         # Only content events, no message_start or message_delta
         parse(b"event: ping\ndata: {}\n\n")
         assert usage == {}
@@ -821,7 +824,7 @@ class TestSseUsageExtractor:
 
     def test_event_without_data_line(self):
         """event: line followed by blank line (no data:) should not crash."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(b"event: message_start\n\n")
         # No data extracted, event_type reset
         assert usage == {}
@@ -831,7 +834,7 @@ class TestSseUsageExtractor:
 
     def test_non_numeric_usage_values_ignored(self):
         """Non-numeric usage values (e.g. string) should be silently skipped."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(
             b"event: message_start\n"
             b'data: {"type":"message_start","message":{"model":"m",'
@@ -842,7 +845,7 @@ class TestSseUsageExtractor:
 
     def test_unknown_usage_fields_excluded(self):
         """Only known billing fields should be extracted, not arbitrary numerics."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(
             b"event: message_start\n"
             b'data: {"type":"message_start","message":{"model":"m",'
@@ -853,7 +856,7 @@ class TestSseUsageExtractor:
 
     def test_extracts_web_search_requests(self):
         """web_search_requests from server_tool_use should be extracted."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(
             b"event: message_delta\n"
             b'data: {"type":"message_delta",'
@@ -869,7 +872,7 @@ class TestSseUsageExtractor:
         The Anthropic API includes all usage fields in message_delta, but cache
         fields may be 0 even when message_start reported non-zero values.
         """
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(
             b"event: message_start\n"
             b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
@@ -894,7 +897,7 @@ class TestSseUsageExtractor:
 
     def test_message_delta_positive_values_do_overwrite(self):
         """message_delta with positive values should update the usage dict."""
-        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse, usage = create_sse_usage_extractor()
         parse(
             b"event: message_start\n"
             b'data: {"type":"message_start","message":{"model":"m",'
@@ -916,10 +919,10 @@ class TestDoReportUsage:
     """Tests for _do_report_usage HTTP request construction."""
 
     def test_posts_correct_payload(self):
-        usage = {"model": "claude-sonnet-4-6", "input_tokens": 100}
-        with patch.object(mitm_addon, "_opener") as mock_opener:
+        usage_data = {"model": "claude-sonnet-4-6", "input_tokens": 100}
+        with patch.object(usage, "_opener") as mock_opener:
             mock_opener.open.return_value = MagicMock()
-            mitm_addon._do_report_usage("https://api.vm0.ai", "tok-123", "run-1", usage)
+            usage._do_report_usage("https://api.vm0.ai", "tok-123", "run-1", usage_data)
         mock_opener.open.assert_called_once()
         req = mock_opener.open.call_args[0][0]
         assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
@@ -933,12 +936,12 @@ class TestDoReportUsage:
     def test_raises_on_network_error(self):
         """Network failures should propagate (retry handled by caller)."""
         with patch.object(
-            mitm_addon,
+            usage,
             "_opener",
             **{"open.side_effect": ConnectionError("refused")},
         ):
             with pytest.raises(ConnectionError):
-                mitm_addon._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
+                usage._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
 
     def test_closes_http_error_response(self):
         """HTTPError (non-2xx) should be closed to avoid socket leak."""
@@ -949,21 +952,21 @@ class TestDoReportUsage:
         )
         http_err.close = MagicMock()
         with patch.object(
-            mitm_addon,
+            usage,
             "_opener",
             **{"open.side_effect": http_err},
         ):
             with pytest.raises(urllib.error.HTTPError):
-                mitm_addon._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
+                usage._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
         http_err.close.assert_called_once()
 
     def test_adds_vercel_bypass_header(self):
         with (
-            patch.object(mitm_addon, "_opener") as mock_opener,
+            patch.object(usage, "_opener") as mock_opener,
             patch.object(auth, "VERCEL_BYPASS", "bypass-secret"),
         ):
             mock_opener.open.return_value = MagicMock()
-            mitm_addon._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
+            usage._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
         req = mock_opener.open.call_args[0][0]
         assert req.get_header("X-vercel-protection-bypass") == "bypass-secret"
 
@@ -1066,9 +1069,9 @@ class TestResponseUsageReporting:
 
     def teardown_method(self):
         try:
-            mitm_addon._usage_executor.submit(lambda: None)
+            usage.usage_executor.submit(lambda: None)
         except RuntimeError:
-            mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
+            usage.usage_executor = usage.ThreadPoolExecutor(
                 max_workers=4, thread_name_prefix="usage"
             )
 
@@ -1095,7 +1098,7 @@ class TestResponseUsageReporting:
 
         with (
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "_maybe_report_proxy_usage") as mock_report,
+            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
         ):
             mitm_addon.response(flow)
 
@@ -1135,15 +1138,15 @@ class TestResponseUsageReporting:
 
         with (
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "_maybe_report_proxy_usage") as mock_report,
+            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
         ):
             mitm_addon.response(flow)
 
         # JSON fallback should populate proxy_usage in metadata
-        usage = flow.metadata["proxy_usage"]
-        assert usage["model"] == "claude-sonnet-4-6"
-        assert usage["input_tokens"] == 50
-        assert usage["output_tokens"] == 200
+        extracted = flow.metadata["proxy_usage"]
+        assert extracted["model"] == "claude-sonnet-4-6"
+        assert extracted["input_tokens"] == 50
+        assert extracted["output_tokens"] == 200
         mock_report.assert_called_once_with(flow, "run-abc-123")
 
     def test_model_provider_buffer_not_truncated(self):
@@ -1157,8 +1160,8 @@ class TestResponseUsageReporting:
         mitm_addon.responseheaders(flow)
 
         callback = flow.response.stream
-        # Feed data exceeding _STREAM_BUFFER_LIMIT (64KB)
-        large_chunk = b"x" * (mitm_addon._STREAM_BUFFER_LIMIT + 1000)
+        # Feed data exceeding STREAM_BUFFER_LIMIT (64KB)
+        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
         callback(large_chunk)
 
         buf = flow.metadata["stream_buffer"]
@@ -1177,12 +1180,12 @@ class TestResponseUsageReporting:
         mitm_addon.responseheaders(flow)
 
         callback = flow.response.stream
-        large_chunk = b"x" * (mitm_addon._STREAM_BUFFER_LIMIT + 1000)
+        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
         callback(large_chunk)
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
         assert state["truncated"]
 
     def test_no_usage_report_for_non_model_provider(self, tmp_path):
@@ -1202,11 +1205,11 @@ class TestResponseUsageReporting:
 
         with (
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "_maybe_report_proxy_usage") as mock_report,
+            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
         ):
             mitm_addon.response(flow)
 
-        # _maybe_report_proxy_usage is always called; it checks firewall_name internally
+        # maybe_report_proxy_usage is always called; it checks firewall_name internally
         mock_report.assert_called_once()
 
     def test_full_path_response_to_opener(self, tmp_path):
@@ -1234,19 +1237,17 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "_opener") as mock_opener,
+            patch.object(usage, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
             # Flush the executor to ensure the background POST completes
-            mitm_addon._usage_executor.shutdown(wait=True)
+            usage.usage_executor.shutdown(wait=True)
 
         # Restore executor
-        mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
-            max_workers=4, thread_name_prefix="usage"
-        )
+        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
         # Verify the webhook POST reached _opener with correct payload
         mock_opener.open.assert_called_once()
@@ -1279,17 +1280,15 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "_opener") as mock_opener,
+            patch.object(usage, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
-            mitm_addon._usage_executor.shutdown(wait=True)
+            usage.usage_executor.shutdown(wait=True)
 
-        mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
-            max_workers=4, thread_name_prefix="usage"
-        )
+        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
         mock_opener.open.assert_called_once()
         req = mock_opener.open.call_args[0][0]
@@ -1324,17 +1323,15 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "_opener") as mock_opener,
+            patch.object(usage, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
-            mitm_addon._usage_executor.shutdown(wait=True)
+            usage.usage_executor.shutdown(wait=True)
 
-        mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
-            max_workers=4, thread_name_prefix="usage"
-        )
+        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
         mock_opener.open.assert_called_once()
         req = mock_opener.open.call_args[0][0]
@@ -1364,17 +1361,15 @@ class TestResponseUsageReporting:
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "_opener") as mock_opener,
+            patch.object(usage, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
-            mitm_addon._usage_executor.shutdown(wait=True)
+            usage.usage_executor.shutdown(wait=True)
 
-        mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
-            max_workers=4, thread_name_prefix="usage"
-        )
+        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
         mock_opener.open.assert_called_once()
         req = mock_opener.open.call_args[0][0]
@@ -1481,7 +1476,7 @@ class TestErrorHandler:
 
 
 class TestMaybeReportProxyUsage:
-    """Tests for _maybe_report_proxy_usage helper."""
+    """Tests for maybe_report_proxy_usage helper."""
 
     def setup_method(self):
         _reset()
@@ -1497,10 +1492,10 @@ class TestMaybeReportProxyUsage:
         }
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue,
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_enqueue_usage") as mock_enqueue,
         ):
-            mitm_addon._maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
         mock_enqueue.assert_called_once()
         args = mock_enqueue.call_args[0]
@@ -1515,8 +1510,8 @@ class TestMaybeReportProxyUsage:
         flow.metadata["firewall_name"] = "github"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
 
-        with patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue:
-            mitm_addon._maybe_report_proxy_usage(flow, "run-abc-123")
+        with patch.object(usage, "_enqueue_usage") as mock_enqueue:
+            usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
         mock_enqueue.assert_not_called()
 
@@ -1528,10 +1523,10 @@ class TestMaybeReportProxyUsage:
         # No proxy_usage in metadata
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue,
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_enqueue_usage") as mock_enqueue,
         ):
-            mitm_addon._maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
         mock_enqueue.assert_not_called()
 
@@ -1541,8 +1536,8 @@ class TestMaybeReportProxyUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
 
-        with patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue:
-            mitm_addon._maybe_report_proxy_usage(flow, "")
+        with patch.object(usage, "_enqueue_usage") as mock_enqueue:
+            usage.maybe_report_proxy_usage(flow, "")
 
         mock_enqueue.assert_not_called()
 
@@ -1556,10 +1551,10 @@ class TestMaybeReportProxyUsage:
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue,
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_enqueue_usage") as mock_enqueue,
         ):
-            mitm_addon._maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
         mock_enqueue.assert_not_called()
         assert proxy_log.exists()
@@ -1575,23 +1570,23 @@ class TestMaybeReportProxyUsage:
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value=""),
-            patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue,
+            patch.object(usage, "get_api_url", return_value=""),
+            patch.object(usage, "_enqueue_usage") as mock_enqueue,
         ):
-            mitm_addon._maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
         mock_enqueue.assert_not_called()
         assert proxy_log.exists()
 
 
 class TestErrorUsageReporting:
-    """Tests that error() hook calls _maybe_report_proxy_usage."""
+    """Tests that error() hook calls maybe_report_proxy_usage."""
 
     def setup_method(self):
         _reset()
 
     def test_error_calls_maybe_report(self, tmp_path):
-        """error() should invoke _maybe_report_proxy_usage."""
+        """error() should invoke maybe_report_proxy_usage."""
         flow = _make_http_flow(host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
@@ -1604,7 +1599,7 @@ class TestErrorUsageReporting:
 
         with (
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "_maybe_report_proxy_usage") as mock_report,
+            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
         ):
             mitm_addon.error(flow)
 
@@ -1615,28 +1610,28 @@ class TestReportUsageWithRetry:
     """Tests for _report_usage_with_retry retry logic."""
 
     def test_succeeds_on_first_attempt(self):
-        with patch.object(mitm_addon, "_do_report_usage") as mock_do:
-            mitm_addon._report_usage_with_retry("url", "tok", "run-1", {})
+        with patch.object(usage, "_do_report_usage") as mock_do:
+            usage._report_usage_with_retry("url", "tok", "run-1", {})
         mock_do.assert_called_once()
 
     def test_retries_on_failure(self):
         with patch.object(
-            mitm_addon,
+            usage,
             "_do_report_usage",
             side_effect=[ConnectionError("fail"), None],
         ) as mock_do:
-            mitm_addon._report_usage_with_retry("url", "tok", "run-1", {})
+            usage._report_usage_with_retry("url", "tok", "run-1", {})
         assert mock_do.call_count == 2
 
     def test_gives_up_after_max_retries(self, tmp_path):
         proxy_log = tmp_path / "proxy-run-1.jsonl"
         with patch.object(
-            mitm_addon,
+            usage,
             "_do_report_usage",
             side_effect=ConnectionError("fail"),
         ):
             # Should not raise
-            mitm_addon._report_usage_with_retry(
+            usage._report_usage_with_retry(
                 "url", "tok", "run-1", {}, proxy_log_path=str(proxy_log), max_retries=2
             )
         assert proxy_log.exists()
@@ -1645,13 +1640,13 @@ class TestReportUsageWithRetry:
     def test_sleeps_between_retries(self):
         with (
             patch.object(
-                mitm_addon,
+                usage,
                 "_do_report_usage",
                 side_effect=[ConnectionError("fail"), None],
             ),
-            patch.object(mitm_addon.time, "sleep") as mock_sleep,
+            patch.object(usage.time, "sleep") as mock_sleep,
         ):
-            mitm_addon._report_usage_with_retry("url", "tok", "run-1", {})
+            usage._report_usage_with_retry("url", "tok", "run-1", {})
         mock_sleep.assert_called_once_with(0.5)
 
 
@@ -1661,9 +1656,9 @@ class TestEnqueueUsage:
     def teardown_method(self):
         """Ensure executor is always restored even if a test fails mid-way."""
         try:
-            mitm_addon._usage_executor.submit(lambda: None)
+            usage.usage_executor.submit(lambda: None)
         except RuntimeError:
-            mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
+            usage.usage_executor = usage.ThreadPoolExecutor(
                 max_workers=4, thread_name_prefix="usage"
             )
 
@@ -1672,13 +1667,13 @@ class TestEnqueueUsage:
         original = {"input_tokens": 100}
         captured = []
 
-        def capture_usage(_url, _tok, _rid, usage, _proxy_log_path=""):
-            captured.append(usage)
+        def capture_usage(_url, _tok, _rid, u, _proxy_log_path=""):
+            captured.append(u)
 
-        with patch.object(mitm_addon, "_report_usage_with_retry", capture_usage):
-            mitm_addon._enqueue_usage("url", "tok", "run-1", original)
+        with patch.object(usage, "_report_usage_with_retry", capture_usage):
+            usage._enqueue_usage("url", "tok", "run-1", original)
             original["input_tokens"] = 999
-            mitm_addon._usage_executor.shutdown(wait=True)
+            usage.usage_executor.shutdown(wait=True)
 
         assert len(captured) == 1
         assert captured[0]["input_tokens"] == 100
@@ -1686,21 +1681,21 @@ class TestEnqueueUsage:
     def test_enqueue_submits_to_executor(self):
         """_enqueue_usage should submit work to the thread pool."""
         mock_executor = MagicMock()
-        with patch.object(mitm_addon, "_usage_executor", mock_executor):
-            mitm_addon._enqueue_usage("url", "tok", "run-1", {"k": 1})
+        with patch.object(usage, "usage_executor", mock_executor):
+            usage._enqueue_usage("url", "tok", "run-1", {"k": 1})
         mock_executor.submit.assert_called_once()
         args = mock_executor.submit.call_args[0]
-        assert args[0] == mitm_addon._report_usage_with_retry
+        assert args[0] == usage._report_usage_with_retry
         assert args[1] == "url"
         assert args[2] == "tok"
         assert args[3] == "run-1"
 
     def test_enqueue_falls_back_to_sync_after_shutdown(self):
         """After executor shutdown, _enqueue_usage should deliver synchronously with retry."""
-        mitm_addon._usage_executor.shutdown(wait=True)
+        usage.usage_executor.shutdown(wait=True)
 
-        with patch.object(mitm_addon, "_report_usage_with_retry") as mock_retry:
-            mitm_addon._enqueue_usage("url", "tok", "run-1", {"input_tokens": 42})
+        with patch.object(usage, "_report_usage_with_retry") as mock_retry:
+            usage._enqueue_usage("url", "tok", "run-1", {"input_tokens": 42})
 
         mock_retry.assert_called_once_with("url", "tok", "run-1", {"input_tokens": 42}, "")
 
@@ -1711,7 +1706,7 @@ class TestDoneHook:
     def test_done_shuts_down_executor(self):
         """done() should call shutdown(wait=True) on the executor."""
         mock_executor = MagicMock()
-        with patch.object(mitm_addon, "_usage_executor", mock_executor):
+        with patch.object(usage, "usage_executor", mock_executor):
             mitm_addon.done()
         mock_executor.shutdown.assert_called_once_with(wait=True)
 

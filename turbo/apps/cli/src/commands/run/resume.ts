@@ -5,6 +5,7 @@ import {
   collectVolumeVersions,
   isUUID,
   loadValues,
+  parseArtifact,
   parsePermissionPolicies,
   pollEvents,
   showNextSteps,
@@ -40,6 +41,10 @@ export const resumeCommand = new Command()
     {},
   )
   .option(
+    "--artifact <name[:version]>",
+    "Artifact storage (format: name or name:version)",
+  )
+  .option(
     "--append-system-prompt <text>",
     "Append text to the agent's system prompt",
   )
@@ -70,6 +75,7 @@ export const resumeCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
+          artifact?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -87,6 +93,7 @@ export const resumeCommand = new Command()
           vars: Record<string, string>;
           secrets: Record<string, string>;
           volumeVersion: Record<string, string>;
+          artifact?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -118,12 +125,19 @@ export const resumeCommand = new Command()
         const envFile = options.envFile || allOpts.envFile;
         const loadedSecrets = loadValues(secrets, requiredSecretNames, envFile);
 
-        // 4. Call unified API with checkpointId
+        // 4. Parse artifact flag
+        const artifactParsed = parseArtifact(
+          options.artifact || allOpts.artifact,
+        );
+
+        // 5. Call unified API with checkpointId
         const response = await createRun({
           checkpointId,
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,
           secrets: loadedSecrets,
+          artifactName: artifactParsed?.artifactName,
+          artifactVersion: artifactParsed?.artifactVersion,
           volumeVersions:
             Object.keys(allOpts.volumeVersion).length > 0
               ? allOpts.volumeVersion

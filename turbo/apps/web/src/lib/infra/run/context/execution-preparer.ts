@@ -142,6 +142,7 @@ export async function prepareForExecution(
     context.resumeArtifact,
     workingDir,
     context.memoryName,
+    context.additionalVolumes,
   );
   const storageEnd = Date.now();
 

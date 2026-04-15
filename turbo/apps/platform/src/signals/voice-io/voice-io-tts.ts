@@ -10,7 +10,7 @@ const L = logger("AudioIO:TTS");
 // Internal state
 // ---------------------------------------------------------------------------
 
-const internalPlayingMessageId$ = state<string | null>(null);
+const internalPlayingRunId$ = state<string | null>(null);
 const internalCleanupFn$ = state<(() => void) | null>(null);
 
 // Auto-read tracking
@@ -21,8 +21,8 @@ const internalAutoReadTriggered$ = state<Set<string>>(new Set());
 // Public computed
 // ---------------------------------------------------------------------------
 
-export const ttsPlayingMessageId$ = computed((get) => {
-  return get(internalPlayingMessageId$);
+export const ttsPlayingRunId$ = computed((get) => {
+  return get(internalPlayingRunId$);
 });
 
 // ---------------------------------------------------------------------------
@@ -59,28 +59,23 @@ const cleanupAudio$ = command(({ get, set }) => {
     cleanupFn();
   }
 
-  set(internalPlayingMessageId$, null);
+  set(internalPlayingRunId$, null);
   set(internalCleanupFn$, null);
 });
 
 const resetPlaybackState$ = command(({ set }) => {
-  set(internalPlayingMessageId$, null);
+  set(internalPlayingRunId$, null);
   set(internalCleanupFn$, null);
 });
 
 const fetchAndPlay$ = command(
-  async (
-    { get, set },
-    messageId: string,
-    text: string,
-    signal: AbortSignal,
-  ) => {
+  async ({ get, set }, runId: string, text: string, signal: AbortSignal) => {
     set(cleanupAudio$);
-    set(internalPlayingMessageId$, messageId);
+    set(internalPlayingRunId$, runId);
 
     const plainText = stripMarkdown(text);
     if (!plainText) {
-      set(internalPlayingMessageId$, null);
+      set(internalPlayingRunId$, null);
       return;
     }
 
@@ -100,7 +95,7 @@ const fetchAndPlay$ = command(
         L.error("TTS fetch failed", error);
         await audioCtx.close();
         signal.throwIfAborted();
-        set(internalPlayingMessageId$, null);
+        set(internalPlayingRunId$, null);
         return;
       }
 
@@ -108,7 +103,7 @@ const fetchAndPlay$ = command(
         L.error("TTS API returned error");
         await audioCtx.close();
         signal.throwIfAborted();
-        set(internalPlayingMessageId$, null);
+        set(internalPlayingRunId$, null);
         return;
       }
 
@@ -116,7 +111,7 @@ const fetchAndPlay$ = command(
       if (!body) {
         await audioCtx.close();
         signal.throwIfAborted();
-        set(internalPlayingMessageId$, null);
+        set(internalPlayingRunId$, null);
         return;
       }
 
@@ -223,57 +218,45 @@ export const stopTts$ = command(({ set }) => {
 });
 
 export const playTts$ = command(
-  async (
-    { get, set },
-    messageId: string,
-    text: string,
-    signal: AbortSignal,
-  ) => {
-    if (get(internalPlayingMessageId$) === messageId) {
+  async ({ get, set }, runId: string, text: string, signal: AbortSignal) => {
+    if (get(internalPlayingRunId$) === runId) {
       return;
     }
-    await set(fetchAndPlay$, messageId, text, signal);
+    await set(fetchAndPlay$, runId, text, signal);
   },
 );
 
 /**
  * Mark a message as "seen loading" during this session.
  */
-export const markMessageLoading$ = command(
-  ({ get, set }, messageId: string) => {
-    const seen = get(internalSeenLoading$);
-    if (!seen.has(messageId)) {
-      const next = new Set(seen);
-      next.add(messageId);
-      set(internalSeenLoading$, next);
-    }
-  },
-);
+export const markMessageLoading$ = command(({ get, set }, runId: string) => {
+  const seen = get(internalSeenLoading$);
+  if (!seen.has(runId)) {
+    const next = new Set(seen);
+    next.add(runId);
+    set(internalSeenLoading$, next);
+  }
+});
 
 /**
  * Check if a completed message should be auto-read, and trigger playback.
  */
 export const checkAutoRead$ = command(
-  async (
-    { get, set },
-    messageId: string,
-    content: string,
-    signal: AbortSignal,
-  ) => {
+  async ({ get, set }, runId: string, content: string, signal: AbortSignal) => {
     if (!get(autoReadEnabled$)) {
       return;
     }
-    if (!get(internalSeenLoading$).has(messageId)) {
+    if (!get(internalSeenLoading$).has(runId)) {
       return;
     }
-    if (get(internalAutoReadTriggered$).has(messageId)) {
+    if (get(internalAutoReadTriggered$).has(runId)) {
       return;
     }
 
     const nextTriggered = new Set(get(internalAutoReadTriggered$));
-    nextTriggered.add(messageId);
+    nextTriggered.add(runId);
     set(internalAutoReadTriggered$, nextTriggered);
 
-    await set(fetchAndPlay$, messageId, content, signal);
+    await set(fetchAndPlay$, runId, content, signal);
   },
 );

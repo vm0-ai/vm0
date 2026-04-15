@@ -14,6 +14,7 @@ use crate::r2_cache::R2ImageCache;
 
 const BUILD_SCRIPT: &str = include_str!("../../scripts/build-rootfs.sh");
 const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
+const INJECT_CA_SCRIPT: &str = include_str!("../../scripts/inject-ca.sh");
 
 /// Bump this to invalidate all cached images without changing any input files.
 /// Affects both the local cache directory and the R2 object key (since the
@@ -21,7 +22,7 @@ const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
 ///
 /// Bumping leaves the previous-hash R2 objects orphaned; they're swept by
 /// `runner gc` after the configured TTL (see `r2_cache::gc_older_than`).
-const IMAGE_CACHE_VERSION: u32 = 2;
+const IMAGE_CACHE_VERSION: u32 = 3;
 
 #[cfg(bundled_guests)]
 mod embedded {
@@ -134,7 +135,7 @@ async fn resolve_guest(
     )))
 }
 
-/// Build a unified image (rootfs + snapshot) and return the image hash.
+/// Build an image (rootfs from R2 cache or local build, snapshot always local).
 pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> RunnerResult<()> {
     let def = profile::get(&args.profile)?;
     let dry_run = args.dry_run;
@@ -165,8 +166,8 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         ),
     ];
 
-    // Compute unified image hash from all rootfs + snapshot inputs.
-    let hash = compute_image_hash(&bins, def.disk_mb, provider, def.vcpu, def.memory_mb).await?;
+    // Compute rootfs-only image hash (snapshot is always created locally).
+    let hash = compute_image_hash(&bins, def.disk_mb).await?;
     tracing::info!("image hash: {hash}");
     // Machine-readable output — do not change format without updating consumers
     println!("image_hash={hash}");
@@ -209,54 +210,7 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         return Ok(());
     }
 
-    // Try R2 download before falling back to local build. try_download manages
-    // its own staging directory and atomic rename, so output_dir stays absent
-    // on failure (no false-positive cache hits from partial unpack).
-    //
-    // `force_reupload`: set when we observed a structurally-valid download
-    // (Ok(true)) whose extracted content failed `is_image_complete`. Without
-    // it the next `upload` call would dedup-skip on `exists() = true` and
-    // leave the bad object in place, locking the entire fleet out of this
-    // hash. We pass it through as `force` to `upload` rather than calling
-    // `delete` first — force-upload is a single atomic PUT that doesn't
-    // depend on `s3:DeleteObject` permission being healthy (a persistently
-    // failing delete would otherwise leave the corruption stuck forever).
-    let mut force_reupload = false;
-    if let Some(cache) = &r2 {
-        match cache.try_download(&hash, output_dir).await {
-            Ok(true) => {
-                if is_image_complete(&image).await? {
-                    tracing::info!("[OK] image downloaded from R2: {}", output_dir.display());
-                    touch_mtime(output_dir);
-                    return Ok(());
-                }
-                tracing::warn!(
-                    "R2 download for {hash} succeeded but image incomplete — \
-                     will rebuild locally and force-overwrite the bad object"
-                );
-                force_reupload = true;
-            }
-            Ok(false) => tracing::info!("R2 cache miss for {hash} — building locally"),
-            // Err is ambiguous (transient network vs. content corruption);
-            // we don't force-overwrite here — false overwrite on a network
-            // blip would amplify load (every host re-uploads the same hash).
-            Err(e) => tracing::warn!("R2 download failed: {e} — falling back to local build"),
-        }
-    }
-
-    // --- Phase 1: Build rootfs ---
-
-    // Clean up any partial build from a previous failed attempt so we start fresh.
-    if tokio::fs::try_exists(&output_dir).await.unwrap_or(false) {
-        tokio::fs::remove_dir_all(&output_dir)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("clean {}: {e}", output_dir.display())))?;
-    }
-    tokio::fs::create_dir_all(&output_dir)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", output_dir.display())))?;
-
-    // Write scripts to a temp directory
+    // Write scripts to a temp directory (needed for both R2 and local paths).
     let work_dir =
         tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
     tokio::fs::write(work_dir.path().join("build-rootfs.sh"), BUILD_SCRIPT)
@@ -265,91 +219,190 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     tokio::fs::write(work_dir.path().join("verify-rootfs.sh"), VERIFY_SCRIPT)
         .await
         .map_err(|e| RunnerError::Internal(format!("write verify script: {e}")))?;
+    tokio::fs::write(work_dir.path().join("inject-ca.sh"), INJECT_CA_SCRIPT)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("write inject-ca script: {e}")))?;
 
-    let script_path = work_dir.path().join("build-rootfs.sh");
-    let output_dir_str = output_dir.to_string_lossy();
-    let guest_agent_str = guest_agent.to_string_lossy();
-    let guest_download_str = guest_download.to_string_lossy();
-    let guest_init_str = guest_init.to_string_lossy();
-    let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
-    let guest_reseed_str = guest_reseed.to_string_lossy();
     let ca_dir = paths.ca_dir();
-    let ca_dir_str = ca_dir.to_string_lossy();
-    let debootstrap_dir = paths.debootstrap_dir();
-    tokio::fs::create_dir_all(&debootstrap_dir)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display())))?;
-    let debootstrap_dir_str = debootstrap_dir.to_string_lossy();
-    let disk_mb_str = def.disk_mb.to_string();
 
-    let status = tokio::process::Command::new("bash")
-        .arg(&script_path)
-        .args([
-            "--output-dir",
-            &output_dir_str,
-            "--ca-dir",
-            &ca_dir_str,
-            "--debootstrap-dir",
-            &debootstrap_dir_str,
-            "--hash",
-            &hash,
-            "--disk-mb",
-            &disk_mb_str,
-            "--guest-agent",
-            &guest_agent_str,
-            "--guest-download",
-            &guest_download_str,
-            "--guest-init",
-            &guest_init_str,
-            "--guest-mock-claude",
-            &guest_mock_claude_str,
-            "--guest-reseed",
-            &guest_reseed_str,
-            // Dummy nameserver — all UDP 53 is iptables-REDIRECT'd to dnsmasq.
-            // Must be routable (not loopback/gateway) so packets leave the VM.
-            "--dns-nameserver",
-            "8.8.8.8",
-        ])
-        .stdin(std::process::Stdio::null())
-        .status()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("spawn build script: {e}")))?;
+    // --- Phase 1: Obtain rootfs ---
+    //
+    // R2 caches only rootfs.ext4 (not snapshot files). Snapshots are always
+    // created locally because they contain host-specific state (page cache,
+    // kernel metadata). This design allows hosts with different hardware to
+    // share the rootfs cache while each creating its own snapshot.
+    //
+    // `force_reupload`: set when R2 download succeeded structurally but the
+    // rootfs is missing — the bad R2 object is atomically overwritten on the
+    // next upload.
 
-    if !status.success() {
-        return Err(RunnerError::Internal(format!(
-            "build-rootfs.sh failed with {status}"
-        )));
+    let mut force_reupload = false;
+    let mut rootfs_from_r2 = false;
+
+    // No upfront `remove_dir_all(output_dir)` here: a previous interrupted
+    // build may have left stale bind mounts in `output_dir/work/` (snapshot.rs
+    // bind-mounts the NBD COW device there), which would cause EBUSY on a
+    // blanket removal. Downstream steps each handle their own cleanup:
+    //   - try_download's finalize_staging rename replaces output_dir atomically
+    //   - build-rootfs.sh writes rootfs via mkfs.ext4 -> rename (overwrites)
+    //   - snapshot.rs::create_snapshot umounts stale binds, then removes only
+    //     its own artifacts (snapshot.bin, memory.bin, cow.img, work/)
+
+    // Try R2 download (rootfs only). try_download manages its own staging
+    // directory and atomic rename, so output_dir stays absent on failure.
+    if let Some(cache) = &r2 {
+        match cache.try_download(&hash, output_dir).await {
+            Ok(true) => {
+                if tokio::fs::try_exists(image.rootfs()).await.unwrap_or(false) {
+                    // Remove any non-rootfs files from the download (e.g. stale
+                    // snapshot artifacts from an old archive format).
+                    remove_all_except_rootfs(&image).await;
+                    tracing::info!("[OK] rootfs downloaded from R2: {}", output_dir.display());
+                    rootfs_from_r2 = true;
+                } else {
+                    tracing::warn!(
+                        "R2 download for {hash} succeeded but rootfs missing — \
+                         will rebuild locally and force-overwrite the bad object"
+                    );
+                    force_reupload = true;
+                    // Clean up the bad download so local build starts fresh.
+                    if let Err(e) = tokio::fs::remove_dir_all(&output_dir).await {
+                        tracing::warn!(
+                            "failed to clean bad R2 download at {}: {e}",
+                            output_dir.display()
+                        );
+                    }
+                }
+            }
+            Ok(false) => tracing::info!("R2 cache miss for {hash} — building locally"),
+            Err(e) => tracing::warn!("R2 download failed: {e} — falling back to local build"),
+        }
     }
 
-    // Verify rootfs contents (verify script is NOT part of the input hash)
+    if !rootfs_from_r2 {
+        // Create output_dir for local build (R2 path creates it via rename).
+        tokio::fs::create_dir_all(&output_dir)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("create {}: {e}", output_dir.display())))?;
+
+        // Local rootfs build — the slow path (debootstrap + apt install).
+        let output_dir_str = output_dir.to_string_lossy();
+        let guest_agent_str = guest_agent.to_string_lossy();
+        let guest_download_str = guest_download.to_string_lossy();
+        let guest_init_str = guest_init.to_string_lossy();
+        let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
+        let guest_reseed_str = guest_reseed.to_string_lossy();
+        let ca_dir_str = ca_dir.to_string_lossy();
+        let debootstrap_dir = paths.debootstrap_dir();
+        tokio::fs::create_dir_all(&debootstrap_dir)
+            .await
+            .map_err(|e| {
+                RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display()))
+            })?;
+        let debootstrap_dir_str = debootstrap_dir.to_string_lossy();
+        let disk_mb_str = def.disk_mb.to_string();
+
+        let status = tokio::process::Command::new("bash")
+            .arg(work_dir.path().join("build-rootfs.sh"))
+            .args([
+                "--output-dir",
+                &output_dir_str,
+                "--ca-dir",
+                &ca_dir_str,
+                "--debootstrap-dir",
+                &debootstrap_dir_str,
+                "--hash",
+                &hash,
+                "--disk-mb",
+                &disk_mb_str,
+                "--guest-agent",
+                &guest_agent_str,
+                "--guest-download",
+                &guest_download_str,
+                "--guest-init",
+                &guest_init_str,
+                "--guest-mock-claude",
+                &guest_mock_claude_str,
+                "--guest-reseed",
+                &guest_reseed_str,
+                // Dummy nameserver — all UDP 53 is iptables-REDIRECT'd to dnsmasq.
+                // Must be routable (not loopback/gateway) so packets leave the VM.
+                "--dns-nameserver",
+                "8.8.8.8",
+            ])
+            .stdin(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| RunnerError::Internal(format!("spawn build script: {e}")))?;
+
+        if !status.success() {
+            return Err(RunnerError::Internal(format!(
+                "build-rootfs.sh failed with {status}"
+            )));
+        }
+
+        // Verify rootfs contents (verify script is NOT part of the input hash)
+        let rootfs_str = image.rootfs().to_string_lossy().into_owned();
+        let status = tokio::process::Command::new("bash")
+            .arg(work_dir.path().join("verify-rootfs.sh"))
+            .args(["--rootfs", &rootfs_str])
+            .stdin(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| RunnerError::Internal(format!("spawn verify script: {e}")))?;
+
+        if !status.success() {
+            return Err(RunnerError::Internal(format!(
+                "verify-rootfs.sh failed with {status}"
+            )));
+        }
+
+        let rootfs_sz = file_sizes(&image.rootfs()).await;
+        tracing::info!(
+            rootfs_logical = %rootfs_sz.0,
+            rootfs_disk = %rootfs_sz.1,
+            "rootfs creation complete"
+        );
+
+        // Upload rootfs to R2 BEFORE CA injection — the cached rootfs should
+        // be generic (build host's CA) so other hosts can download and inject
+        // their own CA. Non-fatal: image is already on local disk.
+        if let Some(cache) = &r2 {
+            let files = vec![image.rootfs()];
+            match cache.upload(&hash, &files, force_reupload).await {
+                Ok(()) => tracing::info!("uploaded rootfs to R2: {hash}"),
+                Err(e) => tracing::warn!("R2 upload failed: {e} — rootfs is on local disk"),
+            }
+        }
+    }
+
+    // --- Phase 1.5: Replace CA cert (R2-downloaded rootfs only) ---
+    //
+    // The R2-cached rootfs contains the build host's CA. Replace it with the
+    // local host's CA before creating the snapshot, so TLS interception works.
+    // Local builds already have the correct CA from build-rootfs.sh.
+    if rootfs_from_r2 {
+        let rootfs_str = image.rootfs().to_string_lossy().into_owned();
+        let ca_dir_str = ca_dir.to_string_lossy().into_owned();
+        let status = tokio::process::Command::new("bash")
+            .arg(work_dir.path().join("inject-ca.sh"))
+            .args(["--rootfs", &rootfs_str, "--ca-dir", &ca_dir_str])
+            .stdin(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| RunnerError::Internal(format!("spawn inject-ca script: {e}")))?;
+
+        if !status.success() {
+            return Err(RunnerError::Internal(format!(
+                "inject-ca.sh failed with {status}"
+            )));
+        }
+        tracing::info!("CA cert replaced in R2-downloaded rootfs");
+    }
+
+    // --- Phase 2: Build snapshot (always local) ---
+
     let rootfs_path = image.rootfs();
-    let verify_path = work_dir.path().join("verify-rootfs.sh");
-    let rootfs_str = rootfs_path.to_string_lossy();
-
-    let status = tokio::process::Command::new("bash")
-        .arg(&verify_path)
-        .args(["--rootfs", &rootfs_str])
-        .stdin(std::process::Stdio::null())
-        .status()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("spawn verify script: {e}")))?;
-
-    if !status.success() {
-        return Err(RunnerError::Internal(format!(
-            "verify-rootfs.sh failed with {status}"
-        )));
-    }
-
-    let rootfs_sz = file_sizes(&rootfs_path).await;
-    tracing::info!(
-        rootfs = %rootfs_path.display(),
-        rootfs_logical = %rootfs_sz.0,
-        rootfs_disk = %rootfs_sz.1,
-        "rootfs creation complete"
-    );
-
-    // --- Phase 2: Build snapshot ---
-
     let create_config = sandbox::SnapshotCreateConfig {
         id: hash.clone(),
         binary_path: paths.firecracker_bin(FIRECRACKER_VERSION),
@@ -368,33 +421,54 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         file_sizes(&output.cow_path),
     );
     tracing::info!(
-        snapshot = %output.snapshot_path.display(),
         snapshot_logical = %snapshot_sz.0,
         snapshot_disk = %snapshot_sz.1,
-        memory = %output.memory_path.display(),
         memory_logical = %memory_sz.0,
         memory_disk = %memory_sz.1,
-        cow = %output.cow_path.display(),
         cow_logical = %cow_sz.0,
         cow_disk = %cow_sz.1,
         "snapshot creation complete"
     );
 
-    // Synchronous R2 upload after Phase 2. Failure is non-fatal — the image is
-    // already on local disk; subsequent hosts just won't get a cache hit.
-    // `exists()` dedup inside `upload()` avoids same-deploy N-host duplicate
-    // uploads; `force_reupload` bypasses dedup so a previously-detected
-    // corrupt object gets atomically overwritten.
-    if let Some(cache) = &r2 {
-        let files = image.expected_files().to_vec();
-        match cache.upload(&hash, &files, force_reupload).await {
-            Ok(()) => tracing::info!("uploaded image to R2: {hash}"),
-            Err(e) => tracing::warn!("R2 upload failed: {e} — image is on local disk"),
-        }
-    }
-
     tracing::info!("image creation complete: {hash}");
     Ok(())
+}
+
+/// Remove all files in the image directory except rootfs.ext4.
+///
+/// After an R2 download the archive may contain stale artifacts from an
+/// older cache format. Cleaning them ensures `create_snapshot` writes
+/// into a directory that only contains the rootfs.
+async fn remove_all_except_rootfs(image: &ImagePaths) {
+    let rootfs_name = std::ffi::OsStr::new("rootfs.ext4");
+    let mut entries = match tokio::fs::read_dir(image.dir()).await {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!("failed to read dir {}: {e}", image.dir().display());
+            return;
+        }
+    };
+    loop {
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(e) => {
+                tracing::warn!("read entry in {}: {e}", image.dir().display());
+                break;
+            }
+        };
+        if entry.file_name() != rootfs_name {
+            let path = entry.path();
+            let result = if path.is_dir() {
+                tokio::fs::remove_dir_all(&path).await
+            } else {
+                tokio::fs::remove_file(&path).await
+            };
+            if let Err(e) = result {
+                tracing::warn!("failed to remove stale entry {}: {e}", path.display());
+            }
+        }
+    }
 }
 
 /// Check whether all expected image outputs exist in the directory.
@@ -410,105 +484,22 @@ async fn is_image_complete(image: &ImagePaths) -> RunnerResult<bool> {
     Ok(true)
 }
 
-/// Read a sysfs file, trimming whitespace. Returns empty string on failure.
-fn read_sysfs_trimmed(path: &str) -> String {
-    match std::fs::read_to_string(path) {
-        Ok(s) => s.trim().to_owned(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => {
-            tracing::warn!("failed to read {path}: {e}");
-            String::new()
-        }
-    }
-}
-
-/// Read CPU microcode/revision version.
-///
-/// On x86_64: `/sys/devices/system/cpu/cpu0/microcode/version`
-/// On ARM64: `/sys/devices/system/cpu/cpu0/regs/identification/revidr_el1`
-fn read_cpu_microcode() -> Option<String> {
-    let paths = [
-        "/sys/devices/system/cpu/cpu0/microcode/version",
-        "/sys/devices/system/cpu/cpu0/regs/identification/revidr_el1",
-    ];
-    for path in paths {
-        match std::fs::read_to_string(path) {
-            Ok(v) => {
-                let v = v.trim();
-                if !v.is_empty() {
-                    return Some(v.to_owned());
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => tracing::warn!("failed to read {path}: {e}"),
-        }
-    }
-    None
-}
-
-/// Read a stable CPU model identifier from `/proc/cpuinfo`.
-///
-/// On ARM64 this extracts `CPU implementer`, `CPU part`, and `CPU variant`
-/// (e.g. "0x41:0xd40:0x1" for Neoverse V1 / Graviton 3).
-/// On x86_64 this extracts the `model name` line.
-fn read_cpu_model() -> Option<String> {
-    let cpuinfo = match std::fs::read_to_string("/proc/cpuinfo") {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!("failed to read /proc/cpuinfo: {e}");
-            return None;
-        }
-    };
-
-    // ARM64: combine implementer + part + variant
-    let get = |key: &str| -> Option<&str> {
-        cpuinfo.lines().find_map(|line| {
-            let (k, v) = line.split_once(':')?;
-            if k.trim() == key {
-                Some(v.trim())
-            } else {
-                None
-            }
-        })
-    };
-
-    if let (Some(implementer), Some(part)) = (get("CPU implementer"), get("CPU part")) {
-        let variant = get("CPU variant").unwrap_or("0x0");
-        return Some(format!("{implementer}:{part}:{variant}"));
-    }
-
-    // x86_64: use model name
-    if let Some(model) = get("model name") {
-        return Some(model.to_owned());
-    }
-
-    tracing::warn!("could not determine CPU model from /proc/cpuinfo");
-    None
-}
-
-/// Compute a unified hash from all rootfs + snapshot inputs.
+/// Compute a rootfs-only hash for R2 image caching.
 ///
 /// Inputs:
 ///   - `IMAGE_CACHE_VERSION` — bump to force invalidation
 ///   - `BUILD_SCRIPT` — rootfs build script content
 ///   - `disk_mb` — disk size from profile
 ///   - guest binaries — sorted by destination path
-///   - `provider.config_hash()` — boot args, guest network config
-///   - `FIRECRACKER_VERSION` / `KERNEL_VERSION` — binary versions
-///   - `vcpu` / `memory_mb` — VM resource settings
-///   - host kernel version (`uname -r`)
-///   - CPU model (implementer:part:variant on ARM, model name on x86)
-///   - CPU microcode/revision version
-///   - BIOS version and release
+///
+/// Host-specific fields (kernel, CPU, BIOS) and snapshot-specific fields
+/// (vcpu, memory, firecracker/kernel version) are intentionally excluded:
+/// the R2 cache stores only the rootfs, and snapshots are always created
+/// locally. Excluding host fields allows different hardware to share the
+/// same rootfs cache.
 ///
 /// **Changing this function invalidates all cached images.**
-async fn compute_image_hash(
-    guest_bins: &[(&Path, &str)],
-    disk_mb: u32,
-    provider: &dyn SnapshotProvider,
-    vcpu: u32,
-    memory_mb: u32,
-) -> RunnerResult<String> {
+async fn compute_image_hash(guest_bins: &[(&Path, &str)], disk_mb: u32) -> RunnerResult<String> {
     let mut hasher = Sha256::new();
 
     // Cache version seed — bump IMAGE_CACHE_VERSION to force invalidation.
@@ -529,44 +520,6 @@ async fn compute_image_hash(
         hasher.update(tag.as_bytes());
         hasher.update(&content);
     }
-
-    // Snapshot inputs
-    hasher.update(b"fc_config:");
-    hasher.update(provider.config_hash().as_bytes());
-    hasher.update(b"firecracker:");
-    hasher.update(FIRECRACKER_VERSION.as_bytes());
-    hasher.update(b"kernel:");
-    hasher.update(KERNEL_VERSION.as_bytes());
-    hasher.update(b"vcpu:");
-    hasher.update(vcpu.to_le_bytes());
-    hasher.update(b"memory_mb:");
-    hasher.update(memory_mb.to_le_bytes());
-
-    // Host kernel version — snapshots are not portable across kernel versions
-    // because KVM exposes different registers (e.g. ARM64 firmware pseudo-regs).
-    let uname =
-        nix::sys::utsname::uname().map_err(|e| RunnerError::Internal(format!("uname: {e}")))?;
-    hasher.update(b"host_kernel:");
-    hasher.update(uname.release().as_encoded_bytes());
-
-    // CPU model — different CPU models expose different registers and features,
-    // making snapshots non-portable (e.g. Graviton 2 vs 3).
-    hasher.update(b"cpu_model:");
-    let cpu_id = read_cpu_model().unwrap_or_default();
-    hasher.update(cpu_id.as_bytes());
-
-    // CPU microcode/revision — microcode updates can change available MSRs (x86)
-    // or CPU behavior (ARM). Gracefully defaults to empty if not available.
-    hasher.update(b"cpu_microcode:");
-    hasher.update(read_cpu_microcode().unwrap_or_default().as_bytes());
-
-    // BIOS/firmware version and revision — firmware updates can change ACPI tables,
-    // CPU feature advertisement, and memory map, affecting KVM register state in
-    // snapshots. Both fields can change independently.
-    hasher.update(b"bios_version:");
-    hasher.update(read_sysfs_trimmed("/sys/devices/virtual/dmi/id/bios_version").as_bytes());
-    hasher.update(b"bios_release:");
-    hasher.update(read_sysfs_trimmed("/sys/devices/virtual/dmi/id/bios_release").as_bytes());
 
     Ok(hex::encode(hasher.finalize()))
 }
@@ -632,23 +585,14 @@ mod tests {
         let bin = dir.path().join("agent");
         tokio::fs::write(&bin, b"binary-content").await.unwrap();
         let bins: &[(&Path, &str)] = &[(&bin, "/usr/local/bin/guest-agent")];
-        let provider = sandbox_mock::MockSnapshotProvider;
 
-        let h1 = compute_image_hash(bins, 16384, &provider, 2, 2048)
-            .await
-            .unwrap();
-        let h2 = compute_image_hash(bins, 16384, &provider, 2, 2048)
-            .await
-            .unwrap();
+        let h1 = compute_image_hash(bins, 16384).await.unwrap();
+        let h2 = compute_image_hash(bins, 16384).await.unwrap();
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 64); // SHA-256 hex
     }
 
     /// Verify that each parameterized input changes the hash.
-    ///
-    /// Note: host-specific inputs (kernel version, CPU model, microcode, BIOS)
-    /// are read from the runtime environment and cannot be varied in tests.
-    /// Their inclusion is validated by `compute_image_hash_deterministic`.
     #[tokio::test]
     async fn compute_image_hash_sensitive_to_all_inputs() {
         let dir = tempfile::tempdir().unwrap();
@@ -656,92 +600,33 @@ mod tests {
         let bin_b = dir.path().join("agent-b");
         tokio::fs::write(&bin_a, b"content-a").await.unwrap();
         tokio::fs::write(&bin_b, b"content-b").await.unwrap();
-        let provider = sandbox_mock::MockSnapshotProvider;
 
-        let base = compute_image_hash(
-            &[(&bin_a, "/usr/local/bin/guest-agent")],
-            16384,
-            &provider,
-            2,
-            2048,
-        )
-        .await
-        .unwrap();
+        let base = compute_image_hash(&[(&bin_a, "/usr/local/bin/guest-agent")], 16384)
+            .await
+            .unwrap();
 
         // Different binary content
-        let different_content = compute_image_hash(
-            &[(&bin_b, "/usr/local/bin/guest-agent")],
-            16384,
-            &provider,
-            2,
-            2048,
-        )
-        .await
-        .unwrap();
+        let different_content =
+            compute_image_hash(&[(&bin_b, "/usr/local/bin/guest-agent")], 16384)
+                .await
+                .unwrap();
         assert_ne!(
             base, different_content,
             "hash must change with binary content"
         );
 
         // Different disk_mb
-        let different_disk = compute_image_hash(
-            &[(&bin_a, "/usr/local/bin/guest-agent")],
-            32768,
-            &provider,
-            2,
-            2048,
-        )
-        .await
-        .unwrap();
+        let different_disk = compute_image_hash(&[(&bin_a, "/usr/local/bin/guest-agent")], 32768)
+            .await
+            .unwrap();
         assert_ne!(base, different_disk, "hash must change with disk_mb");
 
         // Different dest path
-        let different_dest = compute_image_hash(
-            &[(&bin_a, "/usr/local/bin/guest-download")],
-            16384,
-            &provider,
-            2,
-            2048,
-        )
-        .await
-        .unwrap();
+        let different_dest =
+            compute_image_hash(&[(&bin_a, "/usr/local/bin/guest-download")], 16384)
+                .await
+                .unwrap();
         assert_ne!(base, different_dest, "hash must change with dest path");
-
-        // Different vcpu
-        let different_vcpu = compute_image_hash(
-            &[(&bin_a, "/usr/local/bin/guest-agent")],
-            16384,
-            &provider,
-            4,
-            2048,
-        )
-        .await
-        .unwrap();
-        assert_ne!(base, different_vcpu, "hash must change with vcpu");
-
-        // Different memory_mb
-        let different_memory = compute_image_hash(
-            &[(&bin_a, "/usr/local/bin/guest-agent")],
-            16384,
-            &provider,
-            2,
-            4096,
-        )
-        .await
-        .unwrap();
-        assert_ne!(base, different_memory, "hash must change with memory_mb");
-
-        // Different provider
-        let different_provider = compute_image_hash(
-            &[(&bin_a, "/usr/local/bin/guest-agent")],
-            16384,
-            &sandbox_fc::FirecrackerSnapshotProvider,
-            2,
-            2048,
-        )
-        .await
-        .unwrap();
-        assert_ne!(base, different_provider, "hash must change with provider");
     }
 
     #[tokio::test]
@@ -769,6 +654,37 @@ mod tests {
         // All four files → complete
         tokio::fs::write(image.cow_img(), b"").await.unwrap();
         assert!(is_image_complete(&image).await.unwrap());
+    }
+
+    /// Guard the `[sync:ca-constants]` contract between build-rootfs.sh,
+    /// inject-ca.sh, and verify-rootfs.sh. Drift would cause silent CA
+    /// injection/verification failures on R2-downloaded rootfs.
+    #[test]
+    fn ca_constants_in_sync_across_scripts() {
+        let ca_cert_line = r#"CA_CERT_FILE="mitmproxy-ca-cert.pem""#;
+        let ca_dest_line = r#"CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt""#;
+
+        // Scripts that use both constants.
+        for (script, name) in [
+            (BUILD_SCRIPT, "build-rootfs.sh"),
+            (INJECT_CA_SCRIPT, "inject-ca.sh"),
+        ] {
+            assert!(
+                script.contains(ca_cert_line),
+                "{name} missing CA_CERT_FILE constant — sync with other scripts"
+            );
+            assert!(
+                script.contains(ca_dest_line),
+                "{name} missing CA_ROOTFS_DEST constant — sync with other scripts"
+            );
+        }
+
+        // verify-rootfs.sh only uses CA_ROOTFS_DEST (it reads the cert from
+        // inside the rootfs, not from the host CA_DIR).
+        assert!(
+            VERIFY_SCRIPT.contains(ca_dest_line),
+            "verify-rootfs.sh missing CA_ROOTFS_DEST constant — sync with other scripts"
+        );
     }
 
     #[tokio::test]

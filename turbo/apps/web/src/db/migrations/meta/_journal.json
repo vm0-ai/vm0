@@ -1807,6 +1807,13 @@
       "when": 1776278400002,
       "tag": "0257_update_starter_credits_default",
       "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1776278400003,
+      "tag": "0258_amusing_daredevil",
+      "breakpoints": true
     }
   ]
 }

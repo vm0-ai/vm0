@@ -2,6 +2,7 @@ import {
   resolveOrgByAgentphoneAgentId,
   resolveUserByPhone,
   lookupPhoneThreadSession,
+  consumePendingOutboundCall,
 } from "./shared";
 import { runAgentForPhone } from "./run-agent";
 import type { PhoneCallbackPayload } from "../../../infra/callback/callback-payloads";
@@ -24,26 +25,35 @@ interface CallEndedEvent {
 /**
  * Handle an AgentPhone call_ended webhook event.
  *
- * Flow:
- * 1. Only process inbound voice calls
- * 2. Resolve org from AgentPhone agent ID
- * 3. Resolve VM0 user from caller phone number
- * 4. Format transcript from webhook payload
- * 5. Look up existing phone thread session
- * 6. Create Zero run with transcript as prompt
+ * Flow for inbound calls:
+ * 1. Resolve org from AgentPhone agent ID
+ * 2. Resolve VM0 user from caller phone number
+ * 3. Format transcript and create Zero run
+ *
+ * Flow for outbound fire-and-forget calls:
+ * 1. Check pending_outbound_calls for a registered record
+ * 2. If found, create a follow-up run with the transcript
+ *    so the agent can process the user's response
  */
 export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
   const { callId, agentId: apAgentId, fromNumber, direction, channel } = event;
 
-  // Only process inbound voice calls
-  if (direction !== "inbound" || channel !== "voice") {
-    log.debug("Skipping non-inbound-voice event", {
-      callId,
-      direction,
-      channel,
-    });
+  if (channel !== "voice") {
+    log.debug("Skipping non-voice event", { callId, channel });
     return;
   }
+
+  if (direction === "outbound") {
+    await handleOutboundCallEnded(event);
+    return;
+  }
+
+  if (direction !== "inbound") {
+    log.debug("Skipping unknown direction", { callId, direction });
+    return;
+  }
+
+  // --- Inbound call handling (unchanged) ---
 
   // Resolve org from AgentPhone agent ID
   const org = await resolveOrgByAgentphoneAgentId(apAgentId);
@@ -95,24 +105,11 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
 
   // Build prompt and context
   const prompt = `Phone call from ${fromNumber}:\n\n${transcriptText}${summaryText}`;
-  const phoneContext = [
-    `# Phone Call Context`,
-    `Caller: ${fromNumber}`,
-    `Call ID: ${callId}`,
-    event.durationSeconds != null
-      ? `Duration: ${event.durationSeconds}s`
-      : null,
-    ``,
-    `# Available Actions`,
-    `You can call the user back using: zero phone call --mode <mode> ${fromNumber}`,
-    `  --mode onhold: Stay on the line until the call completes, then get the transcript back. Use when you need a quick answer from the user.`,
-    `  --mode fire-and-forget: Initiate the call and return immediately. Use for open-ended conversations or when you don't need an immediate response.`,
-    `You can view call history using: zero phone record`,
-  ]
-    .filter((line) => {
-      return line !== null;
-    })
-    .join("\n");
+  const phoneContext = buildPhoneContext({
+    callerNumber: fromNumber,
+    callId,
+    durationSeconds: event.durationSeconds,
+  });
 
   const callbackPayload: PhoneCallbackPayload = {
     callId,
@@ -132,6 +129,96 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
   });
 
   log.info("Phone run dispatched", { callId, orgId: org.orgId });
+}
+
+/**
+ * Handle an outbound call_ended event for fire-and-forget calls.
+ * Consumes the pending record and creates a follow-up run with the transcript.
+ */
+async function handleOutboundCallEnded(event: CallEndedEvent): Promise<void> {
+  const { callId } = event;
+
+  // Check if this outbound call was registered as fire-and-forget.
+  // consumePendingOutboundCall atomically reads and deletes the record.
+  const pending = await consumePendingOutboundCall(callId);
+  if (!pending) {
+    log.debug("Outbound call not pending follow-up, skipping", { callId });
+    return;
+  }
+
+  if (!event.transcript) {
+    log.warn("No transcript in outbound call_ended event, skipping follow-up", {
+      callId,
+    });
+    return;
+  }
+
+  const transcriptText = formatTranscript(event.transcript);
+  const summaryLine = event.summary ? `\nSummary: ${event.summary}` : null;
+
+  const prompt = [
+    `You previously made an outbound call to ${event.toNumber}.`,
+    `Here is the full conversation from that call:`,
+    ``,
+    transcriptText,
+    summaryLine,
+    ``,
+    `Based on the above conversation, decide what to do next.`,
+  ]
+    .filter((line) => {
+      return line !== null;
+    })
+    .join("\n");
+  const phoneContext = buildPhoneContext({
+    callerNumber: event.toNumber,
+    callId,
+    durationSeconds: event.durationSeconds,
+  });
+
+  const callbackPayload: PhoneCallbackPayload = {
+    callId,
+    userId: pending.userId,
+    orgId: pending.orgId,
+    agentId: pending.agentId,
+    existingSessionId: pending.sessionId,
+  };
+
+  await runAgentForPhone({
+    agentId: pending.agentId,
+    sessionId: pending.sessionId ?? undefined,
+    prompt,
+    phoneContext,
+    userId: pending.userId,
+    callbackContext: callbackPayload,
+  });
+
+  log.info("Follow-up run dispatched for outbound call", {
+    callId,
+    orgId: pending.orgId,
+  });
+}
+
+function buildPhoneContext(opts: {
+  callerNumber: string;
+  callId: string;
+  durationSeconds?: number;
+}): string {
+  return [
+    `# Phone Call Context`,
+    `Caller: ${opts.callerNumber}`,
+    `Call ID: ${opts.callId}`,
+    opts.durationSeconds != null ? `Duration: ${opts.durationSeconds}s` : null,
+    ``,
+    `# Available Actions`,
+    `You can call the user back using: zero phone call --mode <mode> ${opts.callerNumber}`,
+    `  --mode onhold: Stay on the line until the call completes, then get the transcript back. Use when you need a quick answer from the user.`,
+    `  --mode fire-and-forget: Initiate the call and return immediately. Use for open-ended conversations or when you don't need an immediate response.`,
+    `You can view call history using: zero phone record`,
+  ]
+    .filter((line) => {
+      return line !== null;
+    })
+    .join("\n");
 }
 
 /**

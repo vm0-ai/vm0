@@ -38,7 +38,14 @@ function shortScope(scope: string): string {
 interface DiscoveryMethod {
   id?: string;
   httpMethod?: string;
+  /**
+   * URI Template path. May contain reserved expansion (`{+name}`) that
+   * matches multi-segment values. Use `flatPath` when available — it is
+   * the same template with reserved expansions materialized to concrete
+   * resource paths (e.g. `/v2/{+name}` → `/v2/spaces/{spacesId}`).
+   */
   path?: string;
+  flatPath?: string;
   scopes?: string[];
   supportsMediaUpload?: boolean;
 }
@@ -117,7 +124,7 @@ function buildGroups(
     if (uploadOnly && !method.supportsMediaUpload) continue;
 
     const httpMethod = method.httpMethod;
-    const methodPath = method.path;
+    const methodPath = method.flatPath ?? method.path;
     const scopes = method.scopes;
 
     if (!httpMethod || !methodPath) {
@@ -543,6 +550,16 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     placeholderKey: "GOOGLE_DRIVE_TOKEN",
     placeholderValue: OAUTH_PLACEHOLDER,
     auth: bearerAuth("GOOGLE_DRIVE_TOKEN"),
+  },
+  "google-meet": {
+    discoveryUrls: ["https://meet.googleapis.com/$discovery/rest?version=v2"],
+    baseUrl: "https://meet.googleapis.com",
+    stripPrefix: "",
+    serviceName: "google-meet",
+    serviceDescription: "Google Meet API",
+    placeholderKey: "GOOGLE_MEET_TOKEN",
+    placeholderValue: OAUTH_PLACEHOLDER,
+    auth: bearerAuth("GOOGLE_MEET_TOKEN"),
   },
   "google-sheets": {
     discoveryUrls: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],

@@ -15,16 +15,13 @@
  */
 
 import {
-  fetchSpec,
+  listCachedSpecs,
   logStats,
   renderPermissions,
   sanitizeAndSortRules,
   writeOutput,
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
-
-const SPEC_BASE_URL =
-  "https://api.github.com/repos/dropbox/dropbox-api-spec/contents/";
 
 const PLACEHOLDER_VALUE =
   "sl.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
@@ -236,35 +233,13 @@ function generateTypeScript(
 
 // ── Main ─────────────────────────────────────────────────────────────────
 
-interface GitHubContent {
-  name: string;
-  download_url: string;
-}
-
 export async function generate(): Promise<void> {
-  console.error("Downloading Dropbox Stone API spec file list…");
-  const listRes = await fetch(SPEC_BASE_URL, {
-    headers: { Accept: "application/vnd.github.v3+json" },
-  });
-  if (!listRes.ok) {
-    throw new Error(`Failed to list spec files: ${listRes.status}`);
-  }
-  const json: unknown = await listRes.json();
-  if (!Array.isArray(json)) {
-    throw new Error("Expected array from GitHub contents API");
-  }
-  const files = json as GitHubContent[];
-  const stoneFiles = files.filter((f) => f.name.endsWith(".stone"));
-  console.error(`  Found ${stoneFiles.length} .stone files`);
+  const cachedSpecs = listCachedSpecs("dropbox");
+  console.error(`  Loading ${cachedSpecs.length} cached .stone files`);
 
-  const parsed = await Promise.all(
-    stoneFiles.map(async (file) => {
-      const res = await fetchSpec(file.download_url, file.name);
-      const content = await res.text();
-      return parseStoneRoutes(content);
-    }),
+  const allRoutes = cachedSpecs.flatMap(({ content }) =>
+    parseStoneRoutes(content),
   );
-  const allRoutes = parsed.flat();
   console.error(`  Parsed ${allRoutes.length} routes`);
 
   const hostGroups = buildGroups(allRoutes);

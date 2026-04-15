@@ -5,12 +5,34 @@ Generates firewall configs for connector integrations. Each generator produces a
 ## Usage
 
 ```bash
-# Generate all
+# Generate all (reads from local spec cache, no network)
 cd turbo && pnpm -F @vm0/firewalls-generator generate
 
 # Generate one
 cd turbo && pnpm -F @vm0/firewalls-generator generate:github
 ```
+
+## Updating External API Specs
+
+Some generators (gmail, vercel, sentry, etc.) source their rules from external
+API specs (OpenAPI / Discovery / Stone). Those specs are cached locally under
+`specs/` so `generate` runs offline and deterministically.
+
+To pull the latest specs from upstream:
+
+```bash
+# Update all external specs
+cd turbo && pnpm -F @vm0/firewalls-generator update-specs
+
+# Update a single generator
+cd turbo && pnpm -F @vm0/firewalls-generator update-specs gmail
+```
+
+The cache stores files as `specs/{generator}/{sha256}` (gzip-compressed) and
+maps URLs to hashes via `specs-map.json`. Both are committed to git.
+
+**macOS:** `update-specs` invokes GNU tar for the slack updater. Install via
+`brew install gnu-tar` and ensure `tar` resolves to the GNU version.
 
 ## Placeholder Tokens
 

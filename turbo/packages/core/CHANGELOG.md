@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.186.1](https://github.com/vm0-ai/vm0/compare/core-v8.186.0...core-v8.186.1) (2026-04-15)
+
+
+### Refactoring
+
+* **firewalls:** localize external api specs with content-addressed cache ([#9459](https://github.com/vm0-ai/vm0/issues/9459)) ([f6e0b3b](https://github.com/vm0-ai/vm0/commit/f6e0b3bde98c20b9c07960adea847bb4377ce5c1))
+
 ## [8.186.0](https://github.com/vm0-ai/vm0/compare/core-v8.185.0...core-v8.186.0) (2026-04-15)
 
 

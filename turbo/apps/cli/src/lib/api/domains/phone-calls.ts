@@ -63,6 +63,7 @@ export async function createPhoneCall(body: {
   toNumber: string;
   greeting?: string;
   systemPrompt?: string;
+  mode?: "onhold" | "fire-and-forget";
 }): Promise<PhoneCallResponse> {
   return fetchJson<PhoneCallResponse>("/api/zero/phone-calls", {
     method: "POST",

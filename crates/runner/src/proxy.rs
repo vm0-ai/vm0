@@ -563,9 +563,11 @@ mod tests {
         for expected in [
             "mitm_addon.py",
             "auth.py",
+            "body_utils.py",
             "matching.py",
             "url_utils.py",
             "logging_utils.py",
+            "usage.py",
         ] {
             assert!(
                 files.contains(&expected),

@@ -1,6 +1,7 @@
 import { expandEnvironmentFromCompose } from "../environment/expand-environment";
 import type { ExecutionContext, ResumeSession } from "../types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
+import type { AdditionalVolume } from "../../storage/types";
 import type { Firewalls, NetworkPolicies } from "@vm0/core";
 
 interface BuildInfraContextParams {
@@ -19,6 +20,7 @@ interface BuildInfraContextParams {
   artifactVersion?: string;
   memoryName?: string;
   volumeVersions?: Record<string, string>;
+  additionalVolumes?: AdditionalVolume[];
   environment?: Record<string, string>;
   userTimezone?: string;
   firewalls?: Firewalls;
@@ -74,6 +76,7 @@ export function buildInfraExecutionContext(
     artifactVersion: params.artifactVersion,
     memoryName: params.memoryName,
     volumeVersions: params.volumeVersions,
+    additionalVolumes: params.additionalVolumes,
     environment,
     userTimezone: params.userTimezone,
     firewalls: params.firewalls,

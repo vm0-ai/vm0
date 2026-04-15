@@ -650,7 +650,7 @@ export const loadChatMessages$ = command(
           return;
         }
 
-        set(markMessageLoading$, message.id);
+        set(markMessageLoading$, message.legacyRunId!);
 
         await setLoop(
           (sig) => {
@@ -666,7 +666,7 @@ export const loadChatMessages$ = command(
         const content = await get(message.result$);
         signal.throwIfAborted();
         if (content) {
-          await set(checkAutoRead$, message.id, content, signal);
+          await set(checkAutoRead$, message.legacyRunId!, content, signal);
         }
 
         set(reloadChatThreads$);
@@ -927,7 +927,7 @@ export const sendExistingThreadMessage$ = command(
       return [...prev, assistantMessage];
     });
 
-    set(markMessageLoading$, assistantMessage.id);
+    set(markMessageLoading$, assistantMessage.legacyRunId!);
 
     const runLoop = assistantMessage.runLoop;
     if (!runLoop) {
@@ -947,7 +947,7 @@ export const sendExistingThreadMessage$ = command(
     const content = await get(assistantMessage.result$);
     signal.throwIfAborted();
     if (content) {
-      await set(checkAutoRead$, assistantMessage.id, content, signal);
+      await set(checkAutoRead$, assistantMessage.legacyRunId!, content, signal);
     }
   },
 );

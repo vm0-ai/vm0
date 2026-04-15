@@ -1,0 +1,263 @@
+"""Body processing helpers shared between usage extraction and body capture.
+
+Exports:
+
+- ``STREAM_BUFFER_LIMIT`` — 64 KB cap used by the streaming buffer in
+  ``mitm_addon.responseheaders`` and by the decompression safety cap.
+- Streaming / one-shot decompression for gzip, deflate, br, zstd.
+- UTF-8-safe truncation, text/binary content detection and encoding.
+- Header redaction for sensitive names (auth, token, cookie, …).
+- ``add_capture_fields`` — composes capture-mode log entry fields.
+"""
+
+import base64
+import zlib
+
+import brotli  # type: ignore[import-untyped]
+import zstandard
+from mitmproxy import ctx, http
+
+# Cap for non-model-provider response body buffering and decompression output.
+STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
+
+
+# ---------------------------------------------------------------------------
+# Body capture helpers (opt-in per run via captureNetworkBodies registry flag)
+# ---------------------------------------------------------------------------
+
+
+_TEXT_CONTENT_TYPES = (
+    "text/",
+    "application/json",
+    "application/xml",
+    "application/javascript",
+    "application/x-www-form-urlencoded",
+    "application/graphql",
+)
+
+# Header names containing any of these keywords (case-insensitive) are redacted.
+_SENSITIVE_HEADER_KEYWORDS = (
+    "auth",
+    "token",
+    "secret",
+    "api-key",
+    "apikey",
+    "credential",
+    "password",
+    "cookie",
+)
+
+
+def create_stream_decompressor(headers: http.Headers):
+    """Create an incremental decompressor for streaming chunks.
+
+    Returns a callable that decompresses each chunk, maintaining state
+    across calls.  Returns None if the response is not compressed.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if not encoding or encoding == "identity":
+        return None
+    if encoding in ("gzip", "deflate"):
+        wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+        obj = zlib.decompressobj(wbits)
+
+        def decompress_zlib(chunk: bytes) -> bytes:
+            try:
+                return obj.decompress(chunk)
+            except zlib.error:
+                return b""
+
+        return decompress_zlib
+    if encoding == "br":
+        dec = brotli.Decompressor()
+
+        def decompress_br(chunk: bytes) -> bytes:
+            try:
+                return dec.process(chunk)
+            except brotli.error:
+                return b""
+
+        return decompress_br
+    if encoding == "zstd":
+        obj = zstandard.ZstdDecompressor().decompressobj()
+
+        def decompress_zstd(chunk: bytes) -> bytes:
+            try:
+                return obj.decompress(chunk)
+            except zstandard.ZstdError:
+                return b""
+
+        return decompress_zstd
+    return None
+
+
+def decompress_body(
+    data: bytes, headers: http.Headers, max_output: int = STREAM_BUFFER_LIMIT
+) -> bytes:
+    """Decompress response body based on Content-Encoding header.
+
+    The stream callback receives raw wire bytes.  When the server uses
+    gzip/deflate/br/zstd encoding, we must decompress before capturing.
+    Uses incremental decompression so truncated compressed data still
+    yields whatever decompressed bytes are available.
+
+    Output is capped at *max_output* bytes to guard against decompression
+    bombs (small compressed payload expanding to huge output).
+
+    Returns the original data unchanged if not compressed or on error.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if not encoding or encoding == "identity":
+        return data
+    try:
+        if encoding in ("gzip", "deflate"):
+            # wbits: gzip=16+MAX_WBITS, deflate=MAX_WBITS
+            wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+            obj = zlib.decompressobj(wbits)
+            result = obj.decompress(data, max_length=max_output)
+            return result if result else data
+        if encoding == "br":
+            dec = brotli.Decompressor()
+            result = dec.process(data)
+            return result[:max_output] if result else data
+        if encoding == "zstd":
+            obj = zstandard.ZstdDecompressor().decompressobj()
+            result = obj.decompress(data)
+            return result[:max_output] if result else data
+    except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
+        try:
+            ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+        except AttributeError:
+            pass  # ctx.log unavailable outside mitmproxy runtime
+    return data
+
+
+def _is_text_content(content_type: str) -> bool:
+    """Check if content-type indicates text-like content worth capturing."""
+    if not content_type:
+        return True  # assume text when unspecified
+    ct = content_type.lower().split(";")[0].strip()
+    return any(ct.startswith(prefix) for prefix in _TEXT_CONTENT_TYPES)
+
+
+def _truncate_bytes_utf8_safe(data: bytes, max_size: int) -> bytes:
+    """Truncate bytes at a UTF-8 character boundary.
+
+    After slicing at *max_size*, checks whether the last character is
+    complete.  If not, removes the incomplete trailing bytes (at most 4).
+    """
+    if len(data) <= max_size:
+        return data
+    t = data[:max_size]
+    # Find the start of the last character by scanning backwards
+    # past continuation bytes (10xxxxxx = 0x80..0xBF).
+    i = len(t)
+    while i > 0 and (t[i - 1] & 0xC0) == 0x80:
+        i -= 1
+    if i == 0:
+        return t  # all continuation bytes — shouldn't happen in valid UTF-8
+    lead = t[i - 1]
+    # Determine the expected sequence length from the lead byte.
+    if lead < 0x80:
+        expected = 1
+    elif lead < 0xE0:
+        expected = 2
+    elif lead < 0xF0:
+        expected = 3
+    else:
+        expected = 4
+    # If the sequence starting at (i-1) has fewer bytes than expected,
+    # it was cut — remove the incomplete sequence.
+    actual = len(t) - (i - 1)
+    if actual < expected:
+        return t[: i - 1]
+    return t
+
+
+def _encode_body(content: bytes, content_type: str) -> tuple:
+    """Encode body content. Returns (encoded_string, encoding_type) or (None, None) for binary."""
+    if not _is_text_content(content_type):
+        return None, None  # skip binary bodies
+    try:
+        return content.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        return base64.b64encode(content).decode("ascii"), "base64"
+
+
+def _is_sensitive_header(name: str) -> bool:
+    """Check if a header name likely carries sensitive data."""
+    lower = name.lower()
+    return any(kw in lower for kw in _SENSITIVE_HEADER_KEYWORDS)
+
+
+def _redact_headers(headers) -> dict:
+    """Build a dict of headers with sensitive values replaced by ***."""
+    result = {}
+    for name, value in headers.items(multi=True):
+        if name in result:
+            continue  # keep first occurrence only (headers.items gives all)
+        result[name] = "***" if _is_sensitive_header(name) else value
+    return result
+
+
+def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
+    """Add request/response headers and bodies to a log entry.
+
+    # [NETWORK_LOG_FIELDS] — capture-only fields, not part of the core schema.
+    # Fields: request_headers, request_body, request_body_encoding,
+    #         request_body_truncated, response_headers, response_body,
+    #         response_body_encoding, response_body_truncated
+    """
+    # Request headers (always available)
+    log_entry["request_headers"] = _redact_headers(flow.request.headers)
+
+    # Request body
+    if flow.request.content:
+        req_ct = flow.request.headers.get("content-type", "")
+        body = flow.request.content
+        truncated = len(body) > STREAM_BUFFER_LIMIT
+        if truncated:
+            body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
+        encoded, encoding = _encode_body(body, req_ct)
+        if encoded is not None:
+            log_entry["request_body"] = encoded
+            log_entry["request_body_encoding"] = encoding
+            if truncated:
+                log_entry["request_body_truncated"] = True
+        else:
+            log_entry["request_body_encoding"] = "binary"
+
+    # Response headers
+    if flow.response:
+        log_entry["response_headers"] = _redact_headers(flow.response.headers)
+
+    # Response body — read from stream_buffer (available for all responses).
+    # The buffer contains raw wire bytes (possibly gzip/br/zstd compressed).
+    if flow.response:
+        stream_buf = flow.metadata.get("stream_buffer")
+        if stream_buf is not None:
+            body = decompress_body(bytes(stream_buf), flow.response.headers)
+        else:
+            try:
+                body = flow.response.content
+            except (zlib.error, ValueError):
+                # ZlibError (decompression failure) or ValueError from mitmproxy
+                log_entry["response_body_encoding"] = "binary"
+                return
+        if not body:
+            return
+        stream_state = flow.metadata.get("stream_buffer_state")
+        res_ct = flow.response.headers.get("content-type", "")
+        # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.
+        # Also check decompressed size in case it expanded beyond the limit.
+        truncated = (stream_state and stream_state["truncated"]) or len(body) > STREAM_BUFFER_LIMIT
+        if truncated:
+            body = _truncate_bytes_utf8_safe(body, STREAM_BUFFER_LIMIT)
+        encoded, encoding = _encode_body(body, res_ct)
+        if encoded is not None:
+            log_entry["response_body"] = encoded
+            log_entry["response_body_encoding"] = encoding
+            if truncated:
+                log_entry["response_body_truncated"] = True
+        else:
+            log_entry["response_body_encoding"] = "binary"

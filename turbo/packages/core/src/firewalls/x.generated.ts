@@ -32,6 +32,7 @@ export const xFirewall = {
             "DELETE /2/account_activity/webhooks/{webhook_id}/subscriptions/{user_id}/all",
             "GET /2/activity/stream",
             "GET /2/activity/subscriptions",
+            "DELETE /2/activity/subscriptions",
             "PUT /2/activity/subscriptions/{subscription_id}",
             "DELETE /2/activity/subscriptions/{subscription_id}",
             "GET /2/compliance/jobs",

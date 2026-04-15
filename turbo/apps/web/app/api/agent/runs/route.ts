@@ -355,6 +355,7 @@ const router = tsr.router(runsMainContract, {
           artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
           memoryName: resolved.memoryName ?? body.memoryName,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
+          additionalVolumes: body.additionalVolumes,
           environment: resolved.environment,
           userTimezone: resolved.userTimezone,
           firewalls: resolved.firewalls,

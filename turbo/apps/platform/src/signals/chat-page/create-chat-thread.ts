@@ -388,7 +388,7 @@ function createSendMessage(
       return [...prev, assistantMessage];
     });
 
-    set(markMessageLoading$, assistantMessage.id);
+    set(markMessageLoading$, assistantMessage.legacyRunId!);
 
     const runLoop = assistantMessage.runLoop;
     if (!runLoop) {
@@ -410,7 +410,7 @@ function createSendMessage(
     const content = await get(assistantMessage.result$);
     signal.throwIfAborted();
     if (content) {
-      await set(checkAutoRead$, assistantMessage.id, content, signal);
+      await set(checkAutoRead$, assistantMessage.legacyRunId!, content, signal);
     }
   });
 }
@@ -453,7 +453,7 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
           return;
         }
 
-        set(markMessageLoading$, message.id);
+        set(markMessageLoading$, message.legacyRunId!);
 
         await setLoop(
           (sig) => {
@@ -469,7 +469,7 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
         const content = await get(message.result$);
         signal.throwIfAborted();
         if (content) {
-          await set(checkAutoRead$, message.id, content, signal);
+          await set(checkAutoRead$, message.legacyRunId!, content, signal);
         }
 
         set(reloadChatThreads$);

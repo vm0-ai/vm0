@@ -5,8 +5,10 @@
  * and file I/O used by all individual firewall generators.
  */
 
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as zlib from "node:zlib";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -234,15 +236,151 @@ export function logStats(permissions: PermissionGroup[]): void {
 // ── HTTP ─────────────────────────────────────────────────────────────────
 
 /**
- * Fetch a URL with error handling. Throws on non-OK responses.
+ * Fetch a URL directly from the network. Used by update-specs to populate
+ * the local cache. Generators should use fetchSpec() instead.
  */
-export async function fetchSpec(url: string, label: string): Promise<Response> {
+export async function fetchRemote(
+  url: string,
+  label: string,
+  init?: RequestInit,
+): Promise<Response> {
   console.error(`Downloading ${label}…`);
-  const res = await fetch(url);
+  const res = await fetch(url, init);
   if (!res.ok) {
+    // Consume body to release the underlying socket connection
+    await res.body?.cancel();
     throw new Error(
       `Failed to fetch ${label}: ${res.status} ${res.statusText}`,
     );
   }
   return res;
+}
+
+/**
+ * Resolve a URL to its content via the local spec cache.
+ *
+ * Looks up the URL in specs-map.json → reads the content-addressed file
+ * from specs/. Returns a Response-like object with .json() and .text().
+ *
+ * If the URL is not in the cache, throws with instructions to run update-specs.
+ */
+export async function fetchSpec(url: string, label: string): Promise<Response> {
+  const content = resolveSpecByUrl(url);
+  console.error(`Loading ${label} (cached)…`);
+  return new Response(content);
+}
+
+// ── Local spec cache ────────────────────────────────────────────────────
+
+export const SPECS_DIR = path.resolve(import.meta.dirname, "../specs");
+export const MAP_PATH = path.resolve(import.meta.dirname, "../specs-map.json");
+
+export type SpecsMap = Record<string, Record<string, string>>;
+
+// Cached at module load and never invalidated. The generator is a single-shot
+// CLI process — the map cannot change during a run. Do not import this module
+// in long-running contexts where the cache could become stale.
+let cachedMap: SpecsMap | null = null;
+let urlIndex: Map<string, { generator: string; hash: string }> | null = null;
+
+function loadSpecsMap(): SpecsMap {
+  if (!cachedMap) {
+    if (!fs.existsSync(MAP_PATH)) {
+      throw new Error(
+        `specs-map.json not found.\n` +
+          `Run: pnpm -F @vm0/firewalls-generator update-specs`,
+      );
+    }
+    cachedMap = JSON.parse(fs.readFileSync(MAP_PATH, "utf-8")) as SpecsMap;
+  }
+  return cachedMap;
+}
+
+/** Build a flat URL → {generator, hash} index for O(1) lookups. */
+function getUrlIndex(): Map<string, { generator: string; hash: string }> {
+  if (!urlIndex) {
+    const map = loadSpecsMap();
+    urlIndex = new Map();
+    for (const [generator, section] of Object.entries(map)) {
+      for (const [url, hash] of Object.entries(section)) {
+        urlIndex.set(url, { generator, hash });
+      }
+    }
+  }
+  return urlIndex;
+}
+
+/**
+ * Look up a URL in specs-map.json and return the file content.
+ * Uses a flat index for O(1) lookup. Throws if the URL is not cached.
+ */
+function resolveSpecByUrl(url: string): string {
+  const entry = getUrlIndex().get(url);
+  if (!entry) {
+    throw new Error(
+      `Spec not cached: ${url}\n` +
+        `Run: pnpm -F @vm0/firewalls-generator update-specs`,
+    );
+  }
+  const filePath = path.join(SPECS_DIR, entry.generator, entry.hash);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(
+      `Cached spec file missing: ${filePath}\n` +
+        `Run: pnpm -F @vm0/firewalls-generator update-specs ${entry.generator}`,
+    );
+  }
+  return readSpecFile(filePath);
+}
+
+/**
+ * List all cached specs for a generator. Returns key→content pairs.
+ * Used by generators with dynamic discovery (e.g. slack) that need to
+ * enumerate all cached entries rather than look up a specific URL.
+ */
+export function listCachedSpecs(
+  generator: string,
+): Array<{ key: string; content: string }> {
+  const map = loadSpecsMap();
+  const section = map[generator];
+  if (!section || Object.keys(section).length === 0) {
+    throw new Error(
+      `No cached specs for: ${generator}\n` +
+        `Run: pnpm -F @vm0/firewalls-generator update-specs`,
+    );
+  }
+  return Object.entries(section).map(([key, hash]) => {
+    const filePath = path.join(SPECS_DIR, generator, hash);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(
+        `Cached spec file missing: ${filePath}\n` +
+          `Run: pnpm -F @vm0/firewalls-generator update-specs ${generator}`,
+      );
+    }
+    return { key, content: readSpecFile(filePath) };
+  });
+}
+
+/**
+ * Read a cached spec file and decompress (gzip).
+ * Spec files are compressed to keep individual files under 1 MB
+ * (our pre-commit file size limit).
+ */
+function readSpecFile(filePath: string): string {
+  const compressed = fs.readFileSync(filePath);
+  return zlib.gunzipSync(compressed).toString("utf-8");
+}
+
+/**
+ * Write a spec file, compressing with gzip at max level.
+ * The hash (filename) is computed from the original content so
+ * content-addressing semantics are preserved.
+ */
+export function writeSpecFile(filePath: string, content: string): void {
+  const compressed = zlib.gzipSync(content, { level: 9 });
+  fs.writeFileSync(filePath, compressed);
+}
+
+/** Compute SHA-256 hash of content (used by update-specs). */
+export function hashContent(content: string): string {
+  return crypto.createHash("sha256").update(content).digest("hex");
 }
