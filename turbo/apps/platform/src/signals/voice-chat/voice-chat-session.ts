@@ -8,7 +8,7 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { delay } from "signal-timers";
 import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
-import { ablyNotify$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -643,54 +643,50 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!sid) {
     throw new Error("startPoll$ called before session ID is set");
   }
-  const ablyNotify = get(ablyNotify$);
 
-  await ablyNotify(
-    `voice:${sid}`,
-    async (signal: AbortSignal) => {
-      const sid = get(internalSessionId$);
-      if (!sid) {
-        return true;
-      }
+  const pollBody$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const sid = get(internalSessionId$);
+    if (!sid) {
+      return true;
+    }
 
-      const lastSeq = get(internalLastSeq$);
-      const fetchFn = get(fetch$);
-      const res = await fetchFn(
-        `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
-        { signal },
-      );
+    const lastSeq = get(internalLastSeq$);
+    const fetchFn = get(fetch$);
+    const res = await fetchFn(
+      `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
+      { signal },
+    );
 
-      if (!res.ok) {
-        consecutiveFailures++;
-        if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
-          set(internalError$, "Connection issues — retrying…");
-        }
-        return false;
-      }
-
+    if (!res.ok) {
+      consecutiveFailures++;
       if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
-        set(internalError$, null);
-      }
-      consecutiveFailures = 0;
-
-      const data = (await res.json()) as { events: ContextEvent[] };
-      signal.throwIfAborted();
-
-      if (data.events.length > 0) {
-        set(internalEvents$, (prev) => {
-          return [...prev, ...data.events];
-        });
-        const lastEvent = data.events[data.events.length - 1];
-        if (lastEvent) {
-          set(internalLastSeq$, lastEvent.seq);
-        }
-        set(injectSlowBrainEvents$, data.events);
+        set(internalError$, "Connection issues — retrying…");
       }
       return false;
-    },
-    POLL_INTERVAL_MS,
-    signal,
-  );
+    }
+
+    if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
+      set(internalError$, null);
+    }
+    consecutiveFailures = 0;
+
+    const data = (await res.json()) as { events: ContextEvent[] };
+    signal.throwIfAborted();
+
+    if (data.events.length > 0) {
+      set(internalEvents$, (prev) => {
+        return [...prev, ...data.events];
+      });
+      const lastEvent = data.events[data.events.length - 1];
+      if (lastEvent) {
+        set(internalLastSeq$, lastEvent.seq);
+      }
+      set(injectSlowBrainEvents$, data.events);
+    }
+    return false;
+  });
+
+  await set(setAblyLoop$, `voice:${sid}`, pollBody$, POLL_INTERVAL_MS, signal);
 });
 
 // --- WebRTC cleanup (preserves session state) ---
@@ -1023,10 +1019,8 @@ const prepareActivateConnect$ = command(
     const heartbeatPromise = set(startHeartbeat$, sessionSignal);
 
     // Poll for preparation-ready event with timeout
-    const ablyNotify = get(ablyNotify$);
-    await ablyNotify(
-      `voice:${sessionId}`,
-      async (loopSignal: AbortSignal) => {
+    const prepPollBody$ = command(
+      async ({ get, set }, loopSignal: AbortSignal) => {
         const elapsed = Date.now() - startTime;
         set(internalPrepElapsedMs$, elapsed);
 
@@ -1072,6 +1066,11 @@ const prepareActivateConnect$ = command(
         }
         return false;
       },
+    );
+    await set(
+      setAblyLoop$,
+      `voice:${sessionId}`,
+      prepPollBody$,
       POLL_INTERVAL_MS,
       sessionSignal,
     );
@@ -1127,7 +1126,7 @@ const prepareActivateConnect$ = command(
  * Falls through on failure so session creation can handle the unprepared case.
  */
 const awaitChatPreparation$ = command(
-  async ({ get }, agentId: string, signal: AbortSignal) => {
+  async ({ get, set }, agentId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const prepClient = createClient(zeroVoiceChatPrepareTriggerContract);
     const prepRes = await accept(
@@ -1142,7 +1141,6 @@ const awaitChatPreparation$ = command(
     }
 
     const prepStart = Date.now();
-    const chatAblyNotify = get(ablyNotify$);
     const clerkInstance = await get(clerk$);
     signal.throwIfAborted();
     const prepUserId = clerkInstance.user?.id;
@@ -1151,21 +1149,23 @@ const awaitChatPreparation$ = command(
         "awaitChatPreparation$ called without authenticated user",
       );
     }
-    await chatAblyNotify(
+    const chatPollBody$ = command(async (_store, loopSignal: AbortSignal) => {
+      if (Date.now() - prepStart > PREP_TIMEOUT_CHAT_MS) {
+        return true; // Timeout — proceed without cache
+      }
+      const pollRes = await accept(
+        prepClient.trigger({ body: { agentId, mode: "chat" } }),
+        [200],
+        { toast: false },
+      );
+      loopSignal.throwIfAborted();
+      const status = pollRes.body.preparation.status;
+      return status === "ready" || status === "failed";
+    });
+    await set(
+      setAblyLoop$,
       `voice:prep:${prepUserId}`,
-      async (loopSignal: AbortSignal) => {
-        if (Date.now() - prepStart > PREP_TIMEOUT_CHAT_MS) {
-          return true; // Timeout — proceed without cache
-        }
-        const pollRes = await accept(
-          prepClient.trigger({ body: { agentId, mode: "chat" } }),
-          [200],
-          { toast: false },
-        );
-        loopSignal.throwIfAborted();
-        const status = pollRes.body.preparation.status;
-        return status === "ready" || status === "failed";
-      },
+      chatPollBody$,
       POLL_INTERVAL_MS,
       signal,
     );

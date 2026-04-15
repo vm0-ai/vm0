@@ -3,7 +3,7 @@ import { tasksContract, type TaskItem } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
 import { jsonParseOr, onRef, resetSignal, throwIfNotAbort } from "../utils.ts";
-import { ablyNotify$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { clerk$ } from "../auth.ts";
 import {
   createChatThreadSignals,
@@ -349,7 +349,6 @@ const internalTaskSignals$ = state<Map<string, TaskSignals>>(new Map());
 
 export const setupTasksLoop$ = command(
   async ({ set, get }, signal: AbortSignal) => {
-    const ablyNotify = get(ablyNotify$);
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     const orgId = clerk.organization?.id;
@@ -357,9 +356,8 @@ export const setupTasksLoop$ = command(
       throw new Error("setupTasksLoop$ called without active organization");
     }
 
-    await ablyNotify(
-      `tasks:${orgId}`,
-      async () => {
+    const tasksLoopBody$ = command(
+      async ({ get, set }, signal: AbortSignal) => {
         set(reloadTasks$);
         const tasks = await get(tasks$);
         signal.throwIfAborted();
@@ -442,9 +440,9 @@ export const setupTasksLoop$ = command(
 
         return false;
       },
-      10_000,
-      signal,
     );
+
+    await set(setAblyLoop$, `tasks:${orgId}`, tasksLoopBody$, 10_000, signal);
   },
 );
 

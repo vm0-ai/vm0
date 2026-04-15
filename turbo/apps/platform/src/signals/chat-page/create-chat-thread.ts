@@ -1,7 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { delay } from "signal-timers";
 import { onRef, resetSignal, throwIfNotAbort } from "../utils.ts";
-import { ablyNotify$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
 import { logger } from "../log.ts";
 import {
@@ -384,16 +384,17 @@ function createSendMessage(
       return;
     }
 
-    const ablyNotify = get(ablyNotify$);
-    await ablyNotify(
+    const sendLoopBody$ = command(async ({ set }, sig: AbortSignal) => {
+      set(reloadChatThreads$);
+      set(deps.reloadThread$);
+      const finished = await set(runLoop.checkFinished$, sig);
+      set(deps.autoScroll$);
+      return finished;
+    });
+    await set(
+      setAblyLoop$,
       `thread:${sendResult.body.runId}`,
-      async (sig) => {
-        set(reloadChatThreads$);
-        set(deps.reloadThread$);
-        const finished = await set(runLoop.checkFinished$, sig);
-        set(deps.autoScroll$);
-        return finished;
-      },
+      sendLoopBody$,
       3000,
       signal,
     );
@@ -422,7 +423,6 @@ function createSendMessage(
 function createLoadMessages(deps: MessageCommandsInternalScope) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("Loading messages");
-    const ablyNotify = get(ablyNotify$);
     const msgs = await get(deps.chatMessages$);
     signal.throwIfAborted();
 
@@ -460,14 +460,16 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
 
         set(markMessageLoading$, message.legacyRunId!);
 
-        await ablyNotify(
+        const loadLoopBody$ = command(({ set }, sig: AbortSignal) => {
+          set(deps.reloadThinkingMessage$);
+          const finished = set(runLoop.checkFinished$, sig);
+          set(deps.autoScroll$);
+          return finished;
+        });
+        await set(
+          setAblyLoop$,
           `thread:${message.legacyRunId}`,
-          (sig) => {
-            set(deps.reloadThinkingMessage$);
-            const finished = set(runLoop.checkFinished$, sig);
-            set(deps.autoScroll$);
-            return finished;
-          },
+          loadLoopBody$,
           3000,
           signal,
         );

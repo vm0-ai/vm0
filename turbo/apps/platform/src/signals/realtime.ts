@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/core";
 import {
   Realtime,
@@ -6,15 +6,21 @@ import {
   type ErrorInfo,
   type TokenRequest,
   type TokenDetails,
+  type InboundMessage,
 } from "ably";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { IN_VITEST } from "../env.ts";
-import { setLoop } from "./utils.ts";
-import { logger } from "./log.ts";
+import { createDeferredPromise, setLoop, throwIfAbort } from "./utils.ts";
+import { Level, logger } from "./log.ts";
+import { delay } from "signal-timers";
 
 const L = logger("Realtime");
 
+const MAX_LOOP_COUNT_IN_TEST = 1000;
+const FIB_DELAYS_MS = [
+  1000, 1000, 2000, 3000, 5000, 8000, 13_000, 21_000, 34_000, 55_000, 60_000,
+] as const;
 // ---------------------------------------------------------------------------
 // Ably client singleton
 // ---------------------------------------------------------------------------
@@ -103,103 +109,79 @@ export const setupRealtime$ = command(
     const channel = ably.channels.get(channelName);
     set(internalUserChannel$, channel);
 
-    L.info(`Realtime connected, subscribed to ${channelName}`);
+    L.debug(`Realtime connected, subscribed to ${channelName}`);
   },
 );
 
-// ---------------------------------------------------------------------------
-// ablyNotify — drop-in replacement for setLoop
-// ---------------------------------------------------------------------------
-
-type NotifyBody = (signal: AbortSignal) => Promise<boolean> | boolean;
-
-/**
- * Subscribe to `topic` on `channel` and invoke `body` on each message.
- * Resolves when `body` returns `true`, rejects on abort or subscribe failure.
- */
-async function ablyChannelNotify(
-  channel: RealtimeChannel,
-  topic: string,
-  body: NotifyBody,
-  signal: AbortSignal,
-): Promise<void> {
-  // Run body once immediately to load initial data
-  const done = await body(signal);
-  if (done) {
-    return;
-  }
-
-  // Subscribe to the specific topic on the user's channel and wait
-  // for Ably signals to re-run body.
-  return new Promise<void>((resolve, reject) => {
-    const onAbort = () => {
-      cleanup();
-      reject(signal.reason);
-    };
-
-    const messageHandler = () => {
-      const result = body(signal);
-      if (result instanceof Promise) {
-        result
-          .then((finished) => {
-            if (finished) {
-              cleanup();
-              resolve();
-            }
-          })
-          .catch((error: unknown) => {
-            cleanup();
-            reject(error);
-          });
-      } else if (result) {
-        cleanup();
-        resolve();
-      }
-    };
-
-    channel
-      .subscribe(topic, messageHandler)
-      .catch((subscribeError: unknown) => {
-        signal.removeEventListener("abort", onAbort);
-        L.warn(
-          `ablyNotify: failed to subscribe to topic "${topic}"`,
-          subscribeError,
-        );
-        reject(subscribeError);
-      });
-    signal.addEventListener("abort", onAbort, { once: true });
-
-    function cleanup() {
-      signal.removeEventListener("abort", onAbort);
-      channel.unsubscribe(topic, messageHandler);
-    }
-  });
-}
-
-/**
- * Module-level ablyNotify that reads the user channel from signal state.
- * This is the primary API used by feature code.
- *
- * Usage inside a command:
- *   const ablyNotify = get(ablyNotify$);
- *   await ablyNotify("thread:runId", body, 3000, signal);
- *
- * When Ably is connected, subscribes to the topic on the user channel.
- * Each message triggers `body`. Falls back to setLoop when Ably is
- * unavailable or in test environment.
- */
-export const ablyNotify$ = computed((get) => {
-  const channel = get(internalUserChannel$);
-
-  return function ablyNotify(
+export const setAblyLoop$ = command(
+  async (
+    { get, set },
     topic: string,
-    body: NotifyBody,
-    interval: number,
+    loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
+    fallbackInterval: number,
     signal: AbortSignal,
-  ): Promise<void> {
+  ) => {
+    const channel = get(internalUserChannel$);
     if (!channel) {
-      return setLoop(body, interval, signal);
+      return setLoop(
+        (sig) => {
+          return set(loopCommand$, sig);
+        },
+        fallbackInterval,
+        signal,
+      );
     }
-    return ablyChannelNotify(channel, topic, body, signal);
-  };
-});
+
+    const done = await set(loopCommand$, signal);
+    if (done) {
+      return;
+    }
+
+    let deferred = createDeferredPromise(signal);
+
+    const callback = (message: InboundMessage) => {
+      L.debug("got message from topic", topic, message);
+
+      deferred.resolve(true);
+    };
+    signal.addEventListener("abort", () => {
+      channel.unsubscribe(topic, callback);
+    });
+    await channel.subscribe(topic, callback);
+    signal.throwIfAborted();
+
+    let loopCount = 0;
+    let fibIndex = 0;
+    while (!signal.aborted) {
+      if (IN_VITEST && loopCount++ > MAX_LOOP_COUNT_IN_TEST) {
+        channel.unsubscribe(topic, callback);
+        return;
+      }
+
+      await (IN_VITEST ? delay(0, { signal }) : deferred.promise);
+      signal.throwIfAborted();
+
+      deferred = createDeferredPromise(signal);
+
+      // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
+      try {
+        const done = await set(loopCommand$, signal);
+        fibIndex = 0;
+        if (done) {
+          channel.unsubscribe(topic, callback);
+          return;
+        }
+      } catch (error) {
+        throwIfAbort(error);
+        const backoff =
+          FIB_DELAYS_MS[Math.min(fibIndex, FIB_DELAYS_MS.length - 1)] ?? 60_000;
+        L.warn(
+          `setAblyLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
+          error,
+        );
+        fibIndex++;
+        await (IN_VITEST ? delay(0, { signal }) : delay(backoff, { signal }));
+      }
+    }
+  },
+);

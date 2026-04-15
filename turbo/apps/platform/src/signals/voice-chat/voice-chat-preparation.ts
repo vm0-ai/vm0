@@ -8,7 +8,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
 import { throwIfAbort } from "../utils.ts";
-import { ablyNotify$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { clerk$ } from "../auth.ts";
 
 type PreparationStatus = "idle" | "preparing" | "ready" | "failed";
@@ -87,8 +87,7 @@ export const triggerPreparation$ = command(
     }
 
     // Poll until ready or failed.
-    // ablyNotify handles transient errors with fibonacci backoff retry via fallback.
-    const ablyNotify = get(ablyNotify$);
+    // setAblyLoop$ handles transient errors with fibonacci backoff retry.
     const clerkInstance = await get(clerk$);
     signal.throwIfAborted();
     const userId = clerkInstance.user?.id;
@@ -97,33 +96,35 @@ export const triggerPreparation$ = command(
         "voice-chat-preparation called without authenticated user",
       );
     }
-    await ablyNotify(
-      `voice:prep:${userId}`,
-      async (loopSignal: AbortSignal) => {
-        const pollRes = await accept(
-          client.trigger({ body: { agentId, mode: "meeting", prompt } }),
-          [200],
-          { toast: false },
+    const pollBody$ = command(async ({ set }, loopSignal: AbortSignal) => {
+      const pollRes = await accept(
+        client.trigger({ body: { agentId, mode: "meeting", prompt } }),
+        [200],
+        { toast: false },
+      );
+      loopSignal.throwIfAborted();
+
+      if (pollRes.body.preparation.status === "ready") {
+        set(internalPrepStatus$, "ready");
+        await set(fetchFreshPreparations$, loopSignal).catch(
+          (error: unknown) => {
+            throwIfAbort(error);
+          },
         );
-        loopSignal.throwIfAborted();
+        return true;
+      }
 
-        if (pollRes.body.preparation.status === "ready") {
-          set(internalPrepStatus$, "ready");
-          await set(fetchFreshPreparations$, loopSignal).catch(
-            (error: unknown) => {
-              throwIfAbort(error);
-            },
-          );
-          return true;
-        }
+      if (pollRes.body.preparation.status === "failed") {
+        set(internalPrepStatus$, "failed");
+        return true;
+      }
 
-        if (pollRes.body.preparation.status === "failed") {
-          set(internalPrepStatus$, "failed");
-          return true;
-        }
-
-        return false;
-      },
+      return false;
+    });
+    await set(
+      setAblyLoop$,
+      `voice:prep:${userId}`,
+      pollBody$,
       POLL_INTERVAL_MS,
       signal,
     );
