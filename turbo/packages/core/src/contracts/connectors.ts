@@ -469,7 +469,7 @@ const CONNECTOR_TYPES_DEF = {
       tokenUrl: "https://oauth2.googleapis.com/token",
       scopes: [
         "https://www.googleapis.com/auth/meetings.space.created",
-        "https://www.googleapis.com/auth/meetings.conferencerecords.readonly",
+        "https://www.googleapis.com/auth/meetings.space.readonly",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
     },

@@ -54,6 +54,7 @@
     "generate:google-calendar": "tsx src/index.ts google-calendar",
     "generate:google-docs": "tsx src/index.ts google-docs",
     "generate:google-drive": "tsx src/index.ts google-drive",
+    "generate:google-meet": "tsx src/index.ts google-meet",
     "generate:google-sheets": "tsx src/index.ts google-sheets",
     "generate:granola": "tsx src/index.ts granola",
     "generate:heygen": "tsx src/index.ts heygen",

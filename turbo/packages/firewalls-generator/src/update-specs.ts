@@ -172,6 +172,9 @@ const UPDATERS: Updater[] = [
     "https://www.googleapis.com/discovery/v1/apis/drive/v2/rest",
     "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
   ]),
+  staticUpdater("google-meet", [
+    "https://meet.googleapis.com/$discovery/rest?version=v2",
+  ]),
   staticUpdater("google-sheets", [
     "https://sheets.googleapis.com/$discovery/rest?version=v4",
   ]),

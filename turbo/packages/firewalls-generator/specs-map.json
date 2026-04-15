@@ -73,6 +73,9 @@
     "https://www.googleapis.com/discovery/v1/apis/drive/v2/rest": "6f2e160f2f34cac9d5e2d1123e0af1cf60b8eb1f06e0016ecb6cb443cbf72b8e",
     "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest": "a651ddcc6c505ab7c3713625ef6e17651837c707fc99cf3ccc135bc230f5bd46"
   },
+  "google-meet": {
+    "https://meet.googleapis.com/$discovery/rest?version=v2": "be461f4169cabd39a8ef6503e9612e1717d5c397261231fa32cc52607182fa0a"
+  },
   "google-sheets": {
     "https://sheets.googleapis.com/$discovery/rest?version=v4": "0c6848d26f5e80d1482f1c552b8d371e01ef0d997a9b74c56b5a684cf9f55958"
   },
