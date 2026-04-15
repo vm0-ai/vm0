@@ -112,6 +112,10 @@ ROOTFS_FILE="rootfs.ext4"
 CA_CERT_FILE="mitmproxy-ca-cert.pem"
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 
+# `$$` here is the *inner* (post-re-exec) bash PID — sudo forks, so the
+# inner PID differs from any outer bash that may have invoked the script
+# without the `--_unshared_` sentinel. Do not read `$$` above the re-exec
+# gate and expect the same value here.
 TMP_ROOTFS="${ROOTFS_FILE}.tmp.$$"
 
 # Paths derived from arguments
