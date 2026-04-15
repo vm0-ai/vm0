@@ -89,6 +89,8 @@ const SCOPELESS_METHODS = new Set([
   "youtube.thirdPartyLinks.delete",
 ]);
 
+const RULE_PATTERN = /^(GET|HEAD|POST|PUT|PATCH|DELETE) \//;
+
 // ── Grouping ─────────────────────────────────────────────────────────────
 
 function buildGroups(
@@ -424,6 +426,14 @@ async function generateGoogleFirewall(
             perm.rules = perm.rules.filter((r) => !removeSet.has(r));
           }
           if (override.addRules) {
+            for (const rule of override.addRules) {
+              if (!RULE_PATTERN.test(rule)) {
+                throw new Error(
+                  `${config.serviceName}: addRules for "${perm.name}" has malformed rule: "${rule}". ` +
+                    "Expected format: METHOD /path",
+                );
+              }
+            }
             const existing = new Set(perm.rules);
             for (const rule of override.addRules) {
               if (!existing.has(rule)) perm.rules.push(rule);
