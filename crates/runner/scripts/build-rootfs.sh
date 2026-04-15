@@ -21,6 +21,9 @@
 # boundary, eliminating any risk of unlinking host /dev entries through the
 # shared devtmpfs superblock.
 #
+# The output rootfs file is chowned back to $SUDO_USER at the end so the
+# runner can operate on it without sudo (matches pre-unshare ownership).
+#
 # Usage:
 #   bash build-rootfs.sh \
 #     --output-dir /path/to/output \
@@ -42,14 +45,18 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 #
 # Uses a positional sentinel (not an env var) so we don't depend on sudoers
-# allowing env preservation.
-if [[ "${1:-}" != "--_unshared_" ]]; then
-  if ! command -v unshare &>/dev/null; then
-    echo "error: unshare not found (install util-linux)" >&2
-    exit 1
-  fi
+# allowing env preservation. The sentinel is prefixed with `__vm0_` to make
+# an accidental arg collision vanishingly unlikely.
+readonly UNSHARE_SENTINEL="--__vm0_unshared__"
+if [[ "${1:-}" != "$UNSHARE_SENTINEL" ]]; then
+  for cmd in sudo unshare; do
+    if ! command -v "$cmd" &>/dev/null; then
+      echo "error: $cmd not found (sudo is required to enter a mount namespace; unshare from util-linux)" >&2
+      exit 1
+    fi
+  done
   exec sudo unshare --mount --propagation private \
-    -- bash "$0" "--_unshared_" "$@"
+    -- bash "$0" "$UNSHARE_SENTINEL" "$@"
 fi
 shift
 
@@ -114,8 +121,8 @@ CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 
 # `$$` here is the *inner* (post-re-exec) bash PID — sudo forks, so the
 # inner PID differs from any outer bash that may have invoked the script
-# without the `--_unshared_` sentinel. Do not read `$$` above the re-exec
-# gate and expect the same value here.
+# without the UNSHARE_SENTINEL. Do not read `$$` above the re-exec gate
+# and expect the same value here.
 TMP_ROOTFS="${ROOTFS_FILE}.tmp.$$"
 
 # Paths derived from arguments
@@ -137,7 +144,7 @@ AGENT_BROWSER_VERSION="0.25.4"
 check_dependencies() {
   local missing=()
 
-  for cmd in debootstrap sudo chroot mktemp stat mkfs.ext4; do
+  for cmd in debootstrap sudo chroot mktemp stat mkfs.ext4 umount mountpoint unshare; do
     if ! command -v "$cmd" &> /dev/null; then
       missing+=("$cmd")
     fi
@@ -155,6 +162,9 @@ check_dependencies() {
 # Cleanup
 # ---------------------------------------------------------------------------
 
+readonly UMOUNT_ATTEMPTS=3
+readonly UMOUNT_BACKOFF_SECONDS=0.5
+
 cleanup_chroot() {
   if [[ -z "$ROOTFS_DIR" ]]; then
     return
@@ -162,32 +172,38 @@ cleanup_chroot() {
   # -R unmounts recursively — bind-mounting /dev brings in sub-mounts
   # like /dev/shm, /dev/mqueue, /dev/hugepages that must be removed first.
   # Retry handles transient EBUSY from chroot subprocesses that haven't
-  # fully exited yet. The last attempt lets stderr through so CI logs show
-  # the root cause if it still fails.
-  local target attempt
+  # fully exited yet. We buffer every attempt's stderr and dump all of
+  # them on final failure so diagnostic output covers the full sequence
+  # (attempt 1 EPERM vs attempt 3 EBUSY etc.) rather than just the last.
+  local target attempt err_log attempt_err
+  local any_failure=0
   for target in "$ROOTFS_DIR/dev" "$ROOTFS_DIR/sys" "$ROOTFS_DIR/proc"; do
     # Skip if never mounted (e.g. early failure before debootstrap_build
     # installed the binds). Avoids retrying umount on plain dirs and
-    # polluting CI logs with "not mounted" errors from the final attempt.
+    # polluting CI logs with "not mounted" errors.
     if ! mountpoint -q "$target" 2>/dev/null; then
       continue
     fi
-    for attempt in 1 2 3; do
-      if [[ $attempt -eq 3 ]]; then
-        # Surface stderr on the final attempt so CI logs capture the
-        # busy reason. set -e will abort if this fails — that is the
-        # desired behavior for the pre-mkfs call (polluted ext4 is
-        # worse than a failed build); the EXIT trap wraps in `|| true`
-        # to keep the rest of cleanup running.
-        sudo umount -R "$target"
+    err_log=""
+    for (( attempt=1; attempt <= UMOUNT_ATTEMPTS; attempt++ )); do
+      if attempt_err=$(sudo umount -R "$target" 2>&1); then
         break
       fi
-      if sudo umount -R "$target" 2>/dev/null; then
-        break
-      fi
-      sleep 0.5
+      err_log+="attempt ${attempt}: ${attempt_err}"$'\n'
+      (( attempt < UMOUNT_ATTEMPTS )) && sleep "$UMOUNT_BACKOFF_SECONDS"
     done
+    # All attempts exhausted for this target — surface the buffered error
+    # sequence and remember the failure, but keep going so the remaining
+    # targets also get a chance to unmount.
+    if (( attempt > UMOUNT_ATTEMPTS )); then
+      printf '%s' "$err_log" >&2
+      any_failure=1
+    fi
   done
+  # Non-zero return aborts via set -e in the pre-mkfs call (polluted ext4
+  # is worse than a failed build); the EXIT trap wraps in `|| true` so
+  # this does not interrupt the remainder of cleanup.
+  return "$any_failure"
 }
 
 cleanup() {
@@ -210,6 +226,10 @@ cleanup() {
 }
 
 trap cleanup EXIT
+# Surface the failing command + line number on set -e-driven aborts. Fires
+# only for commands that would propagate to set -e (i.e. not in `|| true`,
+# `if`, etc.), so it doesn't spam on deliberately-handled failures.
+trap 'echo "error: command failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
 # ---------------------------------------------------------------------------
 # Bootstrap Ubuntu 24.04 rootfs
@@ -549,6 +569,15 @@ create_ext4
 
 # Move into final place
 mv "$TMP_ROOTFS_PATH" "$ROOTFS_PATH"
+
+# The unshare re-exec escalates to root, so the rootfs file was created
+# as root. Restore ownership to the invoking user so downstream callers
+# (runner reading/replacing the file) don't need sudo. SUDO_USER is set
+# by the outer sudo at re-exec time; if it is missing or "root" the
+# chown is a no-op.
+if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+  chown "$SUDO_USER" "$ROOTFS_PATH"
+fi
 
 # Report size
 SIZE=$(stat -c%s "$ROOTFS_PATH")
