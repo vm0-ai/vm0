@@ -1,5 +1,4 @@
-import { and, eq, or, sql } from "drizzle-orm";
-import type { OrgTier } from "@vm0/core";
+import { and, eq, or } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { zeroRuns } from "../../db/schema/zero-run";
 import {
@@ -13,22 +12,6 @@ import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
 import { usageDaily } from "../../db/schema/usage-daily";
 import { initServices } from "../../lib/init-services";
 import { uniqueId } from "../test-helpers";
-import { generateSandboxToken } from "../../lib/auth/sandbox-token";
-import { resolveStartRunCompose } from "../../lib/zero/zero-run-validation";
-import {
-  authorizeCompose,
-  validateComposeRequirements,
-  checkRunConcurrencyLimit,
-} from "../../lib/zero/zero-run-policy";
-import { buildInfraExecutionContext } from "../../lib/infra/run/context/build-context";
-import {
-  loadCompose,
-  insertRunRecord,
-  buildAndDispatchRun,
-  markRunFailed,
-  registerCallbacks,
-  type CreateRunResult,
-} from "../../lib/infra/run/run-service";
 import { generateCallbackSecret } from "../../lib/infra/callback/hmac";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 
@@ -269,126 +252,6 @@ export async function seedOrphanTestRun(
     })
     .returning({ id: agentRuns.id });
   return { runId: run!.id };
-}
-
-// ---------------------------------------------------------------------------
-// Functions migrated from api-test-helpers/runs.ts (Part 2 — #9375)
-// ---------------------------------------------------------------------------
-
-/**
- * Test helper that mirrors the CLI API route pipeline (resolve → authorize →
- * validate → concurrency check → insert → token → context → dispatch).
- *
- * @why-db-direct Full CLI run pipeline with DB transaction for advisory lock +
- * record insert; no CLI API route handler exists (CLI uses direct service calls).
- */
-export interface CliRunParams {
-  userId: string;
-  agentComposeVersionId: string;
-  prompt: string;
-  orgTier: OrgTier;
-  appendSystemPrompt?: string;
-  vars?: Record<string, string>;
-  secrets?: Record<string, string>;
-  checkpointId?: string;
-  sessionId?: string;
-  conversationId?: string;
-  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
-  memoryName?: string;
-  artifactName?: string;
-  artifactVersion?: string;
-  volumeVersions?: Record<string, string>;
-  debugNoMockClaude?: boolean;
-  captureNetworkBodies?: boolean;
-}
-
-export async function createCliRun(
-  params: CliRunParams,
-): Promise<CreateRunResult> {
-  initServices();
-  const composeMeta = await resolveStartRunCompose(params);
-
-  const apiStartTime = Date.now();
-  const { composeContent, compose } = await loadCompose(
-    composeMeta.agentComposeVersionId,
-    composeMeta.composeId,
-  );
-  authorizeCompose(params.userId, compose.orgId, compose);
-  const authorizeTime = Date.now();
-
-  if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(composeContent);
-  }
-
-  const orgId = compose.orgId;
-  const run = await globalThis.services.db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
-    await checkRunConcurrencyLimit(orgId, params.orgTier, tx);
-    return insertRunRecord(tx, {
-      userId: params.userId,
-      orgId,
-      agentComposeVersionId: composeMeta.agentComposeVersionId,
-      prompt: params.prompt,
-      appendSystemPrompt: params.appendSystemPrompt,
-      vars: params.vars,
-      secrets: params.secrets,
-      resumedFromCheckpointId: params.checkpointId,
-      sessionId: params.sessionId,
-    });
-  });
-  const transactionTime = Date.now();
-
-  const sandboxToken = await generateSandboxToken(params.userId, run.id);
-  const tokenTime = Date.now();
-
-  try {
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(run.id, params.callbacks);
-    }
-
-    const { context } = buildInfraExecutionContext({
-      runId: run.id,
-      userId: params.userId,
-      orgId,
-      agentComposeVersionId: composeMeta.agentComposeVersionId,
-      agentCompose: composeContent,
-      prompt: params.prompt,
-      sandboxToken,
-      appendSystemPrompt: params.appendSystemPrompt,
-      vars: params.vars,
-      secrets: params.secrets,
-      artifactName: params.artifactName,
-      artifactVersion: params.artifactVersion,
-      memoryName: params.memoryName,
-      volumeVersions: params.volumeVersions,
-      agentName: composeMeta.agentName,
-      resumedFromCheckpointId: params.checkpointId,
-      continuedFromSessionId: params.sessionId,
-      debugNoMockClaude: params.debugNoMockClaude,
-      captureNetworkBodies: params.captureNetworkBodies,
-    });
-
-    const result = await buildAndDispatchRun({
-      runId: run.id,
-      context,
-      timings: {
-        apiStart: apiStartTime,
-        authorize: authorizeTime,
-        transaction: transactionTime,
-        token: tokenTime,
-      },
-    });
-
-    return {
-      runId: run.id,
-      status: result.status,
-      sandboxId: result.sandboxId,
-      createdAt: run.createdAt,
-    };
-  } catch (error) {
-    await markRunFailed(run.id, error);
-    throw error;
-  }
 }
 
 /**

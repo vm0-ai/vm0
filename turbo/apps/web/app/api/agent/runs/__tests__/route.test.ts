@@ -19,7 +19,16 @@ import {
   insertOrgMembersCacheEntry,
   getOrgCacheEntry,
   updateOrgTier,
+  createTestVolume,
+  createTestArtifact,
+  createTestSandboxToken,
+  findTestRunRecord,
+  findTestRunnerJobEntry,
+  findTestStorage,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/route";
+import { POST as pollRoute } from "../../../runners/poll/route";
+import type { AgentComposeYaml } from "../../../../../src/lib/infra/agent-compose/types";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import {
   generateSandboxToken,
@@ -106,6 +115,60 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run = await getTestRun(data.runId);
 
       expect(run.appendSystemPrompt).toBe("Custom instructions");
+    });
+
+    it("should propagate appendSystemPrompt through runner job dispatch", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      const data = await createTestRun(testComposeId, "Hello", {
+        appendSystemPrompt: "Your name is Aria.",
+      });
+
+      const run = await findTestRunRecord(data.runId);
+      expect(run!.appendSystemPrompt).toBe("Your name is Aria.");
+
+      const job = await findTestRunnerJobEntry(data.runId);
+      expect(job).toBeDefined();
+    });
+
+    it("should always set lastHeartbeatAt", async () => {
+      const data = await createTestRun(testComposeId, "Hello");
+
+      const run = await findTestRunRecord(data.runId);
+
+      expect(run!.lastHeartbeatAt).not.toBeNull();
+    });
+
+    it("should refresh lastHeartbeatAt during pipeline", async () => {
+      const data = await createTestRun(testComposeId, "Hello");
+
+      const run = await findTestRunRecord(data.runId);
+
+      // The mid-pipeline heartbeat UPDATE runs after generateSandboxToken +
+      // buildContext, so lastHeartbeatAt must be strictly later than
+      // createdAt (which is set by the initial INSERT's defaultNow()).
+      expect(run!.lastHeartbeatAt!.getTime()).toBeGreaterThan(
+        run!.createdAt.getTime(),
+      );
+    });
+
+    it("should store vars when provided", async () => {
+      const vars = { MY_VAR: "value1", OTHER_VAR: "value2" };
+      const data = await createTestRun(testComposeId, "Hello", { vars });
+
+      const run = await findTestRunRecord(data.runId);
+
+      expect(run!.vars).toEqual(vars);
+    });
+
+    it("should store secretNames when secrets provided", async () => {
+      const secrets = { API_KEY: "sk-123", DB_PASS: "pw" };
+      const data = await createTestRun(testComposeId, "Hello", { secrets });
+
+      const run = await findTestRunRecord(data.runId);
+
+      expect(run!.secretNames).toEqual(["API_KEY", "DB_PASS"]);
     });
 
     // Note: permissionPolicies → firewalls conversion requires connector resolution
@@ -614,6 +677,36 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(response.status).toBe(201);
       expect(data.status).toBe("pending");
+    });
+
+    it("should allow multiple concurrent runs for team tier", async () => {
+      await updateOrgTier(user.orgId, "team");
+
+      // Create 3 concurrent runs to verify team tier allows more than pro tier (which allows 2)
+      const run1 = await createTestRun(testComposeId, "Team run 1");
+      const run2 = await createTestRun(testComposeId, "Team run 2");
+      const run3 = await createTestRun(testComposeId, "Team run 3");
+
+      expect(run1.status).toBe("pending");
+      expect(run2.status).toBe("pending");
+      expect(run3.status).toBe("pending");
+    });
+
+    it("should enforce limit per-org, not per-user", async () => {
+      // Create a run in the default org (fills its free-tier slot)
+      await createTestRun(testComposeId, "Org 1 run");
+
+      // Create a second user with a different org
+      const otherUser = await context.setupUser({ prefix: "org-user" });
+      const otherCompose = await createTestCompose(uniqueId("other-agent"));
+
+      // Run in the other org should succeed (separate org, separate limit)
+      mockClerk({ userId: otherUser.userId });
+      const data = await createTestRun(otherCompose.composeId, "Org 2 run");
+      expect(data.status).toBe("pending");
+
+      // Switch back to original user for cleanup
+      mockClerk({ userId: user.userId });
     });
   });
 
@@ -1298,6 +1391,463 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(response.status).not.toBe(403);
     });
   });
+
+  describe("Memory", () => {
+    it("should succeed when memory already exists (idempotent)", async () => {
+      // Allow concurrent runs for this test
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+      reloadEnv();
+
+      const memoryName = uniqueId("existing-mem");
+      // First run creates the memory
+      await createTestRun(testComposeId, "First run", { memoryName });
+
+      // Second run should also succeed (idempotent)
+      const data = await createTestRun(testComposeId, "Second run", {
+        memoryName,
+      });
+      expect(data.runId).toBeDefined();
+      expect(data.status).toBe("pending");
+    });
+
+    it("should restore memoryName from session in continue flow", async () => {
+      // Allow concurrent runs for this test
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+      reloadEnv();
+
+      // Step 1: Create a run and checkpoint with memorySnapshot
+      const { runId } = await createTestRun(testComposeId, "Initial run");
+      const sandboxToken = await createTestSandboxToken(user.userId, runId);
+
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-for-continue",
+            cliAgentSessionHistoryHash:
+              "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            memorySnapshot: {
+              memoryName: "restored-memory",
+              memoryVersion: "v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+
+      const { agentSessionId } = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // Step 2: Continue from session WITHOUT specifying memoryName
+      const continueResult = await createTestRun(
+        testComposeId,
+        "Continue prompt",
+        { sessionId: agentSessionId },
+      );
+
+      expect(continueResult.runId).toBeDefined();
+      expect(continueResult.status).toBe("pending");
+    });
+  });
+
+  describe("Auto-Create Artifact", () => {
+    it("should succeed when artifact does not exist (auto-create)", async () => {
+      const artifactName = uniqueId("new-art");
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Test artifact auto-create",
+            artifactName,
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.status).toBe("pending");
+    });
+
+    it("should succeed when artifact already exists", async () => {
+      const artifactName = uniqueId("existing-art");
+      await createTestArtifact(artifactName);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Test existing artifact",
+            artifactName,
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.status).toBe("pending");
+    });
+  });
+
+  describe("Optional Volumes", () => {
+    /**
+     * Helper to create a compose with volume configuration
+     */
+    async function createComposeWithVolumes(
+      agentName: string,
+      volumes: AgentComposeYaml["volumes"],
+      agentVolumes: string[],
+    ) {
+      const config: AgentComposeYaml = {
+        version: "1.0",
+        agents: {
+          [agentName]: {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "test-api-key" },
+            volumes: agentVolumes,
+          },
+        },
+        volumes,
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
+        },
+      );
+      const response = await createComposeRoute(request);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+          `Failed to create compose: ${error.error?.message || response.status}`,
+        );
+      }
+      return response.json() as Promise<{
+        composeId: string;
+        versionId: string;
+      }>;
+    }
+
+    it("should succeed when optional volume exists", async () => {
+      const volumeName = uniqueId("vol");
+      await createTestVolume(volumeName);
+
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: volumeName,
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      const data = await createTestRun(compose.composeId, "Test optional vol");
+      expect(data.status).toBe("pending");
+    });
+
+    it("should succeed when optional volume does not exist (skip silently)", async () => {
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: "nonexistent-volume",
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      const data = await createTestRun(
+        compose.composeId,
+        "Test missing optional vol",
+      );
+      expect(data.status).toBe("pending");
+    });
+
+    it("should skip optional volume during checkpoint resume when it was skipped originally", async () => {
+      const volumeName = uniqueId("vol");
+
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: volumeName,
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      // Simulate checkpoint resume: volumeVersions is provided but does NOT
+      // include the optional volume (meaning it was skipped at checkpoint time)
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: compose.composeId,
+            prompt: "Checkpoint resume",
+            volumeVersions: {},
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.status).toBe("pending");
+    });
+
+    it("should mount optional volume in session/continue when it now exists (no volumeVersions)", async () => {
+      const volumeName = uniqueId("vol");
+      await createTestVolume(volumeName);
+
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          mydata: {
+            name: volumeName,
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["mydata:/data"],
+      );
+
+      // Session/Continue: volumeVersions is NOT provided — use current config
+      const data = await createTestRun(
+        compose.composeId,
+        "Session continue with vol",
+      );
+      expect(data.status).toBe("pending");
+    });
+
+    it("should succeed with mixed volumes (required exists, optional missing)", async () => {
+      const requiredVolumeName = uniqueId("required-vol");
+      await createTestVolume(requiredVolumeName);
+
+      const compose = await createComposeWithVolumes(
+        uniqueId("agent"),
+        {
+          requiredData: {
+            name: requiredVolumeName,
+            version: "latest",
+          },
+          optionalData: {
+            name: "nonexistent-optional-volume",
+            version: "latest",
+            optional: true,
+          },
+        },
+        ["requiredData:/required", "optionalData:/optional"],
+      );
+
+      const data = await createTestRun(compose.composeId, "Test mixed volumes");
+      expect(data.status).toBe("pending");
+    });
+  });
+
+  describe("Runner Default Group Routing", () => {
+    it("should route all users to runner when RUNNER_DEFAULT_GROUP is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "user@example.com" });
+
+      const data = await createTestRun(testComposeId, "Runner routing test");
+
+      expect(data.status).toBe("pending");
+    });
+
+    it("should use default executor when RUNNER_DEFAULT_GROUP is not set", async () => {
+      // RUNNER_DEFAULT_GROUP is not set by default in test env
+      mockClerk({ userId: user.userId, email: "team@vm0.ai" });
+
+      const data = await createTestRun(testComposeId, "Default executor test");
+
+      expect(data.status).toBe("pending");
+    });
+
+    it("should mark run as failed when runner group is not vm0/*", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "nonexistent-org/default");
+      reloadEnv();
+
+      mockClerk({ userId: user.userId, email: "user@example.com" });
+
+      // Route returns 201 with failed status for post-INSERT dispatch errors
+      const data = await createTestRun(testComposeId, "Bad runner group test");
+      expect(data.status).toBe("failed");
+
+      // Verify the run is marked as "failed" in the database
+      const run = await findTestRunRecord(data.runId);
+      expect(run).toBeDefined();
+      expect(run!.status).toBe("failed");
+      expect(run!.error).toMatch(/vm0/);
+    });
+  });
+
+  describe("Experimental Profile", () => {
+    it("should store profile in runner job queue when experimental_profile is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      const compose = await createTestCompose(uniqueId("profile-agent"), {
+        overrides: { experimental_profile: "vm0/default" },
+      });
+
+      const data = await createTestRun(compose.composeId, "Profile test");
+
+      const job = await findTestRunnerJobEntry(data.runId);
+      expect(job).toBeDefined();
+      expect(job!.profile).toBe("vm0/default");
+      expect(job!.executionContext.experimentalProfile).toBe("vm0/default");
+    });
+
+    it("should default to vm0/default when experimental_profile is not set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      const data = await createTestRun(testComposeId, "Default profile test");
+
+      const job = await findTestRunnerJobEntry(data.runId);
+      expect(job).toBeDefined();
+      expect(job!.profile).toBe("vm0/default");
+      expect(job!.executionContext.experimentalProfile).toBe("vm0/default");
+    });
+
+    it("should filter jobs by profiles array in poll endpoint", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+      reloadEnv();
+
+      // Create two runs — one with default profile, one with explicit profile
+      const browserCompose = await createTestCompose(
+        uniqueId("browser-agent"),
+        { overrides: { experimental_profile: "vm0/default" } },
+      );
+      await createTestRun(testComposeId, "default job");
+      await createTestRun(browserCompose.composeId, "browser job");
+
+      // Poll with profiles filter for a non-existent profile — should find nothing
+      const officialToken = `vm0_official_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef`;
+      const emptyPoll = await pollRoute(
+        createTestRequest("http://localhost:3000/api/runners/poll", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${officialToken}`,
+          },
+          body: JSON.stringify({
+            group: "vm0/production",
+            profiles: ["vm0/nonexistent"],
+          }),
+        }),
+      );
+      const emptyResult = await emptyPoll.json();
+      expect(emptyResult.job).toBeNull();
+
+      // Poll without profiles filter — should find a job
+      const allPoll = await pollRoute(
+        createTestRequest("http://localhost:3000/api/runners/poll", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${officialToken}`,
+          },
+          body: JSON.stringify({ group: "vm0/production" }),
+        }),
+      );
+      const allResult = await allPoll.json();
+      expect(allResult.job).not.toBeNull();
+      expect(allResult.job.experimentalProfile).toBe("vm0/default");
+    });
+
+    it("should reject unknown profile with failed status", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      const compose = await createTestCompose(uniqueId("bad-profile"), {
+        overrides: { experimental_profile: "vm0/unknown" },
+      });
+
+      // Route returns 201 with failed status for post-INSERT dispatch errors
+      const data = await createTestRun(compose.composeId, "Bad profile test");
+      expect(data.status).toBe("failed");
+    });
+  });
+
+  describe("Org Resolution for Storage", () => {
+    it("should use compose org for artifact/memory storage", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Storage org test",
+            artifactName: "artifact",
+            memoryName: "memory",
+          }),
+        },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.status).toBe("pending");
+
+      // Verify the run record was created
+      const run = await findTestRunRecord(data.runId);
+      expect(run).toBeDefined();
+
+      // Verify artifact storage was created in the compose's org (user's default org)
+      const artifact = await findTestStorage(
+        user.orgId,
+        "artifact",
+        "artifact",
+      );
+      expect(artifact).toBeDefined();
+      expect(artifact!.userId).toBe(user.userId);
+
+      // Verify memory storage was created in the compose's org
+      const memory = await findTestStorage(user.orgId, "memory", "memory");
+      expect(memory).toBeDefined();
+      expect(memory!.userId).toBe(user.userId);
+    });
+  });
+
+  // NOTE: The following tests from create-run.test.ts are NOT migrated:
+  // 1. "should reject second run when concurrency limit reached" (Promise.allSettled)
+  //    — Tests advisory lock serialization (internal DB concern). Route test covers
+  //    the user-facing 429 response for concurrency limits.
+  // 2. "should register callbacks when provided"
+  //    — `callbacks` field is not in the route's ts-rest contract. CLI-only concern.
 });
 
 describe("GET /api/agent/runs - List Runs", () => {
