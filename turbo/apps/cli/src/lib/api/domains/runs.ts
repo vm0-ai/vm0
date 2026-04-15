@@ -31,6 +31,12 @@ export async function createRun(body: {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
+  // Additional volumes passed directly at run time (bypass compose)
+  additionalVolumes?: Array<{
+    name: string;
+    version?: string;
+    mountPath: string;
+  }>;
   // Debug flag (internal use only)
   debugNoMockClaude?: boolean;
   // Capture HTTP request headers, request bodies, and response bodies in network logs

@@ -3,6 +3,7 @@ import { getCheckpoint, createRun } from "../../lib/api";
 import {
   collectKeyValue,
   collectVolumeVersions,
+  collectVolumes,
   isUUID,
   loadValues,
   parseArtifact,
@@ -43,6 +44,12 @@ export const resumeCommand = new Command()
   .option(
     "--artifact <name[:version]>",
     "Artifact storage (format: name or name:version)",
+  )
+  .option(
+    "--volume <volume>",
+    "Mount a volume (repeatable, format: name:/path or name:version:/path)",
+    collectVolumes,
+    [],
   )
   .option(
     "--append-system-prompt <text>",
@@ -94,6 +101,7 @@ export const resumeCommand = new Command()
           secrets: Record<string, string>;
           volumeVersion: Record<string, string>;
           artifact?: string;
+          volume: Array<{ name: string; version?: string; mountPath: string }>;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -142,6 +150,8 @@ export const resumeCommand = new Command()
             Object.keys(allOpts.volumeVersion).length > 0
               ? allOpts.volumeVersion
               : undefined,
+          additionalVolumes:
+            allOpts.volume.length > 0 ? allOpts.volume : undefined,
           appendSystemPrompt:
             options.appendSystemPrompt || allOpts.appendSystemPrompt,
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,

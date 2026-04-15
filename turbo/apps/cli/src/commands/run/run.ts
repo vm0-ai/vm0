@@ -9,6 +9,7 @@ import {
 import {
   collectKeyValue,
   collectVolumeVersions,
+  collectVolumes,
   isUUID,
   extractVarNames,
   extractSecretNames,
@@ -74,6 +75,12 @@ export const mainRunCommand = new Command()
     collectVolumeVersions,
     {},
   )
+  .option(
+    "--volume <volume>",
+    "Mount a volume (repeatable, format: name:/path or name:version:/path)",
+    collectVolumes,
+    [],
+  )
   .option("--memory <name>", "Memory storage name")
   .option(
     "--conversation <id>",
@@ -120,6 +127,7 @@ export const mainRunCommand = new Command()
           artifactVersion?: string;
           memory?: string;
           volumeVersion: Record<string, string>;
+          volume: Array<{ name: string; version?: string; mountPath: string }>;
           conversation?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
@@ -229,6 +237,8 @@ export const mainRunCommand = new Command()
             Object.keys(options.volumeVersion).length > 0
               ? options.volumeVersion
               : undefined,
+          additionalVolumes:
+            options.volume.length > 0 ? options.volume : undefined,
           conversationId: options.conversation,
           appendSystemPrompt: options.appendSystemPrompt,
           disallowedTools: options.disallowedTools,
