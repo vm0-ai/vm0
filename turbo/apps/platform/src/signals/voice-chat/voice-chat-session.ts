@@ -220,7 +220,7 @@ const internalPrepStartTime$ = state<number | null>(null);
 const internalPrepElapsedMs$ = state(0);
 const internalReconnectAttempt$ = state(0);
 const internalInputMode$ = state<"hands-free" | "push-to-talk">("hands-free");
-const internalModel$ = state<RealtimeModel>("gpt-realtime");
+const internalModel$ = state<RealtimeModel>("gpt-realtime-mini");
 
 const internalParentSignal$ = state<AbortSignal | null>(null);
 const internalWakeLock$ = state<WakeLockSentinel | null>(null);
@@ -1413,7 +1413,7 @@ export const endVoiceChat$ = command(({ get, set }) => {
   set(internalPrepElapsedMs$, 0);
   set(internalReconnectAttempt$, 0);
   set(internalInputMode$, "hands-free");
-  set(internalModel$, "gpt-realtime");
+  set(internalModel$, "gpt-realtime-mini");
   set(internalParentSignal$, null);
   set(internalStatus$, "idle");
 });
