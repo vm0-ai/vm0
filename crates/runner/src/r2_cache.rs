@@ -1,25 +1,26 @@
-//! R2 cache for unified `runner build` image artifacts.
+//! R2 cache for `runner build` rootfs artifacts.
 //!
 //! Single-key bundle per image hash: `runner-images/{hash}.tar.zst` in the
-//! existing `R2_USER_STORAGES_BUCKET_NAME` bucket. The 4 files from
-//! `ImagePaths::expected_files()` are packed dense (no sparse-tar handling);
-//! `cow.img` sparseness is restored on unpack via best-effort
-//! `fallocate(FALLOC_FL_PUNCH_HOLE)`.
+//! existing `R2_USER_STORAGES_BUCKET_NAME` bucket. Only rootfs.ext4 is
+//! cached in R2; snapshot files are always created locally because they
+//! contain host-specific state (page cache, kernel metadata).
 //!
 //! ## Lifecycle
 //!
-//! 1. `runner build` computes hash and checks local cache (existing logic).
+//! 1. `runner build` computes a rootfs-only hash and checks local cache.
 //! 2. On miss, after acquiring `image_lock(hash)`, it tries `try_download`.
-//! 3. On download miss, it does the local rootfs+snapshot build (existing logic).
-//! 4. After `is_image_complete()` succeeds, it calls `upload`.
+//! 3. On download hit, the caller injects the local CA into the rootfs and
+//!    creates a snapshot locally.
+//! 4. On download miss, it does the local rootfs build, then `upload`s the
+//!    rootfs, then creates a snapshot locally.
 //!
 //! Atomicity guarantees:
 //! - Multipart upload is atomic from consumer POV (object only appears after
 //!   `CompleteMultipartUpload`); abandoned segments are auto-cleaned by R2's
 //!   default 7-day lifecycle.
 //! - Download unpacks into a `{hash}.tmp/` staging directory then `rename`s
-//!   to `{hash}/` — partial unpack from a crash never produces a false-positive
-//!   `is_image_complete()` hit.
+//!   to `{hash}/` — partial unpack from a crash never produces a directory
+//!   that looks like a successful download.
 //!
 //! Configuration semantics: `from_env` returns `Ok(None)` only when **all four**
 //! `R2_*` env vars are unset or empty (dev/test path). Setting 1-3 of 4 is a
@@ -81,17 +82,17 @@
 //!
 //! ## Corrupt-object eviction
 //!
-//! A structurally-valid archive whose extracted content fails
-//! `is_image_complete` (e.g. uploaded by an old/buggy producer, or
-//! attacker-controlled IAM key writing a bogus tar to a predicted hash
-//! key) would otherwise dead-lock the fleet's cache for that hash: every
-//! host downloads → unpacks → fails completeness → rebuilds locally →
-//! `upload`'s `exists()` dedup-skips → the bad object stays, forever.
+//! A structurally-valid archive whose extracted content lacks rootfs.ext4
+//! (e.g. uploaded by an old/buggy producer, or attacker-controlled IAM
+//! key writing a bogus tar to a predicted hash key) would otherwise
+//! dead-lock the fleet's cache for that hash: every host downloads →
+//! unpacks → finds no rootfs → rebuilds locally → `upload`'s `exists()`
+//! dedup-skips → the bad object stays, forever.
 //!
 //! `cmd::build::run_build` defends by passing `force = true` to `upload`
-//! whenever it observes "download Ok(true) but is_image_complete=false".
-//! That bypasses the dedup check and atomically overwrites the bad object
-//! in a single PUT — robust against `s3:DeleteObject` permission being
+//! whenever it observes "download Ok(true) but rootfs missing". That
+//! bypasses the dedup check and atomically overwrites the bad object in
+//! a single PUT — robust against `s3:DeleteObject` permission being
 //! revoked or transiently failing (which a `delete + retry-upload`
 //! sequence would not be).
 //!
@@ -102,9 +103,9 @@
 //!
 //! 1. **Path traversal (`..` components) is silently dropped**. Verified by
 //!    `unpack_rejects_path_traversal`. The malicious entry is skipped; the
-//!    staging dir ends up missing one or more expected files;
-//!    `is_image_complete()` (in `cmd::build`) rejects the partial result; the
-//!    caller falls back to local build. Safe.
+//!    staging dir ends up missing rootfs.ext4; the caller's post-download
+//!    check (rootfs presence) rejects the result and falls back to local
+//!    build. Safe.
 //!
 //! 2. **Symlink and hardlink entries are rejected**. `unpack_from_reader`
 //!    iterates entries and rejects any whose type is not `Regular`,
@@ -112,13 +113,15 @@
 //!    devices, FIFOs, and extended-header pseudo-entries all cause an
 //!    immediate error, preventing an attacker with R2 write access from
 //!    crafting a tar where expected filenames are symlinks to host paths.
-//!    (`GNUSparse` is allowed because `cow.img` is a sparse file and
-//!    `tar::Builder` uses this entry type for it.)
+//!    (`GNUSparse` is retained for forward compatibility with any future
+//!    sparse file in the archive; rootfs.ext4 itself is packed as a
+//!    regular file.)
 //!
-//! **Maintenance note**: `is_image_complete()` is the structural check that
-//! catches case (1). If you add a new file to the image, you MUST extend
-//! `is_image_complete()` accordingly — otherwise an attacker-controlled tar
-//! that omits the new file would still pass the completeness check.
+//! **Maintenance note**: the caller (`cmd::build::run_build`) checks
+//! rootfs presence after download and sets `force_reupload = true` if it
+//! is missing. If you add a new file to the R2 archive, you MUST extend
+//! that check accordingly — otherwise an attacker-controlled tar that
+//! omits the new file would go undetected.
 
 use std::path::{Path, PathBuf};
 
@@ -256,8 +259,8 @@ impl R2ImageCache {
 
     /// Try to download `runner-images/{hash}.tar.zst`, streaming directly
     /// through zstd decode + tar unpack into a sibling staging directory,
-    /// then best-effort sparse-restore `cow.img`, then atomic rename to
-    /// `final_dir`. No temp file — bounded memory regardless of image size.
+    /// then atomic rename to `final_dir`. No temp file — bounded memory
+    /// regardless of image size.
     ///
     /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
     /// outer call sites (CI/systemd) bound total wall time.
@@ -313,11 +316,11 @@ impl R2ImageCache {
     ///
     /// **`force = true`**: skip the dedup check and always upload, atomically
     /// replacing whatever is currently at the key. Used by `cmd::build` after
-    /// detecting a corrupt prior upload (download succeeded but
-    /// `is_image_complete` failed). Going through `delete + dedup-upload`
-    /// would deadlock the fleet's cache if `DeleteObject` permission is
-    /// missing or transiently failing — `force` is a single-round-trip atomic
-    /// overwrite that doesn't depend on `s3:DeleteObject`.
+    /// detecting a corrupt prior upload (download succeeded but rootfs.ext4
+    /// is missing). Going through `delete + dedup-upload` would deadlock the
+    /// fleet's cache if `DeleteObject` permission is missing or transiently
+    /// failing — `force` is a single-round-trip atomic overwrite that doesn't
+    /// depend on `s3:DeleteObject`.
     ///
     /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
     /// outer call sites (CI/systemd) bound total wall time.
@@ -702,8 +705,9 @@ fn zstd_workers() -> u32 {
 /// GNU sparse file (symlinks, hardlinks, devices, etc.). An attacker with
 /// R2 write access
 /// could otherwise craft a tar where expected filenames are symlinks to
-/// host paths, bypassing `is_image_complete` and exposing host files to
-/// Firecracker. See module-level "Tar entry security" docs.
+/// host paths, bypassing the caller's post-download rootfs check and
+/// exposing host files to Firecracker. See module-level "Tar entry
+/// security" docs.
 fn unpack_from_reader<R: std::io::Read>(reader: R, dest: &Path) -> Result<(), R2Error> {
     let zr = zstd::stream::read::Decoder::new(reader)?;
     let mut archive = tar::Archive::new(zr);
@@ -743,8 +747,14 @@ where
     .map_err(|e| R2Error::Io(io_other(e)))?
 }
 
-/// Finish the unpack: best-effort sparse-restore `cow.img`, then atomic rename
-/// `staging` to `final_dir`. Same-parent rename is atomic on ext4/xfs.
+/// Finish the unpack: best-effort sparse-restore any `cow.img` if present,
+/// then atomic rename `staging` to `final_dir`. Same-parent rename is
+/// atomic on ext4/xfs.
+///
+/// The cow.img handling is retained as defensive infrastructure — the
+/// current R2 archive only contains rootfs.ext4, but `punch_hole` is a
+/// no-op when cow.img is absent and kept in case sparse files are added
+/// back to the archive in the future.
 async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Error> {
     let cow = staging.join("cow.img");
     if let Ok(meta) = tokio::fs::metadata(&cow).await {
@@ -761,8 +771,8 @@ async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Erro
 
     if let Err(e) = tokio::fs::rename(staging, final_dir).await {
         // Expected recovery path: a previous `runner build` for this hash
-        // crashed after creating final_dir but before is_image_complete
-        // would pass. Wipe the stale directory and retry the rename.
+        // crashed after creating final_dir but before the build finished.
+        // Wipe the stale directory and retry the rename.
         tracing::info!(
             "{} already exists (likely stale from a partial run: {e}); replacing",
             final_dir.display()
@@ -1575,8 +1585,8 @@ mod tests {
 
     /// Empty file list: pack succeeds and produces a valid (empty) tar.zst.
     /// Round-trip unpack gives an empty `final_dir`. This is degenerate but
-    /// must not panic — it's the canary for `is_image_complete()` invariants
-    /// changing in the future.
+    /// must not panic — it's the canary for the caller's post-download
+    /// completeness check (currently: rootfs.ext4 presence) to catch.
     #[tokio::test]
     async fn pack_unpack_empty_files_list() {
         let archive = tempfile::NamedTempFile::new().unwrap();
@@ -1654,9 +1664,10 @@ mod tests {
     }
 
     /// `force = true` MUST NOT call `head_object` — the corrupt-eviction
-    /// contract: after detecting a bad object via `is_image_complete=false`,
-    /// the caller relies on `upload(_, _, true)` to force-overwrite without
-    /// re-checking existence (which would still say "exists, skip").
+    /// contract: after detecting a bad object (download succeeded but
+    /// rootfs.ext4 missing), the caller relies on `upload(_, _, true)` to
+    /// force-overwrite without re-checking existence (which would still
+    /// say "exists, skip").
     #[tokio::test]
     async fn upload_force_true_bypasses_exists_check() {
         use aws_sdk_s3::Client;
