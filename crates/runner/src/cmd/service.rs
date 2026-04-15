@@ -147,6 +147,16 @@ fn resolve_config_path(path: &Path) -> RunnerResult<PathBuf> {
     })
 }
 
+/// Escape a value for use inside systemd `Environment="..."`.
+///
+/// Inside a double-quoted `Environment=` value, systemd requires `"` to be
+/// written as `\"` and `\` as `\\`. The order matters: `\` MUST be escaped
+/// first, otherwise the `\` we insert while escaping `"` gets re-escaped,
+/// turning each original `"` into `\\"` (invalid).
+fn escape_systemd_env_value(entry: &str) -> String {
+    entry.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 /// Generate the systemd unit file content.
 fn generate_unit_file(
     unit: &str,
@@ -157,7 +167,8 @@ fn generate_unit_file(
 ) -> String {
     let mut env_lines = String::new();
     for entry in env_vars {
-        env_lines.push_str(&format!("Environment=\"{entry}\"\n"));
+        let escaped = escape_systemd_env_value(entry);
+        env_lines.push_str(&format!("Environment=\"{escaped}\"\n"));
     }
     let local_flag = if local { " --local" } else { "" };
     format!(
@@ -186,7 +197,13 @@ WantedBy=multi-user.target
     )
 }
 
-/// Validate that each env entry is in `KEY=VALUE` format.
+/// Validate that each env entry is in `KEY=VALUE` format and contains no
+/// characters that would silently corrupt the generated systemd unit file.
+///
+/// Bare newlines / carriage returns / NUL bytes inside a value break the
+/// `Environment=` directive even with proper quote/backslash escaping
+/// (a literal newline terminates the directive line). Reject these at
+/// install time rather than letting `daemon-reload` fail obscurely later.
 fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
     for entry in vars {
         let eq_pos = entry.find('=');
@@ -194,6 +211,11 @@ fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
             return Err(RunnerError::Config(format!(
                 "invalid --env value '{entry}': expected KEY=VALUE format"
             )));
+        }
+        if entry.contains(['\n', '\r', '\0']) {
+            return Err(RunnerError::Config(
+                "invalid --env value: newline or NUL characters are not allowed".to_string(),
+            ));
         }
     }
     Ok(())
@@ -780,11 +802,55 @@ mod tests {
     }
 
     #[test]
+    fn test_escape_systemd_env_value() {
+        // No special chars — identity.
+        assert_eq!(escape_systemd_env_value("KEY=value"), "KEY=value");
+
+        // Double quotes.
+        assert_eq!(
+            escape_systemd_env_value(r#"MSG=say "hi""#),
+            r#"MSG=say \"hi\""#,
+        );
+
+        // Backslashes.
+        assert_eq!(
+            escape_systemd_env_value(r"PATH=C:\Users\test"),
+            r"PATH=C:\\Users\\test",
+        );
+
+        // Mixed `\` and `"` — regressions here catch reversed-order bugs
+        // (each character alone would still pass the tests above).
+        assert_eq!(escape_systemd_env_value(r#"K=a\b"c"#), r#"K=a\\b\"c"#,);
+
+        // Trailing `\`: without escape, the generated line `"K=foo\"` would
+        // swallow the closing quote and corrupt the unit file.
+        assert_eq!(escape_systemd_env_value(r"K=foo\"), r"K=foo\\");
+    }
+
+    #[test]
+    fn test_generate_unit_file_escapes_env_values() {
+        let env = vec![r#"MSG=say "hi""#.to_string(), r"PATH=C:\Users".to_string()];
+        let content = generate_unit_file(
+            "vm0-runner-v0.1.0",
+            Path::new("/usr/bin/runner"),
+            Path::new("/etc/runner.yaml"),
+            &env,
+            false,
+        );
+        assert!(content.contains(r#"Environment="MSG=say \"hi\"""#));
+        assert!(content.contains(r#"Environment="PATH=C:\\Users""#));
+    }
+
+    #[test]
     fn test_validate_env_vars_valid() {
         assert!(validate_env_vars(&[]).is_ok());
         assert!(validate_env_vars(&["KEY=VALUE".to_string()]).is_ok());
         assert!(validate_env_vars(&["K=".to_string()]).is_ok());
         assert!(validate_env_vars(&["K=V=W".to_string()]).is_ok());
+        // `"` and `\` are valid at the validate layer — they get escaped
+        // later in `escape_systemd_env_value`.
+        assert!(validate_env_vars(&[r#"MSG=say "hi""#.to_string()]).is_ok());
+        assert!(validate_env_vars(&[r"PATH=C:\Users".to_string()]).is_ok());
     }
 
     #[test]
@@ -792,6 +858,10 @@ mod tests {
         assert!(validate_env_vars(&["NOEQUALS".to_string()]).is_err());
         assert!(validate_env_vars(&["=VALUE".to_string()]).is_err());
         assert!(validate_env_vars(&["".to_string()]).is_err());
+        // Bare newline / CR / NUL would silently corrupt the unit file.
+        assert!(validate_env_vars(&["KEY=line1\nline2".to_string()]).is_err());
+        assert!(validate_env_vars(&["KEY=foo\rbar".to_string()]).is_err());
+        assert!(validate_env_vars(&["KEY=with\0nul".to_string()]).is_err());
     }
 
     // -----------------------------------------------------------------
