@@ -874,6 +874,507 @@
           "Referencia patrones de UI existentes por nombre — 'como la paleta de comandos de VS Code' o 'como el menú de barra de Notion' — para anclar la generación de v0.",
           "Usa el prompt de iterar inmediatamente después del primer resultado. Una ronda de refinamiento generalmente te lleva al 90% del resultado."
         ]
+      },
+      "document-decisions": {
+        "title": "Documenta cada decisión clave tomada en Slack, automáticamente",
+        "description": "Zero monitorea tus canales de Slack y captura las decisiones a medida que ocurren. Escanea los hilos, identifica qué se decidió y registra cada una en Notion con contexto, enlaces y categoría para que nada se pierda en el ruido.",
+        "timeSaved": "~30 min ahorrados por semana",
+        "headings": {
+          "scenario": "Por qué las decisiones importantes desaparecen en los hilos de Slack",
+          "prompt": "Cómo pedir a Zero que capture decisiones de Slack",
+          "steps": "Cómo Zero encuentra, interpreta y registra decisiones en Notion",
+          "nextActions": "Revisa, categoriza y comparte tu registro de decisiones",
+          "integrations": "Integraciones requeridas: Slack y Notion",
+          "tips": "Buenas prácticas para la captura automatizada de decisiones"
+        },
+        "scenario": "Una llamada de producto termina. Se tomaron tres decisiones: una funcionalidad se elimina, la fecha de lanzamiento se mueve dos semanas y el modelo de precios cambia. Alguien dice que lo documentará. Una semana después, el documento aún no existe, el ingeniero construyó la funcionalidad eliminada de todos modos y dos personas tienen recuerdos diferentes de lo que se decidió. Zero observa el canal. Cuando ocurre una decisión, la registra inmediatamente, con el enlace al hilo, quién lo dijo y por qué.",
+        "promptVariants": [
+          {
+            "label": "Monitorear un canal",
+            "prompt": "@Zero monitorea #product y #eng. Cada vez que se tome una decisión clave, captúrala en la base de datos de Decisiones en Notion. Incluye quién la tomó, un resumen de una línea y un enlace al hilo."
+          },
+          {
+            "label": "Ponerse al día ahora",
+            "prompt": "@Zero lee los últimos 7 días de #product y extrae todas las decisiones. Registra cada una en Notion bajo la categoría Producto con un enlace al hilo."
+          },
+          {
+            "label": "Resumen semanal",
+            "prompt": "@Zero cada viernes a las 5pm, resume todas las decisiones registradas en Notion esta semana y publica el resumen en #leadership."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero monitorea #product y captura todas las decisiones en Notion. Incluye enlaces a hilos y quién tomó la decisión."
+          },
+          {
+            "name": "Zero",
+            "text": "Entendido. Monitoreando #product a partir de ahora. Las decisiones se registrarán en Notion a medida que ocurran.\n\nCapturadas de las últimas 24h:\n- Fecha de lanzamiento movida al 15 de mayo (Ethan, 12 abr)\n- Rediseño de página de precios aprobado (Scarlett, 12 abr)\n- Límites de tasa API se mantienen en v1 por ahora (Lancy, 11 abr)"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee el canal",
+            "description": "Zero escanea los hilos recientes en los canales de Slack especificados y busca señales de una decisión: acuerdos, aprobaciones, cambios de alcance, compromisos de fechas y decisiones de política."
+          },
+          {
+            "title": "Zero extrae y categoriza cada decisión",
+            "description": "Para cada decisión encontrada, Zero escribe un resumen de una línea, registra quién la tomó, le pone marca de tiempo y enlaza al hilo original de Slack para contexto completo."
+          },
+          {
+            "title": "Registrado en Notion al instante",
+            "description": "Zero crea una nueva página o fila en tu base de datos de Notion para cada decisión, organizada por categoría. El registro se mantiene actualizado sin ninguna entrada manual."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Revisar la semana",
+            "description": "Obtener un resumen de todas las decisiones registradas",
+            "examplePrompt": "@Zero resume todas las decisiones registradas en Notion esta semana, agrupadas por categoría."
+          },
+          {
+            "title": "Compartir con liderazgo",
+            "description": "Publicar un resumen de decisiones en un canal",
+            "examplePrompt": "@Zero publica el registro de decisiones de esta semana en #leadership como un resumen limpio."
+          },
+          {
+            "title": "Automatizar",
+            "description": "Ejecutar la captura en un horario fijo",
+            "examplePrompt": "@Zero cada viernes a las 5pm, compila y registra las decisiones de esta semana de #product y #eng en Notion."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero lee los mensajes de los canales especificados para encontrar y extraer decisiones. Requiere acceso de lectura."
+          },
+          {
+            "description": "Zero escribe cada decisión en tu base de datos de Notion con resumen, contexto y enlace al hilo."
+          }
+        ],
+        "tips": [
+          "Nombra la base de datos de Notion y los campos de propiedades que quieres que Zero use. Cuanto más específico seas, más limpio será el resultado.",
+          "Apunta a Zero a canales de alta señal como #product, #eng o #leadership. Evita canales ruidosos como #random.",
+          "Combina esto con el caso de uso de standup: empieza el día sabiendo qué se decidió ayer sin leer cada hilo."
+        ]
+      },
+      "product-health-briefing": {
+        "title": "Recibe un informe completo de salud del producto antes del standup",
+        "description": "Dile a Zero qué monitorear. Cada mañana obtiene el estado del sistema, el progreso de ingeniería y las actualizaciones clave, luego publica un informe conciso en Slack y genera una presentación lista para compartir antes de que alguien abra su laptop.",
+        "timeSaved": "~40 min ahorrados diarios",
+        "headings": {
+          "scenario": "Por qué las mañanas empiezan lentas sin una vista compartida del producto",
+          "prompt": "Cómo configurar un informe diario de salud del producto con Zero",
+          "steps": "Cómo Zero ensambla tu informe matutino desde múltiples fuentes",
+          "nextActions": "Personaliza el informe, compártelo más ampliamente o conviértelo en una presentación",
+          "integrations": "Integraciones requeridas: Linear, GitHub, Slack y Calendar",
+          "tips": "Buenas prácticas para informes matutinos automatizados"
+        },
+        "scenario": "Son las 9:50 AM. El standup es en diez minutos. Tu PM está actualizando Linear, tu tech lead está revisando GitHub para PRs nocturnos y alguien está abriendo el dashboard de incidentes. Nadie tiene una imagen completa todavía. Podrías haber tenido todo esto esperando en Slack a las 9:00 AM. Zero obtiene datos de cada fuente que te importa, escribe el informe y lo publica antes de que alguien esté conectado.",
+        "promptVariants": [
+          {
+            "label": "Informe diario",
+            "prompt": "@Zero cada día laborable a las 9am, obtén los issues abiertos de Linear, la actividad nocturna de PRs en GitHub y cualquier evento del calendario para hoy. Publica un informe de salud del producto en #standup."
+          },
+          {
+            "label": "Bajo demanda",
+            "prompt": "@Zero dame un informe de salud del producto ahora mismo. Revisa Linear para elementos bloqueados, GitHub para PRs fusionados desde ayer y mi calendario para hoy."
+          },
+          {
+            "label": "Alcance personalizado",
+            "prompt": "@Zero cada lunes por la mañana, incluye los issues enviados la semana pasada y cualquier bug P0 aún abierto. Publica en #product."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero informe diario del producto a las 9am. Obtén datos de Linear, GitHub y calendario. Publica en #standup."
+          },
+          {
+            "name": "Zero",
+            "text": "Informe de Salud del Producto — 13 abr\n\nLinear: 3 en progreso, 1 bloqueado (bug de auth, Lancy)\nGitHub: 4 PRs fusionados durante la noche, 2 esperando revisión\nCalendario: Revisión de diseño 2pm, llamada con inversores 4pm\n\nElementos P0: Ninguno abierto"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero obtiene datos de cada fuente",
+            "description": "Zero consulta Linear para issues abiertos y bloqueados, GitHub para actividad reciente de PRs y Google Calendar para las reuniones clave de hoy. Todo en paralelo, en segundos."
+          },
+          {
+            "title": "Informe redactado y estructurado",
+            "description": "Zero formatea la salida como un informe escaneable: elementos abiertos por prioridad, trabajo enviado, bloqueantes y el horario del día. Estructurado para que cualquiera del equipo se ponga al día en menos de un minuto."
+          },
+          {
+            "title": "Publicado en Slack antes del standup",
+            "description": "Zero publica el informe en el canal especificado según tu horario. El equipo llega ya alineado, así que el standup cubre decisiones en lugar de actualizaciones de estado."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Agregar un área de enfoque personalizada",
+            "description": "Incluir métricas o seguimiento de proyecto específico",
+            "examplePrompt": "@Zero agrega una sección al informe diario con cualquier issue de Linear etiquetado como bloqueante-de-lanzamiento."
+          },
+          {
+            "title": "Convertirlo en presentación",
+            "description": "Generar una diapositiva de standup compartible",
+            "examplePrompt": "@Zero toma el informe de hoy y crea una presentación corta en Gamma que pueda compartir en la llamada con inversores esta tarde."
+          },
+          {
+            "title": "Incluir a stakeholders",
+            "description": "Publicar una versión semanal para una audiencia más amplia",
+            "examplePrompt": "@Zero cada viernes, envía un resumen semanal de salud del producto a #leadership en lugar del informe diario."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero lee tu canal de Slack y publica el informe allí. Requiere acceso de lectura y escritura."
+          },
+          {
+            "description": "Zero lee issues en progreso y bloqueados para mostrar el estado de ingeniería."
+          },
+          {
+            "description": "Zero revisa PRs fusionados y abiertos para mostrar la actividad nocturna y revisiones pendientes."
+          },
+          {
+            "description": "Zero incluye las reuniones clave de hoy para que el informe incluya contexto de agenda. Opcional pero recomendado."
+          }
+        ],
+        "tips": [
+          "Dile a Zero qué etiquetas o estados de Linear destacar. 'Marca cualquier cosa marcada como P0 o bloqueado' le da un filtro claro.",
+          "Configura el informe para que se publique 15 minutos antes del standup para que todos tengan tiempo de leerlo primero.",
+          "Agrega una versión semanal los viernes para liderazgo. Mismas fuentes, ventana de tiempo más larga, un envío extra."
+        ]
+      },
+      "upgrade-agent": {
+        "title": "Permite que un agente actualice a otro con un solo mensaje",
+        "description": "Dile a Zero que investigue una tecnología y actualice la configuración de un agente compañero. Lee la documentación, reescribe la configuración y despliega la nueva versión sin pasos manuales.",
+        "timeSaved": "~1 hora ahorrada por actualización",
+        "headings": {
+          "scenario": "Por qué el mantenimiento de agentes es un cuello de botella manual",
+          "prompt": "Cómo pedir a Zero que actualice un agente compañero",
+          "steps": "Cómo Zero investiga, reescribe y redespliega la configuración de un agente",
+          "nextActions": "Prueba el agente actualizado, revierte o aplica la misma actualización a otros",
+          "integrations": "Integraciones requeridas: plataforma vm0",
+          "tips": "Buenas prácticas para actualizaciones entre agentes"
+        },
+        "scenario": "Tu agente investigador fue configurado hace tres meses. Acaba de lanzarse una nueva herramienta que lo mejoraría drásticamente, pero actualizar el agente significa leer documentación, editar YAML, re-probar prompts y redesplegar. Eso es una hora de trabajo cuidadoso que nadie tiene tiempo para hacer. Le dices a Zero: investiga esta herramienta y actualiza el agente investigador para usarla. Zero se encarga de todo.",
+        "promptVariants": [
+          {
+            "label": "Investigar y actualizar",
+            "prompt": "@Zero investiga la API de Firecrawl y actualiza la configuración del agente vm0-marketing-researcher para usarla para web scraping en lugar del enfoque actual. Redespliega cuando esté listo."
+          },
+          {
+            "label": "Agregar una capacidad",
+            "prompt": "@Zero actualiza el vm0-marketing-researcher para que también monitoree publicaciones de Threads.com. Lee la documentación de la API de Threads y agrega la capacidad a su configuración."
+          },
+          {
+            "label": "Auditar antes de cambiar",
+            "prompt": "@Zero revisa la configuración actual del vm0-marketing-researcher y dime qué cambiarías antes de hacer cualquier actualización."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero actualiza el agente investigador para usar Firecrawl para web scraping. Lee la documentación y redespliega."
+          },
+          {
+            "name": "Zero",
+            "text": "Listo. Esto es lo que cambió en vm0-marketing-researcher:\n\n- Agregado conector Firecrawl (herramienta de web-scraping)\n- Instrucciones de scraping actualizadas para usar API de Firecrawl\n- Eliminada lógica de fetch manual antigua\n\nAgente redesplegado. Próxima ejecución programada: mañana 07:00 CST."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee la configuración actual del agente objetivo",
+            "description": "Zero obtiene la configuración existente del agente desde la plataforma vm0, incluyendo sus instrucciones, herramientas, horario y configuración de conectores."
+          },
+          {
+            "title": "Zero investiga la nueva capacidad",
+            "description": "Zero lee la documentación relevante, referencia de API o guía de herramientas y determina exactamente cómo integrarla en el flujo de trabajo existente del agente."
+          },
+          {
+            "title": "Configuración reescrita y redesplegada",
+            "description": "Zero actualiza la configuración del agente con la nueva capacidad, preserva todo lo que debe permanecer igual y redespliega la versión actualizada en la plataforma vm0."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Probar el agente actualizado",
+            "description": "Disparar una ejecución manual para verificar el cambio",
+            "examplePrompt": "@Zero ejecuta el vm0-marketing-researcher ahora y dime si la integración con Firecrawl funcionó."
+          },
+          {
+            "title": "Revertir si es necesario",
+            "description": "Volver a la configuración anterior",
+            "examplePrompt": "@Zero revierte el vm0-marketing-researcher a la configuración que tenía antes de la actualización de hoy."
+          },
+          {
+            "title": "Aplicar a otro agente",
+            "description": "Replicar el cambio en otros agentes",
+            "examplePrompt": "@Zero aplica la misma actualización de Firecrawl al agente vm0-marketing-monitor también."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero lee y escribe configuraciones de agentes en la plataforma vm0 y maneja el redespliegue."
+          },
+          {
+            "description": "Zero lee el hilo donde describiste el cambio y reporta en la misma conversación."
+          }
+        ],
+        "tips": [
+          "Siempre pide a Zero que te muestre los cambios propuestos antes de desplegar. Usa el prompt de auditar para revisar primero.",
+          "Nombra el agente exactamente como aparece en vm0. Zero lo buscará por ese nombre.",
+          "Para actualizaciones complejas, divídelo en pasos: investiga primero, luego actualiza, luego redespliega por separado."
+        ]
+      },
+      "tech-debt-scan": {
+        "title": "Escanea todo tu código en busca de deuda técnica y crea un issue en GitHub",
+        "description": "Dale a Zero un repositorio. Lo clona, ejecuta un escaneo completo de deuda técnica, clasifica cada hallazgo por severidad y crea un issue estructurado en GitHub con el desglose completo — todo desde un solo mensaje.",
+        "timeSaved": "~2 horas ahorradas por auditoría",
+        "headings": {
+          "scenario": "Por qué la deuda técnica se acumula sin seguimiento",
+          "prompt": "Cómo pedir a Zero que audite un código en busca de deuda técnica",
+          "steps": "Cómo Zero escanea, clasifica y documenta los hallazgos de deuda técnica",
+          "nextActions": "Asigna hallazgos, programa un sprint de deuda o configura escaneos recurrentes",
+          "integrations": "Integraciones requeridas: GitHub",
+          "tips": "Buenas prácticas para auditorías automatizadas de deuda técnica"
+        },
+        "scenario": "La deuda técnica existe en todo código. El problema no es que se acumule; es que se acumula silenciosamente. Sin ticket, sin responsable, sin prioridad. Aparece como un PR lento, un test inestable, un refactoring que nadie programó. Le dices a Zero que escanee el repositorio. Lo clona, lee el código, encuentra la deuda, la clasifica por severidad y crea un issue estructurado en GitHub para que el equipo pueda verlo y abordarlo.",
+        "promptVariants": [
+          {
+            "label": "Auditoría completa",
+            "prompt": "@Zero clona vm0-ai/vm0, escanea en busca de deuda técnica en todo el código, clasifica por severidad y crea un issue en GitHub con el desglose completo. Asígnalo a mí."
+          },
+          {
+            "label": "Escaneo enfocado",
+            "prompt": "@Zero escanea turbo/apps/platform en vm0-ai/vm0 en busca de deuda técnica. Enfócate en dependencias obsoletas, funciones grandes y tipos faltantes. Crea un issue en GitHub."
+          },
+          {
+            "label": "Auditoría recurrente",
+            "prompt": "@Zero cada dos semanas los lunes, escanea vm0-ai/vm0 en busca de nueva deuda técnica y actualiza el issue de GitHub existente con los nuevos hallazgos."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero escanea vm0-ai/vm0 en busca de deuda técnica y crea un issue en GitHub con los hallazgos clasificados por severidad."
+          },
+          {
+            "name": "Zero",
+            "text": "Listo. Issue #9012 de GitHub creado.\n\nResumen de hallazgos:\n- Alta: 3 (dependencias sin uso, llamadas a API obsoletas, importaciones circulares)\n- Media: 8 (componentes grandes, manejo de errores faltante)\n- Baja: 14 (código muerto, nomenclatura inconsistente)\n\nAsignado a ti."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero clona el repositorio",
+            "description": "Zero descarga el repositorio en un entorno de ejecución aislado e inspecciona todo el código, incluyendo dependencias, estructura y patrones de código."
+          },
+          {
+            "title": "Hallazgos clasificados por severidad",
+            "description": "Zero identifica señales de deuda técnica: paquetes obsoletos, código muerto, componentes grandes sin tests, importaciones circulares, patrones inconsistentes, cobertura de tipos faltante. Cada hallazgo se etiqueta como Alta, Media o Baja."
+          },
+          {
+            "title": "Issue estructurado en GitHub creado",
+            "description": "Zero crea un único issue en GitHub con el desglose completo, agrupado por severidad. Cada entrada incluye la ruta del archivo, una descripción del problema y una corrección sugerida."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Asignar elementos de alta severidad",
+            "description": "Distribuir los hallazgos principales a los ingenieros adecuados",
+            "examplePrompt": "@Zero para cada elemento de Alta severidad en el issue #9012, crea un issue de GitHub separado y asígnalo al propietario del código relevante."
+          },
+          {
+            "title": "Programar un sprint de deuda",
+            "description": "Planificar un ciclo de limpieza enfocado",
+            "examplePrompt": "@Zero agrega los elementos de Alta y Media del issue #9012 a Linear como issues de backlog para el próximo sprint."
+          },
+          {
+            "title": "Configurar escaneo recurrente",
+            "description": "Mantener la auditoría actualizada con un horario",
+            "examplePrompt": "@Zero cada dos semanas los lunes, re-escanea vm0-ai/vm0 y agrega nuevos hallazgos al issue #9012."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero clona el repositorio, lee el código y registra los hallazgos como un issue estructurado en GitHub."
+          }
+        ],
+        "tips": [
+          "Reduce el alcance si el repositorio es grande. 'Escanea solo turbo/apps/platform' se ejecuta más rápido y produce un informe más enfocado.",
+          "Dile a Zero qué patrones importan más a tu equipo. 'Marca cualquier componente de más de 400 líneas' o 'destaca los tipos TypeScript faltantes'.",
+          "Programa escaneos recurrentes para que la nueva deuda se detecte antes de que se acumule. Una cadencia mensual o por sprint funciona bien."
+        ]
+      },
+      "competitor-audit": {
+        "title": "Ejecuta una auditoría semanal de competidores en X y la web",
+        "description": "Dale a Zero una lista de competidores. Monitorea sus cuentas de X, escanea sus sitios web en busca de actualizaciones, guarda todos los hallazgos en Notion y publica un resumen en Slack cada semana de forma programada.",
+        "timeSaved": "~3 horas ahorradas por semana",
+        "headings": {
+          "scenario": "Por qué el seguimiento de competidores se desmorona sin automatización",
+          "prompt": "Cómo configurar una auditoría semanal de competidores con Zero",
+          "steps": "Cómo Zero monitorea, recopila y resume la actividad de los competidores",
+          "nextActions": "Profundiza en un hallazgo, ajusta el alcance o comparte con liderazgo",
+          "integrations": "Integraciones requeridas: X, Notion y Slack",
+          "tips": "Buenas prácticas para el monitoreo automatizado de competidores"
+        },
+        "scenario": "Mantenerse al día con los competidores debería ser un hábito semanal. En la práctica, ocurre cuando alguien ve algo en X, reenvía un tweet a Slack y el hilo muere dos días después sin ninguna acción. Zero se encarga de todo el proceso. Dale una lista de competidores. Revisa sus cuentas de X, lee sus páginas de producto en busca de cambios, guarda todo en un registro estructurado de Notion y publica un resumen en Slack cada lunes sin que se lo pidan.",
+        "promptVariants": [
+          {
+            "label": "Configurar monitoreo semanal",
+            "prompt": "@Zero cada lunes a las 9am, escanea los últimos 7 días de publicaciones de @e2b_dev, @daytonaio y @replit en X. Revisa sus sitios web para nuevos anuncios de producto. Guarda los hallazgos en la base de datos de Auditoría de Competidores en Notion y publica un resumen en #competitive."
+          },
+          {
+            "label": "Ponerse al día ahora",
+            "prompt": "@Zero obtén las últimas dos semanas de actividad de @e2b_dev y @daytonaio en X. Resume qué lanzaron, qué dijeron y cualquier engagement notable."
+          },
+          {
+            "label": "Análisis profundo de un competidor",
+            "prompt": "@Zero dame un desglose completo de lo que @replit ha estado haciendo en X y en su sitio web en los últimos 30 días. Guárdalo en Notion."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero cada lunes, escanea las cuentas de X y sitios web de nuestros competidores. Guarda en Notion y publica un resumen en #competitive."
+          },
+          {
+            "name": "Zero",
+            "text": "Resumen de Competidores — Semana del 13 abr\n\ne2b: Lanzó nuevos precios de sandbox, 3 publicaciones sobre casos de uso para desarrolladores\nDaytona: Nueva integración con GitHub anunciada, CEO publicó sobre flujos de trabajo agénticos\nReplit: Sin actualizaciones de producto importantes, engagement activo con la comunidad\n\nRegistro completo guardado en Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero escanea las cuentas de X de los competidores",
+            "description": "Zero obtiene las publicaciones recientes de cada cuenta de competidor, extrae anuncios de producto, declaraciones de posicionamiento y engagement notable. Lee lo que están diciendo y cómo responde la audiencia."
+          },
+          {
+            "title": "Zero revisa sus sitios web",
+            "description": "Zero escanea páginas de producto, changelogs y secciones de blog en busca de contenido nuevo. Marca cualquier cambio de precios, lanzamiento de funcionalidades o reposicionamiento desde el último escaneo."
+          },
+          {
+            "title": "Hallazgos guardados y resumen publicado",
+            "description": "Zero guarda un registro estructurado en tu base de datos de Auditoría de Competidores en Notion y publica un resumen semanal conciso en el canal de Slack que especificaste."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Profundizar en un hallazgo",
+            "description": "Analizar un movimiento específico de un competidor",
+            "examplePrompt": "@Zero obtén todas las publicaciones de e2b sobre precios de sandbox de los últimos 30 días y resume su cambio de posicionamiento."
+          },
+          {
+            "title": "Agregar un nuevo competidor a la lista",
+            "description": "Ampliar el alcance del monitoreo",
+            "examplePrompt": "@Zero agrega @val_town al escaneo semanal de competidores. Incluye su cuenta de X y sitio web."
+          },
+          {
+            "title": "Compartir con liderazgo",
+            "description": "Enviar un informe trimestral consolidado",
+            "examplePrompt": "@Zero resume toda la actividad de competidores registrada en Notion en Q1 y envía un informe a #leadership."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero lee publicaciones públicas de las cuentas de competidores para rastrear anuncios y mensajes."
+          },
+          {
+            "description": "Zero guarda hallazgos estructurados de competidores en tu base de datos de Notion para seguimiento a largo plazo."
+          },
+          {
+            "description": "Zero publica el resumen semanal en el canal de Slack que elegiste."
+          }
+        ],
+        "tips": [
+          "Dale a Zero señales específicas para buscar. 'Marca publicaciones sobre precios, integraciones o financiamiento' produce resúmenes más precisos que un barrido general.",
+          "Almacena hallazgos en una base de datos estructurada de Notion con propiedades como Competidor, Categoría y Fecha para poder filtrar y ver tendencias con el tiempo.",
+          "Ejecuta un escaneo de puesta al día primero para llenar la base de datos con datos base antes de configurar el horario recurrente."
+        ]
+      },
+      "error-triage-daily": {
+        "title": "Clasifica errores de producción cada mañana sin tocar Sentry",
+        "description": "Programa a Zero para que se ejecute diariamente. Obtiene errores no resueltos de Sentry y Axiom, los deduplica entre fuentes, abre un issue en GitHub con el stack trace completo y lo asigna al ingeniero adecuado automáticamente.",
+        "timeSaved": "~25 min ahorrados diarios",
+        "headings": {
+          "scenario": "Por qué la clasificación matutina de errores consume la primera hora de ingeniería",
+          "prompt": "Cómo configurar la clasificación diaria automatizada de errores con Zero",
+          "steps": "Cómo Zero obtiene, deduplica y registra errores de Sentry y Axiom",
+          "nextActions": "Asigna issues, ajusta umbrales o combina con tu informe de standup",
+          "integrations": "Integraciones requeridas: Sentry, GitHub y Axiom",
+          "tips": "Buenas prácticas para la clasificación programada de errores de producción"
+        },
+        "scenario": "Cada mañana, alguien tiene que abrir Sentry, recorrer los errores no resueltos, determinar cuáles son nuevos, cuáles son duplicados, cuáles son realmente serios y decidir quién debería encargarse de cada uno. Eso son 20 a 30 minutos de tiempo de ingeniería enfocado antes de que comience cualquier trabajo real. Zero se ejecuta a las 8:45 AM, revisa Sentry y Axiom, deduplica entre ambos, selecciona los errores que importan, abre issues en GitHub con el stack trace completo ya adjunto y asigna cada uno antes de que alguien abra su laptop.",
+        "promptVariants": [
+          {
+            "label": "Clasificación diaria automatizada",
+            "prompt": "@Zero cada día laborable a las 8:45am, obtén los errores no resueltos de Sentry y Axiom de las últimas 24 horas. Deduplica entre fuentes. Para cualquiera con 5+ ocurrencias, abre un issue en GitHub en vm0-ai/vm0 con el stack trace completo y asígnalo al propietario del código relevante."
+          },
+          {
+            "label": "Bajo demanda",
+            "prompt": "@Zero revisa Sentry y Axiom ahora mismo. Muéstrame todos los errores no resueltos de las últimas 12 horas con 3+ ocurrencias. Crea issues en GitHub para cualquiera de severidad alta."
+          },
+          {
+            "label": "Verificación post-deploy",
+            "prompt": "@Zero obtén todos los errores nuevos de Sentry en las últimas 2 horas. Compara contra la línea base de antes del deploy y marca cualquier cosa nueva."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero configura clasificación diaria de errores a las 8:45am. Sentry + Axiom, deduplica, crea issues en GitHub para cualquiera con 5+ ocurrencias."
+          },
+          {
+            "name": "Zero",
+            "text": "Programado. Ejecutándose días laborables a las 08:45.\n\nEjecución de esta mañana:\n- Issue #9031: Webhook Stripe 422 (23 ocurrencias) — asignado a Ethan\n- Issue #9032: Expiración de token de auth en móvil (11 ocurrencias) — asignado a Lancy\n- Issue #9033: Timeout en exportación CSV (5 ocurrencias) — asignado a Yuma\n\n4 duplicados deduplicados entre Sentry y Axiom."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero obtiene errores de Sentry y Axiom",
+            "description": "Zero consulta ambas fuentes para errores no resueltos dentro de la ventana de tiempo especificada. Aplica tu umbral de ocurrencia para filtrar el ruido y enfocarse en errores que realmente están ocurriendo a escala."
+          },
+          {
+            "title": "Errores deduplicados entre fuentes",
+            "description": "El mismo error a menudo aparece tanto en Sentry como en Axiom con diferente formato. Zero identifica duplicados y los fusiona en un único registro con datos de ambas fuentes."
+          },
+          {
+            "title": "Issues de GitHub creados y asignados",
+            "description": "Para cada error único que califica, Zero abre un issue estructurado en GitHub con el stack trace completo, conteo de ocurrencias, marcas de tiempo de primera y última vez visto, y lo asigna al ingeniero que más probablemente es responsable de esa área del código."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Ajustar el umbral",
+            "description": "Cambiar el filtro de ocurrencia para reducir ruido o detectar más problemas",
+            "examplePrompt": "@Zero actualiza el horario de clasificación diaria para solo crear issues para errores con 10+ ocurrencias. Cualquier cosa por debajo de eso, solo publica un resumen en #dev."
+          },
+          {
+            "title": "Agregar al informe matutino",
+            "description": "Combinar con el caso de uso de informe de salud del producto",
+            "examplePrompt": "@Zero incluye la salida de clasificación de errores de hoy en el informe de salud del producto de las 9am que publicas en #standup."
+          },
+          {
+            "title": "Verificación de seguridad post-deploy",
+            "description": "Ejecutar clasificación inmediatamente después de un deploy a producción",
+            "examplePrompt": "@Zero cada vez que un PR se fusione a main en vm0-ai/vm0, espera 15 minutos y luego ejecuta una verificación de errores en Sentry para errores nuevos."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero consulta Sentry para errores no resueltos y lee stack traces y conteos de eventos."
+          },
+          {
+            "description": "Zero crea issues estructurados en GitHub con detalles completos de errores y los asigna a propietarios de código."
+          },
+          {
+            "description": "Zero consulta Axiom para logs de errores para hacer referencia cruzada y deduplicar contra hallazgos de Sentry. Opcional pero recomendado."
+          }
+        ],
+        "tips": [
+          "Establece un umbral de ocurrencia para mantener manejable la cantidad de issues. 5+ es un buen punto de partida; ajusta según tu volumen.",
+          "Usa las etiquetas de proyecto o ambientes de Sentry para limitar la consulta de Zero solo a producción, no a staging.",
+          "Encadena esto con el informe de salud del producto: ejecuta la clasificación a las 8:45, incluye la salida en el informe de las 9:00 para que el equipo vea todo en un solo lugar."
+        ]
       }
     }
   },
