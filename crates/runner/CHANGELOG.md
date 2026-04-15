@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.79.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.7...runner-rs-v0.79.8) (2026-04-15)
+
+
+### Bug Fixes
+
+* **runner:** escape quotes and backslashes in systemd env values ([#9467](https://github.com/vm0-ai/vm0/issues/9467)) ([b7b5f51](https://github.com/vm0-ai/vm0/commit/b7b5f5155e0e4dfadb16dfc74358d94c4dac9ff1))
+* split r2 image cache to rootfs only with local snapshot creation ([#9461](https://github.com/vm0-ai/vm0/issues/9461)) ([417b864](https://github.com/vm0-ai/vm0/commit/417b864287b05d84295c5f6e28ce3f75e6289469))
+
 ## [0.79.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.6...runner-rs-v0.79.7) (2026-04-14)
 
 

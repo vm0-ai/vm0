@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.237.1](https://github.com/vm0-ai/vm0/compare/web-v12.237.0...web-v12.237.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* **web:** add missing use-case translations for es/ja/de locales ([#9430](https://github.com/vm0-ai/vm0/issues/9430)) ([6508e4f](https://github.com/vm0-ai/vm0/commit/6508e4fe9f8004d76ed7e8c5072786d3cdf9a731)), closes [#9418](https://github.com/vm0-ai/vm0/issues/9418)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.186.1
+
 ## [12.237.0](https://github.com/vm0-ai/vm0/compare/web-v12.236.0...web-v12.237.0) (2026-04-15)
 
 
