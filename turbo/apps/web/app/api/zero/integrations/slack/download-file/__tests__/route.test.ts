@@ -220,4 +220,22 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
     const data = await response.json();
     expect(data.error.code).toBe("BAD_GATEWAY");
   });
+
+  it("returns 400 when Slack throws a platform error from files.info", async () => {
+    await createTestSlackOrgInstallation({ orgId: user.orgId });
+
+    const slackError = new Error("An API error occurred: invalid_auth");
+    Object.assign(slackError, { data: { error: "invalid_auth" } });
+
+    const mockClient = vi.mocked(new WebClient(""));
+    vi.mocked(mockClient.files.info).mockRejectedValueOnce(slackError);
+
+    const request = await authedRequest("F-SLACK-ERR");
+    const response = await GET(request as never);
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error.code).toBe("SLACK_ERROR");
+    expect(data.error.message).toContain("invalid_auth");
+  });
 });
