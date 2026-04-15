@@ -12,7 +12,7 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { IN_VITEST } from "../env.ts";
 import { createDeferredPromise, setLoop, throwIfAbort } from "./utils.ts";
-import { Level, logger } from "./log.ts";
+import { logger } from "./log.ts";
 import { delay } from "signal-timers";
 
 const L = logger("Realtime");
