@@ -143,7 +143,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -197,7 +197,7 @@ describe("run command", () => {
         "cli",
         "my-agent",
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -235,7 +235,7 @@ describe("run command", () => {
           "cli",
           "nonexistent-agent",
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -307,7 +307,7 @@ describe("run command", () => {
         "cli",
         "my-agent:abc12345",
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -357,7 +357,7 @@ describe("run command", () => {
         "cli",
         "my-agent:latest",
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -411,7 +411,7 @@ describe("run command", () => {
           "cli",
           "my-agent:deadbeef",
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -472,7 +472,7 @@ describe("run command", () => {
         "cli",
         "user-abc123/my-agent",
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -548,7 +548,7 @@ describe("run command", () => {
         "cli",
         "user-abc123/my-agent:abc12345",
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -583,7 +583,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
         "--vars",
         "KEY1=value1",
@@ -619,7 +619,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
         "--vars",
         "KEY1=value1",
@@ -657,7 +657,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
         "--vars",
         "URL=https://example.com?foo=bar",
@@ -683,7 +683,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
           "--vars",
           "EMPTY=",
@@ -698,7 +698,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
           "--vars",
           "INVALID",
@@ -713,7 +713,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
           "--vars",
           "=value",
@@ -738,7 +738,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -774,7 +774,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
         "--memory",
         "my-custom-memory",
@@ -929,7 +929,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -959,7 +959,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -989,7 +989,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1016,7 +1016,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1105,7 +1105,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1161,7 +1161,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1222,7 +1222,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1282,7 +1282,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1329,7 +1329,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1363,7 +1363,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1394,7 +1394,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1431,7 +1431,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1476,7 +1476,7 @@ describe("run command", () => {
           "cli",
           "nonexistent-org-xyz123/my-agent",
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1508,7 +1508,7 @@ describe("run command", () => {
           "cli",
           "invalid-org/test-agent",
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1553,7 +1553,7 @@ describe("run command", () => {
           "cli",
           "user-abc12345/nonexistent-agent-xyz123",
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1585,7 +1585,7 @@ describe("run command", () => {
           "cli",
           "user-org/missing-agent",
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1626,7 +1626,7 @@ describe("run command", () => {
           "cli",
           "other-user-org/my-agent",
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1658,7 +1658,7 @@ describe("run command", () => {
           "cli",
           "another-org/secret-agent",
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1717,7 +1717,7 @@ describe("run command", () => {
           "test prompt",
           "--env-file",
           "/nonexistent/path/.env",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -1791,7 +1791,7 @@ describe("run command", () => {
         "API_URL=from-cli",
         "--env-file",
         envFilePath,
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1826,7 +1826,7 @@ describe("run command", () => {
         "test prompt",
         "--env-file",
         envFilePath,
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1859,7 +1859,7 @@ describe("run command", () => {
         "cli",
         testUuid,
         "test prompt",
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1898,7 +1898,7 @@ describe("run command", () => {
         "test prompt",
         "--env-file",
         envFilePath,
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1936,7 +1936,7 @@ describe("run command", () => {
         "test prompt",
         "--env-file",
         envFilePath,
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -1978,7 +1978,7 @@ describe("run command", () => {
         "API_URL=from-cli",
         "--env-file",
         envFilePath,
-        "--artifact-name",
+        "--artifact",
         "test-artifact",
       ]);
 
@@ -2030,7 +2030,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -2084,7 +2084,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -2126,7 +2126,7 @@ describe("run command", () => {
           "cli",
           testUuid,
           "test prompt",
-          "--artifact-name",
+          "--artifact",
           "test-artifact",
         ]);
       }).rejects.toThrow("process.exit called");
@@ -2181,7 +2181,7 @@ describe("run command", () => {
             "cli",
             testUuid,
             "test prompt",
-            "--artifact-name",
+            "--artifact",
             "test-artifact",
           ]);
         }).rejects.toThrow("process.exit called");
@@ -2259,71 +2259,6 @@ describe("run command", () => {
           artifactName: "my-data",
           artifactVersion: "abc123",
         }),
-      );
-    });
-
-    it("should error when both --artifact and --artifact-name are provided", async () => {
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "my-data",
-          "--artifact-name",
-          "other",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Cannot use --artifact with --artifact-name or --artifact-version",
-        ),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should error when both --artifact and --artifact-version are provided", async () => {
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          testUuid,
-          "test prompt",
-          "--artifact",
-          "my-data",
-          "--artifact-version",
-          "v1",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Cannot use --artifact with --artifact-name or --artifact-version",
-        ),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should show deprecation warning when using --artifact-name", async () => {
-      server.use(
-        http.post("http://localhost:3000/api/agent/runs", () => {
-          return HttpResponse.json(defaultRunResponse, { status: 201 });
-        }),
-      );
-
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        testUuid,
-        "test prompt",
-        "--artifact-name",
-        "my-data",
-      ]);
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--artifact-name is deprecated"),
       );
     });
   });
