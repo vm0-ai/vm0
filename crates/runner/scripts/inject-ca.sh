@@ -58,12 +58,14 @@ sudo chroot "$MOUNT_DIR" update-ca-certificates
 # already exists from the original build. keytool -importcert rejects
 # duplicate aliases, so we must delete first then re-import.
 # keytool requires libjli.so on the library path; locate it dynamically.
+# `|| true` handles the (unexpected) case where the alias is absent; stderr
+# is NOT suppressed so real keystore errors surface in CI logs.
 jli_dir=$(sudo chroot "$MOUNT_DIR" find /usr/lib/jvm -name libjli.so -printf '%h' -quit)
 sudo chroot "$MOUNT_DIR" env LD_LIBRARY_PATH="$jli_dir" \
     keytool -delete \
     -keystore /etc/ssl/certs/java/cacerts \
     -storepass changeit \
-    -alias vm0-proxy-ca 2>/dev/null || true
+    -alias vm0-proxy-ca || true
 sudo chroot "$MOUNT_DIR" env LD_LIBRARY_PATH="$jli_dir" \
     keytool -importcert -trustcacerts \
     -keystore /etc/ssl/certs/java/cacerts \

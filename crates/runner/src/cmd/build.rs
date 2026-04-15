@@ -267,7 +267,12 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
                     );
                     force_reupload = true;
                     // Clean up the bad download so local build starts fresh.
-                    let _ = tokio::fs::remove_dir_all(&output_dir).await;
+                    if let Err(e) = tokio::fs::remove_dir_all(&output_dir).await {
+                        tracing::warn!(
+                            "failed to clean bad R2 download at {}: {e}",
+                            output_dir.display()
+                        );
+                    }
                 }
             }
             Ok(false) => tracing::info!("R2 cache miss for {hash} — building locally"),
@@ -452,10 +457,13 @@ async fn remove_all_except_rootfs(image: &ImagePaths) {
         };
         if entry.file_name() != rootfs_name {
             let path = entry.path();
-            if path.is_dir() {
-                let _ = tokio::fs::remove_dir_all(&path).await;
+            let result = if path.is_dir() {
+                tokio::fs::remove_dir_all(&path).await
             } else {
-                let _ = tokio::fs::remove_file(&path).await;
+                tokio::fs::remove_file(&path).await
+            };
+            if let Err(e) = result {
+                tracing::warn!("failed to remove stale entry {}: {e}", path.display());
             }
         }
     }
@@ -644,6 +652,28 @@ mod tests {
         // All four files → complete
         tokio::fs::write(image.cow_img(), b"").await.unwrap();
         assert!(is_image_complete(&image).await.unwrap());
+    }
+
+    /// Guard the `[sync:ca-constants]` contract between build-rootfs.sh and
+    /// inject-ca.sh. Drift between the two scripts' CA cert paths would
+    /// cause silent CA injection failures on R2-downloaded rootfs.
+    #[test]
+    fn ca_constants_in_sync_across_scripts() {
+        let ca_cert_line = r#"CA_CERT_FILE="mitmproxy-ca-cert.pem""#;
+        let ca_dest_line = r#"CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt""#;
+        for (script, name) in [
+            (BUILD_SCRIPT, "build-rootfs.sh"),
+            (INJECT_CA_SCRIPT, "inject-ca.sh"),
+        ] {
+            assert!(
+                script.contains(ca_cert_line),
+                "{name} missing CA_CERT_FILE constant — sync with other script"
+            );
+            assert!(
+                script.contains(ca_dest_line),
+                "{name} missing CA_ROOTFS_DEST constant — sync with other script"
+            );
+        }
     }
 
     #[tokio::test]
