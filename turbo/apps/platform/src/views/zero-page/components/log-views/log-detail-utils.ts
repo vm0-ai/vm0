@@ -385,7 +385,9 @@ function findParentTask(
   ctx: GroupingContext,
 ): GroupedMessage | null {
   const parentId = eventData.parent_tool_use_id;
-  if (!parentId) return null;
+  if (!parentId) {
+    return null;
+  }
   return ctx.taskByToolUseId.get(parentId) ?? null;
 }
 
@@ -399,6 +401,71 @@ function appendChildToTask(task: GroupedMessage, child: GroupedMessage): void {
   task.childMessages.push(child);
 }
 
+/**
+ * Merge tool-only operations into the last child assistant message of a task.
+ * Returns true if merged, false if a new child should be created instead.
+ */
+function mergeToolsIntoLastChild(
+  parentTask: GroupedMessage,
+  toolOperations: ToolOperation[],
+  pendingToolUses: GroupingContext["pendingToolUses"],
+): boolean {
+  const lastChild =
+    parentTask.childMessages?.[parentTask.childMessages.length - 1];
+  if (lastChild?.type !== "assistant") {
+    return false;
+  }
+  if (!lastChild.toolOperations) {
+    lastChild.toolOperations = [];
+  }
+  lastChild.toolOperations.push(...toolOperations);
+  for (const op of toolOperations) {
+    pendingToolUses.set(op.toolUseId, { operation: op, message: lastChild });
+  }
+  return true;
+}
+
+/**
+ * Process assistant event that belongs to a child (sub-agent) task.
+ */
+function processChildAssistantEvent(
+  event: AgentEvent,
+  eventData: GroupingEventData,
+  parentTask: GroupedMessage,
+  ctx: GroupingContext,
+): void {
+  const contents = eventData.message?.content ?? [];
+  const { textParts, toolOperations } = parseAssistantContent(contents);
+  const hasText = textParts.length > 0;
+  const hasTools = toolOperations.length > 0;
+
+  if (!hasText && !hasTools) {
+    return;
+  }
+
+  // Merge tool-only events into the last child assistant message
+  if (!hasText && hasTools) {
+    if (
+      mergeToolsIntoLastChild(parentTask, toolOperations, ctx.pendingToolUses)
+    ) {
+      return;
+    }
+  }
+
+  const child: GroupedMessage = {
+    type: "assistant",
+    sequenceNumber: event.sequenceNumber,
+    createdAt: event.createdAt,
+    textBefore: hasText ? textParts.join("\n\n") : undefined,
+    toolOperations: hasTools ? toolOperations : undefined,
+    eventData: event.eventData,
+  };
+  appendChildToTask(parentTask, child);
+  for (const op of toolOperations) {
+    ctx.pendingToolUses.set(op.toolUseId, { operation: op, message: child });
+  }
+}
+
 function processAssistantEvent(
   event: AgentEvent,
   eventData: GroupingEventData,
@@ -407,45 +474,7 @@ function processAssistantEvent(
   // Route child events into their parent task
   const parentTask = findParentTask(eventData, ctx);
   if (parentTask) {
-    const contents = eventData.message?.content ?? [];
-    const { textParts, toolOperations } = parseAssistantContent(contents);
-    const hasText = textParts.length > 0;
-    const hasTools = toolOperations.length > 0;
-
-    if (hasText || hasTools) {
-      // Merge tool-only events into the last child assistant message
-      if (!hasText && hasTools) {
-        const lastChild =
-          parentTask.childMessages?.[parentTask.childMessages.length - 1];
-        if (lastChild?.type === "assistant") {
-          if (!lastChild.toolOperations) lastChild.toolOperations = [];
-          lastChild.toolOperations.push(...toolOperations);
-          for (const op of toolOperations) {
-            ctx.pendingToolUses.set(op.toolUseId, {
-              operation: op,
-              message: lastChild,
-            });
-          }
-          return;
-        }
-      }
-
-      const child: GroupedMessage = {
-        type: "assistant",
-        sequenceNumber: event.sequenceNumber,
-        createdAt: event.createdAt,
-        textBefore: hasText ? textParts.join("\n\n") : undefined,
-        toolOperations: hasTools ? toolOperations : undefined,
-        eventData: event.eventData,
-      };
-      appendChildToTask(parentTask, child);
-      for (const op of toolOperations) {
-        ctx.pendingToolUses.set(op.toolUseId, {
-          operation: op,
-          message: child,
-        });
-      }
-    }
+    processChildAssistantEvent(event, eventData, parentTask, ctx);
     return;
   }
 

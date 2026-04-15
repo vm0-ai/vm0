@@ -199,7 +199,7 @@ function TaskMessageCard({
           {children.map((child, i) => {
             return (
               <GroupedMessageCard
-                key={child.sequenceNumber ?? i}
+                key={child.sequenceNumber}
                 message={child}
                 searchTerm={searchTerm}
                 showConnector={i < children.length - 1}
