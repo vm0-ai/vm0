@@ -54,6 +54,8 @@ import {
 } from "../../signals/chat-page/chat-message.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 
+function noop() {}
+
 function getTagline(
   agentName: string,
   userName: string | null,
@@ -321,6 +323,7 @@ export function AgentChatPage() {
             input={input}
             onInputChange={setInput}
             onSend={handleSend}
+            onDraftChange={noop}
             displayName={currentChatAgentDisplayName ?? ""}
           />
 

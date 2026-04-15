@@ -122,6 +122,8 @@ interface ZeroChatComposerProps {
   >;
   /** Register the textarea element for external focus control. */
   setInputRef?: (el: HTMLElement | null) => void;
+  /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
+  onDraftChange: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -586,6 +588,7 @@ export function ZeroChatComposer({
   composerFileInput$: composerFileInputProp$,
   setComposerFileInput$: setComposerFileInputProp$,
   setInputRef,
+  onDraftChange,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
@@ -621,6 +624,7 @@ export function ZeroChatComposer({
         if (file) {
           e.preventDefault();
           detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+          onDraftChange();
         }
       }
     }
@@ -636,6 +640,7 @@ export function ZeroChatComposer({
     for (const file of files) {
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
     }
+    onDraftChange();
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -769,6 +774,7 @@ export function ZeroChatComposer({
     for (const file of files) {
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
     }
+    onDraftChange();
     e.target.value = "";
   };
 
@@ -798,7 +804,8 @@ export function ZeroChatComposer({
               <AttachmentChips
                 attachments={attachments}
                 onRemove={(attachment) => {
-                  return removeAttachment(attachment);
+                  removeAttachment(attachment);
+                  onDraftChange();
                 }}
               />
             )}

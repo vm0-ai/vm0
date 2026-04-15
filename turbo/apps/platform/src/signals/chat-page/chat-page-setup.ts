@@ -13,7 +13,6 @@ import {
   ensureDraft$,
 } from "./create-chat-thread.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
-import { appStore } from "../app-store.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -75,26 +74,7 @@ export const setupChatPage$ = command(
       );
     }
 
-    // Watch for draft changes and schedule debounced sync to server.
-    // Only thread-page drafts are persisted (talk-page drafts are not).
-    // `initialized` guards against the spurious first invocation: ccstate
-    // fires every watcher synchronously at registration time with the current
-    // signal values, before the user has made any change. We skip that first
-    // call so a PATCH is not sent on page load.
-    let initialized = false;
-    appStore.watch(
-      (watchGet) => {
-        watchGet(thread.draft.input$);
-        watchGet(thread.draft.attachments$);
-        if (!initialized) {
-          initialized = true;
-          return;
-        }
-        appStore.set(thread.scheduleDraftSync$, signal);
-      },
-      { signal },
-    );
-
+    set(thread.scrollToBottom$);
     await set(thread.loadMessages$, signal);
   },
 );
