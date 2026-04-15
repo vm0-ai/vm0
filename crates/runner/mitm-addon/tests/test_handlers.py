@@ -1188,6 +1188,25 @@ class TestResponseUsageReporting:
         assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
         assert state["truncated"]
 
+    def test_billable_connector_buffer_not_truncated(self):
+        """Billable connector responses should buffer the full body (no 64KB cap)."""
+        flow = _make_http_flow(host="api.x.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+        flow.metadata["firewall_name"] = "x"
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
+        callback(large_chunk)
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == len(large_chunk)
+        assert not state["truncated"]
+
     def test_no_usage_report_for_non_model_provider(self, tmp_path):
         """Non-model-provider requests should not trigger usage reporting."""
         flow = _make_http_flow(host="api.github.com")
@@ -1577,6 +1596,400 @@ class TestMaybeReportProxyUsage:
 
         mock_enqueue.assert_not_called()
         assert proxy_log.exists()
+
+
+class TestLogConnectorUsage:
+    """Tests for log_connector_usage helper (issue #9504)."""
+
+    def setup_method(self):
+        _reset()
+
+    def _make_x_flow(
+        self,
+        tmp_path,
+        *,
+        path="/2/tweets",
+        query="",
+        body=b"",
+        status=200,
+        permission="tweet.read",
+        rule="GET /2/tweets",
+        content_encoding="",
+    ):
+        flow = _make_http_flow(host="api.x.com", path=path)
+        flow.metadata["original_url"] = (
+            f"https://api.x.com{path}?{query}" if query else f"https://api.x.com{path}"
+        )
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_permission"] = permission
+        flow.metadata["firewall_rule_match"] = rule
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        flow.response = MagicMock()
+        flow.response.status_code = status
+        flow.response.headers = {
+            "content-type": "application/json",
+            "content-encoding": content_encoding,
+        }
+        return flow
+
+    # ---- positive cases ----
+
+    def test_logs_single_resource_get(self, tmp_path):
+        """GET /2/tweets/:id → response_data_count=1, no includes/result_count."""
+        body = json.dumps({"data": {"id": "1", "text": "hi"}}).encode()
+        flow = self._make_x_flow(tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}")
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        mock_log.assert_called_once()
+        _, kwargs = mock_log.call_args
+        assert kwargs["type"] == "connector_usage"
+        assert kwargs["connector"] == "x"
+        assert kwargs["endpoint"] == "tweet.read"
+        assert kwargs["rule"] == "GET /2/tweets/{id}"
+        assert kwargs["status"] == 200
+        assert kwargs["response_data_count"] == 1
+        assert kwargs["body_parsed"] is True
+        assert kwargs["body_truncated"] is False
+        assert "response_includes" not in kwargs
+        assert "response_result_count" not in kwargs
+        assert kwargs["request_ids_count"] is None
+        assert kwargs["has_expansions"] is False
+        assert kwargs["max_results"] is None
+        assert kwargs["billable_counts"] == {"tweet.read": 1}
+
+    def test_logs_batch_ids(self, tmp_path):
+        """GET /2/tweets?ids=1,2,3 → request_ids_count=3 + response_data_count=3."""
+        body = json.dumps({"data": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}).encode()
+        flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=body)
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["request_ids_count"] == 3
+        assert kwargs["response_data_count"] == 3
+        assert kwargs["has_expansions"] is False
+        assert kwargs["billable_counts"] == {"tweet.read": 3}
+
+    def test_logs_batch_ids_with_deletions(self, tmp_path):
+        """Batch with some missing ids → max(ids, data) wins (over-count safe)."""
+        body = json.dumps({"data": [{"id": "1"}, {"id": "3"}]}).encode()
+        flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=body)
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["request_ids_count"] == 3
+        assert kwargs["response_data_count"] == 2
+        assert kwargs["billable_counts"] == {"tweet.read": 3}  # max(3, 2)
+
+    def test_logs_expansions_includes(self, tmp_path):
+        """?expansions=author_id → response_includes carries users + media counts."""
+        body = json.dumps(
+            {
+                "data": [{"id": "1", "author_id": "99"}],
+                "includes": {
+                    "users": [{"id": "99"}],
+                    "media": [{"media_key": "m1"}, {"media_key": "m2"}],
+                },
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            query="expansions=author_id,attachments.media_keys",
+            body=body,
+        )
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["has_expansions"] is True
+        assert kwargs["response_data_count"] == 1
+        assert kwargs["response_includes"] == {"users": 1, "media": 2}
+        # Each includes type gets its own .read billing key so server can
+        # price per-type independently.
+        assert kwargs["billable_counts"] == {
+            "tweet.read": 1,
+            "users.read": 1,
+            "media.read": 2,
+        }
+
+    def test_logs_empty_search_still_bills_one(self, tmp_path):
+        """Search returning zero results still bills 1 — the search request
+        itself may cost even when data is empty, and a floor of 1 guarantees
+        we never report 0 for a successful (2xx) billable request."""
+        body = json.dumps({"data": [], "meta": {"result_count": 0}}).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/recent",
+            query="query=nothing",
+            body=body,
+            rule="GET /2/tweets/search/recent",
+        )
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["response_data_count"] == 0
+        assert kwargs["response_result_count"] == 0
+        assert kwargs["billable_counts"] == {"tweet.read": 1}
+
+    def test_logs_expansions_users_and_referenced_tweets(self, tmp_path):
+        """includes.users → users.read; includes.tweets accumulates into tweet.read primary."""
+        body = json.dumps(
+            {
+                "data": [{"id": "1", "author_id": "99", "referenced_tweets": [{"id": "ref1"}]}],
+                "includes": {
+                    "users": [{"id": "99"}, {"id": "author2"}],
+                    "tweets": [{"id": "ref1"}, {"id": "ref2"}],
+                },
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            query="expansions=author_id,referenced_tweets.id",
+            body=body,
+        )
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        # includes.tweets maps to tweet.read (same permission as the primary
+        # endpoint here), so the counts sum at the same key.
+        assert kwargs["billable_counts"] == {
+            "tweet.read": 3,  # 1 primary + 2 referenced tweets
+            "users.read": 2,
+        }
+
+    def test_handles_unknown_includes_key(self, tmp_path):
+        """Unknown includes.<key> types get a synthetic <key>.read billing key.
+
+        Raw field ``response_includes`` preserves the original shape so
+        future pricing rules can be added without re-processing past logs.
+        """
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}],
+                "includes": {
+                    "users": [{"id": "99"}],
+                    "future_widget": [{"id": "w1"}, {"id": "w2"}, {"id": "w3"}],
+                },
+            }
+        ).encode()
+        flow = self._make_x_flow(tmp_path, query="expansions=author_id", body=body)
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        # Raw observation stays unchanged for forensic analysis.
+        assert kwargs["response_includes"] == {"users": 1, "future_widget": 3}
+        # Unknown includes types get auto-generated <key>.read keys.
+        assert kwargs["billable_counts"] == {
+            "tweet.read": 1,
+            "users.read": 1,
+            "future_widget.read": 3,
+        }
+
+    def test_logs_search_meta_result_count(self, tmp_path):
+        """search response with meta.result_count populates response_result_count."""
+        body = json.dumps(
+            {
+                "data": [{"id": str(i)} for i in range(20)],
+                "meta": {"result_count": 20, "next_token": "abc"},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/recent",
+            query="query=hello&max_results=100",
+            body=body,
+            permission="tweet.read",
+            rule="GET /2/tweets/search/recent",
+        )
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["response_data_count"] == 20
+        assert kwargs["response_result_count"] == 20
+        assert kwargs["max_results"] == 100
+        # max(0, 20, 20, 100, 1) = 100 — over-count via max_results upper bound
+        assert kwargs["billable_counts"] == {"tweet.read": 100}
+
+    def test_logs_repeated_ids_param(self, tmp_path):
+        """?ids=1,2&ids=3 → request_ids_count=3 (sums all occurrences)."""
+        body = json.dumps({"data": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}).encode()
+        flow = self._make_x_flow(tmp_path, query="ids=1,2&ids=3", body=body)
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["request_ids_count"] == 3
+
+    def test_handles_gzip_body(self, tmp_path):
+        """gzip-encoded response body decompresses before parsing."""
+        import gzip
+
+        raw = json.dumps({"data": [{"id": "1"}], "meta": {"result_count": 1}}).encode()
+        body = gzip.compress(raw)
+        flow = self._make_x_flow(tmp_path, body=body, content_encoding="gzip")
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["body_parsed"] is True
+        assert kwargs["response_data_count"] == 1
+        assert kwargs["response_result_count"] == 1
+        assert kwargs["billable_counts"] == {"tweet.read": 1}
+
+    def test_logs_write_operation_charges_one(self, tmp_path):
+        """POST /2/tweets → billable_counts={tweet.write:1} regardless of body shape."""
+        body = json.dumps({"data": {"id": "99", "text": "new tweet"}}).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets",
+            body=body,
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["method"] == "POST"
+        assert kwargs["billable_counts"] == {"tweet.write": 1}
+
+    # ---- forensic / parser-state cases ----
+
+    def test_handles_truncated_buffer(self, tmp_path):
+        """stream_buffer_state.truncated → body_parsed False, body_truncated True."""
+        flow = self._make_x_flow(tmp_path, body=b"{")
+        flow.metadata["stream_buffer_state"] = {"truncated": True}
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["body_parsed"] is False
+        assert kwargs["body_truncated"] is True
+        assert "response_data_count" not in kwargs
+
+    def test_handles_invalid_json(self, tmp_path):
+        """Malformed body → body_parsed False, no count fields, entry still logged."""
+        flow = self._make_x_flow(tmp_path, body=b"not json")
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["body_parsed"] is False
+        assert kwargs["body_truncated"] is False
+        assert "response_data_count" not in kwargs
+        assert "response_includes" not in kwargs
+        assert "response_result_count" not in kwargs
+        # No count signals + GET + body unparseable → fallback 100
+        assert kwargs["billable_counts"] == {"tweet.read": 100}
+
+    def test_billable_counts_fallback_only_when_no_hints(self, tmp_path):
+        """body_parsed False but ?ids= present → use ids_count, no fallback."""
+        flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=b"not json")
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["body_parsed"] is False
+        assert kwargs["billable_counts"] == {"tweet.read": 3}  # from ids, not fallback
+
+    def test_billable_counts_fallback_only_when_no_max_results(self, tmp_path):
+        """body_parsed False but ?max_results=50 present → use max_results, no fallback."""
+        flow = self._make_x_flow(tmp_path, query="max_results=50", body=b"not json")
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["body_parsed"] is False
+        assert kwargs["billable_counts"] == {"tweet.read": 50}
+
+    def test_handles_empty_body(self, tmp_path):
+        """Empty stream_buffer → body_parsed False, entry still logged."""
+        flow = self._make_x_flow(tmp_path, body=b"")
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["body_parsed"] is False
+
+    def test_handles_invalid_max_results(self, tmp_path):
+        """Non-integer max_results param falls back to None, doesn't raise."""
+        body = json.dumps({"data": []}).encode()
+        flow = self._make_x_flow(tmp_path, query="max_results=abc", body=body)
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        _, kwargs = mock_log.call_args
+        assert kwargs["max_results"] is None
+
+    # ---- skip cases ----
+
+    def test_skips_on_server_error(self, tmp_path):
+        flow = self._make_x_flow(tmp_path, status=500)
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        mock_log.assert_not_called()
+
+    def test_skips_on_rate_limit(self, tmp_path):
+        flow = self._make_x_flow(tmp_path, status=429)
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        mock_log.assert_not_called()
+
+    def test_skips_on_empty_permission(self, tmp_path):
+        """Unknown-endpoint-allow has no stable pricing key."""
+        flow = self._make_x_flow(tmp_path, permission="")
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        mock_log.assert_not_called()
+
+    def test_skips_on_empty_run_id(self, tmp_path):
+        flow = self._make_x_flow(tmp_path)
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "")
+        mock_log.assert_not_called()
+
+    def test_skips_for_model_provider(self, tmp_path):
+        """Model providers go through maybe_report_proxy_usage instead."""
+        flow = self._make_x_flow(tmp_path)
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        mock_log.assert_not_called()
+
+    def test_skips_for_non_billable_connector(self, tmp_path):
+        """Connectors not in _BILLABLE_CONNECTORS are not logged."""
+        flow = self._make_x_flow(tmp_path)
+        flow.metadata["firewall_name"] = "gamma"
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        mock_log.assert_not_called()
+
+    def test_skips_when_no_response(self, tmp_path):
+        flow = self._make_x_flow(tmp_path)
+        flow.response = None
+        with patch.object(usage, "log_proxy_entry") as mock_log:
+            usage.log_connector_usage(flow, "run-abc-123")
+        mock_log.assert_not_called()
+
+    # ---- integration: response() hook wiring ----
+
+    def test_response_hook_invokes_log_connector_usage(self, tmp_path):
+        """response() hook should call usage.log_connector_usage."""
+        flow = _make_http_flow(host="api.x.com", path="/2/tweets")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_permission"] = "tweet.write"
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "application/json"}
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(usage, "maybe_report_proxy_usage"),
+            patch.object(usage, "log_connector_usage") as mock_log_connector,
+        ):
+            mitm_addon.response(flow)
+
+        mock_log_connector.assert_called_once_with(flow, "run-abc-123")
 
 
 class TestErrorUsageReporting:

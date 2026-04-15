@@ -268,7 +268,9 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # full JSON body is available for usage extraction in response().
     sse_parser = None
     sse_decompressor = None
-    is_model_provider = flow.metadata.get("firewall_name", "").startswith("model-provider:")
+    firewall_name = flow.metadata.get("firewall_name", "")
+    is_model_provider = firewall_name.startswith("model-provider:")
+    is_billable_connector = usage.is_billable_connector(firewall_name)
     if is_model_provider:
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
@@ -277,9 +279,12 @@ def responseheaders(flow: http.HTTPFlow) -> None:
             flow.metadata["proxy_usage"] = usage_dict
             sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
 
-    # Model provider responses are never truncated so usage extraction
-    # always has the complete body.  Other responses use the 64 KB limit.
-    buf_limit = None if is_model_provider else body_utils.STREAM_BUFFER_LIMIT
+    # Model provider and billable connector responses are never truncated so
+    # usage extraction always has the complete body.  Other responses use the
+    # 64 KB limit.
+    buf_limit = (
+        None if (is_model_provider or is_billable_connector) else body_utils.STREAM_BUFFER_LIMIT
+    )
 
     def stream_and_buffer(chunk: bytes) -> bytes:
         if not state["truncated"]:
@@ -380,6 +385,9 @@ def response(flow: http.HTTPFlow) -> None:
             if json_usage:
                 flow.metadata["proxy_usage"] = json_usage
     usage.maybe_report_proxy_usage(flow, run_id)
+
+    # Billable connector usage observation (issue #9504, stage 0).
+    usage.log_connector_usage(flow, run_id)
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers
     if flow.response and flow.response.status_code == 401 and flow.metadata.get("firewall_base"):
