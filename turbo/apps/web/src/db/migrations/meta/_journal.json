@@ -1800,6 +1800,13 @@
       "when": 1776278400001,
       "tag": "0256_late_boomerang",
       "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1776278400002,
+      "tag": "0257_update_starter_credits_default",
+      "breakpoints": true
     }
   ]
 }
