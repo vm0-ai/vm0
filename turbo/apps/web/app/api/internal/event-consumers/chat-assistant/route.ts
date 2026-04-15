@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyEventConsumer } from "../../../../../src/lib/infra/event-consumer";
+import type { AgentEvent } from "../../../../../src/lib/infra/event-consumer/types";
 import {
   insertAssistantEventMessages,
   getChatThreadIdForRun,
@@ -10,27 +11,32 @@ import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("event-consumer:chat-assistant");
 
-interface ContentBlock {
-  type: string;
-  text?: string;
-}
-
-interface AssistantMessage {
-  content?: ContentBlock[];
-}
-
 /**
  * Concatenate all text blocks in a single assistant event into one string.
  * Assistant events usually carry a single text block, but may carry several
  * interleaved with tool_use blocks. Tool_use blocks are ignored here —
  * activity summaries are rendered live from the telemetry endpoint.
  */
-function eventText(event: unknown): string | null {
-  const msg = (event as { message?: AssistantMessage }).message;
-  if (!msg?.content) return null;
+function eventText(event: AgentEvent): string | null {
+  const msg = event.message;
+  if (
+    typeof msg !== "object" ||
+    msg === null ||
+    !("content" in msg) ||
+    !Array.isArray(msg.content)
+  ) {
+    return null;
+  }
   const parts: string[] = [];
   for (const block of msg.content) {
-    if (block.type === "text" && typeof block.text === "string") {
+    if (
+      typeof block === "object" &&
+      block !== null &&
+      "type" in block &&
+      block.type === "text" &&
+      "text" in block &&
+      typeof block.text === "string"
+    ) {
       parts.push(block.text);
     }
   }
