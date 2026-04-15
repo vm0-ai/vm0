@@ -1,5 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { animationFrame, delay } from "signal-timers";
+import { delay } from "signal-timers";
 import { onRef, setLoop, resetSignal, throwIfNotAbort } from "../utils.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
 import { logger } from "../log.ts";
@@ -416,7 +416,11 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
     const msgs = await get(deps.chatMessages$);
     signal.throwIfAborted();
 
+    await delay(0, { signal });
+    set(deps.scrollToBottom$);
+
     if (!msgs?.activeRunMessages.length) {
+      L.debug("no active run messages");
       return;
     }
 
@@ -429,12 +433,13 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
     );
 
     if (assistantMessages.length === 0) {
+      L.debug("empty assistant messages");
       set(reloadChatThreads$);
       set(deps.reloadThread$);
       return;
     }
 
-    set(deps.scrollToBottom$);
+    L.debug("scroll to bottom");
 
     await Promise.all(
       assistantMessages.map(async (message) => {
