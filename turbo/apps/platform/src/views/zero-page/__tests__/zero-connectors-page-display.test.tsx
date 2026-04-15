@@ -121,7 +121,7 @@ describe("connectors page - connector status indicators", () => {
       {
         type: "github",
         externalUsername: "octocat",
-        oauthScopes: ["repo", "project"],
+        oauthScopes: ["repo", "project", "workflow"],
       },
     ]);
 
