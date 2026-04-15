@@ -469,6 +469,10 @@ const CONNECTOR_TYPES_DEF = {
       tokenUrl: "https://oauth2.googleapis.com/token",
       scopes: [
         "https://www.googleapis.com/auth/meetings.space.created",
+        // Use meetings.space.readonly (not meetings.conferencerecords.readonly) — confirmed
+        // correct per Google Discovery API. meetings.space.readonly grants read access to
+        // spaces and conference records; meetings.conferencerecords.readonly is not a valid
+        // OAuth scope in the Google Meet REST API v2 discovery document.
         "https://www.googleapis.com/auth/meetings.space.readonly",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
