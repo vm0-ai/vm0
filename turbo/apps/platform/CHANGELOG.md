@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.240.0](https://github.com/vm0-ai/vm0/compare/app-v0.239.0...app-v0.240.0) (2026-04-15)
+
+
+### Features
+
+* add imessage integration for zero agents ([#9463](https://github.com/vm0-ai/vm0/issues/9463)) ([f0a8e7a](https://github.com/vm0-ai/vm0/commit/f0a8e7a7326f1a71a4742c2fa229fa193b14e6e2))
+
+
+### Bug Fixes
+
+* prevent credit usage numbers from wrapping ([#9515](https://github.com/vm0-ai/vm0/issues/9515)) ([#9517](https://github.com/vm0-ai/vm0/issues/9517)) ([fa05e39](https://github.com/vm0-ai/vm0/commit/fa05e397a756ad9e43e7e99285278e7071fb359f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.188.0
+
 ## [0.239.0](https://github.com/vm0-ai/vm0/compare/app-v0.238.5...app-v0.239.0) (2026-04-15)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.239.0](https://github.com/vm0-ai/vm0/compare/web-v12.238.1...web-v12.239.0) (2026-04-15)
+
+
+### Features
+
+* add imessage integration for zero agents ([#9463](https://github.com/vm0-ai/vm0/issues/9463)) ([f0a8e7a](https://github.com/vm0-ai/vm0/commit/f0a8e7a7326f1a71a4742c2fa229fa193b14e6e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.188.0
+
 ## [12.238.1](https://github.com/vm0-ai/vm0/compare/web-v12.238.0...web-v12.238.1) (2026-04-15)
 
 

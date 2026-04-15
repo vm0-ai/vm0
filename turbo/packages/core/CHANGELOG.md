@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.188.0](https://github.com/vm0-ai/vm0/compare/core-v8.187.1...core-v8.188.0) (2026-04-15)
+
+
+### Features
+
+* add imessage integration for zero agents ([#9463](https://github.com/vm0-ai/vm0/issues/9463)) ([f0a8e7a](https://github.com/vm0-ai/vm0/commit/f0a8e7a7326f1a71a4742c2fa229fa193b14e6e2))
+
+
+### Refactoring
+
+* **firewalls:** generate *.generated.ts at build time ([#9508](https://github.com/vm0-ai/vm0/issues/9508)) ([01aab93](https://github.com/vm0-ai/vm0/commit/01aab93feebb6c34b79f7a54399cdc71120a064b))
+
 ## [8.187.1](https://github.com/vm0-ai/vm0/compare/core-v8.187.0...core-v8.187.1) (2026-04-15)
 
 

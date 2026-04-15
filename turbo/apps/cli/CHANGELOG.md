@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.116.1](https://github.com/vm0-ai/vm0/compare/cli-v9.116.0...cli-v9.116.1) (2026-04-15)
+
+
+### Refactoring
+
+* update compose and cook commands to use unified --artifact flag ([#9518](https://github.com/vm0-ai/vm0/issues/9518)) ([da63885](https://github.com/vm0-ai/vm0/commit/da638853fc80d06769ed39ae1a137b96774d1006))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.188.0
+
 ## [9.116.0](https://github.com/vm0-ai/vm0/compare/cli-v9.115.0...cli-v9.116.0) (2026-04-15)
 
 
