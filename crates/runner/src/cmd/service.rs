@@ -239,10 +239,25 @@ async fn run_systemctl(args: &[&str]) -> RunnerResult<()> {
     Ok(())
 }
 
-/// Write a unit file directly (running as root).
+/// Write a unit file atomically: stage to a sibling `.tmp` file, then rename.
+///
+/// `rename(2)` is atomic on the same filesystem, so a concurrent
+/// `systemctl daemon-reload` (possibly triggered by unrelated unit changes
+/// on the host) sees either the old file or the new file — never a
+/// half-written one. Without this, the truncate+write window inside
+/// `std::fs::write` could let systemd parse a partial unit file and leave
+/// the unit in a broken state. Same pattern as `status::write_status`.
 fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
-    std::fs::write(path, content)
-        .map_err(|e| RunnerError::Internal(format!("write {}: {e}", path.display())))
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, content)
+        .map_err(|e| RunnerError::Internal(format!("write {}: {e}", tmp.display())))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        RunnerError::Internal(format!(
+            "rename {} -> {}: {e}",
+            tmp.display(),
+            path.display()
+        ))
+    })
 }
 
 /// Check whether a systemd unit is active (running or activating).
@@ -881,6 +896,41 @@ mod tests {
         assert!(validate_env_vars(&["KEY=line1\nline2".to_string()]).is_err());
         assert!(validate_env_vars(&["KEY=foo\rbar".to_string()]).is_err());
         assert!(validate_env_vars(&["KEY=with\0nul".to_string()]).is_err());
+    }
+
+    #[test]
+    fn write_unit_file_creates_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner-test.service");
+        write_unit_file(&path, "[Unit]\nDescription=test\n").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[Unit]\nDescription=test\n"
+        );
+    }
+
+    #[test]
+    fn write_unit_file_overwrites_existing() {
+        // Verifies the rename step replaces an existing file rather than
+        // failing — POSIX rename(2) over an existing file is the atomic
+        // swap we rely on for race-free updates.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner-test.service");
+        std::fs::write(&path, "old content").unwrap();
+        write_unit_file(&path, "new content").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new content");
+    }
+
+    #[test]
+    fn write_unit_file_does_not_leave_tmp_on_success() {
+        // The tmp file is consumed by the rename — it must not be left
+        // behind on disk. A residual `.tmp` would not be loaded by
+        // systemd (wrong suffix) but would clutter the unit directory.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner-test.service");
+        write_unit_file(&path, "content").unwrap();
+        let tmp = path.with_extension("tmp");
+        assert!(!tmp.exists(), "tmp file must be consumed by rename");
     }
 
     // -----------------------------------------------------------------
