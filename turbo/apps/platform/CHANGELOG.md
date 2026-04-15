@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.238.1](https://github.com/vm0-ai/vm0/compare/app-v0.238.0...app-v0.238.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* **platform:** scroll to bottom after initial messages render on chat open ([#9436](https://github.com/vm0-ai/vm0/issues/9436)) ([f08d1b8](https://github.com/vm0-ai/vm0/commit/f08d1b85889074bd31701ee8410b6e3ea30841e5))
+
 ## [0.238.0](https://github.com/vm0-ai/vm0/compare/app-v0.237.1...app-v0.238.0) (2026-04-15)
 
 
