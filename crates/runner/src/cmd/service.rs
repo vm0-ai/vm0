@@ -175,9 +175,12 @@ fn escape_systemd_value(input: &str) -> String {
 
 /// Generate the systemd unit file content.
 ///
-/// All double-quoted values (`ExecStart=` paths, `Environment=` values) go
-/// through [`escape_systemd_value`] so that user-controllable input cannot
-/// break out of the quotes or trigger systemd specifier expansion.
+/// User-controllable values (`ExecStart=` paths, `Environment=` values) go
+/// through [`escape_systemd_value`] so that input cannot break out of the
+/// quotes or trigger systemd specifier expansion. `unit` is not escaped
+/// because [`unit_name`] already restricts it to lowercase alphanumeric,
+/// hyphens, and dots — no `%`, `\`, `"`, or other systemd special chars
+/// can reach `Description=` or `SyslogIdentifier=`.
 fn generate_unit_file(
     unit: &str,
     exe_path: &Path,
