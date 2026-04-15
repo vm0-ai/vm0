@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.187.1](https://github.com/vm0-ai/vm0/compare/core-v8.187.0...core-v8.187.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* **connectors:** preserve meetings.conferencerecords.readonly scope for google meet ([#9456](https://github.com/vm0-ai/vm0/issues/9456)) ([702627b](https://github.com/vm0-ai/vm0/commit/702627b90a51586cad4036e119dfaf3b628b8ba4))
+
 ## [8.187.0](https://github.com/vm0-ai/vm0/compare/core-v8.186.1...core-v8.187.0) (2026-04-15)
 
 
