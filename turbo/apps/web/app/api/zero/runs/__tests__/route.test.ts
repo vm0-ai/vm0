@@ -11,6 +11,10 @@ import {
   findTestRunnerJobEntry,
   insertOrgDefaultModelProvider,
   insertUserCacheEntry,
+  setOrgCredits,
+  deleteOrgRow,
+  insertOrgMembersEntry,
+  findTestRunsByUserAndPrompt,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
@@ -693,6 +697,232 @@ describe("POST /api/zero/runs", () => {
           }),
         }),
       );
+    });
+  });
+});
+
+describe("POST /api/zero/runs — credit check", () => {
+  let user: UserContext;
+  let agentId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+    const compose = await createTestCompose(uniqueId("credit-agent"));
+    agentId = await getTestZeroAgentId(user.orgId, compose.name);
+    vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+    reloadEnv();
+  });
+
+  describe("createZeroRun path", () => {
+    it("should allow VM0 run when credits > 0", async () => {
+      await setOrgCredits(user.orgId, 100);
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "vm0",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.status).toBe("pending");
+      expect(data.runId).toBeDefined();
+    });
+
+    it("should reject VM0 run when credits = 0", async () => {
+      await setOrgCredits(user.orgId, 0);
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "vm0",
+      });
+
+      expect(response.status).toBe(402);
+      const data = await response.json();
+      expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
+    });
+
+    it("should reject VM0 run when credits are negative", async () => {
+      await setOrgCredits(user.orgId, -500);
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "vm0",
+      });
+
+      expect(response.status).toBe(402);
+      const data = await response.json();
+      expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
+    });
+
+    it("should allow non-VM0 run when credits = 0", async () => {
+      await setOrgCredits(user.orgId, 0);
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "anthropic",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.status).toBe("pending");
+    });
+
+    it("should reject when org default is VM0 and credits = 0", async () => {
+      await setOrgCredits(user.orgId, 0);
+      await insertOrgDefaultModelProvider(user.orgId, "vm0");
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+      });
+
+      expect(response.status).toBe(402);
+      const data = await response.json();
+      expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
+    });
+
+    it("should allow when org default is non-VM0 and credits = 0", async () => {
+      await setOrgCredits(user.orgId, 0);
+      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.status).toBe("pending");
+    });
+
+    it("should allow when no org default provider and credits = 0", async () => {
+      await setOrgCredits(user.orgId, 0);
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.status).toBe("pending");
+    });
+
+    it("should reject when org_metadata row is missing", async () => {
+      await deleteOrgRow(user.orgId);
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "vm0",
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    it("should not create run record for rejected VM0 run", async () => {
+      await setOrgCredits(user.orgId, 0);
+
+      const prompt = uniqueId("rejected-vm0-no-enqueue");
+      const response = await postRun({
+        agentId,
+        prompt,
+        modelProvider: "vm0",
+      });
+
+      expect(response.status).toBe(402);
+
+      const runs = await findTestRunsByUserAndPrompt(user.userId, prompt);
+      expect(runs).toHaveLength(0);
+    });
+  });
+
+  describe("member credit cap enforcement", () => {
+    it("should reject VM0 run when creditEnabled is false", async () => {
+      await setOrgCredits(user.orgId, 10000);
+      await insertOrgDefaultModelProvider(user.orgId, "vm0");
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "vm0",
+      });
+
+      expect(response.status).toBe(402);
+      const data = await response.json();
+      expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
+    });
+
+    it("should allow non-VM0 run regardless of creditEnabled", async () => {
+      await setOrgCredits(user.orgId, 10000);
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "anthropic",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.status).toBe("pending");
+    });
+
+    it("should allow VM0 run when creditEnabled is true with cap set", async () => {
+      await setOrgCredits(user.orgId, 10000);
+      await insertOrgDefaultModelProvider(user.orgId, "vm0");
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 10000,
+        creditEnabled: true,
+      });
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+        modelProvider: "vm0",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.status).toBe("pending");
+    });
+
+    it("should reject VM0 run when default provider is vm0 and creditEnabled is false", async () => {
+      await setOrgCredits(user.orgId, 10000);
+      await insertOrgDefaultModelProvider(user.orgId, "vm0");
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+
+      const response = await postRun({
+        agentId,
+        prompt: "Credit check test",
+      });
+
+      expect(response.status).toBe(402);
+      const data = await response.json();
+      expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
     });
   });
 });
