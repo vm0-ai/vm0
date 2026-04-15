@@ -151,8 +151,12 @@ export async function submitDiagnosticBundle(
     promptCount: promptEvents.length,
   });
 
-  // Assemble activity log (same format as activity detail download)
-  const activityLog = await assembleActivityLog(runId, run, agentConfig);
+  // Assemble activity logs for all session runs
+  const activityLogs = await Promise.all(
+    sessionRuns.map((r) => {
+      return assembleActivityLog(r.id, r, agentConfig);
+    }),
+  );
 
   // Safe connector subset (no tokens)
   const safeConnectors = connectors.map((c) => {
@@ -218,10 +222,12 @@ export async function submitDiagnosticBundle(
       path: "agent-config.json",
       content: JSON.stringify(agentConfig, null, 2),
     },
-    {
-      path: "activity-log.json",
-      content: JSON.stringify(activityLog),
-    },
+    ...activityLogs.map((al, i) => {
+      return {
+        path: `activity-log-${i}.json`,
+        content: JSON.stringify(al),
+      };
+    }),
   ];
 
   if (systemLogText) {
@@ -335,18 +341,42 @@ async function collectAgentConfig(
   };
 }
 
+interface SessionRunRecord {
+  id: string;
+  status: string;
+  error: string | null;
+  prompt: string;
+  appendSystemPrompt: string | null;
+  createdAt: Date;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  runnerGroup: string | null;
+  continuedFromSessionId: string | null;
+  result: unknown;
+}
+
+const sessionRunSelect = {
+  id: agentRuns.id,
+  status: agentRuns.status,
+  error: agentRuns.error,
+  prompt: agentRuns.prompt,
+  appendSystemPrompt: agentRuns.appendSystemPrompt,
+  createdAt: agentRuns.createdAt,
+  startedAt: agentRuns.startedAt,
+  completedAt: agentRuns.completedAt,
+  runnerGroup: agentRuns.runnerGroup,
+  continuedFromSessionId: agentRuns.continuedFromSessionId,
+  result: agentRuns.result,
+};
+
 async function collectSessionRuns(
   db: typeof globalThis.services.db,
   runId: string,
   sessionId: string | null,
-): Promise<{ id: string; prompt: string; createdAt: Date }[]> {
+): Promise<SessionRunRecord[]> {
   if (sessionId) {
     return db
-      .select({
-        id: agentRuns.id,
-        prompt: agentRuns.prompt,
-        createdAt: agentRuns.createdAt,
-      })
+      .select(sessionRunSelect)
       .from(agentRuns)
       .where(
         or(
@@ -358,11 +388,7 @@ async function collectSessionRuns(
   }
 
   return db
-    .select({
-      id: agentRuns.id,
-      prompt: agentRuns.prompt,
-      createdAt: agentRuns.createdAt,
-    })
+    .select(sessionRunSelect)
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
     .limit(1);
