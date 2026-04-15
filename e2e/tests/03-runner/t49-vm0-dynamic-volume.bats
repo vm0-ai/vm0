@@ -136,6 +136,12 @@ teardown_file() {
 }
 
 @test "t49-4: multiple --volume flags mount multiple volumes" {
+    # Push fresh content to vol-a (t49-3 changed its HEAD)
+    cd "$TEST_DIR/$DYNAMIC_VOL_A"
+    echo "multi-test-a" > data.txt
+    run $VM0_CLI volume push
+    assert_success
+
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
@@ -153,6 +159,6 @@ teardown_file() {
         "cat /home/user/data-a/data.txt && cat /home/user/data-b/data.txt"
 
     assert_success
-    assert_output --partial "dynamic-content-a"
+    assert_output --partial "multi-test-a"
     assert_output --partial "dynamic-content-b"
 }
