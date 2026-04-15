@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.242.0](https://github.com/vm0-ai/vm0/compare/app-v0.241.0...app-v0.242.0) (2026-04-15)
+
+
+### Features
+
+* replace setloop polling with ably realtime push ([#9455](https://github.com/vm0-ai/vm0/issues/9455)) ([07329b8](https://github.com/vm0-ai/vm0/commit/07329b8cf1f9cdfe8cedbceedad9f8aea6586f29))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.189.0
+
 ## [0.241.0](https://github.com/vm0-ai/vm0/compare/app-v0.240.0...app-v0.241.0) (2026-04-15)
 
 

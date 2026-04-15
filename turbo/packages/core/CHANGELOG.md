@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.189.0](https://github.com/vm0-ai/vm0/compare/core-v8.188.0...core-v8.189.0) (2026-04-15)
+
+
+### Features
+
+* replace setloop polling with ably realtime push ([#9455](https://github.com/vm0-ai/vm0/issues/9455)) ([07329b8](https://github.com/vm0-ai/vm0/commit/07329b8cf1f9cdfe8cedbceedad9f8aea6586f29))
+
 ## [8.188.0](https://github.com/vm0-ai/vm0/compare/core-v8.187.1...core-v8.188.0) (2026-04-15)
 
 

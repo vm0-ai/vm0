@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.241.0](https://github.com/vm0-ai/vm0/compare/web-v12.240.0...web-v12.241.0) (2026-04-15)
+
+
+### Features
+
+* replace setloop polling with ably realtime push ([#9455](https://github.com/vm0-ai/vm0/issues/9455)) ([07329b8](https://github.com/vm0-ai/vm0/commit/07329b8cf1f9cdfe8cedbceedad9f8aea6586f29))
+
+
+### Bug Fixes
+
+* **phone:** align imessage integration with agentphone api ([#9538](https://github.com/vm0-ai/vm0/issues/9538)) ([077fd0f](https://github.com/vm0-ai/vm0/commit/077fd0f317c49ed73792e74c20f1641ce6f806c1))
+* **web:** add non-localized blog routes to public route matcher ([#9066](https://github.com/vm0-ai/vm0/issues/9066)) ([9707f76](https://github.com/vm0-ai/vm0/commit/9707f76467825441a0dc58e03805c1227bf55b32))
+* **web:** update homepage share meta descriptions to match Zero's positioning ([#9535](https://github.com/vm0-ai/vm0/issues/9535)) ([e2e6741](https://github.com/vm0-ai/vm0/commit/e2e67419ba13338326feaaf60ccc195144814c00))
+
+
+### Refactoring
+
+* **web:** remove compose rebuild on skill deletion ([#9537](https://github.com/vm0-ai/vm0/issues/9537)) ([79f867c](https://github.com/vm0-ai/vm0/commit/79f867c566e99a2160e578e27bfeb46d5a6dfdfb)), closes [#9527](https://github.com/vm0-ai/vm0/issues/9527)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.189.0
+
 ## [12.240.0](https://github.com/vm0-ai/vm0/compare/web-v12.239.0...web-v12.240.0) (2026-04-15)
 
 

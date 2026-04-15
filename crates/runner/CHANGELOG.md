@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.79.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.11...runner-rs-v0.79.12) (2026-04-15)
+
+
+### Bug Fixes
+
+* rely on keytool rpath for libjli.so in chroot invocations ([#9533](https://github.com/vm0-ai/vm0/issues/9533)) ([3b950af](https://github.com/vm0-ai/vm0/commit/3b950af12bd9dfd98d22123d57a4dc0affef9289)), closes [#9483](https://github.com/vm0-ai/vm0/issues/9483)
+* **runner:** make build-rootfs.sh cleanup safe against umount failure ([#9528](https://github.com/vm0-ai/vm0/issues/9528)) ([7bf8952](https://github.com/vm0-ai/vm0/commit/7bf89529febd1cded732e7c388af1cfd5af17f66))
+
 ## [0.79.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.10...runner-rs-v0.79.11) (2026-04-15)
 
 
