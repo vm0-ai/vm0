@@ -23,7 +23,10 @@ export const xeroFirewall = {
       permissions: [
         {
           name: "connections",
-          rules: ["GET /Connections", "DELETE /Connections/{id}"],
+          rules: [
+            "GET /Connections",
+            "DELETE /Connections/{id}",
+          ],
         },
       ],
     },
@@ -135,7 +138,10 @@ export const xeroFirewall = {
         },
         {
           name: "accounting.budgets.read",
-          rules: ["GET /Budgets", "GET /Budgets/{BudgetID}"],
+          rules: [
+            "GET /Budgets",
+            "GET /Budgets/{BudgetID}",
+          ],
         },
         {
           name: "accounting.contacts",
@@ -194,7 +200,9 @@ export const xeroFirewall = {
         },
         {
           name: "accounting.reports.tenninetynine.read",
-          rules: ["GET /Reports/TenNinetyNine"],
+          rules: [
+            "GET /Reports/TenNinetyNine",
+          ],
         },
         {
           name: "accounting.settings",
@@ -573,11 +581,15 @@ export const xeroFirewall = {
       permissions: [
         {
           name: "finance.bankstatementsplus.read",
-          rules: ["GET /BankStatementsPlus/statements"],
+          rules: [
+            "GET /BankStatementsPlus/statements",
+          ],
         },
         {
           name: "finance.cashvalidation.read",
-          rules: ["GET /CashValidation"],
+          rules: [
+            "GET /CashValidation",
+          ],
         },
         {
           name: "finance.statements.read",
@@ -637,15 +649,23 @@ export const xeroFirewall = {
         },
         {
           name: "payroll.payruns.read",
-          rules: ["GET /PayRuns", "GET /PayRuns/{PayRunID}"],
+          rules: [
+            "GET /PayRuns",
+            "GET /PayRuns/{PayRunID}",
+          ],
         },
         {
           name: "payroll.payslip",
-          rules: ["GET /Payslip/{PayslipID}", "POST /Payslip/{PayslipID}"],
+          rules: [
+            "GET /Payslip/{PayslipID}",
+            "POST /Payslip/{PayslipID}",
+          ],
         },
         {
           name: "payroll.payslip.read",
-          rules: ["GET /Payslip/{PayslipID}"],
+          rules: [
+            "GET /Payslip/{PayslipID}",
+          ],
         },
         {
           name: "payroll.settings",
@@ -686,7 +706,10 @@ export const xeroFirewall = {
         },
         {
           name: "payroll.timesheets.read",
-          rules: ["GET /Timesheets", "GET /Timesheets/{TimesheetID}"],
+          rules: [
+            "GET /Timesheets",
+            "GET /Timesheets/{TimesheetID}",
+          ],
         },
       ],
     },
@@ -770,11 +793,18 @@ export const xeroFirewall = {
         },
         {
           name: "payroll.payruns",
-          rules: ["GET /PayRuns", "POST /PayRuns", "GET /PayRuns/{PayRunID}"],
+          rules: [
+            "GET /PayRuns",
+            "POST /PayRuns",
+            "GET /PayRuns/{PayRunID}",
+          ],
         },
         {
           name: "payroll.payruns.read",
-          rules: ["GET /PayRuns", "GET /PayRuns/{PayRunID}"],
+          rules: [
+            "GET /PayRuns",
+            "GET /PayRuns/{PayRunID}",
+          ],
         },
         {
           name: "payroll.payslip",
@@ -877,7 +907,10 @@ export const xeroFirewall = {
         },
         {
           name: "payroll.timesheets.read",
-          rules: ["GET /Timesheets", "GET /Timesheets/{TimesheetID}"],
+          rules: [
+            "GET /Timesheets",
+            "GET /Timesheets/{TimesheetID}",
+          ],
         },
       ],
     },

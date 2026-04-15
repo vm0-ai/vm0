@@ -10,8 +10,7 @@ export const openaiFirewall = {
   name: "openai",
   description: "OpenAI API",
   placeholders: {
-    OPENAI_TOKEN:
-      "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
+    OPENAI_TOKEN: "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
   },
   apis: [
     {

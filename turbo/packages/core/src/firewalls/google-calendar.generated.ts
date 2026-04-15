@@ -10,22 +10,20 @@ export const googleCalendarFirewall = {
   name: "google-calendar",
   description: "Google Calendar API",
   placeholders: {
-    GOOGLE_CALENDAR_TOKEN:
-      "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
+    GOOGLE_CALENDAR_TOKEN: "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {
       base: "https://www.googleapis.com/calendar",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GOOGLE_CALENDAR_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GOOGLE_CALENDAR_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "calendar",
-          description:
-            "See, edit, share, and permanently delete all the calendars you can access using Google Calendar",
+          description: "See, edit, share, and permanently delete all the calendars you can access using Google Calendar",
           rules: [
             "POST /v3/calendars",
             "GET /v3/calendars/{calendarId}",
@@ -68,8 +66,7 @@ export const googleCalendarFirewall = {
         },
         {
           name: "calendar.acls",
-          description:
-            "See and change the sharing permissions of Google calendars you own",
+          description: "See and change the sharing permissions of Google calendars you own",
           rules: [
             "GET /v3/calendars/{calendarId}/acl",
             "POST /v3/calendars/{calendarId}/acl",
@@ -83,8 +80,7 @@ export const googleCalendarFirewall = {
         },
         {
           name: "calendar.acls.readonly",
-          description:
-            "See the sharing permissions of Google calendars you own",
+          description: "See the sharing permissions of Google calendars you own",
           rules: [
             "GET /v3/calendars/{calendarId}/acl",
             "POST /v3/calendars/{calendarId}/acl/watch",
@@ -94,8 +90,7 @@ export const googleCalendarFirewall = {
         },
         {
           name: "calendar.app.created",
-          description:
-            "Make secondary Google calendars, and see, create, change, and delete events on them",
+          description: "Make secondary Google calendars, and see, create, change, and delete events on them",
           rules: [
             "POST /v3/calendars",
             "GET /v3/calendars/{calendarId}",
@@ -122,8 +117,7 @@ export const googleCalendarFirewall = {
         },
         {
           name: "calendar.calendarlist",
-          description:
-            "See, add, and remove Google calendars you’re subscribed to",
+          description: "See, add, and remove Google calendars you’re subscribed to",
           rules: [
             "POST /v3/channels/stop",
             "GET /v3/colors",
@@ -149,8 +143,7 @@ export const googleCalendarFirewall = {
         },
         {
           name: "calendar.calendars",
-          description:
-            "See and change the properties of Google calendars you have access to, and create secondary calendars",
+          description: "See and change the properties of Google calendars you have access to, and create secondary calendars",
           rules: [
             "POST /v3/calendars",
             "GET /v3/calendars/{calendarId}",
@@ -162,9 +155,10 @@ export const googleCalendarFirewall = {
         },
         {
           name: "calendar.calendars.readonly",
-          description:
-            "See the title, description, default time zone, and other properties of Google calendars you have access to",
-          rules: ["GET /v3/calendars/{calendarId}"],
+          description: "See the title, description, default time zone, and other properties of Google calendars you have access to",
+          rules: [
+            "GET /v3/calendars/{calendarId}",
+          ],
         },
         {
           name: "calendar.events",
@@ -186,8 +180,7 @@ export const googleCalendarFirewall = {
         },
         {
           name: "calendar.events.freebusy",
-          description:
-            "See the availability on Google calendars you have access to",
+          description: "See the availability on Google calendars you have access to",
           rules: [
             "GET /v3/calendars/{calendarId}/events",
             "POST /v3/calendars/{calendarId}/events/watch",
@@ -200,8 +193,7 @@ export const googleCalendarFirewall = {
         },
         {
           name: "calendar.events.owned",
-          description:
-            "See, create, change, and delete events on Google calendars you own",
+          description: "See, create, change, and delete events on Google calendars you own",
           rules: [
             "GET /v3/calendars/{calendarId}/events",
             "POST /v3/calendars/{calendarId}/events",
@@ -256,12 +248,13 @@ export const googleCalendarFirewall = {
         {
           name: "calendar.freebusy",
           description: "View your availability in your calendars",
-          rules: ["POST /v3/freeBusy"],
+          rules: [
+            "POST /v3/freeBusy",
+          ],
         },
         {
           name: "calendar.readonly",
-          description:
-            "See and download any calendar you can access using your Google Calendar",
+          description: "See and download any calendar you can access using your Google Calendar",
           rules: [
             "GET /v3/calendars/{calendarId}",
             "GET /v3/calendars/{calendarId}/acl/{ruleId}",

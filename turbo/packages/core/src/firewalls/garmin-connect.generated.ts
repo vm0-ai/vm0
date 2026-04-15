@@ -10,8 +10,7 @@ export const garminConnectFirewall = {
   name: "garmin-connect",
   description: "Garmin Connect API",
   placeholders: {
-    GARMIN_CONNECT_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
+    GARMIN_CONNECT_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

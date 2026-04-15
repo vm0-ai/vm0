@@ -91,14 +91,15 @@ export const youtubeFirewall = {
         },
         {
           name: "youtube.channel-memberships.creator",
-          description:
-            "See a list of your current active channel members, their current level, and when they became a member",
-          rules: ["GET /v3/members", "GET /v3/membershipsLevels"],
+          description: "See a list of your current active channel members, their current level, and when they became a member",
+          rules: [
+            "GET /v3/members",
+            "GET /v3/membershipsLevels",
+          ],
         },
         {
           name: "youtube.force-ssl",
-          description:
-            "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
+          description: "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
           rules: [
             "POST /v3/abuseReports",
             "GET /v3/activities",
@@ -216,8 +217,7 @@ export const youtubeFirewall = {
         },
         {
           name: "youtubepartner",
-          description:
-            "View and manage your assets and associated content on YouTube",
+          description: "View and manage your assets and associated content on YouTube",
           rules: [
             "GET /v3/captions",
             "POST /v3/captions",
@@ -265,9 +265,10 @@ export const youtubeFirewall = {
         },
         {
           name: "youtubepartner-channel-audit",
-          description:
-            "View private information of your YouTube channel relevant during the audit process with a YouTube partner",
-          rules: ["GET /v3/channels"],
+          description: "View private information of your YouTube channel relevant during the audit process with a YouTube partner",
+          rules: [
+            "GET /v3/channels",
+          ],
         },
       ],
     },
@@ -293,8 +294,7 @@ export const youtubeFirewall = {
         },
         {
           name: "youtube.force-ssl",
-          description:
-            "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
+          description: "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
           rules: [
             "POST /v3/captions",
             "PUT /v3/captions",
@@ -318,8 +318,7 @@ export const youtubeFirewall = {
         },
         {
           name: "youtubepartner",
-          description:
-            "View and manage your assets and associated content on YouTube",
+          description: "View and manage your assets and associated content on YouTube",
           rules: [
             "POST /v3/captions",
             "PUT /v3/captions",
@@ -354,8 +353,7 @@ export const youtubeFirewall = {
         },
         {
           name: "youtube.force-ssl",
-          description:
-            "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
+          description: "See, edit, and permanently delete your YouTube videos, ratings, comments and captions",
           rules: [
             "POST /v3/captions",
             "PUT /v3/captions",
@@ -379,8 +377,7 @@ export const youtubeFirewall = {
         },
         {
           name: "youtubepartner",
-          description:
-            "View and manage your assets and associated content on YouTube",
+          description: "View and manage your assets and associated content on YouTube",
           rules: [
             "POST /v3/captions",
             "PUT /v3/captions",

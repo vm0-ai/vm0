@@ -13,8 +13,7 @@ export const atlassianFirewall = {
   name: "atlassian",
   description: "Atlassian (Jira + Confluence) API",
   placeholders: {
-    ATLASSIAN_TOKEN:
-      "ATATT3xCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal00Cof",
+    ATLASSIAN_TOKEN: "ATATT3xCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal00Cof",
   },
   apis: [
     {

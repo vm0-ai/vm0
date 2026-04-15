@@ -10,22 +10,20 @@ export const googleDocsFirewall = {
   name: "google-docs",
   description: "Google Docs API",
   placeholders: {
-    GOOGLE_DOCS_TOKEN:
-      "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
+    GOOGLE_DOCS_TOKEN: "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {
       base: "https://docs.googleapis.com",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GOOGLE_DOCS_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GOOGLE_DOCS_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "documents",
-          description:
-            "See, edit, create, and delete all your Google Docs documents",
+          description: "See, edit, create, and delete all your Google Docs documents",
           rules: [
             "POST /v1/documents",
             "GET /v1/documents/{documentId}",
@@ -35,12 +33,13 @@ export const googleDocsFirewall = {
         {
           name: "documents.readonly",
           description: "See all your Google Docs documents",
-          rules: ["GET /v1/documents/{documentId}"],
+          rules: [
+            "GET /v1/documents/{documentId}",
+          ],
         },
         {
           name: "drive",
-          description:
-            "See, edit, create, and delete all of your Google Drive files",
+          description: "See, edit, create, and delete all of your Google Drive files",
           rules: [
             "POST /v1/documents",
             "GET /v1/documents/{documentId}",
@@ -49,8 +48,7 @@ export const googleDocsFirewall = {
         },
         {
           name: "drive.file",
-          description:
-            "See, edit, create, and delete only the specific Google Drive files you use with this app",
+          description: "See, edit, create, and delete only the specific Google Drive files you use with this app",
           rules: [
             "POST /v1/documents",
             "GET /v1/documents/{documentId}",
@@ -60,7 +58,9 @@ export const googleDocsFirewall = {
         {
           name: "drive.readonly",
           description: "See and download all your Google Drive files",
-          rules: ["GET /v1/documents/{documentId}"],
+          rules: [
+            "GET /v1/documents/{documentId}",
+          ],
         },
       ],
     },

@@ -10,22 +10,20 @@ export const googleMeetFirewall = {
   name: "google-meet",
   description: "Google Meet API",
   placeholders: {
-    GOOGLE_MEET_TOKEN:
-      "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
+    GOOGLE_MEET_TOKEN: "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {
       base: "https://meet.googleapis.com",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GOOGLE_MEET_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GOOGLE_MEET_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "meetings.space.created",
-          description:
-            "Create, edit, and see information about your Google Meet conferences created by the app.",
+          description: "Create, edit, and see information about your Google Meet conferences created by the app.",
           rules: [
             "GET /v2/conferenceRecords",
             "GET /v2/conferenceRecords/{conferenceRecordsId}",
@@ -49,8 +47,7 @@ export const googleMeetFirewall = {
         },
         {
           name: "meetings.space.readonly",
-          description:
-            "Read information about any of your Google Meet conferences",
+          description: "Read information about any of your Google Meet conferences",
           rules: [
             "GET /v2/conferenceRecords",
             "GET /v2/conferenceRecords/{conferenceRecordsId}",
@@ -71,9 +68,11 @@ export const googleMeetFirewall = {
         },
         {
           name: "meetings.space.settings",
-          description:
-            "Edit, and see settings for all of your Google Meet calls.",
-          rules: ["GET /v2/spaces/{spacesId}", "PATCH /v2/spaces/{spacesId}"],
+          description: "Edit, and see settings for all of your Google Meet calls.",
+          rules: [
+            "GET /v2/spaces/{spacesId}",
+            "PATCH /v2/spaces/{spacesId}",
+          ],
         },
       ],
     },

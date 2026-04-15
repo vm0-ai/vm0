@@ -5,6 +5,7 @@
 type IntegrationPlatform =
   | "Email"
   | "GitHub"
+  | "iMessage"
   | "Phone"
   | "Schedule"
   | "Slack"
@@ -386,6 +387,15 @@ export function buildSlackPrompt(
 export function buildPhonePrompt(phoneContext: string): string {
   const header = buildIntegrationPrompt("Phone", { channelType: "dm" });
   return [header, phoneContext].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Build the full appendSystemPrompt for iMessage integration.
+ */
+export function buildIMessagePrompt(fromNumber: string): string {
+  const header = buildIntegrationPrompt("iMessage", { channelType: "dm" });
+  const context = `The user is communicating via iMessage. Their phone number is ${fromNumber}. Keep responses concise — they will be delivered as text messages.`;
+  return [header, context].join("\n\n");
 }
 
 /**

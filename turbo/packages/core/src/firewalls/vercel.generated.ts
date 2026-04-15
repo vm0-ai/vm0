@@ -10,8 +10,7 @@ export const vercelFirewall = {
   name: "vercel",
   description: "Vercel API",
   placeholders: {
-    VERCEL_TOKEN:
-      "vcp_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
+    VERCEL_TOKEN: "vcp_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
   },
   apis: [
     {
@@ -61,7 +60,9 @@ export const vercelFirewall = {
         },
         {
           name: "api-observability:read",
-          rules: ["GET /v1/observability/manage/configuration/projects"],
+          rules: [
+            "GET /v1/observability/manage/configuration/projects",
+          ],
         },
         {
           name: "api-observability:write",
@@ -87,11 +88,17 @@ export const vercelFirewall = {
         },
         {
           name: "authentication:read",
-          rules: ["GET /v5/user/tokens/{tokenId}", "GET /v6/user/tokens"],
+          rules: [
+            "GET /v5/user/tokens/{tokenId}",
+            "GET /v6/user/tokens",
+          ],
         },
         {
           name: "authentication:write",
-          rules: ["POST /v3/user/tokens", "DELETE /v3/user/tokens/{tokenId}"],
+          rules: [
+            "POST /v3/user/tokens",
+            "DELETE /v3/user/tokens/{tokenId}",
+          ],
         },
         {
           name: "billing:read",
@@ -102,11 +109,16 @@ export const vercelFirewall = {
         },
         {
           name: "billing:write",
-          rules: ["POST /v1/billing/buy"],
+          rules: [
+            "POST /v1/billing/buy",
+          ],
         },
         {
           name: "bulk-redirects:read",
-          rules: ["GET /v1/bulk-redirects", "GET /v1/bulk-redirects/versions"],
+          rules: [
+            "GET /v1/bulk-redirects",
+            "GET /v1/bulk-redirects/versions",
+          ],
         },
         {
           name: "bulk-redirects:write",
@@ -120,11 +132,17 @@ export const vercelFirewall = {
         },
         {
           name: "certs:read",
-          rules: ["GET /v8/certs/{id}"],
+          rules: [
+            "GET /v8/certs/{id}",
+          ],
         },
         {
           name: "certs:write",
-          rules: ["POST /v8/certs", "PUT /v8/certs", "DELETE /v8/certs/{id}"],
+          rules: [
+            "POST /v8/certs",
+            "PUT /v8/certs",
+            "DELETE /v8/certs/{id}",
+          ],
         },
         {
           name: "checks-v2:read",
@@ -199,7 +217,9 @@ export const vercelFirewall = {
         },
         {
           name: "dns:read",
-          rules: ["GET /v5/domains/{domain}/records"],
+          rules: [
+            "GET /v5/domains/{domain}/records",
+          ],
         },
         {
           name: "dns:write",
@@ -253,7 +273,10 @@ export const vercelFirewall = {
         },
         {
           name: "drains:read",
-          rules: ["GET /v1/drains", "GET /v1/drains/{id}"],
+          rules: [
+            "GET /v1/drains",
+            "GET /v1/drains/{id}",
+          ],
         },
         {
           name: "drains:write",
@@ -437,7 +460,9 @@ export const vercelFirewall = {
         },
         {
           name: "microfrontends:write",
-          rules: ["POST /v1/microfrontends/group"],
+          rules: [
+            "POST /v1/microfrontends/group",
+          ],
         },
         {
           name: "project-routes:read",
@@ -459,7 +484,9 @@ export const vercelFirewall = {
         },
         {
           name: "projectMembers:read",
-          rules: ["GET /v1/projects/{idOrName}/members"],
+          rules: [
+            "GET /v1/projects/{idOrName}/members",
+          ],
         },
         {
           name: "projectMembers:write",
@@ -602,7 +629,9 @@ export const vercelFirewall = {
         },
         {
           name: "static-ips:write",
-          rules: ["PATCH /v1/projects/{idOrName}/shared-connect-links"],
+          rules: [
+            "PATCH /v1/projects/{idOrName}/shared-connect-links",
+          ],
         },
         {
           name: "teams:read",
@@ -632,19 +661,31 @@ export const vercelFirewall = {
         },
         {
           name: "user:read",
-          rules: ["GET /v1/events/types", "GET /v2/user", "GET /v3/events"],
+          rules: [
+            "GET /v1/events/types",
+            "GET /v2/user",
+            "GET /v3/events",
+          ],
         },
         {
           name: "user:write",
-          rules: ["DELETE /v1/user"],
+          rules: [
+            "DELETE /v1/user",
+          ],
         },
         {
           name: "webhooks:read",
-          rules: ["GET /v1/webhooks", "GET /v1/webhooks/{id}"],
+          rules: [
+            "GET /v1/webhooks",
+            "GET /v1/webhooks/{id}",
+          ],
         },
         {
           name: "webhooks:write",
-          rules: ["POST /v1/webhooks", "DELETE /v1/webhooks/{id}"],
+          rules: [
+            "POST /v1/webhooks",
+            "DELETE /v1/webhooks/{id}",
+          ],
         },
       ],
     },

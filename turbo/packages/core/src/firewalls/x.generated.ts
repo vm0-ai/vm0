@@ -10,8 +10,7 @@ export const xFirewall = {
   name: "x",
   description: "X (Twitter) API",
   placeholders: {
-    X_TOKEN:
-      "AAAAAAAAAAAAAAAAAAAAAACoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
+    X_TOKEN: "AAAAAAAAAAAAAAAAAAAAAACoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {
@@ -77,7 +76,9 @@ export const xFirewall = {
         {
           name: "block.read",
           description: "View accounts you have blocked.",
-          rules: ["GET /2/users/{id}/blocking"],
+          rules: [
+            "GET /2/users/{id}/blocking",
+          ],
         },
         {
           name: "bookmark.read",
@@ -140,7 +141,10 @@ export const xFirewall = {
         {
           name: "follows.read",
           description: "View accounts you follow and accounts following you.",
-          rules: ["GET /2/users/{id}/followers", "GET /2/users/{id}/following"],
+          rules: [
+            "GET /2/users/{id}/followers",
+            "GET /2/users/{id}/following",
+          ],
         },
         {
           name: "follows.write",
@@ -168,8 +172,7 @@ export const xFirewall = {
         },
         {
           name: "list.read",
-          description:
-            "View Lists, members, and followers of Lists you created or are a member of, including private Lists.",
+          description: "View Lists, members, and followers of Lists you created or are a member of, including private Lists.",
           rules: [
             "GET /2/communities/{id}",
             "POST /2/lists",
@@ -200,8 +203,7 @@ export const xFirewall = {
         },
         {
           name: "media.write",
-          description:
-            "Upload media, such as photos and videos, on your behalf.",
+          description: "Upload media, such as photos and videos, on your behalf.",
           rules: [
             "POST /2/chat/media/upload/initialize",
             "POST /2/chat/media/upload/{id}/append",
@@ -220,7 +222,9 @@ export const xFirewall = {
         {
           name: "mute.read",
           description: "View accounts you have muted.",
-          rules: ["GET /2/users/{id}/muting"],
+          rules: [
+            "GET /2/users/{id}/muting",
+          ],
         },
         {
           name: "mute.write",
@@ -244,19 +248,21 @@ export const xFirewall = {
         },
         {
           name: "timeline.read",
-          description:
-            "View all Custom Timelines you can see, including public Custom Timelines from other developers.",
-          rules: ["GET /2/users/reposts_of_me"],
+          description: "View all Custom Timelines you can see, including public Custom Timelines from other developers.",
+          rules: [
+            "GET /2/users/reposts_of_me",
+          ],
         },
         {
           name: "tweet.moderate.write",
           description: "Hide and unhide replies to your Posts.",
-          rules: ["PUT /2/tweets/{tweet_id}/hidden"],
+          rules: [
+            "PUT /2/tweets/{tweet_id}/hidden",
+          ],
         },
         {
           name: "tweet.read",
-          description:
-            "View all Posts you can see, including those from protected accounts.",
+          description: "View all Posts you can see, including those from protected accounts.",
           rules: [
             "GET /2/account_activity/webhooks/{webhook_id}/subscriptions/all",
             "POST /2/account_activity/webhooks/{webhook_id}/subscriptions/all",
@@ -371,8 +377,7 @@ export const xFirewall = {
         },
         {
           name: "users.read",
-          description:
-            "View any account you can see, including protected accounts.",
+          description: "View any account you can see, including protected accounts.",
           rules: [
             "GET /2/account_activity/webhooks/{webhook_id}/subscriptions/all",
             "POST /2/account_activity/webhooks/{webhook_id}/subscriptions/all",

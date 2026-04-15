@@ -10,8 +10,7 @@ export const dropboxFirewall = {
   name: "dropbox",
   description: "Dropbox API",
   placeholders: {
-    DROPBOX_TOKEN:
-      "sl.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
+    DROPBOX_TOKEN: "sl.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {
@@ -33,7 +32,9 @@ export const dropboxFirewall = {
         },
         {
           name: "account_info.write",
-          rules: ["POST /2/account/set_profile_photo"],
+          rules: [
+            "POST /2/account/set_profile_photo",
+          ],
         },
         {
           name: "contacts.write",
@@ -257,7 +258,9 @@ export const dropboxFirewall = {
         },
         {
           name: "openid",
-          rules: ["POST /2/openid/userinfo"],
+          rules: [
+            "POST /2/openid/userinfo",
+          ],
         },
         {
           name: "sessions.list",
@@ -436,7 +439,9 @@ export const dropboxFirewall = {
         },
         {
           name: "sharing.read",
-          rules: ["POST /2/sharing/get_shared_link_file"],
+          rules: [
+            "POST /2/sharing/get_shared_link_file",
+          ],
         },
       ],
     },
@@ -450,7 +455,9 @@ export const dropboxFirewall = {
       permissions: [
         {
           name: "files.metadata.read",
-          rules: ["POST /2/files/list_folder/longpoll"],
+          rules: [
+            "POST /2/files/list_folder/longpoll",
+          ],
         },
       ],
     },

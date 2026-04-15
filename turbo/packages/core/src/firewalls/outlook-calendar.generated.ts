@@ -10,8 +10,7 @@ export const outlookCalendarFirewall = {
   name: "outlook-calendar",
   description: "Microsoft Graph API (Outlook Calendar)",
   placeholders: {
-    OUTLOOK_CALENDAR_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
+    OUTLOOK_CALENDAR_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

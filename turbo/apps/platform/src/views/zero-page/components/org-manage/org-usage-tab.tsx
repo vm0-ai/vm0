@@ -487,16 +487,16 @@ function MembersTable({
                   )}
                 </div>
               </div>
-              <span className="text-[13px] tabular-nums text-foreground">
+              <span className="text-[13px] tabular-nums text-foreground whitespace-nowrap">
                 {member.creditsCharged.toLocaleString()}
               </span>
-              <span className="text-[13px] tabular-nums text-muted-foreground/50">
+              <span className="text-[13px] tabular-nums text-muted-foreground/50 whitespace-nowrap">
                 {remaining !== null ? remaining.toLocaleString() : "–"}
               </span>
               {isAdmin ? (
                 <InlineCapInput member={member} />
               ) : (
-                <span className="text-[13px] tabular-nums text-muted-foreground">
+                <span className="text-[13px] tabular-nums text-muted-foreground whitespace-nowrap">
                   {member.creditCap !== null
                     ? member.creditCap.toLocaleString()
                     : "—"}

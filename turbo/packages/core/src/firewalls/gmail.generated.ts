@@ -11,22 +11,20 @@ export const gmailFirewall = {
   name: "gmail",
   description: "Gmail API",
   placeholders: {
-    GMAIL_TOKEN:
-      "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
+    GMAIL_TOKEN: "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {
       base: "https://gmail.googleapis.com/gmail",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GMAIL_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GMAIL_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "gmail",
-          description:
-            "Read, compose, send, and permanently delete all your email from Gmail",
+          description: "Read, compose, send, and permanently delete all your email from Gmail",
           rules: [
             "GET /v1/users/{userId}/drafts",
             "POST /v1/users/{userId}/drafts",
@@ -85,8 +83,7 @@ export const gmailFirewall = {
         },
         {
           name: "gmail.addons.current.action.compose",
-          description:
-            "Manage drafts and send emails when you interact with the add-on",
+          description: "Manage drafts and send emails when you interact with the add-on",
           rules: [
             "POST /v1/users/{userId}/drafts",
             "POST /v1/users/{userId}/drafts/send",
@@ -97,8 +94,7 @@ export const gmailFirewall = {
         },
         {
           name: "gmail.addons.current.message.action",
-          description:
-            "View your email messages when you interact with the add-on",
+          description: "View your email messages when you interact with the add-on",
           rules: [
             "GET /v1/users/{userId}/messages/{id}",
             "GET /v1/users/{userId}/messages/{messageId}/attachments/{id}",
@@ -107,8 +103,7 @@ export const gmailFirewall = {
         },
         {
           name: "gmail.addons.current.message.metadata",
-          description:
-            "View your email message metadata when the add-on is running",
+          description: "View your email message metadata when the add-on is running",
           rules: [
             "GET /v1/users/{userId}/messages/{id}",
             "GET /v1/users/{userId}/threads/{id}",
@@ -157,8 +152,7 @@ export const gmailFirewall = {
         },
         {
           name: "gmail.metadata",
-          description:
-            "View your email message metadata such as labels and headers, but not the email body",
+          description: "View your email message metadata such as labels and headers, but not the email body",
           rules: [
             "GET /v1/users/{userId}/history",
             "GET /v1/users/{userId}/labels",
@@ -276,8 +270,7 @@ export const gmailFirewall = {
         },
         {
           name: "gmail.settings.basic",
-          description:
-            "See, edit, create, or change your email settings and filters in Gmail",
+          description: "See, edit, create, or change your email settings and filters in Gmail",
           rules: [
             "GET /v1/users/{userId}/settings/autoForwarding",
             "GET /v1/users/{userId}/settings/cse/identities",
@@ -320,8 +313,7 @@ export const gmailFirewall = {
         },
         {
           name: "gmail.settings.sharing",
-          description:
-            "Manage your sensitive mail settings, including who can manage your mail",
+          description: "Manage your sensitive mail settings, including who can manage your mail",
           rules: [
             "PUT /v1/users/{userId}/settings/autoForwarding",
             "GET /v1/users/{userId}/settings/cse/identities",
@@ -357,14 +349,13 @@ export const gmailFirewall = {
       base: "https://gmail.googleapis.com/upload/gmail",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GMAIL_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GMAIL_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "gmail",
-          description:
-            "Read, compose, send, and permanently delete all your email from Gmail",
+          description: "Read, compose, send, and permanently delete all your email from Gmail",
           rules: [
             "POST /v1/users/{userId}/drafts",
             "POST /v1/users/{userId}/drafts/send",
@@ -376,8 +367,7 @@ export const gmailFirewall = {
         },
         {
           name: "gmail.addons.current.action.compose",
-          description:
-            "Manage drafts and send emails when you interact with the add-on",
+          description: "Manage drafts and send emails when you interact with the add-on",
           rules: [
             "POST /v1/users/{userId}/drafts",
             "POST /v1/users/{userId}/drafts/send",
@@ -427,14 +417,13 @@ export const gmailFirewall = {
       base: "https://gmail.googleapis.com/resumable/upload/gmail",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GMAIL_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GMAIL_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "gmail",
-          description:
-            "Read, compose, send, and permanently delete all your email from Gmail",
+          description: "Read, compose, send, and permanently delete all your email from Gmail",
           rules: [
             "POST /v1/users/{userId}/drafts",
             "POST /v1/users/{userId}/drafts/send",
@@ -446,8 +435,7 @@ export const gmailFirewall = {
         },
         {
           name: "gmail.addons.current.action.compose",
-          description:
-            "Manage drafts and send emails when you interact with the add-on",
+          description: "Manage drafts and send emails when you interact with the add-on",
           rules: [
             "POST /v1/users/{userId}/drafts",
             "POST /v1/users/{userId}/drafts/send",

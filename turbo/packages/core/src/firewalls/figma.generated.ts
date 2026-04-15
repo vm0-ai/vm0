@@ -24,7 +24,9 @@ export const figmaFirewall = {
         {
           name: "current_user:read",
           description: "Read your name, email, and profile image.",
-          rules: ["GET /v1/me"],
+          rules: [
+            "GET /v1/me",
+          ],
         },
         {
           name: "file_comments:read",
@@ -36,8 +38,7 @@ export const figmaFirewall = {
         },
         {
           name: "file_comments:write",
-          description:
-            "Post and delete comments and comment reactions in files.",
+          description: "Post and delete comments and comment reactions in files.",
           rules: [
             "POST /v1/files/{file_key}/comments",
             "DELETE /v1/files/{file_key}/comments/{comment_id}",
@@ -47,8 +48,7 @@ export const figmaFirewall = {
         },
         {
           name: "file_content:read",
-          description:
-            "Read the contents of files, such as nodes and the editor type.",
+          description: "Read the contents of files, such as nodes and the editor type.",
           rules: [
             "GET /v1/files/{file_key}",
             "GET /v1/files/{file_key}/images",
@@ -59,7 +59,9 @@ export const figmaFirewall = {
         {
           name: "file_dev_resources:read",
           description: "Read dev resources in files.",
-          rules: ["GET /v1/files/{file_key}/dev_resources"],
+          rules: [
+            "GET /v1/files/{file_key}/dev_resources",
+          ],
         },
         {
           name: "file_dev_resources:write",
@@ -73,12 +75,14 @@ export const figmaFirewall = {
         {
           name: "file_metadata:read",
           description: "Read metadata of files.",
-          rules: ["GET /v1/files/{file_key}/meta", "GET /v1/oembed"],
+          rules: [
+            "GET /v1/files/{file_key}/meta",
+            "GET /v1/oembed",
+          ],
         },
         {
           name: "file_variables:read",
-          description:
-            "Read variables in Figma file. Note: this is only available to members in Enterprise organizations.",
+          description: "Read variables in Figma file. Note: this is only available to members in Enterprise organizations.",
           rules: [
             "GET /v1/files/{file_key}/variables/local",
             "GET /v1/files/{file_key}/variables/published",
@@ -86,19 +90,21 @@ export const figmaFirewall = {
         },
         {
           name: "file_variables:write",
-          description:
-            "Write to variables in Figma file. Note: this is only available to members in Enterprise organizations.",
-          rules: ["POST /v1/files/{file_key}/variables"],
+          description: "Write to variables in Figma file. Note: this is only available to members in Enterprise organizations.",
+          rules: [
+            "POST /v1/files/{file_key}/variables",
+          ],
         },
         {
           name: "file_versions:read",
           description: "Read the version history for files you can access.",
-          rules: ["GET /v1/files/{file_key}/versions"],
+          rules: [
+            "GET /v1/files/{file_key}/versions",
+          ],
         },
         {
           name: "files:read",
-          description:
-            "Deprecated. Read files, projects, users, versions, comments, components & styles, and webhooks.",
+          description: "Deprecated. Read files, projects, users, versions, comments, components & styles, and webhooks.",
           rules: [
             "GET /v1/component_sets/{key}",
             "GET /v1/components/{key}",
@@ -139,8 +145,7 @@ export const figmaFirewall = {
         },
         {
           name: "library_assets:read",
-          description:
-            "Read data of individual published components and styles.",
+          description: "Read data of individual published components and styles.",
           rules: [
             "GET /v1/component_sets/{key}",
             "GET /v1/components/{key}",
@@ -159,7 +164,9 @@ export const figmaFirewall = {
         {
           name: "org:activity_log_read",
           description: "Read activity logs in the organization.",
-          rules: ["GET /v1/activity_logs"],
+          rules: [
+            "GET /v1/activity_logs",
+          ],
         },
         {
           name: "projects:read",

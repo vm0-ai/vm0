@@ -24,12 +24,13 @@ export const notionFirewall = {
         {
           name: "insert_comments",
           description: "Create comments",
-          rules: ["POST /v1/comments"],
+          rules: [
+            "POST /v1/comments",
+          ],
         },
         {
           name: "insert_content",
-          description:
-            "Create pages, databases, blocks, data sources, and upload files",
+          description: "Create pages, databases, blocks, data sources, and upload files",
           rules: [
             "PATCH /v1/blocks/{block_id}/children",
             "POST /v1/data_sources",
@@ -45,7 +46,10 @@ export const notionFirewall = {
         {
           name: "read_comments",
           description: "Read comments",
-          rules: ["GET /v1/comments", "GET /v1/comments/{comment_id}"],
+          rules: [
+            "GET /v1/comments",
+            "GET /v1/comments/{comment_id}",
+          ],
         },
         {
           name: "read_content",
@@ -80,8 +84,7 @@ export const notionFirewall = {
         },
         {
           name: "update_content",
-          description:
-            "Update and delete pages, databases, blocks, and data sources",
+          description: "Update and delete pages, databases, blocks, and data sources",
           rules: [
             "PATCH /v1/blocks/{block_id}",
             "DELETE /v1/blocks/{block_id}",

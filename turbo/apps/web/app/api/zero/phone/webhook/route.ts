@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { handleCallEnded } from "../../../../../src/lib/zero/phone/handlers/call-ended";
+import { handleMessageReceived } from "../../../../../src/lib/zero/phone/handlers/message-received";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:phone:webhook");
@@ -27,6 +28,47 @@ const webhookBodySchema = z.record(z.string(), z.unknown());
  *   "recentHistory": [...]
  * }
  */
+
+function extractMessageData(body: Record<string, unknown>): {
+  messageId: string;
+  agentId: string;
+  fromNumber: string;
+  toNumber: string;
+  body: string;
+  channel: string;
+} {
+  const channel = typeof body.channel === "string" ? body.channel : "imessage";
+  const agentId = typeof body.agentId === "string" ? body.agentId : "";
+
+  const data = (
+    typeof body.data === "object" && body.data !== null ? body.data : {}
+  ) as Record<string, unknown>;
+
+  const messageId =
+    typeof data.messageId === "string"
+      ? data.messageId
+      : typeof data.id === "string"
+        ? data.id
+        : "";
+
+  const fromNumber = typeof data.from === "string" ? data.from : "";
+  const toNumber = typeof data.to === "string" ? data.to : "";
+  const messageBody =
+    typeof data.body === "string"
+      ? data.body
+      : typeof data.text === "string"
+        ? data.text
+        : "";
+
+  return {
+    messageId,
+    agentId,
+    fromNumber,
+    toNumber,
+    body: messageBody,
+    channel,
+  };
+}
 
 function extractCallData(body: Record<string, unknown>): {
   callId: string | undefined;
@@ -94,8 +136,37 @@ export async function POST(request: Request): Promise<Response> {
 
   const eventType = typeof body.event === "string" ? body.event : undefined;
 
+  // Route: iMessage/SMS message events
+  if (eventType === "agent.message") {
+    const messageData = extractMessageData(body);
+    if (
+      !messageData.messageId ||
+      !messageData.agentId ||
+      !messageData.fromNumber
+    ) {
+      log.warn("Missing required fields in agent.message event", {
+        messageId: messageData.messageId,
+        agentId: messageData.agentId,
+        fromNumber: messageData.fromNumber,
+        bodyKeys: Object.keys(body),
+      });
+      return new Response("OK", { status: 200 });
+    }
+
+    log.info("Processing agent.message webhook", {
+      messageId: messageData.messageId,
+      agentId: messageData.agentId,
+      fromNumber: messageData.fromNumber,
+      channel: messageData.channel,
+    });
+
+    after(handleMessageReceived(messageData));
+    return new Response("OK", { status: 200 });
+  }
+
+  // Route: voice call ended events
   if (eventType !== "call_ended" && eventType !== "agent.call_ended") {
-    log.debug("Ignoring non-call_ended event", { eventType });
+    log.debug("Ignoring unhandled event", { eventType });
     return new Response("OK", { status: 200 });
   }
 

@@ -10,8 +10,7 @@ export const docusignFirewall = {
   name: "docusign",
   description: "DocuSign eSignature REST API",
   placeholders: {
-    DOCUSIGN_TOKEN:
-      "eyJ0eXAiOiJNVCIsImFsZyI6IlJTMjU2In0.CoffeeSafeLocalCoffeeSafeLocal.CoffeeSaf",
+    DOCUSIGN_TOKEN: "eyJ0eXAiOiJNVCIsImFsZyI6IlJTMjU2In0.CoffeeSafeLocalCoffeeSafeLocal.CoffeeSaf",
   },
   apis: [
     {

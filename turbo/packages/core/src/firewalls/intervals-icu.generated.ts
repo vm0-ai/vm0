@@ -10,8 +10,7 @@ export const intervalsIcuFirewall = {
   name: "intervals-icu",
   description: "Intervals.icu Training API",
   placeholders: {
-    INTERVALS_ICU_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
+    INTERVALS_ICU_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

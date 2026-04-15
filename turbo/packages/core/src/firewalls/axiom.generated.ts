@@ -23,59 +23,90 @@ export const axiomFirewall = {
       permissions: [
         {
           name: "annotations|create",
-          rules: ["POST /v2/annotations"],
+          rules: [
+            "POST /v2/annotations",
+          ],
         },
         {
           name: "annotations|delete",
-          rules: ["DELETE /v2/annotations/{id}"],
+          rules: [
+            "DELETE /v2/annotations/{id}",
+          ],
         },
         {
           name: "annotations|read",
-          rules: ["GET /v2/annotations", "GET /v2/annotations/{id}"],
+          rules: [
+            "GET /v2/annotations",
+            "GET /v2/annotations/{id}",
+          ],
         },
         {
           name: "annotations|update",
-          rules: ["PUT /v2/annotations/{id}"],
+          rules: [
+            "PUT /v2/annotations/{id}",
+          ],
         },
         {
           name: "apiTokens|create",
-          rules: ["POST /v2/tokens"],
+          rules: [
+            "POST /v2/tokens",
+          ],
         },
         {
           name: "apiTokens|delete",
-          rules: ["DELETE /v2/tokens/{id}"],
+          rules: [
+            "DELETE /v2/tokens/{id}",
+          ],
         },
         {
           name: "apiTokens|read",
-          rules: ["GET /v2/tokens", "GET /v2/tokens/{id}"],
+          rules: [
+            "GET /v2/tokens",
+            "GET /v2/tokens/{id}",
+          ],
         },
         {
           name: "apiTokens|update",
-          rules: ["POST /v2/tokens/{id}/regenerate"],
+          rules: [
+            "POST /v2/tokens/{id}/regenerate",
+          ],
         },
         {
           name: "dashboards|create",
-          rules: ["POST /v2/dashboards"],
+          rules: [
+            "POST /v2/dashboards",
+          ],
         },
         {
           name: "dashboards|delete",
-          rules: ["DELETE /v2/dashboards/uid/{uid}"],
+          rules: [
+            "DELETE /v2/dashboards/uid/{uid}",
+          ],
         },
         {
           name: "dashboards|read",
-          rules: ["GET /v2/dashboards", "GET /v2/dashboards/uid/{uid}"],
+          rules: [
+            "GET /v2/dashboards",
+            "GET /v2/dashboards/uid/{uid}",
+          ],
         },
         {
           name: "dashboards|update",
-          rules: ["PUT /v2/dashboards/uid/{uid}"],
+          rules: [
+            "PUT /v2/dashboards/uid/{uid}",
+          ],
         },
         {
           name: "datasets|create",
-          rules: ["POST /v2/datasets"],
+          rules: [
+            "POST /v2/datasets",
+          ],
         },
         {
           name: "datasets|delete",
-          rules: ["DELETE /v2/datasets/{dataset_id}"],
+          rules: [
+            "DELETE /v2/datasets/{dataset_id}",
+          ],
         },
         {
           name: "datasets|read",
@@ -112,11 +143,15 @@ export const axiomFirewall = {
         },
         {
           name: "monitors|create",
-          rules: ["POST /v2/monitors"],
+          rules: [
+            "POST /v2/monitors",
+          ],
         },
         {
           name: "monitors|delete",
-          rules: ["DELETE /v2/monitors/{id}"],
+          rules: [
+            "DELETE /v2/monitors/{id}",
+          ],
         },
         {
           name: "monitors|read",
@@ -128,35 +163,53 @@ export const axiomFirewall = {
         },
         {
           name: "monitors|update",
-          rules: ["PUT /v2/monitors/{id}"],
+          rules: [
+            "PUT /v2/monitors/{id}",
+          ],
         },
         {
           name: "notifiers|create",
-          rules: ["POST /v2/notifiers"],
+          rules: [
+            "POST /v2/notifiers",
+          ],
         },
         {
           name: "notifiers|delete",
-          rules: ["DELETE /v2/notifiers/{id}"],
+          rules: [
+            "DELETE /v2/notifiers/{id}",
+          ],
         },
         {
           name: "notifiers|read",
-          rules: ["GET /v2/notifiers", "GET /v2/notifiers/{id}"],
+          rules: [
+            "GET /v2/notifiers",
+            "GET /v2/notifiers/{id}",
+          ],
         },
         {
           name: "notifiers|update",
-          rules: ["PUT /v2/notifiers/{id}"],
+          rules: [
+            "PUT /v2/notifiers/{id}",
+          ],
         },
         {
           name: "orgs|create",
-          rules: ["POST /v2/orgs"],
+          rules: [
+            "POST /v2/orgs",
+          ],
         },
         {
           name: "orgs|read",
-          rules: ["GET /v2/orgs", "GET /v2/orgs/{id}"],
+          rules: [
+            "GET /v2/orgs",
+            "GET /v2/orgs/{id}",
+          ],
         },
         {
           name: "orgs|update",
-          rules: ["PUT /v2/orgs/{id}"],
+          rules: [
+            "PUT /v2/orgs/{id}",
+          ],
         },
         {
           name: "query|read",
@@ -196,11 +249,15 @@ export const axiomFirewall = {
         },
         {
           name: "starredQueries|create",
-          rules: ["POST /v2/apl-starred-queries"],
+          rules: [
+            "POST /v2/apl-starred-queries",
+          ],
         },
         {
           name: "starredQueries|delete",
-          rules: ["DELETE /v2/apl-starred-queries/{id}"],
+          rules: [
+            "DELETE /v2/apl-starred-queries/{id}",
+          ],
         },
         {
           name: "starredQueries|read",
@@ -211,19 +268,27 @@ export const axiomFirewall = {
         },
         {
           name: "starredQueries|update",
-          rules: ["PUT /v2/apl-starred-queries/{id}"],
+          rules: [
+            "PUT /v2/apl-starred-queries/{id}",
+          ],
         },
         {
           name: "trim|update",
-          rules: ["POST /v2/datasets/{dataset_id}/trim"],
+          rules: [
+            "POST /v2/datasets/{dataset_id}/trim",
+          ],
         },
         {
           name: "users|create",
-          rules: ["POST /v2/users"],
+          rules: [
+            "POST /v2/users",
+          ],
         },
         {
           name: "users|delete",
-          rules: ["DELETE /v2/users/{id}"],
+          rules: [
+            "DELETE /v2/users/{id}",
+          ],
         },
         {
           name: "users|read",
@@ -236,43 +301,66 @@ export const axiomFirewall = {
         },
         {
           name: "users|update",
-          rules: ["PUT /v2/user", "PUT /v2/users/{id}/role"],
+          rules: [
+            "PUT /v2/user",
+            "PUT /v2/users/{id}/role",
+          ],
         },
         {
           name: "vacuum|update",
-          rules: ["POST /v2/datasets/{dataset_id}/vacuum"],
+          rules: [
+            "POST /v2/datasets/{dataset_id}/vacuum",
+          ],
         },
         {
           name: "views|create",
-          rules: ["POST /v2/views"],
+          rules: [
+            "POST /v2/views",
+          ],
         },
         {
           name: "views|delete",
-          rules: ["DELETE /v2/views/{id}"],
+          rules: [
+            "DELETE /v2/views/{id}",
+          ],
         },
         {
           name: "views|read",
-          rules: ["GET /v2/views", "GET /v2/views/{id}"],
+          rules: [
+            "GET /v2/views",
+            "GET /v2/views/{id}",
+          ],
         },
         {
           name: "views|update",
-          rules: ["PUT /v2/views/{id}"],
+          rules: [
+            "PUT /v2/views/{id}",
+          ],
         },
         {
           name: "virtualFields|create",
-          rules: ["POST /v2/vfields"],
+          rules: [
+            "POST /v2/vfields",
+          ],
         },
         {
           name: "virtualFields|delete",
-          rules: ["DELETE /v2/vfields/{id}"],
+          rules: [
+            "DELETE /v2/vfields/{id}",
+          ],
         },
         {
           name: "virtualFields|read",
-          rules: ["GET /v2/vfields", "GET /v2/vfields/{id}"],
+          rules: [
+            "GET /v2/vfields",
+            "GET /v2/vfields/{id}",
+          ],
         },
         {
           name: "virtualFields|update",
-          rules: ["PUT /v2/vfields/{id}"],
+          rules: [
+            "PUT /v2/vfields/{id}",
+          ],
         },
       ],
     },

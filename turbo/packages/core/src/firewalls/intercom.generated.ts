@@ -10,8 +10,7 @@ export const intercomFirewall = {
   name: "intercom",
   description: "Intercom API",
   placeholders: {
-    INTERCOM_TOKEN:
-      "dG9rOiCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof",
+    INTERCOM_TOKEN: "dG9rOiCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof",
   },
   apis: [
     {

@@ -10,8 +10,7 @@ export const jotformFirewall = {
   name: "jotform",
   description: "Jotform API",
   placeholders: {
-    JOTFORM_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
+    JOTFORM_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {
@@ -40,6 +39,6 @@ export const jotformFirewall = {
         },
       },
       permissions: [],
-    },
+    }
   ],
 } as const satisfies FirewallConfig;

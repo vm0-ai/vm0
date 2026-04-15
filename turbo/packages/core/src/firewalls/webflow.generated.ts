@@ -10,8 +10,7 @@ export const webflowFirewall = {
   name: "webflow",
   description: "Webflow API",
   placeholders: {
-    WEBFLOW_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
+    WEBFLOW_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {

@@ -10,8 +10,7 @@ export const airtableFirewall = {
   name: "airtable",
   description: "Airtable API",
   placeholders: {
-    AIRTABLE_TOKEN:
-      "patCoffeeSafeL0.c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",
+    AIRTABLE_TOKEN: "patCoffeeSafeL0.c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",
   },
   apis: [
     {

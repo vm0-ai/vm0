@@ -10,8 +10,7 @@ export const brevoFirewall = {
   name: "brevo",
   description: "Brevo API",
   placeholders: {
-    BREVO_TOKEN:
-      "xkeysib-c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1a",
+    BREVO_TOKEN: "xkeysib-c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1a",
   },
   apis: [
     {

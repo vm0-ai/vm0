@@ -10,8 +10,7 @@ export const anthropicManagedAgentsFirewall = {
   name: "anthropic-managed-agents",
   description: "Anthropic Managed Agents API",
   placeholders: {
-    ANTHROPIC_MANAGED_AGENTS_TOKEN:
-      "sk-ant-api03-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof",
+    ANTHROPIC_MANAGED_AGENTS_TOKEN: "sk-ant-api03-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof",
   },
   apis: [
     {
@@ -40,11 +39,7 @@ export const anthropicManagedAgentsFirewall = {
         {
           name: "environments:write",
           description: "Create and manage execution environments",
-          rules: [
-            "POST /v1/environments",
-            "PUT /v1/environments/*",
-            "DELETE /v1/environments/*",
-          ],
+          rules: ["POST /v1/environments", "PUT /v1/environments/*", "DELETE /v1/environments/*"],
         },
         {
           name: "sessions:read",

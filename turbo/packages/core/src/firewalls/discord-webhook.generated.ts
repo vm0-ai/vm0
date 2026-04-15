@@ -10,8 +10,7 @@ export const discordWebhookFirewall = {
   name: "discord-webhook",
   description: "Discord Webhook",
   placeholders: {
-    DISCORD_WEBHOOK_URL:
-      "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
+    DISCORD_WEBHOOK_URL: "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
   },
   apis: [
     {

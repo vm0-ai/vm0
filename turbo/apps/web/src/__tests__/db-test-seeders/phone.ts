@@ -1,11 +1,14 @@
+import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
+import { env } from "../../env";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { phoneUserLinks } from "../../db/schema/phone-user-link";
 import { pendingOutboundCalls } from "../../db/schema/pending-outbound-call";
 import { uniqueId } from "../test-helpers";
 import { createTestCompose } from "../api-test-helpers/agents";
 import { ensureOrgRow } from "../api-test-helpers/org";
+import { POST as linkIMessageRoute } from "../../../app/api/integrations/imessage/link/route";
 
 // ============================================================================
 // Phone Seeders
@@ -131,4 +134,46 @@ export async function insertPendingOutboundCall(opts: {
     agentId: opts.agentId,
     sessionId: opts.sessionId ?? null,
   });
+}
+
+/**
+ * Link an iMessage handle (phone number) to a user in an org for testing.
+ *
+ * Calls the real POST /api/integrations/imessage/link route handler with a
+ * freshly signed connect token so the same validation path used in production
+ * is exercised. Requires the Clerk mock to be active for the target userId
+ * (e.g. via context.setupUser()) so that auth() resolves correctly.
+ */
+export async function linkIMessageHandle(
+  imessageHandle: string,
+  _userId: string,
+  orgId: string,
+): Promise<void> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signingKey = env().SECRETS_ENCRYPTION_KEY;
+  const data = `imessage:${imessageHandle}:${orgId}:${timestamp}`;
+  const signature = createHmac("sha256", signingKey).update(data).digest("hex");
+
+  const request = new Request(
+    "http://localhost/api/integrations/imessage/link",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        handle: imessageHandle,
+        orgId,
+        timestamp,
+        signature,
+      }),
+    },
+  );
+
+  const response = await linkIMessageRoute(request);
+
+  if (!response.ok) {
+    const body = await response.json();
+    throw new Error(
+      `linkIMessageHandle seeder failed (${response.status}): ${JSON.stringify(body)}`,
+    );
+  }
 }

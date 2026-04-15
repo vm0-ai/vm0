@@ -90,7 +90,9 @@ export const deelFirewall = {
         },
         {
           name: "auth:write",
-          rules: ["POST /rest/v2/managers/magic-links"],
+          rules: [
+            "POST /rest/v2/managers/magic-links",
+          ],
         },
         {
           name: "benefits:read",
@@ -115,7 +117,9 @@ export const deelFirewall = {
         },
         {
           name: "candidates:write",
-          rules: ["POST /rest/v2/candidates"],
+          rules: [
+            "POST /rest/v2/candidates",
+          ],
         },
         {
           name: "contracts:read",
@@ -212,7 +216,9 @@ export const deelFirewall = {
         },
         {
           name: "equities:write",
-          rules: ["POST /rest/v2/equities-tokens/tax-events"],
+          rules: [
+            "POST /rest/v2/equities-tokens/tax-events",
+          ],
         },
         {
           name: "forms:read",
@@ -234,7 +240,9 @@ export const deelFirewall = {
         },
         {
           name: "global-payroll:write",
-          rules: ["POST /rest/v2/gp/workers/{worker_id}/terminations"],
+          rules: [
+            "POST /rest/v2/gp/workers/{worker_id}/terminations",
+          ],
         },
         {
           name: "groups:read",
@@ -265,7 +273,9 @@ export const deelFirewall = {
         },
         {
           name: "immigration:write",
-          rules: ["POST /rest/v2/immigration/client/cases"],
+          rules: [
+            "POST /rest/v2/immigration/client/cases",
+          ],
         },
         {
           name: "invoice-adjustments:read",
@@ -304,11 +314,15 @@ export const deelFirewall = {
         },
         {
           name: "it-policies:read",
-          rules: ["GET /rest/v2/it/policies"],
+          rules: [
+            "GET /rest/v2/it/policies",
+          ],
         },
         {
           name: "knowledge-hub:read",
-          rules: ["GET /rest/v2/knowledge-hub/country-guide/{country_code}"],
+          rules: [
+            "GET /rest/v2/knowledge-hub/country-guide/{country_code}",
+          ],
         },
         {
           name: "legal-entity:read",
@@ -363,7 +377,9 @@ export const deelFirewall = {
         },
         {
           name: "off-cycle-payments:write",
-          rules: ["POST /rest/v2/contracts/{contract_id}/off-cycle-payments"],
+          rules: [
+            "POST /rest/v2/contracts/{contract_id}/off-cycle-payments",
+          ],
         },
         {
           name: "organizations:read",
@@ -493,15 +509,21 @@ export const deelFirewall = {
         },
         {
           name: "screenings:write",
-          rules: ["POST /rest/v2/veriff/session"],
+          rules: [
+            "POST /rest/v2/veriff/session",
+          ],
         },
         {
           name: "tasks:read",
-          rules: ["GET /rest/v2/organizations/tasks"],
+          rules: [
+            "GET /rest/v2/organizations/tasks",
+          ],
         },
         {
           name: "tasks:write",
-          rules: ["PATCH /rest/v2/tasks/{task_id}"],
+          rules: [
+            "PATCH /rest/v2/tasks/{task_id}",
+          ],
         },
         {
           name: "time-off:read",

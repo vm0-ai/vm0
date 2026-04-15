@@ -39,6 +39,6 @@ export const browserlessFirewall = {
         },
       },
       permissions: [],
-    },
+    }
   ],
 } as const satisfies FirewallConfig;

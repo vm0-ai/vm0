@@ -10,8 +10,7 @@ export const stravaFirewall = {
   name: "strava",
   description: "Strava API",
   placeholders: {
-    STRAVA_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
+    STRAVA_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {
@@ -57,11 +56,17 @@ export const stravaFirewall = {
         },
         {
           name: "profile:read_all",
-          rules: ["GET /api/v3/athlete", "GET /api/v3/athlete/zones"],
+          rules: [
+            "GET /api/v3/athlete",
+            "GET /api/v3/athlete/zones",
+          ],
         },
         {
           name: "profile:write",
-          rules: ["PUT /api/v3/athlete", "PUT /api/v3/segments/{id}/starred"],
+          rules: [
+            "PUT /api/v3/athlete",
+            "PUT /api/v3/segments/{id}/starred",
+          ],
         },
         {
           name: "read",

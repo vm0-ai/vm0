@@ -349,7 +349,7 @@ async function finalizeCompose(
     console.log("  Run your agent:");
     console.log(
       chalk.cyan(
-        `    vm0 run ${displayName}:${shortVersionId} --artifact-name <artifact> "your prompt"`,
+        `    vm0 run ${displayName}:${shortVersionId} --artifact <artifact> "your prompt"`,
       ),
     );
   }

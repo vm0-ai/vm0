@@ -10,10 +10,8 @@ export const cronlyticFirewall = {
   name: "cronlytic",
   description: "Cronlytic API",
   placeholders: {
-    CRONLYTIC_API_KEY:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
-    CRONLYTIC_USER_ID:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf0",
+    CRONLYTIC_API_KEY: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
+    CRONLYTIC_USER_ID: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf0",
   },
   apis: [
     {

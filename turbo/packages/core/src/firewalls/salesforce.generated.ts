@@ -10,8 +10,7 @@ export const salesforceFirewall = {
   name: "salesforce",
   description: "Salesforce REST API",
   placeholders: {
-    SALESFORCE_TOKEN:
-      "00D0c0ffee5afe1!AQEAQFCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffee",
+    SALESFORCE_TOKEN: "00D0c0ffee5afe1!AQEAQFCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffee",
   },
   apis: [
     {

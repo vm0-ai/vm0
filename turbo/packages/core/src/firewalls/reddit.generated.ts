@@ -10,8 +10,7 @@ export const redditFirewall = {
   name: "reddit",
   description: "Reddit API",
   placeholders: {
-    REDDIT_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
+    REDDIT_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {

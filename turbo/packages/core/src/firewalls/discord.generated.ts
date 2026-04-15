@@ -10,8 +10,7 @@ export const discordFirewall = {
   name: "discord",
   description: "Discord API",
   placeholders: {
-    DISCORD_BOT_TOKEN:
-      "CoffeeSafeLocalCoffeeSaf.Coffee.CoffeeSafeLocalCoffeeSafeLo",
+    DISCORD_BOT_TOKEN: "CoffeeSafeLocalCoffeeSaf.Coffee.CoffeeSafeLocalCoffeeSafeLo",
   },
   apis: [
     {

@@ -112,7 +112,7 @@
     "apps/web/scripts/migrations/003-sync-clerk-slugs/**",
     "apps/web/scripts/migrations/004-backfill-default-agent/**"
   ],
-  "ignoreDependencies": ["@commitlint/cli"],
+  "ignoreDependencies": ["@commitlint/cli", "@vm0/firewalls-generator"],
   "ignoreWorkspaces": [],
   "ignoreUnresolved": []
 }

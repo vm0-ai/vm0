@@ -10,8 +10,7 @@ export const mondayFirewall = {
   name: "monday",
   description: "Monday.com API",
   placeholders: {
-    MONDAY_TOKEN:
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkNvZmZlZVNhZmVMb2NhbCIsImlhdCI6MTUxNjIzOTAyMn0.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
+    MONDAY_TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkNvZmZlZVNhZmVMb2NhbCIsImlhdCI6MTUxNjIzOTAyMn0.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc",
   },
   apis: [
     {

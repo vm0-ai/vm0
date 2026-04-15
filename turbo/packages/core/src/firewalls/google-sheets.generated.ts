@@ -10,22 +10,20 @@ export const googleSheetsFirewall = {
   name: "google-sheets",
   description: "Google Sheets API",
   placeholders: {
-    GOOGLE_SHEETS_TOKEN:
-      "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
+    GOOGLE_SHEETS_TOKEN: "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {
       base: "https://sheets.googleapis.com",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GOOGLE_SHEETS_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GOOGLE_SHEETS_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "drive",
-          description:
-            "See, edit, create, and delete all of your Google Drive files",
+          description: "See, edit, create, and delete all of your Google Drive files",
           rules: [
             "POST /v4/spreadsheets",
             "GET /v4/spreadsheets/{spreadsheetId}",
@@ -48,8 +46,7 @@ export const googleSheetsFirewall = {
         },
         {
           name: "drive.file",
-          description:
-            "See, edit, create, and delete only the specific Google Drive files you use with this app",
+          description: "See, edit, create, and delete only the specific Google Drive files you use with this app",
           rules: [
             "POST /v4/spreadsheets",
             "GET /v4/spreadsheets/{spreadsheetId}",
@@ -81,8 +78,7 @@ export const googleSheetsFirewall = {
         },
         {
           name: "spreadsheets",
-          description:
-            "See, edit, create, and delete all your Google Sheets spreadsheets",
+          description: "See, edit, create, and delete all your Google Sheets spreadsheets",
           rules: [
             "POST /v4/spreadsheets",
             "GET /v4/spreadsheets/{spreadsheetId}",

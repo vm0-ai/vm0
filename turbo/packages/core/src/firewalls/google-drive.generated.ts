@@ -11,22 +11,20 @@ export const googleDriveFirewall = {
   name: "google-drive",
   description: "Google Drive API",
   placeholders: {
-    GOOGLE_DRIVE_TOKEN:
-      "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
+    GOOGLE_DRIVE_TOKEN: "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {
       base: "https://www.googleapis.com/drive",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GOOGLE_DRIVE_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GOOGLE_DRIVE_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "drive",
-          description:
-            "See, edit, create, and delete all of your Google Drive files",
+          description: "See, edit, create, and delete all of your Google Drive files",
           rules: [
             "GET /v2/about",
             "GET /v2/apps/{appId}",
@@ -163,8 +161,7 @@ export const googleDriveFirewall = {
         },
         {
           name: "drive.appdata",
-          description:
-            "See, create, and delete its own configuration data in your Google Drive",
+          description: "See, create, and delete its own configuration data in your Google Drive",
           rules: [
             "GET /v2/about",
             "GET /v2/apps/{appId}",
@@ -251,8 +248,7 @@ export const googleDriveFirewall = {
         },
         {
           name: "drive.file",
-          description:
-            "See, edit, create, and delete only the specific Google Drive files you use with this app",
+          description: "See, edit, create, and delete only the specific Google Drive files you use with this app",
           rules: [
             "GET /v2/about",
             "GET /v2/apps/{appId}",
@@ -361,8 +357,7 @@ export const googleDriveFirewall = {
         },
         {
           name: "drive.meet.readonly",
-          description:
-            "See and download your Google Drive files that were created or edited by Google Meet.",
+          description: "See and download your Google Drive files that were created or edited by Google Meet.",
           rules: [
             "GET /v2/changes",
             "GET /v2/changes/startPageToken",
@@ -512,8 +507,7 @@ export const googleDriveFirewall = {
         },
         {
           name: "drive.photos.readonly",
-          description:
-            "View the photos, videos and albums in your Google Photos",
+          description: "View the photos, videos and albums in your Google Photos",
           rules: [
             "GET /v2/about",
             "GET /v2/changes",
@@ -632,14 +626,13 @@ export const googleDriveFirewall = {
       base: "https://www.googleapis.com/upload/drive",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GOOGLE_DRIVE_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GOOGLE_DRIVE_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "drive",
-          description:
-            "See, edit, create, and delete all of your Google Drive files",
+          description: "See, edit, create, and delete all of your Google Drive files",
           rules: [
             "POST /v2/files",
             "PUT /v2/files/{fileId}",
@@ -649,8 +642,7 @@ export const googleDriveFirewall = {
         },
         {
           name: "drive.appdata",
-          description:
-            "See, create, and delete its own configuration data in your Google Drive",
+          description: "See, create, and delete its own configuration data in your Google Drive",
           rules: [
             "POST /v2/files",
             "PUT /v2/files/{fileId}",
@@ -661,12 +653,14 @@ export const googleDriveFirewall = {
         {
           name: "drive.apps.readonly",
           description: "View your Google Drive apps",
-          rules: ["POST /v2/files", "PUT /v2/files/{fileId}"],
+          rules: [
+            "POST /v2/files",
+            "PUT /v2/files/{fileId}",
+          ],
         },
         {
           name: "drive.file",
-          description:
-            "See, edit, create, and delete only the specific Google Drive files you use with this app",
+          description: "See, edit, create, and delete only the specific Google Drive files you use with this app",
           rules: [
             "POST /v2/files",
             "PUT /v2/files/{fileId}",
@@ -677,12 +671,18 @@ export const googleDriveFirewall = {
         {
           name: "drive.metadata",
           description: "View and manage metadata of files in your Google Drive",
-          rules: ["PUT /v2/files/{fileId}", "PATCH /v3/files/{fileId}"],
+          rules: [
+            "PUT /v2/files/{fileId}",
+            "PATCH /v3/files/{fileId}",
+          ],
         },
         {
           name: "drive.scripts",
           description: "Modify your Google Apps Script scripts' behavior",
-          rules: ["PUT /v2/files/{fileId}", "PATCH /v3/files/{fileId}"],
+          rules: [
+            "PUT /v2/files/{fileId}",
+            "PATCH /v3/files/{fileId}",
+          ],
         },
       ],
     },
@@ -690,14 +690,13 @@ export const googleDriveFirewall = {
       base: "https://www.googleapis.com/resumable/upload/drive",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.GOOGLE_DRIVE_TOKEN }}",
+          "Authorization": "Bearer ${{ secrets.GOOGLE_DRIVE_TOKEN }}",
         },
       },
       permissions: [
         {
           name: "drive",
-          description:
-            "See, edit, create, and delete all of your Google Drive files",
+          description: "See, edit, create, and delete all of your Google Drive files",
           rules: [
             "POST /v2/files",
             "PUT /v2/files/{fileId}",
@@ -707,8 +706,7 @@ export const googleDriveFirewall = {
         },
         {
           name: "drive.appdata",
-          description:
-            "See, create, and delete its own configuration data in your Google Drive",
+          description: "See, create, and delete its own configuration data in your Google Drive",
           rules: [
             "POST /v2/files",
             "PUT /v2/files/{fileId}",
@@ -719,12 +717,14 @@ export const googleDriveFirewall = {
         {
           name: "drive.apps.readonly",
           description: "View your Google Drive apps",
-          rules: ["POST /v2/files", "PUT /v2/files/{fileId}"],
+          rules: [
+            "POST /v2/files",
+            "PUT /v2/files/{fileId}",
+          ],
         },
         {
           name: "drive.file",
-          description:
-            "See, edit, create, and delete only the specific Google Drive files you use with this app",
+          description: "See, edit, create, and delete only the specific Google Drive files you use with this app",
           rules: [
             "POST /v2/files",
             "PUT /v2/files/{fileId}",
@@ -735,12 +735,18 @@ export const googleDriveFirewall = {
         {
           name: "drive.metadata",
           description: "View and manage metadata of files in your Google Drive",
-          rules: ["PUT /v2/files/{fileId}", "PATCH /v3/files/{fileId}"],
+          rules: [
+            "PUT /v2/files/{fileId}",
+            "PATCH /v3/files/{fileId}",
+          ],
         },
         {
           name: "drive.scripts",
           description: "Modify your Google Apps Script scripts' behavior",
-          rules: ["PUT /v2/files/{fileId}", "PATCH /v3/files/{fileId}"],
+          rules: [
+            "PUT /v2/files/{fileId}",
+            "PATCH /v3/files/{fileId}",
+          ],
         },
       ],
     },

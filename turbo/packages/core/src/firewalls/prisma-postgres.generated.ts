@@ -10,8 +10,7 @@ export const prismaPostgresFirewall = {
   name: "prisma-postgres",
   description: "Prisma Postgres Management API",
   placeholders: {
-    PRISMA_POSTGRES_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
+    PRISMA_POSTGRES_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

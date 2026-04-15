@@ -10,8 +10,7 @@ export const brightDataFirewall = {
   name: "bright-data",
   description: "Bright Data API",
   placeholders: {
-    BRIGHTDATA_TOKEN:
-      "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",
+    BRIGHTDATA_TOKEN: "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",
   },
   apis: [
     {

@@ -10,8 +10,7 @@ export const minimaxFirewall = {
   name: "minimax",
   description: "MiniMax API",
   placeholders: {
-    MINIMAX_TOKEN:
-      "eyJhbGciOiJSUzI1NiJ9.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
+    MINIMAX_TOKEN: "eyJhbGciOiJSUzI1NiJ9.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
   },
   apis: [
     {

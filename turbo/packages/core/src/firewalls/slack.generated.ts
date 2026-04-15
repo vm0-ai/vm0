@@ -24,8 +24,7 @@ export const slackFirewall = {
       permissions: [
         {
           name: "admin",
-          description:
-            "Administer a workspace (access audit logs, SCIM API, and billing info)",
+          description: "Administer a workspace (access audit logs, SCIM API, and billing info)",
           rules: [
             "POST /admin.audit.anomaly.allow.getItem",
             "POST /admin.audit.anomaly.allow.updateItem",
@@ -46,12 +45,13 @@ export const slackFirewall = {
         {
           name: "admin.app_activities:read",
           description: "View app activities within an Enterprise organization",
-          rules: ["POST /admin.apps.activities.list"],
+          rules: [
+            "POST /admin.apps.activities.list",
+          ],
         },
         {
           name: "admin.apps:read",
-          description:
-            "View apps and app requests in an Enterprise organization",
+          description: "View apps and app requests in an Enterprise organization",
           rules: [
             "GET /admin.apps.approved.list",
             "POST /admin.apps.config.lookup",
@@ -61,8 +61,7 @@ export const slackFirewall = {
         },
         {
           name: "admin.apps:write",
-          description:
-            "Manage apps and app requests in an Enterprise organization",
+          description: "Manage apps and app requests in an Enterprise organization",
           rules: [
             "POST /admin.apps.approve",
             "POST /admin.apps.clearResolution",
@@ -74,14 +73,14 @@ export const slackFirewall = {
         },
         {
           name: "admin.barriers:read",
-          description:
-            "Read information barriers in an Enterprise organization",
-          rules: ["GET /admin.barriers.list"],
+          description: "Read information barriers in an Enterprise organization",
+          rules: [
+            "GET /admin.barriers.list",
+          ],
         },
         {
           name: "admin.barriers:write",
-          description:
-            "Manage information barriers in an Enterprise organization",
+          description: "Manage information barriers in an Enterprise organization",
           rules: [
             "POST /admin.barriers.create",
             "POST /admin.barriers.delete",
@@ -99,8 +98,7 @@ export const slackFirewall = {
         },
         {
           name: "admin.conversations:read",
-          description:
-            "View channels and their settings in an Enterprise organization",
+          description: "View channels and their settings in an Enterprise organization",
           rules: [
             "POST /admin.conversations.ekm.listOriginalConnectedChannelInfo",
             "POST /admin.conversations.getConversationPrefs",
@@ -138,8 +136,7 @@ export const slackFirewall = {
         },
         {
           name: "admin.invites:read",
-          description:
-            "View workspace invite requests in an Enterprise organization",
+          description: "View workspace invite requests in an Enterprise organization",
           rules: [
             "POST /admin.inviteRequests.approved.list",
             "POST /admin.inviteRequests.denied.list",
@@ -148,8 +145,7 @@ export const slackFirewall = {
         },
         {
           name: "admin.invites:write",
-          description:
-            "Manage workspace invite requests in an Enterprise organization",
+          description: "Manage workspace invite requests in an Enterprise organization",
           rules: [
             "POST /admin.inviteRequests.approve",
             "POST /admin.inviteRequests.deny",
@@ -158,7 +154,9 @@ export const slackFirewall = {
         {
           name: "admin.roles:read",
           description: "View role assignments in an Enterprise organization",
-          rules: ["GET /admin.roles.listAssignments"],
+          rules: [
+            "GET /admin.roles.listAssignments",
+          ],
         },
         {
           name: "admin.roles:write",
@@ -181,8 +179,7 @@ export const slackFirewall = {
         },
         {
           name: "admin.teams:write",
-          description:
-            "Manage workspace settings in an Enterprise organization",
+          description: "Manage workspace settings in an Enterprise organization",
           rules: [
             "GET /admin.emoji.add",
             "GET /admin.emoji.addAlias",
@@ -200,7 +197,9 @@ export const slackFirewall = {
         {
           name: "admin.usergroups:read",
           description: "View user groups in an Enterprise organization",
-          rules: ["POST /admin.usergroups.listChannels"],
+          rules: [
+            "POST /admin.usergroups.listChannels",
+          ],
         },
         {
           name: "admin.usergroups:write",
@@ -244,8 +243,7 @@ export const slackFirewall = {
         },
         {
           name: "admin.workflows:read",
-          description:
-            "View workflow builder workflows in an Enterprise organization",
+          description: "View workflow builder workflows in an Enterprise organization",
           rules: [
             "POST /admin.functions.list",
             "POST /admin.functions.permissions.lookup",
@@ -256,8 +254,7 @@ export const slackFirewall = {
         },
         {
           name: "admin.workflows:write",
-          description:
-            "Manage workflow builder workflows in an Enterprise organization",
+          description: "Manage workflow builder workflows in an Enterprise organization",
           rules: [
             "POST /admin.workflows.collaborators.add",
             "POST /admin.workflows.collaborators.remove",
@@ -275,7 +272,10 @@ export const slackFirewall = {
         {
           name: "bookmarks:read",
           description: "List bookmarks in channels",
-          rules: ["POST /bookmarks.list", "POST /workflows.featured.list"],
+          rules: [
+            "POST /bookmarks.list",
+            "POST /workflows.featured.list",
+          ],
         },
         {
           name: "bookmarks:write",
@@ -292,7 +292,9 @@ export const slackFirewall = {
         {
           name: "calls:read",
           description: "View information about ongoing and past calls",
-          rules: ["POST /calls.info"],
+          rules: [
+            "POST /calls.info",
+          ],
         },
         {
           name: "calls:write",
@@ -308,7 +310,9 @@ export const slackFirewall = {
         {
           name: "canvases:read",
           description: "Access contents of canvases created inside Slack",
-          rules: ["POST /canvases.sections.lookup"],
+          rules: [
+            "POST /canvases.sections.lookup",
+          ],
         },
         {
           name: "canvases:write",
@@ -324,19 +328,22 @@ export const slackFirewall = {
         },
         {
           name: "channels:history",
-          description:
-            "View messages and other content in public channels that the app has been added to",
-          rules: ["GET /conversations.history", "GET /conversations.replies"],
+          description: "View messages and other content in public channels that the app has been added to",
+          rules: [
+            "GET /conversations.history",
+            "GET /conversations.replies",
+          ],
         },
         {
           name: "channels:join",
           description: "Join public channels in a workspace",
-          rules: ["POST /conversations.join"],
+          rules: [
+            "POST /conversations.join",
+          ],
         },
         {
           name: "channels:manage",
-          description:
-            "Manage public channels that the app has been added to and create new ones",
+          description: "Manage public channels that the app has been added to and create new ones",
           rules: [
             "POST /conversations.archive",
             "POST /conversations.close",
@@ -354,8 +361,7 @@ export const slackFirewall = {
         },
         {
           name: "channels:read",
-          description:
-            "View basic information about public channels in a workspace",
+          description: "View basic information about public channels in a workspace",
           rules: [
             "GET /conversations.info",
             "GET /conversations.list",
@@ -365,8 +371,7 @@ export const slackFirewall = {
         },
         {
           name: "channels:write",
-          description:
-            "Manage a user's public channels and create new ones on a user's behalf",
+          description: "Manage a user's public channels and create new ones on a user's behalf",
           rules: [
             "POST /conversations.archive",
             "POST /conversations.close",
@@ -386,7 +391,9 @@ export const slackFirewall = {
         {
           name: "channels:write.invites",
           description: "Invite members to public channels",
-          rules: ["POST /conversations.invite"],
+          rules: [
+            "POST /conversations.invite",
+          ],
         },
         {
           name: "channels:write.topic",
@@ -415,8 +422,7 @@ export const slackFirewall = {
         },
         {
           name: "client",
-          description:
-            "Full access to all client features (legacy, deprecated)",
+          description: "Full access to all client features (legacy, deprecated)",
           rules: [
             "POST /admin.workflows.triggers.types.permissions.lookup",
             "POST /admin.workflows.triggers.types.permissions.set",
@@ -424,8 +430,7 @@ export const slackFirewall = {
         },
         {
           name: "conversations.connect:manage",
-          description:
-            "Manage Slack Connect channels (approve or decline invitations)",
+          description: "Manage Slack Connect channels (approve or decline invitations)",
           rules: [
             "POST /conversations.approveSharedInvite",
             "GET /conversations.declineSharedInvite",
@@ -441,8 +446,7 @@ export const slackFirewall = {
         },
         {
           name: "conversations.connect:write",
-          description:
-            "Create Slack Connect invitations and accept invitations",
+          description: "Create Slack Connect invitations and accept invitations",
           rules: [
             "POST /conversations.acceptSharedInvite",
             "GET /conversations.inviteShared",
@@ -472,7 +476,10 @@ export const slackFirewall = {
         {
           name: "dnd:read",
           description: "View Do Not Disturb settings for people in a workspace",
-          rules: ["GET /dnd.info", "GET /dnd.teamInfo"],
+          rules: [
+            "GET /dnd.info",
+            "GET /dnd.teamInfo",
+          ],
         },
         {
           name: "dnd:write",
@@ -486,13 +493,17 @@ export const slackFirewall = {
         {
           name: "emoji:read",
           description: "View custom emoji in a workspace",
-          rules: ["GET /emoji.list"],
+          rules: [
+            "GET /emoji.list",
+          ],
         },
         {
           name: "files:read",
-          description:
-            "View files shared in channels and conversations that the app has been added to",
-          rules: ["GET /files.info", "GET /files.list"],
+          description: "View files shared in channels and conversations that the app has been added to",
+          rules: [
+            "GET /files.info",
+            "GET /files.list",
+          ],
         },
         {
           name: "files:write",
@@ -509,14 +520,15 @@ export const slackFirewall = {
         },
         {
           name: "groups:history",
-          description:
-            "View messages and other content in private channels that the app has been added to",
-          rules: ["GET /conversations.history", "GET /conversations.replies"],
+          description: "View messages and other content in private channels that the app has been added to",
+          rules: [
+            "GET /conversations.history",
+            "GET /conversations.replies",
+          ],
         },
         {
           name: "groups:read",
-          description:
-            "View basic information about private channels that the app has been added to",
+          description: "View basic information about private channels that the app has been added to",
           rules: [
             "GET /conversations.info",
             "GET /conversations.list",
@@ -526,8 +538,7 @@ export const slackFirewall = {
         },
         {
           name: "groups:write",
-          description:
-            "Manage private channels that the user is a member of and create new ones",
+          description: "Manage private channels that the user is a member of and create new ones",
           rules: [
             "POST /conversations.archive",
             "POST /conversations.close",
@@ -546,7 +557,9 @@ export const slackFirewall = {
         {
           name: "groups:write.invites",
           description: "Invite members to private channels",
-          rules: ["POST /conversations.invite"],
+          rules: [
+            "POST /conversations.invite",
+          ],
         },
         {
           name: "groups:write.topic",
@@ -559,23 +572,28 @@ export const slackFirewall = {
         {
           name: "hosting:read",
           description: "Read hosting environment information",
-          rules: ["POST /apps.activities.list"],
+          rules: [
+            "POST /apps.activities.list",
+          ],
         },
         {
           name: "identity:read",
           description: "View a user's Slack identity (Sign in with Slack)",
-          rules: ["GET /users.identity"],
+          rules: [
+            "GET /users.identity",
+          ],
         },
         {
           name: "im:history",
-          description:
-            "View messages and other content in direct messages that the app has been added to",
-          rules: ["GET /conversations.history", "GET /conversations.replies"],
+          description: "View messages and other content in direct messages that the app has been added to",
+          rules: [
+            "GET /conversations.history",
+            "GET /conversations.replies",
+          ],
         },
         {
           name: "im:read",
-          description:
-            "View basic information about direct messages that the app has access to",
+          description: "View basic information about direct messages that the app has access to",
           rules: [
             "GET /conversations.info",
             "GET /conversations.list",
@@ -612,7 +630,9 @@ export const slackFirewall = {
         {
           name: "links:write",
           description: "Show previews of URLs in messages",
-          rules: ["POST /chat.unfurl"],
+          rules: [
+            "POST /chat.unfurl",
+          ],
         },
         {
           name: "lists:read",
@@ -640,14 +660,15 @@ export const slackFirewall = {
         },
         {
           name: "mpim:history",
-          description:
-            "View messages and other content in group direct messages that the app has been added to",
-          rules: ["GET /conversations.history", "GET /conversations.replies"],
+          description: "View messages and other content in group direct messages that the app has been added to",
+          rules: [
+            "GET /conversations.history",
+            "GET /conversations.replies",
+          ],
         },
         {
           name: "mpim:read",
-          description:
-            "View basic information about group direct messages that the app has been added to",
+          description: "View basic information about group direct messages that the app has been added to",
           rules: [
             "GET /conversations.info",
             "GET /conversations.list",
@@ -683,36 +704,49 @@ export const slackFirewall = {
         },
         {
           name: "openid",
-          description:
-            "View information about a user's identity (Sign in with Slack)",
-          rules: ["POST /openid.connect.userInfo"],
+          description: "View information about a user's identity (Sign in with Slack)",
+          rules: [
+            "POST /openid.connect.userInfo",
+          ],
         },
         {
           name: "pins:read",
-          description:
-            "View pinned content in channels and conversations that the app has been added to",
-          rules: ["GET /pins.list"],
+          description: "View pinned content in channels and conversations that the app has been added to",
+          rules: [
+            "GET /pins.list",
+          ],
         },
         {
           name: "pins:write",
           description: "Add and remove pinned messages and files",
-          rules: ["POST /pins.add", "POST /pins.remove"],
+          rules: [
+            "POST /pins.add",
+            "POST /pins.remove",
+          ],
         },
         {
           name: "reactions:read",
-          description:
-            "View emoji reactions and their associated content in channels and conversations",
-          rules: ["GET /reactions.get", "GET /reactions.list"],
+          description: "View emoji reactions and their associated content in channels and conversations",
+          rules: [
+            "GET /reactions.get",
+            "GET /reactions.list",
+          ],
         },
         {
           name: "reactions:write",
           description: "Add and edit emoji reactions",
-          rules: ["POST /reactions.add", "POST /reactions.remove"],
+          rules: [
+            "POST /reactions.add",
+            "POST /reactions.remove",
+          ],
         },
         {
           name: "reminders:read",
           description: "View reminders created by the app",
-          rules: ["GET /reminders.info", "GET /reminders.list"],
+          rules: [
+            "GET /reminders.info",
+            "GET /reminders.list",
+          ],
         },
         {
           name: "reminders:write",
@@ -726,12 +760,17 @@ export const slackFirewall = {
         {
           name: "remote_files:read",
           description: "View remote files added by the app in a workspace",
-          rules: ["GET /files.remote.info", "GET /files.remote.list"],
+          rules: [
+            "GET /files.remote.info",
+            "GET /files.remote.list",
+          ],
         },
         {
           name: "remote_files:share",
           description: "Share remote files on a user's behalf",
-          rules: ["GET /files.remote.share"],
+          rules: [
+            "GET /files.remote.share",
+          ],
         },
         {
           name: "remote_files:write",
@@ -755,22 +794,30 @@ export const slackFirewall = {
         {
           name: "search:read.files",
           description: "Search for files in a workspace",
-          rules: ["POST /assistant.search.context"],
+          rules: [
+            "POST /assistant.search.context",
+          ],
         },
         {
           name: "search:read.im",
           description: "Search direct messages",
-          rules: ["POST /assistant.search.context"],
+          rules: [
+            "POST /assistant.search.context",
+          ],
         },
         {
           name: "search:read.mpim",
           description: "Search group direct messages",
-          rules: ["POST /assistant.search.context"],
+          rules: [
+            "POST /assistant.search.context",
+          ],
         },
         {
           name: "search:read.private",
           description: "Search private channels",
-          rules: ["POST /assistant.search.context"],
+          rules: [
+            "POST /assistant.search.context",
+          ],
         },
         {
           name: "search:read.public",
@@ -783,32 +830,42 @@ export const slackFirewall = {
         {
           name: "search:read.users",
           description: "Search for users in a workspace",
-          rules: ["POST /assistant.search.context"],
+          rules: [
+            "POST /assistant.search.context",
+          ],
         },
         {
           name: "stars:read",
           description: "View starred messages and files",
-          rules: ["GET /stars.list"],
+          rules: [
+            "GET /stars.list",
+          ],
         },
         {
           name: "stars:write",
           description: "Add or remove stars (saved items)",
-          rules: ["POST /stars.add", "POST /stars.remove"],
+          rules: [
+            "POST /stars.add",
+            "POST /stars.remove",
+          ],
         },
         {
           name: "team.billing:read",
           description: "View billing information for a workspace",
-          rules: ["POST /team.billing.info"],
+          rules: [
+            "POST /team.billing.info",
+          ],
         },
         {
           name: "team.preferences:read",
           description: "View team preferences",
-          rules: ["POST /team.preferences.list"],
+          rules: [
+            "POST /team.preferences.list",
+          ],
         },
         {
           name: "team:read",
-          description:
-            "View the name, email domain, and icon for workspaces the app is connected to",
+          description: "View the name, email domain, and icon for workspaces the app is connected to",
           rules: [
             "GET /team.externalTeams.list",
             "GET /team.info",
@@ -818,12 +875,16 @@ export const slackFirewall = {
         {
           name: "tokens.basic",
           description: "Execute methods with no required scope",
-          rules: ["GET /migration.exchange"],
+          rules: [
+            "GET /migration.exchange",
+          ],
         },
         {
           name: "triggers:read",
           description: "View triggers in a workspace",
-          rules: ["POST /workflows.triggers.permissions.list"],
+          rules: [
+            "POST /workflows.triggers.permissions.list",
+          ],
         },
         {
           name: "triggers:write",
@@ -837,7 +898,10 @@ export const slackFirewall = {
         {
           name: "usergroups:read",
           description: "View user groups in a workspace",
-          rules: ["GET /usergroups.list", "GET /usergroups.users.list"],
+          rules: [
+            "GET /usergroups.list",
+            "GET /usergroups.users.list",
+          ],
         },
         {
           name: "usergroups:write",
@@ -853,7 +917,10 @@ export const slackFirewall = {
         {
           name: "users.profile:read",
           description: "View profile details of people in a workspace",
-          rules: ["GET /team.profile.get", "GET /users.profile.get"],
+          rules: [
+            "GET /team.profile.get",
+            "GET /users.profile.get",
+          ],
         },
         {
           name: "users.profile:write",
@@ -877,7 +944,9 @@ export const slackFirewall = {
         {
           name: "users:read.email",
           description: "View email addresses of people in a workspace",
-          rules: ["GET /users.lookupByEmail"],
+          rules: [
+            "GET /users.lookupByEmail",
+          ],
         },
         {
           name: "users:write",
@@ -890,8 +959,7 @@ export const slackFirewall = {
         },
         {
           name: "no_scopes_required",
-          description:
-            "Methods that require a valid token but no specific scope",
+          description: "Methods that require a valid token but no specific scope",
           rules: [
             "POST /api.test",
             "POST /apps.auth.external.delete",
@@ -945,7 +1013,9 @@ export const slackFirewall = {
         {
           name: "files:read",
           description: "Download files from Slack",
-          rules: ["GET /{path+}"],
+          rules: [
+            "GET /{path+}",
+          ],
         },
       ],
     },

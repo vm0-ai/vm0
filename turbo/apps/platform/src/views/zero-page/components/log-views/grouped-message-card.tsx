@@ -1,6 +1,10 @@
 import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
 import { Markdown } from "../../../components/markdown.tsx";
-import type { GroupedMessage, ToolOperation } from "./log-detail-utils.ts";
+import {
+  isTaskEventData,
+  type GroupedMessage,
+  type ToolOperation,
+} from "./log-detail-utils.ts";
 import { ToolSummary } from "./tool-summary.tsx";
 import {
   SystemInitContent,
@@ -59,6 +63,7 @@ export function GroupedMessageCard({
       <SystemMessageCard
         message={message}
         eventData={eventData}
+        searchTerm={searchTerm}
         showConnector={showConnector}
       />
     );
@@ -98,16 +103,145 @@ export function GroupedMessageCard({
   );
 }
 
+function TaskMessageCard({
+  message,
+  searchTerm,
+  showConnector = false,
+}: {
+  message: GroupedMessage;
+  searchTerm?: string;
+  showConnector?: boolean;
+}) {
+  const taskData = isTaskEventData(message.eventData)
+    ? message.eventData
+    : null;
+  const description = taskData?.description ?? taskData?.task_summary ?? "";
+  const taskStatus = taskData?.task_status;
+  const isFailed = taskStatus === "error" || taskStatus === "failed";
+  const isRunning = !taskStatus;
+  const timestamp = formatEventTime(message.createdAt);
+  const children = message.childMessages ?? [];
+  const hasChildren = children.length > 0;
+
+  // Count tool operations across child messages
+  const toolCount = children.reduce((sum, child) => {
+    return sum + (child.toolOperations?.length ?? 0);
+  }, 0);
+
+  if (!hasChildren) {
+    return (
+      <div className={`${MESSAGE_SPACING} relative`}>
+        {showConnector && (
+          <div
+            className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
+            aria-hidden="true"
+          />
+        )}
+        <div className="flex gap-2 items-center relative">
+          {isRunning ? (
+            <IconLoader className="h-3 w-3 text-yellow-600 animate-spin shrink-0" />
+          ) : (
+            <StatusDot variant={isFailed ? "error" : "success"} />
+          )}
+          <span className="font-semibold text-sm text-foreground shrink-0">
+            Task
+          </span>
+          {description && (
+            <span className="text-sm text-muted-foreground truncate">
+              {description}
+            </span>
+          )}
+          <span className="flex-1" />
+          <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+            {timestamp}
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+          {timestamp}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {showConnector && (
+        <div
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
+          aria-hidden="true"
+        />
+      )}
+      <details className="group relative">
+        <summary className="cursor-pointer list-none relative py-2">
+          <div className="flex gap-2 items-center">
+            {isRunning ? (
+              <IconLoader className="h-3 w-3 text-yellow-600 animate-spin shrink-0" />
+            ) : (
+              <StatusDot variant={isFailed ? "error" : "success"} />
+            )}
+            <span className="font-semibold text-sm text-foreground shrink-0">
+              Task
+            </span>
+            {description && (
+              <span className="text-sm text-muted-foreground truncate">
+                {description}
+              </span>
+            )}
+            {toolCount > 0 && (
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {toolCount} steps
+              </span>
+            )}
+            <span className="flex-1" />
+            <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
+              {timestamp}
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
+            {timestamp}
+          </div>
+        </summary>
+        <div className="mt-1">
+          {children.map((child, i) => {
+            return (
+              <GroupedMessageCard
+                key={child.sequenceNumber}
+                message={child}
+                searchTerm={searchTerm}
+                showConnector={i < children.length - 1}
+              />
+            );
+          })}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function SystemMessageCard({
   message,
   eventData,
+  searchTerm,
   showConnector = false,
 }: {
   message: GroupedMessage;
   eventData: EventData;
+  searchTerm?: string;
   showConnector?: boolean;
 }) {
   const subtype = eventData.subtype;
+
+  // Task events are rendered by TaskMessageCard
+  if (subtype === "task_started" || subtype === "task_notification") {
+    return (
+      <TaskMessageCard
+        message={message}
+        searchTerm={searchTerm}
+        showConnector={showConnector}
+      />
+    );
+  }
+
   const timestamp = formatEventTime(message.createdAt);
   return (
     <div className={`${MESSAGE_SPACING} relative`}>

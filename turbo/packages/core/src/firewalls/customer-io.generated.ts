@@ -10,8 +10,7 @@ export const customerIoFirewall = {
   name: "customer-io",
   description: "Customer.io API",
   placeholders: {
-    CUSTOMERIO_APP_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
+    CUSTOMERIO_APP_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
   },
   apis: [
     {

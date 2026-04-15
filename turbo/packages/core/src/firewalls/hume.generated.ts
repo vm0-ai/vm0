@@ -10,8 +10,7 @@ export const humeFirewall = {
   name: "hume",
   description: "Hume AI API",
   placeholders: {
-    HUME_TOKEN:
-      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
+    HUME_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
   },
   apis: [
     {
