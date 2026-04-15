@@ -23,8 +23,10 @@ import {
   createTestArtifact,
   createTestSandboxToken,
   findTestRunRecord,
+  findTestCheckpoint,
   findTestRunnerJobEntry,
   findTestStorage,
+  createTestCheckpoint,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/route";
 import { POST as pollRoute } from "../../../runners/poll/route";
@@ -1128,6 +1130,32 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     // Note: "Missing required secrets" validation is tested in the Validation
     // describe block above.
+
+    it("should store additionalVolumes in run record", async () => {
+      const additionalVolumes = [
+        { name: "my-data", version: "latest", mountPath: "/data" },
+        { name: "my-config", mountPath: "/config" },
+      ];
+
+      const { runId } = await createTestRun(testComposeId, "Run with volumes", {
+        additionalVolumes,
+      });
+
+      const record = await findTestRunRecord(runId);
+      expect(record).toBeDefined();
+      expect(record!.additionalVolumes).toEqual(additionalVolumes);
+    });
+
+    it("should store null additionalVolumes when not provided", async () => {
+      const { runId } = await createTestRun(
+        testComposeId,
+        "Run without volumes",
+      );
+
+      const record = await findTestRunRecord(runId);
+      expect(record).toBeDefined();
+      expect(record!.additionalVolumes).toBeNull();
+    });
   });
 
   describe("Volume Resolution", () => {

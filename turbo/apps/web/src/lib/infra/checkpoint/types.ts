@@ -38,6 +38,12 @@ export interface MemorySnapshot {
 export interface VolumeVersionsSnapshot {
   // Map of volume name to resolved version ID
   versions: Record<string, string>;
+  // Additional volumes with resolved versions and mount paths (for checkpoint restore)
+  additionalVolumes?: Array<{
+    name: string;
+    versionId: string;
+    mountPath: string;
+  }>;
 }
 
 /**

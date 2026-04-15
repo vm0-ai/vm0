@@ -1,3 +1,5 @@
+import type { AdditionalVolume } from "../../storage/types";
+
 /**
  * Intermediate resolution result from checkpoint/session/conversation expansion
  * Contains all data needed to build resumeSession uniformly
@@ -18,6 +20,7 @@ export interface ConversationResolution {
   memoryName?: string;
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
+  additionalVolumes?: AdditionalVolume[];
   buildResumeArtifact: boolean;
   /** Run ID from the previous conversation (used by zero layer for provider compatibility) */
   previousRunId?: string;

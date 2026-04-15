@@ -1,6 +1,7 @@
 import { and, desc, eq, like } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { agentRuns } from "../../db/schema/agent-run";
+import { checkpoints } from "../../db/schema/checkpoint";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
@@ -143,6 +144,21 @@ export async function findTestSandboxTelemetry(
     .select({ id: sandboxTelemetry.id })
     .from(sandboxTelemetry)
     .where(eq(sandboxTelemetry.runId, runId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Find checkpoint record by run ID for verification in tests.
+ */
+export async function findTestCheckpoint(
+  runId: string,
+): Promise<typeof checkpoints.$inferSelect | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(checkpoints)
+    .where(eq(checkpoints.runId, runId))
     .limit(1);
   return row;
 }

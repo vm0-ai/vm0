@@ -104,6 +104,38 @@ export async function createCheckpoint(
     secretNames: (run.secretNames as string[]) || undefined,
   };
 
+  // Enrich volume versions snapshot with additional volumes from run record
+  const runAdditionalVolumes = run.additionalVolumes as Array<{
+    name: string;
+    version?: string;
+    mountPath: string;
+  }> | null;
+
+  const enrichedVolumeSnapshot = request.volumeVersionsSnapshot
+    ? {
+        versions: request.volumeVersionsSnapshot.versions,
+        ...(runAdditionalVolumes && runAdditionalVolumes.length > 0
+          ? {
+              additionalVolumes: runAdditionalVolumes.map((vol) => {
+                const versionId =
+                  request.volumeVersionsSnapshot!.versions[vol.name] ??
+                  vol.version;
+                if (!versionId) {
+                  log.warn(
+                    `Additional volume "${vol.name}" has no resolved version from runner and no version specified at run time, defaulting to "latest"`,
+                  );
+                }
+                return {
+                  name: vol.name,
+                  versionId: versionId ?? "latest",
+                  mountPath: vol.mountPath,
+                };
+              }),
+            }
+          : {}),
+      }
+    : null;
+
   // Upsert checkpoint record (handles retries atomically)
   const snapshotFields = {
     conversationId: conversation.id,
@@ -117,9 +149,10 @@ export async function createCheckpoint(
     memorySnapshot: request.memorySnapshot
       ? (request.memorySnapshot as unknown as Record<string, unknown>)
       : null,
-    volumeVersionsSnapshot: request.volumeVersionsSnapshot
-      ? (request.volumeVersionsSnapshot as unknown as Record<string, unknown>)
-      : null,
+    volumeVersionsSnapshot: enrichedVolumeSnapshot as unknown as Record<
+      string,
+      unknown
+    > | null,
   };
 
   const [checkpoint] = await globalThis.services.db

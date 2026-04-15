@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.79.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.9...runner-rs-v0.79.10) (2026-04-15)
+
+
+### Bug Fixes
+
+* **runner:** escape % in systemd values to prevent specifier expansion ([#9499](https://github.com/vm0-ai/vm0/issues/9499)) ([5eb4e12](https://github.com/vm0-ai/vm0/commit/5eb4e12fbe3fb652a0969c163357875ac1c25766))
+
 ## [0.79.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.8...runner-rs-v0.79.9) (2026-04-15)
 
 

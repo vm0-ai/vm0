@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.116.0](https://github.com/vm0-ai/vm0/compare/cli-v9.115.0...cli-v9.116.0) (2026-04-15)
+
+
+### Features
+
+* **cli:** add --volume flag for dynamic volume mounting ([#9497](https://github.com/vm0-ai/vm0/issues/9497)) ([9425d41](https://github.com/vm0-ai/vm0/commit/9425d41eacc0501aa103e838b02e0459eb8ac62b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.187.1
+
 ## [9.115.0](https://github.com/vm0-ai/vm0/compare/cli-v9.114.1...cli-v9.115.0) (2026-04-15)
 
 

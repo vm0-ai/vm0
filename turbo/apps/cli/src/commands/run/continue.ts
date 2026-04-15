@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import { getSession, createRun } from "../../lib/api";
 import {
   collectKeyValue,
+  collectVolumes,
   isUUID,
   loadValues,
   parseArtifact,
@@ -38,6 +39,12 @@ export const continueCommand = new Command()
   .option(
     "--artifact <name[:version]>",
     "Artifact storage (format: name or name:version)",
+  )
+  .option(
+    "--volume <volume>",
+    "Mount a volume (repeatable, format: name:/path or name:version:/path)",
+    collectVolumes,
+    [],
   )
   .option(
     "--append-system-prompt <text>",
@@ -88,6 +95,7 @@ export const continueCommand = new Command()
           vars: Record<string, string>;
           secrets: Record<string, string>;
           artifact?: string;
+          volume: Array<{ name: string; version?: string; mountPath: string }>;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -132,6 +140,8 @@ export const continueCommand = new Command()
           secrets: loadedSecrets,
           artifactName: artifactParsed?.artifactName,
           artifactVersion: artifactParsed?.artifactVersion,
+          additionalVolumes:
+            allOpts.volume.length > 0 ? allOpts.volume : undefined,
           appendSystemPrompt:
             options.appendSystemPrompt || allOpts.appendSystemPrompt,
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,

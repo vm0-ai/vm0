@@ -1,6 +1,4 @@
 import { generateSandboxToken } from "../../lib/auth/sandbox-token";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Test helper: service access needed for test data setup
-import { enqueueRun } from "../../lib/zero/zero-run-queue-service";
 import { POST as createRunRoute } from "../../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../../app/api/agent/runs/[id]/route";
 import { POST as checkpointWebhook } from "../../../app/api/webhooks/agent/checkpoints/route";
@@ -21,6 +19,7 @@ export {
   insertTestConversation,
   insertTestSandboxTelemetry,
   insertTestUsageDaily,
+  enqueueTestRun,
 } from "../db-test-seeders/runs";
 
 // Re-exports: read-only assertions
@@ -28,6 +27,7 @@ export {
   findTestRunsByUserAndPrompt,
   findTestRunsByUserAndPromptContaining,
   findTestRunRecord,
+  findTestCheckpoint,
   findTestZeroRun,
   findTestRunCallbacks,
   findTestQueueEntry,
@@ -46,6 +46,11 @@ export async function createTestRun(
     checkpointId?: string;
     memoryName?: string;
     appendSystemPrompt?: string;
+    additionalVolumes?: Array<{
+      name: string;
+      version?: string;
+      mountPath: string;
+    }>;
     permissionPolicies?: Record<string, Record<string, string>>;
     triggerSource?: string;
   },
@@ -99,11 +104,14 @@ export async function getTestRun(runId: string): Promise<{
 /**
  * Create a test checkpoint via webhook route handler.
  * This is required before completing a run with exitCode=0.
- * Used internally by completeTestRun.
+ * Used internally by completeTestRun and exported for tests that need custom snapshots.
  */
-async function createTestCheckpoint(
+export async function createTestCheckpoint(
   userId: string,
   runId: string,
+  options?: {
+    volumeVersionsSnapshot?: { versions: Record<string, string> };
+  },
 ): Promise<{
   checkpointId: string;
   agentSessionId: string;
@@ -124,6 +132,7 @@ async function createTestCheckpoint(
         cliAgentSessionId: `test-session-${runId}`,
         cliAgentSessionHistoryHash:
           "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
+        ...options,
       }),
     },
   );
@@ -149,13 +158,20 @@ async function createTestCheckpoint(
 export async function completeTestRun(
   userId: string,
   runId: string,
+  checkpointOptions?: {
+    volumeVersionsSnapshot?: { versions: Record<string, string> };
+  },
 ): Promise<{
   checkpointId: string;
   agentSessionId: string;
   conversationId: string;
 }> {
   // First create checkpoint (required for completed status)
-  const checkpoint = await createTestCheckpoint(userId, runId);
+  const checkpoint = await createTestCheckpoint(
+    userId,
+    runId,
+    checkpointOptions,
+  );
 
   // Then complete the run
   const sandboxToken = await generateSandboxToken(userId, runId);
@@ -217,21 +233,4 @@ export async function failTestRun(
       `Failed to fail run: ${(errorBody as { error?: { message?: string } }).error?.message || response.status}`,
     );
   }
-}
-
-/**
- * Enqueue a run for testing (test helper wrapping enqueueRun).
- */
-export async function enqueueTestRun(params: {
-  userId: string;
-  agentComposeVersionId: string;
-  orgId: string;
-  prompt: string;
-}): Promise<{ runId: string; status: string; queuedAt: Date }> {
-  const result = await enqueueRun(params);
-  return {
-    runId: result.runId,
-    status: result.status,
-    queuedAt: result.createdAt,
-  };
 }

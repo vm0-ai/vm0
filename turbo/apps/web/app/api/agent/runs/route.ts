@@ -327,6 +327,8 @@ const router = tsr.router(runsMainContract, {
           appendSystemPrompt: body.appendSystemPrompt,
           vars: resolved.vars ?? body.vars,
           secrets: resolved.secrets ?? body.secrets,
+          additionalVolumes:
+            body.additionalVolumes ?? resolved.additionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
         });
@@ -355,7 +357,8 @@ const router = tsr.router(runsMainContract, {
           artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
           memoryName: resolved.memoryName ?? body.memoryName,
           volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
-          additionalVolumes: body.additionalVolumes,
+          additionalVolumes:
+            body.additionalVolumes ?? resolved.additionalVolumes,
           environment: resolved.environment,
           userTimezone: resolved.userTimezone,
           firewalls: resolved.firewalls,
