@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { FeatureSwitchKey } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -904,7 +905,11 @@ describe("mission control page", () => {
     );
 
     const user = userEvent.setup();
-    detachedSetupPage({ context, path: "/_/mission-control" });
+    detachedSetupPage({
+      context,
+      path: "/_/mission-control",
+      featureSwitches: { [FeatureSwitchKey.VoiceChat]: true },
+    });
 
     const title = await waitFor(() => {
       return screen.getByText("Voice chat with Zero");
@@ -970,7 +975,11 @@ describe("mission control page", () => {
     );
 
     const user = userEvent.setup();
-    detachedSetupPage({ context, path: "/_/mission-control" });
+    detachedSetupPage({
+      context,
+      path: "/_/mission-control",
+      featureSwitches: { [FeatureSwitchKey.VoiceChat]: true },
+    });
 
     const title = await waitFor(() => {
       return screen.getByText("Live voice session");
