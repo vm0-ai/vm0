@@ -747,28 +747,9 @@ where
     .map_err(|e| R2Error::Io(io_other(e)))?
 }
 
-/// Finish the unpack: best-effort sparse-restore any `cow.img` if present,
-/// then atomic rename `staging` to `final_dir`. Same-parent rename is
-/// atomic on ext4/xfs.
-///
-/// The cow.img handling is retained as defensive infrastructure — the
-/// current R2 archive only contains rootfs.ext4, but `punch_hole` is a
-/// no-op when cow.img is absent and kept in case sparse files are added
-/// back to the archive in the future.
+/// Finish the unpack: atomic rename `staging` to `final_dir`. Same-parent
+/// rename is atomic on ext4/xfs.
 async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Error> {
-    let cow = staging.join("cow.img");
-    if let Ok(meta) = tokio::fs::metadata(&cow).await {
-        let len = meta.len();
-        if len > 0 {
-            let result = tokio::task::spawn_blocking(move || punch_hole(&cow, len))
-                .await
-                .map_err(|e| R2Error::Io(io_other(e)))?;
-            if let Err(e) = result {
-                tracing::warn!("punch_hole on cow.img failed: {e}");
-            }
-        }
-    }
-
     if let Err(e) = tokio::fs::rename(staging, final_dir).await {
         // Expected recovery path: a previous `runner build` for this hash
         // crashed after creating final_dir but before the build finished.
@@ -824,38 +805,6 @@ async fn read_full<R: tokio::io::AsyncRead + Unpin>(
             .ok_or_else(|| R2Error::Io(io_other("read offset overflow")))?;
     }
     Ok(total)
-}
-
-/// Best-effort `FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE` over the whole file.
-/// Logs and swallows EOPNOTSUPP (tmpfs); returns Err for other failures.
-fn punch_hole(path: &Path, len: u64) -> Result<(), R2Error> {
-    let f = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
-    let len_i64 = i64::try_from(len).map_err(|_| {
-        R2Error::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("file size too large for fallocate: {len}"),
-        ))
-    })?;
-    match nix::fcntl::fallocate(
-        &f,
-        nix::fcntl::FallocateFlags::FALLOC_FL_PUNCH_HOLE
-            | nix::fcntl::FallocateFlags::FALLOC_FL_KEEP_SIZE,
-        0,
-        len_i64,
-    ) {
-        Ok(()) => Ok(()),
-        Err(nix::Error::EOPNOTSUPP) => {
-            tracing::warn!(
-                "filesystem doesn't support FALLOC_FL_PUNCH_HOLE; cow.img will remain dense \
-                 ({len} bytes on disk)"
-            );
-            Ok(())
-        }
-        Err(e) => Err(R2Error::Io(std::io::Error::other(e.to_string()))),
-    }
 }
 
 #[cfg(test)]
@@ -1124,45 +1073,13 @@ mod tests {
 
     // ---- pack / unpack round-trip --------------------------------------
 
-    /// Write the four canonical image files into `dir` with the same byte
-    /// content for both packing and verification. cow.img is sparse (16 MiB
-    /// logical, only first 1 MiB written).
+    /// Write the rootfs file (the only file cached in R2) into `dir`.
     async fn write_mock_image_files(dir: &Path) -> Vec<PathBuf> {
         let rootfs = dir.join("rootfs.ext4");
-        let snapshot = dir.join("snapshot.bin");
-        let memory = dir.join("memory.bin");
-        let cow = dir.join("cow.img");
-
-        // Distinct content per file so cross-contamination shows up as a diff.
         tokio::fs::write(&rootfs, b"rootfs-content".repeat(1024))
             .await
             .unwrap();
-        tokio::fs::write(&snapshot, b"snapshot-bin").await.unwrap();
-        tokio::fs::write(&memory, vec![0u8; 4 * 1024 * 1024])
-            .await
-            .unwrap();
-
-        // Sparse cow.img: 16 MiB logical, 1 MiB at the front.
-        let cow_file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&cow)
-            .unwrap();
-        cow_file.set_len(16 * 1024 * 1024).unwrap();
-        drop(cow_file);
-        tokio::fs::write(&cow, vec![0xAB; 1024 * 1024])
-            .await
-            .unwrap();
-        // Re-truncate to logical size after writing data — write() truncates.
-        std::fs::OpenOptions::new()
-            .write(true)
-            .open(&cow)
-            .unwrap()
-            .set_len(16 * 1024 * 1024)
-            .unwrap();
-
-        vec![rootfs, snapshot, memory, cow]
+        vec![rootfs]
     }
 
     /// Helper: full atomic unpack from an on-disk archive (test-only path).
@@ -1180,7 +1097,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pack_then_unpack_round_trips_4_files() {
+    async fn pack_then_unpack_round_trips_rootfs() {
         let src_dir = tempfile::tempdir().unwrap();
         let dst_root = tempfile::tempdir().unwrap();
         let final_dir = dst_root.path().join("hash-abc");
@@ -1202,19 +1119,12 @@ mod tests {
             .await
             .unwrap();
 
-        // All 4 file names exist and round-trip the prefix bytes.
-        for name in ["rootfs.ext4", "snapshot.bin", "memory.bin", "cow.img"] {
-            let dst = final_dir.join(name);
-            let src = src_dir.path().join(name);
-            assert!(dst.exists(), "{name} should exist after unpack");
-            let dst_meta = std::fs::metadata(&dst).unwrap();
-            let src_meta = std::fs::metadata(&src).unwrap();
-            assert_eq!(
-                dst_meta.len(),
-                src_meta.len(),
-                "{name} logical size mismatch"
-            );
-        }
+        let dst = final_dir.join("rootfs.ext4");
+        let src = src_dir.path().join("rootfs.ext4");
+        assert!(dst.exists(), "rootfs.ext4 should exist after unpack");
+        let dst_meta = std::fs::metadata(&dst).unwrap();
+        let src_meta = std::fs::metadata(&src).unwrap();
+        assert_eq!(dst_meta.len(), src_meta.len(), "rootfs size mismatch");
 
         // Staging directory should no longer exist after the rename.
         assert!(!staging_dir(&final_dir).exists());
@@ -1464,34 +1374,9 @@ mod tests {
         assert_unpack_rejects_typeflag(b'1', b"/etc/passwd").await;
     }
 
-    /// `finalize_staging` skips `punch_hole` when `cow.img` is empty (size=0).
-    /// Different branch from `finalize_works_without_cow_img` — there the
-    /// file is absent; here it exists with zero length. Both must succeed
-    /// without invoking the fallocate syscall (which is undefined for len=0).
+    /// `finalize_staging` performs the atomic rename for a rootfs-only archive.
     #[tokio::test]
-    async fn finalize_skips_punch_hole_on_zero_byte_cow() {
-        let dst_root = tempfile::tempdir().unwrap();
-        let final_dir = dst_root.path().join("hash");
-        let staging = staging_dir(&final_dir);
-        tokio::fs::create_dir_all(&staging).await.unwrap();
-        tokio::fs::write(staging.join("cow.img"), b"")
-            .await
-            .unwrap();
-        tokio::fs::write(staging.join("rootfs.ext4"), b"data")
-            .await
-            .unwrap();
-
-        finalize_staging(&staging, &final_dir).await.unwrap();
-
-        let cow_meta = std::fs::metadata(final_dir.join("cow.img")).unwrap();
-        assert_eq!(cow_meta.len(), 0, "0-byte cow.img preserved as-is");
-        assert!(!staging.exists(), "staging consumed by rename");
-    }
-
-    /// `finalize_staging` skips `punch_hole` cleanly when `cow.img` is absent.
-    /// Defends against future producers that ship without cow.img.
-    #[tokio::test]
-    async fn finalize_works_without_cow_img() {
+    async fn finalize_renames_rootfs_only_staging() {
         let dst_root = tempfile::tempdir().unwrap();
         let final_dir = dst_root.path().join("hash");
         let staging = staging_dir(&final_dir);
@@ -1499,13 +1384,11 @@ mod tests {
         tokio::fs::write(staging.join("rootfs.ext4"), b"data")
             .await
             .unwrap();
-        // Intentionally: no cow.img.
 
         finalize_staging(&staging, &final_dir).await.unwrap();
 
         assert!(final_dir.exists());
         assert!(final_dir.join("rootfs.ext4").exists());
-        assert!(!final_dir.join("cow.img").exists());
         assert!(!staging.exists(), "staging consumed by rename");
     }
 
