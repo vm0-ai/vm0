@@ -444,7 +444,10 @@ async fn remove_all_except_rootfs(image: &ImagePaths) {
     let rootfs_name = std::ffi::OsStr::new("rootfs.ext4");
     let mut entries = match tokio::fs::read_dir(image.dir()).await {
         Ok(e) => e,
-        Err(_) => return,
+        Err(e) => {
+            tracing::warn!("failed to read dir {}: {e}", image.dir().display());
+            return;
+        }
     };
     loop {
         let entry = match entries.next_entry().await {
@@ -654,26 +657,35 @@ mod tests {
         assert!(is_image_complete(&image).await.unwrap());
     }
 
-    /// Guard the `[sync:ca-constants]` contract between build-rootfs.sh and
-    /// inject-ca.sh. Drift between the two scripts' CA cert paths would
-    /// cause silent CA injection failures on R2-downloaded rootfs.
+    /// Guard the `[sync:ca-constants]` contract between build-rootfs.sh,
+    /// inject-ca.sh, and verify-rootfs.sh. Drift would cause silent CA
+    /// injection/verification failures on R2-downloaded rootfs.
     #[test]
     fn ca_constants_in_sync_across_scripts() {
         let ca_cert_line = r#"CA_CERT_FILE="mitmproxy-ca-cert.pem""#;
         let ca_dest_line = r#"CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt""#;
+
+        // Scripts that use both constants.
         for (script, name) in [
             (BUILD_SCRIPT, "build-rootfs.sh"),
             (INJECT_CA_SCRIPT, "inject-ca.sh"),
         ] {
             assert!(
                 script.contains(ca_cert_line),
-                "{name} missing CA_CERT_FILE constant — sync with other script"
+                "{name} missing CA_CERT_FILE constant — sync with other scripts"
             );
             assert!(
                 script.contains(ca_dest_line),
-                "{name} missing CA_ROOTFS_DEST constant — sync with other script"
+                "{name} missing CA_ROOTFS_DEST constant — sync with other scripts"
             );
         }
+
+        // verify-rootfs.sh only uses CA_ROOTFS_DEST (it reads the cert from
+        // inside the rootfs, not from the host CA_DIR).
+        assert!(
+            VERIFY_SCRIPT.contains(ca_dest_line),
+            "verify-rootfs.sh missing CA_ROOTFS_DEST constant — sync with other scripts"
+        );
     }
 
     #[tokio::test]
