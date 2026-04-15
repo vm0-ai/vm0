@@ -78,7 +78,7 @@ function mockTtsEndpoint() {
 describe("playTts$", () => {
   const context = testContext();
 
-  it("should not trigger a second fetch when called twice with the same messageId", async () => {
+  it("should not trigger a second fetch when called twice with the same runId", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
     const { getFetchCount } = mockTtsEndpoint();
@@ -101,7 +101,7 @@ describe("playTts$", () => {
     expect(AudioContext).toHaveBeenCalledTimes(1);
   });
 
-  it("should allow playback for a different messageId", async () => {
+  it("should allow playback for a different runId", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
     const { getFetchCount } = mockTtsEndpoint();
@@ -112,7 +112,7 @@ describe("playTts$", () => {
     expect(getFetchCount()).toBe(2);
   });
 
-  it("should reset playingMessageId on fetch failure", async () => {
+  it("should reset playingRunId on fetch failure", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
 
@@ -131,7 +131,7 @@ describe("playTts$", () => {
     expect(playingId).toBeNull();
   });
 
-  it("should reset playingMessageId after pre-aborted signal", async () => {
+  it("should reset playingRunId after pre-aborted signal", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
     mockTtsEndpoint();
@@ -143,7 +143,7 @@ describe("playTts$", () => {
     expect(context.store.get(ttsPlayingRunId$)).toBeNull();
   });
 
-  it("should reset playingMessageId after signal abort during fetch", async () => {
+  it("should reset playingRunId after signal abort during fetch", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
 
