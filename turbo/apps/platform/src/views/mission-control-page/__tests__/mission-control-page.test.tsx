@@ -900,6 +900,7 @@ describe("mission control page", () => {
   });
 
   it("should open keyboard shortcuts help dialog when shift+? is pressed", async () => {
+    const user = userEvent.setup();
     mockTasksAPI([]);
 
     detachedSetupPage({ context, path: "/_/mission-control" });
@@ -908,20 +909,15 @@ describe("mission control page", () => {
       expect(screen.getByText("No active tasks")).toBeInTheDocument();
     });
 
-    // shift+? shortcut is registered by setupMissionControlKeyboard$
-    // userEvent does not have "?" in its keyMap, so dispatch the event directly
-    document.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        key: "?",
-        shiftKey: true,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
+    // "?" is not in userEvent's default keyMap; hold Shift explicitly so the
+    // keydown event carries shiftKey:true and key:"?" — matching the shift+? binding
+    await user.keyboard("{Shift>}?{/Shift}");
 
     await waitFor(() => {
-      // ShortcutHelpDialog title
-      expect(screen.getByText("Keyboard Shortcuts")).toBeInTheDocument();
+      // ShortcutHelpDialog is rendered as a dialog with accessible name
+      expect(
+        screen.getByRole("dialog", { name: /keyboard shortcuts/i }),
+      ).toBeInTheDocument();
     });
   });
 
