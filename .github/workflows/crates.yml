@@ -321,11 +321,6 @@ jobs:
             -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
 
       - name: Cross-compile runner with embedded guests for ARM64
-        env:
-          # Override .cargo/config.toml to use mold (pre-installed in toolchain-rust
-          # image) for faster runner linking. Only runner uses this — guests use the
-          # default linker for image_hash consistency.
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
         run: |
           cd crates
           GUEST_AGENT_PATH="target/$TARGET_TRIPLE/release/guest-agent" \
