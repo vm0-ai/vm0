@@ -1,4 +1,4 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import { command, state, type Command, type State } from "ccstate";
 import { fetch$ } from "../fetch.ts";
 import { setLoop } from "../utils.ts";
 
@@ -21,7 +21,7 @@ export interface VoiceChatEvent {
 
 export interface VoiceChatPanelSignals {
   sessionId: string;
-  events$: Computed<VoiceChatEvent[]>;
+  events$: State<VoiceChatEvent[]>;
   startPolling$: Command<Promise<void>, [AbortSignal]>;
   focusInput$: Command<void, []>;
 }
@@ -33,17 +33,13 @@ export interface VoiceChatPanelSignals {
 export function createVoiceChatPanelSignals(
   sessionId: string,
 ): VoiceChatPanelSignals {
-  const internalEvents$ = state<VoiceChatEvent[]>([]);
-  const internalLastSeq$ = state(0);
-
-  const events$ = computed((get) => {
-    return get(internalEvents$);
-  });
+  const events$ = state<VoiceChatEvent[]>([]);
+  const lastSeq$ = state(0);
 
   const startPolling$ = command(async ({ get, set }, signal: AbortSignal) => {
     await setLoop(
       async (sig: AbortSignal) => {
-        const lastSeq = get(internalLastSeq$);
+        const lastSeq = get(lastSeq$);
         const fetchFn = get(fetch$);
         const res = await fetchFn(
           `/api/zero/voice-chat/${sessionId}/context?after=${lastSeq}`,
@@ -54,16 +50,26 @@ export function createVoiceChatPanelSignals(
           return false;
         }
 
-        const data = (await res.json()) as { events: VoiceChatEvent[] };
+        const json: unknown = await res.json();
         sig.throwIfAborted();
 
-        if (data.events.length > 0) {
-          set(internalEvents$, (prev) => {
-            return [...prev, ...data.events];
+        if (
+          typeof json !== "object" ||
+          json === null ||
+          !("events" in json) ||
+          !Array.isArray((json as { events: unknown }).events)
+        ) {
+          return false;
+        }
+
+        const incoming = (json as { events: VoiceChatEvent[] }).events;
+        if (incoming.length > 0) {
+          set(events$, (prev) => {
+            return [...prev, ...incoming];
           });
-          const lastEvent = data.events[data.events.length - 1];
-          if (lastEvent) {
-            set(internalLastSeq$, lastEvent.seq);
+          const last = incoming[incoming.length - 1];
+          if (last) {
+            set(lastSeq$, last.seq);
           }
         }
         return false;

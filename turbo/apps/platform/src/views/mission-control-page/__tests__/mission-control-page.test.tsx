@@ -28,7 +28,7 @@ function createAgent() {
 function mockTasksAPI(
   tasks: {
     id: string;
-    type: "chat" | "schedule" | "slack" | "email";
+    type: "chat" | "schedule" | "slack" | "email" | "voice_chat" | "agent";
     title: string | null;
     summary: string | null;
     agent: {
@@ -43,6 +43,7 @@ function mockTasksAPI(
     scheduleId?: string;
     slackThreadSessionId?: string;
     emailThreadSessionId?: string;
+    voiceChatSessionId?: string;
     createdAt: string;
     updatedAt: string;
   }[],
@@ -878,6 +879,45 @@ describe("mission control page", () => {
       .getByText("Voice session with Zero")
       .closest("[role=button]") as HTMLElement;
     expect(card.querySelector(".tabler-icon-microphone")).not.toBeNull();
+  });
+
+  it("should open voice chat panel when clicking a voice_chat task", async () => {
+    mockTasksAPI([
+      {
+        id: "task-vc-open",
+        type: "voice_chat",
+        title: "Voice chat with Zero",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: "run-vc-open-1",
+        status: "running",
+        voiceChatSessionId: "vc-session-open",
+        createdAt: "2026-04-13T10:00:00Z",
+        updatedAt: "2026-04-13T10:00:00Z",
+      },
+    ]);
+
+    server.use(
+      http.get("*/api/zero/voice-chat/vc-session-open/context", () => {
+        return HttpResponse.json({ events: [] });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Voice chat with Zero");
+    });
+
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("No conversation events yet")).toBeInTheDocument();
+    expect(pathname()).toBe("/_/mission-control");
   });
 
   it("should open new chat dialog when c key is pressed", async () => {
