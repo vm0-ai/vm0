@@ -351,11 +351,16 @@ function createSendMessage(
     set(deps.internalLocalMessages$, (prev) => {
       return [...prev, result.userMessage];
     });
-    set(deps.autoScroll$);
     set(deps.cancelDraftSync$);
     set(deps.draft.clear$);
     await set(deps.flushDraftClear$, signal);
     signal.throwIfAborted();
+
+    // Yield one microtask tick so React can flush the optimistic user message
+    // into the DOM before we scroll. Without this the scroll fires against the
+    // old layout and is effectively a no-op.
+    await delay(0, { signal });
+    set(deps.autoScroll$);
 
     const client = get(zeroClient$)(chatMessagesContract);
     const sendResult = await accept(
