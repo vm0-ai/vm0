@@ -11,7 +11,6 @@ import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { dispatchToEventConsumers } from "../../../../../src/lib/infra/event-consumer";
-import { after } from "next/server";
 
 const log = logger("webhook:events");
 
@@ -69,19 +68,17 @@ const router = tsr.router(webhookEventsContract, {
       `Dispatching events ${firstSequence}-${lastSequence} to consumers for run ${body.runId}`,
     );
 
-    // Dispatch to all registered event consumers (Axiom, credit, chat-assistant, etc.)
-    after(() => {
-      return dispatchToEventConsumers(body.runId, body.events, {
-        userId,
-        orgId: run.orgId,
-        modelProvider: run.modelProvider ?? undefined,
-        selectedModel: run.selectedModel ?? undefined,
-      }).catch((err: unknown) => {
-        log.error("Failed to dispatch to event consumers", {
-          runId: body.runId,
-          error: err,
-        });
-      });
+    // Dispatch to all registered event consumers (Axiom, credit, chat-assistant, etc.).
+    // Awaited (not deferred via next/server `after`) so that downstream pollers of
+    // /api/agent/runs/:id/events — including the CLI — can see events as soon as the
+    // webhook returns. With `after()`, fast mock-claude runs completed before Axiom
+    // ingestion finished, leaving the CLI with no `● Bash(...)` rendering.
+    // Per-consumer failures are swallowed inside the dispatcher (Promise.allSettled).
+    await dispatchToEventConsumers(body.runId, body.events, {
+      userId,
+      orgId: run.orgId,
+      modelProvider: run.modelProvider ?? undefined,
+      selectedModel: run.selectedModel ?? undefined,
     });
 
     return {
