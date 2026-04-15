@@ -11,16 +11,17 @@ import {
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { IN_VITEST } from "../env.ts";
-import { createDeferredPromise, setLoop, throwIfAbort } from "./utils.ts";
+import {
+  createDeferredPromise,
+  FIB_DELAYS_MS,
+  MAX_LOOP_COUNT_IN_TEST,
+  setLoop,
+  throwIfAbort,
+} from "./utils.ts";
 import { logger } from "./log.ts";
 import { delay } from "signal-timers";
 
 const L = logger("Realtime");
-
-const MAX_LOOP_COUNT_IN_TEST = 1000;
-const FIB_DELAYS_MS = [
-  1000, 1000, 2000, 3000, 5000, 8000, 13_000, 21_000, 34_000, 55_000, 60_000,
-] as const;
 // ---------------------------------------------------------------------------
 // Ably client singleton
 // ---------------------------------------------------------------------------
@@ -158,7 +159,16 @@ export const setAblyLoop$ = command(
         return;
       }
 
-      await (IN_VITEST ? delay(0, { signal }) : deferred.promise);
+      // In VITEST, yield to the macrotask queue via setTimeout so React can
+      // flush renders between iterations. We avoid delay(0, { signal }) because
+      // signal-timers' Promise.race leaves an abandoned promiseFromSignal that
+      // rejects as an unhandled rejection when the abort signal fires during
+      // afterEach cleanup.
+      await (IN_VITEST
+        ? new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 0);
+          })
+        : deferred.promise);
       signal.throwIfAborted();
 
       deferred = createDeferredPromise(signal);
@@ -180,7 +190,11 @@ export const setAblyLoop$ = command(
           error,
         );
         fibIndex++;
-        await (IN_VITEST ? delay(0, { signal }) : delay(backoff, { signal }));
+        await (IN_VITEST
+          ? new Promise<void>((resolve) => {
+              window.setTimeout(resolve, 0);
+            })
+          : delay(backoff, { signal }));
       }
     }
   },
