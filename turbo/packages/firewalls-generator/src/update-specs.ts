@@ -19,6 +19,7 @@ import {
   hashContent,
   writeSpecFile,
 } from "./codegen";
+import type { GitHubContent } from "./dropbox";
 
 type SpecEntries = Map<string, string>; // key → content
 
@@ -74,8 +75,6 @@ const deelUpdater: Updater = {
     return entries;
   },
 };
-
-import type { GitHubContent } from "./dropbox";
 
 const dropboxUpdater: Updater = {
   name: "dropbox",
@@ -268,6 +267,19 @@ async function main(): Promise<void> {
     for (const file of fs.readdirSync(dir)) {
       if (!keep.has(file)) {
         fs.unlinkSync(path.join(dir, file));
+      }
+    }
+  }
+
+  // On a full update (no targets), remove generator directories that are
+  // no longer in the map (i.e. removed from UPDATERS).
+  if (targets.length === 0) {
+    const knownGenerators = new Set(Object.keys(map));
+    for (const entry of fs.readdirSync(SPECS_DIR)) {
+      const entryPath = path.join(SPECS_DIR, entry);
+      if (fs.statSync(entryPath).isDirectory() && !knownGenerators.has(entry)) {
+        fs.rmSync(entryPath, { recursive: true });
+        console.error(`Removed obsolete generator dir: ${entry}`);
       }
     }
   }
