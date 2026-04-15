@@ -1810,33 +1810,33 @@
         ]
       },
       "cross-tool-context-query": {
-        "title": "Get a unified status brief on anything without checking five tools",
-        "description": "Ask Zero about a project, feature, or topic. It searches Slack, Notion, Linear, and GitHub simultaneously, then returns a structured brief: current state, owner, blockers, and last activity — all from a single message.",
-        "timeSaved": "~15 min saved per status check",
+        "title": "5つのツールを確認せずに、あらゆるテーマの統合ステータスブリーフを取得",
+        "description": "プロジェクト、機能、またはトピックについて@Zeroに質問します。Slack、Notion、Linear、GitHubを同時に検索し、構造化されたブリーフを返します：現在の状態、担当者、ブロッカー、最終アクティビティ — すべてが1つのメッセージで完結します。",
+        "timeSaved": "ステータス確認ごとに約15分の時間削減",
         "headings": {
-          "scenario": "Why status updates take longer than they should",
-          "prompt": "How to ask Zero for a cross-tool status brief",
-          "steps": "How Zero searches, synthesizes, and flags conflicting signals",
-          "nextActions": "Go deeper, schedule recurring briefs, or document the status",
-          "integrations": "Required integrations: Slack, Linear, Notion, and GitHub",
-          "tips": "Best practices for cross-tool context queries"
+          "scenario": "ステータス更新に必要以上に時間がかかる理由",
+          "prompt": "@Zeroにクロスツールのステータスブリーフを依頼する方法",
+          "steps": "@Zeroが検索、統合し、矛盾する情報をフラグ付けする仕組み",
+          "nextActions": "さらに深掘り、定期ブリーフのスケジュール、またはステータスの文書化",
+          "integrations": "必須連携: Slack、Linear、Notion、GitHub",
+          "tips": "クロスツールコンテキストクエリのベストプラクティス"
         },
-        "scenario": "You need to know the status of the new onboarding flow. You open Slack to check if there has been a recent decision. You open Linear to see what is in progress. You open Notion to find the spec. You open GitHub to check the PR. Four tabs, four contexts, and you are still not sure if the spec is current or if the Linear ticket reflects the latest decision. Zero does all four searches at once, flags any conflicts, and gives you the full picture in one response.",
+        "scenario": "新しいオンボーディングフローの状態を知る必要があります。Slackを開いて最近の決定がないか確認します。Linearを開いて進行中のものを確認します。Notionを開いて仕様を探します。GitHubを開いてPRを確認します。4つのタブ、4つのコンテキスト、それでも仕様が最新かどうか、Linearのチケットが最新の決定を反映しているかどうか確信が持てません。@Zeroは4つの検索を同時に行い、矛盾をフラグ付けし、1つのレスポンスで全体像を提供します。",
         "promptVariants": [
           {
-            "label": "Basic",
+            "label": "基本",
             "prompt": "@Zero what's the current status of [X]?\nSearch Slack (last 14 days), Notion, Linear, and GitHub. Return: current state in one sentence, owner, blockers, and the last meaningful update with source."
           },
           {
-            "label": "Deep dive",
+            "label": "詳細分析",
             "prompt": "@Zero pull everything on [X] from the last 30 days across Slack, Notion, Linear, and GitHub. Write a full status doc with owner, decision history, and what's next."
           },
           {
-            "label": "Scheduled",
+            "label": "スケジュール",
             "prompt": "@Zero every Monday morning, DM me a status brief on [X] — current state, owner, blockers, last update."
           },
           {
-            "label": "Conflict-aware",
+            "label": "矛盾検知",
             "prompt": "@Zero check Slack and Linear for the latest on [X] and flag if the two sources disagree on status or ownership."
           }
         ],
@@ -1852,83 +1852,83 @@
         ],
         "steps": [
           {
-            "title": "Zero searches all four sources in parallel",
-            "description": "Zero queries Slack messages, Notion pages, Linear issues, and GitHub PRs and commits simultaneously, scoped to the topic and time window you specified."
+            "title": "@Zeroが4つすべてのソースを並行検索",
+            "description": "@Zeroは指定したトピックと時間枠にスコープして、Slackメッセージ、Notionページ、Linearのissue、GitHubのPRとコミットを同時に検索します。"
           },
           {
-            "title": "Findings synthesized into a structured brief",
-            "description": "Zero extracts state, owner, blockers, and last update from each source. If two sources disagree — for example, Slack says blocked but Linear shows in progress — Zero flags the conflict and cites both."
+            "title": "検索結果を構造化されたブリーフに統合",
+            "description": "@Zeroは各ソースから状態、担当者、ブロッカー、最終更新を抽出します。2つのソースが矛盾する場合 — 例えばSlackではブロック中だがLinearでは進行中と表示される場合 — @Zeroは矛盾をフラグ付けし、両方のソースを引用します。"
           },
           {
-            "title": "Brief returned in the same thread",
-            "description": "Zero replies with a 4-part brief: current state in one line, owner or DRI, blockers, and the last meaningful update with its source and date."
+            "title": "ブリーフを同じスレッドで返信",
+            "description": "@Zeroは4つのパートで構成されたブリーフを返信します：1行での現在の状態、担当者またはDRI、ブロッカー、ソースと日付を含む最後の重要な更新。"
           }
         ],
         "nextActions": [
           {
-            "title": "Go deeper on one source",
-            "description": "Pull the full Linear issue or GitHub PR thread",
+            "title": "1つのソースを深掘りする",
+            "description": "Linearのissueまたは GitHubのPRスレッド全体を確認",
             "examplePrompt": "@Zero show me all comments and activity on the Linear issue for [X] from the last 7 days."
           },
           {
-            "title": "Schedule recurring briefs",
-            "description": "Get a weekly status DM without asking each time",
+            "title": "定期ブリーフをスケジュールする",
+            "description": "毎回質問せずに週次のステータスDMを受け取る",
             "examplePrompt": "@Zero every Monday morning, DM me a status brief on [X] — current state, owner, blockers, last update."
           },
           {
-            "title": "Document the status",
-            "description": "Log the brief to Notion for the team",
+            "title": "ステータスを文書化する",
+            "description": "チーム向けにブリーフをNotionに記録",
             "examplePrompt": "@Zero search for the latest on [X] across Slack, Linear, and GitHub, then save a status summary to our Decision Log in Notion."
           }
         ],
         "integrations": [
           {
-            "description": "Zero reads messages across channels to surface recent decisions, blockers, and discussions about the topic."
+            "description": "@Zeroはチャンネル全体のメッセージを読み取り、トピックに関する最近の決定、ブロッカー、議論を表面化します。"
           },
           {
-            "description": "Zero pulls open and in-progress issues to surface ownership, priority, and current state."
+            "description": "@Zeroはオープンおよび進行中のissueを取得して、担当者、優先度、現在の状態を表面化します。"
           },
           {
-            "description": "Zero searches pages and databases for specs, decisions, and context documents. Optional but recommended."
+            "description": "@Zeroはページとデータベースで仕様、決定事項、コンテキスト文書を検索します。オプションですが推奨です。"
           },
           {
-            "description": "Zero checks open PRs, recent commits, and issue comments for the latest technical activity. Optional but recommended for engineering topics."
+            "description": "@Zeroはオープンなpr、最近のコミット、issueコメントから最新の技術的アクティビティを確認します。オプションですが、エンジニアリングトピックには推奨です。"
           }
         ],
         "tips": [
-          "Be specific — \"the Stripe integration\" works better than \"the payment feature\". Zero needs enough context to filter results across four sources.",
-          "Add a time window if the topic is long-running. \"Focus on the last 14 days\" prevents outdated results from burying recent ones.",
-          "Pair with Document Decisions to automatically log the brief to Notion after Zero returns it."
+          "具体的に指定しましょう。「Stripe連携」は「決済機能」よりも効果的です。@Zeroが4つのソースで結果をフィルタリングするには十分なコンテキストが必要です。",
+          "長期にわたるトピックの場合は時間枠を追加しましょう。「直近14日間に絞る」ことで、古い結果が最新のものを埋もれさせることを防げます。",
+          "意思決定の文書化と組み合わせて、@Zeroが返したブリーフをNotionに自動記録しましょう。"
         ]
       },
       "customer-360": {
-        "title": "Build a full customer picture before any meeting or renewal call",
-        "description": "Give Zero a customer name or company. It searches Gmail, Calendar, Slack, Linear, and GitHub simultaneously, then returns a structured brief: relationship stage, recent activity, open items, and an executive summary with the recommended next action.",
-        "timeSaved": "~30 min saved per customer review",
+        "title": "会議や更新コールの前に顧客の全体像を構築",
+        "description": "@Zeroに顧客名または企業名を渡します。Gmail、Calendar、Slack、Linear、GitHubを同時に検索し、構造化されたブリーフを返します：関係ステージ、直近のアクティビティ、未解決事項、推奨アクション付きのエグゼクティブサマリー。",
+        "timeSaved": "顧客レビューごとに約30分の時間削減",
         "headings": {
-          "scenario": "Why customer context gets lost between tools",
-          "prompt": "How to ask Zero for a Customer 360 brief",
-          "steps": "How Zero searches and synthesizes customer context across five sources",
-          "nextActions": "Prep for a specific meeting, batch-run for a review cycle, or surface just the risk",
-          "integrations": "Required integrations: Gmail, Calendar, and Slack",
-          "tips": "Best practices for customer context queries"
+          "scenario": "ツール間で顧客コンテキストが失われる理由",
+          "prompt": "@ZeroにCustomer 360ブリーフを依頼する方法",
+          "steps": "@Zeroが5つのソースから顧客コンテキストを検索・統合する仕組み",
+          "nextActions": "特定のミーティングに備える、レビューサイクルでバッチ実行する、またはリスクのみを表面化する",
+          "integrations": "必須連携: Gmail、Calendar、Slack",
+          "tips": "顧客コンテキストクエリのベストプラクティス"
         },
-        "scenario": "Your QBR is in an hour. You remember there was a support issue last month, some email threads that stalled, and a feature request filed somewhere. You have 12 minutes and four tools to check. Zero searches all of them at once — email, calendar, Slack, tickets — and comes back with one brief: who they are, what has happened recently, what is unresolved, and exactly what you should bring up in the call.",
+        "scenario": "QBRまであと1時間。先月サポートの問題があったこと、いくつかのメールスレッドが停滞していたこと、どこかに機能リクエストが登録されていたことを覚えています。12分と4つのツールで確認する必要があります。@Zeroはすべてを一度に検索し — メール、カレンダー、Slack、チケット — 1つのブリーフで返します：彼らは誰か、最近何が起きたか、何が未解決か、コールで何を取り上げるべきか。",
         "promptVariants": [
           {
-            "label": "Full 360",
+            "label": "フル360",
             "prompt": "@Zero build a Customer 360 for [company].\nSearch Gmail (last 90 days), Google Calendar (last 30 days + next 14 days), Slack (last 30 days), Linear, and GitHub. Return: who they are and relationship stage, recent activity, open items, and a 3-bullet executive summary — relationship health, biggest risk, recommended next action."
           },
           {
-            "label": "Pre-meeting snapshot",
+            "label": "ミーティング前スナップショット",
             "prompt": "@Zero quick 360 on [contact name] at [company] before my call tomorrow.\nCheck Gmail, Calendar, and Slack. Tell me: what's been discussed, what's unresolved, and one thing I should bring up."
           },
           {
-            "label": "Batch prep",
+            "label": "バッチ準備",
             "prompt": "@Zero for each company in my 'Q2 Reviews' Notion list, run a Customer 360 and save each as a new Notion page under 'Customer Intelligence'."
           },
           {
-            "label": "Executive summary only",
+            "label": "エグゼクティブサマリーのみ",
             "prompt": "@Zero snapshot on [company] — relationship health, biggest open item, recommended next move. Gmail and Slack, last 30 days only."
           }
         ],
@@ -1944,86 +1944,86 @@
         ],
         "steps": [
           {
-            "title": "Zero searches all sources in parallel",
-            "description": "Zero queries Gmail for email threads, Google Calendar for past meetings and upcoming touchpoints, Slack for internal discussions, Linear for linked issues, and GitHub for connected PRs — all scoped to the specified customer."
+            "title": "@Zeroがすべてのソースを並行検索",
+            "description": "@ZeroはGmailのメールスレッド、Google Calendarの過去のミーティングと今後のタッチポイント、Slackの社内ディスカッション、Linearの関連issue、GitHubの関連PR — すべてを指定された顧客にスコープして検索します。"
           },
           {
-            "title": "Findings organized by category",
-            "description": "Zero classifies results into relationship stage and overview, recent activity in the last 30 days, and open items — defined as unresolved issues, pending decisions, and unanswered emails. If a source returns nothing, it is omitted."
+            "title": "検索結果をカテゴリ別に整理",
+            "description": "@Zeroは結果を関係ステージと概要、直近30日間のアクティビティ、未解決事項 — 未解決のissue、保留中の決定、未返信のメールとして定義 — に分類します。ソースが結果を返さない場合は省略されます。"
           },
           {
-            "title": "Executive summary written and returned",
-            "description": "Zero writes a 3-bullet executive summary covering relationship health, the biggest open risk, and a single recommended next action."
+            "title": "エグゼクティブサマリーを作成して返信",
+            "description": "@Zeroは関係の健全性、最大のオープンリスク、1つの推奨アクションをカバーする3項目のエグゼクティブサマリーを作成します。"
           }
         ],
         "nextActions": [
           {
-            "title": "Prep for a specific meeting",
-            "description": "Get a targeted brief for an upcoming call",
+            "title": "特定のミーティングに備える",
+            "description": "今後のコールに向けた的を絞ったブリーフを取得",
             "examplePrompt": "@Zero I have a call with [contact] at [company] tomorrow. What are the 3 things I need to know going in? Use Gmail and Slack from the last 30 days."
           },
           {
-            "title": "Batch all accounts",
-            "description": "Run a 360 across your full review list at once",
+            "title": "全アカウントをバッチ実行",
+            "description": "レビューリスト全体に対して一度に360を実行",
             "examplePrompt": "@Zero for each company in my 'Q2 Reviews' Notion list, run a Customer 360 and save each as a new page under 'Customer Intelligence'."
           },
           {
-            "title": "Surface open risk only",
-            "description": "Find unresolved items without the full brief",
+            "title": "オープンリスクのみを表面化",
+            "description": "フルブリーフなしで未解決事項を特定",
             "examplePrompt": "@Zero what is unresolved with [company] right now? Check Gmail, Slack, and Linear for anything open or unanswered in the last 30 days."
           }
         ],
         "integrations": [
           {
-            "description": "Zero reads email threads to surface communication history, unanswered messages, and key discussion context."
+            "description": "@Zeroはメールスレッドを読み取り、コミュニケーション履歴、未返信メッセージ、主要な議論のコンテキストを表面化します。"
           },
           {
-            "description": "Zero checks past meetings and upcoming touchpoints to complete the relationship timeline."
+            "description": "@Zeroは過去のミーティングと今後のタッチポイントを確認し、関係のタイムラインを完成させます。"
           },
           {
-            "description": "Zero scans for internal discussions about the customer, including threads the customer is not part of."
+            "description": "@Zeroは顧客に関する社内ディスカッション（顧客が参加していないスレッドを含む）をスキャンします。"
           },
           {
-            "description": "Zero surfaces linked bugs and feature requests associated with the customer. Optional but useful for technical accounts."
+            "description": "@Zeroは顧客に関連するバグや機能リクエストを表面化します。オプションですが、技術的なアカウントには有用です。"
           },
           {
-            "description": "Zero checks for linked issues or pull requests tied to the customer's account or repository. Optional."
+            "description": "@Zeroは顧客のアカウントまたはリポジトリに関連するissueやプルリクエストを確認します。オプションです。"
           }
         ],
         "tips": [
-          "Specify whether the target is a person or a company — Zero approaches them differently. A person search focuses on direct communication; a company search casts wider across all contacts at that org.",
-          "Add 'do not infer information not found in search results' to your prompt to prevent Zero from filling gaps with assumptions.",
-          "Run before QBRs, renewal calls, or first follow-ups. A 30-second read before a call is worth more than 20 minutes of prep after it."
+          "対象が個人か企業かを指定しましょう。@Zeroはアプローチが異なります。個人検索は直接のコミュニケーションに焦点を当て、企業検索はその組織のすべての連絡先を幅広くカバーします。",
+          "「検索結果にない情報を推測しないでください」をプロンプトに追加して、@Zeroが仮定で空白を埋めることを防ぎましょう。",
+          "QBR、更新コール、初回フォローアップの前に実行しましょう。コール前の30秒の確認は、コール後の20分の準備よりも価値があります。"
         ]
       },
       "trending-topic-radar": {
-        "title": "Catch emerging trends before they become obvious",
-        "description": "Set up a daily scan across X accounts and Slack channels. Zero flags only breakout topics — those appearing across 2 or more sources or showing a sharp velocity spike — and posts a ranked digest to your channel. If nothing qualifies, no post is sent.",
-        "timeSaved": "~1 hr saved daily",
+        "title": "誰もが気づく前に新興トレンドをキャッチ",
+        "description": "Xアカウントとslackチャンネルを対象に日次スキャンを設定します。@Zeroはブレイクアウトトピック — 2つ以上のソースに出現するか、急激な速度スパイクを示すもの — のみをフラグ付けし、ランク付けされたダイジェストをチャンネルに投稿します。該当するものがなければ投稿は送信されません。",
+        "timeSaved": "毎日約1時間の時間削減",
         "headings": {
-          "scenario": "Why trend monitoring fails without a signal threshold",
-          "prompt": "How to set up a daily topic radar with Zero",
-          "steps": "How Zero polls sources, detects signals, and delivers the digest",
-          "nextActions": "Expand your source list, deep dive on a topic, or run on demand",
-          "integrations": "Required integrations: X (Twitter) and Slack",
-          "tips": "Best practices for daily trend monitoring"
+          "scenario": "シグナル閾値がないとトレンドモニタリングが失敗する理由",
+          "prompt": "@Zeroでデイリートピックレーダーを設定する方法",
+          "steps": "@Zeroがソースをポーリングし、シグナルを検出し、ダイジェストを配信する仕組み",
+          "nextActions": "ソースリストの拡張、トピックの深掘り、またはオンデマンド実行",
+          "integrations": "必須連携: X (Twitter)とSlack",
+          "tips": "デイリートレンドモニタリングのベストプラクティス"
         },
-        "scenario": "Your team wants to respond to trends faster. The current process: someone shares a link in Slack, it gets three reacts, and three days later nothing happened. The problem is not attention — it is signal quality. Every source produces noise. Without a threshold, you are reading everything and acting on nothing. Zero watches your sources, applies a velocity filter, and only posts when something is actually breaking out.",
+        "scenario": "チームはトレンドにもっと早く対応したいと思っています。現在のプロセス：誰かがSlackにリンクを共有し、3つのリアクションがつき、3日後には何も起こっていません。問題は注意力ではなく、シグナルの質です。すべてのソースがノイズを生み出します。閾値がなければ、すべてを読んでいるのに何にも行動できません。@Zeroはソースを監視し、速度フィルターを適用し、実際にブレイクアウトしている場合のみ投稿します。",
         "promptVariants": [
           {
-            "label": "Set up daily scan",
+            "label": "デイリースキャンを設定",
             "prompt": "@Zero every day at 8am, scan [@mlejva, @daytonaio, @amasad] on X and [#marketing, #competitive] in Slack for emerging trends related to AI developer tools. Flag any topic appearing across 2+ sources or spiking vs. the prior 7-day average. For each, write: what it is and why it's gaining traction. Post a digest to #marketing. Cap at 5 topics, ranked by breadth then velocity. Skip the post entirely if nothing qualifies."
           },
           {
-            "label": "Add a source",
+            "label": "ソースを追加",
             "prompt": "@Zero add @n8n_io to the daily trend scan."
           },
           {
-            "label": "Deep dive on a topic",
+            "label": "トピックを深掘り",
             "prompt": "@Zero pull everything logged on [topic] across the last 7 days of trend scans and write a 1-page brief on why it's gaining momentum."
           },
           {
-            "label": "Run now",
+            "label": "今すぐ実行",
             "prompt": "@Zero run the trend scan right now and DM me the findings."
           }
         ],
@@ -2039,80 +2039,80 @@
         ],
         "steps": [
           {
-            "title": "Zero polls all specified sources",
-            "description": "Zero scans the X accounts and Slack channels you listed, collecting posts and messages published in the past 24 hours. It builds a topic map across all sources."
+            "title": "@Zeroが指定されたすべてのソースをポーリング",
+            "description": "@Zeroはリストされたxアカウントとslackチャンネルをスキャンし、過去24時間に公開された投稿とメッセージを収集します。すべてのソースにまたがるトピックマップを構築します。"
           },
           {
-            "title": "Signal detection applied",
-            "description": "Zero flags any topic that appears across 2 or more sources within the 24-hour window, or shows a 3x or greater spike in mentions compared to the prior 7-day average. Topics that do not meet either threshold are discarded."
+            "title": "シグナル検出を適用",
+            "description": "@Zeroは24時間のウィンドウ内で2つ以上のソースに出現するトピック、または過去7日間の平均と比較して3倍以上のメンション急増を示すトピックをフラグ付けします。どちらの閾値も満たさないトピックは除外されます。"
           },
           {
-            "title": "Digest posted or skipped silently",
-            "description": "If qualifying topics are found, Zero posts a ranked digest to your Slack channel — capped at 5 topics, ordered by cross-source breadth then velocity. If nothing meets the threshold, Zero sends nothing."
+            "title": "ダイジェストを投稿またはサイレントにスキップ",
+            "description": "該当するトピックが見つかった場合、@Zeroはランク付けされたダイジェストをSlackチャンネルに投稿します — 5トピックを上限に、ソース横断の広がり、次に速度の順で並べます。閾値を満たすものがなければ、@Zeroは何も送信しません。"
           }
         ],
         "nextActions": [
           {
-            "title": "Add a new source",
-            "description": "Expand coverage to a new X account or Slack channel",
+            "title": "新しいソースを追加する",
+            "description": "新しいXアカウントまたはSlackチャンネルにカバレッジを拡張",
             "examplePrompt": "@Zero add @karrisaarinen to the daily trend scan."
           },
           {
-            "title": "Deep dive on a flagged topic",
-            "description": "Get a full brief on a trend that surfaced",
+            "title": "フラグ付けされたトピックを深掘りする",
+            "description": "表面化したトレンドの詳細なブリーフを取得",
             "examplePrompt": "@Zero pull everything logged on AI compliance and audit trails across the last 7 days of trend scans and write a 1-page brief."
           },
           {
-            "title": "Archive to Notion",
-            "description": "Save the digest for historical tracking",
+            "title": "Notionにアーカイブする",
+            "description": "履歴追跡のためにダイジェストを保存",
             "examplePrompt": "@Zero save today's trend digest to Notion under 'Trend Intelligence > Week of Apr 14'."
           }
         ],
         "integrations": [
           {
-            "description": "Zero reads posts from specified competitor and community accounts to detect topic signals and velocity shifts."
+            "description": "@Zeroは指定された競合およびコミュニティアカウントの投稿を読み取り、トピックシグナルと速度変化を検出します。"
           },
           {
-            "description": "Zero scans internal channels for discussion signals and delivers the daily digest to your specified channel."
+            "description": "@Zeroは社内チャンネルをスキャンしてディスカッションシグナルを検出し、指定されたチャンネルにデイリーダイジェストを配信します。"
           },
           {
-            "description": "Zero archives trend digests to Notion for historical analysis and meta-trend tracking. Optional but recommended."
+            "description": "@Zeroはトレンドダイジェストを履歴分析とメタトレンド追跡のためにNotionにアーカイブします。オプションですが推奨です。"
           }
         ],
         "tips": [
-          "Seed your X source list with a mix of competitor CEOs, community accounts, and industry thought leaders — monitoring a single account produces false signal.",
-          "Calibrate the threshold after the first week. If too many topics surface, raise it to 3+ sources. If nothing surfaces, lower it or add more accounts.",
-          "Archive digests to Notion weekly to spot meta-trends — topics that keep returning across multiple days often signal a real shift."
+          "Xのソースリストには競合CEO、コミュニティアカウント、業界のソートリーダーをバランスよく含めましょう。単一のアカウントだけを監視すると誤ったシグナルが生まれます。",
+          "最初の1週間後に閾値を調整しましょう。トピックが多すぎる場合は3+ソースに引き上げ、何も表示されない場合は下げるかアカウントを追加しましょう。",
+          "ダイジェストを毎週Notionにアーカイブしてメタトレンドを発見しましょう — 複数の日にわたって繰り返し表示されるトピックは、多くの場合、本当の変化を示しています。"
         ]
       },
       "content-performance-report": {
-        "title": "Get a weekly content performance report without pulling the data yourself",
-        "description": "Every Monday, Zero pulls the past 7 days of post metrics from X, scores each post by engagement, and writes a short narrative report: top performer, biggest underperformer, week-over-week change, and one concrete recommendation. The narrative posts to Slack; the full data archives to Notion.",
-        "timeSaved": "~2 hrs saved weekly",
+        "title": "自分でデータを引き出さずに週次コンテンツパフォーマンスレポートを取得",
+        "description": "毎週月曜日に@Zeroが過去7日間の投稿指標をXから取得し、各投稿をエンゲージメントでスコアリングし、短いナラティブレポートを作成します：トップパフォーマー、最大のアンダーパフォーマー、前週比の変化、1つの具体的な推奨事項。ナラティブはSlackに投稿され、完全なデータはNotionにアーカイブされます。",
+        "timeSaved": "毎週約2時間の時間削減",
         "headings": {
-          "scenario": "Why weekly content reviews don't happen consistently",
-          "prompt": "How to set up a recurring content performance report with Zero",
-          "steps": "How Zero pulls metrics, scores posts, and writes the narrative",
-          "nextActions": "Pull on demand, compare content formats, or create an executive summary",
-          "integrations": "Required integrations: X (Twitter), Slack, and Notion — plus Plausible for traffic correlation",
-          "tips": "Best practices for automated content performance reporting"
+          "scenario": "週次コンテンツレビューが一貫して行われない理由",
+          "prompt": "@Zeroで定期的なコンテンツパフォーマンスレポートを設定する方法",
+          "steps": "@Zeroが指標を取得し、投稿をスコアリングし、ナラティブを作成する仕組み",
+          "nextActions": "オンデマンドで取得、コンテンツフォーマットの比較、またはエグゼクティブサマリーの作成",
+          "integrations": "必須連携: X (Twitter)、Slack、Notion — トラフィック相関にはPlausibleも",
+          "tips": "自動化されたコンテンツパフォーマンスレポートのベストプラクティス"
         },
-        "scenario": "You know you should be reviewing content performance weekly. You have not done it in three weeks because pulling numbers from X, formatting them, and writing a narrative takes 90 minutes you do not have on a Monday morning. Zero does the whole thing on a schedule. It pulls the numbers, runs the scoring formula, writes the narrative, posts it to Slack, and archives the raw data to Notion — all before your first meeting.",
+        "scenario": "コンテンツパフォーマンスを毎週レビューすべきだとわかっています。しかし3週間やっていません。Xから数値を引き出し、フォーマットし、ナラティブを書くのに90分かかり、月曜の朝にはその時間がないからです。@Zeroはすべてをスケジュール通りに実行します。数値を取得し、スコアリング式を実行し、ナラティブを書き、Slackに投稿し、生データをNotionにアーカイブします — すべて最初のミーティングの前に完了します。",
         "promptVariants": [
           {
-            "label": "Scheduled weekly",
+            "label": "週次スケジュール",
             "prompt": "@Zero every Monday at 9am PST, pull the past 7 days of post performance from @vm0_ai on X. Score each post: (likes×1) + (retweets×3) + (replies×2). Write a short report: top performer and why, biggest underperformer and likely cause, week-over-week total engagement change, and one concrete recommendation for the week. Post the narrative to #marketing-and-community. Archive the full report with raw metrics to Notion under 'Content Performance Reports > Week of [Mon Date]'."
           },
           {
-            "label": "On demand",
+            "label": "オンデマンド",
             "prompt": "@Zero pull last week's X performance for @vm0_ai and give me the top 3 posts by engagement score with one sentence on each."
           },
           {
-            "label": "Format experiment debrief",
+            "label": "フォーマット実験の振り返り",
             "prompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) — which format is driving higher engagement and why?"
           },
           {
-            "label": "Executive summary",
+            "label": "エグゼクティブサマリー",
             "prompt": "@Zero one paragraph on last week's X performance — suitable for the Monday leadership brief."
           }
         ],
@@ -2128,53 +2128,53 @@
         ],
         "steps": [
           {
-            "title": "Zero pulls post metrics from X",
-            "description": "Zero fetches impressions, likes, retweets, and replies for all posts published in the past 7 days from the specified X account. It captures raw numbers for every post in the window."
+            "title": "@ZeroがXから投稿指標を取得",
+            "description": "@Zeroは指定されたXアカウントの過去7日間に公開されたすべての投稿のインプレッション、いいね、リツイート、リプライを取得します。ウィンドウ内のすべての投稿の生の数値をキャプチャします。"
           },
           {
-            "title": "Posts scored and ranked",
-            "description": "Zero computes an engagement score for each post using (likes × 1) + (retweets × 3) + (replies × 2). It identifies the top performer, the lowest-scoring post with 3 or more days of data, and calculates the week-over-week delta in total engagement."
+            "title": "投稿をスコアリングしてランク付け",
+            "description": "@Zeroは（いいね × 1）+（リツイート × 3）+（リプライ × 2）を使用して各投稿のエンゲージメントスコアを算出します。トップパフォーマー、3日以上のデータがある最低スコアの投稿を特定し、エンゲージメント合計の前週比変化を計算します。"
           },
           {
-            "title": "Narrative posted and data archived",
-            "description": "Zero writes a short narrative covering the top performer, underperformer, week-over-week change, and one concrete recommendation. It posts the narrative to your Slack channel and saves a full metrics table to the Notion page you specified."
+            "title": "ナラティブを投稿しデータをアーカイブ",
+            "description": "@Zeroはトップパフォーマー、アンダーパフォーマー、前週比変化、1つの具体的な推奨事項をカバーする短いナラティブを作成します。ナラティブをSlackチャンネルに投稿し、指定したNotionページに完全な指標テーブルを保存します。"
           }
         ],
         "nextActions": [
           {
-            "title": "Pull on demand",
-            "description": "Get last week's report without waiting for Monday",
+            "title": "オンデマンドで取得",
+            "description": "月曜日を待たずに先週のレポートを取得",
             "examplePrompt": "@Zero pull last week's X performance for @vm0_ai and give me the top 3 posts by engagement score with one sentence on each."
           },
           {
-            "title": "Compare content formats",
-            "description": "Evaluate which templates are working at sprint end",
+            "title": "コンテンツフォーマットを比較",
+            "description": "スプリント終了時にどのテンプレートが効果的かを評価",
             "examplePrompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) — which format is driving higher engagement and why?"
           },
           {
-            "title": "Brief leadership",
-            "description": "One paragraph suitable for the Monday sync",
+            "title": "リーダーシップへのブリーフ",
+            "description": "月曜の同期に適した1段落のサマリー",
             "examplePrompt": "@Zero one paragraph on last week's X performance — suitable for the Monday leadership brief."
           }
         ],
         "integrations": [
           {
-            "description": "Zero pulls impressions, likes, retweets, and replies for all posts in the specified window."
+            "description": "@Zeroは指定されたウィンドウ内のすべての投稿のインプレッション、いいね、リツイート、リプライを取得します。"
           },
           {
-            "description": "Zero posts the narrative report to your Slack channel on schedule."
+            "description": "@Zeroはスケジュールに従ってナラティブレポートをSlackチャンネルに投稿します。"
           },
           {
-            "description": "Zero archives the full report with a raw metrics table to the specified Notion page."
+            "description": "@Zeroは生の指標テーブル付きの完全なレポートを指定されたNotionページにアーカイブします。"
           },
           {
-            "description": "Zero correlates post engagement with actual site visits, surfacing which posts drove real traffic and not just social activity. Optional but recommended."
+            "description": "@Zeroは投稿エンゲージメントと実際のサイト訪問を相関させ、単なるソーシャルアクティビティではなく実際のトラフィックを生み出した投稿を表面化します。オプションですが推奨です。"
           }
         ],
         "tips": [
-          "Run on Monday, not Sunday — X metrics for posts published in the last 48 hours are not stable yet and will shift by morning.",
-          "Add Plausible to see which posts drove real site visits — a post with a high engagement score but zero traffic clicks is a vanity win, not a growth win.",
-          "Use the format experiment debrief at the end of each 2-week sprint to decide which content formats to scale, iterate, or retire."
+          "日曜日ではなく月曜日に実行しましょう。過去48時間以内に公開された投稿のX指標はまだ安定しておらず、朝までに変動します。",
+          "Plausibleを追加して、どの投稿が実際のサイト訪問をもたらしたかを確認しましょう。エンゲージメントスコアが高くてもトラフィッククリックがゼロの投稿は、成長の勝利ではなく虚栄の勝利です。",
+          "2週間スプリントの終了時にフォーマット実験の振り返りを行い、どのコンテンツフォーマットをスケールし、反復し、または廃止するかを決定しましょう。"
         ]
       }
     }
