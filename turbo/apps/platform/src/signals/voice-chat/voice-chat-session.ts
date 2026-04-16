@@ -248,6 +248,55 @@ export const vcSlowBrainEvents$ = computed((get) => {
   });
 });
 
+type ConversationItem =
+  | { kind: "transcript"; entry: TranscriptEntry; order: number; key: string }
+  | { kind: "slow-brain"; event: ContextEvent; order: number; key: string };
+
+export const vcConversationItems$ = (() => {
+  const orderMap = new Map<string, number>();
+  let counter = 0;
+
+  function assignOrder(key: string): number {
+    let order = orderMap.get(key);
+    if (order === undefined) {
+      order = counter++;
+      orderMap.set(key, order);
+    }
+    return order;
+  }
+
+  return computed((get) => {
+    const transcript = get(internalTranscript$);
+    const slowBrain = get(internalEvents$).filter((e) => {
+      return e.source === "slow-brain";
+    });
+
+    if (transcript.length === 0 && slowBrain.length === 0) {
+      orderMap.clear();
+      counter = 0;
+      return [] as ConversationItem[];
+    }
+
+    const items: ConversationItem[] = [];
+
+    for (const entry of transcript) {
+      const key = entry.id;
+      items.push({ kind: "transcript", entry, order: assignOrder(key), key });
+    }
+
+    for (const event of slowBrain) {
+      const key = `sb-${event.seq}`;
+      items.push({ kind: "slow-brain", event, order: assignOrder(key), key });
+    }
+
+    items.sort((a, b) => {
+      return a.order - b.order;
+    });
+
+    return items;
+  });
+})();
+
 export const vcMuted$ = computed((get) => {
   return get(internalMuted$);
 });

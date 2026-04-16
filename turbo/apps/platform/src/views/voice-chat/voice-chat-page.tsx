@@ -15,7 +15,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   vcStatus$,
-  vcTranscript$,
   vcSlowBrainEvents$,
   vcMuted$,
   vcError$,
@@ -33,6 +32,7 @@ import {
   toggleVoiceChatMute$,
   vcModel$,
   setVcModel$,
+  vcConversationItems$,
   type RealtimeModel,
 } from "../../signals/voice-chat/voice-chat-session.ts";
 import {
@@ -315,7 +315,6 @@ export function VoiceChatPage() {
   const enabled = useLastResolved(vcEnabled$);
   const agentId = useLastResolved(vcAgentId$);
   const status = useGet(vcStatus$);
-  const transcript = useGet(vcTranscript$);
   const slowBrainEvents = useGet(vcSlowBrainEvents$);
   const muted = useGet(vcMuted$);
   const error = useGet(vcError$);
@@ -330,6 +329,7 @@ export function VoiceChatPage() {
   const setModel = useSet(setVcModel$);
   const setTranscriptContainer = useSet(setTranscriptScrollContainer$);
   const setEventsContainer = useSet(setEventsScrollContainer$);
+  const conversationItems = useGet(vcConversationItems$);
 
   const elapsedSeconds = Math.floor(prepElapsedMs / 1000);
 
@@ -478,26 +478,29 @@ export function VoiceChatPage() {
       <div ref={setTranscriptContainer} className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[900px] px-4 pt-4 pb-8">
           <div className="flex flex-col gap-4">
-            {transcript.length === 0 && slowBrainEvents.length === 0 && (
+            {conversationItems.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">
                 {status === "connecting"
                   ? "Connecting..."
                   : "Speak to start the conversation."}
               </p>
             )}
-            {transcript.map((entry) => {
-              return entry.role === "user" ? (
-                <VoiceUserBubble key={entry.id} content={entry.text} />
-              ) : (
-                <VoiceAssistantBubble key={entry.id} content={entry.text} />
-              );
-            })}
-            {slowBrainEvents.map((event) => {
+            {conversationItems.map((item) => {
+              if (item.kind === "transcript") {
+                return item.entry.role === "user" ? (
+                  <VoiceUserBubble key={item.key} content={item.entry.text} />
+                ) : (
+                  <VoiceAssistantBubble
+                    key={item.key}
+                    content={item.entry.text}
+                  />
+                );
+              }
               return (
                 <SlowBrainIndicator
-                  key={`sb-${event.seq}`}
-                  type={event.type}
-                  content={event.content}
+                  key={item.key}
+                  type={item.event.type}
+                  content={item.event.content}
                 />
               );
             })}
