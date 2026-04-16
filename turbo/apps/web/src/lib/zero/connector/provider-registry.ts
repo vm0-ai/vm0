@@ -131,6 +131,7 @@ import { qiitaHandler } from "./providers/qiita-handler";
 import { resendHandler } from "./providers/resend-handler";
 import { revenuecatHandler } from "./providers/revenuecat-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
+import { seedanceHandler } from "./providers/seedance-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
 import { spotifyHandler } from "./providers/spotify-handler";
 import { wrikeHandler } from "./providers/wrike-handler";
@@ -260,6 +261,7 @@ export const PROVIDER_HANDLERS: Record<
   resend: resendHandler,
   revenuecat: revenuecatHandler,
   scrapeninja: scrapeninjaHandler,
+  seedance: seedanceHandler,
   similarweb: similarwebHandler,
   spotify: spotifyHandler,
   wrike: wrikeHandler,
