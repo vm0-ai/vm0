@@ -7,12 +7,12 @@
 //! Manual cleanup (workspace + socket dir) is only performed for orphan
 //! processes whose parent runner has already died.
 //!
-//! Resolution: user-facing input is a `run_id` (what API/dashboard reports).
-//! We consult each live runner's `status.json` to translate `run_id` prefix
-//! into the internal `sandbox_id` that identifies the Firecracker VM, then
-//! locate the FC by `sandbox_id`. For orphan FCs whose parent runner is
-//! gone (and therefore no `status.json` reachable), we fall back to direct
-//! `sandbox_id` prefix matching.
+//! Resolution: the user must specify either `--run <ID>` or `--sandbox <ID>`.
+//! `--run` consults each live runner's `status.json` to translate a `run_id`
+//! prefix into the `sandbox_id` that identifies the Firecracker VM, then
+//! locates the FC by that `sandbox_id`. `--sandbox` matches the prefix
+//! directly against running FC processes — useful for orphan sandboxes
+//! whose parent runner has already died and whose `status.json` is gone.
 
 use std::process::ExitCode;
 
