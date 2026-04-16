@@ -18,7 +18,7 @@ function makeSignals(initialEvents: VoiceChatEvent[] = []): {
   const store = createStore();
   const events$ = state<VoiceChatEvent[]>(initialEvents);
   const startPolling$ = command<Promise<void>, [AbortSignal]>(
-    async (_signal: AbortSignal) => {},
+    async (_get_set, _signal: AbortSignal) => {},
   );
   const focusInput$ = command<void, []>(() => {});
 
