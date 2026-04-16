@@ -220,4 +220,84 @@ describe("directed authorize page", () => {
     const logoLink = screen.getByLabelText("VM0");
     expect(logoLink.closest("a")).toHaveAttribute("href", "/connectors");
   });
+
+  it("shows Google OAuth notice when Google connector is not yet connected (AUTH-D-060)", async () => {
+    // No mockConnectorsConnected → connector not in the connected list
+    detachedSetupPage({
+      context,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Gmail to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText(/Google will show a security warning/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Advanced")).toBeInTheDocument();
+    expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
+  });
+
+  it("does not show Google OAuth notice when Google connector is already connected (AUTH-D-061)", async () => {
+    mockConnectorsConnected("gmail");
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Gmail to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/Google will show a security warning/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show Google OAuth notice when connector is already authorized (AUTH-D-062)", async () => {
+    mockConnectorsConnected("gmail");
+    server.use(
+      http.get("*/api/zero/agents/:id/user-connectors", () => {
+        return HttpResponse.json({ enabledTypes: ["gmail"] });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/Google will show a security warning/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show Google OAuth notice for non-Google OAuth connectors (AUTH-D-063)", async () => {
+    mockConnectorsConnected("github");
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs GitHub to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/Google will show a security warning/),
+    ).not.toBeInTheDocument();
+  });
 });
