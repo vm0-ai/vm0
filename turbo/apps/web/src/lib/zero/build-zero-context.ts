@@ -208,15 +208,13 @@ async function resolveSecretsAndEnvironment(
     : undefined;
 
   // Build connector permission configs for placeholder injection and firewall
-  // rules. Use allowedConnectorTypes (user-enabled connectors) rather than
-  // connectorTypes (secret-dependent) so that firewalls are injected even when
-  // the user hasn't linked the connector yet (no secrets). The proxy handles
-  // the missing-secrets case with a 424 "secrets_not_found" response.
-  const connectorPermissionConfigs: ExpandedFirewallConfig[] = (
-    allowedConnectorTypes ?? []
-  )
-    .filter(isFirewallConnectorType)
-    .map((type) => {
+  // rules. When allowedConnectorTypes is provided, use it so that firewalls are
+  // injected even when the user hasn't linked the connector yet (no secrets).
+  // When undefined (no org context / CLI direct call), fall back to
+  // connectorTypes (secret-derived) for backward compatibility.
+  const firewallSourceTypes = allowedConnectorTypes ?? connectorTypes;
+  const connectorPermissionConfigs: ExpandedFirewallConfig[] =
+    firewallSourceTypes.filter(isFirewallConnectorType).map((type) => {
       return {
         ...getConnectorFirewall(type),
         ref: type,
