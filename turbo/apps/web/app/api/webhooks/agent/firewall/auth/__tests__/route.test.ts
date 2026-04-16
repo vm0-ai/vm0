@@ -170,7 +170,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.resolvedSecrets).toEqual(["API_KEY", "API_SECRET"]);
     });
 
-    it("should resolve unknown secret to empty string", async () => {
+    it("should return 502 with hint when a referenced secret is missing", async () => {
       const encrypted = encryptTestSecrets({ KNOWN: "value" });
 
       const response = await POST(
@@ -185,10 +185,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         ),
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(502);
       const data = await response.json();
-      expect(data.headers.Authorization).toBe("Bearer ");
-      expect(data.resolvedSecrets).toEqual(["UNKNOWN_KEY"]);
+      expect(data.error.code).toBe("MISSING_CONNECTOR_TOKEN");
+      expect(data.error.secrets).toEqual(["UNKNOWN_KEY"]);
+      expect(data.error.hint).toBe(
+        "Run: zero doctor check-connector --env-name UNKNOWN_KEY",
+      );
     });
 
     it("should pass through headers without template syntax", async () => {
@@ -528,7 +531,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.resolvedSecrets).toEqual(["OTHER", "TOKEN"]);
     });
 
-    it("should handle missing secret in basic() gracefully", async () => {
+    it("should return 502 with hint when a secret in basic() is missing", async () => {
       const encrypted = encryptTestSecrets({
         USER: "admin",
       });
@@ -545,12 +548,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         ),
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(502);
       const data = await response.json();
-      // Missing secret resolves to empty string
-      const expected = `Basic ${Buffer.from("admin:").toString("base64")}`;
-      expect(data.headers.Authorization).toBe(expected);
-      expect(data.resolvedSecrets).toEqual(["MISSING", "USER"]);
+      expect(data.error.code).toBe("MISSING_CONNECTOR_TOKEN");
+      expect(data.error.secrets).toEqual(["MISSING"]);
+      expect(data.error.hint).toBe(
+        "Run: zero doctor check-connector --env-name MISSING",
+      );
     });
 
     it("should resolve basic with both args empty", async () => {
@@ -952,6 +956,9 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const data = await response.json();
       expect(data.error.code).toBe("TOKEN_REFRESH_FAILED");
       expect(data.error.connectors).toEqual(["notion"]);
+      expect(data.error.hint).toBe(
+        "Run: zero doctor check-connector --env-name NOTION_ACCESS_TOKEN",
+      );
     });
 
     it("should return 502 when one of multiple connectors fails to refresh", async () => {
@@ -1028,6 +1035,9 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const data = await response.json();
       expect(data.error.code).toBe("TOKEN_REFRESH_FAILED");
       expect(data.error.connectors).toEqual(["close"]);
+      expect(data.error.hint).toBe(
+        "Run: zero doctor check-connector --env-name CLOSE_ACCESS_TOKEN",
+      );
     });
 
     it("should use DB refresh token instead of stale encrypted refresh token", async () => {

@@ -496,12 +496,18 @@ export async function POST(request: Request) {
   // If any connector token refresh failed, return an error so the addon
   // surfaces a clear message instead of silently using a stale token.
   if (failedConnectors.length > 0) {
+    const failedEnvName = Object.entries(secretConnectorMap ?? {}).find(
+      ([, ct]) => failedConnectors.includes(ct),
+    )?.[0];
     return NextResponse.json(
       {
         error: {
           message: `OAuth token expired and refresh failed for: ${failedConnectors.join(", ")}. The connector may need to be reconnected.`,
           code: "TOKEN_REFRESH_FAILED",
           connectors: failedConnectors,
+          hint: failedEnvName
+            ? `Run: zero doctor check-connector --env-name ${failedEnvName}`
+            : `Run: zero doctor check-connector --help`,
         },
       },
       { status: 502 },
@@ -517,6 +523,24 @@ export async function POST(request: Request) {
     authBase,
     authQuery,
   );
+
+  // Surface a clear error when a connector credential is absent so the agent
+  // knows to run `zero doctor check-connector` rather than seeing a silent 401
+  // from the downstream API.
+  const missingSecrets = resolvedSecrets.filter((key) => !(key in secrets));
+  if (missingSecrets.length > 0) {
+    return NextResponse.json(
+      {
+        error: {
+          message: `Connector credential missing for: ${missingSecrets.join(", ")}. The connector may not be connected.`,
+          code: "MISSING_CONNECTOR_TOKEN",
+          secrets: missingSecrets,
+          hint: `Run: zero doctor check-connector --env-name ${missingSecrets[0]}`,
+        },
+      },
+      { status: 502 },
+    );
+  }
 
   return NextResponse.json({
     headers,
