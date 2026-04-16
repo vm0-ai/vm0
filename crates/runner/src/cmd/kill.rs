@@ -129,8 +129,8 @@ async fn resolve_by_run_id<'a>(
     runners: &[RunnerProcessInfo],
     firecrackers: &'a [FirecrackerProcessInfo],
 ) -> RunnerResult<&'a FirecrackerProcessInfo> {
-    let entries = process::collect_active_run_mappings(runners).await;
-    let sandbox_id = process::resolve_run_to_sandbox(input, &entries)?;
+    let mappings = process::collect_active_run_mappings(runners).await;
+    let sandbox_id = process::resolve_run_to_sandbox(input, &mappings)?;
     firecrackers
         .iter()
         .find(|fc| fc.sandbox_id == sandbox_id)
@@ -301,22 +301,33 @@ mod tests {
 
     // -- resolve_run_to_sandbox tests (shared helper in process.rs) ----------
 
+    /// Build an `ActiveRunMappings` from a vec of `(run_id, sandbox_id)` pairs
+    /// with zero read failures — the common test case.
+    fn mappings(entries: Vec<(String, String)>) -> process::ActiveRunMappings {
+        let total = if entries.is_empty() { 0 } else { 1 };
+        process::ActiveRunMappings {
+            entries,
+            runners_total: total,
+            runners_failed: 0,
+        }
+    }
+
     #[test]
     fn run_prefix_resolves_to_sandbox_id() {
-        let status = vec![(
+        let status = mappings(vec![(
             "550e8400-run-1111-2222-aaaaaaaaaaaa".into(),
             "sbox-9999".into(),
-        )];
+        )]);
         let result = process::resolve_run_to_sandbox("550e8400", &status);
         assert_eq!(result.unwrap(), "sbox-9999");
     }
 
     #[test]
     fn run_prefix_full_uuid() {
-        let status = vec![(
+        let status = mappings(vec![(
             "550e8400-e29b-41d4-a716-446655440000".into(),
             "sbox-full".into(),
-        )];
+        )]);
         let result =
             process::resolve_run_to_sandbox("550e8400-e29b-41d4-a716-446655440000", &status);
         assert_eq!(result.unwrap(), "sbox-full");
@@ -324,10 +335,10 @@ mod tests {
 
     #[test]
     fn run_prefix_ambiguous() {
-        let status = vec![
+        let status = mappings(vec![
             ("abc-111".into(), "sbox-A".into()),
             ("abc-222".into(), "sbox-B".into()),
-        ];
+        ]);
         let Err(e) = process::resolve_run_to_sandbox("abc", &status) else {
             panic!("expected ambiguity error");
         };
@@ -339,31 +350,32 @@ mod tests {
 
     #[test]
     fn run_prefix_no_match() {
-        let status = vec![("abc-111".into(), "sbox-A".into())];
+        let status = mappings(vec![("abc-111".into(), "sbox-A".into())]);
         let result = process::resolve_run_to_sandbox("deadbeef", &status);
         assert!(result.is_err());
     }
 
     #[test]
     fn run_prefix_empty_input() {
-        let result = process::resolve_run_to_sandbox("", &[]);
+        let empty = mappings(vec![]);
+        let result = process::resolve_run_to_sandbox("", &empty);
         assert!(result.is_err());
     }
 
     #[test]
     fn run_prefix_dedups_duplicate_entries() {
-        let status = vec![("R1".into(), "S1".into()), ("R1".into(), "S1".into())];
+        let status = mappings(vec![("R1".into(), "S1".into()), ("R1".into(), "S1".into())]);
         let result = process::resolve_run_to_sandbox("R1", &status);
         assert_eq!(result.unwrap(), "S1");
     }
 
     #[test]
     fn run_prefix_dedup_preserves_true_ambiguity() {
-        let status = vec![
+        let status = mappings(vec![
             ("R1".into(), "S1".into()),
             ("R1".into(), "S1".into()),
             ("R2".into(), "S2".into()),
-        ];
+        ]);
         let Err(e) = process::resolve_run_to_sandbox("R", &status) else {
             panic!("expected ambiguity");
         };
@@ -375,10 +387,10 @@ mod tests {
 
     #[test]
     fn run_prefix_aggregated_across_runners() {
-        let status = vec![
+        let status = mappings(vec![
             ("aaa-111".into(), "sbox-A".into()),
             ("bbb-222".into(), "sbox-B".into()),
-        ];
+        ]);
         assert_eq!(
             process::resolve_run_to_sandbox("aaa", &status).unwrap(),
             "sbox-A"
@@ -389,11 +401,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn run_prefix_no_match_hints_unreadable_runners() {
+        let m = process::ActiveRunMappings {
+            entries: vec![],
+            runners_total: 3,
+            runners_failed: 2,
+        };
+        let err = process::resolve_run_to_sandbox("abc", &m).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("2 of 3"), "{msg}");
+        assert!(msg.contains("unreadable"), "{msg}");
+    }
+
+    #[test]
+    fn run_prefix_no_match_hints_no_runners() {
+        let m = process::ActiveRunMappings {
+            entries: vec![],
+            runners_total: 0,
+            runners_failed: 0,
+        };
+        let err = process::resolve_run_to_sandbox("abc", &m).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("no runner processes"), "{msg}");
+    }
+
     // -- resolve_by_run_id (run_id → FC lookup via status + FC list) ---------
 
     #[test]
     fn by_run_id_mapped_sandbox_not_running() {
-        let status = vec![("run-x-1".into(), "sandbox-gone".into())];
+        let status = mappings(vec![("run-x-1".into(), "sandbox-gone".into())]);
         let fcs: Vec<FirecrackerProcessInfo> = vec![];
         let sandbox_id = process::resolve_run_to_sandbox("run-x", &status).unwrap();
         assert!(

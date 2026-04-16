@@ -416,31 +416,49 @@ pub(crate) async fn read_active_runs(base_dir: &Path) -> Option<Vec<(String, Str
     )
 }
 
+/// Result of collecting `(run_id, sandbox_id)` pairs from runners.
+pub(crate) struct ActiveRunMappings {
+    pub entries: Vec<(String, String)>,
+    /// How many runners were discovered on the host.
+    pub runners_total: usize,
+    /// How many runners had unreadable configs or status files.
+    pub runners_failed: usize,
+}
+
 /// Collect all `(run_id, sandbox_id)` pairs from every reachable runner's
 /// `status.json`. Used by `kill --run` and `exec --run` to translate a
 /// user-supplied run_id into the sandbox_id that identifies the FC.
 pub(crate) async fn collect_active_run_mappings(
     runners: &[RunnerProcessInfo],
-) -> Vec<(String, String)> {
+) -> ActiveRunMappings {
     let mut entries = Vec::new();
+    let mut failed = 0usize;
     for runner in runners {
         let Some(base_dir) = load_base_dir(&runner.config_path).await else {
+            failed += 1;
             continue;
         };
-        if let Some(runs) = read_active_runs(&base_dir).await {
-            entries.extend(runs);
+        match read_active_runs(&base_dir).await {
+            Some(runs) => entries.extend(runs),
+            None => failed += 1,
         }
     }
-    entries
+    ActiveRunMappings {
+        entries,
+        runners_total: runners.len(),
+        runners_failed: failed,
+    }
 }
 
-/// Given a `run_id` prefix, find the unique matching `sandbox_id` from a
-/// set of `(run_id, sandbox_id)` status entries.
+/// Given a `run_id` prefix, find the unique matching `sandbox_id` from
+/// collected status entries.
 ///
 /// Returns the `sandbox_id` on unique match. Errors on empty or ambiguous.
+/// When no match is found and some runners were unreadable, the error
+/// message includes a diagnostic hint so the operator knows why.
 pub(crate) fn resolve_run_to_sandbox(
     input: &str,
-    status_entries: &[(String, String)],
+    mappings: &ActiveRunMappings,
 ) -> crate::error::RunnerResult<String> {
     use crate::error::RunnerError;
 
@@ -448,7 +466,8 @@ pub(crate) fn resolve_run_to_sandbox(
         return Err(RunnerError::Config("run id must not be empty".into()));
     }
 
-    let mut matching: Vec<&(String, String)> = status_entries
+    let mut matching: Vec<&(String, String)> = mappings
+        .entries
         .iter()
         .filter(|(rid, _)| rid.starts_with(input))
         .collect();
@@ -457,9 +476,19 @@ pub(crate) fn resolve_run_to_sandbox(
 
     match matching.as_slice() {
         [(_, sandbox_id)] => Ok(sandbox_id.clone()),
-        [] => Err(RunnerError::Config(format!(
-            "no active run matches '{input}'"
-        ))),
+        [] => {
+            let mut msg = format!("no active run matches '{input}'");
+            if mappings.runners_failed > 0 {
+                msg.push_str(&format!(
+                    " ({} of {} runner(s) had unreadable config/status — \
+                     check warnings above)",
+                    mappings.runners_failed, mappings.runners_total,
+                ));
+            } else if mappings.runners_total == 0 {
+                msg.push_str(" (no runner processes found on this host)");
+            }
+            Err(RunnerError::Config(msg))
+        }
         _ => {
             let lines: Vec<String> = matching
                 .iter()
