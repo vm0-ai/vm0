@@ -114,6 +114,19 @@ pub async fn generate(config: &RunnerConfig) -> RunnerResult<()> {
     Ok(())
 }
 
+/// Validate that `concurrency_factor` is a positive finite number.
+///
+/// Shared between `run_config()` (CLI entry) and `validate()` (config load)
+/// so the invariant is defined in one place.
+pub(crate) fn validate_concurrency_factor(value: f64) -> RunnerResult<()> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(RunnerError::Config(
+            "concurrency_factor must be a positive finite number".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
     let exists = tokio::fs::try_exists(path)
         .await
@@ -181,11 +194,7 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
         }
     }
 
-    if !config.sandbox.concurrency_factor.is_finite() || config.sandbox.concurrency_factor <= 0.0 {
-        return Err(RunnerError::Config(
-            "sandbox.concurrency_factor must be a positive finite number".into(),
-        ));
-    }
+    validate_concurrency_factor(config.sandbox.concurrency_factor)?;
     Ok(())
 }
 
