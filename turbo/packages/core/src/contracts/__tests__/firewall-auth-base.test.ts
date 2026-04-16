@@ -120,4 +120,28 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
     ];
     expect(extractSecretNamesFromApis(apis)).toEqual(["TOKEN"]);
   });
+
+  it("extracts secrets when auth.headers is omitted", () => {
+    const apis = [
+      {
+        base: "https://serpapi.com",
+        auth: {
+          query: {
+            api_key: "${{ secrets.SERPAPI_TOKEN }}",
+          },
+        },
+      },
+    ];
+    expect(extractSecretNamesFromApis(apis)).toEqual(["SERPAPI_TOKEN"]);
+  });
+
+  it("returns empty when auth has no fields", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {},
+      },
+    ];
+    expect(extractSecretNamesFromApis(apis)).toEqual([]);
+  });
 });

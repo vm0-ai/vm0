@@ -927,7 +927,7 @@ describe("resolveFirewallBaseUrlVars", () => {
     const result = resolveFirewallBaseUrlVars([zendeskFirewall], {
       ZENDESK_SUBDOMAIN: "mycompany",
     });
-    expect(result[0]!.apis[0]!.auth.headers.Authorization).toBe(
+    expect(result[0]!.apis[0]!.auth.headers!.Authorization).toBe(
       "Bearer ${{ secrets.ZENDESK_API_TOKEN }}",
     );
   });
