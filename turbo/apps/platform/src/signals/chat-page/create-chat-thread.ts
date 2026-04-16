@@ -26,7 +26,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
-import { type GroupedChatMessageGroup } from "./chat-message.ts";
+import type { GroupedChatMessageGroup } from "./chat-message.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -186,101 +186,6 @@ function createPrepareUserMessage(draft: DraftSignals) {
       return { fullPrompt, hasTextContent: trimmedPrompt.length > 0 };
     },
   );
-}
-
-function createSendMessage(
-  deps: SendMessageDeps,
-  prepareUserMessage$: ReturnType<typeof createPrepareUserMessage>,
-) {
-  // Run ID from the most recent send — available immediately after the POST
-  // returns, before paged messages poll picks up the new assistant row.
-  // Used by cancelRun$ so the user can cancel right after sending.
-  const internalPendingRunId$ = state<string | null>(null);
-  const pendingRunId$ = computed((get) => {
-    return get(internalPendingRunId$);
-  });
-
-  const sendMessage$ = command(
-    async ({ get, set }, prompt: string, signal: AbortSignal) => {
-      const thread = await get(deps.threadData$);
-      signal.throwIfAborted();
-      const agentId = thread?.agentId;
-      if (!agentId) {
-        return;
-      }
-
-      const result = await set(prepareUserMessage$, prompt, signal);
-      if (!result) {
-        return;
-      }
-      signal.throwIfAborted();
-
-      set(deps.cancelDraftSync$);
-      set(deps.draft.clear$);
-      await set(deps.flushDraftClear$, signal);
-      signal.throwIfAborted();
-
-      const client = get(zeroClient$)(chatMessagesContract);
-      const sendResult = await accept(
-        client.send({
-          body: {
-            agentId,
-            prompt: result.fullPrompt,
-            threadId: deps.threadId,
-            hasTextContent: result.hasTextContent,
-          },
-          fetchOptions: { signal },
-        }),
-        [201],
-      );
-      signal.throwIfAborted();
-
-      // Store the runId so cancelRun$ can act immediately.
-      set(internalPendingRunId$, sendResult.body.runId);
-
-      set(reloadChatThreads$);
-    },
-  );
-
-  return { sendMessage$, pendingRunId$ };
-}
-
-// ---------------------------------------------------------------------------
-// Sub-factory: cancel run
-// ---------------------------------------------------------------------------
-
-function createCancelRun(
-  pagedChatMessages$: Computed<PagedChatMessage[]>,
-  pendingRunId$: Computed<string | null>,
-) {
-  return command(async ({ get }, signal: AbortSignal) => {
-    // First check paged messages for a run with active status.
-    const messages = get(pagedChatMessages$);
-    const activeMsg = [...messages].reverse().find((m) => {
-      return (
-        m.role === "assistant" &&
-        m.runId &&
-        (m.status === "queued" ||
-          m.status === "pending" ||
-          m.status === "running")
-      );
-    });
-
-    // Fall back to the pending runId from the most recent send — covers the
-    // window between POST response and the first paged-messages poll.
-    const runId = activeMsg?.runId ?? get(pendingRunId$);
-    if (!runId) {
-      return;
-    }
-    const client = get(zeroClient$)(zeroRunsCancelContract);
-    await accept(
-      client.cancel({
-        params: { id: runId },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -533,7 +438,9 @@ function createPagedMessages(threadId: string) {
   const latestChatMessageId$ = computed((get) => {
     const groups = get(internalGroups$);
     const lastGroup = groups[groups.length - 1];
-    if (!lastGroup) return undefined;
+    if (!lastGroup) {
+      return undefined;
+    }
     const msgs = lastGroup.messages;
     return msgs[msgs.length - 1].id;
   });
@@ -670,17 +577,77 @@ export function createChatThreadSignals(
     createDraftSync(threadId, draft);
 
   const prepareUserMessage$ = createPrepareUserMessage(draft);
-  const { sendMessage$, pendingRunId$ } = createSendMessage(
-    {
-      threadId,
-      threadData$,
-      draft,
-      cancelDraftSync$,
-      flushDraftClear$,
+
+  const pendingRunIds$ = state<string[]>([]);
+
+  const sendMessage$ = command(
+    async ({ get, set }, prompt: string, signal: AbortSignal) => {
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      const agentId = thread?.agentId;
+      if (!agentId) {
+        return;
+      }
+
+      const result = await set(prepareUserMessage$, prompt, signal);
+      if (!result) {
+        return;
+      }
+      signal.throwIfAborted();
+
+      set(cancelDraftSync$);
+      set(draft.clear$);
+      await set(flushDraftClear$, signal);
+      signal.throwIfAborted();
+
+      const client = get(zeroClient$)(chatMessagesContract);
+      const sendResult = await accept(
+        client.send({
+          body: {
+            agentId,
+            prompt: result.fullPrompt,
+            threadId: threadId,
+            hasTextContent: result.hasTextContent,
+          },
+          fetchOptions: { signal },
+        }),
+        [201],
+      );
+      signal.throwIfAborted();
+
+      // Store the runId so cancelRun$ can act immediately.
+      set(pendingRunIds$, (x) => {
+        return [...x, sendResult.body.runId];
+      });
+
+      set(reloadChatThreads$);
     },
-    prepareUserMessage$,
   );
-  const cancelRun$ = createCancelRun(pagedChatMessages$, pendingRunId$);
+
+  const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroRunsCancelContract);
+    const removedIds: string[] = [];
+
+    await Promise.all(
+      get(pendingRunIds$).map(async (runId) => {
+        await accept(
+          client.cancel({
+            params: { id: runId },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        removedIds.push(runId);
+      }),
+    );
+    signal.throwIfAborted();
+
+    set(pendingRunIds$, (x) => {
+      return x.filter((id) => {
+        return removedIds.indexOf(id) === -1;
+      });
+    });
+  });
 
   const internalInputRef$ = state<HTMLElement | null>(null);
   const setInputRef$ = onRef(
