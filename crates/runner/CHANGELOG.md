@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.80.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.80.0...runner-rs-v0.80.1) (2026-04-16)
+
+
+### Bug Fixes
+
+* **security:** scope anthropic firewall to /v1/messages path prefix ([#9566](https://github.com/vm0-ai/vm0/issues/9566)) ([8e94112](https://github.com/vm0-ai/vm0/commit/8e9411224f069fa690edf6fb899e0679359d907a)), closes [#9560](https://github.com/vm0-ai/vm0/issues/9560)
+
 ## [0.80.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.13...runner-rs-v0.80.0) (2026-04-16)
 
 

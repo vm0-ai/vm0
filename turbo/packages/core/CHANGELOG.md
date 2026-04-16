@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.189.1](https://github.com/vm0-ai/vm0/compare/core-v8.189.0...core-v8.189.1) (2026-04-16)
+
+
+### Bug Fixes
+
+* **security:** scope all model provider firewalls to /v1/messages ([#9577](https://github.com/vm0-ai/vm0/issues/9577)) ([aedf848](https://github.com/vm0-ai/vm0/commit/aedf848a00975fb185c45de471397fb0b519a2fe))
+* **security:** scope anthropic firewall to /v1/messages path prefix ([#9566](https://github.com/vm0-ai/vm0/issues/9566)) ([8e94112](https://github.com/vm0-ai/vm0/commit/8e9411224f069fa690edf6fb899e0679359d907a)), closes [#9560](https://github.com/vm0-ai/vm0/issues/9560)
+
 ## [8.189.0](https://github.com/vm0-ai/vm0/compare/core-v8.188.0...core-v8.189.0) (2026-04-15)
 
 

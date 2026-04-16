@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.243.0](https://github.com/vm0-ai/vm0/compare/web-v12.242.0...web-v12.243.0) (2026-04-16)
+
+
+### Features
+
+* **web:** replace use-case cards with role-based showcase and comparison section ([#9545](https://github.com/vm0-ai/vm0/issues/9545)) ([a30e66f](https://github.com/vm0-ai/vm0/commit/a30e66f19ec2e25f7d5cdd17e53bdbb80fac9bbd))
+
+
+### Refactoring
+
+* **slack:** replace r2 pre-upload with on-demand download-file cli ([#9541](https://github.com/vm0-ai/vm0/issues/9541)) ([2cd0263](https://github.com/vm0-ai/vm0/commit/2cd02637302d63e7ca561fe13a9a25532465f763))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.189.1
+
 ## [12.242.0](https://github.com/vm0-ai/vm0/compare/web-v12.241.0...web-v12.242.0) (2026-04-16)
 
 

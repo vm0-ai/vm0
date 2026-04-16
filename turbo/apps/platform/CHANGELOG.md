@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.242.3](https://github.com/vm0-ai/vm0/compare/app-v0.242.2...app-v0.242.3) (2026-04-16)
+
+
+### Refactoring
+
+* **slack:** replace r2 pre-upload with on-demand download-file cli ([#9541](https://github.com/vm0-ai/vm0/issues/9541)) ([2cd0263](https://github.com/vm0-ai/vm0/commit/2cd02637302d63e7ca561fe13a9a25532465f763))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.189.1
+
 ## [0.242.2](https://github.com/vm0-ai/vm0/compare/app-v0.242.1...app-v0.242.2) (2026-04-16)
 
 
