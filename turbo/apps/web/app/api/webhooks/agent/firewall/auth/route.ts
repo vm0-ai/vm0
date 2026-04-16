@@ -232,35 +232,40 @@ async function refreshExpiredTokens(
   };
 }
 
-/** Collect all secret keys referenced in auth header/base/query templates (simple + basic). */
-function collectReferencedSecrets(
+/** Collect all secret and var keys referenced in auth header/base/query templates (simple + basic). */
+function collectReferencedKeys(
   authHeaders: Record<string, string>,
   authBase?: string,
   authQuery?: Record<string, string>,
-): Set<string> {
-  const keys = new Set<string>();
+): { secrets: Set<string>; vars: Set<string> } {
+  const secrets = new Set<string>();
+  const vars = new Set<string>();
+  const addKey = (namespace: string, key: string) => {
+    if (namespace === "secrets") secrets.add(key);
+    else if (namespace === "vars") vars.add(key);
+  };
   for (const template of Object.values(authHeaders)) {
     for (const match of template.matchAll(TEMPLATE_RE)) {
-      if (match[1] === "secrets" && match[2]) keys.add(match[2]);
+      if (match[1] && match[2]) addKey(match[1], match[2]);
     }
     for (const match of template.matchAll(basicAuthTemplateRe())) {
-      if (match[1] === "secrets" && match[2]) keys.add(match[2]);
-      if (match[3] === "secrets" && match[4]) keys.add(match[4]);
+      if (match[1] && match[2]) addKey(match[1], match[2]);
+      if (match[3] && match[4]) addKey(match[3], match[4]);
     }
   }
   if (authBase) {
     for (const match of authBase.matchAll(TEMPLATE_RE)) {
-      if (match[1] === "secrets" && match[2]) keys.add(match[2]);
+      if (match[1] && match[2]) addKey(match[1], match[2]);
     }
   }
   if (authQuery) {
     for (const template of Object.values(authQuery)) {
       for (const match of template.matchAll(TEMPLATE_RE)) {
-        if (match[1] === "secrets" && match[2]) keys.add(match[2]);
+        if (match[1] && match[2]) addKey(match[1], match[2]);
       }
     }
   }
-  return keys;
+  return { secrets, vars };
 }
 
 /**
@@ -432,25 +437,26 @@ export async function POST(request: Request) {
     );
   }
 
-  // Collect which secret keys are referenced in auth templates
-  const referencedKeys = collectReferencedSecrets(
-    authHeaders,
-    authBase,
-    authQuery,
-  );
+  // Collect which secret and var keys are referenced in auth templates
+  const referenced = collectReferencedKeys(authHeaders, authBase, authQuery);
 
-  // Check that all referenced secrets exist in the decrypted secrets map.
-  // Missing secrets indicate the connector is enabled but not linked (no OAuth/API token).
-  const missingSecrets = [...referencedKeys].filter((key) => {
+  // Check that all referenced secrets and vars exist.
+  // Missing secrets indicate the connector is enabled but not linked.
+  // Missing vars indicate incomplete connector configuration.
+  const missingSecrets = [...referenced.secrets].filter((key) => {
     return !(key in secrets);
   });
-  if (missingSecrets.length > 0) {
+  const missingVars = [...referenced.vars].filter((key) => {
+    return !(key in (vars ?? {}));
+  });
+  if (missingSecrets.length > 0 || missingVars.length > 0) {
     return NextResponse.json(
       {
         error: {
-          message: `Missing secrets: ${missingSecrets.join(", ")}. Ensure the connector is linked and all required secrets are configured.`,
-          code: "SECRETS_NOT_FOUND",
+          message: "Connector not configured",
+          code: "CONNECTOR_NOT_CONFIGURED",
           missingSecrets,
+          missingVars,
         },
       },
       { status: 424 },
@@ -467,7 +473,7 @@ export async function POST(request: Request) {
       auth,
       secrets,
       secretConnectorMap,
-      referencedKeys,
+      referenced.secrets,
     );
     expiresAt = result.expiresAt;
     refreshedConnectors = result.refreshedConnectors;

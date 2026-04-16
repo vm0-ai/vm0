@@ -3,7 +3,7 @@
 # Test firewall behavior when connector is enabled but not linked (no secrets).
 #
 # Verifies that when a user enables a connector for an agent without linking it
-# (no OAuth/API token), the proxy returns 424 with secrets_not_found error
+# (no OAuth/API token), the proxy returns 424 with connector_not_configured error
 # instead of silently passing through or injecting empty auth headers.
 
 load '../../helpers/setup'
@@ -71,7 +71,7 @@ enable_connector_for_agent() {
     fi
 }
 
-@test "firewall: enabled connector without secrets returns secrets_not_found" {
+@test "firewall: enabled connector without secrets returns connector_not_configured" {
     # Step 1: Compose an agent that references GITHUB_TOKEN
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -105,7 +105,7 @@ EOF
 
     # Step 3: Run the agent, curl api.github.com through the proxy.
     # The proxy should match the github firewall rule, try to resolve auth,
-    # discover the secret is missing, and return 424 secrets_not_found.
+    # discover the secret is missing, and return 424 connector_not_configured.
     run $VM0_CLI run "${AGENT_NAME}" \
         --artifact "$ARTIFACT_NAME" \
         "RESP=\$(curl -s -w '\\n%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && BODY=\$(echo \"\$RESP\" | head -n-1) && STATUS=\$(echo \"\$RESP\" | tail -n1) && echo \"STATUS=\$STATUS\" && echo \"BODY=\$BODY\""
@@ -116,6 +116,6 @@ EOF
 
     # Proxy should return 424 (not 200, 401, or 403)
     assert_output --partial "STATUS=424"
-    # Response body should contain the secrets_not_found error
-    assert_output --partial "secrets_not_found"
+    # Response body should contain the connector_not_configured error
+    assert_output --partial "connector_not_configured"
 }

@@ -18,12 +18,18 @@ from logging_utils import log_proxy_entry
 from url_utils import build_rewrite_url
 
 
-class SecretsNotFoundError(Exception):
-    """Raised when the auth endpoint returns 424 — connector not linked."""
+class ConnectorNotConfiguredError(Exception):
+    """Raised when the auth endpoint returns 424 — connector not linked or misconfigured."""
 
-    def __init__(self, message: str, missing_secrets: list[str]):
+    def __init__(
+        self,
+        message: str,
+        missing_secrets: list[str] | None = None,
+        missing_vars: list[str] | None = None,
+    ):
         super().__init__(message)
-        self.missing_secrets = missing_secrets
+        self.missing_secrets = missing_secrets or []
+        self.missing_vars = missing_vars or []
 
 
 # Vercel bypass secret (still from environment as it's a secret)
@@ -104,10 +110,11 @@ def _fetch_firewall_headers_sync(
         except (json.JSONDecodeError, OSError):
             raise  # re-raise original HTTPError
         error_info = error_body.get("error", {})
-        if error_info.get("code") == "SECRETS_NOT_FOUND":
-            raise SecretsNotFoundError(
-                error_info.get("message", "Connector not linked"),
+        if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
+            raise ConnectorNotConfiguredError(
+                error_info.get("message", "Connector not configured"),
                 error_info.get("missingSecrets", []),
+                error_info.get("missingVars", []),
             ) from None
         raise
     return json.loads(resp.read())
@@ -373,7 +380,7 @@ async def handle_firewall_request(
             auth_base,
             auth_query,
         )
-    except SecretsNotFoundError as e:
+    except ConnectorNotConfiguredError as e:
         log_proxy_entry(
             proxy_log_path,
             "info",
@@ -382,18 +389,20 @@ async def handle_firewall_request(
             firewall_base=firewall_base,
         )
         flow.metadata["firewall_action"] = "BLOCK"
-        flow.metadata["firewall_error"] = "secrets_not_found"
+        flow.metadata["firewall_error"] = "connector_not_configured"
+        error_body: dict = {
+            "error": "connector_not_configured",
+            "message": str(e),
+            "permission": match_info.get("ref", ""),
+            "base": firewall_base,
+        }
+        if e.missing_secrets:
+            error_body["missingSecrets"] = e.missing_secrets
+        if e.missing_vars:
+            error_body["missingVars"] = e.missing_vars
         flow.response = http.Response.make(
             424,
-            json.dumps(
-                {
-                    "error": "secrets_not_found",
-                    "message": str(e),
-                    "missingSecrets": e.missing_secrets,
-                    "permission": match_info.get("ref", ""),
-                    "base": firewall_base,
-                }
-            ).encode(),
+            json.dumps(error_body).encode(),
             {"Content-Type": "application/json"},
         )
         return

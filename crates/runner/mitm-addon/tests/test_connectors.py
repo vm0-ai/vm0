@@ -1343,7 +1343,7 @@ class TestHandleFirewallRequest:
 
         assert flow.response is None
 
-    async def test_secrets_not_found_returns_424(self):
+    async def test_connector_not_configured_returns_424(self):
         """When connector is enabled but not linked, return 424 with missing secrets."""
         flow = _make_http_flow()
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
@@ -1360,8 +1360,8 @@ class TestHandleFirewallRequest:
                 auth,
                 "get_firewall_headers",
                 AsyncMock(
-                    side_effect=auth.SecretsNotFoundError(
-                        "Connector not linked. Missing secrets: GITHUB_TOKEN",
+                    side_effect=auth.ConnectorNotConfiguredError(
+                        "Connector not configured",
                         ["GITHUB_TOKEN"],
                     )
                 ),
@@ -1374,12 +1374,48 @@ class TestHandleFirewallRequest:
         assert flow.response is not None
         assert flow.response.status_code == 424
         assert flow.metadata["firewall_action"] == "BLOCK"
-        assert flow.metadata["firewall_error"] == "secrets_not_found"
+        assert flow.metadata["firewall_error"] == "connector_not_configured"
         body = json.loads(flow.response.content)
-        assert body["error"] == "secrets_not_found"
+        assert body["error"] == "connector_not_configured"
         assert body["missingSecrets"] == ["GITHUB_TOKEN"]
+        assert "missingVars" not in body
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
+
+    async def test_missing_vars_only_returns_424(self):
+        """When connector has only missing vars, return 424 with missingVars."""
+        flow = _make_http_flow()
+        api_entry = {"base": "https://hcti.io", "auth": {"headers": {}}}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": "/tmp/net.jsonl",
+        }
+        match_info = {"name": "htmlcsstoimage", "ref": "htmlcsstoimage"}
+
+        with (
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(
+                    side_effect=auth.ConnectorNotConfiguredError(
+                        "Connector not configured",
+                        missing_vars=["HCTI_USER_ID"],
+                    )
+                ),
+            ),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 424
+        body = json.loads(flow.response.content)
+        assert body["error"] == "connector_not_configured"
+        assert "missingSecrets" not in body
+        assert body["missingVars"] == ["HCTI_USER_ID"]
 
     async def test_missing_encrypted_secrets_returns_502(self):
         """When encryptedSecrets is missing from vm_info, return 502."""
@@ -1493,13 +1529,13 @@ class TestFetchFirewallHeaders:
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
 
-    def test_424_secrets_not_found_raises_custom_error(self):
-        """When auth endpoint returns 424 SECRETS_NOT_FOUND, raise SecretsNotFoundError."""
+    def test_424_connector_not_configured_raises_custom_error(self):
+        """Auth endpoint 424 CONNECTOR_NOT_CONFIGURED raises ConnectorNotConfiguredError."""
         error_body = json.dumps(
             {
                 "error": {
-                    "message": "Connector not linked. Missing secrets: GITHUB_TOKEN",
-                    "code": "SECRETS_NOT_FOUND",
+                    "message": "Connector not configured",
+                    "code": "CONNECTOR_NOT_CONFIGURED",
                     "missingSecrets": ["GITHUB_TOKEN"],
                 }
             }
@@ -1517,15 +1553,15 @@ class TestFetchFirewallHeaders:
             patch("auth.urllib.request.urlopen", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
-            with pytest.raises(auth.SecretsNotFoundError) as exc_info:
+            with pytest.raises(auth.ConnectorNotConfiguredError) as exc_info:
                 auth._fetch_firewall_headers_sync(
                     "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
                 )
             assert exc_info.value.missing_secrets == ["GITHUB_TOKEN"]
-            assert "Connector not linked" in str(exc_info.value)
+            assert "Connector not configured" in str(exc_info.value)
 
-    def test_non_secrets_not_found_error_reraised(self):
-        """Non-SECRETS_NOT_FOUND HTTP errors should be re-raised as HTTPError."""
+    def test_non_connector_not_configured_error_reraised(self):
+        """Non-CONNECTOR_NOT_CONFIGURED HTTP errors should be re-raised as HTTPError."""
         error_body = json.dumps(
             {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
         ).encode()

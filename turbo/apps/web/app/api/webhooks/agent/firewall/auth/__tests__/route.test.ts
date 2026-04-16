@@ -170,7 +170,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.resolvedSecrets).toEqual(["API_KEY", "API_SECRET"]);
     });
 
-    it("should resolve unknown secret to empty string", async () => {
+    it("should return 424 when referenced secret is missing", async () => {
       const encrypted = encryptTestSecrets({ KNOWN: "value" });
 
       const response = await POST(
@@ -185,10 +185,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         ),
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(424);
       const data = await response.json();
-      expect(data.headers.Authorization).toBe("Bearer ");
-      expect(data.resolvedSecrets).toEqual(["UNKNOWN_KEY"]);
+      expect(data.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+      expect(data.error.missingSecrets).toEqual(["UNKNOWN_KEY"]);
     });
 
     it("should pass through headers without template syntax", async () => {
@@ -357,7 +357,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.resolvedSecrets).toEqual(["API_TOKEN"]);
     });
 
-    it("should resolve missing var to empty string", async () => {
+    it("should return 424 when referenced var is missing", async () => {
       const encrypted = encryptTestSecrets({ TOKEN: "value" });
 
       const response = await POST(
@@ -373,9 +373,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         ),
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(424);
       const data = await response.json();
-      expect(data.headers["X-Missing"]).toBe("");
+      expect(data.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+      expect(data.error.missingVars).toEqual(["NONEXISTENT"]);
     });
 
     it("should work without vars field (backward compatible)", async () => {
@@ -528,7 +529,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.resolvedSecrets).toEqual(["OTHER", "TOKEN"]);
     });
 
-    it("should handle missing secret in basic() gracefully", async () => {
+    it("should return 424 when basic() references missing secret", async () => {
       const encrypted = encryptTestSecrets({
         USER: "admin",
       });
@@ -545,12 +546,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         ),
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(424);
       const data = await response.json();
-      // Missing secret resolves to empty string
-      const expected = `Basic ${Buffer.from("admin:").toString("base64")}`;
-      expect(data.headers.Authorization).toBe(expected);
-      expect(data.resolvedSecrets).toEqual(["MISSING", "USER"]);
+      expect(data.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+      expect(data.error.missingSecrets).toEqual(["MISSING"]);
     });
 
     it("should resolve basic with both args empty", async () => {
