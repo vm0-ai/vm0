@@ -1856,6 +1856,13 @@
       "when": 1776315282104,
       "tag": "0264_spooky_fat_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 265,
+      "version": "7",
+      "when": 1776343534771,
+      "tag": "0265_right_joseph",
+      "breakpoints": true
     }
   ]
 }

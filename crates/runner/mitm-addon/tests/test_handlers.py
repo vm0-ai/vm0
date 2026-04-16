@@ -1154,14 +1154,14 @@ class TestNdjsonExtractor:
         assert state["data_count"] == 1
 
 
-class TestDoReportUsage:
-    """Tests for _do_report_usage HTTP request construction."""
+class TestPostWebhook:
+    """Tests for _post_webhook HTTP request construction."""
 
     def test_posts_correct_payload(self):
-        usage_data = {"model": "claude-sonnet-4-6", "input_tokens": 100}
+        payload = {"runId": "run-1", "usage": {"model": "claude-sonnet-4-6", "input_tokens": 100}}
         with patch.object(usage, "_opener") as mock_opener:
             mock_opener.open.return_value = MagicMock()
-            usage._do_report_usage("https://api.vm0.ai", "tok-123", "run-1", usage_data)
+            usage._post_webhook("https://api.vm0.ai/api/webhooks/agent/usage", "tok-123", payload)
         mock_opener.open.assert_called_once()
         req = mock_opener.open.call_args[0][0]
         assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
@@ -1180,7 +1180,7 @@ class TestDoReportUsage:
             **{"open.side_effect": ConnectionError("refused")},
         ):
             with pytest.raises(ConnectionError):
-                usage._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
+                usage._post_webhook("https://api.vm0.ai/hook", "tok", {})
 
     def test_closes_http_error_response(self):
         """HTTPError (non-2xx) should be closed to avoid socket leak."""
@@ -1196,7 +1196,7 @@ class TestDoReportUsage:
             **{"open.side_effect": http_err},
         ):
             with pytest.raises(urllib.error.HTTPError):
-                usage._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
+                usage._post_webhook("https://api.vm0.ai/hook", "tok", {})
         http_err.close.assert_called_once()
 
     def test_adds_vercel_bypass_header(self):
@@ -1205,7 +1205,7 @@ class TestDoReportUsage:
             patch.object(auth, "VERCEL_BYPASS", "bypass-secret"),
         ):
             mock_opener.open.return_value = MagicMock()
-            usage._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
+            usage._post_webhook("https://api.vm0.ai/hook", "tok", {})
         req = mock_opener.open.call_args[0][0]
         assert req.get_header("X-vercel-protection-bypass") == "bypass-secret"
 
@@ -1558,7 +1558,7 @@ class TestResponseUsageReporting:
 
         Without a stable per-flow key, server-side dedup of usage webhook
         retries fails, which would double-charge.  flow.id is stable
-        across retries because _enqueue_usage copies the dict once.
+        across retries because _enqueue_webhook copies the dict once.
         """
         flow = _make_http_flow(host="api.anthropic.com")
         flow.id = "flow-uuid-xyz-123"
@@ -1758,16 +1758,20 @@ class TestErrorHandler:
         flow.response.headers = {"content-type": "application/json"}
         flow.error = MagicMock()
         flow.error.msg = "connection reset by peer"
+        flow.metadata["vm_sandbox_token"] = "test-token"
 
-        mitm_addon.error(flow)
+        with (
+            patch("usage.get_api_url", return_value="https://app.test"),
+            patch("usage._enqueue_webhook") as mock_enqueue,
+        ):
+            mitm_addon.error(flow)
 
-        # proxy.jsonl should contain both the connection_error and the connector_usage entries
-        entries = [json.loads(ln) for ln in proxy_log.read_text().splitlines() if ln]
-        usage_entries = [e for e in entries if e.get("type") == "connector_usage"]
-        assert len(usage_entries) == 1
-        assert usage_entries[0]["response_data_count"] == 23
-        assert usage_entries[0]["body_format"] == "ndjson"
-        assert usage_entries[0]["is_stream"] is True
+        # Connector billing webhook should have been enqueued
+        assert mock_enqueue.called
+        payloads = [call[0][2] for call in mock_enqueue.call_args_list]
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        assert by_cat["tweet.read"] == 23
+        assert by_cat["users.read"] == 5
 
     def test_full_pipeline_stream_error_midflight(self, tmp_path):
         """End-to-end: responseheaders → partial chunks → error() logs observed counts.
@@ -1805,18 +1809,19 @@ class TestErrorHandler:
         # 3. Connection aborts
         flow.error = MagicMock()
         flow.error.msg = "connection reset by peer"
-        mitm_addon.error(flow)
+        flow.metadata["vm_sandbox_token"] = "test-token"
 
-        # 4. Log must reflect the 2 complete tweets (partial 3rd is dropped)
-        entries = [json.loads(ln) for ln in proxy_log.read_text().splitlines() if ln]
-        usage_entries = [e for e in entries if e.get("type") == "connector_usage"]
-        assert len(usage_entries) == 1
-        e = usage_entries[0]
-        assert e["body_format"] == "ndjson"
-        assert e["response_data_count"] == 2  # not 3 — partial trailing dropped
-        assert e["response_includes"] == {"users": 1}
-        assert e["is_stream"] is True
-        assert e["body_truncated"] is False  # billing is complete despite disconnect
+        with (
+            patch("usage.get_api_url", return_value="https://app.test"),
+            patch("usage._enqueue_webhook") as mock_enqueue,
+        ):
+            mitm_addon.error(flow)
+
+        # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)
+        payloads = [call[0][2] for call in mock_enqueue.call_args_list]
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        assert by_cat["tweet.read"] == 2  # not 3 — partial trailing dropped
+        assert by_cat["users.read"] == 1
 
 
 class TestMaybeReportProxyUsage:
@@ -1837,16 +1842,17 @@ class TestMaybeReportProxyUsage:
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_enqueue_usage") as mock_enqueue,
+            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
         ):
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
         mock_enqueue.assert_called_once()
         args = mock_enqueue.call_args[0]
-        assert args[0] == "https://api.vm0.ai"
+        assert args[0] == "https://api.vm0.ai/api/webhooks/agent/usage"
         assert args[1] == "tok-xyz"
-        assert args[2] == "run-abc-123"
-        assert args[3]["input_tokens"] == 100
+        payload = args[2]
+        assert payload["runId"] == "run-abc-123"
+        assert payload["usage"]["input_tokens"] == 100
 
     def test_skips_non_model_provider(self):
         """Should NOT enqueue usage for non-model-provider requests."""
@@ -1854,7 +1860,7 @@ class TestMaybeReportProxyUsage:
         flow.metadata["firewall_name"] = "github"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
 
-        with patch.object(usage, "_enqueue_usage") as mock_enqueue:
+        with patch.object(usage, "_enqueue_webhook") as mock_enqueue:
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
         mock_enqueue.assert_not_called()
@@ -1868,7 +1874,7 @@ class TestMaybeReportProxyUsage:
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_enqueue_usage") as mock_enqueue,
+            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
         ):
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
@@ -1880,7 +1886,7 @@ class TestMaybeReportProxyUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
 
-        with patch.object(usage, "_enqueue_usage") as mock_enqueue:
+        with patch.object(usage, "_enqueue_webhook") as mock_enqueue:
             usage.maybe_report_proxy_usage(flow, "")
 
         mock_enqueue.assert_not_called()
@@ -1896,7 +1902,7 @@ class TestMaybeReportProxyUsage:
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_enqueue_usage") as mock_enqueue,
+            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
         ):
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
@@ -1915,7 +1921,7 @@ class TestMaybeReportProxyUsage:
 
         with (
             patch.object(usage, "get_api_url", return_value=""),
-            patch.object(usage, "_enqueue_usage") as mock_enqueue,
+            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
         ):
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
 
@@ -1968,6 +1974,7 @@ class TestLogConnectorUsage:
             f"https://api.x.com{path}?{query}" if query else f"https://api.x.com{path}"
         )
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_permission"] = permission
         flow.metadata["firewall_rule_match"] = rule
@@ -1981,70 +1988,51 @@ class TestLogConnectorUsage:
         }
         return flow
 
-    def _read_entries(self, tmp_path):
-        """Read all JSONL entries from the real proxy log file."""
-        path = tmp_path / "proxy.jsonl"
-        if not path.exists():
+    def _call_and_get_billing(self, flow, run_id="run-abc-123"):
+        """Call log_connector_usage and return the webhook payload(s)."""
+        with (
+            patch("usage.get_api_url", return_value="https://app.test"),
+            patch("usage._enqueue_webhook") as mock_enqueue,
+        ):
+            usage.log_connector_usage(flow, run_id)
+        if not mock_enqueue.called:
             return []
-        lines = [ln for ln in path.read_text().splitlines() if ln]
-        return [json.loads(ln) for ln in lines]
+        return [call[0][2] for call in mock_enqueue.call_args_list]
 
-    def _read_entry(self, tmp_path):
-        """Read the single JSONL entry written by log_connector_usage."""
-        entries = self._read_entries(tmp_path)
-        assert len(entries) == 1, f"expected 1 entry, got {len(entries)}"
-        return entries[0]
+    def _call_and_get_single_billing(self, flow, run_id="run-abc-123"):
+        """Call log_connector_usage and return the single webhook payload."""
+        payloads = self._call_and_get_billing(flow, run_id)
+        assert len(payloads) == 1, f"expected 1 billing record, got {len(payloads)}"
+        return payloads[0]
 
     # ---- positive cases ----
 
     def test_logs_single_resource_get(self, tmp_path):
-        """GET /2/tweets/:id → response_data_count=1, no includes/result_count."""
+        """GET /2/tweets/:id -> category=tweet.read, quantity=1."""
         body = json.dumps({"data": {"id": "1", "text": "hi"}}).encode()
         flow = self._make_x_flow(tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}")
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["type"] == "connector_usage"
-        assert entry["connector"] == "x"
-        assert entry["endpoint"] == "tweet.read"
-        assert entry["rule"] == "GET /2/tweets/{id}"
-        assert entry["status"] == 200
-        assert entry["response_data_count"] == 1
-        assert entry["body_parsed"] is True
-        assert entry["body_truncated"] is False
-        assert "response_includes" not in entry
-        assert "response_result_count" not in entry
-        assert entry["request_ids_count"] is None
-        assert entry["has_expansions"] is False
-        assert entry["max_results"] is None
-        assert entry["billable_counts"] == {"tweet.read": 1}
-        # log_proxy_entry contract: timestamp + level + message always present.
-        assert entry["level"] == "info"
-        assert entry["message"] == "Connector usage: x/tweet.read"
-        assert "timestamp" in entry
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 1
 
     def test_logs_batch_ids(self, tmp_path):
-        """GET /2/tweets?ids=1,2,3 → request_ids_count=3 + response_data_count=3."""
+        """GET /2/tweets?ids=1,2,3 -> category=tweet.read, quantity=3."""
         body = json.dumps({"data": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}).encode()
         flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=body)
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["request_ids_count"] == 3
-        assert entry["response_data_count"] == 3
-        assert entry["has_expansions"] is False
-        assert entry["billable_counts"] == {"tweet.read": 3}
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 3
 
     def test_logs_batch_ids_with_deletions(self, tmp_path):
-        """Batch with some missing ids → body parsed, bills actual data returned."""
+        """Batch with some missing ids -> bills actual data returned."""
         body = json.dumps({"data": [{"id": "1"}, {"id": "3"}]}).encode()
         flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=body)
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["request_ids_count"] == 3
-        assert entry["response_data_count"] == 2
-        assert entry["billable_counts"] == {"tweet.read": 2}  # actual data returned
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 2
 
     def test_logs_expansions_includes(self, tmp_path):
-        """?expansions=author_id → response_includes carries users + media counts."""
+        """?expansions=author_id -> three billing payloads for each resource type."""
         body = json.dumps(
             {
                 "data": [{"id": "1", "author_id": "99"}],
@@ -2059,22 +2047,12 @@ class TestLogConnectorUsage:
             query="expansions=author_id,attachments.media_keys",
             body=body,
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["has_expansions"] is True
-        assert entry["response_data_count"] == 1
-        assert entry["response_includes"] == {"users": 1, "media": 2}
-        # Each includes type gets its own .read billing key so server can
-        # price per-type independently.
-        assert entry["billable_counts"] == {
-            "tweet.read": 1,
-            "users.read": 1,
-            "media.read": 2,
-        }
+        payloads = self._call_and_get_billing(flow)
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        assert by_cat == {"tweet.read": 1, "users.read": 1, "media.read": 2}
 
     def test_logs_empty_search_bills_zero(self, tmp_path):
-        """Search returning zero results bills 0 — X bills per post returned,
-        not per request.  Body parsed + no data = nothing to bill."""
+        """Search returning zero results bills 0."""
         body = json.dumps({"data": [], "meta": {"result_count": 0}}).encode()
         flow = self._make_x_flow(
             tmp_path,
@@ -2083,14 +2061,12 @@ class TestLogConnectorUsage:
             body=body,
             rule="GET /2/tweets/search/recent",
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["response_data_count"] == 0
-        assert entry["response_result_count"] == 0
-        assert entry["billable_counts"] == {"tweet.read": 0}
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 0
 
     def test_soft_error_bills_zero(self, tmp_path):
-        """HTTP 200 + errors array + no data field → bills 0 (issue #9620)."""
+        """HTTP 200 + errors array + no data field -> bills 0 (issue #9620)."""
         body = json.dumps(
             {
                 "errors": [
@@ -2108,15 +2084,12 @@ class TestLogConnectorUsage:
         flow = self._make_x_flow(
             tmp_path, path="/2/tweets/999999999999999999", body=body, rule="GET /2/tweets/{id}"
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is True
-        assert "response_data_count" not in entry
-        assert entry["response_errors_count"] == 1
-        assert entry["billable_counts"] == {"tweet.read": 0}
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 0
 
     def test_zero_result_search_with_max_results_bills_zero(self, tmp_path):
-        """Search with max_results=10 returning 0 results → bills 0 (issue #9620)."""
+        """Search with max_results=10 returning 0 results -> bills 0 (issue #9620)."""
         body = json.dumps({"meta": {"result_count": 0, "newest_id": None}}).encode()
         flow = self._make_x_flow(
             tmp_path,
@@ -2125,16 +2098,12 @@ class TestLogConnectorUsage:
             body=body,
             rule="GET /2/tweets/search/recent",
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is True
-        assert entry["max_results"] == 10
-        assert entry["response_result_count"] == 0
-        assert "response_data_count" not in entry
-        assert entry["billable_counts"] == {"tweet.read": 0}
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 0
 
     def test_logs_expansions_users_and_referenced_tweets(self, tmp_path):
-        """includes.users → users.read; includes.tweets accumulates into tweet.read primary."""
+        """includes.users and includes.tweets produce two billing payloads."""
         body = json.dumps(
             {
                 "data": [{"id": "1", "author_id": "99", "referenced_tweets": [{"id": "ref1"}]}],
@@ -2149,21 +2118,15 @@ class TestLogConnectorUsage:
             query="expansions=author_id,referenced_tweets.id",
             body=body,
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        # includes.tweets maps to tweet.read (same permission as the primary
-        # endpoint here), so the counts sum at the same key.
-        assert entry["billable_counts"] == {
+        payloads = self._call_and_get_billing(flow)
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        assert by_cat == {
             "tweet.read": 3,  # 1 primary + 2 referenced tweets
             "users.read": 2,
         }
 
     def test_handles_unknown_includes_key(self, tmp_path):
-        """Unknown includes.<key> types get a synthetic <key>.read billing key.
-
-        Raw field ``response_includes`` preserves the original shape so
-        future pricing rules can be added without re-processing past logs.
-        """
+        """Unknown includes.<key> types get a synthetic <key>.read billing key."""
         body = json.dumps(
             {
                 "data": [{"id": "1"}],
@@ -2174,19 +2137,16 @@ class TestLogConnectorUsage:
             }
         ).encode()
         flow = self._make_x_flow(tmp_path, query="expansions=author_id", body=body)
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        # Raw observation stays unchanged for forensic analysis.
-        assert entry["response_includes"] == {"users": 1, "future_widget": 3}
-        # Unknown includes types get auto-generated <key>.read keys.
-        assert entry["billable_counts"] == {
+        payloads = self._call_and_get_billing(flow)
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        assert by_cat == {
             "tweet.read": 1,
             "users.read": 1,
             "future_widget.read": 3,
         }
 
     def test_logs_search_meta_result_count(self, tmp_path):
-        """search response with meta.result_count populates response_result_count."""
+        """Search response with meta.result_count -> quantity=20."""
         body = json.dumps(
             {
                 "data": [{"id": str(i)} for i in range(20)],
@@ -2201,25 +2161,12 @@ class TestLogConnectorUsage:
             permission="tweet.read",
             rule="GET /2/tweets/search/recent",
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["response_data_count"] == 20
-        assert entry["response_result_count"] == 20
-        assert entry["max_results"] == 100
-        # Body parsed → trust actual counts: max(20, 20) = 20
-        assert entry["billable_counts"] == {"tweet.read": 20}
-
-    def test_logs_repeated_ids_param(self, tmp_path):
-        """?ids=1,2&ids=3 → request_ids_count=3 (sums all occurrences)."""
-        body = json.dumps({"data": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}).encode()
-        flow = self._make_x_flow(tmp_path, query="ids=1,2&ids=3", body=body)
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["request_ids_count"] == 3
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 20
 
     def test_logs_users_by_usernames_batch(self, tmp_path):
-        """GET /2/users/by?usernames=a,b,c → request_ids_count=3 (usernames
-        feed the same batch-count signal as ids)."""
+        """GET /2/users/by?usernames=a,b,c -> category=users.read, quantity=2."""
         body = json.dumps(
             {"data": [{"id": "1", "username": "a"}, {"id": "2", "username": "b"}]}
         ).encode()
@@ -2231,25 +2178,12 @@ class TestLogConnectorUsage:
             permission="users.read",
             rule="GET /2/users/by",
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["request_ids_count"] == 3
-        # Body parsed → trust actual data: max(2, 0) = 2
-        assert entry["billable_counts"] == {"users.read": 2}
-
-    def test_combines_ids_and_usernames(self, tmp_path):
-        """Defensive: if a request carries both ids and usernames, both
-        get summed.  Real X endpoints accept one or the other, but the
-        parser should not silently drop either signal."""
-        body = json.dumps({"data": []}).encode()
-        flow = self._make_x_flow(tmp_path, query="ids=1,2&usernames=a,b,c", body=body)
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["request_ids_count"] == 5
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "users.read"
+        assert p["quantity"] == 2
 
     def test_logs_tweet_counts_total_tweet_count(self, tmp_path):
-        """GET /2/tweets/counts/recent: data is time buckets, real
-        billable count is meta.total_tweet_count."""
+        """GET /2/tweets/counts/recent -> category=tweet.read, quantity=12567."""
         body = json.dumps(
             {
                 "data": [
@@ -2266,29 +2200,21 @@ class TestLogConnectorUsage:
             body=body,
             rule="GET /2/tweets/counts/recent",
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        # data carries 2 bucket objects, but the real matched-tweet count
-        # lives in meta.total_tweet_count.
-        assert entry["response_data_count"] == 2
-        assert entry["response_result_count"] == 12567
-        # max(0, 2 buckets, 12567 tweets, 0, 1) = 12567
-        assert entry["billable_counts"] == {"tweet.read": 12567}
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 12567
 
     def test_handles_gzip_body(self, tmp_path):
         """gzip-encoded response body decompresses before parsing."""
         raw = json.dumps({"data": [{"id": "1"}], "meta": {"result_count": 1}}).encode()
         body = gzip.compress(raw)
         flow = self._make_x_flow(tmp_path, body=body, content_encoding="gzip")
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is True
-        assert entry["response_data_count"] == 1
-        assert entry["response_result_count"] == 1
-        assert entry["billable_counts"] == {"tweet.read": 1}
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 1
 
     def test_logs_write_operation_charges_one(self, tmp_path):
-        """POST /2/tweets → billable_counts={tweet.write:1} regardless of body shape."""
+        """POST /2/tweets -> category=tweet.write, quantity=1."""
         body = json.dumps({"data": {"id": "99", "text": "new tweet"}}).encode()
         flow = self._make_x_flow(
             tmp_path,
@@ -2299,81 +2225,67 @@ class TestLogConnectorUsage:
             rule="POST /2/tweets",
         )
         flow.request.method = "POST"
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["method"] == "POST"
-        assert entry["billable_counts"] == {"tweet.write": 1}
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.write"
+        assert p["quantity"] == 1
 
-    # ---- is_stream request signal (issue #9534) ----
-
-    def test_is_stream_false_for_non_stream_endpoint(self, tmp_path):
-        """Regular request/response endpoints mark is_stream=False."""
-        body = json.dumps({"data": {"id": "1"}}).encode()
-        flow = self._make_x_flow(tmp_path, path="/2/tweets/1", body=body)
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["is_stream"] is False
-
-    def test_is_stream_true_for_filtered_stream_endpoint(self, tmp_path):
-        """/2/tweets/search/stream marks is_stream=True in log entry."""
-        body = json.dumps({"data": {"id": "1"}}).encode()  # single dict; real path uses NDJSON
+    def test_delete_method_charges_one(self, tmp_path):
+        """DELETE /2/tweets/:id -> category=tweet.write, quantity=1."""
         flow = self._make_x_flow(
             tmp_path,
-            path="/2/tweets/search/stream",
-            body=body,
-            rule="GET /2/tweets/search/stream",
+            path="/2/tweets/123",
+            body=b"",
+            permission="tweet.write",
+            rule="DELETE /2/tweets/{id}",
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["is_stream"] is True
+        flow.request.method = "DELETE"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.write"
+        assert p["quantity"] == 1
 
-    def test_is_stream_true_with_query_params(self, tmp_path):
-        """Stream URL with realistic query params still marks is_stream=True.
+    def test_expansion_with_empty_includes_array(self, tmp_path):
+        """includes.users is empty array -> no users.read billing record."""
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}],
+                "includes": {"users": []},
+            }
+        ).encode()
+        flow = self._make_x_flow(tmp_path, query="expansions=author_id", body=body)
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 1
 
-        X filtered streams are always called with expansions, tweet.fields, etc.
-        The URL parser must strip the query before matching against
-        _X_STREAM_ENDPOINTS — regression guard against future refactors that
-        accidentally use startswith/substring matching instead of exact path.
-        """
-        body = json.dumps({"data": {"id": "1"}}).encode()
+    def test_empty_search_with_includes_sends_both(self, tmp_path):
+        """Search returns 0 data but non-empty includes -> two billing records,
+        primary with quantity=0."""
+        body = json.dumps(
+            {
+                "data": [],
+                "meta": {"result_count": 0},
+                "includes": {"users": [{"id": "u1"}]},
+            }
+        ).encode()
         flow = self._make_x_flow(
             tmp_path,
-            path="/2/tweets/search/stream",
-            query="expansions=author_id,referenced_tweets.id"
-            "&tweet.fields=created_at,public_metrics"
-            "&backfill_minutes=5",
+            path="/2/tweets/search/recent",
+            query="query=test&expansions=author_id",
             body=body,
-            rule="GET /2/tweets/search/stream",
+            rule="GET /2/tweets/search/recent",
         )
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["is_stream"] is True
-        assert entry["has_expansions"] is True
-
-    def test_is_stream_false_for_stream_rules(self, tmp_path):
-        """POST /2/tweets/search/stream/rules is NOT a stream (rules mgmt)."""
-        body = json.dumps({"data": [{"id": "r1", "value": "rule"}]}).encode()
-        flow = self._make_x_flow(
-            tmp_path,
-            path="/2/tweets/search/stream/rules",
-            body=body,
-            status=201,
-            permission="tweet.read",
-            rule="POST /2/tweets/search/stream/rules",
-        )
-        flow.request.method = "POST"
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["is_stream"] is False
+        payloads = self._call_and_get_billing(flow)
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        assert by_cat["tweet.read"] == 0
+        assert by_cat["users.read"] == 1
 
     # ---- streaming: x_ndjson_state feeds billing directly (issue #9534) ----
 
     def test_logs_x_stream_with_ndjson_state(self, tmp_path):
-        """Stream with pre-populated x_ndjson_state logs aggregated counts."""
+        """Stream with pre-populated x_ndjson_state -> two billing payloads."""
         flow = self._make_x_flow(
             tmp_path,
             path="/2/tweets/search/stream",
-            body=b"",  # stream_buffer is empty — NDJSON parser handled the body
+            body=b"",
             rule="GET /2/tweets/search/stream",
         )
         flow.metadata["x_ndjson_state"] = {
@@ -2382,19 +2294,11 @@ class TestLogConnectorUsage:
             "lines_parsed": 50,
             "lines_failed": 1,
         }
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is True
-        assert entry["body_format"] == "ndjson"
-        assert entry["response_data_count"] == 50
-        assert entry["response_includes"] == {"users": 47, "tweets": 12}
-        assert entry["ndjson_lines_parsed"] == 50
-        assert entry["ndjson_lines_failed"] == 1
-        assert entry["is_stream"] is True
-        # billable_counts: primary max(0,50,0,0,1)=50; users.read=47; tweets→tweet.read
-        # (tweet.read primary 50 + 12 from includes = 62)
-        assert entry["billable_counts"]["tweet.read"] == 62
-        assert entry["billable_counts"]["users.read"] == 47
+        payloads = self._call_and_get_billing(flow)
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        # tweet.read primary 50 + 12 from includes.tweets = 62
+        assert by_cat["tweet.read"] == 62
+        assert by_cat["users.read"] == 47
 
     def test_logs_x_stream_empty_no_fallback(self, tmp_path):
         """Stream that delivered 0 tweets bills 0, NOT _X_UNPARSEABLE_READ_FALLBACK."""
@@ -2410,163 +2314,76 @@ class TestLogConnectorUsage:
             "lines_parsed": 0,
             "lines_failed": 0,
         }
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is True
-        assert entry["body_format"] == "ndjson"
-        assert entry["response_data_count"] == 0
-        # Body parsed + 0 data → 0 (X bills per post returned)
-        assert entry["billable_counts"] == {"tweet.read": 0}
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 0
 
-    def test_logs_x_stream_ignores_buffer_when_ndjson_state_present(self, tmp_path):
-        """When x_ndjson_state is present, stream_buffer contents are ignored."""
-        # Put junk in the buffer that would fail json.loads — NDJSON path should
-        # win and return the accumulated state without trying to parse the buffer.
-        flow = self._make_x_flow(
-            tmp_path,
-            path="/2/tweets/search/stream",
-            body=b"this-is-not-json-at-all",
-            rule="GET /2/tweets/search/stream",
-        )
-        flow.metadata["x_ndjson_state"] = {
-            "data_count": 7,
-            "includes": {},
-            "lines_parsed": 7,
-            "lines_failed": 0,
-        }
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is True
-        assert entry["body_format"] == "ndjson"
-        assert entry["response_data_count"] == 7
-
-    def test_logs_x_stream_body_truncated_false_even_when_buffer_truncated(self, tmp_path):
-        """Stream with truncated forensic buffer still reports body_truncated=False.
-
-        The 64 KB stream_buffer cap is for forensic logging only; the NDJSON
-        parser processed every chunk incrementally, so billing counts are
-        complete.  Reporting body_truncated=True here would misleadingly
-        suggest counts are unreliable.
-        """
-        flow = self._make_x_flow(
-            tmp_path,
-            path="/2/tweets/search/stream",
-            body=b"whatever-forensic-bytes",
-            rule="GET /2/tweets/search/stream",
-        )
-        # Simulate a long-lived stream where the forensic buffer filled up
-        # while the parser kept accumulating state.
-        flow.metadata["stream_buffer_state"] = {"truncated": True}
-        flow.metadata["x_ndjson_state"] = {
-            "data_count": 50000,
-            "includes": {"users": 12000},
-            "lines_parsed": 50000,
-            "lines_failed": 0,
-        }
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is True
-        assert entry["body_truncated"] is False  # NOT True — billing is complete
-        assert entry["response_data_count"] == 50000
-
-    # ---- forensic / parser-state cases ----
+    # ---- fallback / unparseable cases ----
 
     def test_handles_truncated_buffer(self, tmp_path):
-        """stream_buffer_state.truncated → body_parsed False, body_truncated True."""
+        """Truncated buffer -> unparseable fallback quantity=100."""
         flow = self._make_x_flow(tmp_path, body=b"{")
         flow.metadata["stream_buffer_state"] = {"truncated": True}
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is False
-        assert entry["body_truncated"] is True
-        assert "response_data_count" not in entry
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 100
 
     def test_handles_invalid_json(self, tmp_path):
-        """Malformed body → body_parsed False, no count fields, entry still logged."""
+        """Malformed body -> unparseable fallback quantity=100."""
         flow = self._make_x_flow(tmp_path, body=b"not json")
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is False
-        assert entry["body_truncated"] is False
-        assert "response_data_count" not in entry
-        assert "response_includes" not in entry
-        assert "response_result_count" not in entry
-        # No count signals + GET + body unparseable → fallback 100
-        assert entry["billable_counts"] == {"tweet.read": 100}
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 100
 
     def test_billable_counts_fallback_only_when_no_hints(self, tmp_path):
-        """body_parsed False but ?ids= present → use ids_count, no fallback."""
+        """body unparseable but ?ids= present -> uses ids_count, no fallback."""
         flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=b"not json")
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is False
-        assert entry["billable_counts"] == {"tweet.read": 3}  # from ids, not fallback
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 3
 
     def test_billable_counts_fallback_only_when_no_max_results(self, tmp_path):
-        """body_parsed False but ?max_results=50 present → use max_results, no fallback."""
+        """body unparseable but ?max_results=50 present -> uses max_results."""
         flow = self._make_x_flow(tmp_path, query="max_results=50", body=b"not json")
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is False
-        assert entry["billable_counts"] == {"tweet.read": 50}
-
-    def test_handles_empty_body(self, tmp_path):
-        """Empty stream_buffer → body_parsed False, entry still logged."""
-        flow = self._make_x_flow(tmp_path, body=b"")
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["body_parsed"] is False
-
-    def test_handles_invalid_max_results(self, tmp_path):
-        """Non-integer max_results param falls back to None, doesn't raise."""
-        body = json.dumps({"data": []}).encode()
-        flow = self._make_x_flow(tmp_path, query="max_results=abc", body=body)
-        usage.log_connector_usage(flow, "run-abc-123")
-        entry = self._read_entry(tmp_path)
-        assert entry["max_results"] is None
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "tweet.read"
+        assert p["quantity"] == 50
 
     # ---- skip cases ----
 
     def test_skips_on_server_error(self, tmp_path):
         flow = self._make_x_flow(tmp_path, status=500)
-        usage.log_connector_usage(flow, "run-abc-123")
-        assert self._read_entries(tmp_path) == []
+        assert self._call_and_get_billing(flow) == []
 
     def test_skips_on_rate_limit(self, tmp_path):
         flow = self._make_x_flow(tmp_path, status=429)
-        usage.log_connector_usage(flow, "run-abc-123")
-        assert self._read_entries(tmp_path) == []
+        assert self._call_and_get_billing(flow) == []
 
     def test_skips_on_empty_permission(self, tmp_path):
         """Unknown-endpoint-allow has no stable pricing key."""
         flow = self._make_x_flow(tmp_path, permission="")
-        usage.log_connector_usage(flow, "run-abc-123")
-        assert self._read_entries(tmp_path) == []
+        assert self._call_and_get_billing(flow) == []
 
     def test_skips_on_empty_run_id(self, tmp_path):
         flow = self._make_x_flow(tmp_path)
-        usage.log_connector_usage(flow, "")
-        assert self._read_entries(tmp_path) == []
+        assert self._call_and_get_billing(flow, run_id="") == []
 
     def test_skips_for_model_provider(self, tmp_path):
         """Model providers go through maybe_report_proxy_usage instead."""
         flow = self._make_x_flow(tmp_path)
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        usage.log_connector_usage(flow, "run-abc-123")
-        assert self._read_entries(tmp_path) == []
+        assert self._call_and_get_billing(flow) == []
 
     def test_skips_for_non_billable_connector(self, tmp_path):
         """Connectors not in _BILLABLE_CONNECTORS are not logged."""
         flow = self._make_x_flow(tmp_path)
         flow.metadata["firewall_name"] = "gamma"
-        usage.log_connector_usage(flow, "run-abc-123")
-        assert self._read_entries(tmp_path) == []
+        assert self._call_and_get_billing(flow) == []
 
     def test_skips_when_no_response(self, tmp_path):
         flow = self._make_x_flow(tmp_path)
         flow.response = None
-        usage.log_connector_usage(flow, "run-abc-123")
-        assert self._read_entries(tmp_path) == []
+        assert self._call_and_get_billing(flow) == []
 
     # ---- integration: response() hook wiring ----
 
@@ -2595,7 +2412,16 @@ class TestLogConnectorUsage:
 
         mock_log_connector.assert_called_once_with(flow, "run-abc-123")
 
-    # ---- full pipeline: responseheaders → stream chunks → response (issue #9534) ----
+    # ---- webhook skip ----
+
+    def test_skips_webhook_without_sandbox_token(self, tmp_path):
+        """When sandbox token is empty, no webhook is enqueued."""
+        body = json.dumps({"data": {"id": "1", "text": "hi"}}).encode()
+        flow = self._make_x_flow(tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}")
+        flow.metadata["vm_sandbox_token"] = ""
+        assert self._call_and_get_billing(flow) == []
+
+    # ---- full pipeline: responseheaders -> stream chunks -> response (issue #9534) ----
 
     def test_full_streaming_pipeline_filtered_stream(self, tmp_path):
         """End-to-end: responseheaders registers parser, chunks accumulate, response() logs."""
@@ -2604,6 +2430,7 @@ class TestLogConnectorUsage:
         flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.metadata["firewall_name"] = "x"
@@ -2616,7 +2443,7 @@ class TestLogConnectorUsage:
         flow.response.stream = False
         mitm_addon._request_start_times[flow.id] = time.time()
 
-        # 1. responseheaders — registers NDJSON parser
+        # 1. responseheaders - registers NDJSON parser
         mitm_addon.responseheaders(flow)
         callback = flow.response.stream
         assert "x_ndjson_state" in flow.metadata
@@ -2632,24 +2459,21 @@ class TestLogConnectorUsage:
         for chunk in chunks:
             callback(chunk)
 
-        # 3. Simulated disconnect — response() fires and logs
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        # 3. Simulated disconnect - response() fires and logs via webhook
+        with (
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch("usage.get_api_url", return_value="https://app.test"),
+            patch("usage._enqueue_webhook") as mock_enqueue,
+        ):
             mitm_addon.response(flow)
 
-        # 4. Verify the log entry
-        entries = [
-            json.loads(ln) for ln in (tmp_path / "proxy.jsonl").read_text().splitlines() if ln
-        ]
-        usage_entries = [e for e in entries if e.get("type") == "connector_usage"]
-        assert len(usage_entries) == 1
-        e = usage_entries[0]
-        assert e["body_format"] == "ndjson"
-        assert e["response_data_count"] == 3
-        assert e["response_includes"] == {"users": 3}
-        assert e["is_stream"] is True
-        # billable_counts: primary max(0,3,0,0,1)=3; users from includes=3
-        assert e["billable_counts"]["tweet.read"] == 3
-        assert e["billable_counts"]["users.read"] == 3
+        # 4. Verify billing payloads
+        payloads = [call[0][2] for call in mock_enqueue.call_args_list]
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        # 3 tweets primary + 0 from includes.tweets (none here) = 3
+        assert by_cat["tweet.read"] == 3
+        # 3 users from includes
+        assert by_cat["users.read"] == 3
 
 
 class TestErrorUsageReporting:
@@ -2680,33 +2504,31 @@ class TestErrorUsageReporting:
 
 
 class TestReportUsageWithRetry:
-    """Tests for _report_usage_with_retry retry logic."""
+    """Tests for _post_webhook_with_retry retry logic."""
 
     def test_succeeds_on_first_attempt(self):
-        with patch.object(usage, "_do_report_usage") as mock_do:
-            usage._report_usage_with_retry("url", "tok", "run-1", {})
+        with patch.object(usage, "_post_webhook") as mock_do:
+            usage._post_webhook_with_retry("url", "tok", {}, "", "usage")
         mock_do.assert_called_once()
 
     def test_retries_on_failure(self):
         with patch.object(
             usage,
-            "_do_report_usage",
+            "_post_webhook",
             side_effect=[ConnectionError("fail"), None],
         ) as mock_do:
-            usage._report_usage_with_retry("url", "tok", "run-1", {})
+            usage._post_webhook_with_retry("url", "tok", {}, "", "usage")
         assert mock_do.call_count == 2
 
     def test_gives_up_after_max_retries(self, tmp_path):
         proxy_log = tmp_path / "proxy-run-1.jsonl"
         with patch.object(
             usage,
-            "_do_report_usage",
+            "_post_webhook",
             side_effect=ConnectionError("fail"),
         ):
             # Should not raise
-            usage._report_usage_with_retry(
-                "url", "tok", "run-1", {}, proxy_log_path=str(proxy_log), max_retries=2
-            )
+            usage._post_webhook_with_retry("url", "tok", {}, str(proxy_log), "usage", max_retries=2)
         assert proxy_log.exists()
         assert "3 attempts" in proxy_log.read_text()
 
@@ -2714,17 +2536,17 @@ class TestReportUsageWithRetry:
         with (
             patch.object(
                 usage,
-                "_do_report_usage",
+                "_post_webhook",
                 side_effect=[ConnectionError("fail"), None],
             ),
             patch.object(usage.time, "sleep") as mock_sleep,
         ):
-            usage._report_usage_with_retry("url", "tok", "run-1", {})
+            usage._post_webhook_with_retry("url", "tok", {}, "", "usage")
         mock_sleep.assert_called_once_with(0.5)
 
 
-class TestEnqueueUsage:
-    """Tests for _enqueue_usage (ThreadPoolExecutor submission)."""
+class TestEnqueueWebhook:
+    """Tests for _enqueue_webhook (ThreadPoolExecutor submission)."""
 
     def teardown_method(self):
         """Ensure executor is always restored even if a test fails mid-way."""
@@ -2735,16 +2557,16 @@ class TestEnqueueUsage:
                 max_workers=4, thread_name_prefix="usage"
             )
 
-    def test_enqueue_copies_usage_dict(self):
+    def test_enqueue_copies_payload_dict(self):
         """Mutating the original dict after enqueue should not affect the submitted task."""
         original = {"input_tokens": 100}
         captured = []
 
-        def capture_usage(_url, _tok, _rid, u, _proxy_log_path=""):
-            captured.append(u)
+        def capture_payload(_url, _tok, payload, _proxy_log_path, _log_type):
+            captured.append(payload)
 
-        with patch.object(usage, "_report_usage_with_retry", capture_usage):
-            usage._enqueue_usage("url", "tok", "run-1", original)
+        with patch.object(usage, "_post_webhook_with_retry", capture_payload):
+            usage._enqueue_webhook("url", "tok", original, "", "usage")
             original["input_tokens"] = 999
             usage.usage_executor.shutdown(wait=True)
 
@@ -2752,25 +2574,24 @@ class TestEnqueueUsage:
         assert captured[0]["input_tokens"] == 100
 
     def test_enqueue_submits_to_executor(self):
-        """_enqueue_usage should submit work to the thread pool."""
+        """_enqueue_webhook should submit work to the thread pool."""
         mock_executor = MagicMock()
         with patch.object(usage, "usage_executor", mock_executor):
-            usage._enqueue_usage("url", "tok", "run-1", {"k": 1})
+            usage._enqueue_webhook("url", "tok", {"k": 1}, "", "usage")
         mock_executor.submit.assert_called_once()
         args = mock_executor.submit.call_args[0]
-        assert args[0] == usage._report_usage_with_retry
+        assert args[0] == usage._post_webhook_with_retry
         assert args[1] == "url"
         assert args[2] == "tok"
-        assert args[3] == "run-1"
 
     def test_enqueue_falls_back_to_sync_after_shutdown(self):
-        """After executor shutdown, _enqueue_usage should deliver synchronously with retry."""
+        """After executor shutdown, _enqueue_webhook should deliver synchronously with retry."""
         usage.usage_executor.shutdown(wait=True)
 
-        with patch.object(usage, "_report_usage_with_retry") as mock_retry:
-            usage._enqueue_usage("url", "tok", "run-1", {"input_tokens": 42})
+        with patch.object(usage, "_post_webhook_with_retry") as mock_retry:
+            usage._enqueue_webhook("url", "tok", {"input_tokens": 42}, "", "usage")
 
-        mock_retry.assert_called_once_with("url", "tok", "run-1", {"input_tokens": 42}, "")
+        mock_retry.assert_called_once_with("url", "tok", {"input_tokens": 42}, "", "usage")
 
 
 class TestDoneHook:

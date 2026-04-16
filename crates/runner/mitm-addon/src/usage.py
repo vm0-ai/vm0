@@ -6,9 +6,9 @@ Two paths:
   Anthropic token counts and report them to the platform webhook through
   a background thread pool.
 - Billable connector responses (X API; see :data:`_BILLABLE_CONNECTORS`):
-  emit a multi-dimensional ``connector_usage`` entry to the per-run proxy
-  log for stage-0 observation (issue #9504).  Not yet forwarded to the
-  platform.
+  compute per-permission billable resource counts and forward them to the
+  platform via ``/api/webhooks/agent/connector-billing`` for persistence
+  in the ``connector_billing`` table.
 """
 
 import json
@@ -203,11 +203,10 @@ def extract_usage_from_json(body: bytes, headers) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def _do_report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
-    """POST extracted usage to the platform webhook.  Raises on failure."""
-    url = f"{api_url}/api/webhooks/agent/usage"
-    payload = json.dumps({"runId": run_id, "usage": usage}).encode()
-    req = make_api_request(url, payload, sandbox_token)
+def _post_webhook(url: str, sandbox_token: str, payload: dict) -> None:
+    """POST JSON payload to a platform webhook.  Raises on failure."""
+    data = json.dumps(payload).encode()
+    req = make_api_request(url, data, sandbox_token)
     try:
         resp = _opener.open(req, timeout=10)
         resp.close()
@@ -216,25 +215,26 @@ def _do_report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict)
         raise
 
 
-def _report_usage_with_retry(
-    api_url: str,
+def _post_webhook_with_retry(
+    url: str,
     sandbox_token: str,
-    run_id: str,
-    usage: dict,
-    proxy_log_path: str = "",
+    payload: dict,
+    proxy_log_path: str,
+    log_type: str,
     max_retries: int = 1,
 ) -> None:
-    """Report usage with retry.  Swallows all exceptions after final attempt."""
+    """POST with retry.  Swallows all exceptions after final attempt."""
     for attempt in range(max_retries + 1):
         try:
-            _do_report_usage(api_url, sandbox_token, run_id, usage)
+            _post_webhook(url, sandbox_token, payload)
             log_proxy_entry(
                 proxy_log_path,
                 "info",
-                "Usage report succeeded",
-                type="usage",
-                api_url=api_url,
-                **usage,
+                f"Webhook POST to {url} succeeded",
+                type=log_type,
+                url=url,
+                attempt=attempt + 1,
+                **payload,
             )
             return
         except Exception as exc:
@@ -242,62 +242,65 @@ def _report_usage_with_retry(
                 log_proxy_entry(
                     proxy_log_path,
                     "warn",
-                    f"Usage report attempt {attempt + 1} failed, retrying: {exc}",
-                    type="usage",
-                    api_url=api_url,
+                    f"Webhook POST to {url} attempt {attempt + 1} failed, retrying: {exc}",
+                    type=log_type,
+                    url=url,
                     error=str(exc),
                     attempt=attempt + 1,
-                    **usage,
+                    **payload,
                 )
                 time.sleep(0.5)
             else:
                 log_proxy_entry(
                     proxy_log_path,
                     "error",
-                    f"Usage report failed after {attempt + 1} attempts, giving up: {exc}",
-                    type="usage",
-                    api_url=api_url,
+                    f"Webhook POST to {url} failed after {attempt + 1} attempts, giving up: {exc}",
+                    type=log_type,
+                    url=url,
                     error=str(exc),
                     attempt=attempt + 1,
-                    **usage,
+                    **payload,
                 )
 
 
 usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
 
-def _enqueue_usage(
-    api_url: str, sandbox_token: str, run_id: str, usage: dict, proxy_log_path: str = ""
+def _enqueue_webhook(
+    url: str,
+    sandbox_token: str,
+    payload: dict,
+    proxy_log_path: str,
+    log_type: str,
 ) -> None:
-    """Submit usage report to the thread pool.  Copies the dict to avoid mutation.
+    """Submit webhook POST to the thread pool.  Copies payload to avoid mutation.
 
     If the executor has already been shut down (drain/shutdown race),
     falls back to synchronous delivery so the report is not silently lost.
     """
-    copied = dict(usage)
+    copied = dict(payload)
     log_proxy_entry(
         proxy_log_path,
         "info",
-        "Usage report enqueued",
-        type="usage",
-        api_url=api_url,
+        f"Webhook POST to {url} enqueued",
+        type=log_type,
+        url=url,
         **copied,
     )
     try:
         usage_executor.submit(
-            _report_usage_with_retry, api_url, sandbox_token, run_id, copied, proxy_log_path
+            _post_webhook_with_retry, url, sandbox_token, copied, proxy_log_path, log_type
         )
     except RuntimeError:
         # Executor shut down (done() already called during drain).
-        # Fall back to synchronous delivery with retry.
         log_proxy_entry(
             proxy_log_path,
             "warn",
-            "Usage executor shut down, falling back to synchronous delivery",
-            type="usage",
-            api_url=api_url,
+            "Webhook executor shut down, falling back to synchronous delivery",
+            type=log_type,
+            url=url,
         )
-        _report_usage_with_retry(api_url, sandbox_token, run_id, copied, proxy_log_path)
+        _post_webhook_with_retry(url, sandbox_token, copied, proxy_log_path, log_type)
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +321,7 @@ def maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
     # stable per-flow key the server side cannot deduplicate retries, which
     # would double-charge.  flow.id is unique per flow and stable across
     # retries of the usage webhook (the usage dict is copied once in
-    # _enqueue_usage and reused).
+    # _enqueue_webhook and reused).
     if not proxy_usage.get("message_id"):
         proxy_usage["message_id"] = flow.id
     sandbox_token = flow.metadata.get("vm_sandbox_token", "")
@@ -332,17 +335,18 @@ def maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
             type="usage",
         )
         return
-    _enqueue_usage(api_url, sandbox_token, run_id, proxy_usage, proxy_log_path)
+    url = f"{api_url}/api/webhooks/agent/usage"
+    _enqueue_webhook(
+        url, sandbox_token, {"runId": run_id, "usage": proxy_usage}, proxy_log_path, "usage"
+    )
 
 
 # ---------------------------------------------------------------------------
-# Billable connector usage observation (issue #9504, stage 0 of #9269).
+# Billable connector billing (issue #9504, #9655, #9269).
 #
-# Records a diagnostic log entry per successful request through a billable
-# connector firewall.  Multi-dimensional fields are captured (request `ids`
-# count, response `data`/`includes`/`meta.result_count`) so a server-side
-# billing formula can be chosen later without redeploying the proxy.  No
-# usage is reported to the platform yet.
+# Computes per-permission billable resource counts from successful requests
+# through a billable connector firewall and forwards them to the platform
+# for persistence in the connector_billing table.
 # ---------------------------------------------------------------------------
 
 # Non-model-provider firewalls whose traffic we intend to bill.  Listing a
@@ -725,15 +729,12 @@ def _compute_x_billable_counts(method: str, req_meta: dict, resp_meta: dict, end
 
 
 def log_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
-    """Emit a billable-connector usage observation entry.
+    """Compute billable resource counts and forward to the platform.
 
-    Diagnostic-only; not yet forwarded to the platform.  Stage 0 of #9269 —
-    records per-permission billable resource counts (``billable_counts``;
-    a dict keyed by firewall permission name) derived from the request
-    and response, alongside the raw signals (``request_ids_count``,
-    ``response_data_count``, ``response_includes``, ...).  The server
-    can either use ``billable_counts`` directly for per-call billing, or
-    re-derive a different formula from the raw fields if needed.
+    Derives per-permission billable resource counts from the request and
+    response, then forwards them to the platform via
+    ``/api/webhooks/agent/connector-billing`` for persistence in the
+    ``connector_billing`` table.
 
     Skipped when:
 
@@ -758,18 +759,30 @@ def log_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     resp_meta = _parse_x_response_metadata(flow)
     billable_counts = _compute_x_billable_counts(flow.request.method, req_meta, resp_meta, endpoint)
 
-    log_proxy_entry(
-        flow.metadata.get("vm_proxy_log_path", ""),
-        "info",
-        f"Connector usage: {firewall_name}/{endpoint}",
-        type="connector_usage",
-        connector=firewall_name,
-        endpoint=endpoint,
-        rule=flow.metadata.get("firewall_rule_match", ""),
-        method=flow.request.method,
-        flow_id=flow.id,
-        status=flow.response.status_code,
-        billable_counts=billable_counts,
-        **req_meta,
-        **resp_meta,
-    )
+    # Forward billing records to the platform for persistence.
+    sandbox_token = flow.metadata.get("vm_sandbox_token", "")
+    api_url = get_api_url()
+    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+    if not sandbox_token or not api_url:
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            "Cannot report connector billing: missing sandbox_token or api_url",
+            type="connector_billing",
+        )
+        return
+    url = f"{api_url}/api/webhooks/agent/connector-billing"
+    for category, qty in billable_counts.items():
+        _enqueue_webhook(
+            url,
+            sandbox_token,
+            {
+                "runId": run_id,
+                "flowId": flow.id,
+                "connector": firewall_name,
+                "category": category,
+                "quantity": qty,
+            },
+            proxy_log_path,
+            "connector_billing",
+        )
