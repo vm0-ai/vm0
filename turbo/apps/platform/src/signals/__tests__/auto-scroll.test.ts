@@ -10,7 +10,7 @@ describe("createScrollSignals - ResizeObserver targets inner content", () => {
     const observed: Element[] = [];
     const originalRO = globalThis.ResizeObserver;
     globalThis.ResizeObserver = class MockResizeObserver {
-      constructor(private cb: ResizeObserverCallback) {}
+      constructor(_cb: ResizeObserverCallback) {}
       observe(target: Element) {
         observed.push(target);
       }
@@ -38,7 +38,7 @@ describe("createScrollSignals - ResizeObserver targets inner content", () => {
     const observed: Element[] = [];
     const originalRO = globalThis.ResizeObserver;
     globalThis.ResizeObserver = class MockResizeObserver {
-      constructor(private cb: ResizeObserverCallback) {}
+      constructor(_cb: ResizeObserverCallback) {}
       observe(target: Element) {
         observed.push(target);
       }
