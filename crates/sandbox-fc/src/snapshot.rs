@@ -77,8 +77,7 @@ pub async fn create_snapshot(
     //    as bind-mount targets during restore, so they must be deterministic.
     //
     //    Only remove snapshot-specific artifacts (work/, snapshot.bin, memory.bin,
-    //    cow.img) — the output directory may contain other files (e.g. rootfs.ext4
-    //    in unified image builds) that must not be deleted.
+    //    cow.img) — not the entire output directory.
     let work = output.work_dir();
 
     // Remove stale snapshot artifacts individually (not rm -rf on the

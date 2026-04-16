@@ -1,19 +1,19 @@
-//! Validation for image content-addressed hashes.
+//! Validation for content-addressed hashes (rootfs and snapshot).
 //!
-//! `image_hash` is produced by [`crate::cmd::build`]'s `compute_image_hash`
-//! as `hex::encode(Sha256::digest(...))`, so the canonical format is
-//! exactly 64 lowercase hex characters. The value is later joined
+//! Both `rootfs_hash` and `snapshot_hash` are produced as
+//! `hex::encode(Sha256::digest(...))`, so the canonical format is
+//! exactly 64 lowercase hex characters. The values are joined
 //! against [`crate::paths::HomePaths::images_dir`] to form on-disk
 //! paths, so any input containing `..`, `/`, or other path
 //! metacharacters could escape the intended directory. This module is
-//! the single source of truth for what counts as a safe `image_hash`.
+//! the single source of truth for what counts as a safe hash value.
 
 use crate::error::{RunnerError, RunnerResult};
 
 /// Validate `hash` and return a [`RunnerError::Config`] with a uniform
-/// message if it fails. Use this at every callsite that takes an
-/// `image_hash` from the user (CLI flags, YAML config) so the error
-/// wording stays consistent.
+/// message if it fails. Use this at every callsite that takes a hash
+/// from the user (CLI flags, YAML config) so the error wording stays
+/// consistent.
 pub fn validate_or_err(hash: &str) -> RunnerResult<()> {
     if !validate_name(hash) {
         return Err(RunnerError::Config(format!(

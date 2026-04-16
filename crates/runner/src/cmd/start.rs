@@ -134,12 +134,18 @@ pub async fn run_start(
     let runner_id = load_or_generate_runner_id(&runner_config.base_dir).await?;
     info!(runner_id = %runner_id, runner_name = %runner_config.name, "runner identity");
 
-    // Shared lock on image per profile — allows `runner gc` to detect in-use resources.
+    // Shared locks on rootfs + snapshot per profile — allows `runner gc` to detect in-use resources.
     let mut _resource_locks = Vec::new();
     for profile in runner_config.profiles.values() {
-        let lock = lock::acquire_shared(home.image_lock(&profile.image_hash)).await?;
-        touch_mtime(&home.images_dir().join(&profile.image_hash));
-        _resource_locks.push(lock);
+        let rootfs_lock = lock::acquire_shared(home.rootfs_lock(&profile.rootfs_hash)).await?;
+        let rootfs_paths = crate::paths::RootfsPaths::new(&home, &profile.rootfs_hash);
+        touch_mtime(rootfs_paths.dir());
+        _resource_locks.push(rootfs_lock);
+        let snapshot_lock =
+            lock::acquire_shared(home.snapshot_lock(&profile.snapshot_hash)).await?;
+        let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
+        touch_mtime(snapshot_paths.dir());
+        _resource_locks.push(snapshot_lock);
     }
 
     let log_paths = LogPaths::new(home.logs_dir());
@@ -154,10 +160,9 @@ pub async fn run_start(
 
     // Start background prefetch of snapshot memory for all profiles.
     for profile in runner_config.profiles.values() {
-        let path = home
-            .images_dir()
-            .join(&profile.image_hash)
-            .join("memory.bin");
+        let path = crate::paths::RootfsPaths::new(&home, &profile.rootfs_hash)
+            .snapshot(&profile.snapshot_hash)
+            .memory_bin();
         tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path));
     }
 
@@ -1512,7 +1517,8 @@ mod tests {
         m.insert(
             "vm0/default".to_string(),
             config::ProfileConfig {
-                image_hash: "hash".into(),
+                rootfs_hash: "hash".into(),
+                snapshot_hash: "snap".into(),
                 vcpu: 2,
                 memory_mb: 4096,
                 disk_mb: 10240,
@@ -2354,7 +2360,8 @@ mod tests {
         m.insert(
             "vm0/default".to_string(),
             config::ProfileConfig {
-                image_hash: "hash".into(),
+                rootfs_hash: "hash".into(),
+                snapshot_hash: "snap".into(),
                 vcpu: 2,
                 memory_mb: 4096,
                 disk_mb: 10240,
@@ -2363,7 +2370,8 @@ mod tests {
         m.insert(
             "vm0/large".to_string(),
             config::ProfileConfig {
-                image_hash: "hash2".into(),
+                rootfs_hash: "hash2".into(),
+                snapshot_hash: "snap2".into(),
                 vcpu: 4,
                 memory_mb: 8192,
                 disk_mb: 20480,

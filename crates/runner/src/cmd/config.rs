@@ -13,13 +13,16 @@ use crate::profile;
 
 #[derive(Args)]
 pub struct ConfigArgs {
-    /// Profile entries: --profile vm0/default --image-hash abc123
-    /// Can be repeated for multiple profiles. Each --profile starts a new entry.
+    /// Profile entries: --profile vm0/default --rootfs-hash abc --snapshot-hash def
+    /// Can be repeated for multiple profiles.
     #[arg(long, required = true)]
     profile: Vec<String>,
-    /// Image hash for the preceding --profile (one per profile, in order)
+    /// Rootfs hash for the preceding --profile (one per profile, in order)
     #[arg(long, required = true)]
-    image_hash: Vec<String>,
+    rootfs_hash: Vec<String>,
+    /// Snapshot hash for the preceding --profile (one per profile, in order)
+    #[arg(long, required = true)]
+    snapshot_hash: Vec<String>,
 
     /// Runner logical name
     #[arg(long)]
@@ -50,16 +53,18 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     // Pure-CPU validation first — fail fast before any filesystem I/O.
     crate::group::validate_or_err(&args.group)?;
     crate::runner_dirname::validate_or_err(&args.runner_dirname)?;
-    if args.profile.len() != args.image_hash.len() {
+    if args.profile.len() != args.rootfs_hash.len()
+        || args.profile.len() != args.snapshot_hash.len()
+    {
         return Err(RunnerError::Config(
-            "--profile and --image-hash must be specified the same number of times".into(),
+            "--profile, --rootfs-hash, and --snapshot-hash must be specified the same number of times".into(),
         ));
     }
     for profile_name in &args.profile {
         profile::validate_or_err(profile_name)?;
     }
-    for image_hash in &args.image_hash {
-        crate::image_hash::validate_or_err(image_hash)?;
+    for h in args.rootfs_hash.iter().chain(args.snapshot_hash.iter()) {
+        crate::image_hash::validate_or_err(h)?;
     }
 
     let paths = HomePaths::new()?;
@@ -68,27 +73,32 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     let mut profiles = BTreeMap::new();
     for (i, profile_name) in args.profile.iter().enumerate() {
         let def = profile::get(profile_name)?;
-        // Length equality is validated above, so this index is safe.
-        let image_hash = args
-            .image_hash
+        // Length equality is validated above, so these indices are safe.
+        let rootfs_hash = args
+            .rootfs_hash
             .get(i)
-            .ok_or_else(|| RunnerError::Internal(format!("missing image_hash at index {i}")))?;
+            .ok_or_else(|| RunnerError::Internal(format!("missing rootfs_hash at index {i}")))?;
+        let snapshot_hash = args
+            .snapshot_hash
+            .get(i)
+            .ok_or_else(|| RunnerError::Internal(format!("missing snapshot_hash at index {i}")))?;
 
-        // Verify image directory exists on disk.
-        let image_dir = paths.images_dir().join(image_hash);
-        if !tokio::fs::try_exists(&image_dir)
+        // Verify rootfs directory exists on disk.
+        let rootfs_dir = paths.images_dir().join(rootfs_hash);
+        if !tokio::fs::try_exists(&rootfs_dir)
             .await
-            .map_err(|e| RunnerError::Internal(format!("check image dir: {e}")))?
+            .map_err(|e| RunnerError::Internal(format!("check rootfs dir: {e}")))?
         {
             return Err(RunnerError::Config(format!(
-                "image not found for hash {image_hash}; run `build --profile {profile_name}` first"
+                "rootfs not found for hash {rootfs_hash}; run `build --profile {profile_name}` first"
             )));
         }
 
         profiles.insert(
             profile_name.clone(),
             ProfileConfig {
-                image_hash: image_hash.clone(),
+                rootfs_hash: rootfs_hash.clone(),
+                snapshot_hash: snapshot_hash.clone(),
                 vcpu: def.vcpu,
                 memory_mb: def.memory_mb,
                 disk_mb: def.disk_mb,
@@ -133,7 +143,8 @@ mod tests {
     fn args_with_dirname(dirname: &str) -> ConfigArgs {
         ConfigArgs {
             profile: vec!["vm0/default".into()],
-            image_hash: vec!["dummy".into()],
+            rootfs_hash: vec!["dummy".into()],
+            snapshot_hash: vec!["dummy".into()],
             name: "test".into(),
             group: "vm0/test".into(),
             runner_dirname: dirname.into(),

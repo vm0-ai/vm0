@@ -51,14 +51,7 @@ pub struct GcArgs {
 pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let home = HomePaths::new()?;
 
-    let images_freed = gc_dir(
-        "images",
-        &home.images_dir(),
-        |hash| home.image_lock(hash),
-        args.keep_latest,
-        args.dry_run,
-    )
-    .await?;
+    let images_freed = gc_nested_images(&home, args.keep_latest, args.dry_run).await?;
 
     // Workspace GC must run BEFORE orphaned lock cleanup: it reads base_dir
     // paths from lock files to discover workspaces from dead runners. If
@@ -165,11 +158,14 @@ struct GcCandidate {
     _lock: Flock<std::fs::File>,
 }
 
-/// GC a single artifact directory (e.g. images/).
+/// GC a single flat artifact directory.
 ///
 /// Each subdirectory is named by its content hash. We try an exclusive nonblocking
 /// flock on the corresponding lock file — if it succeeds the resource is unused.
 /// The exclusive lock is held until deletion to prevent TOCTOU races.
+///
+/// Only used by tests now — image GC migrated to `gc_nested_images`.
+#[cfg(test)]
 async fn gc_dir(
     label: &str,
     dir: &Path,
@@ -269,6 +265,231 @@ async fn gc_dir(
     }
 
     Ok(freed)
+}
+
+/// GC for the nested image layout: `<images>/<rootfs>/snapshots/<snapshot>/`.
+///
+/// Per-rootfs: mtime-sort snapshots, keep the latest `keep_latest`, delete the rest.
+/// After per-rootfs cleanup: if a rootfs dir has no surviving snapshots and its
+/// mtime is older than `GC_MIN_AGE`, delete the entire rootfs dir (orphan cleanup).
+async fn gc_nested_images(
+    home: &HomePaths,
+    keep_latest: Option<usize>,
+    dry_run: bool,
+) -> RunnerResult<u64> {
+    let images_dir = home.images_dir();
+    let mut rootfs_entries = match tokio::fs::read_dir(&images_dir).await {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "read {}: {e}",
+                images_dir.display()
+            )));
+        }
+    };
+
+    let mut total_freed = 0u64;
+
+    while let Some(rootfs_entry) = next_entry_warn(&mut rootfs_entries, "images", &images_dir).await
+    {
+        let rootfs_path = rootfs_entry.path();
+        let Some(rootfs_hash) = rootfs_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(String::from)
+        else {
+            continue;
+        };
+
+        // Skip non-directories (e.g. stale temp files).
+        if !rootfs_path.is_dir() {
+            continue;
+        }
+
+        // Probe rootfs lock. If held (by start/build), we can still GC
+        // individual snapshots (guarded by their own locks), but must NOT
+        // delete the rootfs directory itself.
+        let rootfs_lock_path = home.rootfs_lock(&rootfs_hash);
+        let _rootfs_lock = match probe_lock(&rootfs_lock_path) {
+            LockProbe::Free(lock) => Some(lock),
+            LockProbe::Held => {
+                info!("images/{rootfs_hash}: rootfs in use, will only GC unlocked snapshots");
+                None
+            }
+            LockProbe::Error(e) => {
+                info!("images/{rootfs_hash}: lock probe failed ({e}), skipping");
+                continue;
+            }
+        };
+        let can_delete_rootfs = _rootfs_lock.is_some();
+
+        let snapshots_dir = rootfs_path.join("snapshots");
+        let mut snapshot_entries = match tokio::fs::read_dir(&snapshots_dir).await {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // No snapshots/ subdirectory — orphaned rootfs.
+                // Can only delete if we hold the rootfs lock.
+                if can_delete_rootfs {
+                    let (rootfs_size, rootfs_mtime) = dir_stats(&rootfs_path).await;
+                    let age = SystemTime::now()
+                        .duration_since(rootfs_mtime)
+                        .unwrap_or_default();
+                    if age >= GC_MIN_AGE {
+                        if dry_run {
+                            info!(
+                                "[dry-run] would delete orphaned rootfs images/{rootfs_hash} ({})",
+                                human_bytes(rootfs_size)
+                            );
+                        } else if let Err(e) = tokio::fs::remove_dir_all(&rootfs_path).await {
+                            warn!("failed to remove orphaned rootfs images/{rootfs_hash}: {e}");
+                        } else {
+                            info!(
+                                "deleted orphaned rootfs images/{rootfs_hash} ({})",
+                                human_bytes(rootfs_size)
+                            );
+                            total_freed += rootfs_size;
+                        }
+                    } else {
+                        info!(
+                            "images/{rootfs_hash}: no snapshots, too recent ({}s), keeping",
+                            age.as_secs()
+                        );
+                    }
+                }
+                continue;
+            }
+            Err(e) => {
+                warn!("images/{rootfs_hash}/snapshots: read failed ({e}), skipping");
+                continue;
+            }
+        };
+
+        // Collect snapshot candidates.
+        let mut candidates: Vec<GcCandidate> = Vec::new();
+        while let Some(snap_entry) =
+            next_entry_warn(&mut snapshot_entries, "snapshots", &snapshots_dir).await
+        {
+            let snap_path = snap_entry.path();
+            let Some(snap_hash) = snap_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(String::from)
+            else {
+                continue;
+            };
+            if !snap_path.is_dir() {
+                continue;
+            }
+
+            let lock_path = home.snapshot_lock(&snap_hash);
+            match probe_lock(&lock_path) {
+                LockProbe::Free(lock) => {
+                    let (size, mtime) = dir_stats(&snap_path).await;
+                    candidates.push(GcCandidate {
+                        path: snap_path,
+                        hash: snap_hash,
+                        size,
+                        mtime,
+                        _lock: lock,
+                    });
+                }
+                LockProbe::Held => {
+                    info!("images/{rootfs_hash}/snapshots/{snap_hash}: in use, skipping");
+                }
+                LockProbe::Error(e) => {
+                    info!(
+                        "images/{rootfs_hash}/snapshots/{snap_hash}: lock probe failed ({e}), skipping"
+                    );
+                }
+            }
+        }
+
+        // Protect recently-created snapshots.
+        let now = SystemTime::now();
+        candidates.retain(|c| {
+            let age = now.duration_since(c.mtime).unwrap_or_default();
+            if age < GC_MIN_AGE {
+                info!(
+                    "images/{rootfs_hash}/snapshots/{}: too recent ({}s), keeping",
+                    c.hash,
+                    age.as_secs()
+                );
+                false
+            } else {
+                true
+            }
+        });
+
+        // Sort by mtime descending (newest first), keep latest N.
+        candidates.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+        let keep_count = keep_latest.unwrap_or(0);
+        for c in candidates.iter().take(keep_count) {
+            info!(
+                "images/{rootfs_hash}/snapshots/{}: keeping (latest unused, {})",
+                c.hash,
+                human_bytes(c.size)
+            );
+        }
+
+        for c in candidates.iter().skip(keep_count) {
+            if dry_run {
+                info!(
+                    "[dry-run] would delete images/{rootfs_hash}/snapshots/{} ({})",
+                    c.hash,
+                    human_bytes(c.size)
+                );
+            } else if let Err(e) = tokio::fs::remove_dir_all(&c.path).await {
+                warn!(
+                    "failed to remove images/{rootfs_hash}/snapshots/{}: {e}",
+                    c.hash
+                );
+            } else {
+                info!(
+                    "deleted images/{rootfs_hash}/snapshots/{} ({})",
+                    c.hash,
+                    human_bytes(c.size)
+                );
+                total_freed += c.size;
+            }
+        }
+
+        // Check if rootfs is now orphaned (no remaining snapshots).
+        // Only delete rootfs if we hold the exclusive rootfs lock.
+        let has_snapshots = match tokio::fs::read_dir(&snapshots_dir).await {
+            Ok(mut rd) => rd.next_entry().await.ok().flatten().is_some(),
+            Err(_) => false,
+        };
+        if !has_snapshots && can_delete_rootfs {
+            let (rootfs_size, rootfs_mtime) = dir_stats(&rootfs_path).await;
+            let age = SystemTime::now()
+                .duration_since(rootfs_mtime)
+                .unwrap_or_default();
+            if age >= GC_MIN_AGE {
+                if dry_run {
+                    info!(
+                        "[dry-run] would delete orphaned rootfs images/{rootfs_hash} ({})",
+                        human_bytes(rootfs_size)
+                    );
+                } else if let Err(e) = tokio::fs::remove_dir_all(&rootfs_path).await {
+                    warn!("failed to remove orphaned rootfs images/{rootfs_hash}: {e}");
+                } else {
+                    info!(
+                        "deleted orphaned rootfs images/{rootfs_hash} ({})",
+                        human_bytes(rootfs_size)
+                    );
+                    total_freed += rootfs_size;
+                }
+            } else {
+                info!(
+                    "images/{rootfs_hash}: orphaned but too recent ({}s), keeping",
+                    age.as_secs()
+                );
+            }
+        }
+    }
+
+    Ok(total_freed)
 }
 
 enum LockProbe {
@@ -1402,6 +1623,220 @@ mod tests {
             "skipped version should survive"
         );
         assert!(!bin_dir.join("v2.0.0").exists());
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_empty_dir_returns_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let freed = gc_nested_images(&home, Some(1), false).await.unwrap();
+        assert_eq!(freed, 0);
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_keeps_latest_per_rootfs() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Create rootfs with two snapshots
+        let rootfs_dir = images_dir.join("rootfs_aaa");
+        let snap_old = rootfs_dir.join("snapshots").join("snap_old");
+        let snap_new = rootfs_dir.join("snapshots").join("snap_new");
+        for d in [&snap_old, &snap_new] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("snapshot.bin"), b"data").unwrap();
+        }
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        // Set distinct mtimes — old snapshot is clearly old
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&snap_old)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+        let new_time = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        std::fs::File::open(&snap_new)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(new_time))
+            .unwrap();
+
+        let freed = gc_nested_images(&home, Some(1), false).await.unwrap();
+
+        assert!(snap_new.exists(), "newest snapshot should survive");
+        assert!(!snap_old.exists(), "oldest snapshot should be deleted");
+        assert!(
+            rootfs_dir.join("rootfs.ext4").exists(),
+            "rootfs should survive"
+        );
+        assert!(freed > 0);
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_orphaned_rootfs_old_enough() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Rootfs with no snapshots/ directory at all
+        let rootfs_dir = images_dir.join("orphan_rootfs");
+        std::fs::create_dir_all(&rootfs_dir).unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        // Make it old enough for GC
+        let old_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        std::fs::File::open(&rootfs_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let freed = gc_nested_images(&home, None, false).await.unwrap();
+        assert!(!rootfs_dir.exists(), "orphaned rootfs should be deleted");
+        assert!(freed > 0);
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_dry_run_deletes_nothing() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let rootfs_dir = images_dir.join("rootfs_bbb");
+        let snap = rootfs_dir.join("snapshots").join("snap_x");
+        std::fs::create_dir_all(&snap).unwrap();
+        std::fs::write(snap.join("snapshot.bin"), b"data").unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&snap)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        // keep_latest=0 + dry_run: would delete but doesn't actually
+        let freed = gc_nested_images(&home, Some(0), true).await.unwrap();
+        assert!(snap.exists(), "dry-run must not delete");
+        assert_eq!(freed, 0, "dry-run must not count freed space");
+    }
+
+    /// Empty `snapshots/` directory (not missing, just empty) → orphan rootfs deleted.
+    /// Different code path from "no snapshots/ dir at all" (which hits the NotFound branch).
+    #[tokio::test]
+    async fn gc_nested_images_empty_snapshots_dir_orphans_rootfs() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let rootfs_dir = images_dir.join("rootfs_empty_snaps");
+        let snapshots_dir = rootfs_dir.join("snapshots");
+        std::fs::create_dir_all(&snapshots_dir).unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        // Make rootfs old enough for GC.
+        let old_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        std::fs::File::open(&rootfs_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let freed = gc_nested_images(&home, None, false).await.unwrap();
+        assert!(
+            !rootfs_dir.exists(),
+            "orphaned rootfs (empty snapshots/) should be deleted"
+        );
+        assert!(freed > 0);
+    }
+
+    /// Snapshots younger than GC_MIN_AGE are unconditionally kept, even with keep_latest=0.
+    #[tokio::test]
+    async fn gc_nested_images_recent_snapshot_protected() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let rootfs_dir = images_dir.join("rootfs_recent");
+        let snap = rootfs_dir.join("snapshots").join("snap_fresh");
+        std::fs::create_dir_all(&snap).unwrap();
+        std::fs::write(snap.join("snapshot.bin"), b"data").unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        // mtime is NOW (default) — well within GC_MIN_AGE.
+        // keep_latest=0 would delete everything, but GC_MIN_AGE protects.
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+        assert!(
+            snap.exists(),
+            "recent snapshot must survive despite keep_latest=0"
+        );
+        assert!(
+            rootfs_dir.exists(),
+            "rootfs must survive (has protected snapshot)"
+        );
+        assert_eq!(freed, 0);
+    }
+
+    /// When the rootfs lock is held, GC can still delete unlocked snapshots
+    /// but must NOT delete the rootfs directory itself.
+    #[tokio::test]
+    async fn gc_nested_images_locked_rootfs_still_cleans_unlocked_snapshots() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let rootfs_dir = images_dir.join("can_delete_rootfs");
+        let snap_used = rootfs_dir.join("snapshots").join("snap_used");
+        let snap_old = rootfs_dir.join("snapshots").join("snap_old");
+        for d in [&snap_used, &snap_old] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("snapshot.bin"), b"data").unwrap();
+        }
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        // Make snap_old old enough to be GC-eligible.
+        let old_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        std::fs::File::open(&snap_old)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        // Simulate `runner start` holding shared locks on rootfs + snap_used.
+        let rootfs_lock_file =
+            lock::open_lock_file(&home.rootfs_lock("can_delete_rootfs")).unwrap();
+        let _rootfs_held = Flock::lock(rootfs_lock_file, FlockArg::LockShared).unwrap();
+        let snap_lock_file = lock::open_lock_file(&home.snapshot_lock("snap_used")).unwrap();
+        let _snap_held = Flock::lock(snap_lock_file, FlockArg::LockShared).unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+        assert!(
+            !snap_old.exists(),
+            "unlocked old snapshot should be deleted"
+        );
+        assert!(snap_used.exists(), "locked snapshot must survive");
+        assert!(rootfs_dir.exists(), "rootfs must survive (lock held)");
+        assert!(freed > 0);
     }
 
     #[test]

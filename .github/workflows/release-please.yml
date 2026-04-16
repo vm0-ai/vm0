@@ -881,7 +881,7 @@ jobs:
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match crates.yml / turbo.yml so image_hash is
+      # custom RUSTFLAGS) must match crates.yml / turbo.yml so rootfs_hash is
       # identical across pipelines and R2 cache hits on deploy. See #9192.
       - name: Cross-compile guest binaries for ARM64
         run: |

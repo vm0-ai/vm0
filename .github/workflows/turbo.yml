@@ -1363,7 +1363,8 @@ jobs:
       runner-dir: ${{ steps.host.outputs.runner-dir }}
       runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
       chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
-      image-hash-map: ${{ steps.deploy.outputs.image-hash-map }}
+      rootfs-hash-map: ${{ steps.deploy.outputs.rootfs-hash-map }}
+      snapshot-hash-map: ${{ steps.deploy.outputs.snapshot-hash-map }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1375,7 +1376,7 @@ jobs:
           save-if: false
 
       # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match release-please.yml so image_hash is
+      # custom RUSTFLAGS) must match release-please.yml so rootfs_hash is
       # identical across pipelines and R2 cache hits on deploy. See #9192.
       - name: Cross-compile guest binaries for ARM64
         run: |
@@ -1557,20 +1558,24 @@ jobs:
             exit 1
           fi
 
-          # Extract per-host build hashes — they may differ across hosts
-          # because the image hash includes the host kernel version and CPU model.
-          HASH_MAP=$(jq -n '{}')
+          # Extract per-host build hashes — rootfs hash is shared (R2 cached),
+          # snapshot hash may differ across hosts.
+          ROOTFS_MAP=$(jq -n '{}')
+          SNAPSHOT_MAP=$(jq -n '{}')
           for HOST in "${HOSTS[@]}"; do
-            HASH=$(grep '^image_hash=' "${LOG_DIR}/${HOST}.log" | cut -d= -f2)
-            if [ -z "$HASH" ]; then
-              echo "::error::Failed to extract image hash from ${HOST} log"
+            ROOTFS_HASH=$(grep '^rootfs_hash=' "${LOG_DIR}/${HOST}.log" | cut -d= -f2)
+            SNAPSHOT_HASH=$(grep '^snapshot_hash=' "${LOG_DIR}/${HOST}.log" | cut -d= -f2)
+            if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
+              echo "::error::Failed to extract rootfs/snapshot hash from ${HOST} log"
               rm -rf "$LOG_DIR"
               exit 1
             fi
-            HASH_MAP=$(echo "$HASH_MAP" | jq -c --arg h "$HOST" --arg v "$HASH" '. + {($h): $v}')
+            ROOTFS_MAP=$(echo "$ROOTFS_MAP" | jq -c --arg h "$HOST" --arg v "$ROOTFS_HASH" '. + {($h): $v}')
+            SNAPSHOT_MAP=$(echo "$SNAPSHOT_MAP" | jq -c --arg h "$HOST" --arg v "$SNAPSHOT_HASH" '. + {($h): $v}')
           done
           rm -rf "$LOG_DIR"
-          echo "image-hash-map=${HASH_MAP}" >> "$GITHUB_OUTPUT"
+          echo "rootfs-hash-map=${ROOTFS_MAP}" >> "$GITHUB_OUTPUT"
+          echo "snapshot-hash-map=${SNAPSHOT_MAP}" >> "$GITHUB_OUTPUT"
 
   # Deploy runner start: generate config with real preview URL and start service
   # Waits for both deploy-runner-prepare (binaries + image) and deploy-web (preview URL)
@@ -1612,7 +1617,8 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-          IMAGE_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.image-hash-map }}
+          ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
+          SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
@@ -1623,11 +1629,13 @@ jobs:
             local REMOTE="${METAL_USER}@${HOST}"
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
 
-            # Look up per-host image hash (differs across kernel versions)
-            local IMAGE_HASH
-            IMAGE_HASH=$(echo "$IMAGE_HASH_MAP" | jq -r --arg h "$HOST" '.[$h]')
-            if [ -z "$IMAGE_HASH" ] || [ "$IMAGE_HASH" = "null" ]; then
-              echo "::error::No image hash found for ${HOST} in hash map"
+            # Look up per-host hashes
+            local ROOTFS_HASH SNAPSHOT_HASH
+            ROOTFS_HASH=$(echo "$ROOTFS_HASH_MAP" | jq -r --arg h "$HOST" '.[$h]')
+            SNAPSHOT_HASH=$(echo "$SNAPSHOT_HASH_MAP" | jq -r --arg h "$HOST" '.[$h]')
+            if [ -z "$ROOTFS_HASH" ] || [ "$ROOTFS_HASH" = "null" ] \
+                || [ -z "$SNAPSHOT_HASH" ] || [ "$SNAPSHOT_HASH" = "null" ]; then
+              echo "::error::No rootfs/snapshot hash found for ${HOST} in hash map"
               return 1
             fi
 
@@ -1642,7 +1650,8 @@ jobs:
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
               --profile vm0/default \
-              --image-hash ${IMAGE_HASH} \
+              --rootfs-hash ${ROOTFS_HASH} \
+              --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \

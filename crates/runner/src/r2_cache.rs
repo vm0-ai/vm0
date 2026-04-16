@@ -1,14 +1,14 @@
 //! R2 cache for `runner build` rootfs artifacts.
 //!
-//! Single-key bundle per image hash: `runner-images/{hash}.tar.zst` in the
-//! existing `R2_USER_STORAGES_BUCKET_NAME` bucket. Only rootfs.ext4 is
+//! Single-key bundle per rootfs hash: `runner-images/{rootfs_hash}.tar.zst` in
+//! the existing `R2_USER_STORAGES_BUCKET_NAME` bucket. Only rootfs.ext4 is
 //! cached in R2; snapshot files are always created locally because they
 //! contain host-specific state (page cache, kernel metadata).
 //!
 //! ## Lifecycle
 //!
 //! 1. `runner build` computes a rootfs-only hash and checks local cache.
-//! 2. On miss, after acquiring `image_lock(hash)`, it tries `try_download`.
+//! 2. On miss, after acquiring `rootfs_lock(hash)`, it tries `try_download`.
 //! 3. On download hit, the caller injects the local CA into the rootfs and
 //!    creates a snapshot locally.
 //! 4. On download miss, it does the local rootfs build, then `upload`s the
@@ -41,9 +41,8 @@
 //! ## R2-side cleanup
 //!
 //! Completed objects (`runner-images/{hash}.tar.zst`) are **never deleted on
-//! upload**. Each `IMAGE_CACHE_VERSION` bump, build-script change, guest
-//! binary rebuild, or firecracker/kernel upgrade produces a new hash and
-//! orphans the previous object.
+//! upload**. Each `ROOTFS_CACHE_VERSION` bump, build-script change, or guest
+//! binary rebuild produces a new rootfs hash and orphans the previous object.
 //!
 //! Cleanup happens via `gc_older_than`, called from `runner gc` (which the
 //! deploy playbook runs after every release). Default TTL is 7 days. Each

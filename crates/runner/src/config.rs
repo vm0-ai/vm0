@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
-use crate::paths::{HomePaths, ImagePaths};
+use crate::paths::{HomePaths, RootfsPaths};
 use crate::profile;
 
 /// 0 means auto-detect from host CPU and memory at startup.
@@ -37,7 +37,10 @@ pub struct FirecrackerConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProfileConfig {
-    pub image_hash: String,
+    /// Content-addressed rootfs hash (R2-cacheable, shared across snapshot variants).
+    pub rootfs_hash: String,
+    /// Content-addressed snapshot hash (local-only, covers FC/kernel/vcpu/memory/provider config).
+    pub snapshot_hash: String,
     pub vcpu: u32,
     pub memory_mb: u32,
     pub disk_mb: u32,
@@ -134,7 +137,8 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
         profile::validate_or_err(name)?;
     }
     for profile in config.profiles.values() {
-        crate::image_hash::validate_or_err(&profile.image_hash)?;
+        crate::image_hash::validate_or_err(&profile.rootfs_hash)?;
+        crate::image_hash::validate_or_err(&profile.snapshot_hash)?;
     }
 
     check_path_exists(&config.ca_dir, "ca_dir").await?;
@@ -165,10 +169,15 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
                 profile.disk_mb
             )));
         }
-        // Validate all image files exist on disk.
-        let image_paths = ImagePaths::new(home, &profile.image_hash);
-        for path in image_paths.expected_files() {
-            check_path_exists(&path, &format!("profile {name} image")).await?;
+        // Validate rootfs files exist on disk.
+        let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
+        for path in rootfs_paths.expected_files() {
+            check_path_exists(&path, &format!("profile {name} rootfs")).await?;
+        }
+        // Validate snapshot files exist on disk.
+        let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
+        for path in snapshot_paths.expected_files() {
+            check_path_exists(&path, &format!("profile {name} snapshot")).await?;
         }
     }
 
@@ -224,16 +233,17 @@ impl RunnerConfig {
         profile: &ProfileConfig,
         home: &HomePaths,
     ) -> sandbox::FactoryConfig {
-        let image_paths = ImagePaths::new(home, &profile.image_hash);
+        let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
+        let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
         sandbox::FactoryConfig {
             profile: profile_name.to_string(),
             binary_path: firecracker.binary.clone(),
             kernel_path: firecracker.kernel.clone(),
-            rootfs_path: image_paths.rootfs(),
+            rootfs_path: rootfs_paths.rootfs(),
             base_dir: base_dir.to_path_buf(),
             snapshot: Some(sandbox::SnapshotRef {
-                output_dir: image_paths.dir().to_path_buf(),
-                hash: profile.image_hash.clone(),
+                output_dir: snapshot_paths.dir().to_path_buf(),
+                hash: profile.snapshot_hash.clone(),
             }),
         }
     }
@@ -243,19 +253,30 @@ impl RunnerConfig {
 mod tests {
     use super::*;
 
-    /// 64 lowercase hex chars — matches `Sha256::digest(...).hex_encode()`
-    /// shape so the new `image_hash` validator accepts it.
-    const TEST_HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    /// 64 lowercase hex chars — matches `Sha256::digest(...).hex_encode()`.
+    const TEST_ROOTFS_HASH: &str =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const TEST_SNAPSHOT_HASH: &str =
+        "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
 
     /// Create a HomePaths rooted in a temp dir and populate fake image files
-    /// for the given image hashes so config validation passes.
-    async fn test_home_with_artifacts(dir: &std::path::Path, image_hashes: &[&str]) -> HomePaths {
+    /// for the given (rootfs_hash, snapshot_hash) pairs so config validation passes.
+    async fn test_home_with_artifacts(dir: &std::path::Path, hashes: &[(&str, &str)]) -> HomePaths {
         let home = HomePaths::with_root(dir.join("vm0-runner"));
-        for &hash in image_hashes {
-            let image = ImagePaths::new(&home, hash);
-            tokio::fs::create_dir_all(image.dir()).await.unwrap();
-            for path in image.expected_files() {
-                tokio::fs::write(&path, b"").await.unwrap();
+        for &(rootfs_hash, snapshot_hash) in hashes {
+            let rootfs = RootfsPaths::new(&home, rootfs_hash);
+            tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+            tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
+            if !snapshot_hash.is_empty() {
+                let snapshot = rootfs.snapshot(snapshot_hash);
+                tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
+                for path in [
+                    snapshot.snapshot_bin(),
+                    snapshot.memory_bin(),
+                    snapshot.cow_img(),
+                ] {
+                    tokio::fs::write(&path, b"").await.unwrap();
+                }
             }
         }
         home
@@ -266,7 +287,8 @@ mod tests {
         profiles.insert(
             "vm0/default".into(),
             ProfileConfig {
-                image_hash: TEST_HASH.into(),
+                rootfs_hash: TEST_ROOTFS_HASH.into(),
+                snapshot_hash: TEST_SNAPSHOT_HASH.into(),
                 vcpu: 2,
                 memory_mb: 4096,
                 disk_mb: 16384,
@@ -295,7 +317,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -310,10 +333,12 @@ server:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
-        let home = test_home_with_artifacts(dir.path(), &[TEST_HASH]).await;
+        let home =
+            test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
 
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
@@ -323,7 +348,7 @@ server:
         assert_eq!(config.profiles.len(), 1);
         let default = &config.profiles["vm0/default"];
         assert_eq!(default.vcpu, 2);
-        assert_eq!(default.image_hash, TEST_HASH);
+        assert_eq!(default.rootfs_hash, TEST_ROOTFS_HASH);
         assert_eq!(config.sandbox.max_concurrent, 8);
         assert!((config.sandbox.concurrency_factor - 2.0).abs() < f64::EPSILON);
         let server = config.server.unwrap();
@@ -339,7 +364,8 @@ server:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[TEST_HASH]).await;
+        let home =
+            test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
 
         let yaml = format!(
             r#"
@@ -352,7 +378,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -361,7 +388,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -383,7 +411,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[(&str, &str)]).await;
 
         let yaml = format!(
             r#"
@@ -420,7 +448,7 @@ profiles: {{}}
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[(&str, &str)]).await;
 
         let yaml = format!(
             r#"
@@ -433,7 +461,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   bad-name:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -442,7 +471,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -456,14 +486,14 @@ profiles:
     }
 
     #[tokio::test]
-    async fn load_rejects_invalid_image_hash() {
+    async fn load_rejects_invalid_rootfs_hash() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
         let kernel = dir.path().join("vmlinux");
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[(&str, &str)]).await;
 
         // `../etc` would escape `images_dir()` if joined unchecked. The
         // validator must reject this at config-load time, before any
@@ -479,7 +509,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: ../etc
+    rootfs_hash: ../etc
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -488,6 +519,48 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
+            snap_hash = TEST_SNAPSHOT_HASH,
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        assert!(err.to_string().contains("invalid image hash"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn load_rejects_invalid_snapshot_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+        let home = test_home_with_artifacts(dir.path(), &[] as &[(&str, &str)]).await;
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    rootfs_hash: {hash}
+    snapshot_hash: ../etc
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+            hash = TEST_ROOTFS_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -505,7 +578,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[(&str, &str)]).await;
 
         let yaml = format!(
             r#"
@@ -518,7 +591,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 0
     memory_mb: 4096
     disk_mb: 16384
@@ -527,7 +601,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -545,7 +620,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[(&str, &str)]).await;
 
         let yaml = format!(
             r#"
@@ -558,7 +633,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 0
@@ -567,7 +643,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -585,7 +662,8 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[TEST_HASH]).await;
+        let home =
+            test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
 
         let yaml = format!(
             r#"
@@ -598,7 +676,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 1024
     memory_mb: 4096
     disk_mb: 16384
@@ -607,7 +686,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -626,7 +706,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[(&str, &str)]).await;
 
         let yaml = format!(
             r#"
@@ -639,7 +719,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2048
     memory_mb: 4096
     disk_mb: 16384
@@ -648,7 +729,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -666,7 +748,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[(&str, &str)]).await;
 
         let yaml = format!(
             r#"
@@ -679,7 +761,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 2000000
     disk_mb: 16384
@@ -688,7 +771,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -706,7 +790,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[(&str, &str)]).await;
 
         let yaml = format!(
             r#"
@@ -719,7 +803,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 2000000
@@ -728,7 +813,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -747,11 +833,11 @@ profiles:
             tokio::fs::write(f, b"").await.unwrap();
         }
 
-        // Create image directory with only rootfs.ext4 (missing snapshot files).
+        // Create rootfs.ext4 but NO snapshot files — validation should fail.
         let home = HomePaths::with_root(dir.path().join("vm0-runner"));
-        let image = ImagePaths::new(&home, TEST_HASH);
-        tokio::fs::create_dir_all(image.dir()).await.unwrap();
-        tokio::fs::write(image.rootfs(), b"").await.unwrap();
+        let rootfs = RootfsPaths::new(&home, TEST_ROOTFS_HASH);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
 
         let yaml = format!(
             r#"
@@ -764,7 +850,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -773,7 +860,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -795,7 +883,8 @@ profiles:
             tokio::fs::write(f, b"").await.unwrap();
         }
 
-        let home = test_home_with_artifacts(dir.path(), &[TEST_HASH]).await;
+        let home =
+            test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
 
         for bad_value in ["0.0", "-1.0", ".nan", ".inf", "-.inf"] {
             let yaml = format!(
@@ -809,7 +898,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -820,7 +910,8 @@ sandbox:
                 ca_dir = dir.path().display(),
                 fc = fc.display(),
                 kernel = kernel.display(),
-                hash = TEST_HASH,
+                hash = TEST_ROOTFS_HASH,
+                snap_hash = TEST_SNAPSHOT_HASH,
             );
 
             let config_path = dir.path().join("runner.yaml");
@@ -842,7 +933,8 @@ sandbox:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[TEST_HASH]).await;
+        let home =
+            test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
 
         let runner_dir = dir.path().join("my-runner");
         let config = RunnerConfig {
@@ -880,7 +972,8 @@ sandbox:
         for name in ["firecracker", "vmlinux"] {
             tokio::fs::write(sub.join(name), b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[TEST_HASH]).await;
+        let home =
+            test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
 
         let yaml = format!(
             r#"
@@ -893,12 +986,14 @@ firecracker:
   kernel: artifacts/vmlinux
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
 "#,
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");
@@ -937,14 +1032,13 @@ profiles:
 
         assert_eq!(fc.binary_path, dir.path().join("firecracker"));
         assert_eq!(fc.kernel_path, dir.path().join("vmlinux"));
-        assert_eq!(
-            fc.rootfs_path,
-            home.images_dir().join(TEST_HASH).join("rootfs.ext4")
-        );
+        let rootfs_paths = RootfsPaths::new(&home, TEST_ROOTFS_HASH);
+        assert_eq!(fc.rootfs_path, rootfs_paths.rootfs());
         assert_eq!(fc.profile, "vm0/default");
         let snap = fc.snapshot.unwrap();
-        assert_eq!(snap.hash, TEST_HASH);
-        assert_eq!(snap.output_dir, home.images_dir().join(TEST_HASH));
+        assert_eq!(snap.hash, TEST_SNAPSHOT_HASH);
+        let snapshot_paths = RootfsPaths::new(&home, TEST_ROOTFS_HASH).snapshot(TEST_SNAPSHOT_HASH);
+        assert_eq!(snap.output_dir, snapshot_paths.dir().to_path_buf());
     }
 
     #[tokio::test]
@@ -955,7 +1049,8 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[TEST_HASH]).await;
+        let home =
+            test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
 
         let runner_dir = dir.path().join("my-runner");
         let config = RunnerConfig {
@@ -992,7 +1087,8 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[TEST_HASH]).await;
+        let home =
+            test_home_with_artifacts(dir.path(), &[(TEST_ROOTFS_HASH, TEST_SNAPSHOT_HASH)]).await;
 
         // YAML without any idle pool fields
         let yaml = format!(
@@ -1006,7 +1102,8 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    image_hash: {hash}
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -1015,7 +1112,8 @@ profiles:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            hash = TEST_HASH,
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
         );
 
         let config_path = dir.path().join("runner.yaml");

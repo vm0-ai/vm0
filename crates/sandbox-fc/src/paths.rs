@@ -259,6 +259,24 @@ mod tests {
         );
     }
 
+    /// Guard against using a composite `<rootfs>/<snapshot>` as sock_id.
+    /// That would exceed 107 bytes (sun_path limit) and fail at bind time.
+    #[test]
+    fn composite_sock_id_would_overflow_sun_path() {
+        let rootfs = "a".repeat(64);
+        let snapshot = "b".repeat(64);
+        let composite = format!("{rootfs}/{snapshot}");
+        let runtime = RuntimePaths::new();
+        let sock = SockPaths::new(runtime.sock_dir(&composite));
+        let vsock = sock.vsock();
+        assert!(
+            vsock.as_os_str().len() > 107,
+            "composite sock_id MUST overflow sun_path — if this fails, the guard is stale: {} bytes ({})",
+            vsock.as_os_str().len(),
+            vsock.display()
+        );
+    }
+
     #[test]
     fn cow_bitmap_consistent_with_cow() {
         let output = SnapshotOutputPaths::new(PathBuf::from("/data/images/abc123"));
