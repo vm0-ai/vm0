@@ -3009,6 +3009,29 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  seedance: {
+    label: "Seedance",
+    environmentMapping: {
+      SEEDANCE_TOKEN: "$secrets.SEEDANCE_TOKEN",
+    },
+    helpText:
+      "Connect your BytePlus ModelArk account to generate AI videos from text prompts or images using Seedance 2.0",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [BytePlus ModelArk Console](https://console.byteplus.com/ark)\n2. Complete real-name verification in the console\n3. Purchase a prepaid resource pack (20 free Fast invocations/month for new accounts)\n4. Navigate to **API Keys** and create a new key\n5. Copy the key",
+        secrets: {
+          SEEDANCE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-seedance-api-key",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   pdfco: {
     label: "PDF.co",
     environmentMapping: {
