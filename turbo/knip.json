@@ -103,7 +103,7 @@
     "apps/platform/src/test/mocks/clerk-react-experimental.ts",
     "apps/cli/src/lib/utils/paginate.ts",
     "apps/web/src/lib/auth/sandbox-token.ts",
-    "apps/web/src/lib/infra/storage/skill-upload.ts",
+    "apps/web/src/lib/infra/storage/volume-upload.ts",
     "scripts/rebuild-snapshots.ts",
     "scripts/rebuild-snapshots-from-db.ts",
     "apps/web/scripts/migrations/001-backfill-clerk-orgs/**",

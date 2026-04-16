@@ -3,7 +3,10 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { zeroSkillsCollectionContract } from "@vm0/core";
+import {
+  zeroSkillsCollectionContract,
+  getCustomSkillStorageName,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -12,7 +15,7 @@ import {
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { zeroSkills } from "../../../../src/db/schema/zero-skill";
 import { eq, and } from "drizzle-orm";
-import { uploadSkillServerSide } from "../../../../src/lib/infra/storage/skill-upload";
+import { uploadVolumeServerSide } from "../../../../src/lib/infra/storage/volume-upload";
 import { SEED_SKILLS } from "../../../../src/lib/zero/seed-skills";
 import { requireAdminPermission } from "../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../src/lib/shared/logger";
@@ -111,9 +114,9 @@ const router = tsr.router(zeroSkillsCollectionContract, {
     });
 
     // Upload skill files to S3
-    await uploadSkillServerSide({
+    await uploadVolumeServerSide({
       orgId: org.orgId,
-      skillName: body.name,
+      storageName: getCustomSkillStorageName(body.name),
       files: body.files,
     });
 

@@ -19,7 +19,7 @@ interface LogMethods {
  * Handles the full flow: tar.gz creation, storage upsert,
  * dedup check, S3 upload, and version+HEAD transaction.
  *
- * Used by both instruction-upload and skill-upload.
+ * Used by both instruction-upload and volume-upload.
  */
 export async function uploadStorageServerSide(params: {
   orgId: string;

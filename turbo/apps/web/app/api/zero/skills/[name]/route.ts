@@ -24,9 +24,9 @@ import {
 } from "../../../../../src/db/schema/storage";
 import { eq, and, sql } from "drizzle-orm";
 import {
-  uploadSkillServerSide,
-  deleteSkillServerSide,
-} from "../../../../../src/lib/infra/storage/skill-upload";
+  uploadVolumeServerSide,
+  deleteVolumeServerSide,
+} from "../../../../../src/lib/infra/storage/volume-upload";
 import {
   downloadManifest,
   downloadS3Buffer,
@@ -205,9 +205,9 @@ const router = tsr.router(zeroSkillsDetailContract, {
     }
 
     // Upload new files (creates new version, no compose rebuild needed)
-    await uploadSkillServerSide({
+    await uploadVolumeServerSide({
       orgId: org.orgId,
-      skillName: params.name,
+      storageName: getCustomSkillStorageName(params.name),
       files: body.files,
     });
 
@@ -309,9 +309,9 @@ const router = tsr.router(zeroSkillsDetailContract, {
       );
 
     // Delete S3 storage
-    await deleteSkillServerSide({
+    await deleteVolumeServerSide({
       orgId: org.orgId,
-      skillName: params.name,
+      storageName: getCustomSkillStorageName(params.name),
     });
 
     log.info(

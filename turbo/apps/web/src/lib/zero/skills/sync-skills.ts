@@ -25,10 +25,8 @@ import {
 } from "@vm0/core";
 import { fetchHeadCommitSha } from "./git-refs";
 import { downloadAndExtractSkills, type ExtractedSkill } from "./tarball";
-import {
-  computeSystemSkillHash,
-  type FileEntryWithHash,
-} from "../../infra/storage/content-hash";
+import { computeSystemSkillHash } from "./content-hash";
+import type { FileEntryWithHash } from "../../infra/storage/content-hash";
 import {
   putS3Object,
   listS3Objects,
