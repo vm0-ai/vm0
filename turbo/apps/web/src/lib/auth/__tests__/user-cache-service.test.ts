@@ -77,12 +77,12 @@ describe("getCachedUser", () => {
     mockClerk({ userId, email: freshEmail });
     await createTestOrg(uniqueId("org"));
 
-    // Pre-populate cache with stale entry (2 minutes ago)
-    const twoMinutesAgo = new Date(Date.now() - 120_000);
+    // Pre-populate cache with stale entry (16 minutes ago, exceeds 15-min TTL)
+    const sixteenMinutesAgo = new Date(Date.now() - 960_000);
     await insertUserCacheEntry({
       userId,
       email: "old@stale.com",
-      cachedAt: twoMinutesAgo,
+      cachedAt: sixteenMinutesAgo,
     });
 
     const result = await getCachedUser(userId);

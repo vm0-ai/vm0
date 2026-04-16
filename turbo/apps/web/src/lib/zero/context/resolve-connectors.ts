@@ -7,7 +7,6 @@ import { and, eq } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 import { connectors } from "../../../db/schema/connector";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
-import { refreshConnectorAccessToken } from "../connector/connector-service";
 import { getSecretValues } from "../secret/secret-service";
 
 const log = logger("zero:build-context");
@@ -76,25 +75,6 @@ export async function resolveOauthConnectorSecrets(
         return allowedTypes.includes(type);
       })
     : validConnectors;
-  // Refresh OAuth tokens in parallel.
-  // Safe: each connector writes to distinct keys in connectorSecrets (e.g. github_access_token
-  // vs slack_access_token), so concurrent mutations don't conflict.
-  await Promise.all(
-    allowedConnectors
-      .filter(({ type }) => {
-        const handler =
-          PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
-        return handler?.refreshToken;
-      })
-      .map(({ type }) => {
-        return refreshConnectorAccessToken(
-          type,
-          orgId,
-          userId,
-          connectorSecrets,
-        );
-      }),
-  );
 
   // Resolve environment mappings from connectors.
   const allInjectedEnvVars: Record<string, string> = {};
