@@ -66,6 +66,8 @@ export async function downloadWebFile(
     response.headers.get("content-type") ??
     "application/octet-stream";
 
+  // Cast required: Web API ReadableStream and Node.js ReadableStream are
+  // structurally compatible but have incompatible type declarations.
   await pipeline(
     Readable.fromWeb(response.body as never),
     createWriteStream(outPath),

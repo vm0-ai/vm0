@@ -39,8 +39,6 @@ describe("GET /api/zero/web/download-file", () => {
   });
 
   it("returns 400 when file_id query param is missing", async () => {
-    const request = await authedRequest("");
-    // Override — build request without file_id
     mockClerk({ userId: null });
     const token = await generateZeroToken(user.userId, "run-1", user.orgId);
     const noIdRequest = createTestRequest(URL, {
