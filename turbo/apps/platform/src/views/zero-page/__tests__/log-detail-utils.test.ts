@@ -277,7 +277,9 @@ describe("groupEventsIntoMessages", () => {
     ];
     const grouped = groupEventsIntoMessages(events);
 
-    const todoCard = grouped.find((m) => m.type === "todo");
+    const todoCard = grouped.find((m) => {
+      return m.type === "todo";
+    });
     expect(todoCard).toBeDefined();
     expect(todoCard?.todoState).toHaveLength(2);
     expect(todoCard?.todoState?.[0].content).toBe("Step one");
