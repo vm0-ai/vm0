@@ -10,6 +10,7 @@ import { agentSessions } from "../../db/schema/agent-session";
 import { chatThreads } from "../../db/schema/chat-thread";
 import { conversations } from "../../db/schema/conversation";
 import { zeroAgents } from "../../db/schema/zero-agent";
+import { zeroRuns } from "../../db/schema/zero-run";
 import { composeJobs } from "../../db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
 import {
@@ -414,7 +415,8 @@ export async function getTestChatMessagesByThread(
 }
 
 /**
- * Link a run to a chat thread by inserting chat messages (user + assistant placeholder).
+ * Link a run to a chat thread by inserting chat messages (user + assistant placeholder)
+ * and updating zero_runs.chat_thread_id so getChatThreadIdForRun can resolve the thread.
  *
  * @why-db-direct Run-to-thread linking happens inside the chat messages
  * API route during run dispatch. Tests need direct seeding for isolated setup.
@@ -437,6 +439,10 @@ export async function addTestRunToThread(
     content: null,
     runId,
   });
+  await globalThis.services.db
+    .update(zeroRuns)
+    .set({ chatThreadId: threadId })
+    .where(eq(zeroRuns.id, runId));
 }
 
 /**
