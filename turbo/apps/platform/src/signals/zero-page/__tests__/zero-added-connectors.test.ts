@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { zeroAddedConnectors$, addZeroConnector$ } from "../zero-connectors.ts";
 const context = testContext();
 
@@ -99,7 +102,7 @@ describe("zeroAddedConnectors$", () => {
       }),
     );
 
-    detachedSetupPage({
+    await setupPage({
       context,
       path: "/agents/sub-agent-compose-id/chat",
       withoutRender: true,
