@@ -233,6 +233,10 @@ interface ZeroRunRecordResult {
   runParams?: CreateRunParams;
   orgId?: string;
   zeroParams?: ZeroRunParams;
+  /** Pre-fetched in Phase 1 — reused in dispatchZeroRun to avoid duplicate DB query */
+  featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
+  /** Pre-fetched user timezone in Phase 1 — passed to buildZeroExecutionContext */
+  userTimezone?: string;
 }
 
 /**
@@ -276,20 +280,35 @@ export async function createZeroRunRecord(
 ): Promise<ZeroRunRecordResult> {
   const db = globalThis.services.db;
 
-  // Fetch agent metadata (displayName, description, sound, permissionPolicies, orgId)
-  const [row] = await db
-    .select({
-      displayName: zeroAgents.displayName,
-      description: zeroAgents.description,
-      sound: zeroAgents.sound,
-      permissionPolicies: zeroAgents.permissionPolicies,
-      unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
-      orgId: zeroAgents.orgId,
-      customSkills: zeroAgents.customSkills,
-    })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, params.agentId))
-    .limit(1);
+  // ── Round 1: Independent operations (need only params) ──────────────
+  const [row, resolved, cachedUser] = await Promise.all([
+    // Fetch agent metadata (displayName, description, sound, permissionPolicies, orgId)
+    db
+      .select({
+        displayName: zeroAgents.displayName,
+        description: zeroAgents.description,
+        sound: zeroAgents.sound,
+        permissionPolicies: zeroAgents.permissionPolicies,
+        unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
+        orgId: zeroAgents.orgId,
+        customSkills: zeroAgents.customSkills,
+      })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, params.agentId))
+      .limit(1)
+      .then(([r]) => {
+        return r;
+      }),
+    // Resolve compose version + org context
+    resolveStartRunCompose({
+      userId: params.userId,
+      prompt: params.prompt,
+      composeId: params.agentId,
+      sessionId: params.sessionId,
+    }),
+    // Fetch cached user (only needs userId)
+    getCachedUser(params.userId),
+  ]);
 
   const agent: {
     displayName: string | null;
@@ -316,31 +335,52 @@ export async function createZeroRunRecord(
         orgId: null,
       };
 
-  // Fetch connector permissions for this user+agent from user_connectors table.
-  // Only connectors explicitly enabled by the user are injected at runtime.
-  let allowedConnectorTypes: ConnectorType[] | undefined;
-  if (agent.orgId) {
-    const permRows = await db
-      .select({ connectorType: userConnectors.connectorType })
-      .from(userConnectors)
-      .where(
-        and(
-          eq(userConnectors.orgId, agent.orgId),
-          eq(userConnectors.userId, params.userId),
-          eq(userConnectors.agentId, params.agentId),
-        ),
-      );
-    allowedConnectorTypes = permRows
-      .map((r) => {
-        return connectorTypeSchema.safeParse(r.connectorType);
-      })
-      .filter((p) => {
-        return p.success;
-      })
-      .map((p) => {
-        return p.data;
-      });
-  }
+  // ── Round 2: Operations needing agent.orgId or resolved.orgId ───────
+  const [
+    connectorRows,
+    orgMeta,
+    userPrefs,
+    featureOverrides,
+    preloadedCompose,
+  ] = await Promise.all([
+    // Fetch connector permissions for this user+agent
+    agent.orgId
+      ? db
+          .select({ connectorType: userConnectors.connectorType })
+          .from(userConnectors)
+          .where(
+            and(
+              eq(userConnectors.orgId, agent.orgId),
+              eq(userConnectors.userId, params.userId),
+              eq(userConnectors.agentId, params.agentId),
+            ),
+          )
+      : Promise.resolve([]),
+    // Org metadata (needs resolved.orgId)
+    getOrgMetadata(resolved.orgId),
+    // User preferences (needs resolved.orgId)
+    getUserPreferences(resolved.orgId, params.userId),
+    // Feature switch overrides (needs resolved.orgId)
+    loadFeatureSwitchOverrides(resolved.orgId, params.userId),
+    // Load compose content (needs resolved.agentComposeVersionId)
+    loadCompose(resolved.agentComposeVersionId, resolved.composeId),
+  ]);
+
+  const orgTier = orgTierSchema.parse(orgMeta.tier);
+
+  // Parse connector types from query results
+  const allowedConnectorTypes: ConnectorType[] | undefined = agent.orgId
+    ? connectorRows
+        .map((r) => {
+          return connectorTypeSchema.safeParse(r.connectorType);
+        })
+        .filter((p) => {
+          return p.success;
+        })
+        .map((p) => {
+          return p.data;
+        })
+    : undefined;
 
   // Resolve permission policies using the user's enabled connectors so that
   // default policies are seeded for each allowed connector type.
@@ -349,22 +389,8 @@ export async function createZeroRunRecord(
     allowedConnectorTypes ?? [],
   );
 
-  // 1. Resolve compose version + org context
-  const resolved = await resolveStartRunCompose({
-    userId: params.userId,
-    prompt: params.prompt,
-    composeId: params.agentId,
-    sessionId: params.sessionId,
-  });
-  const orgMeta = await getOrgMetadata(resolved.orgId);
-  const orgTier = orgTierSchema.parse(orgMeta.tier);
-
   // Build agent system prompt: identity + tools + user info, then trigger context
   const agentPrompt = buildAgentPrompt(agent);
-  const [cachedUser, userPrefs] = await Promise.all([
-    getCachedUser(params.userId),
-    getUserPreferences(resolved.orgId, params.userId),
-  ]);
   const userInfo = buildUserInfo({
     name: cachedUser.name ?? undefined,
     email: cachedUser.email,
@@ -373,10 +399,6 @@ export async function createZeroRunRecord(
   });
   let { appendSystemPrompt } = params;
   const systemParts = [agentPrompt, userInfo];
-  const featureOverrides = await loadFeatureSwitchOverrides(
-    resolved.orgId,
-    params.userId,
-  );
   if (
     isFeatureEnabled(FeatureSwitchKey.AutoSkill, {
       orgId: resolved.orgId,
@@ -390,8 +412,8 @@ export async function createZeroRunRecord(
   }
   appendSystemPrompt = systemParts.join("\n\n");
 
-  // 2. Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
-  //    Inject system + custom skill volumes (needed on every run).
+  // Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
+  // Inject system + custom skill volumes (needed on every run).
   const systemSkillVolumes = buildSystemSkillVolumes();
   const customSkillVolumes = (row?.customSkills ?? []).map((name) => {
     return {
@@ -422,12 +444,8 @@ export async function createZeroRunRecord(
     additionalVolumes: skillVolumes.length > 0 ? skillVolumes : undefined,
   };
 
-  // 3. Pre-flight checks: load compose, authorize, validate, credits, model provider
+  // ── Round 3: Pre-flight checks (need compose content) ───────────────
   const apiStartTime = Date.now();
-  const preloadedCompose = await loadCompose(
-    resolved.agentComposeVersionId,
-    resolved.composeId,
-  );
   authorizeCompose(params.userId, resolved.orgId, preloadedCompose.compose);
   const authorizeTime = Date.now();
 
@@ -435,25 +453,20 @@ export async function createZeroRunRecord(
     await validateComposeRequirements(preloadedCompose.composeContent);
   }
 
-  await Promise.all([
+  const [, , captureNetworkBodies] = await Promise.all([
     checkOrgCredits(resolved.orgId, params.userId, params.modelProvider),
     checkModelProviderConfigured(
       resolved.orgId,
       params.modelProvider,
       preloadedCompose.composeContent,
     ),
+    consumeCaptureNetworkBodies(resolved.orgId, params.userId),
   ]);
-
-  // 3b. Check if user has capture-network-bodies quota remaining
-  const captureNetworkBodies = await consumeCaptureNetworkBodies(
-    resolved.orgId,
-    params.userId,
-  );
   if (captureNetworkBodies) {
     runParams.captureNetworkBodies = true;
   }
 
-  // 4. Advisory lock + concurrency check + INSERT (zero owns the transaction)
+  // ── Round 4: Advisory lock + concurrency check + INSERT ─────────────
   let run;
   try {
     run = await globalThis.services.db.transaction(async (tx) => {
@@ -505,6 +518,8 @@ export async function createZeroRunRecord(
     runParams,
     orgId: resolved.orgId,
     zeroParams: params,
+    featureSwitchOverrides: featureOverrides,
+    userTimezone: userPrefs.timezone ?? undefined,
   };
 }
 
@@ -532,10 +547,8 @@ export async function dispatchZeroRun(
     }
 
     // 6. Generate ZERO_TOKEN + sandbox token (now we have runId)
-    const overrides = await loadFeatureSwitchOverrides(
-      orgId,
-      zeroParams.userId,
-    );
+    // Use pre-fetched featureSwitchOverrides from Phase 1 to avoid duplicate DB query
+    const overrides = result.featureSwitchOverrides;
     const [zeroToken, sandboxToken] = await Promise.all([
       generateZeroToken(zeroParams.userId, record.run.id, orgId, overrides),
       generateSandboxToken(zeroParams.userId, record.run.id),
@@ -553,6 +566,7 @@ export async function dispatchZeroRun(
       runId: record.run.id,
       agentCompose: record.composeContent,
       agentName: runParams.agentName,
+      preloadedUserTimezone: result.userTimezone,
     });
 
     // 8. Dispatch with pre-built context (callbacks already registered above)
