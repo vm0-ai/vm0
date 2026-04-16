@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 use crate::error::RunnerResult;
+use crate::ids::RunId;
 
 /// Update a directory's mtime to now, so `runner gc` treats it as recently used.
 pub fn touch_mtime(dir: &Path) {
@@ -189,19 +190,19 @@ impl LogPaths {
         &self.dir
     }
 
-    pub fn network_log(&self, run_id: uuid::Uuid) -> PathBuf {
+    pub fn network_log(&self, run_id: RunId) -> PathBuf {
         self.dir.join(format!("network-{run_id}.jsonl"))
     }
 
-    pub fn proxy_log(&self, run_id: uuid::Uuid) -> PathBuf {
+    pub fn proxy_log(&self, run_id: RunId) -> PathBuf {
         self.dir.join(format!("proxy-{run_id}.jsonl"))
     }
 
-    pub fn system_log(&self, run_id: uuid::Uuid) -> PathBuf {
+    pub fn system_log(&self, run_id: RunId) -> PathBuf {
         self.dir.join(format!("system-{run_id}.log"))
     }
 
-    pub fn metrics_log(&self, run_id: uuid::Uuid) -> PathBuf {
+    pub fn metrics_log(&self, run_id: RunId) -> PathBuf {
         self.dir.join(format!("metrics-{run_id}.jsonl"))
     }
 
@@ -316,7 +317,7 @@ mod tests {
     #[test]
     fn log_paths_structure() {
         let lp = LogPaths::new(PathBuf::from("/test/logs"));
-        let id = uuid::Uuid::nil();
+        let id = RunId::nil();
         assert!(lp.network_log(id).to_string_lossy().contains("network-"));
         assert!(lp.system_log(id).to_string_lossy().contains("system-"));
         assert!(lp.metrics_log(id).to_string_lossy().contains("metrics-"));

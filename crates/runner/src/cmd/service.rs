@@ -1,11 +1,10 @@
 use std::path::{Path, PathBuf};
 
+use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
+use crate::ids::RunId;
+use crate::paths::HomePaths;
 use clap::{Args, Subcommand};
 use tracing::{info, warn};
-use uuid::Uuid;
-
-use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
-use crate::paths::HomePaths;
 
 #[derive(Args)]
 pub struct ServiceArgs {
@@ -334,7 +333,7 @@ struct RunnerStatusSnapshot {
     /// refuse branch by [`decide_gate`].
     mode: String,
     /// UUIDs of runs currently in flight.
-    run_ids: Vec<Uuid>,
+    run_ids: Vec<RunId>,
     /// How long the runner process itself has been up, derived from the
     /// `started_at` timestamp. status.json does not record per-run start
     /// times, so the error message surfaces this runner-level uptime
@@ -388,7 +387,7 @@ async fn read_runner_status(base_dir: &Path) -> Option<RunnerStatusSnapshot> {
     }
     #[derive(serde::Deserialize)]
     struct ActiveRunEntry {
-        run_id: Uuid,
+        run_id: RunId,
         // `sandbox_id` is present in the file but unused by the gate.
     }
     let path = base_dir.join("status.json");
@@ -1175,7 +1174,7 @@ mod tests {
     fn snapshot(mode: &str, run_count: usize) -> RunnerStatusSnapshot {
         RunnerStatusSnapshot {
             mode: mode.to_string(),
-            run_ids: (0..run_count).map(|_| Uuid::nil()).collect(),
+            run_ids: (0..run_count).map(|_| RunId::nil()).collect(),
             uptime: std::time::Duration::from_secs(600),
         }
     }

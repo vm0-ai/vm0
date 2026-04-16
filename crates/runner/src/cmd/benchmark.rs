@@ -3,9 +3,8 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use clap::Args;
-use sandbox::{ExecRequest, ExecResult, RuntimeProvider, SandboxConfig, SandboxFactory};
+use sandbox::{ExecRequest, ExecResult, RuntimeProvider, SandboxConfig, SandboxFactory, SandboxId};
 use tracing::{info, warn};
-use uuid::Uuid;
 
 use crate::config;
 use crate::deps::MITMPROXY_VERSION;
@@ -104,7 +103,7 @@ pub async fn run_benchmark(
 
     // 4. Create + run sandbox — always shutdown factory and runtime afterwards
     let sandbox_config = SandboxConfig {
-        id: Uuid::new_v4(),
+        id: SandboxId::new_v4(),
         resources: sandbox::ResourceLimits {
             cpu_count: default_profile.vcpu,
             memory_mb: default_profile.memory_mb,

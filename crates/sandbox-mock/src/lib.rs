@@ -646,7 +646,7 @@ mod tests {
         let mut factory = MockSandboxFactory::new();
         factory.startup().await.unwrap();
         let config = SandboxConfig {
-            id: uuid::Uuid::new_v4(),
+            id: sandbox::SandboxId::new_v4(),
             resources: ResourceLimits {
                 cpu_count: 2,
                 memory_mb: 1024,
@@ -727,7 +727,7 @@ mod tests {
         factory.push_create_result(Err(SandboxError::CreationFailed("out of resources".into())));
 
         let config = SandboxConfig {
-            id: uuid::Uuid::new_v4(),
+            id: sandbox::SandboxId::new_v4(),
             resources: ResourceLimits {
                 cpu_count: 2,
                 memory_mb: 1024,
@@ -738,7 +738,7 @@ mod tests {
 
         // Next create falls back to default success.
         let config2 = SandboxConfig {
-            id: uuid::Uuid::new_v4(),
+            id: sandbox::SandboxId::new_v4(),
             resources: ResourceLimits {
                 cpu_count: 2,
                 memory_mb: 1024,

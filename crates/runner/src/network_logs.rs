@@ -3,9 +3,9 @@ use std::path::Path;
 use reqeast::Method;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
-use uuid::Uuid;
 
 use crate::http::HttpClient;
+use crate::ids::RunId;
 
 /// Network log entry from mitmproxy JSONL.
 ///
@@ -29,7 +29,7 @@ struct NetworkLogPayload {
 /// and deletes the file on success. Best-effort — failures only warn.
 pub async fn upload_network_logs(
     http: &HttpClient,
-    run_id: Uuid,
+    run_id: RunId,
     sandbox_token: &str,
     path: &Path,
 ) {

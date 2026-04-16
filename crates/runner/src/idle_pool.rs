@@ -2,8 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use sandbox::{Sandbox, SandboxFactory};
-use uuid::Uuid;
+use sandbox::{Sandbox, SandboxFactory, SandboxId};
 
 use crate::status::IdleVm;
 use crate::types::StorageManifest;
@@ -75,7 +74,7 @@ pub struct IdleEntry {
     /// Identity of the parked sandbox. Survives reuse (next job's `run_id`
     /// differs, but `sandbox_id` stays the same) and is the join key for
     /// doctor / kill / workspace-dir naming.
-    pub sandbox_id: Uuid,
+    pub sandbox_id: SandboxId,
     pub profile_name: String,
     pub vcpu: u32,
     pub memory_mb: u32,
@@ -249,7 +248,7 @@ mod tests {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: "test-session".into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu,
             memory_mb,
@@ -270,7 +269,7 @@ mod tests {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: "test-session".into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu,
             memory_mb,

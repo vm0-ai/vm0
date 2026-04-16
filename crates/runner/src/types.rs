@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::ids::RunId;
+
 // ---------------------------------------------------------------------------
 // Poll
 // ---------------------------------------------------------------------------
@@ -16,7 +18,7 @@ pub struct PollResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Job {
-    pub run_id: Uuid,
+    pub run_id: RunId,
     #[serde(default)]
     pub experimental_profile: Option<String>,
 }
@@ -29,7 +31,7 @@ pub struct Job {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionContext {
-    pub run_id: Uuid,
+    pub run_id: RunId,
     pub prompt: String,
     #[serde(default)]
     pub append_system_prompt: Option<String>,
@@ -260,7 +262,7 @@ pub struct HeartbeatState {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompleteRequest {
-    pub run_id: Uuid,
+    pub run_id: RunId,
     pub exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -284,7 +286,7 @@ mod tests {
         assert_eq!(
             job.run_id,
             "550e8400-e29b-41d4-a716-446655440000"
-                .parse::<Uuid>()
+                .parse::<RunId>()
                 .unwrap()
         );
         assert_eq!(job.experimental_profile.as_deref(), Some("browser"));
@@ -438,7 +440,9 @@ mod tests {
     #[test]
     fn complete_request_camel_case() {
         let req = CompleteRequest {
-            run_id: "550e8400-e29b-41d4-a716-446655440000".parse().unwrap(),
+            run_id: "550e8400-e29b-41d4-a716-446655440000"
+                .parse::<RunId>()
+                .unwrap(),
             exit_code: 0,
             error: None,
         };
@@ -452,7 +456,9 @@ mod tests {
     #[test]
     fn complete_request_with_error() {
         let req = CompleteRequest {
-            run_id: "550e8400-e29b-41d4-a716-446655440000".parse().unwrap(),
+            run_id: "550e8400-e29b-41d4-a716-446655440000"
+                .parse::<RunId>()
+                .unwrap(),
             exit_code: 1,
             error: Some("timeout".into()),
         };

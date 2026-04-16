@@ -1,4 +1,50 @@
+use std::fmt;
 use std::path::PathBuf;
+use std::str::FromStr;
+
+use serde::{Deserialize, Serialize};
+
+/// Identity of a Firecracker VM sandbox — the workspace directory basename
+/// and socket directory name. Survives sandbox reuse: the first job creates
+/// the sandbox with this ID, and subsequent reuse jobs inherit it.
+///
+/// Distinct from `RunId` (a per-job server identifier defined in the
+/// `runner` crate). The two are equal on the first run but diverge on
+/// sandbox reuse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SandboxId(uuid::Uuid);
+
+impl SandboxId {
+    pub fn new_v4() -> Self {
+        Self(uuid::Uuid::new_v4())
+    }
+
+    /// Extract the inner `Uuid` for interop with APIs that require a raw
+    /// UUID (snapshot hashing, format strings, etc.).
+    pub fn as_uuid(self) -> uuid::Uuid {
+        self.0
+    }
+}
+
+impl fmt::Display for SandboxId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl FromStr for SandboxId {
+    type Err = uuid::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        uuid::Uuid::parse_str(s).map(Self)
+    }
+}
+
+impl From<uuid::Uuid> for SandboxId {
+    fn from(u: uuid::Uuid) -> Self {
+        Self(u)
+    }
+}
 
 pub struct ResourceLimits {
     pub cpu_count: u32,
@@ -6,7 +52,7 @@ pub struct ResourceLimits {
 }
 
 pub struct SandboxConfig {
-    pub id: uuid::Uuid,
+    pub id: SandboxId,
     pub resources: ResourceLimits,
 }
 

@@ -1,0 +1,51 @@
+//! Newtype wrapper for the per-job identifier that the runner assigns.
+//!
+//! `RunId` is the server/API-facing job handle — visible on dashboards,
+//! used in claim/complete/cancel. It is distinct from [`sandbox::SandboxId`]
+//! which identifies the Firecracker VM workspace and survives sandbox reuse.
+
+use std::fmt;
+use std::str::FromStr;
+
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+/// Per-job identifier assigned by the server (or `runner local submit`).
+/// This is what the user sees on dashboards and what API claim/complete use.
+///
+/// Distinct from [`sandbox::SandboxId`] — the two are equal on the first
+/// run but diverge on sandbox reuse, when the FC keeps its original
+/// `SandboxId` while each successive job gets a fresh `RunId`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct RunId(Uuid);
+
+impl RunId {
+    pub fn new_v4() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    #[cfg(test)]
+    pub fn nil() -> Self {
+        Self(Uuid::nil())
+    }
+}
+
+impl fmt::Display for RunId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl FromStr for RunId {
+    type Err = uuid::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Uuid::parse_str(s).map(Self)
+    }
+}
+
+impl From<Uuid> for RunId {
+    fn from(u: Uuid) -> Self {
+        Self(u)
+    }
+}

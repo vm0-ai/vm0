@@ -2,10 +2,12 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
+use sandbox::SandboxId;
 use serde::Serialize;
 use tokio::sync::Mutex;
 use tracing::warn;
-use uuid::Uuid;
+
+use crate::ids::RunId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -21,8 +23,8 @@ pub enum RunnerMode {
 /// has a fresh `run_id`.
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct ActiveRun {
-    pub run_id: Uuid,
-    pub sandbox_id: Uuid,
+    pub run_id: RunId,
+    pub sandbox_id: SandboxId,
 }
 
 /// One parked (idle) sandbox's identity: the `session_id` it's keyed by in
@@ -32,7 +34,7 @@ pub struct ActiveRun {
 #[derive(Debug, Clone, Serialize)]
 pub struct IdleVm {
     pub session_id: String,
-    pub sandbox_id: Uuid,
+    pub sandbox_id: SandboxId,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,7 +79,7 @@ struct MutableState {
     ///
     /// BTreeMap (not HashMap) for deterministic iteration order — status.json
     /// output should be stable across runs for readability and diffing.
-    active_runs: BTreeMap<Uuid, Uuid>,
+    active_runs: BTreeMap<RunId, SandboxId>,
     idle_vms: Vec<IdleVm>,
 }
 
@@ -115,13 +117,13 @@ impl StatusTracker {
         self.write_status(&state).await;
     }
 
-    pub async fn add_run(&self, run_id: Uuid, sandbox_id: Uuid) {
+    pub async fn add_run(&self, run_id: RunId, sandbox_id: SandboxId) {
         let mut state = self.state.lock().await;
         state.active_runs.insert(run_id, sandbox_id);
         self.write_status(&state).await;
     }
 
-    pub async fn remove_run(&self, run_id: Uuid) {
+    pub async fn remove_run(&self, run_id: RunId) {
         let mut state = self.state.lock().await;
         state.active_runs.remove(&run_id);
         self.write_status(&state).await;
@@ -225,8 +227,8 @@ mod tests {
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4);
 
-        let run_id = Uuid::new_v4();
-        let sandbox_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
 
         tracker.write_initial().await;
         tracker.add_run(run_id, sandbox_id).await;
@@ -244,10 +246,10 @@ mod tests {
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4);
 
-        let run1 = Uuid::new_v4();
-        let sb1 = Uuid::new_v4();
-        let run2 = Uuid::new_v4();
-        let sb2 = Uuid::new_v4();
+        let run1 = RunId::new_v4();
+        let sb1 = SandboxId::new_v4();
+        let run2 = RunId::new_v4();
+        let sb2 = SandboxId::new_v4();
 
         tracker.write_initial().await;
         tracker.add_run(run1, sb1).await;
@@ -315,8 +317,8 @@ mod tests {
         let status = read_status(&path);
         assert!(status.get("idle_vms").is_none()); // empty vec omitted
 
-        let sb1 = Uuid::new_v4();
-        let sb2 = Uuid::new_v4();
+        let sb1 = SandboxId::new_v4();
+        let sb2 = SandboxId::new_v4();
         tracker
             .set_idle_info(vec![
                 IdleVm {

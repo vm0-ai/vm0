@@ -7,7 +7,9 @@ mod sandbox;
 mod snapshot;
 mod types;
 
-pub use config::{FactoryConfig, ResourceLimits, RuntimeConfig, SandboxConfig, SnapshotRef};
+pub use config::{
+    FactoryConfig, ResourceLimits, RuntimeConfig, SandboxConfig, SandboxId, SnapshotRef,
+};
 pub use control::{RemoteExecResult, SandboxControl, SandboxControlError};
 pub use error::{Result, SandboxError};
 pub use factory::SandboxFactory;

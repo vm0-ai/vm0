@@ -4,11 +4,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Args;
-use sandbox::{RuntimeProvider, Sandbox, SandboxFactory, SandboxRuntime};
+use sandbox::{RuntimeProvider, Sandbox, SandboxFactory, SandboxId, SandboxRuntime};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
+
 use uuid::Uuid;
+
+use crate::ids::RunId;
 
 use crate::config::{self, ProfileConfig};
 use crate::deps;
@@ -268,7 +271,7 @@ pub async fn run_start(
     let http = HttpClient::new(server.url.clone())?;
     let name = runner_config.name;
     let group = runner_config.group;
-    let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>> =
+    let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
     let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
@@ -345,7 +348,7 @@ struct RunConfig {
     provider: Arc<dyn JobProvider>,
     /// Per-job cancel tokens shared with the provider for cancel events
     /// (Ably for ApiProvider, `.cancel` files for LocalProvider).
-    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
+    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     cancel: CancellationToken,
     exec_config: Arc<ExecutorConfig>,
     firecracker: config::FirecrackerConfig,
@@ -413,7 +416,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         info!(profile = %profile_name, "factory started");
     }
 
-    let mut jobs: JoinSet<Option<Uuid>> = JoinSet::new();
+    let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
     // destroys at shutdown, preventing factory Arc leaks that cause
     // "factory still referenced" warnings from Arc::try_unwrap.
@@ -685,7 +688,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 // doctor (FC CWD basename) and kill (workspace dir).
                 let sandbox_id = match &reuse_entry {
                     Some(entry) => entry.sandbox_id,
-                    None => Uuid::new_v4(),
+                    None => SandboxId::new_v4(),
                 };
                 status.add_run(run_id, sandbox_id).await;
 
@@ -911,11 +914,11 @@ struct SpawnContext {
 /// of being destroyed.
 fn spawn_job(
     context: ExecutionContext,
-    sandbox_id: Uuid,
+    sandbox_id: SandboxId,
     job_profile: JobProfile,
     reuse_entry: Option<IdleEntry>,
     ctx: &SpawnContext,
-    jobs: &mut JoinSet<Option<Uuid>>,
+    jobs: &mut JoinSet<Option<RunId>>,
 ) {
     let run_id = context.run_id;
     let session_id = context.session_id().map(String::from);
@@ -1123,8 +1126,8 @@ async fn stop_and_destroy_sandbox(mut sandbox: Box<dyn Sandbox>, factory: &dyn S
 
 /// Handle a completed job from the JoinSet, cleaning up cancel tokens.
 async fn handle_job_result(
-    result: Option<Result<Option<Uuid>, tokio::task::JoinError>>,
-    cancel_tokens: &Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
+    result: Option<Result<Option<RunId>, tokio::task::JoinError>>,
+    cancel_tokens: &Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
 ) {
     match result {
         Some(Ok(Some(run_id))) => {
@@ -1523,7 +1526,7 @@ mod tests {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: session_id.into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 4096,
@@ -1803,7 +1806,7 @@ mod tests {
         profiles.values().map(|p| p.memory_mb).min().unwrap_or(1)
     }
 
-    fn minimal_context(run_id: Uuid) -> crate::types::ExecutionContext {
+    fn minimal_context(run_id: RunId) -> crate::types::ExecutionContext {
         crate::types::ExecutionContext {
             run_id,
             prompt: "test".into(),
@@ -1838,7 +1841,7 @@ mod tests {
     /// Push a job to the mock provider and pre-configure its claim result.
     fn push_job(
         env: &MockRunEnv,
-        run_id: Uuid,
+        run_id: RunId,
         profile: &str,
         ctx: Option<crate::types::ExecutionContext>,
     ) {
@@ -1869,7 +1872,7 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
         let completion = env
@@ -1909,7 +1912,7 @@ mod tests {
 
         // Push job immediately — it's in the channel, waiting for
         // discover to finish its poll delay and read it.
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
         // Advance past the 20s poll delay. Heartbeat fires at 10s but
@@ -1986,7 +1989,7 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
 
         // First job: claim returns None (409 conflict)
-        let run_id_1 = Uuid::new_v4();
+        let run_id_1 = RunId::new_v4();
         push_job(&env, run_id_1, "vm0/default", None);
 
         // Give main loop time to process the failed claim and release budget.
@@ -1994,7 +1997,7 @@ mod tests {
         tokio::task::yield_now().await;
 
         // Second job: claim succeeds — budget should have been freed.
-        let run_id_2 = Uuid::new_v4();
+        let run_id_2 = RunId::new_v4();
         push_job(
             &env,
             run_id_2,
@@ -2023,7 +2026,7 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
         // Wait for completion before draining.
@@ -2047,7 +2050,7 @@ mod tests {
 
         // Push a job with a profile that doesn't exist in the profiles map.
         // The main loop should log a warning and continue without claiming.
-        let bad_id = Uuid::new_v4();
+        let bad_id = RunId::new_v4();
         push_job(
             &env,
             bad_id,
@@ -2059,7 +2062,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Push a valid job — it should succeed despite the earlier bad one.
-        let good_id = Uuid::new_v4();
+        let good_id = RunId::new_v4();
         push_job(&env, good_id, "vm0/default", Some(minimal_context(good_id)));
 
         let completion = env
@@ -2094,7 +2097,7 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
         // Wait for job to be claimed and executing (cancel_tokens now has run_id).
@@ -2142,7 +2145,7 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
 
         // First job
-        let id1 = Uuid::new_v4();
+        let id1 = RunId::new_v4();
         push_job(&env, id1, "vm0/default", Some(minimal_context(id1)));
         let c1 = env
             .handle
@@ -2152,7 +2155,7 @@ mod tests {
         assert_eq!(c1.unwrap().exit_code, 0);
 
         // Second job — exercises the recreated discover_fut path
-        let id2 = Uuid::new_v4();
+        let id2 = RunId::new_v4();
         push_job(&env, id2, "vm0/default", Some(minimal_context(id2)));
         let c2 = env
             .handle
@@ -2175,7 +2178,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn context_with_reuse(
-        run_id: Uuid,
+        run_id: RunId,
         reuse: bool,
         session_id: Option<&str>,
     ) -> crate::types::ExecutionContext {
@@ -2200,7 +2203,7 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         let ctx = context_with_reuse(run_id, true, Some("sess-1"));
         push_job(&env, run_id, "vm0/default", Some(ctx));
 
@@ -2224,7 +2227,7 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         // Flag OFF (default) — even with a session ID, VM should not be parked.
         let ctx = context_with_reuse(run_id, false, Some("sess-1"));
         push_job(&env, run_id, "vm0/default", Some(ctx));
@@ -2252,7 +2255,7 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         // Flag ON but no session — parking requires a session ID.
         let ctx = context_with_reuse(run_id, true, None);
         push_job(&env, run_id, "vm0/default", Some(ctx));
@@ -2291,7 +2294,7 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
 
         // First job: claims the entire budget.
-        let id1 = Uuid::new_v4();
+        let id1 = RunId::new_v4();
         push_job(&env, id1, "vm0/default", Some(minimal_context(id1)));
 
         // Wait for job 1 to be claimed (budget now full).
@@ -2299,7 +2302,7 @@ mod tests {
 
         // Second job: pushed while budget is full. try_reserve fails →
         // the job is skipped without claim. But it remains in the channel.
-        let id2 = Uuid::new_v4();
+        let id2 = RunId::new_v4();
         push_job(&env, id2, "vm0/default", Some(minimal_context(id2)));
 
         // Job 1 completes (MockSandbox is instant) → budget freed.
@@ -2332,7 +2335,7 @@ mod tests {
     // =======================================================================
 
     /// ExecutionContext with a resume_session and sandboxReuse flag for idle pool testing.
-    fn context_with_session(run_id: Uuid, session_id: &str) -> crate::types::ExecutionContext {
+    fn context_with_session(run_id: RunId, session_id: &str) -> crate::types::ExecutionContext {
         let mut ctx = minimal_context(run_id);
         ctx.feature_flags = Some(HashMap::from([(
             crate::types::feature_flags::SANDBOX_REUSE.to_string(),
@@ -2382,7 +2385,7 @@ mod tests {
             sandbox: Box::new(MockSandbox::new("idle-test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: session_id.into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: profile_name.into(),
             vcpu,
             memory_mb,
@@ -2470,7 +2473,7 @@ mod tests {
         let budget = Arc::clone(&config.budget);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(
             &env,
             run_id,
@@ -2514,7 +2517,7 @@ mod tests {
         let budget = Arc::clone(&config.budget);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         // No resume_session → no session_id → no parking.
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
@@ -2550,7 +2553,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let before = env.handle.heartbeat_count();
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(
             &env,
             run_id,
@@ -2592,7 +2595,7 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
 
         // Push job for same session — should reuse the idle VM.
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(
             &env,
             run_id,
@@ -2639,7 +2642,7 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
 
         // Push job for "vm0/large" (4vcpu) with same session — profile mismatch.
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(
             &env,
             run_id,
@@ -2729,7 +2732,7 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
 
         // Push new job — budget is full, but idle pool has an entry to evict.
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
         let completion = env
@@ -2785,7 +2788,7 @@ mod tests {
         let budget = Arc::clone(&config.budget);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         // Job has a session but flag is OFF — parking is skipped.
         let ctx = context_with_reuse(run_id, false, Some("sess-rejected"));
         push_job(&env, run_id, "vm0/default", Some(ctx));
@@ -2819,7 +2822,7 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
 
         // Job 1: parks VM for session "sess-seq".
-        let id1 = Uuid::new_v4();
+        let id1 = RunId::new_v4();
         push_job(
             &env,
             id1,
@@ -2835,7 +2838,7 @@ mod tests {
         assert_eq!(idle_pool.lock().await.len(), 1, "job 1 VM should be parked");
 
         // Job 2: same session → take → reuse → re-park.
-        let id2 = Uuid::new_v4();
+        let id2 = RunId::new_v4();
         push_job(
             &env,
             id2,
@@ -2881,8 +2884,8 @@ mod tests {
     }
 
     async fn wait_cancel_token(
-        tokens: &Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
-        run_id: Uuid,
+        tokens: &Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        run_id: RunId,
         timeout: Duration,
     ) -> CancellationToken {
         let deadline = tokio::time::Instant::now() + timeout;
@@ -2910,7 +2913,7 @@ mod tests {
         let idle_pool = Arc::clone(&config.idle_pool);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(
             &env,
             run_id,
@@ -2949,7 +2952,7 @@ mod tests {
         let cancel_tokens = Arc::clone(&config.cancel_tokens);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(
             &env,
             run_id,
@@ -3009,7 +3012,7 @@ mod tests {
         // Push job WITHOUT resume_session — first run, no session context.
         // read_guest_session_id() will be called and return "sess-evict"
         // via the exec matcher.
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
         let c = env
@@ -3051,7 +3054,7 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
 
         // Job 1: fresh create → run → park.
-        let id1 = Uuid::new_v4();
+        let id1 = RunId::new_v4();
         push_job(
             &env,
             id1,
@@ -3069,7 +3072,7 @@ mod tests {
         assert_eq!(counter.unpark_call_count(), 0);
 
         // Job 2: same session → take (unpark) → run → re-park.
-        let id2 = Uuid::new_v4();
+        let id2 = RunId::new_v4();
         push_job(
             &env,
             id2,
@@ -3108,7 +3111,7 @@ mod tests {
         let idle_pool = Arc::clone(&config.idle_pool);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(
             &env,
             run_id,
@@ -3155,7 +3158,7 @@ mod tests {
         let idle_pool = Arc::clone(&config.idle_pool);
         let run_handle = tokio::spawn(run(config));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(
             &env,
             run_id,
@@ -3224,7 +3227,7 @@ mod tests {
             let factory_arc: Arc<Box<dyn sandbox::SandboxFactory>> = Arc::new(factory);
             let sandbox = factory_arc
                 .create(sandbox::SandboxConfig {
-                    id: Uuid::new_v4(),
+                    id: SandboxId::new_v4(),
                     resources: sandbox::ResourceLimits {
                         cpu_count: 2,
                         memory_mb: 4096,
@@ -3239,7 +3242,7 @@ mod tests {
                     sandbox,
                     factory: factory_arc,
                     session_id: "sess-unpark-fail".to_string(),
-                    sandbox_id: Uuid::new_v4(),
+                    sandbox_id: SandboxId::new_v4(),
                     profile_name: "vm0/default".into(),
                     vcpu: 2,
                     memory_mb: 4096,
@@ -3256,7 +3259,7 @@ mod tests {
 
         // Push a job for the same session — runner will try to reuse,
         // unpark() will fail, idle entry gets destroyed, fresh create runs.
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         push_job(
             &env,
             run_id,

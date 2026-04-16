@@ -21,15 +21,15 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::sync::{Mutex, mpsc};
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
 
 use super::JobProvider;
+use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState};
 
 /// Recorded completion from [`JobProvider::complete`].
 #[derive(Debug, Clone)]
 pub struct Completion {
-    pub run_id: Uuid,
+    pub run_id: RunId,
     pub exit_code: i32,
     pub error: Option<String>,
 }
@@ -42,13 +42,13 @@ pub struct Completion {
 pub struct MockJobProvider {
     /// Held by `discover()` for its entire lifetime and acquired by
     /// `shutdown()`. Reproduces the ApiProvider discovery Mutex semantics.
-    discovery: Mutex<mpsc::UnboundedReceiver<(Uuid, String)>>,
+    discovery: Mutex<mpsc::UnboundedReceiver<(RunId, String)>>,
     /// Optional delay before checking the channel, simulating ApiProvider's
     /// internal poll timer. If the future is cancelled and recreated (not
     /// pinned), this delay restarts from scratch — jobs pushed during the
     /// delay won't be discovered until it completes.
     poll_delay: Option<Duration>,
-    claim_results: StdMutex<HashMap<Uuid, Option<ExecutionContext>>>,
+    claim_results: StdMutex<HashMap<RunId, Option<ExecutionContext>>>,
     completions: Arc<StdMutex<Vec<Completion>>>,
     heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
     cancel: CancellationToken,
@@ -56,7 +56,7 @@ pub struct MockJobProvider {
 
 /// Test-side handle for driving the mock provider.
 pub struct MockProviderHandle {
-    pub discover_tx: mpsc::UnboundedSender<(Uuid, String)>,
+    pub discover_tx: mpsc::UnboundedSender<(RunId, String)>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
 }
@@ -101,7 +101,7 @@ impl MockJobProvider {
 
     /// Pre-configure the result for a future `claim(run_id)` call.
     /// Pass `Some(ctx)` for success, `None` to simulate a 409 conflict.
-    pub fn set_claim_result(&self, run_id: Uuid, result: Option<ExecutionContext>) {
+    pub fn set_claim_result(&self, run_id: RunId, result: Option<ExecutionContext>) {
         self.claim_results
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -111,7 +111,7 @@ impl MockJobProvider {
 
 impl MockProviderHandle {
     /// Wait for a specific run's completion to appear, with timeout.
-    pub async fn wait_completion(&self, run_id: Uuid, timeout: Duration) -> Option<Completion> {
+    pub async fn wait_completion(&self, run_id: RunId, timeout: Duration) -> Option<Completion> {
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
             {
@@ -148,7 +148,7 @@ impl JobProvider for MockJobProvider {
     ///   recreate this future, restarting the delay from scratch.
     /// - If the caller fails to drop this future before `shutdown()` (#8898),
     ///   the Mutex deadlocks — exactly reproducing the production bug.
-    async fn discover(&self) -> Option<(Uuid, String)> {
+    async fn discover(&self) -> Option<(RunId, String)> {
         let mut rx = self.discovery.lock().await;
         if let Some(delay) = self.poll_delay {
             tokio::time::sleep(delay).await;
@@ -159,7 +159,7 @@ impl JobProvider for MockJobProvider {
         }
     }
 
-    async fn claim(&self, run_id: Uuid) -> Option<ExecutionContext> {
+    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext> {
         self.claim_results
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -167,7 +167,7 @@ impl JobProvider for MockJobProvider {
             .flatten()
     }
 
-    async fn complete(&self, run_id: Uuid, exit_code: i32, error: Option<&str>) {
+    async fn complete(&self, run_id: RunId, exit_code: i32, error: Option<&str>) {
         self.completions
             .lock()
             .unwrap_or_else(|e| e.into_inner())

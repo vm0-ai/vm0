@@ -7,9 +7,9 @@
 use std::process::ExitCode;
 
 use clap::Args;
-use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::ids::RunId;
 use crate::paths::HomePaths;
 
 #[derive(Args)]
@@ -49,9 +49,9 @@ pub async fn run_cancel(args: CancelArgs) -> RunnerResult<ExitCode> {
 
 /// Resolve a (possibly prefix) run ID against `.claim` files in the group
 /// directory.  Returns an error if the prefix is ambiguous or matches nothing.
-fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<Uuid> {
+fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<RunId> {
     // Try exact UUID parse first.
-    if let Ok(id) = prefix.parse::<Uuid>() {
+    if let Ok(id) = prefix.parse::<RunId>() {
         let claim = group_dir.join(format!("{id}.claim"));
         if claim.exists() {
             return Ok(id);
@@ -75,7 +75,7 @@ fn resolve_run_id(group_dir: &std::path::Path, prefix: &str) -> RunnerResult<Uui
             continue;
         };
         if stem.starts_with(prefix)
-            && let Ok(id) = stem.parse::<Uuid>()
+            && let Ok(id) = stem.parse::<RunId>()
         {
             matches.push(id);
         }
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn resolve_exact_uuid() {
         let dir = tempfile::tempdir().unwrap();
-        let id = Uuid::new_v4();
+        let id = RunId::new_v4();
         std::fs::write(dir.path().join(format!("{id}.claim")), b"").unwrap();
 
         let resolved = resolve_run_id(dir.path(), &id.to_string()).unwrap();
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn resolve_prefix_match() {
         let dir = tempfile::tempdir().unwrap();
-        let id = Uuid::new_v4();
+        let id = RunId::new_v4();
         std::fs::write(dir.path().join(format!("{id}.claim")), b"").unwrap();
 
         let prefix = &id.to_string()[..8];
@@ -133,8 +133,8 @@ mod tests {
     fn resolve_ambiguous() {
         let dir = tempfile::tempdir().unwrap();
         // Create two claim files with the same prefix (first char).
-        let id1 = Uuid::new_v4();
-        let id2 = Uuid::new_v4();
+        let id1 = RunId::new_v4();
+        let id2 = RunId::new_v4();
         std::fs::write(dir.path().join(format!("{id1}.claim")), b"").unwrap();
         std::fs::write(dir.path().join(format!("{id2}.claim")), b"").unwrap();
 
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn resolve_exact_uuid_no_claim() {
         let dir = tempfile::tempdir().unwrap();
-        let id = Uuid::new_v4();
+        let id = RunId::new_v4();
         // No .claim file written.
         let err = resolve_run_id(dir.path(), &id.to_string()).unwrap_err();
         assert!(err.to_string().contains("no claimed job"), "got: {err}");

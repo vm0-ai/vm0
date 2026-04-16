@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
+use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory, SandboxId};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
-use uuid::Uuid;
+
+use crate::ids::RunId;
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
@@ -62,7 +63,7 @@ pub struct ExecuteOutcome {
 pub async fn execute_job(
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
-    sandbox_id: Uuid,
+    sandbox_id: SandboxId,
     config: &ExecutorConfig,
     params: &JobParams,
     cancel: CancellationToken,
@@ -162,7 +163,7 @@ fn record_api_latency(context: &ExecutionContext, telemetry: &mut JobTelemetry) 
 async fn execute_new_sandbox(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
-    sandbox_id: Uuid,
+    sandbox_id: SandboxId,
     config: &ExecutorConfig,
     params: &JobParams,
     telemetry: &mut JobTelemetry,
@@ -599,7 +600,7 @@ async fn run_in_sandbox(
 /// NOTE: This path must match the convention in `crates/guest-agent/src/paths.rs`
 /// (`checkpoint_error_file()`). The runner and guest-agent are separate binaries
 /// running in different processes, so the path is duplicated by design.
-async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<String> {
+async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: RunId) -> Option<String> {
     // Mirror of guest-agent paths::checkpoint_error_file()
     let error_path = format!("/tmp/vm0-checkpoint-error-{run_id}");
     let cat_cmd = format!("cat {error_path} 2>/dev/null");
@@ -627,7 +628,7 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<St
 /// `resume_session`), the runner uses this to park the VM for keep-alive.
 ///
 /// NOTE: Path must match `crates/guest-agent/src/paths.rs` (`session_id_file()`).
-async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<String> {
+async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) -> Option<String> {
     // Mirror of guest-agent paths::session_id_file()
     let path = format!("/tmp/vm0-session-{run_id}.txt");
     let cmd = format!("cat {path} 2>/dev/null");
@@ -1246,14 +1247,14 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::RunId;
     use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
     use sandbox_mock::MockSandboxFactory;
     use std::sync::Arc;
-    use uuid::Uuid;
 
     fn minimal_context() -> ExecutionContext {
         ExecutionContext {
-            run_id: Uuid::nil(),
+            run_id: RunId::nil(),
             prompt: "test prompt".into(),
             append_system_prompt: None,
             _agent_compose_version_id: None,
@@ -1289,7 +1290,7 @@ mod tests {
         let env = build_env_json(&ctx, "https://api.example.com");
 
         assert_eq!(env.get("VM0_API_URL").unwrap(), "https://api.example.com");
-        assert_eq!(env.get("VM0_RUN_ID").unwrap(), &Uuid::nil().to_string());
+        assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
@@ -1909,7 +1910,7 @@ mod tests {
             stdout: b"checkpoint error: disk full".to_vec(),
             stderr: Vec::new(),
         }));
-        let msg = read_guest_error_file(&sandbox, Uuid::nil()).await;
+        let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert_eq!(msg.as_deref(), Some("checkpoint error: disk full"));
     }
 
@@ -1921,7 +1922,7 @@ mod tests {
             stdout: Vec::new(),
             stderr: b"No such file".to_vec(),
         }));
-        let msg = read_guest_error_file(&sandbox, Uuid::nil()).await;
+        let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
 
@@ -1933,7 +1934,7 @@ mod tests {
             stdout: b"   \n  ".to_vec(), // whitespace-only
             stderr: Vec::new(),
         }));
-        let msg = read_guest_error_file(&sandbox, Uuid::nil()).await;
+        let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
 
@@ -1941,7 +1942,7 @@ mod tests {
     async fn read_guest_error_file_returns_none_on_exec_error() {
         let sandbox = MockSandbox::new("test");
         sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock timeout".into())));
-        let msg = read_guest_error_file(&sandbox, Uuid::nil()).await;
+        let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert!(msg.is_none());
     }
 
@@ -2280,7 +2281,7 @@ mod tests {
     ) -> RunnerResult<(i32, Option<String>)> {
         let mut telemetry = test_telemetry(config, ctx);
         let cancel = tokio_util::sync::CancellationToken::new();
-        let sandbox_id = Uuid::new_v4();
+        let sandbox_id = SandboxId::new_v4();
         let outcome = execute_new_sandbox(
             factory,
             ctx,
@@ -2418,7 +2419,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
-            Uuid::new_v4(),
+            SandboxId::new_v4(),
             &config,
             &default_params(),
             cancel,
@@ -2441,7 +2442,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
-            Uuid::new_v4(),
+            SandboxId::new_v4(),
             &config,
             &default_params(),
             cancel,
@@ -2468,7 +2469,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
-            Uuid::new_v4(),
+            SandboxId::new_v4(),
             &config,
             &default_params(),
             cancel,
@@ -2484,7 +2485,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "test-session".into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2521,7 +2522,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             ctx,
-            Uuid::new_v4(),
+            SandboxId::new_v4(),
             &config,
             &default_params(),
             cancel,
@@ -2537,7 +2538,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "test-session".into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2577,7 +2578,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
-            Uuid::new_v4(),
+            SandboxId::new_v4(),
             &config,
             &default_params(),
             cancel,
@@ -2598,7 +2599,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "test-session".into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2641,7 +2642,7 @@ mod tests {
                 Box::new(sandbox_mock::MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "test-session".into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2676,7 +2677,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "sess-1".into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2718,7 +2719,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "sess-1".into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2762,7 +2763,7 @@ mod tests {
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
             ),
             session_id: "sess-abc".into(),
-            sandbox_id: Uuid::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
@@ -2794,7 +2795,7 @@ mod tests {
         let outcome = execute_job(
             &factory,
             minimal_context(),
-            Uuid::new_v4(),
+            SandboxId::new_v4(),
             &config,
             &default_params(),
             cancel,

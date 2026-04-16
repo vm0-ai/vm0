@@ -3,9 +3,9 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use serde::Serialize;
 use tracing::warn;
-use uuid::Uuid;
 
 use crate::http::HttpClient;
+use crate::ids::RunId;
 
 /// How long before we auto-flush pending ops (matching TS: 30s).
 const FLUSH_THRESHOLD: Duration = Duration::from_secs(30);
@@ -19,7 +19,7 @@ const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Owns its state — passed as `&mut` through the call chain, no `Mutex` needed.
 pub struct JobTelemetry {
     http: HttpClient,
-    run_id: Uuid,
+    run_id: RunId,
     sandbox_token: String,
     pending_ops: Vec<SandboxOp>,
     oldest_pending: Option<Instant>,
@@ -44,7 +44,7 @@ struct TelemetryPayload {
 
 impl JobTelemetry {
     /// Create a new per-job telemetry collector.
-    pub fn new(http: HttpClient, run_id: Uuid, sandbox_token: String) -> Self {
+    pub fn new(http: HttpClient, run_id: RunId, sandbox_token: String) -> Self {
         Self {
             http,
             run_id,
@@ -106,7 +106,12 @@ impl JobTelemetry {
     }
 }
 
-async fn send_telemetry(http: &HttpClient, run_id: Uuid, sandbox_token: &str, ops: Vec<SandboxOp>) {
+async fn send_telemetry(
+    http: &HttpClient,
+    run_id: RunId,
+    sandbox_token: &str,
+    ops: Vec<SandboxOp>,
+) {
     if ops.is_empty() {
         return;
     }
@@ -177,7 +182,7 @@ mod tests {
     #[test]
     fn new_creates_empty_telemetry() {
         let http = HttpClient::new("http://localhost".to_string()).unwrap();
-        let telemetry = JobTelemetry::new(http, Uuid::nil(), "tok".to_string());
+        let telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
         assert!(telemetry.pending_ops.is_empty());
         assert!(telemetry.oldest_pending.is_none());
     }
@@ -185,7 +190,7 @@ mod tests {
     #[test]
     fn record_buffers_ops() {
         let http = HttpClient::new("http://localhost".to_string()).unwrap();
-        let mut telemetry = JobTelemetry::new(http, Uuid::nil(), "tok".to_string());
+        let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
 
         telemetry.record("vm_create", Duration::from_millis(500), true, None);
         telemetry.record(

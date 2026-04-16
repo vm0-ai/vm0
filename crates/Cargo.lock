@@ -2593,6 +2593,7 @@ name = "sandbox"
 version = "0.12.0"
 dependencies = [
  "async-trait",
+ "serde",
  "thiserror 2.0.18",
  "tokio",
  "uuid",
