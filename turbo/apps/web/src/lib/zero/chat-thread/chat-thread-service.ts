@@ -3,6 +3,7 @@ import { chatThreads } from "../../../db/schema/chat-thread";
 import { notFound } from "../../shared/errors";
 import {
   getMessagesByThreadId,
+  getMessagesByThreadIdSince,
   getLatestSessionIdForThread,
 } from "./chat-message-service";
 import { type PersistedAttachment, persistedAttachmentSchema } from "@vm0/core";
@@ -213,4 +214,44 @@ export async function getChatThreadMessages(threadId: string): Promise<{
     chatMessages,
     latestSessionId: latestSessionId ?? null,
   };
+}
+
+type ChatMessageWithId = {
+  id: string;
+  role: "user" | "assistant";
+  content: string | null;
+  runId?: string;
+  error?: string;
+  status?: string;
+  sequenceNumber?: number | null;
+  createdAt: string;
+};
+
+/**
+ * Get messages for a chat thread after the given sinceId cursor.
+ * When sinceId is omitted all thread messages are returned.
+ * Applies the same placeholder-vs-event-backed error logic as getChatThreadMessages.
+ */
+export async function getChatThreadMessagesSince(
+  threadId: string,
+  sinceId?: string,
+): Promise<ChatMessageWithId[]> {
+  const rows = await getMessagesByThreadIdSince(threadId, sinceId);
+
+  return rows.map((row) => {
+    const isPlaceholder = row.sequenceNumber === null;
+    const effectiveError = isPlaceholder
+      ? (row.error ?? row.runError ?? undefined)
+      : (row.error ?? undefined);
+    return {
+      id: row.id,
+      role: row.role as "user" | "assistant",
+      content: row.content,
+      runId: row.runId ?? undefined,
+      error: effectiveError,
+      status: row.runStatus ?? undefined,
+      sequenceNumber: row.sequenceNumber,
+      createdAt: row.createdAt.toISOString(),
+    };
+  });
 }
