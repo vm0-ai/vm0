@@ -9,7 +9,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertCircle,
-  IconLoader2,
   IconPhoto,
   IconChartLine,
   IconPlayerStop,
@@ -39,7 +38,6 @@ import {
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
@@ -54,6 +52,7 @@ import type {
   ZeroChatMessage,
   UserChatMessage,
   AssistantChatMessage,
+  AssistantTextItem,
 } from "../../signals/chat-page/chat-message.ts";
 import {
   currentChatThreadSignals$,
@@ -574,132 +573,6 @@ function UserMessage({ message }: { message: UserChatMessage }) {
   );
 }
 
-function deduplicateSummaries(summaries: string[]): string[] {
-  const result: string[] = [];
-  for (const s of summaries) {
-    if (result[result.length - 1] !== s) {
-      result.push(s);
-    }
-  }
-  return result;
-}
-
-/** Live run activity rendered from a message's own runLoop signals. */
-function MessageRunActivityLine({
-  message,
-  thread,
-}: {
-  message: AssistantChatMessage;
-  thread: ChatThreadSignals;
-}) {
-  const summariesLoadable = useLastLoadable(message.summaries$!);
-  const rawSummaries =
-    summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
-  const detailLoadable = useLastLoadable(message.runLoop!.detail$);
-  const runStatus =
-    detailLoadable.state === "hasData" ? detailLoadable.data.status : null;
-  const queueLoadable = useLastLoadable(message.runLoop!.queuePosition$);
-  const queuePosition =
-    queueLoadable.state === "hasData" ? queueLoadable.data : 0;
-  const isQueued = runStatus === "queued";
-  const thinkingMsg = useGet(thread.thinkingMessage$);
-  const openDrawer = useSet(openQueueDrawer$);
-
-  if (isQueued) {
-    return (
-      <div className="flex items-center gap-2 min-w-0">
-        <IconLoader2
-          size={14}
-          className="animate-spin text-muted-foreground shrink-0"
-        />
-        <p className="text-muted-foreground text-xs truncate">
-          {queueLabel(queuePosition)}{" "}
-          <button
-            type="button"
-            onClick={openDrawer}
-            className="underline hover:text-foreground transition-colors"
-          >
-            View queue
-          </button>
-        </p>
-      </div>
-    );
-  }
-
-  if (rawSummaries.length === 0) {
-    return (
-      <div className="flex items-center gap-2 min-w-0">
-        <IconLoader2
-          size={14}
-          className="animate-spin text-foreground/50 shrink-0"
-        />
-        <p className="zero-shimmer-text text-xs truncate">{thinkingMsg}</p>
-      </div>
-    );
-  }
-
-  const rawItems = deduplicateSummaries(rawSummaries);
-  const items = rawItems.map((summary, position) => {
-    return {
-      key: `${position}-${summary}`,
-      summary,
-      isLast: position === rawItems.length - 1,
-    };
-  });
-
-  return (
-    <div className="relative flex flex-col gap-3">
-      {items.length > 1 && (
-        <div
-          className="absolute left-[5.5px] top-[6px] bottom-[6px] pointer-events-none"
-          aria-hidden
-        >
-          <div className="w-px h-full bg-border/60 zero-dashed-line" />
-        </div>
-      )}
-      {items.map(({ key, summary, isLast }) => {
-        return (
-          <p
-            key={key}
-            className={`flex items-center gap-2.5 min-w-0 text-xs truncate animate-in fade-in slide-in-from-bottom-1 duration-300 ${
-              isLast ? "" : "text-muted-foreground"
-            }`}
-          >
-            <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">
-              {isLast ? (
-                <IconLoader2
-                  size={12}
-                  className="animate-spin text-foreground/50"
-                />
-              ) : (
-                <span
-                  className="text-[8px] leading-none text-foreground/30"
-                  aria-hidden
-                >
-                  ●
-                </span>
-              )}
-            </span>
-            <span
-              className={`truncate ${isLast ? "zero-shimmer-text" : ""}`}
-              aria-label={isLast ? "Current activity" : undefined}
-            >
-              {summary}
-            </span>
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
-function queueLabel(position: number): string {
-  if (position <= 1) {
-    return "In queue, waiting to start...";
-  }
-  return `In queue, ${position - 1} task${position - 1 === 1 ? "" : "s"} ahead...`;
-}
-
 function AssistantMessage({
   message,
   thread,
@@ -759,48 +632,37 @@ function ReactiveAssistantMessage({
   // Active or just-completed: render from the event stream.
   // On completion the texts$ stay stable until reloadThread$ replaces with
   // server-side grouped messages, avoiding the flash of a single result$.
-  const active = detail?.status !== "completed";
-  return (
-    <ReactiveRunContent message={message} thread={thread} active={active} />
-  );
+  return <ReactiveRunContent message={message} thread={thread} />;
 }
 
 /**
  * Renders all intermediate text outputs from the event stream.
- * When `active` is true, an activity line is appended at the bottom.
  */
 function ReactiveRunContent({
   message,
   thread,
-  active,
 }: {
   message: AssistantChatMessage;
   thread: ChatThreadSignals;
-  active: boolean;
 }) {
-  const texts = useLastResolved(message.texts$!) ?? [];
-  const lastContent = texts[texts.length - 1] ?? "";
+  const items: AssistantTextItem[] = useLastResolved(message.texts$!) ?? [];
+  const lastContent = items[items.length - 1]?.text ?? "";
 
   return (
     <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="flex flex-col gap-3">
-          {texts.map((text) => {
+          {items.map((item) => {
             return (
               <div
-                key={text}
+                key={item.key}
                 className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words animate-in fade-in slide-in-from-bottom-1 duration-300"
               >
-                <Markdown source={text} />
+                <Markdown source={item.text} />
               </div>
             );
           })}
-          {active && (
-            <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-              <MessageRunActivityLine message={message} thread={thread} />
-            </div>
-          )}
         </div>
       </div>
       <AssistantMessageActions
@@ -1028,8 +890,6 @@ function StaticAssistantMessage({
 }) {
   const content = useLastResolved(message.result$) ?? "";
 
-  const showActivityLine = isRunActive(message);
-
   if (message.error) {
     return (
       <div
@@ -1051,7 +911,7 @@ function StaticAssistantMessage({
     );
   }
 
-  if (content && !showActivityLine) {
+  if (content) {
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -1075,35 +935,7 @@ function StaticAssistantMessage({
     );
   }
 
-  // Thinking / loading state
-  return (
-    <div
-      data-role="assistant"
-      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
-    >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <AssistantBubbleAvatar thread={thread} />
-        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-          {showActivityLine ? (
-            <MessageRunActivityLine message={message} thread={thread} />
-          ) : (
-            <div className="flex items-center gap-2 min-w-0">
-              <IconLoader2
-                size={14}
-                className="animate-spin text-foreground/50 shrink-0"
-              />
-              <p className="zero-shimmer-text text-xs truncate">Thinking...</p>
-            </div>
-          )}
-        </div>
-      </div>
-      <AssistantMessageActions
-        message={message}
-        content={content}
-        thread={thread}
-      />
-    </div>
-  );
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1113,13 +945,10 @@ function StaticAssistantMessage({
 
 function AssistantMessageGroupItem({
   message,
-  thread,
 }: {
   message: AssistantChatMessage;
-  thread: ChatThreadSignals;
 }) {
   const content = useLastResolved(message.result$) ?? "";
-  const showActivityLine = isRunActive(message);
 
   if (message.error) {
     return (
@@ -1129,7 +958,7 @@ function AssistantMessageGroupItem({
     );
   }
 
-  if (content && !showActivityLine) {
+  if (content) {
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
         <Markdown source={content} />
@@ -1137,21 +966,7 @@ function AssistantMessageGroupItem({
     );
   }
 
-  return (
-    <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-      {showActivityLine ? (
-        <MessageRunActivityLine message={message} thread={thread} />
-      ) : (
-        <div className="flex items-center gap-2 min-w-0">
-          <IconLoader2
-            size={14}
-            className="animate-spin text-foreground/50 shrink-0"
-          />
-          <p className="zero-shimmer-text text-xs truncate">Thinking...</p>
-        </div>
-      )}
-    </div>
-  );
+  return null;
 }
 
 function AssistantMessageGroup({
@@ -1173,13 +988,7 @@ function AssistantMessageGroup({
         <AssistantBubbleAvatar thread={thread} />
         <div className="flex flex-col gap-3">
           {messages.map((msg) => {
-            return (
-              <AssistantMessageGroupItem
-                key={msg.id}
-                message={msg}
-                thread={thread}
-              />
-            );
+            return <AssistantMessageGroupItem key={msg.id} message={msg} />;
           })}
         </div>
       </div>

@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle, makeToolUseEvent } from "./chat-test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
 describe("chat resume", () => {
-  it("should display history messages and show thinking for active run", async () => {
-    const ctrl = mockChatLifecycle({
+  it("should display history messages and show Stop button for active run", async () => {
+    mockChatLifecycle({
       threadId: "thread-resume",
       chatMessages: [
         {
@@ -45,18 +45,13 @@ describe("chat resume", () => {
       expect(screen.getByText("Follow up question")).toBeInTheDocument();
     });
 
-    // Active run should show thinking state
+    // Active run should show Stop button
     await waitFor(() => {
-      const shimmer = document.querySelector(".zero-shimmer-text");
-      expect(shimmer).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    // Add events -- activity steps should appear
-    ctrl.setEvents([makeToolUseEvent("Bash")]);
-
-    await waitFor(() => {
-      expect(screen.getByText("Running a command...")).toBeInTheDocument();
-    });
+    // Stop button remains while run is active
+    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
   });
 
   it("should allow input and Stop during resume", async () => {

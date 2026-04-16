@@ -66,7 +66,7 @@ describe("chat sending state", () => {
     });
   });
 
-  it("should display thinking text while waiting for telemetry", async () => {
+  it("should show Stop button while waiting for telemetry", async () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
@@ -82,8 +82,7 @@ describe("chat sending state", () => {
     await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
-      const shimmer = document.querySelector(".zero-shimmer-text");
-      expect(shimmer).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     // Complete the run and wait for polling to stop
@@ -135,7 +134,7 @@ describe("chat sending state", () => {
     });
   });
 
-  it("should replace thinking with activity steps when telemetry arrives", async () => {
+  it("should keep Stop button visible when telemetry arrives", async () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
@@ -150,18 +149,17 @@ describe("chat sending state", () => {
 
     await sendMessageInUI(user, textarea, "Hello");
 
-    // Wait for thinking state
+    // Wait for sending state
     await waitFor(() => {
-      const shimmer = document.querySelector(".zero-shimmer-text");
-      expect(shimmer).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     // Add telemetry events
     ctrl.setEvents([makeToolUseEvent("Bash")]);
 
-    // Wait for activity step to appear
+    // Stop button remains visible during run
     await waitFor(() => {
-      expect(screen.getByText("Running a command...")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     // Complete the run and wait for polling to stop
