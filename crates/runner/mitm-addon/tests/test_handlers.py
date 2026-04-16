@@ -2926,6 +2926,7 @@ class TestUsagePendingCounter:
     def setup_method(self):
         usage._in_flight_flows = 0
         usage._pending_reports = 0
+        usage._pending_path = ""
 
     def test_increment_decrement_flows(self, tmp_path):
         usage.set_pending_path(str(tmp_path / "usage-pending"))
@@ -3044,3 +3045,26 @@ class TestUsagePendingCounter:
 
         fake_handler(flow)
         assert usage._in_flight_flows == 1  # unchanged
+
+    def test_sync_fallback_decrements_reports(self, tmp_path):
+        """When executor is shut down, sync fallback must still decrement."""
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+
+        # Shut down the executor so _enqueue_webhook takes the sync fallback.
+        usage.usage_executor.shutdown(wait=True)
+        try:
+            with patch.object(usage, "_post_webhook"):
+                usage._enqueue_webhook(
+                    "http://localhost/webhook",
+                    "tok",
+                    {"model": "x"},
+                    str(tmp_path / "p.log"),
+                    "usage",
+                )
+            assert usage._pending_reports == 0
+            content = (tmp_path / "usage-pending").read_text()
+            assert content == "0:0"
+        finally:
+            usage.usage_executor = usage.ThreadPoolExecutor(
+                max_workers=4, thread_name_prefix="usage"
+            )

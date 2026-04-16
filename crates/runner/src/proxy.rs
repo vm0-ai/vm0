@@ -260,9 +260,17 @@ pub async fn wait_usage_flush(addon_dir: &Path, timeout: Duration) -> bool {
                 // as zero to avoid blocking shutdown for 30 s on stale data.
                 if let Some((flows, reports)) = trimmed.split_once(':') {
                     if flows.parse::<u32>().is_err() || reports.parse::<u32>().is_err() {
+                        warn!(
+                            content = trimmed,
+                            "usage-pending file has unparseable content, treating as flushed"
+                        );
                         return true;
                     }
                 } else if trimmed.parse::<u32>().is_err() {
+                    warn!(
+                        content = trimmed,
+                        "usage-pending file has unparseable content, treating as flushed"
+                    );
                     return true;
                 }
             }
