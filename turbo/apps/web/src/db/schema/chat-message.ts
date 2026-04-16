@@ -49,6 +49,7 @@ export const chatMessages = pgTable(
     content: text("content"),
     error: text("error"),
     sequenceNumber: integer("sequence_number"),
+    runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
