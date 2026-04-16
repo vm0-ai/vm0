@@ -23,8 +23,9 @@ setup_file() {
     export AGENT_NAME="e2e-auth-query-${UNIQUE_ID}"
     export ARTIFACT_NAME="e2e-auth-query-artifact-${UNIQUE_ID}"
 
-    # Set up serpapi connector — api-token auth, single secret
-    set_user_secret "SERPAPI_TOKEN" "fake-serpapi-token-for-e2e"
+    # Set up serpapi connector — api-token auth, single secret.
+    # Uses $ZERO_CLI (same pattern as t43-firewall-dynamic-base-url).
+    $ZERO_CLI secret set SERPAPI_TOKEN --body "fake-serpapi-token-for-e2e"
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
