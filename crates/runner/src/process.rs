@@ -213,7 +213,7 @@ async fn scan_proc_cmdlines() -> Vec<(u32, String)> {
             Ok(None) => break,
             Err(e) => {
                 tracing::warn!("scan_proc_cmdlines: read entry in /proc: {e}");
-                break;
+                continue;
             }
         };
         let name = entry.file_name();
