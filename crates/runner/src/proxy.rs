@@ -258,15 +258,12 @@ pub async fn wait_usage_flush(addon_dir: &Path, timeout: Duration) -> bool {
                 // Verify the file contains a valid "<flows>:<reports>" pair.
                 // If unparseable (corrupt file, future format change), treat
                 // as zero to avoid blocking shutdown for 30 s on stale data.
-                if let Some((flows, reports)) = trimmed.split_once(':') {
-                    if flows.parse::<u32>().is_err() || reports.parse::<u32>().is_err() {
-                        warn!(
-                            content = trimmed,
-                            "usage-pending file has unparseable content, treating as flushed"
-                        );
-                        return true;
-                    }
-                } else if trimmed.parse::<u32>().is_err() {
+                let parseable = if let Some((flows, reports)) = trimmed.split_once(':') {
+                    flows.parse::<u32>().is_ok() && reports.parse::<u32>().is_ok()
+                } else {
+                    trimmed.parse::<u32>().is_ok()
+                };
+                if !parseable {
                     warn!(
                         content = trimmed,
                         "usage-pending file has unparseable content, treating as flushed"
