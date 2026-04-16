@@ -273,19 +273,16 @@ function DirectedConnectCard() {
   const isConnecting = pollingType === connectorType;
   const isLoading =
     !justConnected.has(connectorType) && allLoadable.state === "loading";
+  const allData = allLoadable.state === "hasData" ? allLoadable.data : [];
   const isConnected =
     justConnected.has(connectorType) ||
-    (allLoadable.state === "hasData" &&
-      allLoadable.data.some((c) => {
-        return c.type === connectorType && c.connected;
-      }));
+    allData.some((c) => {
+      return c.type === connectorType && c.connected;
+    });
 
-  const item =
-    allLoadable.state === "hasData"
-      ? allLoadable.data.find((c) => {
-          return c.type === connectorType;
-        })
-      : null;
+  const item = allData.find((c) => {
+    return c.type === connectorType;
+  });
 
   const hasOAuth = item
     ? item.availableAuthMethods.includes("oauth")

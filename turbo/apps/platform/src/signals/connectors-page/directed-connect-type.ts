@@ -22,9 +22,13 @@ export const directedConnectAgentId$ = computed((get): string | null => {
 /** Agent display name resolved from agentId query param on connect page. */
 export const directedConnectAgentName$ = computed(async (get) => {
   const agentId = get(directedConnectAgentId$);
-  if (!agentId) return null;
+  if (!agentId) {
+    return null;
+  }
   const agents = await get(agents$);
-  const agent = agents.find((a) => a.id === agentId);
+  const agent = agents.find((a) => {
+    return a.id === agentId;
+  });
   return agent?.displayName ?? null;
 });
 

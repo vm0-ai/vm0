@@ -24,9 +24,13 @@ export const directedAuthorizeAgentId$ = computed((get): string | null => {
 /** Agent display name resolved from agentId query param. */
 export const directedAuthorizeAgentName$ = computed(async (get) => {
   const agentId = get(directedAuthorizeAgentId$);
-  if (!agentId) return null;
+  if (!agentId) {
+    return null;
+  }
   const agents = await get(agents$);
-  const agent = agents.find((a) => a.id === agentId);
+  const agent = agents.find((a) => {
+    return a.id === agentId;
+  });
   return agent?.displayName ?? null;
 });
 
