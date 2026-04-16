@@ -525,7 +525,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/firewalls-generator --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v6

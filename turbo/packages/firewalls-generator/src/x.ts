@@ -103,36 +103,41 @@ const PATH_TIEBREAKER: Array<[prefix: string, scope: string]> = [
   ["/2/news", "users.read"],
 ];
 
+/** Look up scope priority; throws on unknown scope for fail-fast. */
+export function scopePriority(scope: string, rule: string): number {
+  const p = SCOPE_PRIORITY[scope];
+  if (p === undefined) {
+    throw new Error(
+      `Unknown scope "${scope}" on ${rule}. ` +
+        `Add it to SCOPE_PRIORITY in x.ts before regenerating.`,
+    );
+  }
+  return p;
+}
+
 /**
  * Pick the single primary scope for an endpoint with multiple OAuth scopes.
  * Fails loudly on unknown scopes or unresolvable priority ties.
  */
-function pickPrimaryScope(scopes: string[], rule: string): string {
-  if (scopes.length === 1) return scopes[0]!;
+export function pickPrimaryScope(scopes: string[], rule: string): string {
+  if (scopes.length === 1) return scopes[0] ?? "";
 
-  // Validate: every scope must be in the priority table
-  for (const scope of scopes) {
-    if (!(scope in SCOPE_PRIORITY)) {
-      throw new Error(
-        `Unknown scope "${scope}" on ${rule}. ` +
-          `Add it to SCOPE_PRIORITY in x.ts before regenerating.`,
-      );
-    }
-  }
-
-  // Sort by priority descending
+  // Validate all scopes and sort by priority descending
   const sorted = [...scopes].sort(
-    (a, b) => SCOPE_PRIORITY[b]! - SCOPE_PRIORITY[a]!,
+    (a, b) => scopePriority(b, rule) - scopePriority(a, rule),
   );
 
+  const first = sorted[0] ?? "";
+  const second = sorted[1] ?? "";
+
   // No tie → return highest
-  if (SCOPE_PRIORITY[sorted[0]!]! !== SCOPE_PRIORITY[sorted[1]!]!) {
-    return sorted[0]!;
+  if (scopePriority(first, rule) !== scopePriority(second, rule)) {
+    return first;
   }
 
   // Tie: collect all scopes at the top priority
-  const topPriority = SCOPE_PRIORITY[sorted[0]!]!;
-  const tied = sorted.filter((s) => SCOPE_PRIORITY[s]! === topPriority);
+  const topPriority = scopePriority(first, rule);
+  const tied = sorted.filter((s) => scopePriority(s, rule) === topPriority);
 
   // Try path-based tiebreaker: extract path from rule ("METHOD /path")
   const path = rule.split(" ")[1] ?? "";
