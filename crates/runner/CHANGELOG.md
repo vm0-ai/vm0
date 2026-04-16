@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.81.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.80.1...runner-rs-v0.81.0) (2026-04-16)
+
+
+### Features
+
+* add auth.query support to firewall schema for query-parameter authentication ([#9583](https://github.com/vm0-ai/vm0/issues/9583)) ([c39727a](https://github.com/vm0-ai/vm0/commit/c39727abd12ddd86271294324cf352fe86f96658))
+
 ## [0.80.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.80.0...runner-rs-v0.80.1) (2026-04-16)
 
 

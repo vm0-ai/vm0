@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.242.4](https://github.com/vm0-ai/vm0/compare/app-v0.242.3...app-v0.242.4) (2026-04-16)
+
+
+### Refactoring
+
+* **platform:** remove thinking indicator and run activity line from chat ([#9564](https://github.com/vm0-ai/vm0/issues/9564)) ([37bd298](https://github.com/vm0-ai/vm0/commit/37bd2983198d5c8a319834c3e3396ee215d51dc6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.190.0
+
 ## [0.242.3](https://github.com/vm0-ai/vm0/compare/app-v0.242.2...app-v0.242.3) (2026-04-16)
 
 

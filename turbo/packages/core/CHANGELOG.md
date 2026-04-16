@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.190.0](https://github.com/vm0-ai/vm0/compare/core-v8.189.1...core-v8.190.0) (2026-04-16)
+
+
+### Features
+
+* add auth.query support to firewall schema for query-parameter authentication ([#9583](https://github.com/vm0-ai/vm0/issues/9583)) ([c39727a](https://github.com/vm0-ai/vm0/commit/c39727abd12ddd86271294324cf352fe86f96658))
+* add GET /api/zero/chat-threads/:id/messages with sinceId cursor pagination ([#9561](https://github.com/vm0-ai/vm0/issues/9561)) ([dcc04b4](https://github.com/vm0-ai/vm0/commit/dcc04b4feb23d25c75220b4ad983b91c0dd56fee))
+* add zero chat message send command with chat-message:write capability ([#9580](https://github.com/vm0-ai/vm0/issues/9580)) ([93692d7](https://github.com/vm0-ai/vm0/commit/93692d7cff357a7d9d015e194dd134f475dd9ccb))
+
 ## [8.189.1](https://github.com/vm0-ai/vm0/compare/core-v8.189.0...core-v8.189.1) (2026-04-16)
 
 

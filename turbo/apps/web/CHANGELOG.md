@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.244.0](https://github.com/vm0-ai/vm0/compare/web-v12.243.0...web-v12.244.0) (2026-04-16)
+
+
+### Features
+
+* add auth.query support to firewall schema for query-parameter authentication ([#9583](https://github.com/vm0-ai/vm0/issues/9583)) ([c39727a](https://github.com/vm0-ai/vm0/commit/c39727abd12ddd86271294324cf352fe86f96658))
+* add GET /api/zero/chat-threads/:id/messages with sinceId cursor pagination ([#9561](https://github.com/vm0-ai/vm0/issues/9561)) ([dcc04b4](https://github.com/vm0-ai/vm0/commit/dcc04b4feb23d25c75220b4ad983b91c0dd56fee))
+* add granular realtime signals for run and chat thread updates ([#9575](https://github.com/vm0-ai/vm0/issues/9575)) ([12c3e62](https://github.com/vm0-ai/vm0/commit/12c3e62e4e2769dd9e1e869f249bdf0933a52c66))
+* add zero chat message send command with chat-message:write capability ([#9580](https://github.com/vm0-ai/vm0/issues/9580)) ([93692d7](https://github.com/vm0-ai/vm0/commit/93692d7cff357a7d9d015e194dd134f475dd9ccb))
+
+
+### Bug Fixes
+
+* **zero:** inject custom skill volumes in zero run path ([#9582](https://github.com/vm0-ai/vm0/issues/9582)) ([0a11a98](https://github.com/vm0-ai/vm0/commit/0a11a98afbe1ed43c3d46e063d21c4b08e41e6b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.190.0
+
 ## [12.243.0](https://github.com/vm0-ai/vm0/compare/web-v12.242.0...web-v12.243.0) (2026-04-16)
 
 
