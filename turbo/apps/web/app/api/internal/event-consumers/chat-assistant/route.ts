@@ -78,7 +78,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { runId, events } = result.data;
 
-  const items: { sequenceNumber: number; content: string; runEventId?: string }[] = [];
+  const items: {
+    sequenceNumber: number;
+    content: string;
+    runEventId?: string;
+  }[] = [];
   for (const event of events) {
     const text = eventText(event);
     if (text === null) continue;
