@@ -307,6 +307,7 @@ export async function createTestAgentSession(
 export async function createTestSessionWithConversation(
   userId: string,
   agentComposeId: string,
+  existingVersionId?: string,
 ): Promise<{ id: string }> {
   initServices();
   // Look up orgId from the compose
@@ -318,8 +319,10 @@ export async function createTestSessionWithConversation(
   if (!compose) {
     throw new Error(`Compose ${agentComposeId} not found`);
   }
-  // Create compose version
-  const versionId = await createTestComposeVersion(agentComposeId, userId);
+  // Use provided version or create a new one
+  const versionId =
+    existingVersionId ??
+    (await createTestComposeVersion(agentComposeId, userId));
   // Create run record
   const [run] = await globalThis.services.db
     .insert(agentRuns)
