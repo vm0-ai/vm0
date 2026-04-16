@@ -330,7 +330,7 @@ a[class*="resendCode"] {
 .cl-formFieldCheckboxInput input[type="checkbox"]:checked {
   background-color: transparent !important;
   border-color: hsl(var(--primary)) !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ED4E01' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='13%2C4 6%2C11 3%2C8'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-image: url("/checkmark-primary.svg") !important;
   background-repeat: no-repeat !important;
   background-position: center !important;
   background-size: 70% !important;
