@@ -13,10 +13,8 @@ import {
   fetchThreadContext,
   fetchChannelContext,
   formatContextForAgent,
-  formatCurrentMessageFiles,
   extractMentionedUserIds,
   resolveUserMentions,
-  type SlackFile,
 } from "../../slack/context";
 import { validateAgentSession } from "../../zero-run-validation";
 import { logger } from "../../../shared/logger";
@@ -334,25 +332,20 @@ export async function resolveSessionCompose(
 }
 
 /**
- * Enrich message content with file attachments and Slack user info.
+ * Enrich message content with Slack user info.
  * Shared between direct-message and mention handlers.
  *
- * Returns prompt (message text + files) and userInfoExtras (Slack-specific user metadata)
- * separately so callers can merge Slack fields into the base user info block.
+ * Returns prompt (message text with resolved mentions) and userInfoExtras
+ * (Slack-specific user metadata) separately so callers can merge Slack fields
+ * into the base user info block. File attachments are NOT included in the
+ * prompt — they are injected into the system prompt by the caller.
  */
 export async function enrichMessageContent(opts: {
   messageContent: string;
-  files: SlackFile[] | undefined;
   client: SlackClient;
   userId: string;
 }): Promise<{ prompt: string; userInfoExtras: UserInfoOptions }> {
   let prompt = opts.messageContent;
-
-  // Include files attached to the current message in the prompt
-  if (opts.files && opts.files.length > 0) {
-    const filesText = formatCurrentMessageFiles(opts.files);
-    prompt = `${prompt}\n\n${filesText}`;
-  }
 
   // Resolve user mentions and current user info
   const mentionedIds = extractMentionedUserIds([{ text: opts.messageContent }]);

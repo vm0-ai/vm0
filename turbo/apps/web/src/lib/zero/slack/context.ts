@@ -254,11 +254,11 @@ function formatFileInfo(file: SlackFile): string {
   parts.push(`[Slack file]: ${name} (${type})`);
 
   if (file.original_w && file.original_h) {
-    parts.push(`   Dimensions: ${file.original_w}x${file.original_h}`);
+    parts.push(`   [Dimensions]: ${file.original_w}x${file.original_h}`);
   }
 
   if (file.id) {
-    parts.push(`   ID: ${file.id}`);
+    parts.push(`   [ID]: ${file.id}`);
   } else {
     // Without a file id the agent cannot fetch via the backend proxy.
     // Fall back to an informational URL reference if available.
@@ -268,7 +268,7 @@ function formatFileInfo(file: SlackFile): string {
       file.thumb_360 ||
       file.permalink;
     if (url) {
-      parts.push(`   URL: ${url}`);
+      parts.push(`   [URL]: ${url}`);
     }
   }
 
@@ -291,7 +291,7 @@ function formatAttachmentImage(attachment: SlackAttachment): string | null {
 
   if (attachment.image_width && attachment.image_height) {
     parts.push(
-      `   Dimensions: ${attachment.image_width}x${attachment.image_height}`,
+      `   [Dimensions]: ${attachment.image_width}x${attachment.image_height}`,
     );
   }
 
@@ -386,14 +386,13 @@ const CONTEXT_PREAMBLE = [
   "- Match the tone of the conversation — casual messages deserve casual replies.",
   "- Only provide technical analysis when explicitly asked a technical question.",
   "- Keep responses proportional to the message length and complexity.",
-  "- When a message includes a [Slack file] block, download and read the file before responding about its contents. Run `zero slack download-file -h` for usage.",
 ].join("\n");
 
 /**
  * Format messages into context for the agent prompt.
  *
- * File attachments are rendered with three-step instructions that point the
- * agent at `zero slack download-file <id>`; no bytes are fetched here.
+ * File attachments are rendered as metadata only (name, type, id);
+ * the agent learns how to download via `zero slack download-file -h`.
  *
  * @param messages - Array of Slack messages
  * @param contextType - Type of context: "thread" or "channel"

@@ -374,11 +374,14 @@ export function buildSlackPrompt(
     channelId?: string;
     channelType?: "channel" | "dm" | "group_dm";
     threadId?: string;
+    attachFilesPrompt?: string;
   },
   threadContext: string,
 ): string {
   const header = buildIntegrationPrompt("Slack", opts);
-  return [header, threadContext].filter(Boolean).join("\n\n");
+  return [header, opts.attachFilesPrompt, threadContext]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /**
@@ -437,7 +440,7 @@ export function buildWebAttachFilesPrompt(
   files: Array<{ id: string; filename: string; contentType: string }>,
 ): string {
   const blocks = files.map((f) => {
-    return `[Web file]: ${f.filename} (${f.contentType})\n   ID: ${f.id}`;
+    return `[Web file]: ${f.filename} (${f.contentType})\n   [ID]: ${f.id}`;
   });
 
   return ["# Web Attached Files", ...blocks].join("\n\n");

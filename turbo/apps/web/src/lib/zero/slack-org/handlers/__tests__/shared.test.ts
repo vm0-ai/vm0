@@ -91,7 +91,6 @@ describe("enrichMessageContent", () => {
 
     const result = await enrichMessageContent({
       messageContent: "Hello world",
-      files: undefined,
       client,
       userId: "U123",
     });
@@ -108,7 +107,6 @@ describe("enrichMessageContent", () => {
 
     const result = await enrichMessageContent({
       messageContent: "Hello world",
-      files: undefined,
       client,
       userId: "U999",
     });
@@ -129,7 +127,6 @@ describe("enrichMessageContent", () => {
 
     const result = await enrichMessageContent({
       messageContent: "My message",
-      files: undefined,
       client,
       userId: "U123",
     });
@@ -161,37 +158,12 @@ describe("enrichMessageContent", () => {
 
     const result = await enrichMessageContent({
       messageContent: "Hey <@U456>, please review this",
-      files: undefined,
       client,
       userId: "U123",
     });
 
     expect(result.prompt).toContain("@Bob (U456)");
     expect(result.prompt).not.toContain("<@U456>");
-  });
-
-  it("should append download-file instructions for attached files", async () => {
-    const client = createMockSlackClient({ ok: false });
-
-    const result = await enrichMessageContent({
-      messageContent: "take a look",
-      files: [
-        {
-          id: "F1",
-          name: "diagram.png",
-          mimetype: "image/png",
-          filetype: "png",
-        },
-      ],
-      client,
-      userId: "U123",
-    });
-
-    expect(result.prompt).toContain("take a look");
-    expect(result.prompt).toContain("[file]: diagram.png (image/png)");
-    expect(result.prompt).toContain(
-      "Step 1 - Download: zero slack download-file F1 -o /tmp/F1.png",
-    );
   });
 });
 
@@ -352,7 +324,7 @@ describe("fetchConversationContexts", () => {
     expect(client.conversations.history).not.toHaveBeenCalled();
   });
 
-  it("should render file attachments as download-file instructions in channel prefix", async () => {
+  it("should render file attachments as metadata in channel prefix", async () => {
     const client = createMockConversationClient({
       threadMessages: [{ user: "U100", text: "Thread parent", ts: "100.0" }],
       channelMessages: [
@@ -379,9 +351,9 @@ describe("fetchConversationContexts", () => {
     );
 
     expect(executionContext).toContain("# Recent Channel Messages");
-    expect(executionContext).toContain("[file]: screenshot.png (image/png)");
     expect(executionContext).toContain(
-      "Step 1 - Download: zero slack download-file F999 -o /tmp/F999.png",
+      "[Slack file]: screenshot.png (image/png)",
     );
+    expect(executionContext).toContain("[ID]: F999");
   });
 });
