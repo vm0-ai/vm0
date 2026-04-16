@@ -18,6 +18,7 @@ import {
   chatMessagesContract,
   chatThreadByIdContract,
   type PersistedAttachment,
+  type AttachFile,
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -259,7 +260,11 @@ function createPrepareUserMessage(draft: DraftSignals) {
       { get },
       prompt: string,
       signal: AbortSignal,
-    ): Promise<{ fullPrompt: string; userMessage: UserChatMessage } | null> => {
+    ): Promise<{
+      fullPrompt: string;
+      attachFiles: AttachFile[] | undefined;
+      userMessage: UserChatMessage;
+    } | null> => {
       const allAttachments = get(draft.attachments$);
       const allInfos = await Promise.all(
         allAttachments.map((a) => {
@@ -287,21 +292,29 @@ function createPrepareUserMessage(draft: DraftSignals) {
         return null;
       }
 
-      const attachmentLines = ready.map((r) => {
-        return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`;
-      });
-
+      // User prompt is clean text only — file download instructions go to systemPrompt.
+      // When the user sends only files with no text, use a placeholder so the
+      // contract's min(1) validation passes.
       const trimmedPrompt = prompt.trim();
-      const fullPrompt = trimmedPrompt
-        ? attachmentLines.length > 0
-          ? `${trimmedPrompt}\n\n${attachmentLines.join("\n")}`
-          : trimmedPrompt
-        : attachmentLines.join("\n");
+      const fullPrompt =
+        trimmedPrompt || (ready.length > 0 ? "(see attached files)" : "");
+
+      const attachFiles: AttachFile[] | undefined =
+        ready.length > 0
+          ? ready.map((r) => {
+              return {
+                id: r.info.id,
+                filename: r.attachment.filename,
+                contentType: r.attachment.contentType,
+                size: r.attachment.size,
+              };
+            })
+          : undefined;
 
       const userMessage: UserChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
-        content: prompt.trim(),
+        content: fullPrompt,
         attachments:
           ready.length > 0
             ? ready.map((r) => {
@@ -314,7 +327,7 @@ function createPrepareUserMessage(draft: DraftSignals) {
               })
             : undefined,
       };
-      return { fullPrompt, userMessage };
+      return { fullPrompt, attachFiles, userMessage };
     },
   );
 }
@@ -359,6 +372,7 @@ function createSendMessage(
           prompt: result.fullPrompt,
           threadId: deps.threadId,
           hasTextContent: prompt.trim().length > 0,
+          attachFiles: result.attachFiles,
         },
         fetchOptions: { signal },
       }),

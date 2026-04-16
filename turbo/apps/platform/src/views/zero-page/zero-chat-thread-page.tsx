@@ -491,9 +491,12 @@ function isImageFilename(filename: string): boolean {
 
 function UserMessage({ message }: { message: UserChatMessage }) {
   const { cleanContent, parsed } = parseInlineAttachments(message.content);
+  // Hide the placeholder prompt used when user sends only files with no text
+  const visibleContent =
+    cleanContent === "(see attached files)" ? "" : cleanContent;
   // Preserve user-entered line breaks: CommonMark collapses single newlines
   // into spaces, so convert each \n to a hard line break (two trailing spaces + \n).
-  const displayContent = cleanContent.replace(/\n/g, "  \n");
+  const displayContent = visibleContent.replace(/\n/g, "  \n");
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
 

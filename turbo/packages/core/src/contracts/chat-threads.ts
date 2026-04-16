@@ -5,6 +5,22 @@ import { runStatusSchema } from "./runs";
 
 const c = initContract();
 
+/**
+ * File attachment metadata stored alongside user messages.
+ * The `id` is the S3 file key — URLs are resolved at query time.
+ */
+const attachFileSchema = z.object({
+  id: z.string(),
+  filename: z.string(),
+  contentType: z.string(),
+  size: z.number(),
+});
+
+/** Attach file with a resolved presigned URL, returned to the frontend. */
+const resolvedAttachFileSchema = attachFileSchema.extend({
+  url: z.string(),
+});
+
 const persistedAttachmentSchema = z.object({
   id: z.string(),
   url: z.string(),
@@ -44,6 +60,7 @@ const storedChatMessageSchema = z.object({
   runId: z.string().optional(),
   error: z.string().optional(),
   status: z.string().optional(),
+  attachFiles: z.array(resolvedAttachFileSchema).optional(),
   createdAt: z.string(),
 });
 
@@ -214,6 +231,7 @@ export const chatMessagesContract = c.router({
       // Optional for backward compatibility: older clients that omit this field
       // still trigger title generation (server guards with !== false, not === true).
       hasTextContent: z.boolean().optional(),
+      attachFiles: z.array(attachFileSchema).optional(),
     }),
     responses: {
       201: z.object({
@@ -242,6 +260,8 @@ export {
   chatMessageWithIdSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
+  attachFileSchema,
+  resolvedAttachFileSchema,
 };
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
@@ -249,3 +269,5 @@ export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type ChatMessageWithId = z.infer<typeof chatMessageWithIdSchema>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
+export type AttachFile = z.infer<typeof attachFileSchema>;
+export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;

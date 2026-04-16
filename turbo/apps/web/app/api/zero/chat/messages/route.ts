@@ -15,7 +15,10 @@ import {
   createZeroRunRecord,
   dispatchZeroRun,
 } from "../../../../../src/lib/zero/zero-run-service";
-import { buildWebChatPrompt } from "../../../../../src/lib/zero/integration-prompt";
+import {
+  buildWebChatPrompt,
+  buildWebAttachFilesPrompt,
+} from "../../../../../src/lib/zero/integration-prompt";
 import { isApiError } from "../../../../../src/lib/shared/errors";
 import {
   createChatThread,
@@ -172,6 +175,15 @@ const router = tsr.router(chatMessagesContract, {
           ? body.modelProvider
           : undefined;
 
+      // Build system prompt: web chat base + optional schedule context + optional attach files
+      const systemPromptParts = [buildWebChatPrompt()];
+      if (continueFromSchedulePrompt) {
+        systemPromptParts.push(continueFromSchedulePrompt);
+      }
+      if (body.attachFiles && body.attachFiles.length > 0) {
+        systemPromptParts.push(buildWebAttachFilesPrompt(body.attachFiles));
+      }
+
       // Create the run record (pre-flight checks + advisory-locked INSERT).
       // Does NOT dispatch — tokens, secrets, and runner dispatch are deferred.
       const result = await createZeroRunRecord({
@@ -181,18 +193,20 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
-        appendSystemPrompt: continueFromSchedulePrompt
-          ? [buildWebChatPrompt(), continueFromSchedulePrompt].join("\n\n")
-          : buildWebChatPrompt(),
+        appendSystemPrompt: systemPromptParts.join("\n\n"),
         callbacks: [chatCallback],
       });
 
-      // Persist user message + assistant placeholder to chat_messages
+      // Persist user message + assistant placeholder to chat_messages.
+      // Only file IDs are stored — metadata is resolved at query time from S3.
       await insertChatMessage({
         chatThreadId: threadId,
         role: "user",
         content: body.prompt,
         runId: null,
+        attachFiles: body.attachFiles?.map((f) => {
+          return f.id;
+        }),
       });
       await insertChatMessage({
         chatThreadId: threadId,

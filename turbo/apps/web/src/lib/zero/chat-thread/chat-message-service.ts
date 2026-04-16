@@ -1,5 +1,8 @@
 import { eq, asc, desc, and, gt, isNotNull, isNull } from "drizzle-orm";
-import { chatMessages } from "../../../db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageAttachFiles,
+} from "../../../db/schema/chat-message";
 import { chatThreads } from "../../../db/schema/chat-thread";
 import { agentRuns } from "../../../db/schema/agent-run";
 
@@ -11,6 +14,7 @@ export async function insertChatMessage(params: {
   role: "user" | "assistant";
   content: string | null;
   runId: string | null;
+  attachFiles?: ChatMessageAttachFiles;
 }): Promise<{ id: string; createdAt: Date }> {
   const [row] = await globalThis.services.db
     .insert(chatMessages)
@@ -19,6 +23,7 @@ export async function insertChatMessage(params: {
       role: params.role,
       content: params.content,
       runId: params.runId,
+      attachFiles: params.attachFiles ?? null,
     })
     .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
 
@@ -166,6 +171,7 @@ export async function getMessagesByThreadId(chatThreadId: string): Promise<
     createdAt: Date;
     runStatus: string | null;
     runError: string | null;
+    attachFiles: ChatMessageAttachFiles | null;
   }>
 > {
   return globalThis.services.db
@@ -179,6 +185,7 @@ export async function getMessagesByThreadId(chatThreadId: string): Promise<
       createdAt: chatMessages.createdAt,
       runStatus: agentRuns.status,
       runError: agentRuns.error,
+      attachFiles: chatMessages.attachFiles,
     })
     .from(chatMessages)
     .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))

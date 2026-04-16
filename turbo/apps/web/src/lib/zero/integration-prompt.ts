@@ -427,3 +427,37 @@ export function buildWebChatPrompt(): string {
     "You are communicating with the user through the web chat UI. The final result you return will be displayed to the user directly in the chat.";
   return [header, description].join("\n\n");
 }
+
+/**
+ * Build the "Web Attached Files" system prompt section for files the user
+ * attached to their message. Follows the same [file] block pattern used by
+ * Slack context construction so agents handle both platforms consistently.
+ */
+export function buildWebAttachFilesPrompt(
+  files: Array<{ id: string; filename: string; contentType: string }>,
+): string {
+  const blocks = files.map((f) => {
+    const ext = f.filename.split(".").pop() || "bin";
+    const localPath = `/tmp/${f.id}.${ext}`;
+    const lines = [
+      `[file]: ${f.filename} (${f.contentType})`,
+      `   Step 1 - Download: zero web download-file ${f.id} -o ${localPath}`,
+    ];
+    if (f.contentType.startsWith("video/")) {
+      const framePattern = `/tmp/${f.id}_frame_%03d.jpg`;
+      lines.push(
+        `   Step 2 - Extract frames: ffmpeg -i ${localPath} -vf "fps=1" -q:v 2 ${framePattern}`,
+      );
+      lines.push(
+        `   Step 3 - Read: view the extracted frames to understand the video content`,
+      );
+    } else {
+      lines.push(
+        `   Step 2 - Read: open ${localPath} with the appropriate tool`,
+      );
+    }
+    return lines.join("\n");
+  });
+
+  return ["# Web Attached Files", ...blocks].join("\n\n");
+}

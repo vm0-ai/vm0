@@ -3,6 +3,7 @@ import {
   chatThreadByIdContract,
   chatThreadsContract,
   type PersistedAttachment,
+  type ResolvedAttachFile,
 } from "@vm0/core";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
@@ -63,6 +64,7 @@ export interface ChatThread {
     runId?: string;
     error?: string;
     status?: string;
+    attachFiles?: ResolvedAttachFile[];
     createdAt: string;
   }[];
   latestSessionId: string | null;

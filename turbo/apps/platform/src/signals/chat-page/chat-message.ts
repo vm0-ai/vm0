@@ -29,6 +29,7 @@ import {
   chatMessagesContract,
   chatThreadsContract,
   chatThreadByIdContract,
+  type AttachFile,
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
@@ -571,6 +572,14 @@ export function transformServerMessages(
         id: `user:${m.createdAt}`,
         role: "user",
         content: m.content ?? "",
+        attachments: m.attachFiles?.map((f) => {
+          return {
+            filename: f.filename,
+            contentType: f.contentType,
+            size: f.size,
+            url: f.url,
+          };
+        }),
         createdAt: m.createdAt,
       };
       messages.push(userMsg);
@@ -769,6 +778,7 @@ const prepareUserMessage$ = command(
     signal: AbortSignal,
   ): Promise<{
     fullPrompt: string;
+    attachFiles: AttachFile[] | undefined;
     userMessage: UserChatMessage;
     draft: DraftSignals | null;
   } | null> => {
@@ -801,22 +811,29 @@ const prepareUserMessage$ = command(
       return null;
     }
 
-    const attachmentLines = ready.map((r) => {
-      return `[Attached file: ${r.attachment.filename}]\nDownload with: zero web download-file ${r.info.id} -o /tmp/${r.attachment.filename}`;
-    });
-
-    // Build fullPrompt without leading \n\n when text is empty
+    // User prompt is clean text only — file download instructions go to systemPrompt.
+    // When the user sends only files with no text, use a placeholder so the
+    // contract's min(1) validation passes.
     const trimmedPrompt = prompt.trim();
-    const fullPrompt = trimmedPrompt
-      ? attachmentLines.length > 0
-        ? `${trimmedPrompt}\n\n${attachmentLines.join("\n")}`
-        : trimmedPrompt
-      : attachmentLines.join("\n");
+    const fullPrompt =
+      trimmedPrompt || (ready.length > 0 ? "(see attached files)" : "");
+
+    const attachFiles: AttachFile[] | undefined =
+      ready.length > 0
+        ? ready.map((r) => {
+            return {
+              id: r.info.id,
+              filename: r.attachment.filename,
+              contentType: r.attachment.contentType,
+              size: r.attachment.size,
+            };
+          })
+        : undefined;
 
     const userMessage: UserChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: prompt.trim(),
+      content: fullPrompt,
       attachments:
         ready.length > 0
           ? ready.map((r) => {
@@ -829,7 +846,7 @@ const prepareUserMessage$ = command(
             })
           : undefined,
     };
-    return { fullPrompt, userMessage, draft };
+    return { fullPrompt, attachFiles, userMessage, draft };
   },
 );
 
@@ -838,6 +855,7 @@ interface ChatMessageArgs {
   prompt: string;
   threadId?: string;
   hasTextContent: boolean;
+  attachFiles?: AttachFile[];
 }
 
 const prepareChatMessage$ = command(
@@ -867,6 +885,7 @@ const prepareChatMessage$ = command(
       agentId,
       prompt: result.fullPrompt,
       hasTextContent: trimmedPrompt.length > 0,
+      attachFiles: result.attachFiles,
     };
   },
 );

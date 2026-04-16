@@ -7,6 +7,8 @@ import {
   getLatestSessionIdForThread,
 } from "./chat-message-service";
 import { type PersistedAttachment, persistedAttachmentSchema } from "@vm0/core";
+import { generatePresignedUrl, listS3Objects } from "../../infra/s3/s3-client";
+import { env } from "../../../env";
 
 /**
  * Create a new chat thread.
@@ -166,21 +168,72 @@ export async function updateChatThreadTitle(
     .where(eq(chatThreads.id, threadId));
 }
 
+interface ResolvedAttachFile {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  url: string;
+}
+
 type ChatMessage = {
   role: "user" | "assistant";
   content: string | null;
   runId?: string;
   error?: string;
   status?: string;
+  attachFiles?: ResolvedAttachFile[];
   createdAt: string;
 };
 
+const EXT_MIMETYPE_MAP: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  pdf: "application/pdf",
+  txt: "text/plain",
+  csv: "text/csv",
+  md: "text/markdown",
+  json: "application/json",
+};
+
 /**
- * Get messages for a chat thread from the chat_messages table.
- * Returns all rows as flat chatMessages with optional run status.
- * The frontend uses the status field to detect active runs and start polling.
+ * Resolve file IDs to presigned S3 URLs with metadata for the frontend.
+ * Lists S3 objects at each file's prefix to discover filename and size.
  */
-export async function getChatThreadMessages(threadId: string): Promise<{
+async function resolveAttachFileUrls(
+  userId: string,
+  fileIds: string[],
+): Promise<ResolvedAttachFile[]> {
+  const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
+  const results = await Promise.all(
+    fileIds.map(async (fileId) => {
+      const prefix = `uploads/${userId}/${fileId}/`;
+      const objects = await listS3Objects(bucket, prefix);
+      if (objects.length === 0) {
+        return null;
+      }
+      const obj = objects[0]!;
+      const filename = obj.key.split("/").pop() ?? fileId;
+      const ext = filename.split(".").pop()?.toLowerCase();
+      const contentType =
+        (ext ? EXT_MIMETYPE_MAP[ext] : undefined) ?? "application/octet-stream";
+      const url = await generatePresignedUrl(bucket, obj.key, 86400, filename);
+      return { id: fileId, filename, contentType, size: obj.size, url };
+    }),
+  );
+  return results.filter((r): r is ResolvedAttachFile => {
+    return r !== null;
+  });
+}
+
+export async function getChatThreadMessages(
+  threadId: string,
+  userId: string,
+): Promise<{
   chatMessages: ChatMessage[];
   latestSessionId: string | null;
 }> {
@@ -189,26 +242,35 @@ export async function getChatThreadMessages(threadId: string): Promise<{
     getLatestSessionIdForThread(threadId),
   ]);
 
-  const chatMessages: ChatMessage[] = rows.map((row) => {
-    // Event-backed rows (sequence_number set) carry their own valid assistant
-    // text — they must never inherit the run-level error via the leftJoin,
-    // or a timed-out run would mask every intermediate message as "failed".
-    // The placeholder row (sequence_number IS NULL) is the only row that
-    // falls back to agent_runs.error, covering the case where the terminal
-    // callback failed to deliver and chat_messages.error was never written.
-    const isPlaceholder = row.sequenceNumber === null;
-    const effectiveError = isPlaceholder
-      ? (row.error ?? row.runError ?? undefined)
-      : (row.error ?? undefined);
-    return {
-      role: row.role as "user" | "assistant",
-      content: row.content,
-      runId: row.runId ?? undefined,
-      error: effectiveError,
-      status: row.runStatus ?? undefined,
-      createdAt: row.createdAt.toISOString(),
-    };
-  });
+  const chatMessages: ChatMessage[] = await Promise.all(
+    rows.map(async (row) => {
+      // Event-backed rows (sequence_number set) carry their own valid assistant
+      // text — they must never inherit the run-level error via the leftJoin,
+      // or a timed-out run would mask every intermediate message as "failed".
+      // The placeholder row (sequence_number IS NULL) is the only row that
+      // falls back to agent_runs.error, covering the case where the terminal
+      // callback failed to deliver and chat_messages.error was never written.
+      const isPlaceholder = row.sequenceNumber === null;
+      const effectiveError = isPlaceholder
+        ? (row.error ?? row.runError ?? undefined)
+        : (row.error ?? undefined);
+
+      const attachFiles =
+        row.attachFiles && row.attachFiles.length > 0
+          ? await resolveAttachFileUrls(userId, row.attachFiles)
+          : undefined;
+
+      return {
+        role: row.role as "user" | "assistant",
+        content: row.content,
+        runId: row.runId ?? undefined,
+        error: effectiveError,
+        status: row.runStatus ?? undefined,
+        attachFiles,
+        createdAt: row.createdAt.toISOString(),
+      };
+    }),
+  );
 
   return {
     chatMessages,
