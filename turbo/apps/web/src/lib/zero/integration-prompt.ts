@@ -374,14 +374,11 @@ export function buildSlackPrompt(
     channelId?: string;
     channelType?: "channel" | "dm" | "group_dm";
     threadId?: string;
-    attachFilesPrompt?: string;
   },
   threadContext: string,
 ): string {
   const header = buildIntegrationPrompt("Slack", opts);
-  return [header, opts.attachFilesPrompt, threadContext]
-    .filter(Boolean)
-    .join("\n\n");
+  return [header, threadContext].filter(Boolean).join("\n\n");
 }
 
 /**

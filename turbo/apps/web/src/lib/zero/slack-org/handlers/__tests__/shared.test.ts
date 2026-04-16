@@ -91,6 +91,7 @@ describe("enrichMessageContent", () => {
 
     const result = await enrichMessageContent({
       messageContent: "Hello world",
+      files: undefined,
       client,
       userId: "U123",
     });
@@ -107,6 +108,7 @@ describe("enrichMessageContent", () => {
 
     const result = await enrichMessageContent({
       messageContent: "Hello world",
+      files: undefined,
       client,
       userId: "U999",
     });
@@ -127,6 +129,7 @@ describe("enrichMessageContent", () => {
 
     const result = await enrichMessageContent({
       messageContent: "My message",
+      files: undefined,
       client,
       userId: "U123",
     });
@@ -158,12 +161,35 @@ describe("enrichMessageContent", () => {
 
     const result = await enrichMessageContent({
       messageContent: "Hey <@U456>, please review this",
+      files: undefined,
       client,
       userId: "U123",
     });
 
     expect(result.prompt).toContain("@Bob (U456)");
     expect(result.prompt).not.toContain("<@U456>");
+  });
+
+  it("should append file descriptions to prompt", async () => {
+    const client = createMockSlackClient({ ok: false });
+
+    const result = await enrichMessageContent({
+      messageContent: "take a look",
+      files: [
+        {
+          id: "F1",
+          name: "diagram.png",
+          mimetype: "image/png",
+          filetype: "png",
+        },
+      ],
+      client,
+      userId: "U123",
+    });
+
+    expect(result.prompt).toContain("take a look");
+    expect(result.prompt).toContain("[Slack file]: diagram.png (image/png)");
+    expect(result.prompt).toContain("[ID]: F1");
   });
 });
 

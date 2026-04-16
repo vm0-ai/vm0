@@ -2,7 +2,6 @@ import { isRunDispatchError } from "../../../infra/run";
 import { createZeroRun } from "../../zero-run-service";
 import { buildSlackPrompt } from "../../integration-prompt";
 import type { UserInfoOptions } from "../../integration-prompt";
-import { formatCurrentMessageFiles, type SlackFile } from "../../slack/context";
 import { isApiError } from "../../../shared/errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
@@ -18,7 +17,6 @@ interface RunAgentParams {
   sessionId: string | undefined;
   prompt: string;
   threadContext: string;
-  files?: SlackFile[];
   userInfoExtras?: UserInfoOptions;
   userId: string;
   botUserId: string;
@@ -55,7 +53,6 @@ export async function runAgentForSlackOrg(
     sessionId,
     prompt,
     threadContext,
-    files,
     userInfoExtras,
     userId,
     botUserId,
@@ -66,22 +63,10 @@ export async function runAgentForSlackOrg(
   } = params;
 
   try {
-    // Build attach files prompt from current message files
-    const attachFilesPrompt =
-      files && files.length > 0
-        ? `# Slack Attached Files\n\n${formatCurrentMessageFiles(files)}`
-        : undefined;
-
     // Build system prompt from context parts (agent identity + user info prepended by createZeroRun)
     const appendSystemPrompt =
       buildSlackPrompt(
-        {
-          botUserId,
-          channelId,
-          channelType,
-          threadId: threadTs,
-          attachFilesPrompt,
-        },
+        { botUserId, channelId, channelType, threadId: threadTs },
         threadContext,
       ) || undefined;
 

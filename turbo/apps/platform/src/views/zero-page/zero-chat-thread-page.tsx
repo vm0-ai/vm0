@@ -466,22 +466,37 @@ function ChatMessageRow({
 }
 
 /**
- * Parse inline attachment lines from message content.
- * Matches `[Attached file: name](url)` optionally followed by a curl line.
- * Returns the cleaned content and parsed attachments.
+ * Strip file-attachment blocks from the displayed user prompt.
+ *
+ * Handles three formats:
+ * 1. Legacy: `[Attached file: name](url)` with optional curl line
+ * 2. Web:    `# Web Attached Files` header + `[Web file]: ...` blocks
+ * 3. Slack:  `[Slack file]: ...` blocks
+ *
+ * Returns the cleaned content and any legacy parsed attachments.
  */
 function parseInlineAttachments(content: string): {
   cleanContent: string;
   parsed: { filename: string; url: string }[];
 } {
   const parsed: { filename: string; url: string }[] = [];
-  const cleaned = content.replace(
+  let cleaned = content;
+
+  // Legacy format: [Attached file: name](url) + optional curl line
+  cleaned = cleaned.replace(
     /\[Attached file: ([^\]]+)\]\(([^)]+)\)(?:\nDownload with: curl [^\n]*)?\n?/g,
     (_match, filename: string, url: string) => {
       parsed.push({ filename, url });
       return "";
     },
   );
+
+  // Web/Slack file blocks: [Web file]: ... or [Slack file]: ... with metadata lines
+  cleaned = cleaned.replace(
+    /(?:# (?:Web|Slack) Attached Files\n\n)?(?:\[(?:Web|Slack) file\]: [^\n]+\n(?:\s+\[[^\]]+\]: [^\n]+\n?)*)(?:\n?)/g,
+    "",
+  );
+
   return { cleanContent: cleaned.trim(), parsed };
 }
 

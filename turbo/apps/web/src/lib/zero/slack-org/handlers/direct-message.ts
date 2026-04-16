@@ -121,6 +121,7 @@ export async function handleOrgDirectMessage(
   const { prompt: messageContent, userInfoExtras } = await enrichMessageContent(
     {
       messageContent: context.messageText,
+      files: context.files,
       client,
       userId: context.userId,
     },
@@ -173,7 +174,6 @@ export async function handleOrgDirectMessage(
     sessionId: existingSessionId,
     prompt: messageContent,
     threadContext: executionContext,
-    files: context.files,
     userInfoExtras,
     userId: connection.vm0UserId,
     botUserId,

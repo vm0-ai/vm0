@@ -494,13 +494,9 @@ describe("POST /api/zero/chat/messages", () => {
       expect(userMsg).toBeDefined();
       expect(userMsg!.attachFiles).toEqual(["file-uuid-1", "file-uuid-2"]);
 
-      // Verify system prompt includes Web Attached Files section with file metadata
+      // Verify file descriptions are in the prompt (not systemPrompt)
       const run = await getTestRun(data.runId);
-      expect(run.appendSystemPrompt).toContain("Web Attached Files");
-      expect(run.appendSystemPrompt).toContain("file-uuid-1");
-      expect(run.appendSystemPrompt).toContain("file-uuid-2");
-      expect(run.appendSystemPrompt).toContain("report.pdf");
-      expect(run.appendSystemPrompt).toContain("photo.png");
+      expect(run.appendSystemPrompt).not.toContain("Web Attached Files");
     });
 
     it("should resolve attach files with presigned URLs in thread detail", async () => {

@@ -5,7 +5,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { chatMessagesContract } from "@vm0/core";
+import { chatMessagesContract, type AttachFile } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -64,18 +64,23 @@ function buildContinueFromScheduleSystemPrompt(
 
 function buildAppendSystemPrompt(
   continueFromSchedulePrompt: string | undefined,
-  attachFiles:
-    | { id: string; filename: string; contentType: string }[]
-    | undefined,
 ): string {
   const parts = [buildWebChatPrompt()];
   if (continueFromSchedulePrompt) {
     parts.push(continueFromSchedulePrompt);
   }
-  if (attachFiles && attachFiles.length > 0) {
-    parts.push(buildWebAttachFilesPrompt(attachFiles));
-  }
   return parts.join("\n\n");
+}
+
+/**
+ * Build the full prompt including file descriptions appended after user text.
+ */
+function buildFullPrompt(
+  prompt: string,
+  attachFiles: AttachFile[] | undefined,
+): string {
+  if (!attachFiles || attachFiles.length === 0) return prompt;
+  return `${prompt}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
 }
 
 interface ResolvedThread {
@@ -209,19 +214,19 @@ const router = tsr.router(chatMessagesContract, {
           ? body.modelProvider
           : undefined;
 
+      // Build prompt: user text + file descriptions appended
+      const fullPrompt = buildFullPrompt(body.prompt, body.attachFiles);
+
       // Create the run record (pre-flight checks + advisory-locked INSERT).
       // Does NOT dispatch — tokens, secrets, and runner dispatch are deferred.
       const result = await createZeroRunRecord({
         userId: authCtx.userId,
-        prompt: body.prompt,
+        prompt: fullPrompt,
         agentId: body.agentId,
         sessionId,
         triggerSource: "web",
         modelProvider,
-        appendSystemPrompt: buildAppendSystemPrompt(
-          continueFromSchedulePrompt,
-          body.attachFiles,
-        ),
+        appendSystemPrompt: buildAppendSystemPrompt(continueFromSchedulePrompt),
         callbacks: [chatCallback],
       });
 
