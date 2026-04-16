@@ -74,11 +74,13 @@ const CLERK_CSS = `
   color: hsl(var(--foreground)) !important;
 }
 
-/* Input field styles
-   - formFieldInput containers (div wrappers with eye icons etc.) get the border
-   - plain input[type] selectors cover fields that render without a wrapper div */
+/* Input field styles.
+   The glob uses :not(:has(...)) to target only leaf-level wrappers — it excludes
+   any parent container that itself contains a nested formFieldInput element (e.g. a
+   section wrapper that groups multiple fields). plain input[type] selectors cover
+   fields that Clerk renders without a wrapper div. */
 .cl-formFieldInput,
-.cl-card [class*="formFieldInput"],
+.cl-card [class*="formFieldInput"]:not(:has([class*="formFieldInput"])),
 .cl-card input[type="text"],
 .cl-card input[type="email"],
 .cl-card input[type="password"] {
@@ -93,20 +95,14 @@ const CLERK_CSS = `
   box-shadow: none !important;
 }
 
-/* Strip border from <input> elements that sit INSIDE a formFieldInput wrapper —
-   the wrapper already provides the visible border, adding one on the input too
-   causes the double-border. Higher specificity wins over the rule above. */
-.cl-card [class*="formFieldInput"] input {
+/* Password input sits inside a wrapper that has the border — strip the input's
+   own border to prevent doubling. Only target password; text/email inputs may
+   have no wrapper and need their own border. */
+.cl-card [class*="formFieldInput"] input[type="password"] {
   border: none !important;
   box-shadow: none !important;
   height: 100% !important;
   background-color: transparent !important;
-}
-
-/* Strip border from nested formFieldInput divs (handles layered wrappers) */
-.cl-card [class*="formFieldInput"] > [class*="formFieldInput"] {
-  border: none !important;
-  box-shadow: none !important;
 }
 
 /* Checkbox containers must not inherit input wrapper border/height */
@@ -344,7 +340,6 @@ a[class*="resendCode"] {
   background-color: transparent !important;
   cursor: pointer !important;
   flex-shrink: 0 !important;
-  transition: border-color 0.15s ease !important;
 }
 
 .cl-card input[type="checkbox"]:checked,
