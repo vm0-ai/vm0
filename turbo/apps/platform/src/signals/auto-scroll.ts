@@ -68,7 +68,12 @@ export function createScrollSignals() {
           el.scrollTop = el.scrollHeight;
         }
       });
-      resizeObserver.observe(el);
+      const inner = el.firstElementChild;
+      if (inner) {
+        resizeObserver.observe(inner);
+      } else {
+        resizeObserver.observe(el);
+      }
 
       signal.addEventListener("abort", () => {
         L.debug("container unbound (abort)");
