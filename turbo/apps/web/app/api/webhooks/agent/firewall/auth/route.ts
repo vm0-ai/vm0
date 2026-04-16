@@ -450,17 +450,13 @@ export async function POST(request: Request) {
     return !(key in (vars ?? {}));
   });
   if (missingSecrets.length > 0 || missingVars.length > 0) {
-    return NextResponse.json(
-      {
-        error: {
-          message: "Connector not configured",
-          code: "CONNECTOR_NOT_CONFIGURED",
-          missingSecrets,
-          missingVars,
-        },
-      },
-      { status: 424 },
-    );
+    const errorDetail: Record<string, unknown> = {
+      message: "Connector not configured",
+      code: "CONNECTOR_NOT_CONFIGURED",
+    };
+    if (missingSecrets.length > 0) errorDetail.missingSecrets = missingSecrets;
+    if (missingVars.length > 0) errorDetail.missingVars = missingVars;
+    return NextResponse.json({ error: errorDetail }, { status: 424 });
   }
 
   // Refresh expired OAuth tokens (mutates secrets map with fresh values)

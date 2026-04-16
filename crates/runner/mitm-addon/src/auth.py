@@ -108,7 +108,7 @@ def _fetch_firewall_headers_sync(
         try:
             error_body = json.loads(e.read())
         except (json.JSONDecodeError, OSError):
-            raise  # re-raise original HTTPError
+            raise e from None
         error_info = error_body.get("error", {})
         if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
             raise ConnectorNotConfiguredError(
