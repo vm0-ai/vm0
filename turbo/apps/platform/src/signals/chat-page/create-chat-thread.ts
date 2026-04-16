@@ -26,10 +26,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
-import {
-  groupMessagesByRole,
-  type GroupedChatMessageGroup,
-} from "./chat-message.ts";
+import { type GroupedChatMessageGroup } from "./chat-message.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -70,8 +67,6 @@ export interface ChatThreadSignals {
   latestChatMessageId$: Computed<string | undefined>;
   groupedChatMessages$: Computed<GroupedChatMessageGroup[]>;
   hasActiveRun$: Computed<boolean>;
-  /** True while the send POST is in flight (before paged messages update). */
-  isSending$: Computed<boolean>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
 }
@@ -142,9 +137,6 @@ interface SendMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  scrollToBottom$: Command<void, []>;
-  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
-  hasActiveRun$: Computed<boolean>;
 }
 
 function createPrepareUserMessage(draft: DraftSignals) {
@@ -201,13 +193,6 @@ function createSendMessage(
   deps: SendMessageDeps,
   prepareUserMessage$: ReturnType<typeof createPrepareUserMessage>,
 ) {
-  // Tracks whether a send POST is in flight, so the composer can stay in
-  // "sending" state before paged messages update with the run's active status.
-  const internalSending$ = state(false);
-  const isSending$ = computed((get) => {
-    return get(internalSending$);
-  });
-
   // Run ID from the most recent send — available immediately after the POST
   // returns, before paged messages poll picks up the new assistant row.
   // Used by cancelRun$ so the user can cancel right after sending.
@@ -236,9 +221,6 @@ function createSendMessage(
       await set(deps.flushDraftClear$, signal);
       signal.throwIfAborted();
 
-      // Mark sending so the composer disables immediately.
-      set(internalSending$, true);
-
       const client = get(zeroClient$)(chatMessagesContract);
       const sendResult = await accept(
         client.send({
@@ -258,40 +240,10 @@ function createSendMessage(
       set(internalPendingRunId$, sendResult.body.runId);
 
       set(reloadChatThreads$);
-
-      // Immediately fetch the new messages so the user sees their message
-      // without waiting for the next poll cycle.
-      await set(deps.fetchNextPage$, signal);
-
-      // Clear sending flag — paged messages now reflect the active run.
-      set(internalSending$, false);
-
-      // Yield one microtask tick so React can flush the new messages into
-      // the DOM before scrolling.
-      await delay(0, { signal });
-      set(deps.scrollToBottom$);
-
-      // Poll for run completion. The initial loadPagedMessages$ poll may
-      // have already exited (empty thread), so we start a fresh loop here
-      // to detect when the run finishes.
-      const sendPollBody$ = command(async ({ get, set }, sig: AbortSignal) => {
-        const noNew = await set(deps.fetchNextPage$, sig);
-        if (!noNew) {
-          return false; // got new messages, keep polling
-        }
-        return !get(deps.hasActiveRun$);
-      });
-      await set(
-        setAblyLoop$,
-        `send:${deps.threadId}:${sendResult.body.runId}`,
-        sendPollBody$,
-        3000,
-        signal,
-      );
     },
   );
 
-  return { sendMessage$, isSending$, pendingRunId$ };
+  return { sendMessage$, pendingRunId$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -542,31 +494,49 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
 // Sub-factory: paginated chat messages
 // ---------------------------------------------------------------------------
 
-interface PagedMessagesPage {
-  messages: PagedChatMessage[];
-  hasMore: boolean;
+/** Merge new messages into existing groups in place. */
+function mergeIntoGroups(
+  groups: GroupedChatMessageGroup[],
+  messages: PagedChatMessage[],
+): GroupedChatMessageGroup[] {
+  const result = [...groups];
+  for (const msg of messages) {
+    const last = result[result.length - 1];
+    if (last && last.role === msg.role) {
+      last.messages = [...last.messages, msg];
+    } else {
+      result.push({
+        beginMessageId: msg.id,
+        role: msg.role,
+        messages: [msg],
+      });
+    }
+  }
+  return result;
 }
 
 function createPagedMessages(threadId: string) {
-  const pagedChatMessagesList$ = state<PagedMessagesPage[]>([]);
+  const internalGroups$ = state<GroupedChatMessageGroup[]>([]);
+
+  const groupedChatMessages$ = computed((get) => {
+    return get(internalGroups$);
+  });
 
   const pagedChatMessages$ = computed((get) => {
-    const pages = get(pagedChatMessagesList$);
+    const groups = get(internalGroups$);
     const all: PagedChatMessage[] = [];
-    for (const page of pages) {
-      all.push(...page.messages);
+    for (const group of groups) {
+      all.push(...group.messages);
     }
     return all;
   });
 
   const latestChatMessageId$ = computed((get) => {
-    const messages = get(pagedChatMessages$);
-    return messages.length > 0 ? messages[messages.length - 1].id : undefined;
-  });
-
-  const groupedChatMessages$ = computed((get) => {
-    const messages = get(pagedChatMessages$);
-    return groupMessagesByRole(messages);
+    const groups = get(internalGroups$);
+    const lastGroup = groups[groups.length - 1];
+    if (!lastGroup) return undefined;
+    const msgs = lastGroup.messages;
+    return msgs[msgs.length - 1].id;
   });
 
   // Use the LAST status per runId. When the server inserts new event-backed
@@ -575,11 +545,13 @@ function createPagedMessages(threadId: string) {
   // last occurrence prevents stale statuses from keeping the UI in "sending"
   // mode after a run finishes.
   const hasActiveRun$ = computed((get) => {
-    const messages = get(pagedChatMessages$);
+    const groups = get(internalGroups$);
     const latestStatusByRun = new Map<string, string>();
-    for (const m of messages) {
-      if (m.runId && m.status) {
-        latestStatusByRun.set(m.runId, m.status);
+    for (const group of groups) {
+      for (const m of group.messages) {
+        if (m.runId && m.status) {
+          latestStatusByRun.set(m.runId, m.status);
+        }
       }
     }
     for (const status of latestStatusByRun.values()) {
@@ -609,14 +581,8 @@ function createPagedMessages(threadId: string) {
       return true; // no new messages
     }
 
-    set(pagedChatMessagesList$, (prev) => {
-      return [
-        ...prev,
-        {
-          messages: result.body.messages,
-          hasMore: result.body.hasMore,
-        },
-      ];
+    set(internalGroups$, (prev) => {
+      return mergeIntoGroups(prev, result.body.messages);
     });
 
     return false;
@@ -703,16 +669,13 @@ export function createChatThreadSignals(
     createDraftSync(threadId, draft);
 
   const prepareUserMessage$ = createPrepareUserMessage(draft);
-  const { sendMessage$, isSending$, pendingRunId$ } = createSendMessage(
+  const { sendMessage$, pendingRunId$ } = createSendMessage(
     {
       threadId,
       threadData$,
       draft,
       cancelDraftSync$,
       flushDraftClear$,
-      scrollToBottom$,
-      fetchNextPage$,
-      hasActiveRun$,
     },
     prepareUserMessage$,
   );
@@ -755,7 +718,6 @@ export function createChatThreadSignals(
     latestChatMessageId$,
     groupedChatMessages$,
     hasActiveRun$,
-    isSending$,
     fetchNextPage$,
     loadPagedMessages$,
   };

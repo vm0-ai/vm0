@@ -8,6 +8,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertCircle,
+  IconLoader2,
   IconPhoto,
   IconChartLine,
   IconPlayerStop,
@@ -271,6 +272,7 @@ export function ZeroChatThreadPageInner({
                 />
               );
             })}
+            <ThinkingIndicator thread={thread} />
           </div>
         </main>
       </div>
@@ -291,15 +293,14 @@ function ChatThreadComposer({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
-  const pagedMessages = useGet(thread.pagedChatMessages$);
-  const hasMessages = pagedMessages.length > 0;
+  const groups = useGet(thread.groupedChatMessages$);
+  const hasMessages = groups.length > 0;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const hasActiveRun = useGet(thread.hasActiveRun$);
-  const isSending = useGet(thread.isSending$);
-  const sending = hasActiveRun || isSending;
+  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
+  const sending = hasActiveRun || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
-  const send = useSet(thread.sendMessage$);
   const cancelRun = useSet(thread.cancelRun$);
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
@@ -385,6 +386,41 @@ function ChatSkeleton() {
         </div>
       </div>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Thinking indicator — shown when waiting for assistant response
+// ---------------------------------------------------------------------------
+
+function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
+  const hasActiveRun = useGet(thread.hasActiveRun$);
+  const groups = useGet(thread.groupedChatMessages$);
+  const lastGroup = groups[groups.length - 1];
+  const show = hasActiveRun && (!lastGroup || lastGroup.role !== "assistant");
+
+  if (!show) {
+    return null;
+  }
+
+  return (
+    <div
+      data-role="assistant"
+      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <AssistantBubbleAvatar thread={thread} />
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0">
+            <IconLoader2
+              size={14}
+              className="animate-spin text-foreground/50 shrink-0"
+            />
+            <p className="zero-shimmer-text text-xs truncate">Thinking...</p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

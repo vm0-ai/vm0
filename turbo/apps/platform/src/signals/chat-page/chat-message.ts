@@ -48,26 +48,6 @@ export interface GroupedChatMessageGroup {
   messages: PagedChatMessage[];
 }
 
-/** Group consecutive messages by role. */
-export function groupMessagesByRole(
-  messages: PagedChatMessage[],
-): GroupedChatMessageGroup[] {
-  const groups: GroupedChatMessageGroup[] = [];
-  for (const msg of messages) {
-    const last = groups[groups.length - 1];
-    if (last && last.role === msg.role) {
-      last.messages.push(msg);
-    } else {
-      groups.push({
-        beginMessageId: msg.id,
-        role: msg.role,
-        messages: [msg],
-      });
-    }
-  }
-  return groups;
-}
-
 // ---------------------------------------------------------------------------
 // Thread creation
 // ---------------------------------------------------------------------------
