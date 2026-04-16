@@ -228,16 +228,38 @@ def _report_usage_with_retry(
     for attempt in range(max_retries + 1):
         try:
             _do_report_usage(api_url, sandbox_token, run_id, usage)
+            log_proxy_entry(
+                proxy_log_path,
+                "info",
+                "Usage report succeeded",
+                type="usage",
+                api_url=api_url,
+                **usage,
+            )
             return
         except Exception as exc:
             if attempt < max_retries:
+                log_proxy_entry(
+                    proxy_log_path,
+                    "warn",
+                    f"Usage report attempt {attempt + 1} failed, retrying: {exc}",
+                    type="usage",
+                    api_url=api_url,
+                    error=str(exc),
+                    attempt=attempt + 1,
+                    **usage,
+                )
                 time.sleep(0.5)
             else:
                 log_proxy_entry(
                     proxy_log_path,
-                    "warn",
-                    f"Usage report failed after {attempt + 1} attempts: {exc}",
+                    "error",
+                    f"Usage report failed after {attempt + 1} attempts, giving up: {exc}",
                     type="usage",
+                    api_url=api_url,
+                    error=str(exc),
+                    attempts=attempt + 1,
+                    **usage,
                 )
 
 
@@ -253,6 +275,14 @@ def _enqueue_usage(
     falls back to synchronous delivery so the report is not silently lost.
     """
     copied = dict(usage)
+    log_proxy_entry(
+        proxy_log_path,
+        "info",
+        "Usage report enqueued",
+        type="usage",
+        api_url=api_url,
+        **copied,
+    )
     try:
         usage_executor.submit(
             _report_usage_with_retry, api_url, sandbox_token, run_id, copied, proxy_log_path
@@ -260,6 +290,13 @@ def _enqueue_usage(
     except RuntimeError:
         # Executor shut down (done() already called during drain).
         # Fall back to synchronous delivery with retry.
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            "Usage executor shut down, falling back to synchronous delivery",
+            type="usage",
+            api_url=api_url,
+        )
         _report_usage_with_retry(api_url, sandbox_token, run_id, copied, proxy_log_path)
 
 
