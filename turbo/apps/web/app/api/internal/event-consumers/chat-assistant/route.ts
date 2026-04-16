@@ -7,6 +7,9 @@ import {
   insertAssistantEventMessages,
   getChatThreadIdForRun,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
+import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
+import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { eq } from "drizzle-orm";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("event-consumer:chat-assistant");
@@ -104,6 +107,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const written = await insertAssistantEventMessages(runId, threadId, items);
+
+  if (written > 0) {
+    const [run] = await globalThis.services.db
+      .select({ userId: agentRuns.userId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+      .limit(1);
+    if (run) {
+      await publishUserSignal(
+        [run.userId],
+        `chatThreadMessageCreated:${threadId}`,
+      );
+    }
+  }
 
   log.debug("Chat assistant consumer processed", {
     runId,

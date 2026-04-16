@@ -36,6 +36,7 @@ import {
   generateCallbackSecret,
 } from "../../../../../src/lib/infra/callback";
 import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
+import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("zero:chat-messages");
@@ -198,6 +199,18 @@ const router = tsr.router(chatMessagesContract, {
         role: "assistant",
         content: null,
         runId: result.runId,
+      });
+
+      // Notify subscribers that a new run and messages were created on this thread
+      after(async () => {
+        await publishUserSignal(
+          [authCtx.userId],
+          `chatThreadRunCreated:${threadId}`,
+        );
+        await publishUserSignal(
+          [authCtx.userId],
+          `chatThreadMessageCreated:${threadId}`,
+        );
       });
 
       // Defer the heavy dispatch pipeline (token generation, secret resolution,
