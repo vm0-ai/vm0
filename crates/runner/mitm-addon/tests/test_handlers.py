@@ -2918,3 +2918,94 @@ class TestFirewallHeaderCache:
 
         assert ("run-old", "api-1") not in auth._firewall_header_cache
         assert ("run-old", "api-1") not in auth._cache_locks
+
+
+class TestUsagePendingCounter:
+    """Tests for the dual pending counter (in-flight flows + pending reports)."""
+
+    def setup_method(self):
+        usage._in_flight_flows = 0
+        usage._pending_reports = 0
+
+    def test_increment_decrement_flows(self, tmp_path):
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        usage.increment_flows()
+        usage.increment_flows()
+        assert usage._in_flight_flows == 2
+        content = (tmp_path / "usage-pending").read_text()
+        assert content == "2:0"
+
+        usage.decrement_flows()
+        content = (tmp_path / "usage-pending").read_text()
+        assert content == "1:0"
+
+        usage.decrement_flows()
+        content = (tmp_path / "usage-pending").read_text()
+        assert content == "0:0"
+
+    def test_increment_decrement_reports(self, tmp_path):
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        usage._increment_reports()
+        assert usage._pending_reports == 1
+        content = (tmp_path / "usage-pending").read_text()
+        assert content == "0:1"
+
+        usage._decrement_reports()
+        content = (tmp_path / "usage-pending").read_text()
+        assert content == "0:0"
+
+    def test_decrement_does_not_go_negative(self, tmp_path):
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        usage.decrement_flows()
+        usage._decrement_reports()
+        assert usage._in_flight_flows == 0
+        assert usage._pending_reports == 0
+
+    def test_no_op_when_path_not_set(self):
+        usage.set_pending_path("")
+        usage.increment_flows()
+        usage.decrement_flows()
+        usage._increment_reports()
+        usage._decrement_reports()
+        # Should not raise — just no file written.
+        assert usage._in_flight_flows == 0
+        assert usage._pending_reports == 0
+
+    def test_report_decrements_after_completion(self, tmp_path):
+        """_post_webhook_with_retry must decrement even on failure."""
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        usage._increment_reports()
+        assert usage._pending_reports == 1
+
+        with patch.object(usage, "_post_webhook", side_effect=Exception("boom")):
+            usage._post_webhook_with_retry(
+                "http://localhost/webhook", "tok", {}, str(tmp_path / "proxy.log"), "usage"
+            )
+
+        assert usage._pending_reports == 0
+        content = (tmp_path / "usage-pending").read_text()
+        assert content == "0:0"
+
+    def test_enqueue_increments_and_drains_reports(self, tmp_path):
+        """_enqueue_webhook increments pending; executor drain decrements to 0."""
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+
+        # Replace executor with a fresh one for isolation.
+        old_executor = usage.usage_executor
+        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=1, thread_name_prefix="test")
+        try:
+            with patch.object(usage, "_post_webhook"):
+                usage._enqueue_webhook(
+                    "http://localhost/webhook",
+                    "tok",
+                    {"model": "x"},
+                    str(tmp_path / "p.log"),
+                    "usage",
+                )
+                usage.usage_executor.shutdown(wait=True)
+            # After executor drains, counter must be back to 0.
+            assert usage._pending_reports == 0
+            content = (tmp_path / "usage-pending").read_text()
+            assert content == "0:0"
+        finally:
+            usage.usage_executor = old_executor
