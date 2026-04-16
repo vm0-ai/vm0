@@ -11,9 +11,10 @@ import type {
 
 // MC-D-002 — VoiceChatPanelContent event rendering
 
-function makeSignals(
-  initialEvents: VoiceChatEvent[] = [],
-): { signals: VoiceChatPanelSignals; store: ReturnType<typeof createStore> } {
+function makeSignals(initialEvents: VoiceChatEvent[] = []): {
+  signals: VoiceChatPanelSignals;
+  store: ReturnType<typeof createStore>;
+} {
   const store = createStore();
   const events$ = state<VoiceChatEvent[]>(initialEvents);
   const startPolling$ = command<Promise<void>, [AbortSignal]>(async () => {});
@@ -49,9 +50,7 @@ describe("VoiceChatPanelContent", () => {
       </Wrapper>,
     );
 
-    expect(
-      screen.getByText("No conversation events yet"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("No conversation events yet")).toBeInTheDocument();
   });
 
   it("renders user speech bubble", () => {
