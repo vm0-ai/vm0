@@ -8,7 +8,7 @@ export const sendCommand = new Command()
   .name("send")
   .description("Send a message to a Slack channel or DM a user")
   .option("-c, --channel <id>", "Channel ID")
-  .option("-u, --user <id>", "Slack user ID for DM")
+  .option("-u, --user <id>", 'Slack user ID for DM (use "me" for yourself)')
   .option("-t, --text <message>", "Message text")
   .option("--thread <ts>", "Thread timestamp for replies")
   .option("--blocks <json>", "Block Kit JSON string")
@@ -18,6 +18,7 @@ export const sendCommand = new Command()
 Examples:
   Simple message:        zero slack message send -c C01234 -t "Hello!"
   DM a user:             zero slack message send -u U0A8V9X98QJ -t "Hello!"
+  DM yourself:           zero slack message send -u me -t "Hello!"
   Reply in thread:       zero slack message send -c C01234 --thread 1234567890.123456 -t "reply"
   Rich blocks:           zero slack message send -c C01234 --blocks '[{"type":"section","text":{"type":"mrkdwn","text":"*Bold*"}}]'
 

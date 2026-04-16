@@ -23,7 +23,6 @@ export function buildIntegrationPrompt(
     channelId?: string;
     channelType?: "channel" | "dm" | "group_dm";
     threadId?: string;
-    scheduleDescription?: string;
     triggerType?: string;
   },
 ): string {
@@ -45,9 +44,6 @@ export function buildIntegrationPrompt(
   }
   if (options?.threadId) {
     context += `\nThread ID: ${options.threadId}`;
-  }
-  if (options?.scheduleDescription) {
-    context += `\nSchedule description: ${options.scheduleDescription}`;
   }
   if (options?.triggerType) {
     context += `\nTrigger type: ${options.triggerType}`;
@@ -412,6 +408,15 @@ export function buildTelegramPrompt(threadContext: string): string {
 export function buildGitHubPrompt(issueContext: string): string {
   const header = buildIntegrationPrompt("GitHub");
   return [header, issueContext].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Build the full appendSystemPrompt for Schedule integration.
+ */
+export function buildSchedulePrompt(opts: { triggerType: string }): string {
+  return buildIntegrationPrompt("Schedule", {
+    triggerType: opts.triggerType,
+  });
 }
 
 /**

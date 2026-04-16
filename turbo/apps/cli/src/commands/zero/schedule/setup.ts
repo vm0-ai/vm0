@@ -646,7 +646,8 @@ Examples:
 Notes:
   - Re-running setup with the same agent updates the existing "default" schedule
   - Use -n to manage multiple named schedules for the same agent
-  - All flags are required in non-interactive mode; interactive mode prompts for missing values`,
+  - All flags are required in non-interactive mode; interactive mode prompts for missing values
+  - If the user wants to be notified when a schedule completes, ask them where they want to receive the notification: web chat or Slack, then include it in the prompt`,
   )
   .action(
     withErrorHandler(async (agentIdentifier: string, options: SetupOptions) => {
