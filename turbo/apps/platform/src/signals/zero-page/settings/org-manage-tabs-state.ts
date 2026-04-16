@@ -346,34 +346,6 @@ export const setRemoveDomainDialogTarget$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// org-usage-tab: CreditUsageBar popover
-// ---------------------------------------------------------------------------
-
-const internalCreditBarPopoverOpen$ = state(false);
-
-export const creditBarPopoverOpen$ = computed((get) => {
-  return get(internalCreditBarPopoverOpen$);
-});
-
-export const setCreditBarPopoverOpen$ = command(({ set }, open: boolean) => {
-  set(internalCreditBarPopoverOpen$, open);
-});
-
-const internalCreditBarTimerId$ = state<ReturnType<
-  typeof globalThis.setTimeout
-> | null>(null);
-
-export const creditBarTimerId$ = computed((get) => {
-  return get(internalCreditBarTimerId$);
-});
-
-export const setCreditBarTimerId$ = command(
-  ({ set }, id: ReturnType<typeof globalThis.setTimeout> | null) => {
-    set(internalCreditBarTimerId$, id);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // org-usage-tab: InlineCapInput values (keyed by userId)
 // ---------------------------------------------------------------------------
 
