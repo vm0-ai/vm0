@@ -31,6 +31,8 @@ import {
   apiFeatureSwitchesHandlers,
   resetMockFeatureSwitches,
 } from "./api-feature-switches.ts";
+import { apiRealtimeHandlers } from "./api-realtime.ts";
+import { resetAblySubscriptions } from "../ably.ts";
 import {
   apiUserPreferencesHandlers,
   resetMockUserPreferences,
@@ -58,6 +60,7 @@ export const handlers = [
   ...apiBillingHandlers,
   ...apiIntegrationsSlackConnectHandlers,
   ...apiFeatureSwitchesHandlers,
+  ...apiRealtimeHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -71,4 +74,5 @@ export function resetAllMockHandlers(): void {
   resetMockBilling();
   resetMockSlackConnect();
   resetMockFeatureSwitches();
+  resetAblySubscriptions();
 }

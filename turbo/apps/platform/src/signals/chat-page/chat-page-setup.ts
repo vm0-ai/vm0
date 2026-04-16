@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { detach, Reason } from "../utils.ts";
 import { createElement } from "react";
 import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";

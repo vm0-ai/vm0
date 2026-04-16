@@ -495,7 +495,6 @@ function createPagedMessages(threadId: string) {
       setAblyLoop$,
       `chatThreadMessageCreated:${threadId}`,
       pagedLoopBody$,
-      3000,
       signal,
     );
   });

@@ -16,7 +16,7 @@ describe("setAblyLoop$ — IN_VITEST fallback (setLoop)", () => {
       return body() as boolean;
     });
 
-    await store.set(setAblyLoop$, "topic", loopCommand$, 0, controller.signal);
+    await store.set(setAblyLoop$, "topic", loopCommand$, controller.signal);
 
     expect(body).toHaveBeenCalledOnce();
   });
@@ -31,7 +31,7 @@ describe("setAblyLoop$ — IN_VITEST fallback (setLoop)", () => {
       return calls >= 3;
     });
 
-    await store.set(setAblyLoop$, "topic", loopCommand$, 0, controller.signal);
+    await store.set(setAblyLoop$, "topic", loopCommand$, controller.signal);
 
     expect(calls).toBeGreaterThanOrEqual(3);
   });

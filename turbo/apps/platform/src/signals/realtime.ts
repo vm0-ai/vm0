@@ -3,12 +3,9 @@ import { platformRealtimeTokenContract } from "@vm0/core";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
-import { IN_VITEST } from "../env.ts";
 import {
   createDeferredPromise,
   FIB_DELAYS_MS,
-  MAX_LOOP_COUNT_IN_TEST,
-  setLoop,
   throwIfAbort,
 } from "./utils.ts";
 import { logger } from "./log.ts";
@@ -27,10 +24,6 @@ const internalUserChannel$ = state<RealtimeChannel | null>(null);
  */
 export const setupRealtime$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (IN_VITEST) {
-      return;
-    }
-
     const createClient = get(zeroClient$);
     const client = createClient(platformRealtimeTokenContract);
 
@@ -89,19 +82,11 @@ export const setAblyLoop$ = command(
     { get, set },
     topic: string,
     loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
-    fallbackInterval: number,
     signal: AbortSignal,
   ) => {
     const channel = get(internalUserChannel$);
     if (!channel) {
-      L.debug("fallback to interval");
-      return setLoop(
-        (sig) => {
-          return set(loopCommand$, sig);
-        },
-        fallbackInterval,
-        signal,
-      );
+      throw new Error("channel not estibilished");
     }
 
     const done = await set(loopCommand$, signal);
@@ -122,15 +107,9 @@ export const setAblyLoop$ = command(
     await channel.subscribe(topic, callback);
     signal.throwIfAborted();
 
-    let loopCount = 0;
     let fibIndex = 0;
     while (!signal.aborted) {
-      if (IN_VITEST && loopCount++ > MAX_LOOP_COUNT_IN_TEST) {
-        channel.unsubscribe(topic, callback);
-        return;
-      }
-
-      await (IN_VITEST ? delay(0, { signal }) : deferred.promise);
+      await deferred.promise;
       signal.throwIfAborted();
 
       deferred = createDeferredPromise(signal);
@@ -152,7 +131,7 @@ export const setAblyLoop$ = command(
           error,
         );
         fibIndex++;
-        await delay(IN_VITEST ? 0 : backoff, { signal });
+        await delay(backoff, { signal });
       }
     }
   },

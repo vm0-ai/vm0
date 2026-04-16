@@ -442,7 +442,7 @@ export const setupTasksLoop$ = command(
       },
     );
 
-    await set(setAblyLoop$, `tasks:${orgId}`, tasksLoopBody$, 10_000, signal);
+    await set(setAblyLoop$, `tasks:${orgId}`, tasksLoopBody$, signal);
   },
 );
 
