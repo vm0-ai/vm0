@@ -15,6 +15,7 @@ import {
   deleteOrgRow,
   insertOrgMembersEntry,
   findTestRunsByUserAndPrompt,
+  createTestVolume,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
@@ -36,8 +37,9 @@ import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { updateUserPreferences } from "../../../../../src/lib/zero/user/user-preferences-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Test setup: direct service call for data setup in runs route tests
 import { updateUserFeatureSwitches } from "../../../../../src/lib/zero/user/feature-switches-service";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey, getCustomSkillStorageName } from "@vm0/core";
 import * as core from "@vm0/core";
+import { bindCustomSkillToAgent } from "../../../../../src/__tests__/db-test-seeders/skills";
 
 const context = testContext();
 
@@ -383,6 +385,27 @@ describe("POST /api/zero/runs", () => {
       expect(job!.executionContext.disallowedTools).toEqual(
         expect.arrayContaining(["CronCreate", "CronList", "CronDelete"]),
       );
+    });
+
+    describe("custom skill volume injection", () => {
+      it("should inject custom skill volume into storage manifest for new run", async () => {
+        const skillName = uniqueId("test-skill");
+        await bindCustomSkillToAgent(agentId, skillName);
+        await createTestVolume(getCustomSkillStorageName(skillName));
+
+        const response = await postRun({ agentId, prompt: "Hello" });
+        expect(response.status).toBe(201);
+        const data = await response.json();
+
+        const job = await findTestRunnerJobEntry(data.runId);
+        expect(job).toBeDefined();
+        const storages = job!.executionContext.storageManifest!.storages;
+        const expectedMountPath = `/home/user/.claude/skills/${skillName}`;
+        const skillStorage = storages.find((s) => {
+          return s.mountPath === expectedMountPath;
+        });
+        expect(skillStorage).toBeDefined();
+      });
     });
   });
 
