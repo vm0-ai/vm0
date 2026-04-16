@@ -60,7 +60,7 @@ function mockActivityAPIs(runId: string) {
   server.use(
     http.get(`*/api/zero/logs/${runId}`, () => {
       return HttpResponse.json({
-        id: runId,
+        id: "00000000-0000-4000-a000-000000000001",
         displayName: "Test Agent",
         status: "completed",
         agentId: "agent-1",
@@ -70,17 +70,18 @@ function mockActivityAPIs(runId: string) {
         modelProvider: null,
         selectedModel: null,
         framework: null,
-        prompt: null,
+        scheduleId: null,
+        prompt: "",
         appendSystemPrompt: null,
         error: null,
         createdAt: "2026-04-10T10:00:00Z",
         startedAt: "2026-04-10T10:00:01Z",
         completedAt: "2026-04-10T10:00:05Z",
-        artifact: null,
+        artifact: { name: null, version: null },
       });
     }),
     http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
-      return HttpResponse.json({ events: [], hasMore: false });
+      return HttpResponse.json({ events: [], hasMore: false, framework: "unknown" });
     }),
   );
 }
