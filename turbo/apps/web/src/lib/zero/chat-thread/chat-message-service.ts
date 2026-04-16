@@ -1,5 +1,6 @@
 import { eq, asc, desc, and, isNotNull, isNull } from "drizzle-orm";
 import { chatMessages } from "../../../db/schema/chat-message";
+import { chatThreads } from "../../../db/schema/chat-thread";
 import { agentRuns } from "../../../db/schema/agent-run";
 
 /**
@@ -72,21 +73,25 @@ export async function insertAssistantEventMessages(
 }
 
 /**
- * Resolve the chat_thread_id for a run from its placeholder assistant row.
- * Returns null when the run is not tied to a chat thread (e.g., non-chat
- * triggers like cron/schedule), so event consumers can silently skip it.
+ * Resolve the chat_thread_id and owner user_id for a run from its placeholder
+ * assistant row. Returns null when the run is not tied to a chat thread (e.g.,
+ * non-chat triggers like cron/schedule), so event consumers can silently skip it.
  */
 export async function getChatThreadIdForRun(
   runId: string,
-): Promise<string | null> {
+): Promise<{ chatThreadId: string; userId: string } | null> {
   const [row] = await globalThis.services.db
-    .select({ chatThreadId: chatMessages.chatThreadId })
+    .select({
+      chatThreadId: chatMessages.chatThreadId,
+      userId: chatThreads.userId,
+    })
     .from(chatMessages)
+    .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
     .where(
       and(eq(chatMessages.runId, runId), eq(chatMessages.role, "assistant")),
     )
     .limit(1);
-  return row?.chatThreadId ?? null;
+  return row ?? null;
 }
 
 /**
