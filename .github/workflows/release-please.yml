@@ -855,6 +855,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: aarch64-musl-release
+          save-if: false
+
       - name: Install Python3 and Ansible
         run: |
           rm -rf /var/lib/apt/lists/* && apt-get update && apt-get install -y python3 python3-pip
