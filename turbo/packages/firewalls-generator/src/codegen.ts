@@ -194,6 +194,49 @@ export function renderDefaultAllowed(
   return lines;
 }
 
+// ── Categories ──────────────────────────────────────────────────────────
+
+export interface CategoryConfig {
+  /** Permission name → category label (e.g. "Read", "Write", "Admin"). */
+  categories: Record<string, string>;
+  /** Category display order (first = top of list). */
+  displayOrder: string[];
+}
+
+/**
+ * Render a categories export as a typed const object.
+ * Exhaustiveness is enforced at compile time via
+ * `Record<PermissionNamesOf<typeof xxxFirewall>, string>`.
+ *
+ * @param varName - Export variable name (e.g. "slackCategories")
+ * @param firewallVar - The firewall config variable for type checking
+ * @param config - Category mapping and display order
+ */
+export function renderCategories(
+  varName: string,
+  firewallVar: string,
+  config: CategoryConfig,
+): string[] {
+  const lines: string[] = [
+    "",
+    `export const ${varName}: {`,
+    `  categories: Record<PermissionNamesOf<typeof ${firewallVar}>, string>;`,
+    "  displayOrder: readonly string[];",
+    "} = {",
+    "  categories: {",
+  ];
+  for (const [name, category] of Object.entries(config.categories)) {
+    lines.push(`    "${escapeString(name)}": "${escapeString(category)}",`);
+  }
+  lines.push("  },");
+  lines.push(
+    `  displayOrder: [${config.displayOrder.map((c) => `"${escapeString(c)}"`).join(", ")}],`,
+  );
+  lines.push("};");
+  lines.push("");
+  return lines;
+}
+
 // ── File I/O ─────────────────────────────────────────────────────────────
 
 /**

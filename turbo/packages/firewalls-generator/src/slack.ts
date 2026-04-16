@@ -20,6 +20,7 @@
 import {
   listCachedSpecs,
   logStats,
+  renderCategories,
   renderDefaultAllowed,
   renderPermissions,
   sanitizeAndSortRules,
@@ -171,6 +172,120 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   openid: "View information about a user's identity (Sign in with Slack)",
   "tokens.basic": "Execute methods with no required scope",
 };
+
+// ── Scope categories (from slack.categories.ts, now generated) ──────────
+
+const SCOPE_CATEGORIES: Record<string, string> = {
+  // Admin (25)
+  admin: "Admin",
+  "admin.analytics:read": "Admin",
+  "admin.app_activities:read": "Admin",
+  "admin.apps:read": "Admin",
+  "admin.apps:write": "Admin",
+  "admin.barriers:read": "Admin",
+  "admin.barriers:write": "Admin",
+  "admin.conversations:manage_objects": "Admin",
+  "admin.conversations:read": "Admin",
+  "admin.conversations:write": "Admin",
+  "admin.invites:read": "Admin",
+  "admin.invites:write": "Admin",
+  "admin.roles:read": "Admin",
+  "admin.roles:write": "Admin",
+  "admin.teams:read": "Admin",
+  "admin.teams:write": "Admin",
+  "admin.usergroups:read": "Admin",
+  "admin.usergroups:write": "Admin",
+  "admin.users:read": "Admin",
+  "admin.users:write": "Admin",
+  "admin.workflows:read": "Admin",
+  "admin.workflows:write": "Admin",
+  "channels:manage": "Admin",
+  "conversations.connect:manage": "Admin",
+  "team.billing:read": "Admin",
+
+  // Read (34)
+  "bookmarks:read": "Read",
+  "calls:read": "Read",
+  "canvases:read": "Read",
+  "channels:history": "Read",
+  "channels:read": "Read",
+  "datastore:read": "Read",
+  "dnd:read": "Read",
+  "emoji:read": "Read",
+  "files:read": "Read",
+  "groups:history": "Read",
+  "groups:read": "Read",
+  "hosting:read": "Read",
+  "identity:read": "Read",
+  "im:history": "Read",
+  "im:read": "Read",
+  "lists:read": "Read",
+  "mpim:history": "Read",
+  "mpim:read": "Read",
+  "pins:read": "Read",
+  "reactions:read": "Read",
+  "reminders:read": "Read",
+  "remote_files:read": "Read",
+  "search:read": "Read",
+  "search:read.files": "Read",
+  "search:read.im": "Read",
+  "search:read.mpim": "Read",
+  "search:read.private": "Read",
+  "search:read.public": "Read",
+  "search:read.users": "Read",
+  "stars:read": "Read",
+  "team.preferences:read": "Read",
+  "team:read": "Read",
+  "triggers:read": "Read",
+  "usergroups:read": "Read",
+  "users.profile:read": "Read",
+  "users:read": "Read",
+  "users:read.email": "Read",
+
+  // Write (22)
+  "bookmarks:write": "Write",
+  "calls:write": "Write",
+  "canvases:write": "Write",
+  "channels:write": "Write",
+  "channels:write.invites": "Write",
+  "channels:write.topic": "Write",
+  "datastore:write": "Write",
+  "dnd:write": "Write",
+  "files:write": "Send",
+  "groups:write": "Write",
+  "groups:write.invites": "Write",
+  "groups:write.topic": "Write",
+  "im:write.topic": "Write",
+  "links:write": "Write",
+  "lists:write": "Write",
+  "pins:write": "Write",
+  "reactions:write": "Write",
+  "reminders:write": "Write",
+  "remote_files:write": "Write",
+  "stars:write": "Write",
+  "triggers:write": "Write",
+  "usergroups:write": "Write",
+  "users.profile:write": "Write",
+  "users:write": "Write",
+
+  // Send (8)
+  "assistant:write": "Send",
+  "chat:write": "Send",
+  "conversations.connect:write": "Send",
+  "im:write": "Send",
+  "mpim:write": "Send",
+  "mpim:write.topic": "Send",
+  "remote_files:share": "Send",
+
+  // Misc (5)
+  "channels:join": "Misc",
+  client: "Misc",
+  no_scopes_required: "Misc",
+  openid: "Misc",
+  "tokens.basic": "Misc",
+};
+
+const CATEGORY_ORDER = ["Read", "Write", "Send", "Admin", "Misc"];
 
 // ── Data loading ─────────────────────────────────────────────────────────
 
@@ -351,6 +466,26 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
       "slackFirewall",
       DEFAULT_ALLOWED,
     ),
+  );
+
+  // Build category map from generated permissions (sorted by permission name)
+  const categoryMap: Record<string, string> = {};
+  for (const perm of permissions) {
+    const cat = SCOPE_CATEGORIES[perm.name];
+    if (cat) {
+      categoryMap[perm.name] = cat;
+    }
+  }
+  // files:read appears on both apis — ensure it's in the map
+  if (!categoryMap["files:read"] && SCOPE_CATEGORIES["files:read"]) {
+    categoryMap["files:read"] = SCOPE_CATEGORIES["files:read"];
+  }
+
+  lines.push(
+    ...renderCategories("slackCategories", "slackFirewall", {
+      categories: categoryMap,
+      displayOrder: CATEGORY_ORDER,
+    }),
   );
 
   return lines.join("\n");
