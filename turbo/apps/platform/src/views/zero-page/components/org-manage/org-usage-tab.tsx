@@ -3,7 +3,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { FeatureSwitchKey, type OrgMember, type MemberUsage } from "@vm0/core";
 import { IconUsers } from "@tabler/icons-react";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
-import { Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
@@ -76,12 +76,18 @@ function InlineCapInput({ member }: { member: MemberUsage }) {
   const [loadable, doCommit] = useLoadableSet(inlineCapCommit$);
   const saving = loadable.state === "loading";
 
+  // Determine if value has changed from the saved state
+  const savedValue = member.creditCap !== null ? String(member.creditCap) : "";
+  const isDirty = capValues.has(member.userId) && value !== savedValue;
+
   const commit = () => {
     const trimmed = value.trim();
-    const cap = trimmed === "" ? null : Number(trimmed);
-    if (cap !== null && (!Number.isInteger(cap) || cap <= 0)) {
+    // 0 or empty → no limit (null)
+    const num = trimmed === "" ? 0 : Number(trimmed);
+    if (!Number.isInteger(num) || num < 0) {
       return;
     }
+    const cap = num === 0 ? null : num;
 
     detach(
       doCommit(
@@ -99,25 +105,41 @@ function InlineCapInput({ member }: { member: MemberUsage }) {
   };
 
   return (
-    <Input
-      type="number"
-      min={1}
-      step={1}
-      placeholder="No limit"
-      value={value}
-      onChange={(e) => {
-        return setCapValue(member.userId, e.target.value);
-      }}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          commit();
-          e.currentTarget.blur();
-        }
-      }}
-      disabled={saving}
-      className="h-8 w-full text-[13px] tabular-nums placeholder:text-xs"
-    />
+    <div className="flex items-center gap-1">
+      <Input
+        type="number"
+        min={0}
+        step={1}
+        placeholder="No limit"
+        value={value}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v !== "" && Number(v) < 0) {
+            return;
+          }
+          setCapValue(member.userId, v);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            commit();
+            e.currentTarget.blur();
+          }
+        }}
+        disabled={saving}
+        className="h-8 w-full text-[13px] tabular-nums placeholder:text-xs"
+      />
+      {isDirty && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 shrink-0 px-2 text-xs"
+          disabled={saving}
+          onClick={commit}
+        >
+          {saving ? "..." : "Save"}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -260,7 +282,7 @@ function MembersTable({
   return (
     <div className="overflow-hidden rounded-xl bg-card zero-border">
       {/* Header */}
-      <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
+      <div className="grid grid-cols-[1fr_7rem_6rem_8.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
         <span>Member</span>
         <span>Used</span>
         <span>Remaining</span>
@@ -279,7 +301,7 @@ function MembersTable({
         return (
           <div key={member.userId}>
             <div className="h-0 zero-border-t mx-5" />
-            <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-3">
+            <div className="grid grid-cols-[1fr_7rem_6rem_8.5rem] gap-x-4 items-center px-5 py-3">
               <div className="flex items-center gap-3 min-w-0">
                 <MemberAvatar
                   imageUrl={orgMember?.imageUrl ?? ""}

@@ -1,5 +1,6 @@
 import { test, expect } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -197,7 +198,8 @@ test("redirects non-admins to general tab when usage tab is requested", async ()
 });
 
 // ORG-I-057
-test("credit cap input accepts value and updates on blur", async () => {
+test("credit cap input accepts value and saves via Save button", async () => {
+  const user = userEvent.setup();
   setMockBillingStatus({
     tier: "pro",
     credits: 20_000,
@@ -222,7 +224,8 @@ test("credit cap input accepts value and updates on blur", async () => {
   });
   const capInput = screen.getByRole("spinbutton");
   await fill(capInput, "5000");
-  capInput.blur();
+  const saveButton = screen.getByRole("button", { name: "Save" });
+  await user.click(saveButton);
   await waitFor(() => {
     expect(capturedCap).toBe(5000);
   });

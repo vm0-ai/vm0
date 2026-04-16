@@ -273,11 +273,12 @@ const handleBillingRedirect$ = command(() => {
   window.history.replaceState(null, "", url.toString());
 
   // Defer toast until Toaster component is mounted
-  if (billing === "success") {
+  if (billing === "pro" || billing === "team") {
+    const label = billing === "pro" ? "Pro" : "Team";
     window.addEventListener(
       "load",
       () => {
-        toast.success("Upgraded to Max! Your credits have been added.");
+        toast.success(`Upgraded to ${label}! Your credits have been added.`);
       },
       { once: true },
     );

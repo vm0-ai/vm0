@@ -91,7 +91,7 @@ export const startCheckout$ = command(
   ) => {
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
-    successUrl.searchParams.set("billing", "success");
+    successUrl.searchParams.set("billing", tier);
     const cancelUrl = new URL(currentUrl);
     cancelUrl.searchParams.set("billing", "canceled");
 

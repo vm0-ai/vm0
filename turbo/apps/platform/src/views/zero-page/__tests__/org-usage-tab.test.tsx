@@ -208,9 +208,11 @@ describe("org usage tab - inline cap editing", () => {
     const capInput = screen.getByRole("spinbutton");
     expect(capInput).toBeInTheDocument();
 
-    // Type a cap value and commit by blurring
+    // Type a cap value and click Save
     await fill(capInput, "5000");
-    capInput.blur();
+
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    await userEvent.setup().click(saveButton);
 
     // Wait for save to complete
     await waitFor(() => {
