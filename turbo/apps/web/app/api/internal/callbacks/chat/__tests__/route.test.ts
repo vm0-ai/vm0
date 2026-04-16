@@ -264,10 +264,10 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // The placeholder is dropped when event-backed rows exist, leaving
-      // exactly: 1 user + 1 event-backed assistant row.
+      // chat_messages is append-only: the placeholder stays, and event-backed
+      // rows are added alongside it — 1 user + 1 placeholder + 1 event-backed.
       const chatMessages = await getTestChatMessagesByThread(threadId);
-      expect(chatMessages).toHaveLength(2);
+      expect(chatMessages).toHaveLength(3);
 
       const userMsg = chatMessages.find((m) => {
         return m.role === "user";
@@ -275,12 +275,12 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("test prompt");
 
-      const assistantMsg = chatMessages.find((m) => {
-        return m.role === "assistant";
+      const eventMsg = chatMessages.find((m) => {
+        return m.role === "assistant" && m.sequenceNumber !== null;
       });
-      expect(assistantMsg).toBeDefined();
-      expect(assistantMsg!.content).toBe("Done. Created 3 files.");
-      expect(assistantMsg!.runId).toBe(runId);
+      expect(eventMsg).toBeDefined();
+      expect(eventMsg!.content).toBe("Done. Created 3 files.");
+      expect(eventMsg!.runId).toBe(runId);
     });
 
     it("should not duplicate assistant messages when callback runs concurrently", async () => {
@@ -338,16 +338,16 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(r2.status).toBe(200);
 
       const chatMessages = await getTestChatMessagesByThread(threadId);
-      // Exactly: 1 user + 2 assistant = 3 rows (placeholder dropped, no dups).
-      expect(chatMessages).toHaveLength(3);
-      const assistantContents = chatMessages
+      // append-only: 1 user + 1 placeholder (null) + 2 event-backed = 4 rows, no dups.
+      expect(chatMessages).toHaveLength(4);
+      const eventContents = chatMessages
         .filter((m) => {
-          return m.role === "assistant";
+          return m.role === "assistant" && m.sequenceNumber !== null;
         })
         .map((m) => {
           return m.content;
         });
-      expect(assistantContents).toEqual([
+      expect(eventContents).toEqual([
         "Let me start by fetching the teams.",
         "Linear is not connected. Please connect it.",
       ]);
@@ -411,9 +411,9 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // Verify chat_messages table: user msg + assistant msg with error
+      // append-only: 1 user + 1 placeholder (null) + 1 new error row = 3 rows.
       const chatMessages = await getTestChatMessagesByThread(threadId);
-      expect(chatMessages).toHaveLength(2);
+      expect(chatMessages).toHaveLength(3);
 
       const userMsg = chatMessages.find((m) => {
         return m.role === "user";
@@ -421,13 +421,13 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("test prompt");
 
-      const assistantMsg = chatMessages.find((m) => {
-        return m.role === "assistant";
+      const errorMsg = chatMessages.find((m) => {
+        return m.role === "assistant" && m.error !== null;
       });
-      expect(assistantMsg).toBeDefined();
-      expect(assistantMsg!.content).toBe("Agent crashed");
-      expect(assistantMsg!.runId).toBe(runId);
-      expect(assistantMsg!.error).toBe("Agent crashed");
+      expect(errorMsg).toBeDefined();
+      expect(errorMsg!.content).toBe("Agent crashed");
+      expect(errorMsg!.runId).toBe(runId);
+      expect(errorMsg!.error).toBe("Agent crashed");
     });
 
     it("should not derive sessionId on failed run without agentSessionId", async () => {

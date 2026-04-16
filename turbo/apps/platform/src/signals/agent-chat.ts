@@ -45,14 +45,6 @@ export const currentChatThreadId$ = computed((get): string | null => {
   return typeof threadId === "string" ? threadId : null;
 });
 
-const internalReloadCurrentThread$ = state(0);
-
-export const reloadCurrentChatThread$ = command(({ set }) => {
-  set(internalReloadCurrentThread$, (v) => {
-    return v + 1;
-  });
-});
-
 export interface ChatThread {
   id: string;
   agentId?: string;
@@ -73,7 +65,6 @@ export interface ChatThread {
 
 export const currentChatThread$ = computed(
   async (get): Promise<ChatThread | null> => {
-    get(internalReloadCurrentThread$);
     const threadId = get(currentChatThreadId$);
     if (!threadId) {
       return null;
