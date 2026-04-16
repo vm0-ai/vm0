@@ -261,7 +261,7 @@ function PricingPage({
       return;
     }
     const newTab = e.metaKey || e.ctrlKey;
-    detach(checkout(planTier, pageSignal, newTab), Reason.DomCallback);
+    detach(checkout(planTier, newTab, pageSignal), Reason.DomCallback);
   };
 
   return (

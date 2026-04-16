@@ -432,7 +432,7 @@ export function BillingDialog() {
   const handleAction = (e: React.MouseEvent) => {
     if (isUpgrade && (selectedTier === "pro" || selectedTier === "team")) {
       const newTab = e.metaKey || e.ctrlKey;
-      detach(checkout(selectedTier, pageSignal, newTab), Reason.DomCallback);
+      detach(checkout(selectedTier, newTab, pageSignal), Reason.DomCallback);
     } else if (isDowngrade) {
       openDowngrade();
     }

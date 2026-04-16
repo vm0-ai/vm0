@@ -86,8 +86,8 @@ export const startCheckout$ = command(
   async (
     { get },
     tier: "pro" | "team",
+    newTab: boolean,
     _signal: AbortSignal,
-    newTab?: boolean,
   ) => {
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
