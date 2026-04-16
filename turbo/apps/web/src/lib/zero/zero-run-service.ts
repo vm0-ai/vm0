@@ -6,6 +6,10 @@ import {
   isFeatureEnabled,
   FeatureSwitchKey,
   getCustomSkillStorageName,
+  getSkillStorageName,
+  getEligibleConnectorTypes,
+  resolveSkillRef,
+  parseGitHubTreeUrl,
   type TriggerSource,
   type FirewallPolicies,
   type ConnectorType,
@@ -64,6 +68,7 @@ import {
 } from "./user/user-preferences-service";
 import { getCachedUser } from "../auth/user-cache-service";
 import { buildUserInfo, type UserInfoOptions } from "./integration-prompt";
+import { SEED_SKILLS } from "./seed-skills";
 import { logger } from "../shared/logger";
 
 const log = logger("service:zero-run");
@@ -231,6 +236,33 @@ interface ZeroRunRecordResult {
 }
 
 /**
+ * Compute system skill additional volumes from SEED_SKILLS + eligible connectors.
+ * Mirrors the skill resolution logic in buildComposeContent() but produces
+ * AdditionalVolume-shaped objects instead of compose skill URLs.
+ */
+function buildSystemSkillVolumes(): Array<{
+  name: string;
+  mountPath: string;
+  system: boolean;
+}> {
+  const allSkillNames = [
+    ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
+  ];
+  return allSkillNames.flatMap((skillName) => {
+    const url = resolveSkillRef(skillName);
+    const parsed = parseGitHubTreeUrl(url);
+    if (!parsed) return [];
+    return [
+      {
+        name: getSkillStorageName(parsed.fullPath),
+        mountPath: `/home/user/.claude/skills/${parsed.skillName}`,
+        system: true,
+      },
+    ];
+  });
+}
+
+/**
  * Create a zero run record with pre-flight checks but without dispatching.
  *
  * Handles agent metadata, compose resolution, org data, pre-flight checks
@@ -359,13 +391,16 @@ export async function createZeroRunRecord(
   appendSystemPrompt = systemParts.join("\n\n");
 
   // 2. Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
-  //    Inject custom skill volumes (agent-level, needed on every run).
-  const skillVolumes = (row?.customSkills ?? []).map((name) => {
+  //    Inject system + custom skill volumes (needed on every run).
+  const systemSkillVolumes = buildSystemSkillVolumes();
+  const customSkillVolumes = (row?.customSkills ?? []).map((name) => {
     return {
       name: getCustomSkillStorageName(name),
       mountPath: `/home/user/.claude/skills/${name}`,
     };
   });
+  // System skills first, custom skills after (custom overrides system at same mount path)
+  const skillVolumes = [...systemSkillVolumes, ...customSkillVolumes];
 
   const runParams: CreateRunParams = {
     userId: params.userId,
