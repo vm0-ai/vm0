@@ -6,6 +6,7 @@ import {
   getModels,
   getDefaultModel,
   getEnvironmentMapping,
+  MODEL_PROVIDER_FIREWALL_CONFIGS,
   type ModelProviderType,
 } from "../model-providers";
 
@@ -128,5 +129,27 @@ describe("model selection for Anthropic-native providers", () => {
   it("Anthropic-native providers have no ANTHROPIC_BASE_URL (use default)", () => {
     expect(getProviderBaseUrl("anthropic-api-key")).toBeNull();
     expect(getProviderBaseUrl("claude-code-oauth-token")).toBeNull();
+  });
+});
+
+describe("Anthropic firewall base URL scope (#9560)", () => {
+  it.each(["anthropic-api-key", "claude-code-oauth-token"] as const)(
+    "%s scopes firewall to /v1/messages path prefix",
+    (type) => {
+      const config = MODEL_PROVIDER_FIREWALL_CONFIGS[type];
+      expect(config.apis).toHaveLength(1);
+      expect(config.apis[0]!.base).toBe(
+        "https://api.anthropic.com/v1/messages",
+      );
+    },
+  );
+
+  it("third-party providers are not affected by Anthropic scoping", () => {
+    expect(
+      MODEL_PROVIDER_FIREWALL_CONFIGS["openrouter-api-key"].apis[0]!.base,
+    ).toBe("https://openrouter.ai/api");
+    expect(
+      MODEL_PROVIDER_FIREWALL_CONFIGS["moonshot-api-key"].apis[0]!.base,
+    ).toBe("https://api.moonshot.ai/anthropic");
   });
 });

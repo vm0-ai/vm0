@@ -379,10 +379,17 @@ export function getSelectableProviderTypes(): ModelProviderType[] {
  * Used to auto-generate firewall entries that protect API tokens from sandbox exposure.
  * Excluded: aws-bedrock (dynamic region URLs + SigV4), azure-foundry (dynamic resource URLs).
  *
- * Base URL is derived from environmentMapping.ANTHROPIC_BASE_URL (or https://api.anthropic.com
- * for providers without environmentMapping like anthropic-api-key and claude-code-oauth-token).
+ * Base URL is derived from environmentMapping.ANTHROPIC_BASE_URL (or
+ * https://api.anthropic.com/v1/messages for providers without environmentMapping like
+ * anthropic-api-key and claude-code-oauth-token).
+ *
+ * Scoped to /v1/messages (not the bare domain) so the vm0-managed API key is only
+ * injected on LLM inference paths — not on /v1/organizations, /v1/usage*, or other
+ * Anthropic admin endpoints. The prefix covers every endpoint Claude Code actually
+ * hits per Anthropic's LLM gateway requirements (/v1/messages and
+ * /v1/messages/count_tokens). See #9560.
  */
-const ANTHROPIC_API_BASE = "https://api.anthropic.com";
+const ANTHROPIC_API_BASE = "https://api.anthropic.com/v1/messages";
 
 function getFirewallBaseUrl(type: ModelProviderType): string {
   return getEnvironmentMapping(type)?.ANTHROPIC_BASE_URL ?? ANTHROPIC_API_BASE;
