@@ -65,7 +65,7 @@ function buildContinueFromScheduleSystemPrompt(
 function buildAppendSystemPrompt(
   continueFromSchedulePrompt: string | undefined,
   attachFiles:
-    | Array<{ id: string; filename: string; contentType: string }>
+    | { id: string; filename: string; contentType: string }[]
     | undefined,
 ): string {
   const parts = [buildWebChatPrompt()];
@@ -76,6 +76,72 @@ function buildAppendSystemPrompt(
     parts.push(buildWebAttachFilesPrompt(attachFiles));
   }
   return parts.join("\n\n");
+}
+
+interface ResolvedThread {
+  threadId: string;
+  sessionId: string | undefined;
+  previousContext: { role: "user" | "assistant"; content: string }[];
+  continueFromSchedulePrompt: string | undefined;
+}
+
+/**
+ * Resolve an existing thread or create a new one.
+ * Returns thread metadata needed for run creation and title generation.
+ */
+async function resolveThread(
+  userId: string,
+  agentId: string,
+  existingThreadId: string | undefined,
+): Promise<ResolvedThread> {
+  if (!existingThreadId) {
+    const thread = await createChatThread(userId, agentId);
+    return {
+      threadId: thread.id,
+      sessionId: undefined,
+      previousContext: [],
+      continueFromSchedulePrompt: undefined,
+    };
+  }
+
+  const thread = await getChatThread(existingThreadId, userId);
+  const sessionId = await getLatestSessionIdForThread(thread.id);
+  const messages = await getMessagesByThreadId(thread.id);
+  const previousContext = messages
+    .filter((m) => {
+      return m.content !== null;
+    })
+    .slice(-10)
+    .map((m) => {
+      return {
+        role: m.role as "user" | "assistant",
+        content: m.content as string,
+      };
+    });
+
+  let continueFromSchedulePrompt: string | undefined;
+  if (thread.sourceScheduleRunId && messages.length === 0) {
+    const [sourceSchedule] = await globalThis.services.db
+      .select({ name: zeroAgentSchedules.name })
+      .from(zeroRuns)
+      .innerJoin(
+        zeroAgentSchedules,
+        eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
+      )
+      .where(eq(zeroRuns.id, thread.sourceScheduleRunId))
+      .limit(1);
+    continueFromSchedulePrompt = buildContinueFromScheduleSystemPrompt(
+      thread.sourceScheduleRunId,
+      sourceSchedule?.name ?? null,
+    );
+  }
+
+  return {
+    threadId: thread.id,
+    sessionId,
+    previousContext,
+    continueFromSchedulePrompt,
+  };
 }
 
 const router = tsr.router(chatMessagesContract, {
@@ -103,75 +169,27 @@ const router = tsr.router(chatMessagesContract, {
       };
     }
 
-    let threadId: string | undefined;
-
     try {
-      // Resolve or create thread
-      let sessionId: string | undefined;
-      let previousContext: Array<{
-        role: "user" | "assistant";
-        content: string;
-      }> = [];
-      // Seeded once on the first run of a thread started from a scheduled run.
-      // Subsequent runs inherit the session context so we don't re-apply it.
-      let continueFromSchedulePrompt: string | undefined;
-
-      if (body.threadId) {
-        const thread = await getChatThread(body.threadId, authCtx.userId);
-        threadId = thread.id;
-        // Derive sessionId from latest completed run (for runner continuity)
-        sessionId = await getLatestSessionIdForThread(thread.id);
-        // Build previous context from chat_messages for title generation
-        const messages = await getMessagesByThreadId(thread.id);
-        previousContext = messages
-          .filter((m) => {
-            return m.content !== null;
-          })
-          .slice(-10)
-          .map((m) => {
-            return {
-              role: m.role as "user" | "assistant",
-              content: m.content as string,
-            };
-          });
-        if (thread.sourceScheduleRunId && messages.length === 0) {
-          const [sourceSchedule] = await globalThis.services.db
-            .select({ name: zeroAgentSchedules.name })
-            .from(zeroRuns)
-            .innerJoin(
-              zeroAgentSchedules,
-              eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
-            )
-            .where(eq(zeroRuns.id, thread.sourceScheduleRunId))
-            .limit(1);
-          continueFromSchedulePrompt = buildContinueFromScheduleSystemPrompt(
-            thread.sourceScheduleRunId,
-            sourceSchedule?.name ?? null,
-          );
-        }
-      } else {
-        const thread = await createChatThread(authCtx.userId, body.agentId);
-        threadId = thread.id;
-        sessionId = undefined;
-      }
+      const {
+        threadId,
+        sessionId,
+        previousContext,
+        continueFromSchedulePrompt,
+      } = await resolveThread(authCtx.userId, body.agentId, body.threadId);
 
       // Only generate title when prompt has actual user text
       if (body.hasTextContent !== false) {
-        const capturedThreadId = threadId;
         void generateChatTitle(
           body.prompt,
           previousContext.length > 0 ? previousContext : undefined,
         )
           .then((title) => {
             if (title) {
-              return updateChatThreadTitle(capturedThreadId, title);
+              return updateChatThreadTitle(threadId, title);
             }
           })
           .catch((err: unknown) => {
-            log.warn("Chat title generation failed", {
-              threadId: capturedThreadId,
-              err,
-            });
+            log.warn("Chat title generation failed", { threadId, err });
           });
       }
 

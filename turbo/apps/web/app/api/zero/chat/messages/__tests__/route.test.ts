@@ -8,6 +8,7 @@ import {
   findTestCallbacksByRunId,
   findTestRunRecord,
   getTestRun,
+  getTestChatMessagesByThread,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { POST as createChatThreadPOST } from "../../../chat-threads/route";
@@ -451,6 +452,153 @@ describe("POST /api/zero/chat/messages", () => {
           null,
         );
       });
+    });
+
+    it("should store attach file IDs in chat_messages and include attach files prompt in system prompt", async () => {
+      const attachFiles = [
+        {
+          id: "file-uuid-1",
+          filename: "report.pdf",
+          contentType: "application/pdf",
+          size: 2048,
+        },
+        {
+          id: "file-uuid-2",
+          filename: "photo.png",
+          contentType: "image/png",
+          size: 4096,
+        },
+      ];
+
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "Check these files",
+            attachFiles,
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+
+      // Verify file IDs are persisted in chat_messages
+      const messages = await getTestChatMessagesByThread(data.threadId);
+      const userMsg = messages.find((m) => {
+        return m.role === "user";
+      });
+      expect(userMsg).toBeDefined();
+      expect(userMsg!.attachFiles).toEqual(["file-uuid-1", "file-uuid-2"]);
+
+      // Verify system prompt includes attach files download instructions
+      const run = await getTestRun(data.runId);
+      expect(run.appendSystemPrompt).toContain("Web Attached Files");
+      expect(run.appendSystemPrompt).toContain(
+        "zero web download-file file-uuid-1",
+      );
+      expect(run.appendSystemPrompt).toContain(
+        "zero web download-file file-uuid-2",
+      );
+      expect(run.appendSystemPrompt).toContain("report.pdf");
+      expect(run.appendSystemPrompt).toContain("photo.png");
+    });
+
+    it("should include video-specific ffmpeg instructions for video attachments", async () => {
+      const attachFiles = [
+        {
+          id: "video-uuid-1",
+          filename: "demo.mp4",
+          contentType: "video/mp4",
+          size: 10240,
+        },
+      ];
+
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "Review this video",
+            attachFiles,
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+
+      const run = await getTestRun(data.runId);
+      expect(run.appendSystemPrompt).toContain("ffmpeg");
+      expect(run.appendSystemPrompt).toContain("Extract frames");
+    });
+
+    it("should resolve attach files with presigned URLs in thread detail", async () => {
+      // Create a thread with a message containing attach files via the API
+      const attachFiles = [
+        {
+          id: "resolve-uuid-1",
+          filename: "data.csv",
+          contentType: "text/csv",
+          size: 512,
+        },
+      ];
+
+      const sendResponse = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "Analyze this data",
+            attachFiles,
+          }),
+        }),
+      );
+      expect(sendResponse.status).toBe(201);
+      const sendData = await sendResponse.json();
+
+      // Mock S3 to return the file for resolution
+      context.mocks.s3.listS3Objects.mockImplementation(
+        async (_bucket: string, prefix: string) => {
+          if (prefix.includes("resolve-uuid-1")) {
+            return [
+              {
+                key: `uploads/${user.userId}/resolve-uuid-1/data.csv`,
+                size: 512,
+              },
+            ];
+          }
+          return [];
+        },
+      );
+      context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+        "https://presigned-url/data.csv",
+      );
+
+      // Fetch thread detail which resolves attach files
+      const { GET } = await import("../../../chat-threads/[id]/route");
+      const threadResponse = await GET(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads/${sendData.threadId}`,
+          { method: "GET" },
+        ),
+      );
+      expect(threadResponse.status).toBe(200);
+      const threadData = await threadResponse.json();
+
+      const userMsg = threadData.chatMessages.find((m: { role: string }) => {
+        return m.role === "user";
+      });
+      expect(userMsg).toBeDefined();
+      expect(userMsg.attachFiles).toBeDefined();
+      expect(userMsg.attachFiles).toHaveLength(1);
+      expect(userMsg.attachFiles[0].id).toBe("resolve-uuid-1");
+      expect(userMsg.attachFiles[0].filename).toBe("data.csv");
+      expect(userMsg.attachFiles[0].url).toBe("https://presigned-url/data.csv");
     });
   });
 });

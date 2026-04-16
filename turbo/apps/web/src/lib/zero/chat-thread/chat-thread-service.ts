@@ -6,9 +6,14 @@ import {
   getMessagesByThreadIdSince,
   getLatestSessionIdForThread,
 } from "./chat-message-service";
-import { type PersistedAttachment, persistedAttachmentSchema } from "@vm0/core";
+import {
+  type PersistedAttachment,
+  type ResolvedAttachFile,
+  persistedAttachmentSchema,
+} from "@vm0/core";
 import { generatePresignedUrl, listS3Objects } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
+import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";
 
 /**
  * Create a new chat thread.
@@ -168,14 +173,6 @@ export async function updateChatThreadTitle(
     .where(eq(chatThreads.id, threadId));
 }
 
-interface ResolvedAttachFile {
-  id: string;
-  filename: string;
-  contentType: string;
-  size: number;
-  url: string;
-}
-
 type ChatMessage = {
   role: "user" | "assistant";
   content: string | null;
@@ -184,20 +181,6 @@ type ChatMessage = {
   status?: string;
   attachFiles?: ResolvedAttachFile[];
   createdAt: string;
-};
-
-const EXT_MIMETYPE_MAP: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  svg: "image/svg+xml",
-  pdf: "application/pdf",
-  txt: "text/plain",
-  csv: "text/csv",
-  md: "text/markdown",
-  json: "application/json",
 };
 
 /**

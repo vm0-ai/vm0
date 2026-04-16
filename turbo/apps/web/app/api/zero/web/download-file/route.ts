@@ -7,6 +7,7 @@ import {
 } from "../../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
+import { inferMimetype } from "../../../../../src/lib/shared/mimetype";
 
 const log = logger("api:zero:web:download-file");
 
@@ -16,26 +17,6 @@ function errorResponse(
   code: string,
 ): NextResponse {
   return NextResponse.json({ error: { message, code } }, { status });
-}
-
-const EXT_MIMETYPE_MAP: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  svg: "image/svg+xml",
-  pdf: "application/pdf",
-  txt: "text/plain",
-  csv: "text/csv",
-  md: "text/markdown",
-  json: "application/json",
-};
-
-function inferMimetype(filename: string): string {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  const mapped = ext ? EXT_MIMETYPE_MAP[ext] : undefined;
-  return mapped ?? "application/octet-stream";
 }
 
 /**
