@@ -5,9 +5,9 @@ import { ShortcutHelpDialog } from "../shortcut-help-dialog.tsx";
 
 // MC-D-001 — ShortcutHelpDialog display and content
 
-describe("ShortcutHelpDialog", () => {
+describe("shortcutHelpDialog", () => {
   it("renders dialog title and description when open", () => {
-    render(<ShortcutHelpDialog open={true} onOpenChange={vi.fn()} />);
+    render(<ShortcutHelpDialog open onOpenChange={vi.fn()} />);
 
     expect(
       screen.getByRole("dialog", { name: /keyboard shortcuts/i }),
@@ -18,7 +18,7 @@ describe("ShortcutHelpDialog", () => {
   });
 
   it("renders all three shortcut sections", () => {
-    render(<ShortcutHelpDialog open={true} onOpenChange={vi.fn()} />);
+    render(<ShortcutHelpDialog open onOpenChange={vi.fn()} />);
 
     expect(screen.getByText("Global")).toBeInTheDocument();
     expect(screen.getByText("Task Card")).toBeInTheDocument();
@@ -26,7 +26,7 @@ describe("ShortcutHelpDialog", () => {
   });
 
   it("renders global shortcut labels", () => {
-    render(<ShortcutHelpDialog open={true} onOpenChange={vi.fn()} />);
+    render(<ShortcutHelpDialog open onOpenChange={vi.fn()} />);
 
     expect(screen.getByText("Show shortcuts")).toBeInTheDocument();
     expect(screen.getByText("Next task")).toBeInTheDocument();
@@ -37,14 +37,14 @@ describe("ShortcutHelpDialog", () => {
   });
 
   it("renders task card shortcut labels", () => {
-    render(<ShortcutHelpDialog open={true} onOpenChange={vi.fn()} />);
+    render(<ShortcutHelpDialog open onOpenChange={vi.fn()} />);
 
     expect(screen.getByText("Open task")).toBeInTheDocument();
     expect(screen.getByText("Toggle panel")).toBeInTheDocument();
   });
 
   it("renders task panel shortcut labels", () => {
-    render(<ShortcutHelpDialog open={true} onOpenChange={vi.fn()} />);
+    render(<ShortcutHelpDialog open onOpenChange={vi.fn()} />);
 
     expect(screen.getByText("Maximize / restore")).toBeInTheDocument();
     expect(screen.getByText("Back to task card")).toBeInTheDocument();
@@ -63,7 +63,7 @@ describe("ShortcutHelpDialog", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(<ShortcutHelpDialog open={true} onOpenChange={onOpenChange} />);
+    render(<ShortcutHelpDialog open onOpenChange={onOpenChange} />);
 
     const closeButton = screen.getByLabelText("Close");
     await user.click(closeButton);
