@@ -43,8 +43,14 @@ describe("activity line visibility while run is still running", () => {
       makeToolUseEvent("Bash", { command: "ls" }, 1),
       {
         sequenceNumber: 2,
-        eventType: "result",
-        eventData: { result: "Here is the first part of the answer." },
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [
+              { type: "text", text: "Here is the first part of the answer." },
+            ],
+          },
+        },
         createdAt: "2026-03-10T00:00:30Z",
       },
       makeToolUseEvent("Read", { path: "/tmp/data.txt" }, 3),
@@ -96,12 +102,16 @@ describe("activity line visibility while run is still running", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    // A result event arrives while run is still "running" — shown immediately via texts$
+    // An assistant text event arrives while run is still "running" — shown immediately via texts$
     ctrl.setEvents([
       {
         sequenceNumber: 1,
-        eventType: "result",
-        eventData: { result: "Intermediate result" },
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Intermediate result" }],
+          },
+        },
         createdAt: "2026-03-10T00:00:10Z",
       },
     ]);

@@ -218,12 +218,16 @@ describe("chat message activity line", () => {
       ],
     });
 
-    // Provide a result event while keeping the run status as "running"
+    // Provide an assistant text event while keeping the run status as "running"
     lifecycle.setEvents([
       {
         sequenceNumber: 1,
-        eventType: "result",
-        eventData: { result: "Here is the partial result" },
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Here is the partial result" }],
+          },
+        },
         createdAt: "2026-03-10T00:00:10Z",
       },
     ]);
@@ -262,15 +266,8 @@ describe("chat message activity line", () => {
       ],
     });
 
-    // Start with a result event while still running
-    lifecycle.setEvents([
-      {
-        sequenceNumber: 1,
-        eventType: "result",
-        eventData: { result: "Final answer" },
-        createdAt: "2026-03-10T00:00:10Z",
-      },
-    ]);
+    // Start with no events — text will appear when run completes
+    lifecycle.setEvents([]);
 
     detachedSetupPage({ context, path: "/chats/thread-activity-done" });
 
