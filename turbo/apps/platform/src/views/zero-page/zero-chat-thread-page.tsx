@@ -52,6 +52,7 @@ import type {
   ZeroChatMessage,
   UserChatMessage,
   AssistantChatMessage,
+  AssistantTextItem,
 } from "../../signals/chat-page/chat-message.ts";
 import {
   currentChatThreadSignals$,
@@ -644,21 +645,21 @@ function ReactiveRunContent({
   message: AssistantChatMessage;
   thread: ChatThreadSignals;
 }) {
-  const texts = useLastResolved(message.texts$!) ?? [];
-  const lastContent = texts[texts.length - 1] ?? "";
+  const items: AssistantTextItem[] = useLastResolved(message.texts$!) ?? [];
+  const lastContent = items[items.length - 1]?.text ?? "";
 
   return (
     <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="flex flex-col gap-3">
-          {texts.map((text) => {
+          {items.map((item) => {
             return (
               <div
-                key={text}
+                key={item.key}
                 className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words animate-in fade-in slide-in-from-bottom-1 duration-300"
               >
-                <Markdown source={text} />
+                <Markdown source={item.text} />
               </div>
             );
           })}
