@@ -133,6 +133,10 @@ pub struct FirewallAuth {
     /// When set, the proxy rewrites the request URL instead of injecting headers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
+    /// Optional query parameters with secret/var templates for query-param auth.
+    /// When set, the proxy injects resolved query params into the request URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Per-firewall grant configuration: which permissions are authorized and
@@ -398,6 +402,7 @@ mod tests {
                         .into_iter()
                         .collect(),
                     base: None,
+                    query: None,
                 },
                 permissions: Some(vec![FirewallPermission {
                     name: "metadata:read".into(),
@@ -424,6 +429,7 @@ mod tests {
         let auth = FirewallAuth {
             headers: HashMap::new(),
             base: None,
+            query: None,
         };
         let json = serde_json::to_value(&auth).unwrap();
         assert!(json.get("base").is_none());

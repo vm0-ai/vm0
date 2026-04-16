@@ -28,6 +28,7 @@ export const firewallApiSchema = z.object({
   auth: z.object({
     headers: z.record(z.string(), z.string()),
     base: z.string().optional(),
+    query: z.record(z.string(), z.string()).optional(),
   }),
   permissions: z.array(firewallPermissionSchema).optional(),
 });
@@ -215,6 +216,15 @@ export function extractSecretNamesFromApis(
     if (entry.auth.base) {
       for (const match of entry.auth.base.matchAll(AUTH_SECRET_PATTERN)) {
         names.add(match[1]!);
+      }
+    }
+    // Scan auth.query for secret references (query-param auth connectors).
+    // Only simple ${{ secrets.X }} — basic() makes no sense in query params.
+    if (entry.auth.query) {
+      for (const value of Object.values(entry.auth.query)) {
+        for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
+          names.add(match[1]!);
+        }
       }
     }
   }

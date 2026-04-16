@@ -30,6 +30,7 @@ def _make_http_flow(client_ip="10.200.0.1", host="api.github.com", port=443, pat
     flow.request.method = "GET"
     flow.request.content = b""
     flow.request.headers = {}
+    flow.request.query = {}
     flow.metadata = {"vm_run_id": "test-run"}
     flow.response = None
     return flow
@@ -1052,7 +1053,9 @@ class TestGetFirewallHeaders:
 
         assert headers["headers"] == mock_headers
         assert headers["cache_hit"] is False
-        mock_fetch.assert_called_once_with(encrypted, auth_templates, "tok-xyz", None, None, None)
+        mock_fetch.assert_called_once_with(
+            encrypted, auth_templates, "tok-xyz", None, None, None, None
+        )
 
         # Verify the cache was populated
         cache_key = ("run-1", "https://api.github.com")
@@ -1980,6 +1983,162 @@ class TestAuthBaseUrlRewriteEdgeCases:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.request.url == original_url
         assert "auth_url_rewrite" not in flow.metadata
+
+
+# =========================================================================
+# auth.query injection
+# =========================================================================
+
+
+class TestAuthQueryInjection:
+    """Tests for query parameter injection via auth.query."""
+
+    async def test_query_params_injected_on_standard_path(self):
+        """Resolved auth.query params are injected into flow.request.query."""
+        flow = _make_http_flow()
+        api_entry = {
+            "base": "https://serpapi.com",
+            "auth": {"headers": {}, "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"}},
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok",
+            "encryptedSecrets": "iv:tag:data",
+        }
+        match_info = {
+            "name": "serpapi",
+            "ref": "serpapi",
+            "permission": "search",
+            "rule": "GET /search",
+            "params": {},
+        }
+        token_meta = {
+            "headers": {},
+            "resolved_secrets": ["SERPAPI_TOKEN"],
+            "cache_hit": False,
+            "query": {"api_key": "resolved-key-123"},
+        }
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+        assert "auth_url_rewrite" not in flow.metadata
+        assert flow.request.query["api_key"] == "resolved-key-123"
+
+    async def test_query_params_with_headers_simultaneously(self):
+        """auth.query and auth.headers can coexist on the standard path."""
+        flow = _make_http_flow()
+        api_entry = {
+            "base": "https://example.com",
+            "auth": {
+                "headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
+                "query": {"key": "${{ secrets.QUERY_KEY }}"},
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok",
+            "encryptedSecrets": "iv:tag:data",
+        }
+        match_info = {
+            "name": "ex",
+            "ref": "ex",
+            "permission": "read",
+            "rule": "GET /data",
+            "params": {},
+        }
+        token_meta = {
+            "headers": {"Authorization": "Bearer real-token"},
+            "resolved_secrets": ["TOKEN", "QUERY_KEY"],
+            "cache_hit": False,
+            "query": {"key": "resolved-query-value"},
+        }
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+        assert flow.request.headers["Authorization"] == "Bearer real-token"
+        assert flow.request.query["key"] == "resolved-query-value"
+
+    async def test_query_params_merged_into_rewrite_url(self):
+        """auth.query params are appended to the forwarded URL in the URL rewrite path."""
+        flow = _make_http_flow(host="firewall-placeholder.vm3.ai", path="/hook")
+        api_entry = {
+            "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
+            "auth": {
+                "headers": {},
+                "base": "${{ secrets.WEBHOOK }}",
+                "query": {"api_key": "${{ secrets.KEY }}"},
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok",
+            "encryptedSecrets": "iv:tag:data",
+        }
+        match_info = {
+            "name": "test",
+            "ref": "test",
+            "permission": "send",
+            "rule": "POST /",
+            "params": {},
+            "rel_path": "/",
+        }
+        token_meta = {
+            "headers": {},
+            "base": "https://real-api.com/webhook/secret",
+            "resolved_secrets": ["WEBHOOK", "KEY"],
+            "cache_hit": False,
+            "query": {"api_key": "resolved-key-456"},
+        }
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+        assert flow.metadata["auth_url_rewrite"] is True
+        # Verify the forwarded URL contains the auth.query params
+        call_args = mock_forward.call_args
+        forwarded_url = call_args[0][0]
+        assert "api_key=resolved-key-456" in forwarded_url
+        assert forwarded_url.startswith("https://real-api.com/webhook/secret")
+
+    async def test_no_query_injection_when_absent(self):
+        """No query modification when auth.query is not present."""
+        flow = _make_http_flow()
+        api_entry = {
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok",
+            "encryptedSecrets": "iv:tag:data",
+        }
+        match_info = {
+            "name": "gh",
+            "ref": "gh",
+            "permission": "read",
+            "rule": "GET /repos/{owner}/{repo}",
+            "params": {},
+        }
+        token_meta = {
+            "headers": {"Authorization": "Bearer real"},
+            "resolved_secrets": ["TOKEN"],
+            "cache_hit": False,
+        }
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+        assert flow.request.headers["Authorization"] == "Bearer real"
+        # No query params should have been added
+        assert len(flow.request.query) == 0
 
 
 # =========================================================================

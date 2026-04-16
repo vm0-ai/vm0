@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { extractSecretNamesFromApis } from "../firewalls";
 
-describe("extractSecretNamesFromApis with auth.base", () => {
+describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
   it("extracts secrets from auth.headers only", () => {
     const apis = [
       {
@@ -70,5 +70,54 @@ describe("extractSecretNamesFromApis with auth.base", () => {
       },
     ];
     expect(extractSecretNamesFromApis(apis)).toEqual([]);
+  });
+
+  it("extracts secrets from auth.query", () => {
+    const apis = [
+      {
+        base: "https://serpapi.com",
+        auth: {
+          headers: {},
+          query: {
+            api_key: "${{ secrets.SERPAPI_TOKEN }}",
+          },
+        },
+      },
+    ];
+    expect(extractSecretNamesFromApis(apis)).toEqual(["SERPAPI_TOKEN"]);
+  });
+
+  it("extracts secrets from both auth.headers and auth.query", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+          query: {
+            key: "${{ secrets.QUERY_KEY }}",
+          },
+        },
+      },
+    ];
+    const result = extractSecretNamesFromApis(apis);
+    expect(result).toContain("API_TOKEN");
+    expect(result).toContain("QUERY_KEY");
+    expect(result).toHaveLength(2);
+  });
+
+  it("skips auth.query when not present", () => {
+    const apis = [
+      {
+        base: "https://api.github.com",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.TOKEN }}",
+          },
+        },
+      },
+    ];
+    expect(extractSecretNamesFromApis(apis)).toEqual(["TOKEN"]);
   });
 });

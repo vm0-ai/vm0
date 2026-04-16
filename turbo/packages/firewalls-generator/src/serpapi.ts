@@ -3,7 +3,7 @@
  *
  * Data source: https://serpapi.com/search-api
  *
- * SerpApi supports Bearer token authentication via Authorization header.
+ * SerpApi authenticates via the `api_key` URL query parameter.
  * API key format is not publicly documented; using generic placeholder.
  */
 
@@ -33,8 +33,9 @@ function generateTypeScript(): string {
     "    {",
     '      base: "https://serpapi.com",',
     "      auth: {",
-    "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.SERPAPI_TOKEN }}",',
+    "        headers: {},",
+    "        query: {",
+    '          api_key: "${{ secrets.SERPAPI_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",
