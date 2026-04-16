@@ -158,7 +158,6 @@ async function handleFailed(
     role: "assistant",
     content: errorMessage,
     runId,
-    error: errorMessage,
   });
 
   // Send push notification (best-effort)

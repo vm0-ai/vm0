@@ -1,4 +1,4 @@
-import { eq, asc, desc, and, gt, isNotNull, isNull } from "drizzle-orm";
+import { eq, asc, desc, and, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   chatMessages,
   type ChatMessageAttachFiles,
@@ -197,18 +197,19 @@ export async function getMessagesByThreadId(chatThreadId: string): Promise<
  * Get messages for a thread after a given cursor message, ordered by
  * (created_at ASC, sequence_number ASC).
  *
- * When `sinceId` is provided, only messages whose `created_at` is strictly
- * after the cursor message's `created_at` are returned. This uses the
- * `idx_chat_messages_thread_created` btree index for efficient filtering.
+ * Cursor-based paginated query for chat messages.
+ * Returns messages after the given sinceId in natural order
+ * (createdAt ASC, sequenceNumber ASC). When sinceId is undefined,
+ * returns from the beginning of the thread.
  *
- * When `sinceId` is omitted all messages in the thread are returned —
- * equivalent to `getMessagesByThreadId`.
+ * Fetches limit+1 rows to determine hasMore without an extra COUNT query.
  */
-async function getMessagesByThreadIdSince(
+export async function getMessagesSince(
   chatThreadId: string,
-  sinceId?: string,
-): Promise<
-  Array<{
+  sinceId: string | undefined,
+  limit: number,
+): Promise<{
+  messages: Array<{
     id: string;
     role: string;
     content: string | null;
@@ -218,25 +219,29 @@ async function getMessagesByThreadIdSince(
     createdAt: Date;
     runStatus: string | null;
     runError: string | null;
-  }>
-> {
-  if (!sinceId) {
-    return getMessagesByThreadId(chatThreadId);
+  }>;
+  hasMore: boolean;
+}> {
+  const db = globalThis.services.db;
+
+  let cursorCondition;
+  if (sinceId) {
+    cursorCondition = sql`(
+      ${chatMessages.createdAt},
+      COALESCE(${chatMessages.sequenceNumber}, -1)
+    ) > (
+      SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
+      FROM ${chatMessages}
+      WHERE ${chatMessages.id} = ${sinceId}
+    )`;
   }
 
-  // Look up the cursor message's created_at
-  const [cursor] = await globalThis.services.db
-    .select({ createdAt: chatMessages.createdAt })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, sinceId))
-    .limit(1);
-
-  if (!cursor) {
-    // sinceId not found — return empty rather than throw
-    return [];
+  const conditions = [eq(chatMessages.chatThreadId, chatThreadId)];
+  if (cursorCondition) {
+    conditions.push(cursorCondition);
   }
 
-  return globalThis.services.db
+  const rows = await db
     .select({
       id: chatMessages.id,
       role: chatMessages.role,
@@ -250,13 +255,14 @@ async function getMessagesByThreadIdSince(
     })
     .from(chatMessages)
     .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreadId),
-        gt(chatMessages.createdAt, cursor.createdAt),
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+    .where(and(...conditions))
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const messages = hasMore ? rows.slice(0, limit) : rows;
+
+  return { messages, hasMore };
 }
 
 /**
