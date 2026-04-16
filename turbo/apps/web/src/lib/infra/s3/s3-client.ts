@@ -11,11 +11,16 @@ import { env } from "../../../env";
 import type { S3Object, S3StorageManifest } from "./types";
 import { s3DownloadError, s3UploadError } from "./types";
 
+let s3Client: S3Client | null = null;
+let publicS3Client: S3Client | null = null;
+
 /**
- * Get S3 client for server-to-S3 operations (upload, download, list, delete).
+ * Get S3 client singleton for server-to-S3 operations (upload, download, list, delete).
  * Uses S3_ENDPOINT which may be a container-internal address (e.g. http://minio:9000).
  */
 function getS3Client(): S3Client {
+  if (s3Client) return s3Client;
+
   const envVars = env();
 
   const endpoint =
@@ -24,7 +29,7 @@ function getS3Client(): S3Client {
   const region = envVars.S3_REGION || "auto";
   const forcePathStyle = envVars.S3_FORCE_PATH_STYLE === "true";
 
-  return new S3Client({
+  s3Client = new S3Client({
     region,
     endpoint,
     credentials: {
@@ -33,26 +38,30 @@ function getS3Client(): S3Client {
     },
     forcePathStyle,
   });
+  return s3Client;
 }
 
 /**
- * Get S3 client for generating presigned URLs consumed by external clients
+ * Get S3 client singleton for generating presigned URLs consumed by external clients
  * (CLI, browsers). Uses S3_PUBLIC_ENDPOINT so the resulting URLs
  * are reachable from outside the Docker network. Falls back to the internal
  * endpoint when S3_PUBLIC_ENDPOINT is not set (e.g. SaaS / R2).
  */
 function getPublicS3Client(): S3Client {
+  if (publicS3Client) return publicS3Client;
+
   const envVars = env();
 
   const publicEndpoint = envVars.S3_PUBLIC_ENDPOINT;
   if (!publicEndpoint) {
-    return getS3Client();
+    publicS3Client = getS3Client();
+    return publicS3Client;
   }
 
   const region = envVars.S3_REGION || "auto";
   const forcePathStyle = envVars.S3_FORCE_PATH_STYLE === "true";
 
-  return new S3Client({
+  publicS3Client = new S3Client({
     region,
     endpoint: publicEndpoint,
     credentials: {
@@ -61,6 +70,7 @@ function getPublicS3Client(): S3Client {
     },
     forcePathStyle,
   });
+  return publicS3Client;
 }
 
 /**

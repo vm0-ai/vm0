@@ -8,12 +8,13 @@ import {
   type AdditionalVolume,
   type AgentVolumeConfig,
   type ResolvedArtifact,
+  type ResolvedVolume,
   type StorageManifest,
   type ManifestStorage,
   type ManifestArtifact,
 } from "./types";
 import { storages, storageVersions } from "../../../db/schema/storage";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { env } from "../../../env";
 import { resolveVersionByPrefix, isResolutionError } from "./version-resolver";
 import { computeContentHashFromHashes } from "./content-hash";
@@ -264,6 +265,63 @@ async function resolveVersion(
   return { versionId: result.version.id, s3Key: result.version.s3Key };
 }
 
+interface StorageLookup {
+  orgId: string;
+  userId: string;
+  name: string;
+  type: "volume" | "artifact" | "memory";
+}
+
+function lookupKey(
+  orgId: string,
+  userId: string,
+  name: string,
+  type: string,
+): string {
+  return `${orgId}:${userId}:${name}:${type}`;
+}
+
+/**
+ * Batch-resolve HEAD versions for multiple storages in a single query.
+ * Uses a composite IN clause on the (orgId, userId, name, type) unique index.
+ * Storages that don't exist or have no HEAD version are silently omitted.
+ */
+async function batchResolveLatestVersions(
+  lookups: StorageLookup[],
+): Promise<Map<string, { versionId: string; s3Key: string }>> {
+  if (lookups.length === 0) return new Map();
+
+  const tuples = lookups.map((l) => {
+    return sql`(${l.orgId}, ${l.userId}, ${l.name}, ${l.type})`;
+  });
+
+  const rows = await globalThis.services.db
+    .select({
+      orgId: storages.orgId,
+      userId: storages.userId,
+      name: storages.name,
+      type: storages.type,
+      versionId: storageVersions.id,
+      s3Key: storageVersions.s3Key,
+    })
+    .from(storages)
+    .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
+    .where(
+      sql`(${storages.orgId}, ${storages.userId}, ${storages.name}, ${storages.type}) IN (${sql.join(tuples, sql`, `)})`,
+    );
+
+  const result = new Map<string, { versionId: string; s3Key: string }>();
+  for (const row of rows) {
+    if (row.versionId && row.s3Key) {
+      result.set(lookupKey(row.orgId, row.userId, row.name, row.type), {
+        versionId: row.versionId,
+        s3Key: row.s3Key,
+      });
+    }
+  }
+  return result;
+}
+
 /**
  * Process a single additional volume: resolve version from runtime org and generate presigned URL.
  * Always optional — returns null if the volume is not found.
@@ -422,22 +480,228 @@ export async function prepareStorageManifest(
     throw new Error(`Volume resolution failed: ${messages}`);
   }
 
-  // Process all volumes in parallel, handling optional volumes gracefully
-  const volumePromises = volumeResult.volumes.map(
-    async (volume): Promise<ManifestStorage | null> => {
-      // For checkpoint resume: if volumeVersionOverrides is provided and volume is optional
-      // but NOT in the overrides, skip it (it was skipped at checkpoint time)
-      if (
-        volumeVersionOverrides &&
-        volume.optional &&
-        !(volume.name in volumeVersionOverrides)
-      ) {
-        return null;
-      }
+  // Handle artifact: either from resumeArtifact or from volumeResult
+  const artifactSource = resolveArtifactSource(
+    volumeResult.artifact,
+    resumeArtifact,
+    resumeArtifactMountPath,
+  );
 
+  // Partition volumes into batch-eligible and individual-resolve groups
+  const partitioned = partitionVolumes(
+    volumeResult.volumes,
+    additionalVolumes ?? [],
+    volumeVersionOverrides,
+  );
+
+  // Two-phase batch resolution: system org first, then remaining orgs
+  const allResults = await executeBatchResolution(
+    partitioned,
+    agentClerkOrgId,
+    runtimeClerkOrgId,
+    userId,
+    artifactSource,
+    memoryName,
+  );
+
+  // Resolve non-latest volumes individually (rare: explicit version overrides)
+  const nonLatestResolved = await resolveNonLatestVolumes(
+    partitioned.nonLatestVolumes,
+    agentClerkOrgId,
+    bucketName,
+  );
+
+  const nonLatestAdditionalResolved = await Promise.all(
+    partitioned.nonLatestAdditional.map((vol) => {
+      return resolveAdditionalVolume(vol, runtimeClerkOrgId, bucketName);
+    }),
+  );
+
+  // Map batch results to manifest entries
+  return buildManifestFromResults(
+    allResults,
+    partitioned,
+    agentClerkOrgId,
+    runtimeClerkOrgId,
+    userId,
+    bucketName,
+    artifactSource,
+    memoryName,
+    nonLatestResolved,
+    nonLatestAdditionalResolved,
+  );
+}
+
+/** Partitioned volumes for batch vs individual resolution */
+interface PartitionedVolumes {
+  latestSkillVolumes: ResolvedVolume[];
+  latestNonSkillVolumes: ResolvedVolume[];
+  nonLatestVolumes: ResolvedVolume[];
+  latestSystemAdditional: AdditionalVolume[];
+  latestNonSystemAdditional: AdditionalVolume[];
+  nonLatestAdditional: AdditionalVolume[];
+}
+
+/**
+ * Partition volumes into groups for batch vs individual resolution.
+ */
+function partitionVolumes(
+  volumes: ResolvedVolume[],
+  additionalVolumes: AdditionalVolume[],
+  volumeVersionOverrides: Record<string, string> | undefined,
+): PartitionedVolumes {
+  const latestSkillVolumes: ResolvedVolume[] = [];
+  const latestNonSkillVolumes: ResolvedVolume[] = [];
+  const nonLatestVolumes: ResolvedVolume[] = [];
+
+  for (const volume of volumes) {
+    // Checkpoint resume: skip optional volumes not in overrides
+    if (
+      volumeVersionOverrides &&
+      volume.optional &&
+      !(volume.name in volumeVersionOverrides)
+    ) {
+      continue;
+    }
+
+    if (volume.vasVersion !== "latest") {
+      nonLatestVolumes.push(volume);
+    } else if (volume.vasStorageName.startsWith("agent-skills@")) {
+      latestSkillVolumes.push(volume);
+    } else {
+      latestNonSkillVolumes.push(volume);
+    }
+  }
+
+  const latestSystemAdditional: AdditionalVolume[] = [];
+  const latestNonSystemAdditional: AdditionalVolume[] = [];
+  const nonLatestAdditional: AdditionalVolume[] = [];
+
+  for (const vol of additionalVolumes) {
+    const version = vol.version || "latest";
+    if (version !== "latest") {
+      nonLatestAdditional.push(vol);
+    } else if (vol.system) {
+      latestSystemAdditional.push(vol);
+    } else {
+      latestNonSystemAdditional.push(vol);
+    }
+  }
+
+  return {
+    latestSkillVolumes,
+    latestNonSkillVolumes,
+    nonLatestVolumes,
+    latestSystemAdditional,
+    latestNonSystemAdditional,
+    nonLatestAdditional,
+  };
+}
+
+/** Build a volume lookup for the system org */
+function systemVolumeLookup(name: string): StorageLookup {
+  return {
+    orgId: SYSTEM_ORG_ID,
+    userId: VOLUME_ORG_USER_ID,
+    name,
+    type: "volume",
+  };
+}
+
+/** Build a volume lookup for a specific org */
+function orgVolumeLookup(orgId: string, name: string): StorageLookup {
+  return { orgId, userId: VOLUME_ORG_USER_ID, name, type: "volume" };
+}
+
+/**
+ * Execute two-phase batch resolution: system org first, then remaining orgs.
+ * Returns merged results map.
+ */
+async function executeBatchResolution(
+  partitioned: PartitionedVolumes,
+  agentClerkOrgId: string,
+  runtimeClerkOrgId: string,
+  userId: string,
+  artifactSource: ResolvedArtifact | null,
+  memoryName: string | undefined,
+): Promise<Map<string, { versionId: string; s3Key: string }>> {
+  // Phase 1: System org batch (skills + system additional volumes)
+  const systemLookups: StorageLookup[] = [
+    ...partitioned.latestSkillVolumes.map((v) => {
+      return systemVolumeLookup(v.vasStorageName);
+    }),
+    ...partitioned.latestSystemAdditional.map((v) => {
+      return systemVolumeLookup(v.name);
+    }),
+  ];
+
+  const systemResults = await batchResolveLatestVersions(systemLookups);
+
+  // Identify misses for fallback
+  const skillMisses = partitioned.latestSkillVolumes.filter((v) => {
+    return !systemResults.has(
+      lookupKey(SYSTEM_ORG_ID, VOLUME_ORG_USER_ID, v.vasStorageName, "volume"),
+    );
+  });
+  const systemAdditionalMisses = partitioned.latestSystemAdditional.filter(
+    (v) => {
+      return !systemResults.has(
+        lookupKey(SYSTEM_ORG_ID, VOLUME_ORG_USER_ID, v.name, "volume"),
+      );
+    },
+  );
+
+  // Phase 2: Remaining lookups (non-skill volumes, misses, additional, artifact, memory)
+  const remainingLookups: StorageLookup[] = [
+    ...partitioned.latestNonSkillVolumes.map((v) => {
+      return orgVolumeLookup(agentClerkOrgId, v.vasStorageName);
+    }),
+    ...skillMisses.map((v) => {
+      return orgVolumeLookup(agentClerkOrgId, v.vasStorageName);
+    }),
+    ...systemAdditionalMisses.map((v) => {
+      return orgVolumeLookup(runtimeClerkOrgId, v.name);
+    }),
+    ...partitioned.latestNonSystemAdditional.map((v) => {
+      return orgVolumeLookup(runtimeClerkOrgId, v.name);
+    }),
+  ];
+
+  if (artifactSource && artifactSource.vasVersion === "latest") {
+    remainingLookups.push({
+      orgId: runtimeClerkOrgId,
+      userId,
+      name: artifactSource.vasStorageName,
+      type: "artifact",
+    });
+  }
+
+  if (memoryName) {
+    remainingLookups.push({
+      orgId: runtimeClerkOrgId,
+      userId,
+      name: memoryName,
+      type: "memory",
+    });
+  }
+
+  const remainingResults = await batchResolveLatestVersions(remainingLookups);
+
+  // Merge: system results take precedence for found items
+  return new Map([...remainingResults, ...systemResults]);
+}
+
+/**
+ * Resolve non-latest volumes individually (rare: explicit version overrides).
+ */
+async function resolveNonLatestVolumes(
+  volumes: ResolvedVolume[],
+  agentClerkOrgId: string,
+  bucketName: string,
+): Promise<(ManifestStorage | null)[]> {
+  return Promise.all(
+    volumes.map(async (volume) => {
       try {
-        // Skill volumes: try system org first (pre-cached official skills),
-        // then fall back to agent org (old CLI uploads, third-party skills)
         const isSkill = volume.vasStorageName.startsWith("agent-skills@");
         let resolved: { versionId: string; s3Key: string } | undefined;
 
@@ -456,7 +720,6 @@ export async function prepareStorageManifest(
             ) {
               throw error;
             }
-            // System org miss — fall through to agent org
           }
         }
 
@@ -470,25 +733,16 @@ export async function prepareStorageManifest(
           );
         }
 
-        const { versionId, s3Key } = resolved;
-
-        // Generate archive URL for tar.gz
-        const archiveKey = `${s3Key}/archive.tar.gz`;
+        const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
         const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
-
-        const manifestStorage: ManifestStorage = {
+        return {
           name: volume.name,
           mountPath: volume.mountPath,
           vasStorageName: volume.vasStorageName,
-          vasVersionId: versionId,
+          vasVersionId: resolved.versionId,
           archiveUrl,
-        };
-
-        log.debug(`Generated archive URL for volume "${volume.name}"`);
-
-        return manifestStorage;
+        } satisfies ManifestStorage;
       } catch (error) {
-        // For optional volumes, skip if not found
         if (
           volume.optional &&
           error instanceof Error &&
@@ -499,118 +753,284 @@ export async function prepareStorageManifest(
           );
           return null;
         }
-        // Re-throw for required volumes
         throw error;
       }
-    },
+    }),
   );
+}
 
-  // Process additional volumes (always optional, use Runtime Org)
-  const additionalPromises = (additionalVolumes ?? []).map((vol) => {
-    return resolveAdditionalVolume(vol, runtimeClerkOrgId, bucketName);
-  });
+/** Generate a ManifestStorage from a batch-resolved result */
+async function buildStorageEntry(
+  bucketName: string,
+  name: string,
+  mountPath: string,
+  vasStorageName: string,
+  resolved: { versionId: string; s3Key: string },
+): Promise<ManifestStorage> {
+  const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
+  const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
+  return {
+    name,
+    mountPath,
+    vasStorageName,
+    vasVersionId: resolved.versionId,
+    archiveUrl,
+  };
+}
 
-  // Handle artifact: either from resumeArtifact or from volumeResult
-  const artifactSource = resolveArtifactSource(
-    volumeResult.artifact,
-    resumeArtifact,
-    resumeArtifactMountPath,
-  );
+/**
+ * Look up a volume result, trying primary key first, then fallback key.
+ */
+function lookupWithFallback(
+  allResults: Map<string, { versionId: string; s3Key: string }>,
+  primaryKey: string,
+  fallbackKey: string,
+): { versionId: string; s3Key: string } | undefined {
+  return allResults.get(primaryKey) ?? allResults.get(fallbackKey);
+}
 
-  const artifactPromise = artifactSource
-    ? (async () => {
-        const { versionId, s3Key } = await resolveVersion(
-          runtimeClerkOrgId,
-          artifactSource.vasStorageName,
-          "artifact",
-          artifactSource.vasVersion,
-          userId,
-        );
+/**
+ * Build storage manifest from batch results and individually-resolved entries.
+ */
+async function buildManifestFromResults(
+  allResults: Map<string, { versionId: string; s3Key: string }>,
+  partitioned: PartitionedVolumes,
+  agentClerkOrgId: string,
+  runtimeClerkOrgId: string,
+  userId: string,
+  bucketName: string,
+  artifactSource: ResolvedArtifact | null,
+  memoryName: string | undefined,
+  nonLatestResolved: (ManifestStorage | null)[],
+  nonLatestAdditionalResolved: (ManifestStorage | null)[],
+): Promise<StorageManifest> {
+  const composeEntryPromises: Promise<ManifestStorage>[] = [];
 
-        // Generate archive URL for tar.gz
-        const archiveKey = `${s3Key}/archive.tar.gz`;
-        const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
+  // Skill volumes: try system org, then agent org
+  for (const volume of partitioned.latestSkillVolumes) {
+    const resolved = lookupWithFallback(
+      allResults,
+      lookupKey(
+        SYSTEM_ORG_ID,
+        VOLUME_ORG_USER_ID,
+        volume.vasStorageName,
+        "volume",
+      ),
+      lookupKey(
+        agentClerkOrgId,
+        VOLUME_ORG_USER_ID,
+        volume.vasStorageName,
+        "volume",
+      ),
+    );
 
-        // Generate manifest URL for incremental upload support
-        const manifestKey = `${s3Key}/manifest.json`;
-        const manifestUrl = await generatePresignedUrl(bucketName, manifestKey);
+    if (resolved) {
+      composeEntryPromises.push(
+        buildStorageEntry(
+          bucketName,
+          volume.name,
+          volume.mountPath,
+          volume.vasStorageName,
+          resolved,
+        ),
+      );
+    } else if (!volume.optional) {
+      throw new Error(
+        `Storage "${volume.vasStorageName}" not found in database`,
+      );
+    } else {
+      log.warn(
+        `Optional volume "${volume.vasStorageName}" not found, skipping`,
+      );
+    }
+  }
 
-        const manifestArtifact: ManifestArtifact = {
-          mountPath: artifactSource.mountPath,
-          vasStorageName: artifactSource.vasStorageName,
-          vasVersionId: versionId,
-          archiveUrl,
-          manifestUrl,
-        };
+  // Non-skill volumes: agent org only
+  for (const volume of partitioned.latestNonSkillVolumes) {
+    const key = lookupKey(
+      agentClerkOrgId,
+      VOLUME_ORG_USER_ID,
+      volume.vasStorageName,
+      "volume",
+    );
+    const resolved = allResults.get(key);
 
-        log.debug(
-          `Generated archive URL for artifact "${artifactSource.vasStorageName}"`,
-        );
+    if (resolved) {
+      composeEntryPromises.push(
+        buildStorageEntry(
+          bucketName,
+          volume.name,
+          volume.mountPath,
+          volume.vasStorageName,
+          resolved,
+        ),
+      );
+    } else if (!volume.optional) {
+      throw new Error(
+        `Storage "${volume.vasStorageName}" not found in database`,
+      );
+    } else {
+      log.warn(
+        `Optional volume "${volume.vasStorageName}" not found, skipping`,
+      );
+    }
+  }
 
-        return manifestArtifact;
-      })()
-    : Promise.resolve(null);
+  // Additional volumes: system org with runtime fallback, or runtime only
+  const additionalEntryPromises: Promise<ManifestStorage>[] = [];
 
-  // Resolve memory (uses runtime org, same as artifact)
-  // Memory storage is guaranteed to exist after ensureStorageExists() in prepareForExecution()
-  const memoryPromise = memoryName
-    ? (async (): Promise<ManifestArtifact | null> => {
-        const { versionId, s3Key } = await resolveVersion(
-          runtimeClerkOrgId,
-          memoryName,
-          "memory",
-          "latest",
-          userId,
-        );
+  for (const vol of partitioned.latestSystemAdditional) {
+    const resolved = lookupWithFallback(
+      allResults,
+      lookupKey(SYSTEM_ORG_ID, VOLUME_ORG_USER_ID, vol.name, "volume"),
+      lookupKey(runtimeClerkOrgId, VOLUME_ORG_USER_ID, vol.name, "volume"),
+    );
+    if (resolved) {
+      additionalEntryPromises.push(
+        buildStorageEntry(
+          bucketName,
+          vol.name,
+          vol.mountPath,
+          vol.name,
+          resolved,
+        ),
+      );
+    } else {
+      log.warn(`Additional volume "${vol.name}" not found, skipping`);
+    }
+  }
 
-        const archiveKey = `${s3Key}/archive.tar.gz`;
-        const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
+  for (const vol of partitioned.latestNonSystemAdditional) {
+    const key = lookupKey(
+      runtimeClerkOrgId,
+      VOLUME_ORG_USER_ID,
+      vol.name,
+      "volume",
+    );
+    const resolved = allResults.get(key);
+    if (resolved) {
+      additionalEntryPromises.push(
+        buildStorageEntry(
+          bucketName,
+          vol.name,
+          vol.mountPath,
+          vol.name,
+          resolved,
+        ),
+      );
+    } else {
+      log.warn(`Additional volume "${vol.name}" not found, skipping`);
+    }
+  }
 
-        const memoryArtifact: ManifestArtifact = {
-          mountPath: DEFAULT_MEMORY_MOUNT_PATH,
-          vasStorageName: memoryName,
-          vasVersionId: versionId,
-          archiveUrl,
-        };
+  // Resolve all presigned URLs in parallel
+  const [composeEntries, additionalEntries] = await Promise.all([
+    Promise.all(composeEntryPromises),
+    Promise.all(additionalEntryPromises),
+  ]);
 
-        log.debug(`Generated archive URL for memory "${memoryName}"`);
-        return memoryArtifact;
-      })()
-    : Promise.resolve(null);
-
-  // Wait for all URL generation to complete in parallel
-  const [storageResults, additionalResults, artifact, memory] =
-    await Promise.all([
-      Promise.all(volumePromises),
-      Promise.all(additionalPromises),
-      artifactPromise,
-      memoryPromise,
-    ]);
-
-  // Filter nulls from additional volumes
-  const resolvedAdditional = additionalResults.filter(
-    (s): s is ManifestStorage => {
+  const composeStorages = [
+    ...composeEntries,
+    ...nonLatestResolved.filter((s): s is ManifestStorage => {
       return s !== null;
-    },
-  );
+    }),
+  ];
 
-  // Build set of additional volume mount paths for override
+  const resolvedAdditional = [
+    ...additionalEntries,
+    ...nonLatestAdditionalResolved.filter((s): s is ManifestStorage => {
+      return s !== null;
+    }),
+  ];
+
+  // Build artifact
+  const artifactIsLatest =
+    artifactSource && artifactSource.vasVersion === "latest";
+  let artifact: ManifestArtifact | null = null;
+
+  if (artifactSource && artifactIsLatest) {
+    const key = lookupKey(
+      runtimeClerkOrgId,
+      userId,
+      artifactSource.vasStorageName,
+      "artifact",
+    );
+    const resolved = allResults.get(key);
+    if (!resolved) {
+      throw new Error(
+        `Storage "${artifactSource.vasStorageName}" not found in database`,
+      );
+    }
+    const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
+    const manifestKey = `${resolved.s3Key}/manifest.json`;
+    const [archiveUrl, manifestUrl] = await Promise.all([
+      generatePresignedUrl(bucketName, archiveKey),
+      generatePresignedUrl(bucketName, manifestKey),
+    ]);
+    artifact = {
+      mountPath: artifactSource.mountPath,
+      vasStorageName: artifactSource.vasStorageName,
+      vasVersionId: resolved.versionId,
+      archiveUrl,
+      manifestUrl,
+    };
+    log.debug(
+      `Generated archive URL for artifact "${artifactSource.vasStorageName}"`,
+    );
+  } else if (artifactSource) {
+    // Non-latest artifact: resolve individually
+    const { versionId, s3Key } = await resolveVersion(
+      runtimeClerkOrgId,
+      artifactSource.vasStorageName,
+      "artifact",
+      artifactSource.vasVersion,
+      userId,
+    );
+    const archiveKey = `${s3Key}/archive.tar.gz`;
+    const manifestKey = `${s3Key}/manifest.json`;
+    const [archiveUrl, manifestUrl] = await Promise.all([
+      generatePresignedUrl(bucketName, archiveKey),
+      generatePresignedUrl(bucketName, manifestKey),
+    ]);
+    artifact = {
+      mountPath: artifactSource.mountPath,
+      vasStorageName: artifactSource.vasStorageName,
+      vasVersionId: versionId,
+      archiveUrl,
+      manifestUrl,
+    };
+  }
+
+  // Build memory
+  let memory: ManifestArtifact | null = null;
+  if (memoryName) {
+    const key = lookupKey(runtimeClerkOrgId, userId, memoryName, "memory");
+    const resolved = allResults.get(key);
+    if (!resolved) {
+      throw new Error(`Storage "${memoryName}" not found in database`);
+    }
+    const archiveKey = `${resolved.s3Key}/archive.tar.gz`;
+    const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
+    memory = {
+      mountPath: DEFAULT_MEMORY_MOUNT_PATH,
+      vasStorageName: memoryName,
+      vasVersionId: resolved.versionId,
+      archiveUrl,
+    };
+    log.debug(`Generated archive URL for memory "${memoryName}"`);
+  }
+
+  // Deduplicate mount paths: additional volumes override compose volumes
   const additionalMountPaths = new Set(
     resolvedAdditional.map((s) => {
       return s.mountPath;
     }),
   );
 
-  // Filter compose volumes: remove any whose mount path conflicts with additional volumes
-  const filteredCompose = storageResults
-    .filter((s): s is ManifestStorage => {
-      return s !== null;
-    })
-    .filter((s) => {
-      return !additionalMountPaths.has(s.mountPath);
-    });
+  const filteredCompose = composeStorages.filter((s) => {
+    return !additionalMountPaths.has(s.mountPath);
+  });
 
-  // Merge: compose (filtered) + additional
   const filteredStorages = [...filteredCompose, ...resolvedAdditional];
 
   log.debug(
