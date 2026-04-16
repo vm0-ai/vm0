@@ -74,8 +74,9 @@ const CLERK_CSS = `
   color: hsl(var(--foreground)) !important;
 }
 
-/* Input field styles - border on .cl-formFieldInput wrapper only (exact match, not glob) */
-.cl-formFieldInput {
+/* Input field styles - border on the outermost formFieldInput container */
+.cl-formFieldInput,
+.cl-card [class*="formFieldInput"]:not(input):not([class*="Checkbox"]):not([class*="checkbox"]) {
   height: 36px !important;
   background-color: transparent !important;
   border: 1px solid hsl(var(--border)) !important;
@@ -87,23 +88,27 @@ const CLERK_CSS = `
   box-shadow: none !important;
 }
 
-/* Clear border/height from group/parent wrappers (e.g. cl-formFieldInputGroup)
-   that also match the formFieldInput substring but are not the intended target */
-.cl-card [class*="formFieldInput"]:not(.cl-formFieldInput) {
-  border: none !important;
-  height: auto !important;
-  box-shadow: none !important;
-}
-
-/* Strip border from inner elements — only .cl-formFieldInput shows one border */
-.cl-formFieldInput > *,
+/* Strip border from actual <input> elements and from any nested formFieldInput
+   containers so only the outermost wrapper shows one border */
 .cl-formFieldInput input,
+.cl-formFieldInput > *,
 .cl-card input[type="text"],
 .cl-card input[type="email"],
 .cl-card input[type="password"],
-.cl-card [class*="formFieldInput"] input {
+.cl-card [class*="formFieldInput"] input,
+.cl-card [class*="formFieldInput"] > [class*="formFieldInput"] {
   border: none !important;
   box-shadow: none !important;
+}
+
+/* Checkbox wrappers must not inherit input field border/height */
+.cl-formFieldCheckboxInput,
+.cl-formFieldCheckbox,
+.cl-formFieldCheckboxWrapper {
+  border: none !important;
+  height: auto !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
 }
 
 /* Input focus state */
