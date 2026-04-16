@@ -14,6 +14,7 @@ export async function insertChatMessage(params: {
   role: "user" | "assistant";
   content: string | null;
   runId: string | null;
+  error?: string | null;
   attachFiles?: ChatMessageAttachFiles;
 }): Promise<{ id: string; createdAt: Date }> {
   const [row] = await globalThis.services.db
@@ -23,6 +24,7 @@ export async function insertChatMessage(params: {
       role: params.role,
       content: params.content,
       runId: params.runId,
+      error: params.error ?? null,
       attachFiles: params.attachFiles ?? null,
     })
     .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
