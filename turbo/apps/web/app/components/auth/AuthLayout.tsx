@@ -74,14 +74,9 @@ const CLERK_CSS = `
   color: hsl(var(--foreground)) !important;
 }
 
-/* Input field styles */
+/* Input field styles - border on wrapper only */
 .cl-formFieldInput,
-.cl-formFieldInput input,
-.cl-card input[type="text"],
-.cl-card input[type="email"],
-.cl-card input[type="password"],
-.cl-card [class*="formFieldInput"],
-.cl-card [class*="formFieldInput"] input {
+.cl-card [class*="formFieldInput"] {
   height: 36px !important;
   background-color: transparent !important;
   border: 1px solid hsl(var(--border)) !important;
@@ -93,10 +88,24 @@ const CLERK_CSS = `
   box-shadow: none !important;
 }
 
-/* Remove inner/outer borders */
+/* Strip border from inner elements — only the wrapper shows one border */
 .cl-formFieldInput > *,
-.cl-card [class*="formFieldInput"] > * {
+.cl-formFieldInput input,
+.cl-card input[type="text"],
+.cl-card input[type="email"],
+.cl-card input[type="password"],
+.cl-card [class*="formFieldInput"] > *,
+.cl-card [class*="formFieldInput"] input {
   border: none !important;
+  box-shadow: none !important;
+}
+
+/* Checkbox wrapper must not inherit the input wrapper border/height */
+.cl-formFieldCheckboxInput {
+  border: none !important;
+  height: auto !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
 }
 
 /* Input focus state */
