@@ -29,6 +29,42 @@ import {
 } from "./zero-directed-shared.tsx";
 
 // ---------------------------------------------------------------------------
+// Action button / authorized badge
+// ---------------------------------------------------------------------------
+
+function AuthorizeAction({
+  isAuthorized,
+  isConnecting,
+  agentName,
+  onAuthorize,
+}: {
+  isAuthorized: boolean;
+  isConnecting: boolean;
+  agentName: string;
+  onAuthorize: () => void;
+}) {
+  if (isAuthorized) {
+    return (
+      <div className="inline-flex h-9 w-[140px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
+        <IconCheck size={16} />
+        Authorized
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={isConnecting}
+      onClick={onAuthorize}
+      className="inline-flex h-9 items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] px-4 text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
+    >
+      {isConnecting && <IconLoader2 size={14} className="animate-spin" />}
+      {isConnecting ? "Connecting..." : `Authorize ${agentName}`}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main card
 // ---------------------------------------------------------------------------
 
@@ -120,24 +156,12 @@ function DirectedAuthorizeCard() {
           </div>
           {!isLoading && (
             <div className="flex items-center justify-center">
-              {isAuthorized ? (
-                <div className="inline-flex h-9 w-[140px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
-                  <IconCheck size={16} />
-                  Authorized
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={isConnecting}
-                  onClick={handleAuthorize}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] px-4 text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
-                >
-                  {isConnecting && (
-                    <IconLoader2 size={14} className="animate-spin" />
-                  )}
-                  {isConnecting ? "Connecting..." : `Authorize ${agentName}`}
-                </button>
-              )}
+              <AuthorizeAction
+                isAuthorized={isAuthorized}
+                isConnecting={isConnecting}
+                agentName={agentName}
+                onAuthorize={handleAuthorize}
+              />
             </div>
           )}
         </div>
