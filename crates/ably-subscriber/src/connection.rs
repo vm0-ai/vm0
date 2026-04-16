@@ -848,6 +848,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
     p.ws_read = ws_read;
     p.ws_write = ws_write;
     p.conn_state.disconnected_at = None;
+    p.conn_state.last_reattach_at = None;
 
     Ok(())
 }
