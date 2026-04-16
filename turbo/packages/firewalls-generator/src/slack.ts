@@ -242,7 +242,7 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "users:read": "Read",
   "users:read.email": "Read",
 
-  // Write (22)
+  // Write (23)
   "bookmarks:write": "Write",
   "calls:write": "Write",
   "canvases:write": "Write",
@@ -251,7 +251,6 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "channels:write.topic": "Write",
   "datastore:write": "Write",
   "dnd:write": "Write",
-  "files:write": "Send",
   "groups:write": "Write",
   "groups:write.invites": "Write",
   "groups:write.topic": "Write",
@@ -272,6 +271,7 @@ const SCOPE_CATEGORIES: Record<string, string> = {
   "assistant:write": "Send",
   "chat:write": "Send",
   "conversations.connect:write": "Send",
+  "files:write": "Send",
   "im:write": "Send",
   "mpim:write": "Send",
   "mpim:write.topic": "Send",

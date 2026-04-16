@@ -223,7 +223,13 @@ export function renderCategories(
     grouped.set(cat, []);
   }
   for (const [name, category] of Object.entries(config.categories)) {
-    grouped.get(category)?.push(name);
+    const list = grouped.get(category);
+    if (!list) {
+      throw new Error(
+        `renderCategories: category "${category}" (from permission "${name}") is not in displayOrder [${config.displayOrder.join(", ")}]`,
+      );
+    }
+    list.push(name);
   }
 
   const orderVarName = `${varName.replace(/Categories$/, "")}CategoryOrder`;
