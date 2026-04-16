@@ -21,16 +21,6 @@ from url_utils import build_rewrite_url
 class ConnectorNotConfiguredError(Exception):
     """Raised when the auth endpoint returns 424 — connector not linked or misconfigured."""
 
-    def __init__(
-        self,
-        message: str,
-        missing_secrets: list[str] | None = None,
-        missing_vars: list[str] | None = None,
-    ):
-        super().__init__(message)
-        self.missing_secrets = missing_secrets or []
-        self.missing_vars = missing_vars or []
-
 
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
@@ -113,8 +103,6 @@ def _fetch_firewall_headers_sync(
         if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
             raise ConnectorNotConfiguredError(
                 error_info.get("message", "Connector not configured"),
-                error_info.get("missingSecrets", []),
-                error_info.get("missingVars", []),
             ) from None
         raise
     return json.loads(resp.read())
@@ -381,10 +369,11 @@ async def handle_firewall_request(
             auth_query,
         )
     except ConnectorNotConfiguredError as e:
+        ref = match_info.get("ref", "")
         log_proxy_entry(
             proxy_log_path,
             "info",
-            f"Connector not linked for {firewall_base}: {e}",
+            f"Connector not configured for {firewall_base}: {e}",
             type="firewall",
             firewall_base=firewall_base,
         )
@@ -393,13 +382,11 @@ async def handle_firewall_request(
         error_body: dict = {
             "error": "connector_not_configured",
             "message": str(e),
-            "permission": match_info.get("ref", ""),
+            "permission": ref,
             "base": firewall_base,
         }
-        if e.missing_secrets:
-            error_body["missingSecrets"] = e.missing_secrets
-        if e.missing_vars:
-            error_body["missingVars"] = e.missing_vars
+        if ref:
+            error_body["connectors"] = [ref]
         flow.response = http.Response.make(
             424,
             json.dumps(error_body).encode(),

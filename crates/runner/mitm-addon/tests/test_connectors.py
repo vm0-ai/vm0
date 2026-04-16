@@ -1362,7 +1362,6 @@ class TestHandleFirewallRequest:
                 AsyncMock(
                     side_effect=auth.ConnectorNotConfiguredError(
                         "Connector not configured",
-                        ["GITHUB_TOKEN"],
                     )
                 ),
             ),
@@ -1377,13 +1376,12 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_error"] == "connector_not_configured"
         body = json.loads(flow.response.content)
         assert body["error"] == "connector_not_configured"
-        assert body["missingSecrets"] == ["GITHUB_TOKEN"]
-        assert "missingVars" not in body
+        assert body["connectors"] == ["github"]
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
 
     async def test_missing_vars_only_returns_424(self):
-        """When connector has only missing vars, return 424 with missingVars."""
+        """When connector not configured, return 424 with connector ref."""
         flow = _make_http_flow()
         api_entry = {"base": "https://hcti.io", "auth": {"headers": {}}}
         vm_info = {
@@ -1401,7 +1399,6 @@ class TestHandleFirewallRequest:
                 AsyncMock(
                     side_effect=auth.ConnectorNotConfiguredError(
                         "Connector not configured",
-                        missing_vars=["HCTI_USER_ID"],
                     )
                 ),
             ),
@@ -1414,8 +1411,7 @@ class TestHandleFirewallRequest:
         assert flow.response.status_code == 424
         body = json.loads(flow.response.content)
         assert body["error"] == "connector_not_configured"
-        assert "missingSecrets" not in body
-        assert body["missingVars"] == ["HCTI_USER_ID"]
+        assert body["connectors"] == ["htmlcsstoimage"]
 
     async def test_missing_encrypted_secrets_returns_502(self):
         """When encryptedSecrets is missing from vm_info, return 502."""
@@ -1536,7 +1532,6 @@ class TestFetchFirewallHeaders:
                 "error": {
                     "message": "Connector not configured",
                     "code": "CONNECTOR_NOT_CONFIGURED",
-                    "missingSecrets": ["GITHUB_TOKEN"],
                 }
             }
         ).encode()
@@ -1557,7 +1552,6 @@ class TestFetchFirewallHeaders:
                 auth._fetch_firewall_headers_sync(
                     "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
                 )
-            assert exc_info.value.missing_secrets == ["GITHUB_TOKEN"]
             assert "Connector not configured" in str(exc_info.value)
 
     def test_non_connector_not_configured_error_reraised(self):

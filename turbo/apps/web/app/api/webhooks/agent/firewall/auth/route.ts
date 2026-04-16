@@ -366,6 +366,7 @@ function resolveTemplates(
  * Auth: Sandbox JWT
  * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?, vars? }
  * Response: { headers, base?, query?, expiresAt?, resolvedSecrets, refreshedConnectors, refreshedSecrets }
+ *           or 424 { error } when referenced secrets/vars are missing (connector not configured)
  *           or 502 { error } when token refresh fails
  */
 export async function POST(request: Request) {
@@ -443,20 +444,22 @@ export async function POST(request: Request) {
   // Check that all referenced secrets and vars exist.
   // Missing secrets indicate the connector is enabled but not linked.
   // Missing vars indicate incomplete connector configuration.
-  const missingSecrets = [...referenced.secrets].filter((key) => {
+  const hasMissingSecrets = [...referenced.secrets].some((key) => {
     return !(key in secrets);
   });
-  const missingVars = [...referenced.vars].filter((key) => {
+  const hasMissingVars = [...referenced.vars].some((key) => {
     return !(key in (vars ?? {}));
   });
-  if (missingSecrets.length > 0 || missingVars.length > 0) {
-    const errorDetail: Record<string, unknown> = {
-      message: "Connector not configured",
-      code: "CONNECTOR_NOT_CONFIGURED",
-    };
-    if (missingSecrets.length > 0) errorDetail.missingSecrets = missingSecrets;
-    if (missingVars.length > 0) errorDetail.missingVars = missingVars;
-    return NextResponse.json({ error: errorDetail }, { status: 424 });
+  if (hasMissingSecrets || hasMissingVars) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Connector not configured",
+          code: "CONNECTOR_NOT_CONFIGURED",
+        },
+      },
+      { status: 424 },
+    );
   }
 
   // Refresh expired OAuth tokens (mutates secrets map with fresh values)

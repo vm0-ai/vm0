@@ -188,7 +188,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(424);
       const data = await response.json();
       expect(data.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
-      expect(data.error.missingSecrets).toEqual(["UNKNOWN_KEY"]);
     });
 
     it("should pass through headers without template syntax", async () => {
@@ -376,7 +375,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(424);
       const data = await response.json();
       expect(data.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
-      expect(data.error.missingVars).toEqual(["NONEXISTENT"]);
     });
 
     it("should work without vars field (backward compatible)", async () => {
@@ -549,7 +547,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(424);
       const data = await response.json();
       expect(data.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
-      expect(data.error.missingSecrets).toEqual(["MISSING"]);
     });
 
     it("should resolve basic with both args empty", async () => {
