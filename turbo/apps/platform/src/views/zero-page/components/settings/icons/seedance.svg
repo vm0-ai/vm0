@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+  </defs>
+  <!-- Seed logomark: 4 vertical bars extracted from official ByteDance Seed SVG, scaled and centered -->
+  <g transform="translate(2.85, -1.65) scale(1.8)">
+    <path d="M4.03715 22.4321L0 23.4703V5.07617L4.03715 6.1143V22.4321Z" fill="url(#grad)"/>
+    <path d="M23.5487 23.5091L19.5039 24.5472V4L23.5487 5.03044V23.5091Z" fill="url(#grad)"/>
+    <path d="M10.4395 22.9936L6.40234 24.0318V13.1968L10.4395 14.2349V22.9936Z" fill="url(#grad)"/>
+    <path d="M13.0781 11.5899L17.123 10.5518V21.3867L13.0781 20.3486V11.5899Z" fill="url(#grad)"/>
+  </g>
+</svg>
