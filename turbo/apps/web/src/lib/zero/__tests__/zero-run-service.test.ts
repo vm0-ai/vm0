@@ -18,6 +18,10 @@ import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents
 import { createZeroRun, createZeroRunRecord } from "../zero-run-service";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/core";
+import { initServices } from "../../../lib/init-services";
+import { agentRuns } from "../../../db/schema/agent-run";
+import { agentSessions } from "../../../db/schema/agent-session";
+import { conversations } from "../../../db/schema/conversation";
 
 // ---------------------------------------------------------------------------
 // Tests for createZeroRun parameters NOT exposed by the POST /api/zero/runs
@@ -278,6 +282,59 @@ describe("createZeroRun() — service-only parameters", () => {
           mountPath: "/home/user/.claude/skills/gamma",
         },
       ]);
+    });
+
+    it("should skip custom skill injection for session resume", async () => {
+      const agentName = uniqueId("resume-agent");
+      const compose = await createTestCompose(agentName);
+      const resumeAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await bindCustomSkillToAgent(resumeAgentId, "my-skill");
+
+      // Build session chain: run → conversation → session using the API-created
+      // compose version (which has ANTHROPIC_API_KEY in its environment block).
+      initServices();
+      const db = globalThis.services.db;
+      const [run] = await db
+        .insert(agentRuns)
+        .values({
+          userId: user.userId,
+          orgId: user.orgId,
+          agentComposeVersionId: compose.versionId,
+          status: "completed",
+          prompt: "first run",
+        })
+        .returning({ id: agentRuns.id });
+      const [conversation] = await db
+        .insert(conversations)
+        .values({
+          runId: run!.id,
+          cliAgentType: "claude",
+          cliAgentSessionId: uniqueId("cli-session"),
+          cliAgentSessionHistory: "[]",
+        })
+        .returning({ id: conversations.id });
+      const [session] = await db
+        .insert(agentSessions)
+        .values({
+          userId: user.userId,
+          orgId: user.orgId,
+          agentComposeId: resumeAgentId,
+          conversationId: conversation!.id,
+        })
+        .returning({ id: agentSessions.id });
+
+      // Resume with sessionId — should NOT inject custom skills
+      const resumed = await createZeroRunRecord({
+        userId: user.userId,
+        prompt: "continue",
+        agentId: resumeAgentId,
+        sessionId: session!.id,
+        triggerSource: "web",
+      });
+
+      const resumedRun = await findTestRunRecord(resumed.runId);
+      expect(resumedRun).toBeDefined();
+      expect(resumedRun!.additionalVolumes).toBeNull();
     });
   });
 
