@@ -40,7 +40,7 @@ function Wrapper({
   return <StoreProvider value={store}>{children}</StoreProvider>;
 }
 
-describe("VoiceChatPanelContent", () => {
+describe("voiceChatPanelContent", () => {
   it("shows empty state when no events exist", () => {
     const { signals, store } = makeSignals([]);
 
