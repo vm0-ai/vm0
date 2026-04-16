@@ -904,6 +904,12 @@ describe("zero-chat signals", () => {
       interface CapturedChatBody {
         prompt: string;
         hasTextContent: boolean;
+        attachFiles?: Array<{
+          id: string;
+          filename: string;
+          contentType: string;
+          size: number;
+        }>;
       }
 
       function isCapturedChatBody(v: unknown): v is CapturedChatBody {
@@ -979,10 +985,8 @@ describe("zero-chat signals", () => {
       assert(isCapturedChatBody(capturedBody));
       expect(capturedBody.prompt).toBe("(see attached files)");
       expect(capturedBody.hasTextContent).toBeFalsy();
-      const body = capturedBody as Record<string, unknown>;
-      const attachFiles = body.attachFiles as Record<string, unknown>[];
-      expect(attachFiles).toHaveLength(1);
-      expect(attachFiles[0]).toMatchObject({
+      expect(capturedBody.attachFiles).toHaveLength(1);
+      expect(capturedBody.attachFiles![0]).toMatchObject({
         id: "upload-img-1",
         filename: "photo.png",
         contentType: "image/png",
