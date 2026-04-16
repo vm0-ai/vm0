@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.242.5](https://github.com/vm0-ai/vm0/compare/app-v0.242.4...app-v0.242.5) (2026-04-16)
+
+
+### Bug Fixes
+
+* **platform:** suppress permission dialog after connector connect during onboarding ([#9601](https://github.com/vm0-ai/vm0/issues/9601)) ([a209adb](https://github.com/vm0-ai/vm0/commit/a209adba532f2be0c664a964a0dcae276c23558d))
+* show agent display name on connector authorize/connect pages ([#9597](https://github.com/vm0-ai/vm0/issues/9597)) ([5afdfe9](https://github.com/vm0-ai/vm0/commit/5afdfe97bafbc29eabfc417ed0bbd6704ba93400))
+
 ## [0.242.4](https://github.com/vm0-ai/vm0/compare/app-v0.242.3...app-v0.242.4) (2026-04-16)
 
 
