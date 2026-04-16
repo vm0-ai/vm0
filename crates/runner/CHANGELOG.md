@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.81.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.81.1...runner-rs-v0.81.2) (2026-04-16)
+
+
+### Refactoring
+
+* **firewalls:** make auth.headers optional in firewall schema ([#9617](https://github.com/vm0-ai/vm0/issues/9617)) ([657b74f](https://github.com/vm0-ai/vm0/commit/657b74fcb19080e58a61ec7d1005eec89a617627))
+* **runner:** split image hash into rootfs_hash and snapshot_hash ([#9622](https://github.com/vm0-ai/vm0/issues/9622)) ([bbeaa44](https://github.com/vm0-ai/vm0/commit/bbeaa44f59d3066caa78348c45f98617fda18b02))
+
 ## [0.81.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.81.0...runner-rs-v0.81.1) (2026-04-16)
 
 
