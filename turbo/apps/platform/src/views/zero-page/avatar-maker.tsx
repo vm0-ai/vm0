@@ -1,4 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   Button,
   Dialog,
@@ -201,6 +202,7 @@ function AvatarPreviewWithShuffle() {
   const showSparkles = useGet(avatarMakerShowSparkles$);
   const shuffling = useGet(avatarMakerShuffling$);
   const shuffle = useSet(shuffleAvatar$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <div
@@ -218,7 +220,9 @@ function AvatarPreviewWithShuffle() {
               type="button"
               tabIndex={-1}
               className="absolute -right-1 -bottom-1 flex h-7 w-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border hover:text-foreground transition-colors"
-              onClick={shuffle}
+              onClick={() => {
+                detach(shuffle(pageSignal), Reason.DomCallback);
+              }}
               aria-label="Randomize avatar"
             >
               <IconDice
@@ -313,6 +317,7 @@ function AvatarMakerDialogBody({
   const saving = useGet(avatarMakerSaving$);
 
   const selectOption = useSet(selectAvatarOption$);
+  const pageSignal = useGet(pageSignal$);
   const closeMaker = useSet(closeAvatarMaker$);
   const setSaving = useSet(setAvatarMakerSaving$);
 
@@ -357,7 +362,12 @@ function AvatarMakerDialogBody({
             step={step}
             config={config}
             justPicked={justPicked}
-            selectOption={selectOption}
+            selectOption={(field, value) => {
+              detach(
+                selectOption(field, value, pageSignal),
+                Reason.DomCallback,
+              );
+            }}
           />
         </div>
       </div>
