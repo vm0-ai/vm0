@@ -1,6 +1,5 @@
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
-  resolveSkillRef,
   AGENT_NAME_REGEX,
   isSupportedFramework,
   type SupportedFramework,
@@ -12,7 +11,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import { skills } from "../../../db/schema/skill";
 import { logger } from "../../shared/logger";
 
 const log = logger("compose:server-side");
@@ -135,14 +133,11 @@ async function upsertComposeRecord(params: {
 /**
  * Attempt server-side compose for platform mode.
  *
- * Bypasses the E2B sandbox by resolving skills from the database cache,
- * injecting connector env vars via buildComposeContent, expanding firewall
- * configs, uploading instructions, and creating the compose record — all
- * server-side.
+ * Validates agent config, uploads instructions, and creates the compose
+ * record — all server-side.
  *
  * @returns Compose result if successful, or `null` if the server-side path
- *          is not possible (e.g., uncached skills) and the caller should
- *          fall back to the sandbox.
+ *          is not possible and the caller should fall back to the sandbox.
  */
 export async function serverSideCompose(params: {
   userId: string;
@@ -155,37 +150,17 @@ export async function serverSideCompose(params: {
   versionId: string;
 } | null> {
   const { userId, orgId, content, instructions } = params;
-  const db = globalThis.services.db;
 
   // 1. Validate and extract agent config
   const { agentName, normalizedName, framework, agent } =
     extractAgentConfig(content);
 
-  // 2. Resolve skill references and check cache
-  const agentSkills = (agent.skills ?? []) as string[];
-  const resolvedSkillUrls = agentSkills.map(resolveSkillRef);
-
-  let cachedSkills: { url: string }[] = [];
-  if (resolvedSkillUrls.length > 0) {
-    cachedSkills = await db
-      .select({ url: skills.url })
-      .from(skills)
-      .where(inArray(skills.url, resolvedSkillUrls));
-
-    if (cachedSkills.length !== resolvedSkillUrls.length) {
-      log.info(
-        `Missing ${resolvedSkillUrls.length - cachedSkills.length} cached skills, falling back to sandbox`,
-      );
-      return null;
-    }
-  }
-
-  // 3. Use environment as-is (connector env vars already injected by buildComposeContent)
+  // 2. Use environment as-is (connector env vars already injected by buildComposeContent)
   const environment: Record<string, string> = {
     ...((agent.environment ?? {}) as Record<string, string>),
   };
 
-  // 4. Build resolved content with normalized agent name
+  // 3. Build resolved content with normalized agent name
   const agentsCopy = content.agents as Record<string, Record<string, unknown>>;
   const agentDef = { ...agentsCopy[agentName]! };
   const resolvedContent = {
@@ -199,7 +174,7 @@ export async function serverSideCompose(params: {
     },
   } as AgentComposeYaml;
 
-  // 6. Upload instructions if provided
+  // 4. Upload instructions if provided
   if (instructions !== undefined) {
     await uploadInstructionsServerSide({
       orgId,
@@ -209,7 +184,7 @@ export async function serverSideCompose(params: {
     });
   }
 
-  // 7. Create compose record
+  // 5. Create compose record
   const versionId = computeComposeVersionId(resolvedContent);
   const composeId = await upsertComposeRecord({
     userId,
