@@ -187,13 +187,13 @@ describe("init command", () => {
 
       expect(mockConsoleLog).toHaveBeenCalledWith("Next steps:");
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("zero org model-provider setup"),
+        expect.stringContaining("vm0 auth login"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("AGENTS.md"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 run"),
+        expect.stringContaining("vm0 run --secrets CLAUDE_CODE_OAUTH_TOKEN"),
       );
     });
 

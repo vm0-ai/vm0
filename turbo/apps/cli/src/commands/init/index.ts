@@ -119,14 +119,12 @@ export const initCommand = new Command()
       // Print next steps
       console.log();
       console.log("Next steps:");
-      console.log(
-        `  1. Set up model provider (one-time): ${chalk.cyan("zero org model-provider setup")}`,
-      );
+      console.log(`  1. Log in to VM0: ${chalk.cyan("vm0 auth login")}`);
       console.log(
         `  2. Edit ${chalk.cyan("AGENTS.md")} to customize your agent's workflow`,
       );
       console.log(
-        `  3. Run your agent: ${chalk.cyan('vm0 run "let\'s start working"')}`,
+        `  3. Run your agent: ${chalk.cyan('vm0 run --secrets CLAUDE_CODE_OAUTH_TOKEN=<token> "let\'s start working"')}`,
       );
     }),
   );
