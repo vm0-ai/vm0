@@ -13,6 +13,7 @@ export * from "./callbacks";
 export * from "./github";
 export * from "./telegram";
 export * from "./credits";
+export * from "./connector-billing";
 export * from "./users";
 export * from "./skills";
 export * from "./runner";

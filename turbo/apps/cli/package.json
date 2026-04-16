@@ -26,10 +26,10 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@ngrok/ngrok": "^1.6.0",
-    "@sentry/node": "^10.38.0"
+    "@ngrok/ngrok": "^1.6.0"
   },
   "devDependencies": {
+    "@sentry/node": "^10.38.0",
     "@ts-rest/core": "3.53.0-rc.1",
     "@types/node": "^24.3.0",
     "@types/prompts": "^2.4.9",

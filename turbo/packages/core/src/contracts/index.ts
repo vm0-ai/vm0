@@ -169,6 +169,8 @@ export {
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
   type WebhookUsageContract,
+  webhookConnectorBillingContract,
+  type WebhookConnectorBillingContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,
@@ -382,6 +384,7 @@ export {
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorOAuthConfig,
+  isGoogleOAuthConnector,
   hasRequiredScopes,
   getScopeDiff,
   type ScopeDiff,

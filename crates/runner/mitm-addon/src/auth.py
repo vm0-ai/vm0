@@ -17,6 +17,11 @@ from mitmproxy import ctx, http
 from logging_utils import log_proxy_entry
 from url_utils import build_rewrite_url
 
+
+class ConnectorNotConfiguredError(Exception):
+    """Raised when the auth endpoint returns 424 — connector not linked or misconfigured."""
+
+
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
 
@@ -87,7 +92,19 @@ def _fetch_firewall_headers_sync(
         body["vars"] = vars_map
     data = json.dumps(body).encode()
     req = make_api_request(url, data, sandbox_token)
-    resp = urllib.request.urlopen(req, timeout=10)
+    try:
+        resp = urllib.request.urlopen(req, timeout=10)
+    except urllib.error.HTTPError as e:
+        try:
+            error_body = json.loads(e.read())
+        except (json.JSONDecodeError, OSError):
+            raise e from None
+        error_info = error_body.get("error", {})
+        if error_info.get("code") == "CONNECTOR_NOT_CONFIGURED":
+            raise ConnectorNotConfiguredError(
+                error_info.get("message", "Connector not configured"),
+            ) from None
+        raise
     return json.loads(resp.read())
 
 
@@ -351,6 +368,31 @@ async def handle_firewall_request(
             auth_base,
             auth_query,
         )
+    except ConnectorNotConfiguredError as e:
+        ref = match_info.get("ref", "")
+        log_proxy_entry(
+            proxy_log_path,
+            "info",
+            f"Connector not configured for {firewall_base}: {e}",
+            type="firewall",
+            firewall_base=firewall_base,
+        )
+        flow.metadata["firewall_action"] = "BLOCK"
+        flow.metadata["firewall_error"] = "connector_not_configured"
+        error_body: dict = {
+            "error": "connector_not_configured",
+            "message": str(e),
+            "permission": ref,
+            "base": firewall_base,
+        }
+        if ref:
+            error_body["connectors"] = [ref]
+        flow.response = http.Response.make(
+            424,
+            json.dumps(error_body).encode(),
+            {"Content-Type": "application/json"},
+        )
+        return
     except Exception as e:
         log_proxy_entry(
             proxy_log_path,

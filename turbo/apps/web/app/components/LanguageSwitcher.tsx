@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useLocale } from "next-intl";
-import { usePathname, useRouter } from "../../navigation";
+import { Link, usePathname } from "../../navigation";
 import { locales, languageNames, type Locale } from "../../i18n";
 
 interface LanguageSwitcherProps {
@@ -16,7 +16,6 @@ export default function LanguageSwitcher({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const locale = useLocale();
   const pathname = usePathname();
-  const router = useRouter();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -34,13 +33,6 @@ export default function LanguageSwitcher({
       return document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
-
-  const handleLanguageChange = (newLocale: Locale) => {
-    // next-intl's usePathname returns pathname without locale prefix
-    // router.push with locale option will handle the locale prefix
-    router.push(pathname, { locale: newLocale });
-    setIsOpen(false);
-  };
 
   return (
     <div className="language-switcher" ref={dropdownRef}>
@@ -83,44 +75,45 @@ export default function LanguageSwitcher({
         </svg>
       </button>
 
-      {isOpen && (
-        <div
-          className={`language-switcher-dropdown ${openDirection === "up" ? "dropdown-up" : ""}`}
-        >
-          {locales.map((loc) => {
-            return (
-              <button
-                key={loc}
-                onClick={() => {
-                  return handleLanguageChange(loc);
-                }}
-                className={`language-switcher-option ${
-                  locale === loc ? "active" : ""
-                }`}
-              >
-                {languageNames[loc]}
-                {locale === loc && (
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M13.3333 4L6 11.3333L2.66666 8"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div
+        className={`language-switcher-dropdown ${openDirection === "up" ? "dropdown-up" : ""}`}
+        hidden={!isOpen}
+      >
+        {locales.map((loc) => {
+          return (
+            <Link
+              key={loc}
+              href={pathname}
+              locale={loc}
+              onClick={() => {
+                setIsOpen(false);
+              }}
+              className={`language-switcher-option ${
+                locale === loc ? "active" : ""
+              }`}
+            >
+              {languageNames[loc]}
+              {locale === loc && (
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M13.3333 4L6 11.3333L2.66666 8"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }

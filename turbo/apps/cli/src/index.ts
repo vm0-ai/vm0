@@ -10,7 +10,6 @@ import { runCommand } from "./commands/run";
 import { volumeCommand } from "./commands/volume";
 import { artifactCommand } from "./commands/artifact";
 import { memoryCommand } from "./commands/memory";
-import { cookCommand } from "./commands/cook";
 import { logsCommand } from "./commands/logs";
 
 import { initCommand } from "./commands/init";
@@ -35,7 +34,6 @@ program.addCommand(runCommand);
 program.addCommand(volumeCommand);
 program.addCommand(artifactCommand);
 program.addCommand(memoryCommand);
-program.addCommand(cookCommand);
 program.addCommand(logsCommand);
 
 program.addCommand(initCommand);

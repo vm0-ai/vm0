@@ -4,7 +4,7 @@ use clap::Args;
 
 use crate::config::{
     self, DEFAULT_CONCURRENCY_FACTOR, DEFAULT_MAX_CONCURRENT, FirecrackerConfig, ProfileConfig,
-    RunnerConfig, SandboxConfig, ServerConfig,
+    RunnerConfig, SandboxConfig, ServerConfig, validate_concurrency_factor,
 };
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
@@ -53,6 +53,7 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     // Pure-CPU validation first — fail fast before any filesystem I/O.
     crate::group::validate_or_err(&args.group)?;
     crate::runner_dirname::validate_or_err(&args.runner_dirname)?;
+    validate_concurrency_factor(args.concurrency_factor)?;
     if args.profile.len() != args.rootfs_hash.len()
         || args.profile.len() != args.snapshot_hash.len()
     {
@@ -194,5 +195,56 @@ mod tests {
         let err = run_config(args_with_dirname("")).await.unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+    }
+
+    fn args_with_concurrency_factor(factor: f64) -> ConfigArgs {
+        ConfigArgs {
+            profile: vec!["vm0/default".into()],
+            rootfs_hash: vec!["dummy".into()],
+            snapshot_hash: vec!["dummy".into()],
+            name: "test".into(),
+            group: "vm0/test".into(),
+            runner_dirname: "runner-01".into(),
+            max_concurrent: 0,
+            concurrency_factor: factor,
+            api_url: "http://localhost".into(),
+            token: "x".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_zero_concurrency_factor() {
+        let err = run_config(args_with_concurrency_factor(0.0))
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("concurrency_factor"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_negative_concurrency_factor() {
+        let err = run_config(args_with_concurrency_factor(-1.0))
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("concurrency_factor"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_infinite_concurrency_factor() {
+        let err = run_config(args_with_concurrency_factor(f64::INFINITY))
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("concurrency_factor"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_nan_concurrency_factor() {
+        let err = run_config(args_with_concurrency_factor(f64::NAN))
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("concurrency_factor"), "got: {msg}");
     }
 }

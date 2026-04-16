@@ -196,9 +196,10 @@ function QueueDrawerContent() {
             <Button
               className="w-full h-11 text-sm font-medium"
               disabled={checkoutLoading}
-              onPointerDown={() => {
+              onClick={(e) => {
+                const newTab = e.metaKey || e.ctrlKey;
                 detach(
-                  checkout(upgrade.targetTier, pageSignal),
+                  checkout(upgrade.targetTier, newTab, pageSignal),
                   Reason.DomCallback,
                 );
               }}

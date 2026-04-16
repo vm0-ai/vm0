@@ -129,70 +129,8 @@ test("shows credit balance with formatted numbers in usage tab", async () => {
   mockAPIs({ members: [makeMember("user-a", "alice@example.com", 5000)] });
   await openUsageTab();
   await waitFor(() => {
-    expect(screen.getByText("15,000 credits")).toBeInTheDocument();
-  });
-});
-
-// ORG-D-051
-test("shows credit usage bar with aria attributes in usage tab", async () => {
-  setMockBillingStatus({
-    tier: "pro",
-    credits: 15_000,
-    subscriptionStatus: "active",
-    hasSubscription: true,
-  });
-  mockAPIs({ members: [makeMember("user-a", "alice@example.com", 5000)] });
-  await openUsageTab();
-  await waitFor(() => {
-    const bar = screen.getByRole("progressbar");
-    expect(bar).toBeInTheDocument();
-    expect(bar).toHaveAttribute("aria-valuenow");
-  });
-});
-
-// ORG-D-052
-test("shows used and plan credit text in usage tab", async () => {
-  setMockBillingStatus({
-    tier: "pro",
-    credits: 15_000,
-    subscriptionStatus: "active",
-    hasSubscription: true,
-  });
-  mockAPIs({ members: [makeMember("user-a", "alice@example.com", 5000)] });
-  await openUsageTab();
-  await waitFor(() => {
-    const bar = screen.getByRole("progressbar");
-    expect(bar).toHaveAttribute(
-      "aria-valuetext",
-      expect.stringContaining("used"),
-    );
-    expect(bar).toHaveAttribute(
-      "aria-valuetext",
-      expect.stringContaining("remaining"),
-    );
-  });
-});
-
-// ORG-D-053
-test("shows expiring credits in popover on credit bar hover", async () => {
-  const user = userEvent.setup();
-  setMockBillingStatus({
-    tier: "pro",
-    credits: 15_000,
-    subscriptionStatus: "active",
-    hasSubscription: true,
-    creditExpiry: {
-      expiringNextCycle: 5000,
-      nextExpiryDate: "2026-04-30T00:00:00.000Z",
-    },
-  });
-  mockAPIs({ members: [makeMember("user-a", "alice@example.com", 2000)] });
-  await openUsageTab();
-  const hoverTarget = screen.getByTestId("credit-bar-hover-target");
-  await user.hover(hoverTarget);
-  await waitFor(() => {
-    expect(screen.getByText(/Expiring on/)).toBeInTheDocument();
-    expect(screen.getByText("5,000")).toBeInTheDocument();
+    const info = screen.getByTestId("credit-balance-info");
+    expect(info).toHaveTextContent("15,000");
   });
 });
 
@@ -230,7 +168,7 @@ test("shows editable credit cap input for admins", async () => {
   mockAPIs({ members: [makeMember("user-a", "alice@example.com", 500, 3000)] });
   await openUsageTab();
   await waitFor(() => {
-    expect(screen.getByRole("spinbutton")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("No limit")).toBeInTheDocument();
   });
 });
 
@@ -253,32 +191,14 @@ test("redirects non-admins to general tab when usage tab is requested", async ()
   // Non-admins are redirected to general tab; usage tab content is never shown
   await waitFor(() => {
     // No cap input spinbutton is visible
-    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("No limit")).not.toBeInTheDocument();
     // Usage tab error/error state is also not present
     expect(screen.queryByTestId("usage-tab-error")).not.toBeInTheDocument();
   });
 });
 
-// ORG-I-056
-test("hovering credit bar shows breakdown popover", async () => {
-  const user = userEvent.setup();
-  setMockBillingStatus({
-    tier: "pro",
-    credits: 15_000,
-    subscriptionStatus: "active",
-    hasSubscription: true,
-  });
-  mockAPIs({ members: [makeMember("user-a", "alice@example.com", 2000)] });
-  await openUsageTab();
-  const hoverTarget = screen.getByTestId("credit-bar-hover-target");
-  await user.hover(hoverTarget);
-  await waitFor(() => {
-    expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
-  });
-});
-
 // ORG-I-057
-test("credit cap input accepts value and updates on blur", async () => {
+test("credit cap input accepts value and saves via unsaved bar", async () => {
   setMockBillingStatus({
     tier: "pro",
     credits: 20_000,
@@ -299,11 +219,15 @@ test("credit cap input accepts value and updates on blur", async () => {
   );
   await openUsageTab();
   await waitFor(() => {
-    expect(screen.getByRole("spinbutton")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("No limit")).toBeInTheDocument();
   });
-  const capInput = screen.getByRole("spinbutton");
+  const capInput = screen.getByPlaceholderText("No limit");
   await fill(capInput, "5000");
-  capInput.blur();
+  await waitFor(() => {
+    expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
+  });
+  const saveUser = userEvent.setup({ pointerEventsCheck: 0 });
+  await saveUser.click(screen.getByTestId("save-button"));
   await waitFor(() => {
     expect(capturedCap).toBe(5000);
   });

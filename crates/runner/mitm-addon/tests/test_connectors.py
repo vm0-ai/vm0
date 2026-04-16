@@ -1,7 +1,9 @@
 """Tests for firewall subsystem: matching, caching, header injection, and HTTP fetching."""
 
+import io
 import json
 import time
+import urllib.error
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1341,6 +1343,76 @@ class TestHandleFirewallRequest:
 
         assert flow.response is None
 
+    async def test_connector_not_configured_returns_424(self):
+        """When connector is enabled but not linked, return 424 with missing secrets."""
+        flow = _make_http_flow()
+        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": "/tmp/net.jsonl",
+        }
+        match_info = {"name": "github", "ref": "github"}
+
+        with (
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(
+                    side_effect=auth.ConnectorNotConfiguredError(
+                        "Connector not configured",
+                    )
+                ),
+            ),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 424
+        assert flow.metadata["firewall_action"] == "BLOCK"
+        assert flow.metadata["firewall_error"] == "connector_not_configured"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "connector_not_configured"
+        assert body["connectors"] == ["github"]
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+
+    async def test_missing_vars_only_returns_424(self):
+        """When connector not configured, return 424 with connector ref."""
+        flow = _make_http_flow()
+        api_entry = {"base": "https://hcti.io", "auth": {"headers": {}}}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": "/tmp/net.jsonl",
+        }
+        match_info = {"name": "htmlcsstoimage", "ref": "htmlcsstoimage"}
+
+        with (
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(
+                    side_effect=auth.ConnectorNotConfiguredError(
+                        "Connector not configured",
+                    )
+                ),
+            ),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 424
+        body = json.loads(flow.response.content)
+        assert body["error"] == "connector_not_configured"
+        assert body["connectors"] == ["htmlcsstoimage"]
+
     async def test_missing_encrypted_secrets_returns_502(self):
         """When encryptedSecrets is missing from vm_info, return 502."""
         flow = _make_http_flow()
@@ -1452,6 +1524,58 @@ class TestFetchFirewallHeaders:
         assert result["base"] == "https://discord.com/api/webhooks/123/abc"
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
+
+    def test_424_connector_not_configured_raises_custom_error(self):
+        """Auth endpoint 424 CONNECTOR_NOT_CONFIGURED raises ConnectorNotConfiguredError."""
+        error_body = json.dumps(
+            {
+                "error": {
+                    "message": "Connector not configured",
+                    "code": "CONNECTOR_NOT_CONFIGURED",
+                }
+            }
+        ).encode()
+        http_error = urllib.error.HTTPError(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            424,
+            "Failed Dependency",
+            {},
+            io.BytesIO(error_body),
+        )
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            with pytest.raises(auth.ConnectorNotConfiguredError) as exc_info:
+                auth._fetch_firewall_headers_sync(
+                    "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
+                )
+            assert "Connector not configured" in str(exc_info.value)
+
+    def test_non_connector_not_configured_error_reraised(self):
+        """Non-CONNECTOR_NOT_CONFIGURED HTTP errors should be re-raised as HTTPError."""
+        error_body = json.dumps(
+            {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
+        ).encode()
+        http_error = urllib.error.HTTPError(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            400,
+            "Bad Request",
+            {},
+            io.BytesIO(error_body),
+        )
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            with pytest.raises(urllib.error.HTTPError):
+                auth._fetch_firewall_headers_sync(
+                    "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
+                )
 
     async def test_async_wrapper_passes_api_url_from_ctx(self):
         """fetch_firewall_headers reads api_url on the event loop and passes it to the sync fn."""

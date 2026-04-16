@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildComposeContent } from "../build-compose-content";
-import { SEED_SKILLS } from "../seed-skills";
-import { resolveSkillRef, getInstructionsFilename } from "@vm0/core";
+import { getInstructionsFilename } from "@vm0/core";
 
 describe("buildComposeContent", () => {
   it("should return valid compose structure without volumes", () => {
@@ -19,75 +18,14 @@ describe("buildComposeContent", () => {
       }),
     );
 
-    // Custom skill volumes are no longer part of compose — they are injected
-    // as additionalVolumes at run creation time
+    // Skills and volumes are not part of compose — they are injected
+    // as additionalVolumes at run creation time via buildSystemSkillVolumes()
     const agent = (result.agents as Record<string, Record<string, unknown>>)[
       "my-agent"
     ]!;
+    expect(agent.skills).toBeUndefined();
     expect(agent.volumes).toBeUndefined();
     expect(result.volumes).toBeUndefined();
-  });
-
-  it("should include all seed skills", () => {
-    const result = buildComposeContent("agent");
-    const agent = (result.agents as Record<string, Record<string, unknown>>)[
-      "agent"
-    ]!;
-    const skills = agent.skills as string[];
-
-    for (const seedSkill of SEED_SKILLS) {
-      const url = resolveSkillRef(seedSkill);
-      expect(skills).toContain(url);
-    }
-  });
-
-  it("should include GA connector types as skills", () => {
-    const result = buildComposeContent("agent");
-    const agent = (result.agents as Record<string, Record<string, unknown>>)[
-      "agent"
-    ]!;
-    const skills = agent.skills as string[];
-
-    // github and jira are GA connectors (no feature flag)
-    expect(skills).toContain(resolveSkillRef("github"));
-    expect(skills).toContain(resolveSkillRef("jira"));
-  });
-
-  it("should include feature-flagged connectors that have api-token", () => {
-    const result = buildComposeContent("agent");
-    const agent = (result.agents as Record<string, Record<string, unknown>>)[
-      "agent"
-    ]!;
-    const skills = agent.skills as string[];
-
-    // mercury: feature-flagged + has api-token → should be included
-    expect(skills).toContain(resolveSkillRef("mercury"));
-    // ahrefs: feature-flagged + has api-token → should be included
-    expect(skills).toContain(resolveSkillRef("ahrefs"));
-  });
-
-  it("should exclude feature-flagged OAuth-only connectors from skills", () => {
-    const result = buildComposeContent("agent");
-    const agent = (result.agents as Record<string, Record<string, unknown>>)[
-      "agent"
-    ]!;
-    const skills = agent.skills as string[];
-
-    // reddit: feature-flagged + OAuth-only → should be excluded
-    expect(skills).not.toContain(resolveSkillRef("reddit"));
-    // canva: feature-flagged + OAuth-only → should be excluded
-    expect(skills).not.toContain(resolveSkillRef("canva"));
-  });
-
-  it("should not produce duplicate skills", () => {
-    const result = buildComposeContent("agent");
-    const agent = (result.agents as Record<string, Record<string, unknown>>)[
-      "agent"
-    ]!;
-    const skills = agent.skills as string[];
-    const unique = new Set(skills);
-
-    expect(skills).toHaveLength(unique.size);
   });
 
   it("should inject connector env var templates for GA connectors", () => {

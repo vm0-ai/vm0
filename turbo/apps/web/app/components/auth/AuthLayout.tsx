@@ -85,7 +85,7 @@ const CLERK_CSS = `
 .cl-card input[type="email"],
 .cl-card input[type="password"] {
   height: 36px !important;
-  background-color: transparent !important;
+  background-color: hsl(var(--input)) !important;
   border: 1px solid hsl(var(--border)) !important;
   border-radius: 0.5rem !important;
   color: hsl(var(--foreground)) !important;
@@ -95,14 +95,15 @@ const CLERK_CSS = `
   box-shadow: none !important;
 }
 
-/* Password input sits inside a wrapper that has the border — strip the input's
-   own border to prevent doubling. Only target password; text/email inputs may
-   have no wrapper and need their own border. */
-.cl-card [class*="formFieldInput"] input[type="password"] {
-  border: none !important;
-  box-shadow: none !important;
-  height: 100% !important;
-  background-color: transparent !important;
+/* Dark mode: --border (gray-200 = #2F2F32) and --input (gray-200) are nearly
+   identical to the card background (gray-100 = #252527) — borders are invisible.
+   Use --gray-400 (#434550, labelled "stronger border" in the design system). */
+[data-theme="dark"] .cl-formFieldInput,
+[data-theme="dark"] .cl-card [class*="formFieldInput"]:not(:has([class*="formFieldInput"])),
+[data-theme="dark"] .cl-card input[type="text"],
+[data-theme="dark"] .cl-card input[type="email"],
+[data-theme="dark"] .cl-card input[type="password"] {
+  border-color: hsl(var(--gray-400)) !important;
 }
 
 /* Checkbox containers must not inherit input wrapper border/height */
@@ -122,6 +123,18 @@ const CLERK_CSS = `
 .cl-card [class*="formFieldInput"]:focus,
 .cl-card [class*="formFieldInput"] input:not([data-input-otp]):focus {
   border: 1px solid hsl(var(--primary)) !important;
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
+  outline: none !important;
+}
+
+/* Dark mode: re-assert primary (orange) focus color for text/email inputs.
+   The --gray-400 base override ties at (0,3,1) specificity with the general focus
+   rule; adding [data-theme="dark"] bumps this to (0,4,1) and guarantees the win.
+   Note: password wrapper already works via the base focus rule — do NOT add
+   :focus-within here or the wrapper + inner input both get borders (double ring). */
+[data-theme="dark"] .cl-card input[type="text"]:focus,
+[data-theme="dark"] .cl-card input[type="email"]:focus {
+  border-color: hsl(var(--primary)) !important;
   box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
   outline: none !important;
 }

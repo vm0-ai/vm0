@@ -160,6 +160,21 @@ export function getConnectorOAuthConfig(
 }
 
 /**
+ * Check if a connector type uses Google OAuth (accounts.google.com).
+ */
+export function isGoogleOAuthConnector(type: ConnectorType): boolean {
+  const oauthConfig = getConnectorOAuthConfig(type);
+  if (!oauthConfig?.authorizationUrl) return false;
+  try {
+    return (
+      new URL(oauthConfig.authorizationUrl).hostname === "accounts.google.com"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check if stored OAuth scopes cover all required scopes for a connector type.
  * Returns true if no OAuth config exists (non-OAuth connector) or all required scopes are present.
  * Returns false if storedScopes is null (legacy connector) or missing any required scope.

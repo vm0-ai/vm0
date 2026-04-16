@@ -8,6 +8,7 @@ import {
   getConnectorProvidedSecretNames,
   getConnectorAuthMethods,
   getConnectorOAuthConfig,
+  isGoogleOAuthConnector,
 } from "../connector-utils";
 
 describe("hasRequiredScopes", () => {
@@ -268,5 +269,93 @@ describe("getConnectorTypeForSecretName", () => {
 
   it("returns null for unknown secret name", () => {
     expect(getConnectorTypeForSecretName("UNKNOWN_SECRET")).toBeNull();
+  });
+});
+
+describe("isGoogleOAuthConnector", () => {
+  const GOOGLE_CONNECTORS = [
+    "gmail",
+    "google-sheets",
+    "google-docs",
+    "google-drive",
+    "google-calendar",
+    "google-meet",
+  ] as const;
+
+  it("returns true for all known Google OAuth connectors", () => {
+    for (const type of GOOGLE_CONNECTORS) {
+      expect(
+        isGoogleOAuthConnector(type),
+        `${type} should be identified as a Google OAuth connector`,
+      ).toBe(true);
+    }
+  });
+
+  it("returns false for non-Google OAuth connectors", () => {
+    const nonGoogleOAuth = ["github", "notion", "slack", "linear"] as const;
+    for (const type of nonGoogleOAuth) {
+      expect(
+        isGoogleOAuthConnector(type),
+        `${type} should not be identified as a Google OAuth connector`,
+      ).toBe(false);
+    }
+  });
+
+  it("returns false for api-token-only connectors", () => {
+    const apiTokenOnly = ["axiom", "atlassian", "ahrefs"] as const;
+    for (const type of apiTokenOnly) {
+      expect(
+        isGoogleOAuthConnector(type),
+        `${type} has no OAuth config and should return false`,
+      ).toBe(false);
+    }
+  });
+
+  it("returns true only for connectors whose OAuth authorizationUrl hostname is accounts.google.com", () => {
+    for (const type of connectorTypeSchema.options) {
+      const result = isGoogleOAuthConnector(type);
+      const oauthConfig = getConnectorOAuthConfig(type);
+
+      if (result) {
+        // If classified as Google, the OAuth URL must point to accounts.google.com
+        const authorizationUrl = oauthConfig?.authorizationUrl;
+        expect(
+          authorizationUrl,
+          `${type}: Google connector must have an authorizationUrl`,
+        ).toBeDefined();
+        expect(
+          new URL(authorizationUrl as string).hostname,
+          `${type}: Google connector authorizationUrl must use accounts.google.com`,
+        ).toBe("accounts.google.com");
+      } else if (oauthConfig?.authorizationUrl) {
+        // If not classified as Google but has an OAuth URL, it must NOT be accounts.google.com
+        let hostname: string | null = null;
+        try {
+          hostname = new URL(oauthConfig.authorizationUrl).hostname;
+        } catch {
+          // invalid URL — isGoogleOAuthConnector correctly returns false
+        }
+        if (hostname) {
+          expect(
+            hostname,
+            `${type}: non-Google connector must not use accounts.google.com`,
+          ).not.toBe("accounts.google.com");
+        }
+      }
+    }
+  });
+
+  it("covers exactly the same set as the legacy hardcoded type list", () => {
+    // Ensures isGoogleOAuthConnector detects at least the 6 connectors
+    // previously handled by the hardcoded isGoogleConnector function.
+    const detected = connectorTypeSchema.options.filter(isGoogleOAuthConnector);
+    for (const type of GOOGLE_CONNECTORS) {
+      expect(
+        detected,
+        `${type} must be detected by isGoogleOAuthConnector`,
+      ).toContain(type);
+    }
+    // No non-Google connector should slip through
+    expect(detected.length).toBe(GOOGLE_CONNECTORS.length);
   });
 });

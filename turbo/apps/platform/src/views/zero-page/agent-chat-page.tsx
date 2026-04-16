@@ -11,7 +11,12 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
+import {
+  IconArrowUpRight,
+  IconMicrophone,
+  IconPin,
+  IconUserPlus,
+} from "@tabler/icons-react";
 import {
   Button,
   Tooltip,
@@ -53,6 +58,8 @@ import {
   startNewZeroSession$,
 } from "../../signals/chat-page/chat-message.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
+import { vcEnabled$ } from "../../signals/voice-chat/voice-chat-session.ts";
+import { ROUTES } from "../../signals/route-paths.ts";
 
 function getTagline(
   agentName: string,
@@ -218,6 +225,7 @@ export function AgentChatPage() {
 
   const suggestedPrompts = useGet(suggestedPrompts$);
   const navigate = useSet(detachedNavigateTo$);
+  const vcEnabled = useLastResolved(vcEnabled$) ?? false;
 
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
   const pinnedStatus = useLastResolved(currentChatAgentPinned$);
@@ -304,7 +312,28 @@ export function AgentChatPage() {
                 </TooltipProvider>
               )}
             </div>
-            <div className="flex-1 min-w-0 flex flex-col justify-center">
+            <div className="flex-1 min-w-0 flex items-center gap-3">
+              {vcEnabled && (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigate(ROUTES.voiceChat);
+                        }}
+                        className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+                        aria-label="Start voice chat"
+                      >
+                        <IconMicrophone size={20} stroke={1.5} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">Voice chat</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
               <h2
                 aria-label={tagline}
                 data-testid="chat-tagline"

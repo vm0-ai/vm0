@@ -8,7 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  isGoogleOAuthConnector,
+} from "@vm0/core";
 import {
   allConnectorTypes$,
   pollingConnectorType$,
@@ -26,6 +30,7 @@ import {
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
 
 // ---------------------------------------------------------------------------
 // Inline markdown renderer for help text
@@ -192,8 +197,12 @@ function ConnectModalContent({
     );
   }
 
+  const isGoogleOAuth = hasOAuth && isGoogleOAuthConnector(item.type);
+
   return (
     <div className="flex flex-col gap-4">
+      {isGoogleOAuth && <GoogleOAuthNotice />}
+
       {hasOAuth && (
         <Button
           variant="outline"

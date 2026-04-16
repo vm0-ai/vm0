@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.1...ably-subscriber-v0.7.2) (2026-04-16)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** reset last_reattach_at after successful reconnect ([#9660](https://github.com/vm0-ai/vm0/issues/9660)) ([57a18fd](https://github.com/vm0-ai/vm0/commit/57a18fd25cec4179c85f6666b40b7b1593709792)), closes [#9654](https://github.com/vm0-ai/vm0/issues/9654)
+
 ## [0.7.1](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.0...ably-subscriber-v0.7.1) (2026-04-13)
 
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.5...ably-subscriber-v0.7.0) (2026-04-09)

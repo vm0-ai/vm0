@@ -1,32 +1,24 @@
 import {
-  resolveSkillRef,
   getInstructionsFilename,
   getConnectorEnvironmentMapping,
   getEligibleConnectorTypes,
   connectorTypeSchema,
 } from "@vm0/core";
-import { SEED_SKILLS } from "./seed-skills";
 
 /**
  * Build compose content for a zero agent.
  *
- * Always includes all SEED_SKILLS plus eligible connector type skill names.
- * Eligible = GA (no feature flag) or has api-token auth (feature flag only
- * gates OAuth, not api-token).
+ * Produces a compose object with framework, instructions, and environment.
  * Connector env var templates are baked into the compose so that
  * expandEnvironmentFromCompose can resolve firewall placeholders at runtime.
+ *
+ * Skills are NOT included in compose — they are injected at runtime via
+ * buildSystemSkillVolumes() → AdditionalVolumes.
  */
 export function buildComposeContent(
   agentName: string,
 ): Record<string, unknown> {
   const eligibleConnectorTypes = getEligibleConnectorTypes();
-
-  const allSkillNames = [
-    ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),
-  ];
-  const skills = allSkillNames.map((name) => {
-    return resolveSkillRef(name);
-  });
 
   const environment: Record<string, string> = {
     ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
@@ -54,10 +46,6 @@ export function buildComposeContent(
     instructions: getInstructionsFilename("claude-code"),
     environment,
   };
-
-  if (skills.length > 0) {
-    agentDef.skills = skills;
-  }
 
   return {
     version: "1",

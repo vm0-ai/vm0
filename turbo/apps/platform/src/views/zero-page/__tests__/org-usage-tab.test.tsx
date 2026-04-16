@@ -112,35 +112,8 @@ describe("org usage tab - credit balance display", () => {
     await openUsageTab();
 
     await waitFor(() => {
-      expect(screen.getByText("15,000 credits")).toBeInTheDocument();
-    });
-  });
-
-  it("should show credit usage bar", async () => {
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 15_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-    });
-
-    mockAPIs([
-      {
-        userId: "user-a",
-        email: "alice@example.com",
-        inputTokens: 100,
-        outputTokens: 50,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-        creditsCharged: 5000,
-        creditCap: null,
-      },
-    ]);
-
-    await openUsageTab();
-
-    await waitFor(() => {
-      expect(screen.getByRole("progressbar")).toBeInTheDocument();
+      const info = screen.getByTestId("credit-balance-info");
+      expect(info).toHaveTextContent("15,000");
     });
   });
 });
@@ -204,7 +177,7 @@ describe("org usage tab - member usage table", () => {
 });
 
 describe("org usage tab - inline cap editing", () => {
-  it("should allow setting a credit cap via inline input", async () => {
+  it("should allow setting a credit cap via unsaved bar", async () => {
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -232,12 +205,18 @@ describe("org usage tab - inline cap editing", () => {
     });
 
     // Find the inline cap input (type=number)
-    const capInput = screen.getByRole("spinbutton");
+    const capInput = screen.getByPlaceholderText("No limit");
     expect(capInput).toBeInTheDocument();
 
-    // Type a cap value and commit by blurring
+    // Type a cap value — unsaved bar appears
     await fill(capInput, "5000");
-    capInput.blur();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(screen.getByTestId("save-button"));
 
     // Wait for save to complete
     await waitFor(() => {
@@ -245,8 +224,7 @@ describe("org usage tab - inline cap editing", () => {
     });
   });
 
-  it("should allow committing cap via Enter key", async () => {
-    const user = userEvent.setup();
+  it("should discard cap changes via unsaved bar", async () => {
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -254,7 +232,7 @@ describe("org usage tab - inline cap editing", () => {
       hasSubscription: true,
     });
 
-    const capStore = mockAPIs([
+    mockAPIs([
       {
         userId: "user-a",
         email: "alice@example.com",
@@ -273,121 +251,24 @@ describe("org usage tab - inline cap editing", () => {
       expect(screen.getByText("alice@example.com")).toBeInTheDocument();
     });
 
-    const capInput = screen.getByRole("spinbutton");
+    const capInput = screen.getByPlaceholderText("No limit");
     await fill(capInput, "3000");
-    await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(capStore["user-a"]).toBe(3000);
-    });
-  });
-});
-
-describe("org usage tab - expiring credits warning", () => {
-  it("shows expiring credits warning for paid org", async () => {
-    const user = userEvent.setup();
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 15_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-      creditExpiry: {
-        expiringNextCycle: 5000,
-        nextExpiryDate: "2026-04-30T00:00:00.000Z",
-      },
+      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
 
-    mockAPIs([
-      {
-        userId: "user-a",
-        email: "alice@example.com",
-        inputTokens: 100,
-        outputTokens: 50,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-        creditsCharged: 2000,
-        creditCap: null,
-      },
-    ]);
-
-    await openUsageTab();
-
-    // Hover over the progress bar to open the popover
-    const progressbar = screen.getByRole("progressbar");
-    await user.hover(progressbar.closest("[class*='group']")!);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(screen.getByTestId("discard-button"));
 
     await waitFor(() => {
-      expect(screen.getByText("5,000")).toBeInTheDocument();
+      expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
     });
-
-    expect(screen.getByText(/Expiring on/)).toBeInTheDocument();
-  });
-
-  it("hides expiring credits warning when zero", async () => {
-    const user = userEvent.setup();
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 15_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-      creditExpiry: {
-        expiringNextCycle: 0,
-        nextExpiryDate: null,
-      },
-    });
-
-    mockAPIs([
-      {
-        userId: "user-a",
-        email: "alice@example.com",
-        inputTokens: 100,
-        outputTokens: 50,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-        creditsCharged: 2000,
-        creditCap: null,
-      },
-    ]);
-
-    await openUsageTab();
-
-    // Hover over the progress bar to open the popover
-    const progressbar = screen.getByRole("progressbar");
-    await user.hover(progressbar.closest("[class*='group']")!);
-
-    await waitFor(() => {
-      expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText(/Expiring on/)).not.toBeInTheDocument();
-  });
-
-  it("hides expiring credits warning for free org (no progress bar shown)", async () => {
-    setMockBillingStatus({
-      tier: "free",
-      credits: 10_000,
-      hasSubscription: false,
-    });
-
-    server.use(
-      http.get("*/api/zero/usage/members", () => {
-        return HttpResponse.json({ period: null, members: [] });
-      }),
-    );
-
-    await openUsageTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("10,000 credits")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Expiring on/)).not.toBeInTheDocument();
   });
 });
 
 describe("org usage tab - free tier", () => {
-  it("should show starter credits label for free tier", async () => {
+  it("should show credit balance for free tier", async () => {
     setMockBillingStatus({
       tier: "free",
       credits: 8000,
@@ -403,9 +284,8 @@ describe("org usage tab - free tier", () => {
     await openUsageTab();
 
     await waitFor(() => {
-      expect(screen.getByTestId("credits-line")).toHaveTextContent(
-        /starter credits/,
-      );
+      const info = screen.getByTestId("credit-balance-info");
+      expect(info).toHaveTextContent("8,000");
     });
   });
 
@@ -425,7 +305,8 @@ describe("org usage tab - free tier", () => {
     await openUsageTab();
 
     await waitFor(() => {
-      expect(screen.getByText("10,000 credits")).toBeInTheDocument();
+      const info = screen.getByTestId("credit-balance-info");
+      expect(info).toHaveTextContent("10,000");
     });
 
     expect(

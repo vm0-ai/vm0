@@ -1967,3 +1967,135 @@ async fn resumed_connection_reattaches_channel() {
         "client must send ATTACH even on resumed connection"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test 28: detach after reconnect reattaches instead of full reconnect
+// ---------------------------------------------------------------------------
+
+/// Regression test: after a successful reconnect, `last_reattach_at` must be
+/// reset so that a DETACH on the new connection triggers a re-attach (ATTACH)
+/// rather than an unnecessary full reconnect.
+///
+/// Sequence: DETACH → send ATTACH → connection drops → reconnect succeeds →
+/// DETACH on new connection → client should send ATTACH (not open conn-3).
+#[tokio::test]
+async fn detach_after_reconnect_reattaches_not_full_reconnect() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    tokio::spawn(async move {
+        let mut conn1 = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+
+        let detached = ProtocolMessage {
+            action: action::DETACHED,
+            channel: Some("ch".into()),
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "channel detached".into(),
+            }),
+            ..Default::default()
+        };
+
+        // DETACH → client sets last_reattach_at and sends ATTACH
+        conn1
+            .send(tungstenite::Message::Binary(
+                encode_msg(&detached).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn1))
+            .await
+            .expect("timed out waiting for ATTACH on conn-1")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+
+        // Drop connection before sending ATTACHED — simulates connection loss
+        drop(conn1);
+
+        // Client reconnects (conn-2)
+        let mut conn2 = ws.accept_and_handshake("ch", "conn-2").await.unwrap();
+
+        // Send DETACH on the new connection (within the 60s reattach_window).
+        // Before the fix, last_reattach_at was stale from conn-1, so this
+        // would trigger a full reconnect. After the fix, it should re-attach.
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&detached).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        // Client should send ATTACH (re-attach), NOT open a third connection
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+            .await
+            .expect("timed out waiting for ATTACH on conn-2 (got full reconnect instead?)")
+            .unwrap();
+        assert_eq!(
+            msg.action,
+            action::ATTACH,
+            "expected re-attach on conn-2, not full reconnect"
+        );
+
+        // Complete the re-attach
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-2".into()),
+            ..Default::default()
+        };
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&attached).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        send_message(&mut conn2, "ch", "after-reattach", serde_json::json!("ok"))
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.reattach_window = Duration::from_secs(60);
+    timing.initial_retry_interval = Duration::from_millis(10);
+    timing.max_retry_interval = Duration::from_millis(50);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    // Disconnected → reconnect → Connected
+    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+        .await
+        .expect("timed out waiting for Disconnected")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Disconnected { .. }),
+        "expected Disconnected, got {event:?}"
+    );
+
+    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+        .await
+        .expect("timed out waiting for Connected")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Connected),
+        "expected Connected, got {event:?}"
+    );
+
+    // Message after re-attach on conn-2 proves we didn't do a full reconnect
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message")
+        .unwrap();
+    match event {
+        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-reattach")),
+        other => panic!("expected Message, got {other:?}"),
+    }
+}

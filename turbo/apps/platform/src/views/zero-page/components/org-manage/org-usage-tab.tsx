@@ -1,17 +1,10 @@
 import { useGet, useLoadable, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { createPortal } from "react-dom";
 import { FeatureSwitchKey, type OrgMember, type MemberUsage } from "@vm0/core";
-import { IconUsers } from "@tabler/icons-react";
+import { IconUsers, IconPencil, IconLoader2 } from "@tabler/icons-react";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
-import {
-  Input,
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@vm0/ui";
+import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
@@ -26,169 +19,17 @@ import { CreditsChart } from "../../../usage-page/components/credits-chart.tsx";
 import {
   billingStatusAsync$,
   apiTierToBillingTier,
-  type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import {
-  creditBarPopoverOpen$,
-  setCreditBarPopoverOpen$,
-  creditBarTimerId$,
-  setCreditBarTimerId$,
   inlineCapValues$,
   setInlineCapValue$,
   usageMembers$,
   syncUsageMembersFromLoadable$,
-  inlineCapCommit$,
+  inlineCapBatchCommit$,
+  inlineCapsDirty$,
+  discardAllInlineCapValues$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
-
-// ---------------------------------------------------------------------------
-// Credit balance bar (moved from billing tab)
-// ---------------------------------------------------------------------------
-
-function tierCreditReference(tier: BillingTier): number {
-  if (tier === "free") {
-    return 100_000;
-  }
-  if (tier === "pro") {
-    return 20_000;
-  }
-  return 120_000;
-}
-
-function formatCreditsLine(tier: BillingTier, totalUsed: number): string {
-  if (tier === "free") {
-    return `${tierCreditReference(tier).toLocaleString()} starter credits`;
-  }
-  const monthly = tierCreditReference(tier);
-  if (monthly <= 0) {
-    return `Used ${totalUsed.toLocaleString()} credits`;
-  }
-  return `${monthly.toLocaleString()}/mo plan · used ${totalUsed.toLocaleString()} this period`;
-}
-
-function CreditUsageBar({
-  used,
-  balance,
-  tier,
-  creditExpiry,
-}: {
-  used: number;
-  balance: number;
-  tier: BillingTier;
-  creditExpiry?: { expiringNextCycle: number; nextExpiryDate: string | null };
-}) {
-  const ref = tierCreditReference(tier);
-  const total = used + balance;
-  const barMax = Math.max(total, ref, 1);
-
-  const usedPct = (used / barMax) * 100;
-
-  const open = useGet(creditBarPopoverOpen$);
-  const setOpen = useSet(setCreditBarPopoverOpen$);
-  const timerId = useGet(creditBarTimerId$);
-  const setTimerId = useSet(setCreditBarTimerId$);
-
-  const show = () => {
-    if (timerId !== null) {
-      globalThis.clearTimeout(timerId);
-      setTimerId(null);
-    }
-    setOpen(true);
-  };
-
-  const scheduleHide = () => {
-    if (timerId !== null) {
-      globalThis.clearTimeout(timerId);
-    }
-    setTimerId(
-      globalThis.setTimeout(() => {
-        setOpen(false);
-        setTimerId(null);
-      }, 200),
-    );
-  };
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(v) => {
-        if (!v && timerId !== null) {
-          globalThis.clearTimeout(timerId);
-          setTimerId(null);
-        }
-        setOpen(v);
-      }}
-      modal={false}
-    >
-      <PopoverAnchor asChild>
-        <div
-          className="group w-full cursor-default py-1.5 -my-1.5"
-          data-testid="credit-bar-hover-target"
-          onPointerEnter={show}
-          onPointerLeave={scheduleHide}
-        >
-          <div
-            className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted/70 ring-offset-background transition-shadow group-hover:ring-2 group-hover:ring-ring/35 group-hover:ring-offset-1"
-            role="progressbar"
-            aria-valuenow={Math.round(usedPct)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuetext={`${used.toLocaleString()} used, ${balance.toLocaleString()} remaining`}
-            aria-label="Credit usage this period"
-          >
-            {used > 0 && (
-              <div
-                className="h-full shrink-0 bg-primary"
-                style={{ width: `${usedPct}%` }}
-              />
-            )}
-          </div>
-        </div>
-      </PopoverAnchor>
-      <PopoverContent
-        side="top"
-        align="start"
-        sideOffset={10}
-        collisionPadding={12}
-        className="w-72 p-3 text-left shadow-lg"
-        onPointerEnter={show}
-        onPointerLeave={scheduleHide}
-        onOpenAutoFocus={(e) => {
-          return e.preventDefault();
-        }}
-      >
-        <p className="text-sm font-medium text-foreground">Credit breakdown</p>
-        <ul className="mt-2.5 space-y-2 text-xs text-muted-foreground">
-          {creditExpiry &&
-            creditExpiry.expiringNextCycle > 0 &&
-            creditExpiry.nextExpiryDate && (
-              <li className="relative flex items-baseline justify-between pl-5">
-                <span
-                  className="absolute left-0 top-[0.35em] h-2 w-2 rounded-full bg-orange-500/50"
-                  aria-hidden
-                />
-                <span className="text-orange-600 dark:text-orange-400">
-                  Expiring on{" "}
-                  {new Date(creditExpiry.nextExpiryDate).toLocaleDateString(
-                    "en-US",
-                  )}
-                </span>
-                <span className="tabular-nums text-orange-600 dark:text-orange-400">
-                  {creditExpiry.expiringNextCycle.toLocaleString()}
-                </span>
-              </li>
-            )}
-        </ul>
-        {ref > 0 && (
-          <p className="mt-2.5 border-t border-border/60 pt-2 text-[11px] text-muted-foreground leading-snug">
-            {ref.toLocaleString()} credits/mo plan allocation. Credits above
-            this are rollover from prior periods or top-ups.
-          </p>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -227,7 +68,6 @@ function MemberAvatar({
 }
 
 function InlineCapInput({ member }: { member: MemberUsage }) {
-  const pageSignal = useGet(pageSignal$);
   const capValues = useGet(inlineCapValues$);
   const setCapValue = useSet(setInlineCapValue$);
   const value = capValues.has(member.userId)
@@ -235,51 +75,83 @@ function InlineCapInput({ member }: { member: MemberUsage }) {
     : member.creditCap !== null
       ? String(member.creditCap)
       : "";
-  const [loadable, doCommit] = useLoadableSet(inlineCapCommit$);
-  const saving = loadable.state === "loading";
-
-  const commit = () => {
-    const trimmed = value.trim();
-    const cap = trimmed === "" ? null : Number(trimmed);
-    if (cap !== null && (!Number.isInteger(cap) || cap <= 0)) {
-      return;
-    }
-
-    detach(
-      doCommit(
-        {
-          userId: member.userId,
-          creditCap: cap,
-          memberCreditCap: member.creditCap,
-        },
-        pageSignal,
-      ).catch(() => {
-        toast.error("Failed to update credit cap. Please try again.");
-      }),
-      Reason.DomCallback,
-    );
-  };
 
   return (
     <Input
-      type="number"
-      min={1}
-      step={1}
+      type="text"
+      inputMode="numeric"
       placeholder="No limit"
       value={value}
       onChange={(e) => {
-        return setCapValue(member.userId, e.target.value);
-      }}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          commit();
-          e.currentTarget.blur();
+        const v = e.target.value;
+        if (v !== "" && !/^\d+$/.test(v)) {
+          return;
         }
+        setCapValue(member.userId, v);
       }}
-      disabled={saving}
       className="h-8 w-full text-[13px] tabular-nums placeholder:text-xs"
     />
+  );
+}
+
+function UnsavedBar({
+  onDiscard,
+  onSave,
+  saving,
+}: {
+  onDiscard: () => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  const container = document.getElementById("org-manage-content");
+  if (!container) {
+    return null;
+  }
+  return createPortal(
+    <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-center px-4">
+      <div
+        data-testid="unsaved-bar"
+        className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
+      >
+        <div className="flex items-center gap-2 text-sm text-foreground">
+          <IconPencil
+            size={18}
+            stroke={1.5}
+            className="shrink-0 text-muted-foreground"
+          />
+          <span>You have unsaved changes</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            data-testid="discard-button"
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={onDiscard}
+            disabled={saving}
+          >
+            Discard
+          </Button>
+          <Button
+            data-testid="save-button"
+            size="sm"
+            className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={onSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <IconLoader2
+                size={14}
+                stroke={1.5}
+                className="animate-spin mr-1.5"
+              />
+            ) : null}
+            Save
+          </Button>
+        </div>
+      </div>
+    </div>,
+    container,
   );
 }
 
@@ -339,9 +211,20 @@ function OverviewSection() {
   const rawMembers = usageData?.members ?? [];
   useSet(syncUsageMembersFromLoadable$)(rawMembers);
 
-  const totalUsed = members.reduce((s, m) => {
-    return s + m.creditsCharged;
-  }, 0);
+  const isDirty = useGet(inlineCapsDirty$);
+  const discardAll = useSet(discardAllInlineCapValues$);
+  const pageSignal = useGet(pageSignal$);
+  const [batchLoadable, doBatchCommit] = useLoadableSet(inlineCapBatchCommit$);
+  const batchSaving = batchLoadable.state === "loading";
+
+  const handleSave = () => {
+    detach(
+      doBatchCommit(members, pageSignal).catch(() => {
+        toast.error("Failed to update credit caps. Please try again.");
+      }),
+      Reason.DomCallback,
+    );
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -355,29 +238,11 @@ function OverviewSection() {
               <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
             </div>
           ) : billing ? (
-            <>
-              <div className="px-5 py-4">
-                <p className="text-sm font-medium text-foreground">
-                  {billing.credits.toLocaleString()} credits
-                </p>
-                <p
-                  className="text-[13px] text-muted-foreground mt-0.5"
-                  data-testid="credits-line"
-                >
-                  {formatCreditsLine(currentTier, totalUsed)}
-                </p>
-              </div>
-              {currentTier !== "free" && (
-                <div className="px-5 pb-4 pt-1">
-                  <CreditUsageBar
-                    used={totalUsed}
-                    balance={billing.credits}
-                    tier={currentTier}
-                    creditExpiry={billing.creditExpiry}
-                  />
-                </div>
-              )}
-            </>
+            <div className="px-5 py-4" data-testid="credit-balance-info">
+              <p className="text-sm font-medium tabular-nums text-foreground">
+                {billing.credits.toLocaleString()}
+              </p>
+            </div>
           ) : (
             <div className="px-5 py-4">
               <p className="text-sm text-muted-foreground">
@@ -428,6 +293,14 @@ function OverviewSection() {
           )}
         </section>
       )}
+
+      {isDirty && (
+        <UnsavedBar
+          onDiscard={discardAll}
+          onSave={handleSave}
+          saving={batchSaving}
+        />
+      )}
     </div>
   );
 }
@@ -444,7 +317,7 @@ function MembersTable({
   return (
     <div className="overflow-hidden rounded-xl bg-card zero-border">
       {/* Header */}
-      <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
+      <div className="grid grid-cols-[1fr_7rem_6rem_8.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
         <span>Member</span>
         <span>Used</span>
         <span>Remaining</span>
@@ -463,7 +336,7 @@ function MembersTable({
         return (
           <div key={member.userId}>
             <div className="h-0 zero-border-t mx-5" />
-            <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-3">
+            <div className="grid grid-cols-[1fr_7rem_6rem_8.5rem] gap-x-4 items-center px-5 py-3">
               <div className="flex items-center gap-3 min-w-0">
                 <MemberAvatar
                   imageUrl={orgMember?.imageUrl ?? ""}

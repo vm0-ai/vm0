@@ -23,39 +23,3 @@ export function createMockChildProcess(
   }, delay);
   return child;
 }
-
-interface MockChildProcessWithOutput extends EventEmitter {
-  stdout: EventEmitter;
-  stderr: EventEmitter;
-}
-
-/**
- * Creates a mock child process with stdout/stderr streams.
- * Used for testing scenarios where command output matters (e.g., cook, onboard).
- *
- * @param exitCode - The exit code to emit
- * @param stdout - Data to emit on stdout (default: "")
- * @param stderr - Data to emit on stderr (default: "")
- */
-export function createMockChildProcessWithOutput(
-  exitCode: number,
-  stdout = "",
-  stderr = "",
-): MockChildProcessWithOutput {
-  const child = new EventEmitter() as MockChildProcessWithOutput;
-  child.stdout = new EventEmitter();
-  child.stderr = new EventEmitter();
-
-  // Emit data and close events asynchronously
-  setImmediate(() => {
-    if (stdout) {
-      child.stdout.emit("data", Buffer.from(stdout));
-    }
-    if (stderr) {
-      child.stderr.emit("data", Buffer.from(stderr));
-    }
-    child.emit("close", exitCode);
-  });
-
-  return child;
-}

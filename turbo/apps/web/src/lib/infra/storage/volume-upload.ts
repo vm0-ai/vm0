@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { eq, and } from "drizzle-orm";
 import * as tar from "tar";
-import { getCustomSkillStorageName, VOLUME_ORG_USER_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID } from "@vm0/core";
 import { storages, storageVersions } from "../../../db/schema/storage";
 import {
   putS3Object,
@@ -18,22 +18,21 @@ import { computeContentHashFromHashes, hashFileContent } from "./content-hash";
 import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 
-const log = logger("storage:skill-upload");
+const log = logger("storage:volume-upload");
 
 /**
- * Upload a custom skill with multiple files to S3 from the server side.
+ * Upload a volume with multiple files to S3 from the server side.
  *
  * Creates a multi-file tar.gz archive from the provided files array,
  * computes content-addressable version hashes, and uploads to S3
  * with deduplication support.
  */
-export async function uploadSkillServerSide(params: {
+export async function uploadVolumeServerSide(params: {
   orgId: string;
-  skillName: string;
+  storageName: string;
   files: Array<{ path: string; content: string }>;
 }): Promise<{ storageName: string; versionId: string }> {
-  const { orgId, skillName, files } = params;
-  const storageName = getCustomSkillStorageName(skillName);
+  const { orgId, storageName, files } = params;
 
   // Compute per-file hashes and sizes
   const fileEntries = files.map((f) => {
@@ -51,7 +50,7 @@ export async function uploadSkillServerSide(params: {
   }, 0);
 
   // Create multi-file tar.gz archive via temp directory
-  const tmpDir = await mkdtemp(join(tmpdir(), "vm0-skill-"));
+  const tmpDir = await mkdtemp(join(tmpdir(), "vm0-volume-"));
 
   try {
     // Write files preserving directory structure
@@ -207,7 +206,7 @@ export async function uploadSkillServerSide(params: {
     });
 
     log.debug(
-      `Uploaded skill ${skillName}: ${versionId} (${files.length} files)`,
+      `Uploaded volume ${storageName}: ${versionId} (${files.length} files)`,
     );
     return { storageName, versionId };
   } finally {
@@ -216,18 +215,17 @@ export async function uploadSkillServerSide(params: {
 }
 
 /**
- * Delete a custom skill's storage from S3 and database.
+ * Delete a volume's storage from S3 and database.
  *
  * Removes storage versions, the storage record, and S3 objects.
  * Idempotent -- returns silently if the storage doesn't exist.
  */
-export async function deleteSkillServerSide(params: {
+export async function deleteVolumeServerSide(params: {
   orgId: string;
-  skillName: string;
+  storageName: string;
 }): Promise<void> {
-  const { orgId, skillName } = params;
+  const { orgId, storageName } = params;
 
-  const storageName = getCustomSkillStorageName(skillName);
   const db = globalThis.services.db;
 
   // 1. Look up storage by name + orgId
@@ -273,5 +271,5 @@ export async function deleteSkillServerSide(params: {
 
   await db.delete(storages).where(eq(storages.id, storage.id));
 
-  log.debug(`Deleted skill storage: ${storageName}`);
+  log.debug(`Deleted volume storage: ${storageName}`);
 }

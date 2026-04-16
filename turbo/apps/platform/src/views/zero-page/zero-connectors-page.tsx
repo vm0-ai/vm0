@@ -8,7 +8,11 @@ import {
   IconLoader2,
   IconDotsVertical,
 } from "@tabler/icons-react";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  isGoogleOAuthConnector,
+} from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
@@ -44,16 +48,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-
-function isGoogleConnector(type: string) {
-  return (
-    type === "gmail" ||
-    type === "google-sheets" ||
-    type === "google-docs" ||
-    type === "google-drive" ||
-    type === "google-calendar"
-  );
-}
 
 function GlobalConnectorCard({
   connector,
@@ -237,7 +231,7 @@ function AvailableConnectorCard({
           data-testid="connector-help-text"
           className="text-xs text-muted-foreground line-clamp-2"
         >
-          {isGoogleConnector(connector.type) ? (
+          {isGoogleOAuthConnector(connector.type) ? (
             <>
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
@@ -317,9 +311,10 @@ export function ZeroConnectorsPage() {
       return c.type === type;
     });
     if (
-      ct &&
-      ct.availableAuthMethods.length === 1 &&
-      ct.availableAuthMethods[0] === "api-token"
+      (ct &&
+        ct.availableAuthMethods.length === 1 &&
+        ct.availableAuthMethods[0] === "api-token") ||
+      isGoogleOAuthConnector(type)
     ) {
       setSelected(type);
     } else {

@@ -10,6 +10,8 @@ export interface ConnectorRef {
   label: string;
   icon: string;
   darkIcon?: string;
+  /** true when the icon SVG is dark-coloured and needs inversion in dark mode */
+  dark?: boolean;
 }
 
 export interface IntegrationData {
@@ -59,12 +61,14 @@ const SENTRY: ConnectorRef = {
   id: "sentry",
   label: "Sentry",
   icon: "/assets/connectors/sentry.svg",
+  dark: true,
 };
 
 const GITHUB: ConnectorRef = {
   id: "github",
   label: "GitHub",
   icon: "/assets/connectors/github.svg",
+  dark: true,
 };
 
 const GMAIL: ConnectorRef = {
@@ -89,18 +93,28 @@ const X_TWITTER: ConnectorRef = {
   id: "x",
   label: "X (Twitter)",
   icon: "/assets/connectors/x.svg",
+  dark: true,
 };
 
 const NOTION: ConnectorRef = {
   id: "notion",
   label: "Notion",
   icon: "/assets/connectors/notion.svg",
+  dark: true,
+};
+
+const INTERCOM: ConnectorRef = {
+  id: "intercom",
+  label: "Intercom",
+  icon: "/assets/connectors/intercom.svg",
+  dark: true,
 };
 
 const AXIOM: ConnectorRef = {
   id: "axiom",
   label: "Axiom",
   icon: "/assets/connectors/axiom.svg",
+  dark: true,
 };
 
 const V0: ConnectorRef = {
@@ -113,6 +127,37 @@ const VM0: ConnectorRef = {
   id: "vm0",
   label: "vm0",
   icon: "/assets/connectors/vm0.svg",
+};
+
+const HUBSPOT: ConnectorRef = {
+  id: "hubspot",
+  label: "HubSpot",
+  icon: "/assets/connectors/hubspot.svg",
+};
+
+const VERCEL: ConnectorRef = {
+  id: "vercel",
+  label: "Vercel",
+  icon: "/assets/connectors/vercel.svg",
+  dark: true,
+};
+
+const FIGMA: ConnectorRef = {
+  id: "figma",
+  label: "Figma",
+  icon: "/assets/connectors/figma.svg",
+};
+
+const AIRTABLE: ConnectorRef = {
+  id: "airtable",
+  label: "Airtable",
+  icon: "/assets/connectors/airtable.svg",
+};
+
+const DROPBOX: ConnectorRef = {
+  id: "dropbox",
+  label: "Dropbox",
+  icon: "/assets/connectors/dropbox.svg",
 };
 
 // ---------------------------------------------------------------------------

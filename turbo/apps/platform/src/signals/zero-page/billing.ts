@@ -83,10 +83,15 @@ export const setBillingDialogOpen$ = command(({ set }, open: boolean) => {
 });
 
 export const startCheckout$ = command(
-  async ({ get }, tier: "pro" | "team", _signal: AbortSignal) => {
+  async (
+    { get },
+    tier: "pro" | "team",
+    newTab: boolean,
+    _signal: AbortSignal,
+  ) => {
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
-    successUrl.searchParams.set("billing", "success");
+    successUrl.searchParams.set("billing", tier);
     const cancelUrl = new URL(currentUrl);
     cancelUrl.searchParams.set("billing", "canceled");
 
@@ -102,8 +107,12 @@ export const startCheckout$ = command(
       }),
       [200],
     );
-    window.location.href = result.body.url;
-    // Don't reset loading — page is navigating away
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
+      // Don't reset loading — page is navigating away
+    }
   },
 );
 

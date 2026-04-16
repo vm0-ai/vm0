@@ -493,3 +493,37 @@ export type WebhookStoragesPrepareContract =
 export type WebhookStoragesCommitContract =
   typeof webhookStoragesCommitContract;
 export type WebhookUsageContract = typeof webhookUsageContract;
+
+/**
+ * Webhook connector billing contract for /api/webhooks/agent/connector-billing
+ *
+ * Receives per-API-call connector billing records (billable resource counts)
+ * from the mitmproxy addon for billing attribution.
+ */
+export const webhookConnectorBillingContract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/webhooks/agent/connector-billing",
+    headers: authHeadersSchema,
+    body: z.object({
+      runId: z.string().min(1, "runId is required"),
+      flowId: z.string().min(1).max(100),
+      connector: z.string().min(1).max(50),
+      category: z.string().min(1).max(100),
+      quantity: z.number().int().min(0),
+    }),
+    responses: {
+      200: z.object({
+        success: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Receive connector billing data from sandbox",
+  },
+});
+
+export type WebhookConnectorBillingContract =
+  typeof webhookConnectorBillingContract;

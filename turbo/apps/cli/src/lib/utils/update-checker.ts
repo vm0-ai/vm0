@@ -92,26 +92,6 @@ export function getManualUpgradeCommand(pm: PackageManager): string {
 }
 
 /**
- * Escape a string for use in shell command display.
- * Uses single quotes which don't interpret any special characters.
- * Embedded single quotes are handled via the '\'' idiom
- * (end quote, escaped literal quote, start quote).
- */
-function escapeForShell(str: string): string {
-  return `'${str.replace(/'/g, "'\\''")}'`;
-}
-
-/**
- * Build the re-run command string
- */
-function buildRerunCommand(prompt: string | undefined): string {
-  if (prompt) {
-    return `vm0 cook ${escapeForShell(prompt)}`;
-  }
-  return "vm0 cook";
-}
-
-/**
  * Fetch the latest version of the package from npm registry
  * Returns null if the request fails or times out
  */
@@ -166,85 +146,6 @@ export function performUpgrade(
       resolve(false);
     });
   });
-}
-
-/**
- * Check for updates and perform upgrade if needed
- * Returns true if caller should exit (upgrade happened or failed)
- * Returns false if caller should continue (no update needed, check failed, or unsupported PM)
- */
-export async function checkAndUpgrade(
-  currentVersion: string,
-  prompt: string | undefined,
-): Promise<boolean> {
-  const latestVersion = await getLatestVersion();
-
-  // If we couldn't check, warn and continue
-  if (latestVersion === null) {
-    console.log(chalk.yellow("⚠ Could not check for updates"));
-    console.log();
-    return false;
-  }
-
-  // If already on latest, continue
-  if (latestVersion === currentVersion) {
-    return false;
-  }
-
-  // New version available - show beta notice
-  console.log(chalk.yellow("vm0 is currently in beta."));
-  console.log(
-    chalk.yellow(
-      `Current version: ${currentVersion} -> Latest version: ${latestVersion}`,
-    ),
-  );
-  console.log(
-    chalk.yellow(
-      "Please always use the latest version for best compatibility.",
-    ),
-  );
-  console.log();
-
-  // Check package manager
-  const packageManager = detectPackageManager();
-
-  // For unsupported package managers, show manual upgrade instructions and continue
-  if (!isAutoUpgradeSupported(packageManager)) {
-    if (packageManager === "unknown") {
-      console.log(
-        chalk.yellow("Could not detect your package manager for auto-upgrade."),
-      );
-    } else {
-      console.log(
-        chalk.yellow(`Auto-upgrade is not supported for ${packageManager}.`),
-      );
-    }
-    console.log(chalk.yellow("Please upgrade manually:"));
-    console.log(chalk.cyan(`  ${getManualUpgradeCommand(packageManager)}`));
-    console.log();
-    return false;
-  }
-
-  // Perform upgrade for supported package managers (npm, pnpm)
-  console.log(`Upgrading via ${packageManager}...`);
-  const success = await performUpgrade(packageManager);
-
-  if (success) {
-    console.log(chalk.green(`Upgraded to ${latestVersion}`));
-    console.log();
-    console.log("To continue, run:");
-    console.log(chalk.cyan(`  ${buildRerunCommand(prompt)}`));
-    return true;
-  }
-
-  // Upgrade failed - show manual instructions
-  console.error();
-  console.error(chalk.red("✗ Upgrade failed. Please run manually:"));
-  console.error(chalk.cyan(`  ${getManualUpgradeCommand(packageManager)}`));
-  console.error();
-  console.error("Then re-run:");
-  console.error(chalk.cyan(`  ${buildRerunCommand(prompt)}`));
-  return true;
 }
 
 /**

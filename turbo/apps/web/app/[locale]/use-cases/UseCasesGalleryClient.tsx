@@ -52,7 +52,7 @@ function ConnectorIcon({ connector }: { connector: ConnectorRef }) {
         alt={connector.label}
         width={20}
         height={20}
-        className="object-contain"
+        className={`object-contain${connector.dark ? " landing-icon-invert" : ""}`}
       />
     </div>
   );

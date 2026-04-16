@@ -148,7 +148,7 @@ function PlanCard({
   plan: (typeof PLANS)[number];
   currentTier: BillingTier;
   loading: boolean;
-  onAction: (planTier: BillingTier) => void;
+  onAction: (planTier: BillingTier, e: React.MouseEvent) => void;
 }) {
   const isCurrent = plan.tier === currentTier;
   const label = planButtonLabel(plan, currentTier);
@@ -226,8 +226,8 @@ function PlanCard({
           size="default"
           className="w-full h-11 text-sm font-medium"
           disabled={loading || isCurrent}
-          onClick={() => {
-            return onAction(plan.tier);
+          onClick={(e) => {
+            return onAction(plan.tier, e);
           }}
         >
           {isCurrent ? "Current plan" : label}
@@ -249,7 +249,7 @@ function PricingPage({
   const loading = checkoutLoadable.state === "loading";
   const openDowngrade = useSet(openDowngradeDialog$);
 
-  const handlePlanAction = (planTier: BillingTier) => {
+  const handlePlanAction = (planTier: BillingTier, e: React.MouseEvent) => {
     if (planTier === currentTier) {
       return;
     }
@@ -260,7 +260,8 @@ function PricingPage({
     if (planTier !== "pro" && planTier !== "team") {
       return;
     }
-    detach(checkout(planTier, pageSignal), Reason.DomCallback);
+    const newTab = e.metaKey || e.ctrlKey;
+    detach(checkout(planTier, newTab, pageSignal), Reason.DomCallback);
   };
 
   return (
