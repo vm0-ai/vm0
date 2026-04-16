@@ -5,6 +5,8 @@ import {
   resetSignal,
   createDeferredPromise,
   geometryStyle,
+  setLoop,
+  MAX_LOOP_COUNT_IN_TEST,
 } from "../utils.ts";
 import { createStore } from "ccstate";
 
@@ -142,6 +144,24 @@ describe("utils", () => {
       expect(geometryStyle({ scale: 1.5 })).toStrictEqual({
         transform: "scale(1.5)",
       });
+    });
+  });
+
+  describe("setLoop", () => {
+    it("throws when loop body never completes (infinite loop detection)", async () => {
+      const controller = new AbortController();
+      // Body always returns false — never signals completion
+      await expect(
+        setLoop(
+          () => {
+            return false;
+          },
+          0,
+          controller.signal,
+        ),
+      ).rejects.toThrow(
+        `setLoop: infinite loop detected — exceeded ${MAX_LOOP_COUNT_IN_TEST} iterations in test`,
+      );
     });
   });
 });
