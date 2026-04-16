@@ -8,7 +8,7 @@ const context = testContext();
 
 describe("chat resume", () => {
   it("should display history messages and show Stop button for active run", async () => {
-    const ctrl = mockChatLifecycle({
+    mockChatLifecycle({
       threadId: "thread-resume",
       chatMessages: [
         {
