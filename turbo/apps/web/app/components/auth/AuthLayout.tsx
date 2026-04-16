@@ -127,6 +127,17 @@ const CLERK_CSS = `
   outline: none !important;
 }
 
+/* Dark mode: re-assert primary (orange) focus color — the --gray-400 base override
+   and Clerk's own error/focus styles can win when specificity ties; bumping with
+   [data-theme="dark"] gives (0,4,1) vs (0,3,1) to guarantee the correct color. */
+[data-theme="dark"] .cl-card input[type="text"]:focus,
+[data-theme="dark"] .cl-card input[type="email"]:focus,
+[data-theme="dark"] .cl-card [class*="formFieldInput"]:focus-within {
+  border-color: hsl(var(--primary)) !important;
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1) !important;
+  outline: none !important;
+}
+
 /* Placeholder color */
 .cl-formFieldInput::placeholder,
 .cl-formFieldInput input::placeholder,
