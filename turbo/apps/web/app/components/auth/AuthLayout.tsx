@@ -74,9 +74,8 @@ const CLERK_CSS = `
   color: hsl(var(--foreground)) !important;
 }
 
-/* Input field styles - border on wrapper only */
-.cl-formFieldInput,
-.cl-card [class*="formFieldInput"] {
+/* Input field styles - border on .cl-formFieldInput wrapper only (exact match, not glob) */
+.cl-formFieldInput {
   height: 36px !important;
   background-color: transparent !important;
   border: 1px solid hsl(var(--border)) !important;
@@ -88,24 +87,23 @@ const CLERK_CSS = `
   box-shadow: none !important;
 }
 
-/* Strip border from inner elements — only the wrapper shows one border */
+/* Clear border/height from group/parent wrappers (e.g. cl-formFieldInputGroup)
+   that also match the formFieldInput substring but are not the intended target */
+.cl-card [class*="formFieldInput"]:not(.cl-formFieldInput) {
+  border: none !important;
+  height: auto !important;
+  box-shadow: none !important;
+}
+
+/* Strip border from inner elements — only .cl-formFieldInput shows one border */
 .cl-formFieldInput > *,
 .cl-formFieldInput input,
 .cl-card input[type="text"],
 .cl-card input[type="email"],
 .cl-card input[type="password"],
-.cl-card [class*="formFieldInput"] > *,
 .cl-card [class*="formFieldInput"] input {
   border: none !important;
   box-shadow: none !important;
-}
-
-/* Checkbox wrapper must not inherit the input wrapper border/height */
-.cl-formFieldCheckboxInput {
-  border: none !important;
-  height: auto !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
 }
 
 /* Input focus state */
@@ -324,6 +322,7 @@ a[class*="resendCode"] {
 .cl-formFieldCheckboxInput input[type="checkbox"] {
   -webkit-appearance: none;
   appearance: none;
+  outline: none !important;
   width: 16px !important;
   height: 16px !important;
   min-width: 16px !important;
