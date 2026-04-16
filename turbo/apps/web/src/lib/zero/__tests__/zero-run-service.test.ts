@@ -12,6 +12,7 @@ import {
   findTestRunCallbacks,
 } from "../../../__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../__tests__/db-test-seeders/agents";
+import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun, createZeroRunRecord } from "../zero-run-service";
@@ -213,6 +214,70 @@ describe("createZeroRun() — service-only parameters", () => {
       const triggerIdx = prompt.indexOf("Custom trigger context");
       expect(agentIdx).toBeLessThan(userInfoIdx);
       expect(userInfoIdx).toBeLessThan(triggerIdx);
+    });
+  });
+
+  describe("custom skill volume injection", () => {
+    it("should inject custom skills as additionalVolumes for new runs", async () => {
+      const agentName = uniqueId("skill-agent");
+      await createTestCompose(agentName);
+      const skillAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await bindCustomSkillToAgent(skillAgentId, "my-skill");
+      await bindCustomSkillToAgent(skillAgentId, "data-tool");
+
+      const result = await createZeroRun(baseParams({ agentId: skillAgentId }));
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.additionalVolumes).toEqual(
+        expect.arrayContaining([
+          {
+            name: "custom-skill@my-skill",
+            mountPath: "/home/user/.claude/skills/my-skill",
+          },
+          {
+            name: "custom-skill@data-tool",
+            mountPath: "/home/user/.claude/skills/data-tool",
+          },
+        ]),
+      );
+    });
+
+    it("should not inject additionalVolumes when agent has no custom skills", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.additionalVolumes).toBeNull();
+    });
+
+    it("should inject multiple skills preserving order", async () => {
+      const agentName = uniqueId("multi-skill");
+      await createTestCompose(agentName);
+      const multiAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await bindCustomSkillToAgent(multiAgentId, "alpha");
+      await bindCustomSkillToAgent(multiAgentId, "beta");
+      await bindCustomSkillToAgent(multiAgentId, "gamma");
+
+      const result = await createZeroRun(baseParams({ agentId: multiAgentId }));
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.additionalVolumes).toHaveLength(3);
+      expect(run!.additionalVolumes).toEqual([
+        {
+          name: "custom-skill@alpha",
+          mountPath: "/home/user/.claude/skills/alpha",
+        },
+        {
+          name: "custom-skill@beta",
+          mountPath: "/home/user/.claude/skills/beta",
+        },
+        {
+          name: "custom-skill@gamma",
+          mountPath: "/home/user/.claude/skills/gamma",
+        },
+      ]);
     });
   });
 

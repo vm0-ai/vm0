@@ -5,6 +5,7 @@ import {
   orgTierSchema,
   isFeatureEnabled,
   FeatureSwitchKey,
+  getCustomSkillStorageName,
   type TriggerSource,
   type FirewallPolicies,
   type ConnectorType,
@@ -252,6 +253,7 @@ export async function createZeroRunRecord(
       permissionPolicies: zeroAgents.permissionPolicies,
       unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
       orgId: zeroAgents.orgId,
+      customSkills: zeroAgents.customSkills,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, params.agentId))
@@ -357,6 +359,16 @@ export async function createZeroRunRecord(
   appendSystemPrompt = systemParts.join("\n\n");
 
   // 2. Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
+  //    Inject custom skill volumes for new runs (session resume inherits from checkpoint).
+  const skillVolumes = !params.sessionId
+    ? (row?.customSkills ?? []).map((name) => {
+        return {
+          name: getCustomSkillStorageName(name),
+          mountPath: `/home/user/.claude/skills/${name}`,
+        };
+      })
+    : [];
+
   const runParams: CreateRunParams = {
     userId: params.userId,
     agentComposeVersionId: resolved.agentComposeVersionId,
@@ -374,6 +386,7 @@ export async function createZeroRunRecord(
     agentName: resolved.agentName,
     orgId: resolved.orgId,
     orgTier,
+    additionalVolumes: skillVolumes.length > 0 ? skillVolumes : undefined,
   };
 
   // 3. Pre-flight checks: load compose, authorize, validate, credits, model provider
