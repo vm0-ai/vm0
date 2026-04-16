@@ -1,7 +1,6 @@
 import {
   useGet,
   useSet,
-  useLoadable,
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
@@ -49,10 +48,8 @@ import {
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 
 import type {
-  ZeroChatMessage,
-  UserChatMessage,
-  AssistantChatMessage,
-  AssistantTextItem,
+  GroupedChatMessageGroup,
+  PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import {
   currentChatThreadSignals$,
@@ -219,16 +216,18 @@ export function ZeroChatThreadPageInner({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
-  const messagesLoadable = useLastLoadable(thread.messages$);
-  const messages =
-    messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
+  const groups = useGet(thread.groupedChatMessages$);
+
+  // Use threadData$ for loading/error detection (async computed has proper
+  // loading/error state whereas the sync paged computed does not).
+  const threadDataLoadable = useLastLoadable(thread.threadData$);
   const sessionError =
-    messagesLoadable.state === "hasError"
-      ? messagesLoadable.error instanceof Error
-        ? messagesLoadable.error.message
+    threadDataLoadable.state === "hasError"
+      ? threadDataLoadable.error instanceof Error
+        ? threadDataLoadable.error.message
         : "Failed to load chat"
       : null;
-  const messagesLoading = messagesLoadable.state === "loading";
+  const messagesLoading = threadDataLoadable.state === "loading";
   const setScrollContainer = useSet(thread.setScrollContainer$);
 
   return (
@@ -253,30 +252,21 @@ export function ZeroChatThreadPageInner({
                 </div>
               </div>
             )}
-            {!sessionError && messages.length === 0 && messagesLoading && (
+            {!sessionError && groups.length === 0 && messagesLoading && (
               <ChatSkeleton />
             )}
-            {!sessionError && messages.length === 0 && !messagesLoading && (
+            {!sessionError && groups.length === 0 && !messagesLoading && (
               <div className="flex-1 flex items-center justify-center py-16">
                 <p className="text-sm text-muted-foreground">
                   Send a message to start the conversation
                 </p>
               </div>
             )}
-            {groupMessagesByRun(messages).map((entry) => {
-              if (Array.isArray(entry)) {
-                return (
-                  <AssistantMessageGroup
-                    key={entry[0].id}
-                    messages={entry}
-                    thread={thread}
-                  />
-                );
-              }
+            {groups.map((group) => {
               return (
-                <ChatMessageRow
-                  key={entry.id}
-                  message={entry}
+                <PagedGroupRow
+                  key={group.beginMessageId}
+                  group={group}
                   thread={thread}
                 />
               );
@@ -301,13 +291,12 @@ function ChatThreadComposer({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
-  const messagesLoadable = useLastLoadable(thread.messages$);
-  const hasMessages =
-    messagesLoadable.state === "hasData" && messagesLoadable.data.length > 0;
+  const pagedMessages = useGet(thread.pagedChatMessages$);
+  const hasMessages = pagedMessages.length > 0;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  const allFinishedLoadable = useLoadable(thread.allFinished$);
-  const sending =
-    allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : true;
+  const hasActiveRun = useGet(thread.hasActiveRun$);
+  const isSending = useGet(thread.isSending$);
+  const sending = hasActiveRun || isSending;
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const send = useSet(thread.sendMessage$);
@@ -399,71 +388,6 @@ function ChatSkeleton() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Message grouping — consecutive assistant messages with the same runId
-// are rendered inside a single block that shares one avatar and hover state.
-// ---------------------------------------------------------------------------
-
-function groupMessagesByRun(
-  messages: ZeroChatMessage[],
-): (ZeroChatMessage | AssistantChatMessage[])[] {
-  const result: (ZeroChatMessage | AssistantChatMessage[])[] = [];
-  let currentGroup: AssistantChatMessage[] = [];
-
-  function flushGroup() {
-    if (currentGroup.length === 0) {
-      return;
-    }
-    if (currentGroup.length === 1) {
-      result.push(currentGroup[0]);
-    } else {
-      result.push([...currentGroup]);
-    }
-    currentGroup = [];
-  }
-
-  for (const msg of messages) {
-    if (msg.role === "assistant" && msg.legacyRunId) {
-      if (
-        currentGroup.length > 0 &&
-        currentGroup[0].legacyRunId === msg.legacyRunId
-      ) {
-        currentGroup.push(msg);
-      } else {
-        flushGroup();
-        currentGroup = [msg];
-      }
-    } else {
-      flushGroup();
-      result.push(msg);
-    }
-  }
-  flushGroup();
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// Chat message components
-// ---------------------------------------------------------------------------
-
-function ChatMessageRow({
-  message,
-  thread,
-}: {
-  message: ZeroChatMessage;
-  thread: ChatThreadSignals;
-}) {
-  return (
-    <div data-role={message.role}>
-      {message.role === "user" ? (
-        <UserMessage message={message} />
-      ) : (
-        <AssistantMessage message={message} thread={thread} />
-      )}
-    </div>
-  );
-}
-
 /**
  * Parse inline attachment lines from message content.
  * Matches `[Attached file: name](url)` optionally followed by a curl line.
@@ -486,315 +410,6 @@ function parseInlineAttachments(content: string): {
 
 function isImageFilename(filename: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
-}
-
-function UserMessage({ message }: { message: UserChatMessage }) {
-  const { cleanContent, parsed } = parseInlineAttachments(message.content);
-  // Preserve user-entered line breaks: CommonMark collapses single newlines
-  // into spaces, so convert each \n to a hard line break (two trailing spaces + \n).
-  const displayContent = cleanContent.replace(/\n/g, "  \n");
-  const lightboxUrl = useGet(attachmentLightboxUrl$);
-  const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
-
-  // Merge explicit attachments with those parsed from content
-  const allAttachments = [
-    ...(message.attachments ?? []).map((a) => {
-      return {
-        filename: a.filename,
-        url: a.url,
-        isImage: a.contentType.startsWith("image/"),
-      };
-    }),
-    ...parsed
-      .filter((p) => {
-        return !(message.attachments ?? []).some((a) => {
-          return a.filename === p.filename;
-        });
-      })
-      .map((p) => {
-        return {
-          filename: p.filename,
-          url: p.url,
-          isImage: isImageFilename(p.filename),
-        };
-      }),
-  ];
-
-  return (
-    <div data-role="user">
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
-        <div className="flex flex-col items-end w-full">
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
-            {displayContent && (
-              <div className="px-4 py-3">
-                <Markdown source={displayContent} />
-              </div>
-            )}
-            {allAttachments.length > 0 && (
-              <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
-                {allAttachments.map((a) => {
-                  return a.isImage ? (
-                    <button
-                      key={a.url}
-                      type="button"
-                      onClick={() => {
-                        return setLightboxUrl(a.url);
-                      }}
-                      className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-                    >
-                      <img
-                        src={a.url}
-                        alt={a.filename}
-                        className="h-9 max-w-[72px] object-cover"
-                      />
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                        <IconPhoto
-                          size={18}
-                          className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                        />
-                      </span>
-                    </button>
-                  ) : (
-                    <FileAttachmentChip
-                      key={a.url}
-                      filename={a.filename}
-                      url={a.url}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
-    </div>
-  );
-}
-
-function AssistantMessage({
-  message,
-  thread,
-}: {
-  message: AssistantChatMessage;
-  thread: ChatThreadSignals;
-}) {
-  // Delegate to reactive variant when the message carries its own runLoop signals
-  if (message.runLoop) {
-    return <ReactiveAssistantMessage message={message} thread={thread} />;
-  }
-  return <StaticAssistantMessage message={message} thread={thread} />;
-}
-
-function failedRunErrorMessage(
-  status: string | undefined,
-  error: string | null | undefined,
-): string {
-  if (error) {
-    return error;
-  }
-  if (status === "timeout") {
-    return "Run timed out";
-  }
-  if (status === "cancelled") {
-    return "Run cancelled.";
-  }
-  return "Run failed";
-}
-
-/** Assistant message with reactive result$/summaries$/detail$ from runLoop. */
-function ReactiveAssistantMessage({
-  message,
-  thread,
-}: {
-  message: AssistantChatMessage;
-  thread: ChatThreadSignals;
-}) {
-  const detailLoadable = useLastLoadable(message.runLoop!.detail$);
-  const detail =
-    detailLoadable.state === "hasData" ? detailLoadable.data : null;
-  const isFailed =
-    detail?.status === "failed" ||
-    detail?.status === "timeout" ||
-    detail?.status === "cancelled";
-
-  // Only fall back to static rendering for failures — show error UI
-  if (isFailed) {
-    const enrichedMessage: AssistantChatMessage = {
-      ...message,
-      status: detail?.status ?? undefined,
-      error: failedRunErrorMessage(detail?.status, detail?.error),
-    };
-    return <StaticAssistantMessage message={enrichedMessage} thread={thread} />;
-  }
-
-  // Active or just-completed: render from the event stream.
-  // On completion the texts$ stay stable until reloadThread$ replaces with
-  // server-side grouped messages, avoiding the flash of a single result$.
-  return <ReactiveRunContent message={message} thread={thread} />;
-}
-
-/**
- * Renders all intermediate text outputs from the event stream.
- */
-function ReactiveRunContent({
-  message,
-  thread,
-}: {
-  message: AssistantChatMessage;
-  thread: ChatThreadSignals;
-}) {
-  const items: AssistantTextItem[] = useLastResolved(message.texts$!) ?? [];
-  const lastContent = items[items.length - 1]?.text ?? "";
-
-  return (
-    <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <AssistantBubbleAvatar thread={thread} />
-        <div className="flex flex-col gap-3">
-          {items.map((item) => {
-            return (
-              <div
-                key={item.key}
-                className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words animate-in fade-in slide-in-from-bottom-1 duration-300"
-              >
-                <Markdown source={item.text} />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <AssistantMessageActions
-        message={message}
-        content={lastContent}
-        thread={thread}
-      />
-    </div>
-  );
-}
-
-function isRunActive(message: AssistantChatMessage): boolean {
-  return (
-    !!message.runLoop &&
-    message.status !== "completed" &&
-    message.status !== "failed" &&
-    message.status !== "timeout" &&
-    message.status !== "cancelled"
-  );
-}
-
-function AssistantMessageActions({
-  message,
-  content,
-  thread,
-}: {
-  message: AssistantChatMessage;
-  content: string;
-  thread: ChatThreadSignals;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const copiedId = useGet(thread.copiedMessageId$);
-  const copied = copiedId === message.id;
-  const copyMessage = useSet(thread.copyMessage$);
-
-  const features = useLastResolved(featureSwitch$);
-  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
-  const playingRunId = useGet(ttsPlayingRunId$);
-  const isPlayingThis = playingRunId === message.legacyRunId;
-  const playTts = useSet(playTts$);
-  const stopTts = useSet(stopTts$);
-
-  if (!message.legacyRunId || isRunActive(message)) {
-    return null;
-  }
-
-  const handleCopy = () => {
-    if (!content) {
-      return;
-    }
-    detach(copyMessage(message.id, content, pageSignal), Reason.DomCallback);
-  };
-
-  const handleTts = () => {
-    if (isPlayingThis) {
-      detach(stopTts(), Reason.DomCallback);
-    } else {
-      detach(
-        playTts(message.legacyRunId!, content, pageSignal),
-        Reason.DomCallback,
-      );
-    }
-  };
-
-  return (
-    <div className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
-      <div className="hidden @[900px]:block" />
-      <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-150">
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                pathname="/activities/:activityRunId"
-                options={{ pathParams: { activityRunId: message.legacyRunId } }}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                aria-label="View run logs"
-              >
-                <IconChartLine size={18} stroke={1.5} />
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">View activity logs</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        {content && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                  aria-label="Copy message"
-                >
-                  {copied ? (
-                    <IconCheck size={18} stroke={1.5} />
-                  ) : (
-                    <IconCopy size={18} stroke={1.5} />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {copied ? "Copied!" : "Copy message"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-        {content && audioIOEnabled && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleTts}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                  aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
-                >
-                  {isPlayingThis ? (
-                    <IconPlayerStop size={18} stroke={1.5} />
-                  ) : (
-                    <IconVolume2 size={18} stroke={1.5} />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {isPlayingThis ? "Stop reading" : "Read aloud"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </div>
-    </div>
-  );
 }
 
 function AssistantErrorContent({ error }: { error: string }) {
@@ -881,75 +496,132 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function StaticAssistantMessage({
-  message,
+// ---------------------------------------------------------------------------
+// Paged message rendering — renders from groupedChatMessages$ (flat data,
+// no signal-based run loops).
+// ---------------------------------------------------------------------------
+
+function PagedGroupRow({
+  group,
   thread,
 }: {
-  message: AssistantChatMessage;
+  group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
 }) {
-  const content = useLastResolved(message.result$) ?? "";
-
-  if (message.error) {
-    return (
-      <div
-        data-role="assistant"
-        className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
-      >
-        <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-          <AssistantBubbleAvatar thread={thread} />
-          <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            <AssistantErrorContent error={message.error} />
-          </div>
-        </div>
-        <AssistantMessageActions
-          message={message}
-          content={content}
-          thread={thread}
-        />
-      </div>
-    );
+  if (group.role === "user") {
+    return <PagedUserGroup group={group} />;
   }
+  return <PagedAssistantGroup group={group} thread={thread} />;
+}
 
-  if (content) {
-    return (
-      <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-          <AssistantBubbleAvatar thread={thread} />
-          <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            <Markdown source={content} />
-            {message.cancelled && (
-              <div className="mt-3 pt-3 border-t flex items-center gap-1.5 text-xs text-muted-foreground">
-                <IconPlayerStop size={12} />
-                <span>Cancelled</span>
+function PagedUserGroup({ group }: { group: GroupedChatMessageGroup }) {
+  return (
+    <>
+      {group.messages.map((msg) => {
+        return <PagedUserMessage key={msg.id} message={msg} />;
+      })}
+    </>
+  );
+}
+
+function PagedUserMessage({ message }: { message: PagedChatMessage }) {
+  const content = message.content ?? "";
+  const { cleanContent, parsed } = parseInlineAttachments(content);
+  const displayContent = cleanContent.replace(/\n/g, "  \n");
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
+
+  const allAttachments = parsed.map((p) => {
+    return {
+      filename: p.filename,
+      url: p.url,
+      isImage: isImageFilename(p.filename),
+    };
+  });
+
+  return (
+    <div data-role="user">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex flex-col items-end w-full">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
+            {displayContent && (
+              <div className="px-4 py-3">
+                <Markdown source={displayContent} />
+              </div>
+            )}
+            {allAttachments.length > 0 && (
+              <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
+                {allAttachments.map((a) => {
+                  return a.isImage ? (
+                    <button
+                      key={a.url}
+                      type="button"
+                      onClick={() => {
+                        return setLightboxUrl(a.url);
+                      }}
+                      className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+                    >
+                      <img
+                        src={a.url}
+                        alt={a.filename}
+                        className="h-9 max-w-[72px] object-cover"
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                        <IconPhoto
+                          size={18}
+                          className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                        />
+                      </span>
+                    </button>
+                  ) : (
+                    <FileAttachmentChip
+                      key={a.url}
+                      filename={a.filename}
+                      url={a.url}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
-        <AssistantMessageActions
-          message={message}
-          content={content}
-          thread={thread}
-        />
       </div>
-    );
-  }
-
-  return null;
+      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
+    </div>
+  );
 }
 
-// ---------------------------------------------------------------------------
-// Grouped assistant messages — multiple messages from the same run rendered
-// inside a single block with one avatar and shared hover state.
-// ---------------------------------------------------------------------------
-
-function AssistantMessageGroupItem({
-  message,
+function PagedAssistantGroup({
+  group,
+  thread,
 }: {
-  message: AssistantChatMessage;
+  group: GroupedChatMessageGroup;
+  thread: ChatThreadSignals;
 }) {
-  const content = useLastResolved(message.result$) ?? "";
+  const fullContent = group.messages
+    .map((m) => {
+      return m.content;
+    })
+    .filter(Boolean)
+    .join("\n\n");
 
+  return (
+    <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <AssistantBubbleAvatar thread={thread} />
+        <div className="flex flex-col gap-3">
+          {group.messages.map((msg) => {
+            return <PagedAssistantMessageItem key={msg.id} message={msg} />;
+          })}
+        </div>
+      </div>
+      <PagedGroupActions group={group} content={fullContent} thread={thread} />
+    </div>
+  );
+}
+
+function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
   if (message.error) {
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
@@ -958,10 +630,10 @@ function AssistantMessageGroupItem({
     );
   }
 
-  if (content) {
+  if (message.content) {
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-        <Markdown source={content} />
+        <Markdown source={message.content} />
       </div>
     );
   }
@@ -969,34 +641,132 @@ function AssistantMessageGroupItem({
   return null;
 }
 
-function AssistantMessageGroup({
-  messages,
+function PagedGroupActions({
+  group,
+  content,
   thread,
 }: {
-  messages: AssistantChatMessage[];
+  group: GroupedChatMessageGroup;
+  content: string;
   thread: ChatThreadSignals;
 }) {
-  // Use the last message for action buttons (view logs link, copy, TTS).
-  // The last message's result$ is used as action content; when the group has
-  // multiple completed texts the user can copy individually via selection.
-  const lastMessage = messages[messages.length - 1];
-  const lastContent = useLastResolved(lastMessage.result$) ?? "";
+  const pageSignal = useGet(pageSignal$);
+  const copiedId = useGet(thread.copiedMessageId$);
+  const copied = copiedId === group.beginMessageId;
+  const copyMessage = useSet(thread.copyMessage$);
+
+  const features = useLastResolved(featureSwitch$);
+  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
+  const playingRunId = useGet(ttsPlayingRunId$);
+  const firstRunId = group.messages.find((m) => {
+    return m.runId;
+  })?.runId;
+  const isPlayingThis = !!firstRunId && playingRunId === firstRunId;
+  const playTts = useSet(playTts$);
+  const stopTts = useSet(stopTts$);
+
+  // Hide actions for user groups or while a run is still active.
+  const hasActiveRun = group.messages.some((m) => {
+    return (
+      m.status === "queued" || m.status === "pending" || m.status === "running"
+    );
+  });
+
+  if (group.role === "user" || hasActiveRun) {
+    return null;
+  }
+
+  const handleCopy = () => {
+    if (!content) {
+      return;
+    }
+    detach(
+      copyMessage(group.beginMessageId, content, pageSignal),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleTts = () => {
+    if (!firstRunId) {
+      return;
+    }
+    if (isPlayingThis) {
+      detach(stopTts(), Reason.DomCallback);
+    } else {
+      detach(playTts(firstRunId, content, pageSignal), Reason.DomCallback);
+    }
+  };
 
   return (
-    <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <AssistantBubbleAvatar thread={thread} />
-        <div className="flex flex-col gap-3">
-          {messages.map((msg) => {
-            return <AssistantMessageGroupItem key={msg.id} message={msg} />;
-          })}
-        </div>
+    <div className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+      <div className="hidden @[900px]:block" />
+      <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-150">
+        {firstRunId && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  pathname="/activities/:activityRunId"
+                  options={{
+                    pathParams: { activityRunId: firstRunId },
+                  }}
+                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                  aria-label="View run logs"
+                >
+                  <IconChartLine size={18} stroke={1.5} />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">View activity logs</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {content && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                  aria-label="Copy message"
+                >
+                  {copied ? (
+                    <IconCheck size={18} stroke={1.5} />
+                  ) : (
+                    <IconCopy size={18} stroke={1.5} />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {copied ? "Copied!" : "Copy message"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {content && audioIOEnabled && firstRunId && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleTts}
+                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                  aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
+                >
+                  {isPlayingThis ? (
+                    <IconPlayerStop size={18} stroke={1.5} />
+                  ) : (
+                    <IconVolume2 size={18} stroke={1.5} />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {isPlayingThis ? "Stop reading" : "Read aloud"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
-      <AssistantMessageActions
-        message={lastMessage}
-        content={lastContent}
-        thread={thread}
-      />
     </div>
   );
 }

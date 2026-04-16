@@ -34,6 +34,9 @@ export function mockSubagentThread(threadId: string) {
         },
       ]);
     }),
+    http.get("*/api/zero/chat-threads/:id/messages", () => {
+      return HttpResponse.json({ messages: [], hasMore: false });
+    }),
     http.get("*/api/zero/chat-threads/:id", () => {
       return HttpResponse.json({
         id: threadId,
@@ -98,21 +101,6 @@ export async function sendMessageInUI(
   await user.keyboard("{Enter}");
 }
 
-export function makeToolUseEvent(
-  name: string,
-  input?: Record<string, unknown>,
-  seq = 1,
-): AgentEvent {
-  return {
-    sequenceNumber: seq,
-    eventType: "tool_use",
-    eventData: {
-      message: { content: [{ type: "tool_use", name, input: input ?? {} }] },
-    },
-    createdAt: `2026-03-10T00:00:${String(seq).padStart(2, "0")}Z`,
-  };
-}
-
 interface ThreadListItem {
   id: string;
   title: string | null;
@@ -152,39 +140,85 @@ export function mockChatLifecycle(options?: {
   let events: AgentEvent[] = [];
   let queuePosition = 0;
   let resultContent = "";
-  let completedContent: string | null = null;
   let threadList: ThreadListItem[] = [];
   let runPrompt: string | null = null;
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
+  // Version counter: bumped whenever the run reaches a terminal state so
+  // subsequent polls discover a "new" assistant message row (simulating the
+  // real server inserting event-backed rows on run completion).
+  let assistantVersion = 0;
+  let lastDeliveredVersion = -1;
 
   server.use(
+    // Paged messages endpoint — cursor-aware, version-aware mock.
+    http.get("*/api/zero/chat-threads/:id/messages", ({ request }) => {
+      const url = new URL(request.url);
+      const sinceId = url.searchParams.get("sinceId");
+
+      const assistantId = `msg-assistant-run-v${assistantVersion}`;
+
+      const pagedMessages: {
+        id: string;
+        role: "user" | "assistant";
+        content: string | null;
+        runId?: string;
+        error?: string;
+        status?: string;
+        createdAt: string;
+      }[] = [];
+
+      // Seed with pre-existing chatMessages (e.g. history on resume)
+      for (let i = 0; i < chatMessages.length; i++) {
+        pagedMessages.push({
+          id: `msg-seed-${i}`,
+          ...chatMessages[i]!,
+        });
+      }
+
+      // After a run is associated, append user + assistant messages
+      if (runAssociated) {
+        pagedMessages.push({
+          id: "msg-user-sent",
+          role: "user",
+          content: runPrompt ?? "Hello",
+          createdAt: "2026-03-10T00:00:01Z",
+        });
+        pagedMessages.push({
+          id: assistantId,
+          role: "assistant",
+          content: resultContent || null,
+          runId: "run-test-1",
+          error: runError ?? undefined,
+          status: runStatus,
+          createdAt: "2026-03-10T00:00:02Z",
+        });
+      }
+
+      if (sinceId) {
+        // If the assistant version bumped since the client's cursor, return
+        // the updated assistant message as a "new" row. Otherwise return
+        // empty to avoid duplicate keys.
+        if (assistantVersion > lastDeliveredVersion && runAssociated) {
+          lastDeliveredVersion = assistantVersion;
+          const lastMsg = pagedMessages[pagedMessages.length - 1]!;
+          return HttpResponse.json({
+            messages: [lastMsg],
+            hasMore: false,
+          });
+        }
+        return HttpResponse.json({ messages: [], hasMore: false });
+      }
+
+      lastDeliveredVersion = assistantVersion;
+      return HttpResponse.json({ messages: pagedMessages, hasMore: false });
+    }),
     http.get("*/api/zero/chat-threads/:id", () => {
-      // After a run is associated, include it as chatMessages rows
-      // (user + assistant placeholder) mirroring real server behaviour.
-      const effectiveMessages = runAssociated
-        ? [
-            ...chatMessages,
-            {
-              role: "user" as const,
-              content: runPrompt ?? "Hello",
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-            {
-              role: "assistant" as const,
-              content: completedContent,
-              runId: "a0000000-0000-4000-a000-000000000001",
-              status: runStatus,
-              error: runError ?? undefined,
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-          ]
-        : chatMessages;
       return HttpResponse.json({
         id: threadId,
         title: threadTitle,
         agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages: effectiveMessages,
+        chatMessages: [],
         latestSessionId: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
@@ -239,17 +273,9 @@ export function mockChatLifecycle(options?: {
         artifact: { name: null, version: null },
       });
     }),
-    http.get("*/api/zero/runs/:id/telemetry/agent", ({ request }) => {
-      const url = new URL(request.url);
-      const since = url.searchParams.get("since");
-      const filteredEvents =
-        since !== null
-          ? events.filter((e) => {
-              return e.sequenceNumber > Number(since);
-            })
-          : events;
+    http.get("*/api/zero/runs/:id/telemetry/agent", () => {
       return HttpResponse.json({
-        events: filteredEvents,
+        events,
         hasMore: false,
         framework: "claude-code",
       });
@@ -293,8 +319,8 @@ export function mockChatLifecycle(options?: {
     completeRun: (content?: string) => {
       runStatus = "completed";
       resultContent = content ?? "";
-      completedContent = content ?? null;
       threadTitle = threadTitle ?? runPrompt;
+      assistantVersion++;
       if (content) {
         events = [
           ...events,
@@ -312,9 +338,11 @@ export function mockChatLifecycle(options?: {
     failRun: (error: string) => {
       runStatus = "failed";
       runError = error;
+      assistantVersion++;
     },
     cancelRun: () => {
       runStatus = "cancelled";
+      assistantVersion++;
     },
   };
 }

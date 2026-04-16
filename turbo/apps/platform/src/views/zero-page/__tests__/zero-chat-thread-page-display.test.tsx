@@ -84,64 +84,6 @@ describe("zero chat thread page display - attachment file preview", () => {
   });
 });
 
-// CHAT-D-038: Stop button visible while run is active
-describe("zero chat thread page display - run active state", () => {
-  it("shows Stop button while a run is active", async () => {
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "user",
-          content: "Do task",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: null,
-          runId: "run-1",
-          status: "running",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-  });
-});
-
-// CHAT-D-039: Stop button visible when run is queued
-describe("zero chat thread page display - run queued state", () => {
-  it("shows Stop button when run is queued", async () => {
-    const ctrl = mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "user",
-          content: "Do task",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: null,
-          runId: "run-1",
-          status: "queued",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-    ctrl.setRunStatus("queued");
-    ctrl.setQueuePosition(3);
-
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-  });
-});
-
 // CHAT-D-043: Message status indicators render in ChatMessageRow
 describe("zero chat thread page display - message status indicators", () => {
   it("displays a Stop button status indicator when a run is active", async () => {

@@ -181,24 +181,20 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
+        chatThreadId: threadId,
         appendSystemPrompt: continueFromSchedulePrompt
           ? [buildWebChatPrompt(), continueFromSchedulePrompt].join("\n\n")
           : buildWebChatPrompt(),
         callbacks: [chatCallback],
       });
 
-      // Persist user message + assistant placeholder to chat_messages
+      // Persist user message (chat_messages is append-only — assistant rows
+      // are inserted by the event consumer and callback final sweep).
       await insertChatMessage({
         chatThreadId: threadId,
         role: "user",
         content: body.prompt,
         runId: null,
-      });
-      await insertChatMessage({
-        chatThreadId: threadId,
-        role: "assistant",
-        content: null,
-        runId: result.runId,
       });
 
       // Notify subscribers that a new run and messages were created on this thread

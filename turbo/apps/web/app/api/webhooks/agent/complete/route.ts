@@ -25,7 +25,6 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
-import { updateAssistantMessageByRunId } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
 import { getOrgMemberUserIds } from "../../../../../src/lib/infra/realtime/audience";
 import { after } from "next/server";
@@ -225,14 +224,6 @@ const router = tsr.router(webhookCompleteContract, {
         };
       }
 
-      // Upgrade path (rare): sandbox reports success after a prior heartbeat
-      // timeout. The placeholder still carries "Run timed out..." content
-      // that the cron's callback wrote — clear it so the UI falls back to
-      // the event-backed assistant rows (if any).
-      if (run.status === "timeout") {
-        await updateAssistantMessageByRunId(body.runId, null, undefined);
-      }
-
       finalStatus = "completed";
       log.debug(`Run ${body.runId} completed successfully`);
     } else {
@@ -261,19 +252,6 @@ const router = tsr.router(webhookCompleteContract, {
           status: 200 as const,
           body: { success: true, status: "failed" as const },
         };
-      }
-
-      // Upgrade path: if the cron already stamped this run as timeout and
-      // fired its chat callback, the placeholder's content/error still
-      // carries "Run timed out (no heartbeat)". Refresh it with the
-      // sandbox-reported error so the user sees the report-error link
-      // instead of the generic timeout message. No-op for non-chat runs.
-      if (run.status === "timeout") {
-        await updateAssistantMessageByRunId(
-          body.runId,
-          errorMessage,
-          errorMessage,
-        );
       }
 
       finalStatus = "failed";

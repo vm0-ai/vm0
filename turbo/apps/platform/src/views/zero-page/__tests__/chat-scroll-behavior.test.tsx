@@ -19,6 +19,22 @@ function mockThread(
   messages: { role: "user" | "assistant"; content: string }[],
 ) {
   server.use(
+    http.get(`*/api/zero/chat-threads/${threadId}/messages`, ({ request }) => {
+      const url = new URL(request.url);
+      if (url.searchParams.get("sinceId")) {
+        return HttpResponse.json({ messages: [], hasMore: false });
+      }
+      return HttpResponse.json({
+        messages: messages.map((m, i) => {
+          return {
+            id: `msg-${i + 1}`,
+            ...m,
+            createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
+          };
+        }),
+        hasMore: false,
+      });
+    }),
     http.get(`*/api/zero/chat-threads/${threadId}`, () => {
       return HttpResponse.json({
         id: threadId,

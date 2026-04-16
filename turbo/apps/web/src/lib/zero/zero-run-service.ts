@@ -84,6 +84,8 @@ interface ZeroRunParams {
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   scheduleId?: string;
   triggerAgentId?: string;
+  /** Chat thread this run belongs to (null for non-chat triggers). */
+  chatThreadId?: string;
   /** Extra user info fields merged into the base # Current User Info block. */
   userInfoExtras?: UserInfoOptions;
 }
@@ -602,6 +604,7 @@ async function persistZeroRunMetadata(
     triggerSource: params.triggerSource,
     scheduleId: params.scheduleId ?? null,
     triggerAgentId: params.triggerAgentId ?? null,
+    chatThreadId: params.chatThreadId ?? null,
     modelProvider: params.modelProvider ?? null,
     selectedModel: null,
   });

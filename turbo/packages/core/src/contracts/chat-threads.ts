@@ -47,22 +47,6 @@ const storedChatMessageSchema = z.object({
   createdAt: z.string(),
 });
 
-/**
- * Extended schema for the paginated messages list endpoint.
- * Includes `id` (for cursor-based pagination) and `sequenceNumber`
- * (to distinguish event-backed assistant rows from placeholders).
- */
-const chatMessageWithIdSchema = z.object({
-  id: z.string(),
-  role: z.enum(["user", "assistant"]),
-  content: z.string().nullable(),
-  runId: z.string().optional(),
-  error: z.string().optional(),
-  status: z.string().optional(),
-  sequenceNumber: z.number().nullable().optional(),
-  createdAt: z.string(),
-});
-
 const chatThreadDetailSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -172,32 +156,6 @@ export const chatThreadByIdContract = c.router({
 });
 
 /**
- * Chat thread messages list contract (/api/zero/chat-threads/[id]/messages)
- * Paginated read endpoint using sinceId cursor.
- */
-export const chatThreadMessagesContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/zero/chat-threads/:id/messages",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
-    query: z.object({
-      /**
-       * Cursor: return only messages inserted after the message with this ID.
-       * When omitted, all messages in the thread are returned.
-       */
-      sinceId: z.string().uuid().optional(),
-    }),
-    responses: {
-      200: z.object({ messages: z.array(chatMessageWithIdSchema) }),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "List messages in a chat thread with optional sinceId cursor",
-  },
-});
-
-/**
  * Chat messages contract (/api/zero/chat/messages)
  * Unified endpoint: create thread (if needed) + run + association in one call.
  */
@@ -231,6 +189,42 @@ export const chatMessagesContract = c.router({
   },
 });
 
+/**
+ * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
+ * Cursor-based pagination using message UUID as sinceId.
+ */
+const pagedChatMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string().nullable(),
+  runId: z.string().optional(),
+  error: z.string().optional(),
+  status: z.string().optional(),
+  createdAt: z.string(),
+});
+
+export const chatThreadMessagesContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/messages",
+    headers: authHeadersSchema,
+    pathParams: z.object({ threadId: z.string() }),
+    query: z.object({
+      sinceId: z.string().uuid().optional(),
+      limit: z.coerce.number().min(1).max(50).default(50),
+    }),
+    responses: {
+      200: z.object({
+        messages: z.array(pagedChatMessageSchema),
+        hasMore: z.boolean(),
+      }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get paginated chat messages for a thread",
+  },
+});
+
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
@@ -239,7 +233,7 @@ export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export {
   chatThreadListItemSchema,
   chatThreadDetailSchema,
-  chatMessageWithIdSchema,
+  pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
 };
@@ -247,5 +241,5 @@ export {
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
-export type ChatMessageWithId = z.infer<typeof chatMessageWithIdSchema>;
+export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;

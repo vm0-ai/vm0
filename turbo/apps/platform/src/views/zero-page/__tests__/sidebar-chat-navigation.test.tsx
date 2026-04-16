@@ -35,23 +35,38 @@ function mockAPIs() {
         ],
       });
     }),
+    http.get(
+      "*/api/zero/chat-threads/thread-abc-123/messages",
+      ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("sinceId")) {
+          return HttpResponse.json({ messages: [], hasMore: false });
+        }
+        return HttpResponse.json({
+          messages: [
+            {
+              id: "msg-1",
+              role: "user",
+              content: "Who are you?",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-2",
+              role: "assistant",
+              content: "I am Zero, your AI assistant.",
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+          hasMore: false,
+        });
+      },
+    ),
     http.get("*/api/zero/chat-threads/:id", () => {
       return HttpResponse.json({
         id: "thread-abc-123",
         title: "Test conversation",
         agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages: [
-          {
-            role: "user",
-            content: "Who are you?",
-            createdAt: "2026-03-10T00:00:00Z",
-          },
-          {
-            role: "assistant",
-            content: "I am Zero, your AI assistant.",
-            createdAt: "2026-03-10T00:00:01Z",
-          },
-        ],
+        chatMessages: [],
         latestSessionId: "session-1",
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",

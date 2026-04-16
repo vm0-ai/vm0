@@ -16,8 +16,9 @@ import {
   insertChatMessage,
   getMessagesByThreadId,
   insertAssistantEventMessages,
-  updateAssistantMessageByRunId,
 } from "../../lib/zero/chat-thread/chat-message-service";
+import { chatMessages } from "../../db/schema/chat-message";
+import { isNull } from "drizzle-orm";
 
 /**
  * @why-db-direct Creates compose + zero_agents WITHOUT a version — API always
@@ -462,5 +463,14 @@ export async function updateTestAssistantMessageByRunId(
   content: string | null,
   error: string | undefined,
 ): Promise<void> {
-  return updateAssistantMessageByRunId(runId, content, error);
+  await globalThis.services.db
+    .update(chatMessages)
+    .set({ content, error: error ?? null })
+    .where(
+      and(
+        eq(chatMessages.runId, runId),
+        eq(chatMessages.role, "assistant"),
+        isNull(chatMessages.sequenceNumber),
+      ),
+    );
 }

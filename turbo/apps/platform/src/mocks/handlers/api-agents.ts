@@ -122,6 +122,16 @@ export const apiAgentsHandlers = [
     );
   }),
 
+  // GET /api/zero/chat-threads/:id/messages (paged messages)
+  http.get("*/api/zero/chat-threads/:id/messages", ({ request }) => {
+    const url = new URL(request.url);
+    // If sinceId is provided, return no new messages to avoid duplicate keys.
+    if (url.searchParams.get("sinceId")) {
+      return HttpResponse.json({ messages: [], hasMore: false });
+    }
+    return HttpResponse.json({ messages: [], hasMore: false });
+  }),
+
   // GET /api/zero/chat-threads/:id (thread detail)
   http.get("*/api/zero/chat-threads/:id", () => {
     return HttpResponse.json({

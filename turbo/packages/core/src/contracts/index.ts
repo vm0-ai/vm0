@@ -287,7 +287,7 @@ export {
   chatThreadMessagesContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
-  chatMessageWithIdSchema,
+  pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   type SummaryEntry,
@@ -297,7 +297,7 @@ export {
   type ChatThreadMessagesContract,
   type ChatThreadListItem,
   type ChatThreadDetail,
-  type ChatMessageWithId,
+  type PagedChatMessage,
   type PersistedAttachment,
 } from "./chat-threads";
 export {

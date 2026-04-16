@@ -16,12 +16,15 @@ const context = testContext();
  * Base MSW handlers required for setupChatPage$ to complete:
  * - GET /api/zero/chat-threads — sidebar thread list
  * - GET /api/zero/chat-threads/:id — thread detail (no active runs)
- * - GET /api/zero/agents/:id — agent info
+ * - GET /api/zero/chat-threads/:id/messages — paged messages (empty)
  */
 function setupBaseHandlers(threadId: string) {
   server.use(
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
+    }),
+    http.get(`*/api/zero/chat-threads/${threadId}/messages`, () => {
+      return HttpResponse.json({ messages: [], hasMore: false });
     }),
     http.get(`*/api/zero/chat-threads/${threadId}`, () => {
       return HttpResponse.json({
@@ -45,15 +48,16 @@ describe("sendMessage$ — auto-scroll timing", () => {
     context.store.set(setDraftSyncDebounceMs$, 0);
   });
 
-  it("should call autoScroll$ only after the optimistic user message is already in messages$", async () => {
+  it("should scroll to bottom after fetching the new user message from the server", async () => {
     const threadId = "thread-autoscroll-timing";
 
+    // Register base handlers first, then override with test-specific ones
+    // (MSW runtime handlers added later take precedence).
+    setupBaseHandlers(threadId);
     server.use(
       http.patch(`*/api/zero/chat-threads/${threadId}`, () => {
         return new HttpResponse(null, { status: 204 });
       }),
-      // Keep POST handler open so sendMessage$ can proceed past the network
-      // call without completing the full run loop during this assertion-only test.
       http.post("*/api/zero/chat/messages", () => {
         return HttpResponse.json(
           {
@@ -65,37 +69,21 @@ describe("sendMessage$ — auto-scroll timing", () => {
           { status: 201 },
         );
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+      // Paged messages endpoint: returns the user message after send.
+      http.get(`*/api/zero/chat-threads/${threadId}/messages`, () => {
         return HttpResponse.json({
-          events: [],
+          messages: [
+            {
+              id: "msg-user-1",
+              role: "user",
+              content: "Hello world",
+              createdAt: "2026-04-13T00:00:00Z",
+            },
+          ],
           hasMore: false,
-          framework: "claude-code",
-        });
-      }),
-      http.get("*/api/zero/logs/:runId", () => {
-        return HttpResponse.json({
-          id: "run-autoscroll-1",
-          sessionId: "session-autoscroll",
-          agentId: "zero",
-          displayName: null,
-          framework: "claude-code",
-          modelProvider: null,
-          selectedModel: null,
-          triggerSource: "web",
-          triggerAgentName: null,
-          scheduleId: null,
-          status: "completed",
-          prompt: "Hello world",
-          appendSystemPrompt: null,
-          error: null,
-          createdAt: "2026-04-13T00:00:00Z",
-          startedAt: "2026-04-13T00:00:01Z",
-          completedAt: "2026-04-13T00:00:02Z",
-          artifact: { name: null, version: null },
         });
       }),
     );
-    setupBaseHandlers(threadId);
 
     await setupPage({
       context,
@@ -111,18 +99,16 @@ describe("sendMessage$ — auto-scroll timing", () => {
     // autoScroll$ fires and capture the messages$ state at that moment.
     const scrollEl = document.createElement("div");
     Object.defineProperty(scrollEl, "scrollHeight", { value: 500 });
-    let messagesAtScrollTime: Promise<unknown[]> | null = null;
+    let messagesAtScrollTime: unknown[] | null = null;
 
     Object.defineProperty(scrollEl, "scrollTop", {
       get: () => {
         return 0;
       },
       set: vi.fn(() => {
-        // Capture the messages$ promise the first time scroll fires.
+        // Capture paged messages the first time scroll fires.
         if (messagesAtScrollTime === null) {
-          messagesAtScrollTime = context.store.get(
-            thread!.messages$,
-          ) as Promise<unknown[]>;
+          messagesAtScrollTime = context.store.get(thread!.pagedChatMessages$);
         }
       }),
       configurable: true,
@@ -132,7 +118,7 @@ describe("sendMessage$ — auto-scroll timing", () => {
     context.store.set(thread!.setScrollContainer$, scrollEl);
 
     // Fire-and-forget sendMessage$ — we only care about the scroll side-effect
-    // that happens before the long-running poll loop.
+    // that happens after the server-fetched messages land.
     detach(
       context.store.set(thread!.sendMessage$, "Hello world", context.signal),
       Reason.Entrance,
@@ -144,11 +130,9 @@ describe("sendMessage$ — auto-scroll timing", () => {
       expect(messagesAtScrollTime).not.toBeNull();
     });
 
-    // The messages$ promise captured at scroll time must resolve with the
-    // optimistic user message already present — proving the yield happened
-    // before the scroll.
-    const messages = await messagesAtScrollTime!;
-    const hasUserMessage = messages.some((m): boolean => {
+    // The paged messages captured at scroll time must contain the user message
+    // fetched from the server — proving fetchNextPage$ ran before the scroll.
+    const hasUserMessage = messagesAtScrollTime!.some((m): boolean => {
       return (
         typeof m === "object" &&
         m !== null &&
