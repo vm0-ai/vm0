@@ -1,13 +1,6 @@
 import { command, computed, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/core";
-import {
-  Realtime,
-  type RealtimeChannel,
-  type ErrorInfo,
-  type TokenRequest,
-  type TokenDetails,
-  type InboundMessage,
-} from "ably";
+import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { IN_VITEST } from "../env.ts";
@@ -51,31 +44,15 @@ export const setupRealtime$ = command(
     });
     signal.throwIfAborted();
 
-    const fetchToken = () => {
-      return accept(client.create({ body: {} }), [200], { toast: false });
-    };
-
-    type AblyCallbackFn = (
-      error: ErrorInfo | string | null,
-      tokenRequestOrDetails: TokenDetails | TokenRequest | string | null,
-    ) => void;
-
-    const resolveAblyToken = (callbackFn: AblyCallbackFn) => {
-      fetchToken()
-        .then((resp) => {
-          callbackFn(null, resp.body);
-        })
-        .catch((error: unknown) => {
-          callbackFn(
-            error instanceof Error ? error.message : "Token request failed",
-            null,
-          );
-        });
-    };
+    const token = await accept(
+      client.create({ body: {}, fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
 
     const ably = new Realtime({
       authCallback: (_params, callback) => {
-        resolveAblyToken(callback);
+        callback(null, token.body);
       },
       autoConnect: true,
       disconnectedRetryTimeout: 5000,
@@ -87,29 +64,22 @@ export const setupRealtime$ = command(
       set(internalUserChannel$, null);
     });
 
-    // Wait for connection
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = () => {
-        reject(signal.reason);
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
+    const deferred = createDeferredPromise(signal);
 
-      ably.connection.once("connected", () => {
-        signal.removeEventListener("abort", onAbort);
-        resolve();
-      });
-      ably.connection.once("failed", (stateChange) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(
-          new Error(
-            `Ably connection failed: ${stateChange?.reason?.message ?? "unknown"}`,
-          ),
-        );
-      });
+    ably.connection.once("connected", () => {
+      deferred.resolve(true);
     });
+    ably.connection.once("failed", (stateChange) => {
+      deferred.reject(
+        new Error(
+          `Ably connection failed: ${stateChange?.reason?.message ?? "unknown"}`,
+        ),
+      );
+    });
+
+    await deferred.promise;
     signal.throwIfAborted();
 
-    // Subscribe to the user's channel (clientId is set by the token)
     const channelName = `user:${ably.auth.clientId}`;
     const channel = ably.channels.get(channelName);
     set(internalUserChannel$, channel);

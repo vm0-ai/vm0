@@ -312,19 +312,22 @@ export const bootstrap$ = command(
 
     set(handleBillingRedirect$);
     set(handleSlackRedirect$);
+    console.log("123");
+    await set(setupRealtime$, signal);
 
     await Promise.all([
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
-      set(startSkeletonCycling$, signal),
       set(pollUserInvitations$, signal),
       (async () => {
         await set(setupClerk$, signal);
-        void set(setupRealtime$, signal).catch(throwIfNotAbort);
         await set(watchOrgSwitch$, signal);
       })(),
       set(setupRoutes$, signal),
+
+      // never resolved task
+      set(startSkeletonCycling$, signal),
     ]);
 
     signal.throwIfAborted();

@@ -104,7 +104,7 @@ export async function getChatThreadIdForRun(
  * If no event-backed rows arrived (e.g., tool-only run), the placeholder
  * is left in place and the UI renders an empty assistant bubble.
  */
-export async function cleanupAssistantPlaceholderIfEventsExist(
+async function cleanupAssistantPlaceholderIfEventsExist(
   runId: string,
 ): Promise<void> {
   const [hasEventRow] = await globalThis.services.db
@@ -137,7 +137,7 @@ export async function cleanupAssistantPlaceholderIfEventsExist(
  * Update an assistant placeholder message with content from the run callback.
  * Used for failed runs to surface the error message in the assistant bubble.
  */
-export async function updateAssistantMessageByRunId(
+async function updateAssistantMessageByRunId(
   runId: string,
   content: string | null,
   error: string | undefined,
@@ -204,7 +204,7 @@ export async function getMessagesByThreadId(chatThreadId: string): Promise<
  * When `sinceId` is omitted all messages in the thread are returned —
  * equivalent to `getMessagesByThreadId`.
  */
-export async function getMessagesByThreadIdSince(
+async function getMessagesByThreadIdSince(
   chatThreadId: string,
   sinceId?: string,
 ): Promise<

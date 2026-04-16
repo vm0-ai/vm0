@@ -126,18 +126,6 @@ function createComposerFileInput() {
   return { composerFileInput$, setComposerFileInput$ };
 }
 
-// ---------------------------------------------------------------------------
-// Sub-factory: send message (no RunLoop, no optimistic messages)
-// ---------------------------------------------------------------------------
-
-interface SendMessageDeps {
-  threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
-  draft: DraftSignals;
-  cancelDraftSync$: Command<void, []>;
-  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-}
-
 function createPrepareUserMessage(draft: DraftSignals) {
   return command(
     async (
