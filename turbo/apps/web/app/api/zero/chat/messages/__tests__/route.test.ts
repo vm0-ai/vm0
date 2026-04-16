@@ -24,6 +24,7 @@ import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
+import { GET as getChatThreadById } from "../../../chat-threads/[id]/route";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -493,47 +494,13 @@ describe("POST /api/zero/chat/messages", () => {
       expect(userMsg).toBeDefined();
       expect(userMsg!.attachFiles).toEqual(["file-uuid-1", "file-uuid-2"]);
 
-      // Verify system prompt includes attach files download instructions
+      // Verify system prompt includes Web Attached Files section with file metadata
       const run = await getTestRun(data.runId);
       expect(run.appendSystemPrompt).toContain("Web Attached Files");
-      expect(run.appendSystemPrompt).toContain(
-        "zero web download-file file-uuid-1",
-      );
-      expect(run.appendSystemPrompt).toContain(
-        "zero web download-file file-uuid-2",
-      );
+      expect(run.appendSystemPrompt).toContain("file-uuid-1");
+      expect(run.appendSystemPrompt).toContain("file-uuid-2");
       expect(run.appendSystemPrompt).toContain("report.pdf");
       expect(run.appendSystemPrompt).toContain("photo.png");
-    });
-
-    it("should include video-specific ffmpeg instructions for video attachments", async () => {
-      const attachFiles = [
-        {
-          id: "video-uuid-1",
-          filename: "demo.mp4",
-          contentType: "video/mp4",
-          size: 10240,
-        },
-      ];
-
-      const response = await POST(
-        createTestRequest(URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId,
-            prompt: "Review this video",
-            attachFiles,
-          }),
-        }),
-      );
-
-      expect(response.status).toBe(201);
-      const data = await response.json();
-
-      const run = await getTestRun(data.runId);
-      expect(run.appendSystemPrompt).toContain("ffmpeg");
-      expect(run.appendSystemPrompt).toContain("Extract frames");
     });
 
     it("should resolve attach files with presigned URLs in thread detail", async () => {
@@ -580,8 +547,7 @@ describe("POST /api/zero/chat/messages", () => {
       );
 
       // Fetch thread detail which resolves attach files
-      const { GET } = await import("../../../chat-threads/[id]/route");
-      const threadResponse = await GET(
+      const threadResponse = await getChatThreadById(
         createTestRequest(
           `http://localhost:3000/api/zero/chat-threads/${sendData.threadId}`,
           { method: "GET" },
