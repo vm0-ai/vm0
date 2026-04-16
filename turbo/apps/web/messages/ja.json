@@ -1375,6 +1375,338 @@
           "Sentryのプロジェクトタグまたは環境を使用して、Zeroのクエリをプロダクションのみに絞りましょう。ステージングは含めません。",
           "プロダクトヘルスブリーフィングと連携させましょう：8:45に分類を実行し、9:00のブリーフィングに出力を含めれば、チームがすべてを一箇所で確認できます。"
         ]
+      },
+      "release-gate-check": {
+        "title": "Monitor release PRs and ping the team when checks go green",
+        "description": "Zero watches your open release PRs on a schedule, checks CI status, and posts a Slack alert the moment a PR is ready to merge — so nothing sits approved-but-unmerged for hours.",
+        "timeSaved": "~30 min saved",
+        "headings": {
+          "scenario": "Why release PRs sit idle even after checks pass",
+          "prompt": "How to ask Zero to monitor your release queue",
+          "steps": "How Zero tracks and surfaces merge-ready PRs",
+          "nextActions": "Auto-merge, assign reviewers, or escalate blockers",
+          "integrations": "Required integrations: GitHub and Slack",
+          "tips": "Best practices for release PR monitoring"
+        },
+        "scenario": "It's 3 PM and your release PR has been green since noon. CI passed, it's approved, but no one hit the merge button because no one noticed. Meanwhile, another engineer pushed a conflicting change. By the time you catch it, you're resolving merge conflicts instead of shipping. The bottleneck isn't the code — it's the gap between 'ready' and 'someone saw it was ready.'",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero check our open release PRs in vm0-ai/vm0. For each one, tell me: CI status, number of approvals, and whether it has any unresolved review comments. Flag any that are fully approved and green."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero which release PRs in vm0-ai/vm0 are merge-ready right now?"
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every weekday at 10 AM and 3 PM, check open PRs labeled 'release' in vm0-ai/vm0. Post a summary to #dev listing which are merge-ready and which are still blocked."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero check the release PR queue. Which ones are green and ready to merge?"
+          },
+          {
+            "name": "Zero",
+            "text": "Release PR status as of now:\n\n✅ #9532 — all checks passed, 2 approvals, no open comments → merge-ready\n⏳ #9537 — CI still running (started 8 min ago)\n🔴 #9518 — 1 failing check (lint), needs fix\n\nPinging Ethan on #9532."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scans open release PRs",
+            "description": "Zero queries GitHub for all open PRs matching your filter (label, branch pattern, or author) and retrieves CI status, approval count, and review comment state for each."
+          },
+          {
+            "title": "Classify and rank",
+            "description": "PRs are bucketed into three groups: merge-ready (all checks green, required approvals met, no blocking comments), in-progress (CI running or reviews pending), and blocked (failing checks or unresolved comments). Merge-ready PRs are listed first."
+          },
+          {
+            "title": "Alert the right people",
+            "description": "Zero posts the summary to your Slack channel. For merge-ready PRs, it @-mentions the PR author or a designated release engineer so the right person can act immediately."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Auto-merge when ready",
+            "description": "Tell Zero to trigger the merge directly",
+            "examplePrompt": "@Zero merge #9532 now. Squash commits, use the PR title as the merge commit message, and delete the branch after."
+          },
+          {
+            "title": "Escalate blockers",
+            "description": "Surface failing PRs to the right owner",
+            "examplePrompt": "@Zero #9518 has a failing lint check. Identify what failed and ping Lancy with a brief summary so he can fix it."
+          },
+          {
+            "title": "Schedule twice daily",
+            "description": "Turn this into a standing release pulse",
+            "examplePrompt": "@Zero every weekday at 11 AM and 4 PM, run the release PR check and post to #release-notify. DM the author if their PR has been merge-ready for more than 2 hours."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Read access to pull requests, CI check runs, and review status. Write access needed if you want Zero to trigger merges."
+          },
+          {
+            "description": "Used to post the release PR digest and @-mention the relevant engineers."
+          }
+        ],
+        "tips": [
+          "Use a consistent PR label (e.g. 'release') so Zero can narrow its search — it's faster and avoids noise from feature PRs.",
+          "Set a time threshold: 'if a PR has been merge-ready for more than 2 hours, escalate' prevents urgent releases from sitting idle through lunch.",
+          "Pair with the error-triage use case for a complete release readiness check — CI green and no new Sentry regressions before you ship."
+        ]
+      },
+      "content-calendar-sync": {
+        "title": "Sync your content calendar from Google Sheets to Notion automatically",
+        "description": "Zero reads your content planning spreadsheet each day and pushes new or updated entries into your Notion content queue — keeping both sources in sync without manual copy-paste.",
+        "timeSaved": "~20 min saved",
+        "headings": {
+          "scenario": "Why content calendars fall out of sync between tools",
+          "prompt": "How to ask Zero to sync your content calendar",
+          "steps": "How Zero keeps Google Sheets and Notion in lockstep",
+          "nextActions": "Generate drafts, schedule posts, or trigger approval flows",
+          "integrations": "Required integrations: Google Sheets, Notion, and Slack",
+          "tips": "Best practices for automated content calendar sync"
+        },
+        "scenario": "Your content calendar lives in a Google Sheet — that's where the team adds ideas, sets publish dates, and marks status. But your writers work in Notion, where they draft and review. Every Monday morning someone spends 20 minutes manually copying the week's entries into Notion. Half the time the Sheet gets updated mid-week and Notion drifts out of date. By Friday, the two sources disagree about what's shipping this week.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero sync the vm0 content calendar from Google Sheets to Notion. For each entry in the current week (W16), check if a matching Notion page exists. Create missing pages with title, publish date, platform, and status. Update any pages where the Sheet's status differs from Notion."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero sync this week's content calendar from Sheets to Notion."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every weekday at 6:30 PM, sync the content calendar from Google Sheets to Notion. Post a brief summary to #marketing-and-community: how many entries were added, updated, or already in sync."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero sync the content calendar from Google Sheets to Notion for this week."
+          },
+          {
+            "name": "Zero",
+            "text": "Content Calendar Sync — W16 complete.\n\n✅ 3 new pages created in Notion Content Queue\n🔄 2 pages updated (status changed from Draft → Review)\n✓ 3 pages already in sync\n\nAll 8 entries for Apr 14–19 are now reflected in Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads the spreadsheet",
+            "description": "Zero connects to your Google Sheet and reads the content calendar rows for the current week (or a specified date range), extracting title, platform, publish date, status, and assignee columns."
+          },
+          {
+            "title": "Diff against Notion",
+            "description": "Zero searches your Notion content queue for matching pages by title or ID. It identifies three categories: new entries missing from Notion, existing pages where status or metadata differs, and pages already in sync that need no action."
+          },
+          {
+            "title": "Create, update, and report",
+            "description": "Zero creates new Notion pages for missing entries, updates changed fields on existing pages, and posts a sync summary to Slack. The report lists what was added, what changed, and confirms the total entries now in sync."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Generate draft content",
+            "description": "Ask Zero to write a first draft for a synced entry",
+            "examplePrompt": "@Zero for the 'vm0 vs Cursor' comparison post in the Notion content queue, write a 500-word first draft. Tone: informative, direct, audience: technical founders."
+          },
+          {
+            "title": "Post to X when ready",
+            "description": "Have Zero publish approved entries to social media",
+            "examplePrompt": "@Zero the post titled 'iMessage integration launch' in Notion is marked Approved. Post it to @vm0_ai on X now."
+          },
+          {
+            "title": "Weekly content report",
+            "description": "Summarize what shipped and what's coming",
+            "examplePrompt": "@Zero generate a weekly content report: what published last week (W15), what's scheduled for this week (W16), and any entries still in Draft with a publish date in the past."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Read access to the content calendar spreadsheet. Zero reads rows by date range and maps columns to structured fields."
+          },
+          {
+            "description": "Read/write access to your content queue database. Zero creates and updates pages to match the spreadsheet."
+          },
+          {
+            "description": "Optional — used to post the daily sync summary so the team can see what changed without opening either tool."
+          }
+        ],
+        "tips": [
+          "Standardize column names in your Sheet (e.g. 'Title', 'Platform', 'Publish Date', 'Status') so Zero can parse them consistently without extra prompting.",
+          "Add a unique ID column to each row — this prevents duplicate Notion pages when titles change mid-week.",
+          "Run the sync at end of day (e.g. 6:30 PM) rather than morning so writers get the updated queue when they start work the next day."
+        ]
+      },
+      "meeting-kickoff": {
+        "title": "Auto-send meeting links and agendas to the team at standup time",
+        "description": "Zero checks your Google Calendar for the daily standup, pulls the agenda from Notion, and sends a formatted Slack message with the meeting link and talking points — so the team joins informed and on time.",
+        "timeSaved": "~10 min saved",
+        "headings": {
+          "scenario": "Why standups start late and attendees arrive unprepared",
+          "prompt": "How to ask Zero to kick off your daily standup",
+          "steps": "How Zero orchestrates the meeting kickoff",
+          "nextActions": "Follow up on blockers or auto-post the meeting summary",
+          "integrations": "Required integrations: Google Calendar, Slack, and Notion",
+          "tips": "Best practices for automated meeting kickoffs"
+        },
+        "scenario": "It's 10:29 AM. Someone needs to send the standup link. Someone else needs to remind the team. Nobody knows who's running today. The calendar invite has a stale agenda from last month. The first five minutes of every standup are wasted on 'can everyone hear me?' and 'what are we covering today?' — not because the team is disorganized, but because pulling this together manually every single day adds friction nobody wants to own.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero it's almost standup time. Check our Google Calendar for today's 10:30 standup event, grab the meeting link, pull the agenda from the Notion 'Daily Standup' page, and send it all to #all-vm0. Format it clearly so people know what we're covering."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero send the standup link and agenda to #all-vm0 now."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every weekday at 10:25 AM, check the calendar for our daily standup, pull today's agenda from Notion, and post the meeting link + talking points to #all-vm0. If no agenda exists, use yesterday's as a fallback."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero send the standup link and agenda to the team."
+          },
+          {
+            "name": "Zero",
+            "text": "🕙 Standup in 5 minutes\n\nhttps://meet.google.com/abc-defg-hij\n\n*Today's agenda*\n• Releases: #9532 volume mount, #9537 compose rebuild\n• Blockers: Sentry firewall approval pending (Ethan)\n• FYI: NY Times ad campaign goes live today at 9 AM EST\n\nSee you in there!"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero checks the calendar",
+            "description": "Zero reads today's Google Calendar events for the configured account, finds the standup meeting by name or time window, and extracts the video conferencing link from the event details."
+          },
+          {
+            "title": "Zero fetches the agenda",
+            "description": "Zero looks up the designated Notion page for today's standup agenda. If a page exists with today's date, it reads the talking points. If not, it falls back to yesterday's agenda or a default template."
+          },
+          {
+            "title": "Zero posts to Slack",
+            "description": "Zero sends a formatted message to the specified channel with the meeting link prominently displayed, followed by the agenda items. The message arrives 5 minutes before the scheduled start so people have time to join."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Follow up on blockers",
+            "description": "After the standup, ask Zero to summarize blockers and tag owners",
+            "examplePrompt": "@Zero after today's standup, check if the Sentry firewall approval issue was resolved. If not, draft a follow-up message to Ethan with the blocker context."
+          },
+          {
+            "title": "Post the meeting notes",
+            "description": "Have Zero capture decisions from the standup thread",
+            "examplePrompt": "@Zero read the #all-vm0 thread from today's standup and write a brief summary of decisions and action items. Save it to the Notion standup log."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Read access to fetch today's standup event, extract the meeting link, and identify the scheduled time."
+          },
+          {
+            "description": "Used to post the kickoff message to the team channel with the link and agenda."
+          },
+          {
+            "description": "Optional — used to read the standup agenda page. Without Notion, Zero posts the meeting link only."
+          }
+        ],
+        "tips": [
+          "Keep your standup Notion page in a predictable location (e.g. a database with date as the title) so Zero can find today's entry reliably without extra instructions.",
+          "Tell Zero your meeting's name exactly as it appears in Google Calendar — 'Daily Standup' vs 'vm0 Standup' will give different results.",
+          "Add a fallback instruction: 'if no agenda exists, post just the link and say agenda TBD' — this prevents Zero from failing silently when someone forgets to update Notion."
+        ]
+      },
+      "intercom-to-issues": {
+        "title": "Turn Intercom support threads into triaged GitHub issues",
+        "description": "Zero scans recent Intercom conversations, identifies recurring bugs and feature requests, and files structured GitHub issues with severity, reproduction steps, and user impact — bridging support and engineering without a ticket backlog.",
+        "timeSaved": "~45 min saved",
+        "headings": {
+          "scenario": "Why customer bugs get lost between support and engineering",
+          "prompt": "How to ask Zero to convert Intercom threads into GitHub issues",
+          "steps": "How Zero bridges Intercom conversations to GitHub",
+          "nextActions": "Assign issues, notify users, or escalate urgent bugs",
+          "integrations": "Required integrations: Intercom, GitHub, and Slack",
+          "tips": "Best practices for support-to-engineering issue routing"
+        },
+        "scenario": "A user reports that connectors keep disconnecting after 30 minutes. Your support team resolves it case by case — close the conversation, move on. Two weeks later, five different users have reported the same thing. Engineering still doesn't know. The bug isn't in Sentry. It's in 20 scattered Intercom threads that no one has time to synthesize. By the time it becomes a GitHub issue, the signal is stale and the user who first reported it has already churned.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero look at Intercom conversations from the last 7 days. Find any threads where users reported a bug or unexpected behavior. For each distinct issue, file a GitHub issue in vm0-ai/vm0 with: title, steps to reproduce, affected users (count), and severity (High/Med/Low based on frequency and user frustration)."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero check Intercom for the top 3 bugs users reported this week and file GitHub issues."
+          },
+          {
+            "label": "Batch",
+            "prompt": "@Zero every Monday at 9 AM, scan Intercom conversations from the past week, deduplicate recurring issues, and file GitHub issues for anything with 2+ affected users. Post a summary to #dev with issue links."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero check Intercom for the top bugs users reported this week and file GitHub issues for engineering."
+          },
+          {
+            "name": "Zero",
+            "text": "Intercom → GitHub triage complete. Filed 3 issues from 12 conversations:\n\n🔴 #9561 — Connector disconnects after 30 min (7 users) · High\n🟡 #9562 — OAuth callback fails on Safari (3 users) · Medium\n🟡 #9563 — Agent avatar not loading in dark mode (2 users) · Medium\n\nAll assigned to the engineering queue. Full thread links in each issue."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads Intercom conversations",
+            "description": "Zero fetches recent Intercom conversations filtered by date range and conversation status. It reads the full message thread for each conversation to understand the user's reported issue, not just the subject line."
+          },
+          {
+            "title": "Deduplicate and classify",
+            "description": "Zero groups conversations by issue type, counting how many distinct users reported the same problem. Each unique issue is assigned a severity based on frequency and sentiment signals (e.g. words like 'broken', 'can't use', 'blocked'). Duplicates are merged so engineering sees one issue with user count, not 20 individual tickets."
+          },
+          {
+            "title": "File structured GitHub issues",
+            "description": "For each unique issue, Zero creates a GitHub issue with a conventional commit-style title, a description including steps to reproduce, affected user count, severity label, and links back to the Intercom conversations for full context. A summary is posted to Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Assign to the right engineer",
+            "description": "Route the filed issue to the team member who owns that area",
+            "examplePrompt": "@Zero assign GitHub issue #9561 (connector disconnect) to Lancy and add the label 'infra'. It's related to the volume mount work he finished this week."
+          },
+          {
+            "title": "Notify the affected users",
+            "description": "Close the loop with users who reported the issue",
+            "examplePrompt": "@Zero for the 7 users who reported the connector disconnect bug, send them an Intercom reply: 'Thanks for the report — we've filed this as a bug and it's in our queue. We'll follow up once it's fixed.'"
+          },
+          {
+            "title": "Weekly triage digest",
+            "description": "Schedule a recurring support-to-engineering sync",
+            "examplePrompt": "@Zero every Monday at 9 AM, scan last week's Intercom conversations, deduplicate recurring issues, file GitHub issues for anything with 2+ users, and post the digest to #dev."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Read access to conversations and messages. Zero reads threads by date range to extract bug reports and feature requests."
+          },
+          {
+            "description": "Write access to create issues with labels and assignees. Read access to check for existing issues before filing duplicates."
+          },
+          {
+            "description": "Optional — used to post the triage summary so engineering sees new issues in the channel they already watch."
+          }
+        ],
+        "tips": [
+          "Tell Zero to skip conversations tagged 'resolved' or 'billing' so it focuses on product bugs rather than support noise.",
+          "Include a deduplication threshold: 'only file if 2+ users reported the same issue' — this keeps your GitHub backlog signal-dense rather than volume-heavy.",
+          "Ask Zero to check for existing GitHub issues before filing — it can add a comment to an existing issue instead of creating a duplicate."
+        ]
       }
     }
   },
