@@ -32,10 +32,9 @@ describe("chat message lifecycle", () => {
       expect(screen.getByText("What can you do?")).toBeInTheDocument();
     });
 
-    // Assistant thinking indicator appears
+    // Stop button visible while assistant is running
     await waitFor(() => {
-      const shimmer = document.querySelector(".zero-shimmer-text");
-      expect(shimmer).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     ctrl.completeRun("I can help with many things!");

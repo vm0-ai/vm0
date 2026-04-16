@@ -199,7 +199,7 @@ describe("agent avatar link", () => {
 });
 
 describe("chat message activity line", () => {
-  it("should keep activity line visible when result arrives but run is still running", async () => {
+  it("should show result text when result arrives while run is still running", async () => {
     const lifecycle = mockChatLifecycle({
       threadId: "thread-activity-running",
       chatMessages: [
@@ -230,22 +230,20 @@ describe("chat message activity line", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-activity-running" });
 
-    // The activity line (spinner) should be visible since the run is not terminal.
-    // The response body is hidden during active runs to prevent layout shift.
+    // Stop button is visible since the run is not terminal
     await waitFor(() => {
-      const shimmer = document.querySelector(".zero-shimmer-text");
-      expect(shimmer).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    // The result body should not be rendered while the run is still active
+    // The result text is shown as it streams in
     await waitFor(() => {
       expect(
-        screen.queryByText("Here is the partial result"),
-      ).not.toBeInTheDocument();
+        screen.getByText("Here is the partial result"),
+      ).toBeInTheDocument();
     });
   });
 
-  it("should hide activity line after run reaches terminal status", async () => {
+  it("should show result body after run reaches terminal status", async () => {
     const lifecycle = mockChatLifecycle({
       threadId: "thread-activity-done",
       chatMessages: [
@@ -276,23 +274,22 @@ describe("chat message activity line", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-activity-done" });
 
-    // Activity line should be visible while running; body is hidden during active runs
+    // Stop button visible while running
     await waitFor(() => {
-      const shimmer = document.querySelector(".zero-shimmer-text");
-      expect(shimmer).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     // Now complete the run
     lifecycle.completeRun("Final answer");
 
-    // Activity line should disappear and body should appear after reaching terminal status
-    await waitFor(() => {
-      const shimmer = document.querySelector(".zero-shimmer-text");
-      expect(shimmer).not.toBeInTheDocument();
-    });
-
+    // Result body should appear after reaching terminal status
     await waitFor(() => {
       expect(screen.getByText("Final answer")).toBeInTheDocument();
+    });
+
+    // Stop button is gone after completion
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
   });
 });

@@ -7,13 +7,12 @@ import {
   mockChatLifecycle,
   sendMessageInUI,
   PLACEHOLDER,
-  makeToolUseEvent,
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
 describe("chat queue state", () => {
-  it("should show queue position when run is queued", async () => {
+  it("should show Stop button when run is queued", async () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
@@ -32,7 +31,7 @@ describe("chat queue state", () => {
     await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
-      expect(screen.getByText(/In queue/)).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     // Complete the run and wait for polling to stop
@@ -42,7 +41,7 @@ describe("chat queue state", () => {
     });
   });
 
-  it("should transition from queue to running state", async () => {
+  it("should show Stop button when transitioning from queue to running state", async () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
     ctrl.setRunStatus("queued");
@@ -59,18 +58,17 @@ describe("chat queue state", () => {
 
     await sendMessageInUI(user, textarea, "Hello");
 
-    // Wait for queue state
+    // Stop button visible while queued
     await waitFor(() => {
-      expect(screen.getByText(/In queue/)).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    // Transition to running with events
+    // Transition to running
     ctrl.setRunStatus("running");
-    ctrl.setEvents([makeToolUseEvent("Search")]);
 
+    // Stop button remains visible during running state
     await waitFor(() => {
-      expect(screen.queryByText(/In queue/)).toBeNull();
-      expect(screen.getByText("Searching for info...")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     // Complete the run and wait for polling to stop
