@@ -6,6 +6,7 @@ import {
   getModels,
   getDefaultModel,
   getEnvironmentMapping,
+  MODEL_PROVIDER_FIREWALL_CONFIGS,
   type ModelProviderType,
 } from "../model-providers";
 
@@ -129,4 +130,24 @@ describe("model selection for Anthropic-native providers", () => {
     expect(getProviderBaseUrl("anthropic-api-key")).toBeNull();
     expect(getProviderBaseUrl("claude-code-oauth-token")).toBeNull();
   });
+});
+
+describe("firewall base URL scoped to /v1/messages (#9560)", () => {
+  it.each([
+    ["anthropic-api-key", "https://api.anthropic.com/v1/messages"],
+    ["claude-code-oauth-token", "https://api.anthropic.com/v1/messages"],
+    ["openrouter-api-key", "https://openrouter.ai/api/v1/messages"],
+    ["moonshot-api-key", "https://api.moonshot.ai/anthropic/v1/messages"],
+    ["minimax-api-key", "https://api.minimax.io/anthropic/v1/messages"],
+    ["deepseek-api-key", "https://api.deepseek.com/anthropic/v1/messages"],
+    ["zai-api-key", "https://api.z.ai/api/anthropic/v1/messages"],
+    ["vercel-ai-gateway", "https://ai-gateway.vercel.sh/v1/messages"],
+  ] as const)(
+    "%s scopes firewall to /v1/messages path prefix",
+    (type, expectedBase) => {
+      const config = MODEL_PROVIDER_FIREWALL_CONFIGS[type];
+      expect(config.apis).toHaveLength(1);
+      expect(config.apis[0]!.base).toBe(expectedBase);
+    },
+  );
 });

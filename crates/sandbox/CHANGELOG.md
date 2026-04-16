@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.0...sandbox-v0.12.1) (2026-04-16)
+
+
+### Refactoring
+
+* **runner:** make sandbox_id a first-class identity distinct from run_id ([#9555](https://github.com/vm0-ai/vm0/issues/9555)) ([9cfd2a8](https://github.com/vm0-ai/vm0/commit/9cfd2a8d239f1c54c3c8e25c9adb2759d9b12efa))
+
 ## [0.12.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.11.0...sandbox-v0.12.0) (2026-04-14)
 
 

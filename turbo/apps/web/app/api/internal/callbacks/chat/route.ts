@@ -103,7 +103,8 @@ async function handleCompleted(
   // cannot produce duplicates.
   const items = await queryAssistantEvents(runId);
   if (items.length > 0) {
-    const chatThreadId = (await getChatThreadIdForRun(runId)) ?? threadId;
+    const resolved = await getChatThreadIdForRun(runId);
+    const chatThreadId = resolved?.chatThreadId ?? threadId;
     await insertAssistantEventMessages(runId, chatThreadId, items);
   }
 

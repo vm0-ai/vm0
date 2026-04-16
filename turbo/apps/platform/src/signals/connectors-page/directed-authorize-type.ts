@@ -3,6 +3,7 @@ import { zeroUserConnectorsContract, type ConnectorType } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { agents$ } from "../agent.ts";
 
 /**
  * Connector type extracted from `/connectors/:type/authorize` route params.
@@ -18,6 +19,19 @@ export const directedAuthorizeType$ = computed((get): string | null => {
  */
 export const directedAuthorizeAgentId$ = computed((get): string | null => {
   return get(searchParams$).get("agentId");
+});
+
+/** Agent display name resolved from agentId query param. */
+export const directedAuthorizeAgentName$ = computed(async (get) => {
+  const agentId = get(directedAuthorizeAgentId$);
+  if (!agentId) {
+    return null;
+  }
+  const agents = await get(agents$);
+  const agent = agents.find((a) => {
+    return a.id === agentId;
+  });
+  return agent?.displayName ?? null;
 });
 
 /** Fetch enabled connector types for the agent from the API. */

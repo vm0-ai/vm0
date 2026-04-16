@@ -45,6 +45,7 @@ import {
   pollingConnectorType$,
   selectedConnectorType$,
   setSelectedConnectorType$,
+  setPermissionDialogType$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -220,6 +221,7 @@ function ConnectStepContent() {
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
   const setSelectedConnector = useSet(setSelectedConnectorType$);
+  const clearPermissionDialog = useSet(setPermissionDialogType$);
   const pageSignal = useGet(pageSignal$);
 
   const allConnectors =
@@ -258,7 +260,15 @@ function ConnectStepContent() {
     if (connector?.availableAuthMethods.includes("api-token")) {
       setSelectedConnector(type);
     } else {
-      detach(connect(type, pageSignal), Reason.DomCallback);
+      // During onboarding the backend authorizes connectors for the default
+      // agent at step 4, so suppress the multi-agent permission dialog that
+      // connectConnector$ normally triggers.
+      detach(
+        connect(type, pageSignal).then(() => {
+          return clearPermissionDialog(null);
+        }),
+        Reason.DomCallback,
+      );
     }
   };
 
@@ -954,6 +964,7 @@ export function ZeroOnboarding() {
   const effectiveStep = useLastResolved(onboardingEffectiveStep$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
+  const clearPermissionDialog = useSet(setPermissionDialogType$);
 
   if (!effectiveStep) {
     return null;
@@ -971,7 +982,9 @@ export function ZeroOnboarding() {
             return setSelected(null);
           }}
           onSuccess={() => {
-            /* connector list refreshes automatically */
+            // During onboarding the backend authorizes connectors for the
+            // default agent at step 4, so suppress the permission dialog.
+            clearPermissionDialog(null);
           }}
         />
       )}

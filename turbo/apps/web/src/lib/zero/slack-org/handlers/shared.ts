@@ -12,7 +12,7 @@ import type { UserInfoOptions } from "../../integration-prompt";
 import {
   fetchThreadContext,
   fetchChannelContext,
-  formatContextForAgentWithImages,
+  formatContextForAgent,
   formatCurrentMessageFiles,
   extractMentionedUserIds,
   resolveUserMentions,
@@ -211,11 +211,8 @@ export async function fetchConversationContexts(
   client: SlackClient,
   channelId: string,
   threadTs: string | undefined,
-  botUserId: string,
-  botToken: string,
   currentMessageTs?: string,
 ): Promise<{ executionContext: string }> {
-  const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
   const isDm = channelId.startsWith("D");
   const contextType = threadTs ? "thread" : "channel";
 
@@ -252,30 +249,17 @@ export async function fetchConversationContexts(
   const userIds = [...senderIds, ...mentionedIds];
   const userInfoMap = await fetchSlackUserInfoMap(client, userIds);
 
-  // Format channel context prefix (with image upload)
+  // Format channel context prefix — files are rendered as download instructions,
+  // not fetched server-side.
   const channelContextPrefix =
     channelMessages.length > 0
-      ? await formatContextForAgentWithImages(
-          channelMessages,
-          botToken,
-          imageSessionId,
-          botUserId,
-          "channel",
-          userInfoMap,
-        )
+      ? formatContextForAgent(channelMessages, "channel", userInfoMap)
       : "";
 
-  // Format thread/channel context with images
+  // Format thread/channel context
   const threadExecContext =
     contextMessages.length > 0
-      ? await formatContextForAgentWithImages(
-          contextMessages,
-          botToken,
-          imageSessionId,
-          botUserId,
-          contextType,
-          userInfoMap,
-        )
+      ? formatContextForAgent(contextMessages, contextType, userInfoMap)
       : "";
   const executionContext = channelContextPrefix
     ? `${channelContextPrefix}\n\n${threadExecContext}`
@@ -359,9 +343,6 @@ export async function resolveSessionCompose(
 export async function enrichMessageContent(opts: {
   messageContent: string;
   files: SlackFile[] | undefined;
-  botToken: string;
-  channelId: string;
-  threadTs: string;
   client: SlackClient;
   userId: string;
 }): Promise<{ prompt: string; userInfoExtras: UserInfoOptions }> {
@@ -369,12 +350,7 @@ export async function enrichMessageContent(opts: {
 
   // Include files attached to the current message in the prompt
   if (opts.files && opts.files.length > 0) {
-    const imageSessionId = `${opts.channelId}-${opts.threadTs}`;
-    const filesText = await formatCurrentMessageFiles(
-      opts.files,
-      opts.botToken,
-      imageSessionId,
-    );
+    const filesText = formatCurrentMessageFiles(opts.files);
     prompt = `${prompt}\n\n${filesText}`;
   }
 

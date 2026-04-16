@@ -19,6 +19,7 @@ const bodySchema = z.object({
   encryptedSecrets: z.string().min(1),
   authHeaders: z.record(z.string(), z.string()),
   authBase: z.string().optional(),
+  authQuery: z.record(z.string(), z.string()).optional(),
   secretConnectorMap: z.record(z.string(), z.string()).optional(),
   vars: z.record(z.string(), z.string()).optional(),
 });
@@ -231,10 +232,11 @@ async function refreshExpiredTokens(
   };
 }
 
-/** Collect all secret keys referenced in auth header templates (simple + basic). */
+/** Collect all secret keys referenced in auth header/base/query templates (simple + basic). */
 function collectReferencedSecrets(
   authHeaders: Record<string, string>,
   authBase?: string,
+  authQuery?: Record<string, string>,
 ): Set<string> {
   const keys = new Set<string>();
   for (const template of Object.values(authHeaders)) {
@@ -249,6 +251,13 @@ function collectReferencedSecrets(
   if (authBase) {
     for (const match of authBase.matchAll(TEMPLATE_RE)) {
       if (match[1] === "secrets" && match[2]) keys.add(match[2]);
+    }
+  }
+  if (authQuery) {
+    for (const template of Object.values(authQuery)) {
+      for (const match of template.matchAll(TEMPLATE_RE)) {
+        if (match[1] === "secrets" && match[2]) keys.add(match[2]);
+      }
     }
   }
   return keys;
@@ -287,7 +296,7 @@ function resolveBasicArg(
 
 /**
  * Resolve ${{ secrets.XXX }}, ${{ vars.XXX }}, and ${{ basic(...) }} templates
- * in auth header values and optional auth base URL.
+ * in auth header values, optional auth base URL, and optional auth query params.
  */
 function resolveTemplates(
   authHeaders: Record<string, string>,
@@ -295,10 +304,12 @@ function resolveTemplates(
   vars: Record<string, string>,
   runId: string,
   authBase?: string,
+  authQuery?: Record<string, string>,
 ): {
   headers: Record<string, string>;
   resolvedSecrets: string[];
   base?: string;
+  query?: Record<string, string>;
 } {
   const resolvedKeys = new Set<string>();
 
@@ -357,10 +368,20 @@ function resolveTemplates(
   // Resolve auth base URL template
   const resolvedBase = authBase ? resolveSimple(authBase) : undefined;
 
+  // Resolve auth query param templates
+  const resolvedQuery = authQuery
+    ? Object.fromEntries(
+        Object.entries(authQuery).map(([k, v]) => {
+          return [k, resolveSimple(v)];
+        }),
+      )
+    : undefined;
+
   return {
     headers,
     resolvedSecrets: [...resolvedKeys].sort(),
     base: resolvedBase,
+    query: resolvedQuery,
   };
 }
 
@@ -374,8 +395,9 @@ function resolveTemplates(
  * on demand and an expiresAt timestamp is returned for addon-side TTL caching.
  *
  * Auth: Sandbox JWT
- * Body: { encryptedSecrets, authHeaders, secretConnectorMap?, vars? }
- * Response: { headers, expiresAt? } or 502 { error } when token refresh fails
+ * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?, vars? }
+ * Response: { headers, base?, query?, expiresAt?, resolvedSecrets, refreshedConnectors, refreshedSecrets }
+ *           or 502 { error } when token refresh fails
  */
 export async function POST(request: Request) {
   initServices();
@@ -420,8 +442,14 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { encryptedSecrets, authHeaders, authBase, secretConnectorMap, vars } =
-    parsed.data;
+  const {
+    encryptedSecrets,
+    authHeaders,
+    authBase,
+    authQuery,
+    secretConnectorMap,
+    vars,
+  } = parsed.data;
 
   // Decrypt secrets
   let secrets: Record<string, string> | null;
@@ -441,7 +469,11 @@ export async function POST(request: Request) {
   }
 
   // Collect which secret keys are referenced in auth templates
-  const referencedKeys = collectReferencedSecrets(authHeaders, authBase);
+  const referencedKeys = collectReferencedSecrets(
+    authHeaders,
+    authBase,
+    authQuery,
+  );
 
   // Refresh expired OAuth tokens (mutates secrets map with fresh values)
   let expiresAt: number | null = null;
@@ -477,17 +509,19 @@ export async function POST(request: Request) {
   }
 
   // Resolve templates with (possibly refreshed) secret values
-  const { headers, resolvedSecrets, base } = resolveTemplates(
+  const { headers, resolvedSecrets, base, query } = resolveTemplates(
     authHeaders,
     secrets,
     vars ?? {},
     auth.runId,
     authBase,
+    authQuery,
   );
 
   return NextResponse.json({
     headers,
     base,
+    query,
     expiresAt,
     resolvedSecrets,
     refreshedConnectors,

@@ -20,6 +20,7 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../src/lib/zero/credit/credit-service";
+import { publishUserSignal } from "../../../../src/lib/infra/realtime/client";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
 
@@ -151,6 +152,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
     const staleRuns = await globalThis.services.db
       .select({
         id: agentRuns.id,
+        userId: agentRuns.userId,
         orgId: agentRuns.orgId,
         status: agentRuns.status,
         sandboxId: agentRuns.sandboxId,
@@ -246,6 +248,8 @@ const router = tsr.router(cronCleanupSandboxesContract, {
           );
 
           await processOrgCredits(run.orgId);
+
+          await publishUserSignal([run.userId], `runUpdated:${run.id}`);
 
           const isDebug =
             run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;

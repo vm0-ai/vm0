@@ -264,23 +264,17 @@ export {
   getVm0Vendor,
 } from "./model-providers";
 export {
-  sessionsContract,
   sessionsByIdContract,
   checkpointsByIdContract,
-  storedChatMessageSchema,
   sessionResponseSchema,
-  sessionListItemSchema,
   checkpointResponseSchema,
   agentComposeSnapshotSchema,
   artifactSnapshotSchema,
   volumeVersionsSnapshotSchema,
-  type SessionsContract,
   type SessionsByIdContract,
   type CheckpointsByIdContract,
   // Inferred types
-  type StoredChatMessage,
   type SessionResponse,
-  type SessionListItem,
   type CheckpointResponse,
   type AgentComposeSnapshot,
   type ArtifactSnapshot,
@@ -290,16 +284,20 @@ export {
   chatThreadsContract,
   chatThreadByIdContract,
   chatMessagesContract,
+  chatThreadMessagesContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
+  chatMessageWithIdSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   type SummaryEntry,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
   type ChatMessagesContract,
+  type ChatThreadMessagesContract,
   type ChatThreadListItem,
   type ChatThreadDetail,
+  type ChatMessageWithId,
   type PersistedAttachment,
 } from "./chat-threads";
 export {
@@ -683,10 +681,6 @@ export {
   type ZeroVariablesByNameContract,
 } from "./zero-secrets";
 export {
-  zeroSessionsByIdContract,
-  type ZeroSessionsByIdContract,
-} from "./zero-sessions";
-export {
   integrationsSlackMessageContract,
   type IntegrationsSlackMessageContract,
   type SendSlackMessageBody,
@@ -697,6 +691,10 @@ export {
   integrationsSlackUploadCompleteContract,
   type SlackUploadCompleteBody,
   type SlackUploadCompleteResponse,
+  integrationsChatMessageContract,
+  type IntegrationsChatMessageContract,
+  type SendChatMessageBody,
+  type SendChatMessageResponse,
 } from "./integrations";
 export {
   zeroBillingStatusContract,

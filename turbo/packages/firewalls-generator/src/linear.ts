@@ -4,14 +4,17 @@
  * Data source: https://developers.linear.app/docs/graphql/working-with-the-graphql-api
  *
  * Linear is a project management tool for software teams.
+ * OAuth access tokens use Bearer prefix in Authorization header.
+ * Token format: 64-character hex string.
  */
 
 import { writeOutput } from "./codegen";
 
 const DOCS_URL =
   "https://developers.linear.app/docs/graphql/working-with-the-graphql-api";
-// Format: lin_api_ + 40 alphanumeric (gitleaks: linear-api-key)
-const PLACEHOLDER_VALUE = "lin_api_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
+// OAuth access token: 64-char hex string
+const PLACEHOLDER_VALUE =
+  "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff";
 
 function generateTypeScript(): string {
   const lines: string[] = [

@@ -13,7 +13,7 @@ import {
   generatePresignedUrl,
   downloadS3Buffer,
 } from "../../infra/s3/s3-client";
-import { getAllSessionsWithMessages } from "../zero-session-service";
+import { agentSessions } from "../../../db/schema/agent-session";
 import { chatThreads } from "../../../db/schema/chat-thread";
 import { chatMessages } from "../../../db/schema/chat-message";
 import { resolveSessionHistory } from "../../infra/session-history/session-history-service";
@@ -159,40 +159,38 @@ async function collectConversations(
     }
   }
 
-  // Export other channel sessions (Slack, Email, Telegram) from JSONB
-  const sessions = await getAllSessionsWithMessages(userId);
+  // Export CLI session history from agent_sessions + conversations
+  const sessionsWithConversations = await db
+    .select({
+      id: agentSessions.id,
+      conversationId: agentSessions.conversationId,
+    })
+    .from(agentSessions)
+    .where(eq(agentSessions.userId, userId));
 
-  for (const session of sessions) {
-    if (session.chatMessages.length > 0) {
-      entries.push({
-        path: `conversations/${session.id}.json`,
-        content: JSON.stringify(session.chatMessages, null, 2),
-      });
-      count++;
-    }
+  for (const session of sessionsWithConversations) {
+    if (!session.conversationId) continue;
 
-    if (session.conversationId) {
-      const [conv] = await db
-        .select({
-          cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-          cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-        })
-        .from(conversations)
-        .where(eq(conversations.id, session.conversationId))
-        .limit(1);
+    const [conv] = await db
+      .select({
+        cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+        cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+      })
+      .from(conversations)
+      .where(eq(conversations.id, session.conversationId))
+      .limit(1);
 
-      if (conv) {
-        const history = await resolveSessionHistory(
-          conv.cliAgentSessionHistoryHash,
-          conv.cliAgentSessionHistory,
-        );
+    if (conv) {
+      const history = await resolveSessionHistory(
+        conv.cliAgentSessionHistoryHash,
+        conv.cliAgentSessionHistory,
+      );
 
-        if (history) {
-          entries.push({
-            path: `conversations/${session.id}-history.jsonl`,
-            content: history,
-          });
-        }
+      if (history) {
+        entries.push({
+          path: `conversations/${session.id}-history.jsonl`,
+          content: history,
+        });
       }
     }
   }

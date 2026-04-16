@@ -1,11 +1,10 @@
 use std::path::{Path, PathBuf};
 
+use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
+use crate::ids::RunId;
+use crate::paths::HomePaths;
 use clap::{Args, Subcommand};
 use tracing::{info, warn};
-use uuid::Uuid;
-
-use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
-use crate::paths::HomePaths;
 
 #[derive(Args)]
 pub struct ServiceArgs {
@@ -334,7 +333,7 @@ struct RunnerStatusSnapshot {
     /// refuse branch by [`decide_gate`].
     mode: String,
     /// UUIDs of runs currently in flight.
-    run_ids: Vec<Uuid>,
+    run_ids: Vec<RunId>,
     /// How long the runner process itself has been up, derived from the
     /// `started_at` timestamp. status.json does not record per-run start
     /// times, so the error message surfaces this runner-level uptime
@@ -383,8 +382,13 @@ async fn read_runner_status(base_dir: &Path) -> Option<RunnerStatusSnapshot> {
     #[derive(serde::Deserialize)]
     struct StatusFile {
         mode: String,
-        active_run_ids: Vec<Uuid>,
+        active_runs: Vec<ActiveRunEntry>,
         started_at: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct ActiveRunEntry {
+        run_id: RunId,
+        // `sandbox_id` is present in the file but unused by the gate.
     }
     let path = base_dir.join("status.json");
     let content = tokio::fs::read_to_string(&path)
@@ -407,7 +411,7 @@ async fn read_runner_status(base_dir: &Path) -> Option<RunnerStatusSnapshot> {
         .unwrap_or_default();
     Some(RunnerStatusSnapshot {
         mode: file.mode,
-        run_ids: file.active_run_ids,
+        run_ids: file.active_runs.into_iter().map(|r| r.run_id).collect(),
         uptime,
     })
 }
@@ -424,8 +428,8 @@ async fn read_runner_status(base_dir: &Path) -> Option<RunnerStatusSnapshot> {
 /// erring on the side of "stop is usable" over "gate is strict":
 ///
 /// 1. **Dead / crashed runner** — if the systemd unit is inactive, the
-///    on-disk `active_run_ids` may be stale (runner was SIGKILLed before
-///    it could update status.json). Nothing alive to protect; skip the gate.
+///    on-disk `active_runs` may be stale (runner was SIGKILLed before it
+///    could update status.json). Nothing alive to protect; skip the gate.
 /// 2. **Cleanly stopped runner** — `mode == "stopped"` indicates the
 ///    runner's own drain finished. Covers the short window between
 ///    status.json being rewritten with `"stopped"` (`start.rs` end of
@@ -1027,7 +1031,7 @@ mod tests {
     #[tokio::test]
     async fn read_runner_status_malformed_started_at() {
         let dir = tempfile::tempdir().unwrap();
-        let s = r#"{"mode":"running","active_run_ids":[],"started_at":"not-a-date"}"#;
+        let s = r#"{"mode":"running","active_runs":[],"started_at":"not-a-date"}"#;
         tokio::fs::write(dir.path().join("status.json"), s)
             .await
             .unwrap();
@@ -1037,7 +1041,7 @@ mod tests {
     #[tokio::test]
     async fn read_runner_status_running_no_jobs() {
         let dir = tempfile::tempdir().unwrap();
-        let s = r#"{"mode":"running","active_run_ids":[],"started_at":"2026-04-13T00:00:00.000Z"}"#;
+        let s = r#"{"mode":"running","active_runs":[],"started_at":"2026-04-13T00:00:00.000Z"}"#;
         tokio::fs::write(dir.path().join("status.json"), s)
             .await
             .unwrap();
@@ -1051,9 +1055,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = r#"{
             "mode":"running",
-            "active_run_ids":[
-                "0191c4e0-0000-7000-8000-000000000001",
-                "0191c4e0-0000-7000-8000-000000000002"
+            "active_runs":[
+                {"run_id":"0191c4e0-0000-7000-8000-000000000001","sandbox_id":"aaaaaaaa-0000-7000-8000-000000000001"},
+                {"run_id":"0191c4e0-0000-7000-8000-000000000002","sandbox_id":"aaaaaaaa-0000-7000-8000-000000000002"}
             ],
             "started_at":"2026-04-13T00:00:00.000Z"
         }"#;
@@ -1070,7 +1074,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = r#"{
             "mode":"draining",
-            "active_run_ids":["0191c4e0-0000-7000-8000-000000000001"],
+            "active_runs":[
+                {"run_id":"0191c4e0-0000-7000-8000-000000000001","sandbox_id":"aaaaaaaa-0000-7000-8000-000000000001"}
+            ],
             "started_at":"2026-04-13T00:00:00.000Z"
         }"#;
         tokio::fs::write(dir.path().join("status.json"), s)
@@ -1090,13 +1096,13 @@ mod tests {
         let s = r#"{
             "mode": "running",
             "max_concurrent": 4,
-            "active_runs": 2,
-            "active_run_ids": [
-                "0191c4e0-0000-7000-8000-000000000001",
-                "0191c4e0-0000-7000-8000-000000000002"
+            "active_runs": [
+                {"run_id":"0191c4e0-0000-7000-8000-000000000001","sandbox_id":"aaaaaaaa-0000-7000-8000-000000000001"},
+                {"run_id":"0191c4e0-0000-7000-8000-000000000002","sandbox_id":"aaaaaaaa-0000-7000-8000-000000000002"}
             ],
-            "idle_vms": 1,
-            "idle_sessions": ["sess-1"],
+            "idle_vms": [
+                {"session_id":"sess-1","sandbox_id":"bbbbbbbb-0000-7000-8000-000000000001"}
+            ],
             "proxy_port": 8080,
             "dns_port": 5300,
             "started_at": "2026-04-13T00:00:00.000Z",
@@ -1119,7 +1125,7 @@ mod tests {
         let future = (chrono::Utc::now() + chrono::Duration::hours(1))
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
-        let s = format!(r#"{{"mode":"running","active_run_ids":[],"started_at":"{future}"}}"#);
+        let s = format!(r#"{{"mode":"running","active_runs":[],"started_at":"{future}"}}"#);
         tokio::fs::write(dir.path().join("status.json"), s)
             .await
             .unwrap();
@@ -1133,7 +1139,7 @@ mod tests {
         // allows second-precision too. Make sure we accept both so a
         // future format change won't silently break the gate.
         let dir = tempfile::tempdir().unwrap();
-        let s = r#"{"mode":"running","active_run_ids":[],"started_at":"2026-04-13T00:00:00Z"}"#;
+        let s = r#"{"mode":"running","active_runs":[],"started_at":"2026-04-13T00:00:00Z"}"#;
         tokio::fs::write(dir.path().join("status.json"), s)
             .await
             .unwrap();
@@ -1148,7 +1154,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = r#"{
             "mode":"stopped",
-            "active_run_ids":["0191c4e0-0000-7000-8000-000000000001"],
+            "active_runs":[
+                {"run_id":"0191c4e0-0000-7000-8000-000000000001","sandbox_id":"aaaaaaaa-0000-7000-8000-000000000001"}
+            ],
             "started_at":"2026-04-13T00:00:00.000Z"
         }"#;
         tokio::fs::write(dir.path().join("status.json"), s)
@@ -1166,7 +1174,7 @@ mod tests {
     fn snapshot(mode: &str, run_count: usize) -> RunnerStatusSnapshot {
         RunnerStatusSnapshot {
             mode: mode.to_string(),
-            run_ids: (0..run_count).map(|_| Uuid::nil()).collect(),
+            run_ids: (0..run_count).map(|_| RunId::nil()).collect(),
             uptime: std::time::Duration::from_secs(600),
         }
     }

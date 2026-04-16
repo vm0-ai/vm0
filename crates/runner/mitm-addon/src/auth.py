@@ -68,6 +68,7 @@ def _fetch_firewall_headers_sync(
     secret_connector_map: dict | None = None,
     vars_map: dict | None = None,
     auth_base: str | None = None,
+    auth_query: dict | None = None,
 ) -> dict:
     """Synchronous helper — runs in a thread to avoid blocking the event loop.
 
@@ -78,6 +79,8 @@ def _fetch_firewall_headers_sync(
     body: dict = {"encryptedSecrets": encrypted_secrets, "authHeaders": auth_headers}
     if auth_base:
         body["authBase"] = auth_base
+    if auth_query:
+        body["authQuery"] = auth_query
     if secret_connector_map:
         body["secretConnectorMap"] = secret_connector_map
     if vars_map:
@@ -95,6 +98,7 @@ async def fetch_firewall_headers(
     secret_connector_map: dict | None = None,
     vars_map: dict | None = None,
     auth_base: str | None = None,
+    auth_query: dict | None = None,
 ) -> dict:
     """Resolve auth headers via server-side decryption.
 
@@ -113,6 +117,7 @@ async def fetch_firewall_headers(
         secret_connector_map,
         vars_map,
         auth_base,
+        auth_query,
     )
 
 
@@ -205,6 +210,7 @@ def _build_cache_hit(cached: dict) -> dict | None:
             "resolved_secrets": cached.get("resolvedSecrets", []),
             "cache_hit": True,
             **({"base": cached["base"]} if "base" in cached else {}),
+            **({"query": cached["query"]} if "query" in cached else {}),
         }
     return None
 
@@ -218,6 +224,7 @@ async def get_firewall_headers(
     secret_connector_map: dict | None = None,
     vars_map: dict | None = None,
     auth_base: str | None = None,
+    auth_query: dict | None = None,
 ) -> dict:
     """Get firewall auth headers with TTL-based caching.
 
@@ -255,6 +262,7 @@ async def get_firewall_headers(
             secret_connector_map,
             vars_map,
             auth_base,
+            auth_query,
         )
         headers = result["headers"]
         resolved_secrets = result.get("resolvedSecrets", [])
@@ -265,6 +273,8 @@ async def get_firewall_headers(
         }
         if result.get("base"):
             cache_entry["base"] = result["base"]
+        if result.get("query"):
+            cache_entry["query"] = result["query"]
         _firewall_header_cache[cache_key] = cache_entry
         ret: dict = {
             "headers": headers,
@@ -275,6 +285,8 @@ async def get_firewall_headers(
         }
         if result.get("base"):
             ret["base"] = result["base"]
+        if result.get("query"):
+            ret["query"] = result["query"]
         return ret
 
 
@@ -290,6 +302,7 @@ async def handle_firewall_request(
     encrypted_secrets = vm_info.get("encryptedSecrets")
     auth_headers = api_entry.get("auth", {}).get("headers", {})
     auth_base = api_entry.get("auth", {}).get("base")
+    auth_query = api_entry.get("auth", {}).get("query")
     secret_connector_map = vm_info.get("secretConnectorMap")
     vars_map = vm_info.get("vars")
 
@@ -336,6 +349,7 @@ async def handle_firewall_request(
             secret_connector_map,
             vars_map,
             auth_base,
+            auth_query,
         )
     except Exception as e:
         log_proxy_entry(
@@ -368,9 +382,24 @@ async def handle_firewall_request(
     # The addon forwards the request itself because mitmproxy's eager
     # connection already connected to the placeholder IP — we can't redirect
     # it. Setting flow.response bypasses the upstream connection entirely.
+    resolved_query = token_meta.get("query")
+
     resolved_base = token_meta.get("base")
     if resolved_base:
         new_url = build_rewrite_url(resolved_base, match_info, flow.request.pretty_url)
+
+        # Merge resolved auth.query params into the forwarded URL.
+        # Uses parse_qs + merge so auth.query overwrites duplicate keys
+        # (consistent with the standard path's flow.request.query[k] = v).
+        if resolved_query:
+            parsed = urllib.parse.urlparse(new_url)
+            existing_qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            for key, value in resolved_query.items():
+                existing_qs[key] = [value]
+            new_qs = urllib.parse.urlencode(existing_qs, doseq=True)
+            new_url = urllib.parse.urlunparse(
+                (parsed.scheme, parsed.netloc, parsed.path, "", new_qs, "")
+            )
 
         # Merge original request headers with resolved auth headers
         req_headers = dict(flow.request.headers)
@@ -417,6 +446,10 @@ async def handle_firewall_request(
         # Standard header injection path
         for header_name, header_value in headers.items():
             flow.request.headers[header_name] = header_value
+        # Standard query param injection path
+        if resolved_query:
+            for key, value in resolved_query.items():
+                flow.request.query[key] = value
 
     flow.metadata["firewall_action"] = "ALLOW"
     flow.metadata["auth_resolved_secrets"] = token_meta.get("resolved_secrets", [])

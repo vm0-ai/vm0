@@ -3,11 +3,15 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { sessionsByIdContract } from "@vm0/core";
+import { sessionsByIdContract, extractAndGroupVariables } from "@vm0/core";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import { getSessionResponse } from "../../../../../src/lib/zero/zero-session-service";
-import { isNotFound, isForbidden } from "../../../../../src/lib/shared/errors";
+import { agentSessions } from "../../../../../src/db/schema/agent-session";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../../src/db/schema/agent-compose";
 
 const router = tsr.router(sessionsByIdContract, {
   getById: async ({ params, headers }) => {
@@ -34,24 +38,76 @@ const router = tsr.router(sessionsByIdContract, {
       };
     }
 
-    try {
-      const session = await getSessionResponse(params.id, userId, callerOrgId);
-      return { status: 200 as const, body: session };
-    } catch (error) {
-      if (isNotFound(error)) {
-        return {
-          status: 404 as const,
-          body: { error: { message: error.message, code: "NOT_FOUND" } },
-        };
-      }
-      if (isForbidden(error)) {
-        return {
-          status: 403 as const,
-          body: { error: { message: error.message, code: "FORBIDDEN" } },
-        };
-      }
-      throw error;
+    const db = globalThis.services.db;
+
+    const [session] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.id, params.id))
+      .limit(1);
+
+    if (!session) {
+      return {
+        status: 404 as const,
+        body: { error: { message: "Session not found", code: "NOT_FOUND" } },
+      };
     }
+
+    if (session.userId !== userId) {
+      return {
+        status: 403 as const,
+        body: {
+          error: {
+            message: "You do not have permission to access this session",
+            code: "FORBIDDEN",
+          },
+        },
+      };
+    }
+
+    if (callerOrgId !== session.orgId) {
+      return {
+        status: 404 as const,
+        body: { error: { message: "Session not found", code: "NOT_FOUND" } },
+      };
+    }
+
+    // Extract secret names from HEAD compose content
+    let secretNames: string[] | null = null;
+    const [compose] = await db
+      .select()
+      .from(agentComposes)
+      .where(eq(agentComposes.id, session.agentComposeId))
+      .limit(1);
+
+    if (compose?.headVersionId) {
+      const [version] = await db
+        .select()
+        .from(agentComposeVersions)
+        .where(eq(agentComposeVersions.id, compose.headVersionId))
+        .limit(1);
+
+      if (version?.content) {
+        const grouped = extractAndGroupVariables(version.content);
+        const names = grouped.secrets.map((ref) => {
+          return ref.name;
+        });
+        secretNames = names.length > 0 ? names : null;
+      }
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        id: session.id,
+        agentComposeId: session.agentComposeId,
+        conversationId: session.conversationId,
+        artifactName: session.artifactName,
+        secretNames,
+        createdAt: session.createdAt.toISOString(),
+        updatedAt: session.updatedAt.toISOString(),
+      },
+    };
   },
 });
 

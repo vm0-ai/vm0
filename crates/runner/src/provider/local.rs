@@ -12,9 +12,9 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
-use uuid::Uuid;
 
 use super::JobProvider;
+use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState};
 
 /// Poll interval for discovering new job files.
@@ -23,7 +23,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// Job request written by `submit` as a `{job_id}.job` file.
 #[derive(serde::Deserialize, serde::Serialize)]
 pub(crate) struct JobRequest {
-    pub(crate) job_id: Uuid,
+    pub(crate) job_id: RunId,
     pub(crate) prompt: String,
     pub(crate) working_dir: String,
     pub(crate) cli_agent_type: String,
@@ -45,7 +45,7 @@ pub(crate) struct JobRequest {
 /// Job response written by the runner as a `{job_id}.result` file.
 #[derive(serde::Deserialize, serde::Serialize)]
 pub(crate) struct JobResponse {
-    pub(crate) run_id: Uuid,
+    pub(crate) run_id: RunId,
     pub(crate) exit_code: i32,
     pub(crate) error: Option<String>,
 }
@@ -61,7 +61,7 @@ pub(crate) struct JobResponse {
 pub struct LocalProvider {
     group_dir: PathBuf,
     cancel: CancellationToken,
-    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
+    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
 }
 
 impl LocalProvider {
@@ -69,7 +69,7 @@ impl LocalProvider {
     pub fn new(
         group_dir: PathBuf,
         cancel: CancellationToken,
-        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     ) -> Arc<Self> {
         info!(path = %group_dir.display(), "local provider watching");
         Arc::new(Self {
@@ -109,7 +109,7 @@ impl LocalProvider {
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
                 continue;
             };
-            let Ok(run_id) = stem.parse::<Uuid>() else {
+            let Ok(run_id) = stem.parse::<RunId>() else {
                 continue;
             };
             cancel_ids.push(run_id);
@@ -134,7 +134,7 @@ impl LocalProvider {
 
     /// Find the first `.job` file that has no corresponding `.claim` file.
     /// Reads the job file to extract the profile (defaults to `DEFAULT_PROFILE`).
-    fn find_unclaimed_job(&self) -> Option<(Uuid, String)> {
+    fn find_unclaimed_job(&self) -> Option<(RunId, String)> {
         let entries = match std::fs::read_dir(&self.group_dir) {
             Ok(e) => e,
             Err(e) => {
@@ -150,7 +150,7 @@ impl LocalProvider {
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
                 continue;
             };
-            let Ok(job_id) = stem.parse::<Uuid>() else {
+            let Ok(job_id) = stem.parse::<RunId>() else {
                 continue;
             };
             let claim_path = self.group_dir.join(format!("{job_id}.claim"));
@@ -178,7 +178,7 @@ impl LocalProvider {
 
 #[async_trait::async_trait]
 impl JobProvider for LocalProvider {
-    async fn discover(&self) -> Option<(Uuid, String)> {
+    async fn discover(&self) -> Option<(RunId, String)> {
         loop {
             if self.cancel.is_cancelled() {
                 return None;
@@ -196,7 +196,7 @@ impl JobProvider for LocalProvider {
         }
     }
 
-    async fn claim(&self, run_id: Uuid) -> Option<ExecutionContext> {
+    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext> {
         // Atomic claim via O_EXCL — only the first runner to create the file wins.
         let claim_file = self.group_dir.join(format!("{run_id}.claim"));
         if std::fs::OpenOptions::new()
@@ -260,7 +260,7 @@ impl JobProvider for LocalProvider {
         })
     }
 
-    async fn complete(&self, run_id: Uuid, exit_code: i32, error: Option<&str>) {
+    async fn complete(&self, run_id: RunId, exit_code: i32, error: Option<&str>) {
         let response = JobResponse {
             run_id,
             exit_code,
@@ -299,19 +299,19 @@ mod tests {
     use super::*;
 
     /// Create a default empty cancel_tokens map for tests.
-    fn empty_cancel_tokens() -> Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>> {
+    fn empty_cancel_tokens() -> Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> {
         Arc::new(tokio::sync::Mutex::new(HashMap::new()))
     }
 
     /// Write a job file into the group directory.
-    fn write_job(dir: &std::path::Path, job_id: Uuid, prompt: &str) {
+    fn write_job(dir: &std::path::Path, job_id: RunId, prompt: &str) {
         write_job_with_profile(dir, job_id, prompt, None);
     }
 
     /// Write a job file with an optional profile.
     fn write_job_with_profile(
         dir: &std::path::Path,
-        job_id: Uuid,
+        job_id: RunId,
         prompt: &str,
         profile: Option<&str>,
     ) {
@@ -332,7 +332,7 @@ mod tests {
     }
 
     /// Read a result file from the group directory.
-    fn read_result(dir: &std::path::Path, job_id: Uuid) -> JobResponse {
+    fn read_result(dir: &std::path::Path, job_id: RunId) -> JobResponse {
         let path = dir.join(format!("{job_id}.result"));
         let buf = std::fs::read(path).unwrap();
         serde_json::from_slice(&buf).unwrap()
@@ -344,7 +344,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
 
-        let job_id = Uuid::new_v4();
+        let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "hello world");
 
         let (run_id, profile) = provider.discover().await.unwrap();
@@ -383,8 +383,8 @@ mod tests {
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
 
         // Write two jobs, pre-claim the first
-        let job1 = Uuid::new_v4();
-        let job2 = Uuid::new_v4();
+        let job1 = RunId::new_v4();
+        let job2 = RunId::new_v4();
         write_job(dir.path(), job1, "claimed");
         write_job(dir.path(), job2, "available");
         std::fs::write(dir.path().join(format!("{job1}.claim")), b"").unwrap();
@@ -399,8 +399,8 @@ mod tests {
         let cancel = CancellationToken::new();
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
 
-        let job1 = Uuid::new_v4();
-        let job2 = Uuid::new_v4();
+        let job1 = RunId::new_v4();
+        let job2 = RunId::new_v4();
         write_job(dir.path(), job1, "job1");
 
         let (run_id1, _) = provider.discover().await.unwrap();
@@ -439,7 +439,7 @@ mod tests {
         );
         let provider_b = LocalProvider::new(dir.path().to_path_buf(), cancel, tokens);
 
-        let job_id = Uuid::new_v4();
+        let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "shared");
 
         let (id_a, _) = provider_a.discover().await.unwrap();
@@ -462,7 +462,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
 
-        let job_id = Uuid::new_v4();
+        let job_id = RunId::new_v4();
         write_job_with_profile(dir.path(), job_id, "profiled job", Some("vm0/default"));
 
         let (run_id, profile) = provider.discover().await.unwrap();
@@ -479,7 +479,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
 
-        let job_id = Uuid::new_v4();
+        let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "default job");
 
         let (run_id, profile) = provider.discover().await.unwrap();
@@ -493,7 +493,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let tokens = empty_cancel_tokens();
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         let job_token = CancellationToken::new();
         tokens.lock().await.insert(run_id, job_token.clone());
 
@@ -501,7 +501,7 @@ mod tests {
 
         // Write a .cancel file and a dummy .job so discover returns.
         std::fs::write(dir.path().join(format!("{run_id}.cancel")), b"").unwrap();
-        let other_job = Uuid::new_v4();
+        let other_job = RunId::new_v4();
         write_job(dir.path(), other_job, "keep going");
 
         // discover() should scan cancel files then find the unclaimed job.
@@ -517,7 +517,7 @@ mod tests {
         let tokens = empty_cancel_tokens();
 
         // Insert a token so the cancel file can be matched and deleted.
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         let job_token = CancellationToken::new();
         tokens.lock().await.insert(run_id, job_token);
 
@@ -527,7 +527,7 @@ mod tests {
         std::fs::write(&cancel_path, b"").unwrap();
 
         // Write a dummy job so discover() returns instead of looping.
-        let job_id = Uuid::new_v4();
+        let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "dummy");
 
         let _ = provider.discover().await;
@@ -545,11 +545,11 @@ mod tests {
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, tokens);
 
         // Write cancel file for a run_id that has no token.
-        let unknown_id = Uuid::new_v4();
+        let unknown_id = RunId::new_v4();
         let cancel_path = dir.path().join(format!("{unknown_id}.cancel"));
         std::fs::write(&cancel_path, b"").unwrap();
 
-        let job_id = Uuid::new_v4();
+        let job_id = RunId::new_v4();
         write_job(dir.path(), job_id, "still works");
 
         // Should not panic. Cancel file is kept (no matching token yet).
@@ -567,7 +567,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         let cancel_path = dir.path().join(format!("{run_id}.cancel"));
         std::fs::write(&cancel_path, b"").unwrap();
 
@@ -589,7 +589,7 @@ mod tests {
         let tokens = empty_cancel_tokens();
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, Arc::clone(&tokens));
 
-        let run_id = Uuid::new_v4();
+        let run_id = RunId::new_v4();
         let cancel_path = dir.path().join(format!("{run_id}.cancel"));
         std::fs::write(&cancel_path, b"").unwrap();
 
@@ -611,7 +611,7 @@ mod tests {
         // Claim the job so it's no longer discoverable, then write another
         // job to let discover() return.
         provider.claim(run_id).await.unwrap();
-        let other_job = Uuid::new_v4();
+        let other_job = RunId::new_v4();
         write_job(dir.path(), other_job, "next job");
 
         // Second discover: token exists now → cancel triggered and file deleted.

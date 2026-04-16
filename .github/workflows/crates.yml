@@ -543,34 +543,36 @@ jobs:
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
 
           # Wait for OUR runner's sandbox to have a control socket.
-          # Read the run ID from our runner's status.json (not from /run/vm0/sock/)
-          # to avoid matching sandboxes from parallel CI jobs (benchmark, upgrade).
+          # Read the sandbox_id from our runner's status.json (not from
+          # /run/vm0/sock/) to avoid matching sandboxes from parallel CI
+          # jobs (benchmark, upgrade). `runner exec` / socket paths are
+          # keyed by sandbox_id (#9552), which differs from run_id.
           echo "--- Waiting for sandbox control socket ---"
           for i in $(seq 1 60); do
-            RUN_ID=$(sudo grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
-              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
-            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
-            RUN_ID=""
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$SANDBOX_ID" ] && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
+            SANDBOX_ID=""
             sleep 1
           done
-          [ -z "$RUN_ID" ] && fail "control socket not found after 60s"
-          echo "Found sandbox: $RUN_ID"
+          [ -z "$SANDBOX_ID" ] && fail "control socket not found after 60s"
+          echo "Found sandbox: $SANDBOX_ID"
 
           # Test 1: basic exec
           echo "--- Test: basic exec ---"
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo hello-from-exec)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo hello-from-exec)
           echo "$OUTPUT" | grep -q "hello-from-exec" || fail "expected 'hello-from-exec', got: $OUTPUT"
           echo "PASS: basic exec"
 
           # Test 2: exit code propagation
           echo "--- Test: exit code propagation ---"
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- false && fail "expected non-zero exit"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- false && fail "expected non-zero exit"
           echo "PASS: exit code propagation"
 
           # Test 3: prefix matching
           echo "--- Test: prefix matching ---"
-          PREFIX=$(echo "$RUN_ID" | cut -c1-8)
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$PREFIX" -- hostname)
+          PREFIX=$(echo "$SANDBOX_ID" | cut -c1-8)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$PREFIX" -- hostname)
           [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
           echo "PASS: prefix matching"
 
@@ -583,38 +585,38 @@ jobs:
           # each before sending to the guest sh.
           echo "--- Test: argv boundary preservation ---"
           # Space in an argument is preserved as one token
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo "hello world")
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo "hello world")
           [ "$OUTPUT" = "hello world" ] || fail "space in arg: got '$OUTPUT'"
           # Single quote in an argument is escaped correctly
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo "it's working")
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo "it's working")
           [ "$OUTPUT" = "it's working" ] || fail "single quote in arg: got '$OUTPUT'"
           # Shell metachars must NOT be expanded by the guest shell
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo '$HOME')
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo '$HOME')
           [ "$OUTPUT" = '$HOME' ] || fail "variable expanded: got '$OUTPUT'"
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo '*.nonexistent')
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo '*.nonexistent')
           [ "$OUTPUT" = '*.nonexistent' ] || fail "glob expanded: got '$OUTPUT'"
           # Backtick command substitution must NOT be executed (injection guard)
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo '`date`')
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo '`date`')
           [ "$OUTPUT" = '`date`' ] || fail "backtick expanded: got '$OUTPUT'"
           # Double quote inside an argument survives the round-trip
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo 'say "hi"')
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo 'say "hi"')
           [ "$OUTPUT" = 'say "hi"' ] || fail "double quote in arg: got '$OUTPUT'"
           # Non-ASCII UTF-8 in an argument
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo "你好")
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo "你好")
           [ "$OUTPUT" = "你好" ] || fail "utf-8 arg: got '$OUTPUT'"
           # Explicit shell: pipes and redirects work through `sh -c`
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c 'printf abc | wc -c')
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c 'printf abc | wc -c')
           [ "$(echo "$OUTPUT" | tr -d ' ')" = '3' ] || fail "sh -c pipe: got '$OUTPUT'"
           # env VAR=val PROG: env (not shell) sets the variable for PROG
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- env FOO=bar printenv FOO)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- env FOO=bar printenv FOO)
           [ "$OUTPUT" = 'bar' ] || fail "env VAR=val: got '$OUTPUT'"
           # Path containing a space — the original issue case
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c 'echo content > "/tmp/spaced file.txt"'
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- cat "/tmp/spaced file.txt")
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c 'echo content > "/tmp/spaced file.txt"'
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat "/tmp/spaced file.txt")
           [ "$OUTPUT" = 'content' ] || fail "space in path: got '$OUTPUT'"
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- rm "/tmp/spaced file.txt"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- rm "/tmp/spaced file.txt"
           # --sudo flag must not bypass argv quoting
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" --sudo -- echo "root with space")
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- echo "root with space")
           [ "$OUTPUT" = "root with space" ] || fail "--sudo quoting: got '$OUTPUT'"
           echo "PASS: argv boundary preservation"
 
@@ -642,14 +644,14 @@ jobs:
             "cmake --version" \
             "psql --version" \
             "redis-server --version"; do
-            OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- $cmd 2>&1) \
+            OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- $cmd 2>&1) \
               || fail "command failed: $cmd"
             echo "  $cmd -> $(echo "$OUTPUT" | head -1)"
           done
           # Verify PostgreSQL can actually start (not just psql --version).
           # Test with TCP on localhost — users will connect via localhost:5432.
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c "mkdir -p /tmp/pgdata && /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -A trust && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata -l /tmp/pgdata/log -o \"-c listen_addresses='localhost'\" start && pg_isready -h localhost && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata stop" \
-            || { sudo "$BIN_DIR/runner" exec "$RUN_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL start"; }
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "mkdir -p /tmp/pgdata && /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -A trust && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata -l /tmp/pgdata/log -o \"-c listen_addresses='localhost'\" start && pg_isready -h localhost && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata stop" \
+            || { sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL start"; }
           echo "  PostgreSQL start/stop: ok"
           echo "PASS: runtime availability"
 
@@ -668,13 +670,13 @@ jobs:
           check_env() {
             local label=$1 sudo_flag=$2
             for var in "${!EXPECTED_ENV[@]}"; do
-              val=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" $sudo_flag -- printenv "$var") \
+              val=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" $sudo_flag -- printenv "$var") \
                 || fail "$label: $var not set"
               [ "$val" = "${EXPECTED_ENV[$var]}" ] \
                 || fail "$label: $var='$val', expected '${EXPECTED_ENV[$var]}'"
               echo "  $label $var=$val"
             done
-            val=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" $sudo_flag -- printenv PATH) \
+            val=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" $sudo_flag -- printenv PATH) \
               || fail "$label: PATH not set"
             echo "$val" | grep -qF "$EXPECTED_PATH" \
               || fail "$label: PATH missing '$EXPECTED_PATH' in: $val"
@@ -690,7 +692,7 @@ jobs:
           TLS_URL="https://www.vm0.ai"
           tls_check() {
             local label=$1 cmd=$2 t=${3:-15}
-            OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c "timeout $t $cmd" 2>&1) \
+            OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "timeout $t $cmd" 2>&1) \
               || fail "HTTPS $label: $OUTPUT"
             echo "  HTTPS $label: ok"
           }
@@ -705,11 +707,11 @@ jobs:
           tls_check "chromium"  "chromium --headless --disable-gpu --no-sandbox --dump-dom $TLS_URL 2>/dev/null | head -1" 30
 
           # Java and Go need multi-line scripts — write temp files then run
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c "printf '%s\n' 'import java.net.*;import java.net.http.*;' 'var c=HttpClient.newHttpClient();' 'var r=HttpRequest.newBuilder(URI.create(\"$TLS_URL\")).build();' 'c.send(r,HttpResponse.BodyHandlers.discarding());' '/exit' | timeout 30 jshell -" \
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "printf '%s\n' 'import java.net.*;import java.net.http.*;' 'var c=HttpClient.newHttpClient();' 'var r=HttpRequest.newBuilder(URI.create(\"$TLS_URL\")).build();' 'c.send(r,HttpResponse.BodyHandlers.discarding());' '/exit' | timeout 30 jshell -" \
             || fail "HTTPS java"
           echo "  HTTPS java: ok"
 
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c "cd /tmp && printf '%s\n' 'package main' 'import (' '\"net/http\"' '\"os\"' ')' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && timeout 30 go run tls.go $TLS_URL" \
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "cd /tmp && printf '%s\n' 'package main' 'import (' '\"net/http\"' '\"os\"' ')' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && timeout 30 go run tls.go $TLS_URL" \
             || fail "HTTPS go"
           echo "  HTTPS go: ok"
           echo "PASS: HTTPS through proxy"
@@ -717,13 +719,13 @@ jobs:
           # Test 8: verify DNS resolution works inside sandbox
           # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
           echo "--- Test: DNS resolution ---"
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- getent hosts localhost 2>&1) \
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- getent hosts localhost 2>&1) \
             || fail "localhost resolution failed: $OUTPUT"
           echo "  localhost: $OUTPUT"
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- getent hosts github.com 2>&1) \
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- getent hosts github.com 2>&1) \
             || fail "user DNS resolution failed: $OUTPUT"
           echo "  user: $OUTPUT"
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" --sudo -- getent hosts example.com 2>&1) \
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- getent hosts example.com 2>&1) \
             || fail "root DNS resolution failed: $OUTPUT"
           echo "  root: $OUTPUT"
           echo "PASS: DNS resolution"
@@ -802,21 +804,28 @@ jobs:
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
           SUBMIT_PID=$!
 
-          # Wait for sandbox to be running
+          # Wait for sandbox to be running. Post #9552, run_id and sandbox_id
+          # are distinct: `runner local cancel` takes the run_id (what submit
+          # returned), while the socket path uses sandbox_id. Read both from
+          # status.json rather than picking the first UUID we see.
           echo "--- Waiting for sandbox ---"
           for i in $(seq 1 60); do
-            RUN_ID=$(sudo grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
-              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
-            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
+            RUN_ID=$(sudo jq -r '.active_runs[0].run_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$RUN_ID" ] && [ -n "$SANDBOX_ID" ] \
+              && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
             RUN_ID=""
+            SANDBOX_ID=""
             sleep 1
           done
           [ -z "$RUN_ID" ] && fail "sandbox not found after 60s"
-          echo "Found sandbox: $RUN_ID"
+          echo "Found run $RUN_ID (sandbox $SANDBOX_ID)"
 
           # Test 1: cancel the job via runner local cancel
           echo "--- Test: runner local cancel ---"
-          sudo "$BIN_DIR/runner" local cancel --group "$GROUP" "$RUN_ID" || fail "cancel command failed"
+          sudo "$BIN_DIR/runner" local cancel --run "$RUN_ID" --group "$GROUP" || fail "cancel command failed"
           echo "PASS: cancel command succeeded"
 
           # Test 2: submit should exit quickly (not after 300s timeout)
@@ -914,19 +923,22 @@ jobs:
           echo "--- Submitting long-running job ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
 
-          # Wait for sandbox control socket
+          # Wait for sandbox control socket. Socket and api.sock paths use
+          # sandbox_id (distinct from run_id after #9552). `runner exec`
+          # resolves its CLI arg against sandbox_id sock dirs, so SANDBOX_ID
+          # is what we need here.
           echo "--- Waiting for sandbox control socket ---"
           for i in $(seq 1 60); do
-            RUN_ID=$(sudo grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
-              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
-            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
-            RUN_ID=""
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$SANDBOX_ID" ] && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
+            SANDBOX_ID=""
             sleep 1
           done
-          [ -z "$RUN_ID" ] && fail "control socket not found after 60s"
-          echo "Found sandbox: $RUN_ID"
+          [ -z "$SANDBOX_ID" ] && fail "control socket not found after 60s"
+          echo "Found sandbox: $SANDBOX_ID"
 
-          API_SOCK="/run/vm0/sock/$RUN_ID/api.sock"
+          API_SOCK="/run/vm0/sock/$SANDBOX_ID/api.sock"
 
           # Helper: read current balloon actual_mib (returns 0 if VM is dead)
           balloon_mib() {
@@ -939,7 +951,7 @@ jobs:
           # Helper: read guest MemAvailable in kB (returns 0 if exec fails)
           guest_avail_kb() {
             local val
-            val=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo 2>/dev/null \
+            val=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- grep MemAvailable /proc/meminfo 2>/dev/null \
               | tr -s ' ' | cut -d' ' -f2)
             echo "${val:-0}"
           }
@@ -991,7 +1003,7 @@ jobs:
           # Trailing `# BALLOON_ALLOC_MARKER` is a unique string pkill can
           # match on to terminate the guest-side allocator below.
           echo "--- Test 2: balloon deflate under memory pressure ---"
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- python3 -c 'import ctypes,time; b=bytearray(300*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(120)  # BALLOON_ALLOC_MARKER' &
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c 'import ctypes,time; b=bytearray(300*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(120)  # BALLOON_ALLOC_MARKER' &
           ALLOC_PID=$!
 
           # Wait for balloon to deflate (actual_mib decreases)
@@ -1021,7 +1033,7 @@ jobs:
 
           # Kill guest-side allocator — balloon has already deflated (Test 2
           # passed), so guest has ~250 MiB available, enough for pkill exec.
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- pkill -f BALLOON_ALLOC_MARKER 2>/dev/null || true
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- pkill -f BALLOON_ALLOC_MARKER 2>/dev/null || true
 
           # Wait for balloon to re-inflate past midpoint between deflate and original inflate
           MIDPOINT=$(( (INFLATE_MIB + DEFLATE_MIB) / 2 ))
@@ -1251,6 +1263,20 @@ jobs:
             --prompt 'test ! -f /tmp/keepalive-marker' \
             || fail "Turn 3: marker file found — session isolation broken"
           echo "PASS: Turn 3 completed (new VM for different session)"
+
+          # Regression gate for sandbox_id/run_id conflation (#9552):
+          # at this point the runner has parked idle VMs whose FC workspace
+          # names (= sandbox_id) are divorced from any active run_id.
+          # `runner doctor --name <svc>` must still report 0 warnings.
+          # Scope to this CI run's runner name so that unrelated runners
+          # sharing the metal host don't contaminate the check.
+          echo "--- runner doctor --name $SVC (expect 0 warnings) ---"
+          DOCTOR_OUT=$(sudo "$BIN_DIR/runner" doctor --name "$SVC" 2>&1 || true)
+          echo "$DOCTOR_OUT"
+          if ! echo "$DOCTOR_OUT" | grep -q '^0 warning(s) found$'; then
+            fail "runner doctor reported warnings with parked idle VMs — regression for #9552"
+          fi
+          echo "PASS: runner doctor clean with parked VMs"
 
           # Stop transient service (drains idle pool)
           sudo "$BIN_DIR/runner" service stop --name "$SVC" --force

@@ -7,6 +7,7 @@ import {
   insertAssistantEventMessages,
   getChatThreadIdForRun,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
+import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("event-consumer:chat-assistant");
@@ -45,6 +46,20 @@ function eventText(event: AgentEvent): string | null {
 }
 
 /**
+ * Extract the Anthropic message ID from an assistant event.
+ * Real Claude Code events include message.id (e.g. "msg_01abc...").
+ * Returns undefined for mock/test events that lack this field.
+ */
+function eventMessageId(event: AgentEvent): string | undefined {
+  const msg = event.message;
+  if (typeof msg !== "object" || msg === null || !("id" in msg)) {
+    return undefined;
+  }
+  const id = (msg as { id: unknown }).id;
+  return typeof id === "string" ? id : undefined;
+}
+
+/**
  * POST /api/internal/event-consumers/chat-assistant
  *
  * Handles "assistant" events for chat threads. For each event, inserts a
@@ -64,24 +79,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { runId, events } = result.data;
 
-  const items: { sequenceNumber: number; content: string }[] = [];
+  const items: {
+    sequenceNumber: number;
+    content: string;
+    runEventId?: string;
+  }[] = [];
   for (const event of events) {
     const text = eventText(event);
     if (text === null) continue;
-    items.push({ sequenceNumber: event.sequenceNumber, content: text });
+    items.push({
+      sequenceNumber: event.sequenceNumber,
+      content: text,
+      runEventId: eventMessageId(event),
+    });
   }
 
   if (items.length === 0) {
     return NextResponse.json({ processed: 0 });
   }
 
-  const threadId = await getChatThreadIdForRun(runId);
-  if (!threadId) {
+  const thread = await getChatThreadIdForRun(runId);
+  if (!thread) {
     // Run is not tied to a chat thread (e.g., non-chat trigger) — skip.
     return NextResponse.json({ processed: 0 });
   }
 
+  const { chatThreadId: threadId, userId } = thread;
   const written = await insertAssistantEventMessages(runId, threadId, items);
+
+  if (written > 0) {
+    await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+  }
 
   log.debug("Chat assistant consumer processed", {
     runId,

@@ -211,6 +211,105 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  describe("Query parameter resolution", () => {
+    it("should resolve authQuery templates with decrypted secrets", async () => {
+      const encrypted = encryptTestSecrets({
+        SERPAPI_TOKEN: "test-api-key-123",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {},
+            authQuery: {
+              api_key: "${{ secrets.SERPAPI_TOKEN }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.query).toEqual({ api_key: "test-api-key-123" });
+      expect(data.headers).toEqual({});
+      expect(data.resolvedSecrets).toEqual(["SERPAPI_TOKEN"]);
+    });
+
+    it("should resolve authQuery with vars", async () => {
+      const encrypted = encryptTestSecrets({ KEY: "unused" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {},
+            authQuery: {
+              workspace: "${{ vars.WORKSPACE_ID }}",
+            },
+            vars: { WORKSPACE_ID: "ws-42" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.query).toEqual({ workspace: "ws-42" });
+      expect(data.resolvedSecrets).toEqual([]);
+    });
+
+    it("should resolve both headers and query simultaneously", async () => {
+      const encrypted = encryptTestSecrets({
+        API_TOKEN: "bearer-token",
+        QUERY_KEY: "query-secret",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+            },
+            authQuery: {
+              key: "${{ secrets.QUERY_KEY }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers).toEqual({ Authorization: "Bearer bearer-token" });
+      expect(data.query).toEqual({ key: "query-secret" });
+      expect(data.resolvedSecrets).toEqual(["API_TOKEN", "QUERY_KEY"]);
+    });
+
+    it("should omit query field when authQuery is not provided", async () => {
+      const encrypted = encryptTestSecrets({ TOKEN: "value" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.TOKEN }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers).toEqual({ Authorization: "Bearer value" });
+      expect(data.query).toBeUndefined();
+    });
+  });
+
   describe("Vars resolution", () => {
     it("should resolve ${{ vars.X }} templates", async () => {
       const encrypted = encryptTestSecrets({ TOKEN: "secret-value" });

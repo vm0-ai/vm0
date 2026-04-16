@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use uuid::Uuid;
+use crate::ids::RunId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerError {
@@ -37,8 +37,8 @@ pub struct ActiveJobsError {
     pub unit: String,
     /// Suffix used for the drain hint (e.g. `v0.3.0`).
     pub suffix: String,
-    /// Active run UUIDs from the runner's status.json.
-    pub run_ids: Vec<Uuid>,
+    /// Active run IDs from the runner's status.json.
+    pub run_ids: Vec<RunId>,
     /// How long the runner process itself has been up. We report this at the
     /// runner level rather than per-run because status.json does not record
     /// per-run start times.
@@ -135,7 +135,7 @@ mod tests {
         let err = ActiveJobsError {
             unit: "vm0-runner-v0.3.0".into(),
             suffix: "v0.3.0".into(),
-            run_ids: vec![Uuid::nil()],
+            run_ids: vec![RunId::nil()],
             runner_uptime: Duration::from_secs(600),
             command_name: "stop",
             draining: false,
@@ -157,7 +157,7 @@ mod tests {
         let err = ActiveJobsError {
             unit: "vm0-runner-v0.3.0".into(),
             suffix: "v0.3.0".into(),
-            run_ids: vec![Uuid::nil(), Uuid::nil()],
+            run_ids: vec![RunId::nil(), RunId::nil()],
             runner_uptime: Duration::from_secs(7260),
             command_name: "uninstall",
             draining: false,
@@ -174,7 +174,7 @@ mod tests {
         let err = ActiveJobsError {
             unit: "vm0-runner-v0.3.0".into(),
             suffix: "v0.3.0".into(),
-            run_ids: vec![Uuid::nil()],
+            run_ids: vec![RunId::nil()],
             runner_uptime: Duration::from_secs(1800),
             command_name: "stop",
             draining: true,

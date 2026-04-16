@@ -25,6 +25,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   directedConnectType$,
   directedConnectAgentId$,
+  directedConnectAgentName$,
   tokenDialogOpen$,
   setTokenDialogOpen$,
 } from "../../signals/connectors-page/directed-connect-type.ts";
@@ -249,6 +250,7 @@ function ApiTokenDialog({
 function DirectedConnectCard() {
   const type = useGet(directedConnectType$);
   const agentId = useGet(directedConnectAgentId$);
+  const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
   const authorize = useSet(authorizeConnector$);
@@ -264,22 +266,23 @@ function DirectedConnectCard() {
 
   const connectorType = type as ConnectorType;
   const config = CONNECTOR_TYPES[connectorType];
+  const agentName =
+    agentNameLoadable.state === "hasData" && agentNameLoadable.data
+      ? agentNameLoadable.data
+      : "Zero";
   const isConnecting = pollingType === connectorType;
   const isLoading =
     !justConnected.has(connectorType) && allLoadable.state === "loading";
+  const allData = allLoadable.state === "hasData" ? allLoadable.data : [];
   const isConnected =
     justConnected.has(connectorType) ||
-    (allLoadable.state === "hasData" &&
-      allLoadable.data.some((c) => {
-        return c.type === connectorType && c.connected;
-      }));
+    allData.some((c) => {
+      return c.type === connectorType && c.connected;
+    });
 
-  const item =
-    allLoadable.state === "hasData"
-      ? allLoadable.data.find((c) => {
-          return c.type === connectorType;
-        })
-      : null;
+  const item = allData.find((c) => {
+    return c.type === connectorType;
+  });
 
   const hasOAuth = item
     ? item.availableAuthMethods.includes("oauth")
@@ -322,7 +325,7 @@ function DirectedConnectCard() {
                   <h1 className="text-lg font-medium text-foreground">
                     {isConnected
                       ? `${config.label} connected`
-                      : `Zero needs ${config.label} to proceed`}
+                      : `${agentName} needs ${config.label} to proceed`}
                   </h1>
                   <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
                     <ConnectorIcon type={connectorType} size={20} />

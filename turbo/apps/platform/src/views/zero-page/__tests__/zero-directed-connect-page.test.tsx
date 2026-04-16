@@ -46,6 +46,24 @@ function mockConnectors(
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 
+function mockAgentWithName(agentId: string, displayName: string) {
+  server.use(
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: agentId,
+          displayName,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
+    }),
+  );
+}
+
 function mockUserConnectors(agentId: string, enabledTypes: string[] = []) {
   server.use(
     http.get(`*/api/zero/agents/${agentId}/user-connectors`, () => {
@@ -104,6 +122,21 @@ describe("directed connect page", () => {
       ).not.toBeInTheDocument();
     });
     expect(screen.queryByText("Connect")).not.toBeInTheDocument();
+  });
+
+  it("shows agent display name instead of 'Zero' when agent has a name", async () => {
+    mockAgentWithName(AGENT_ID, "My Assistant");
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/gmail/connect?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("My Assistant needs Gmail to proceed"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("opens api-token dialog for a connector without oauth", async () => {

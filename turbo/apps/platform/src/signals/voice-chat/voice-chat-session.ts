@@ -8,7 +8,7 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { delay } from "signal-timers";
 import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
-import { ablyNotify$ } from "../realtime.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -221,7 +221,6 @@ const internalPrompt$ = state<string | null>(null);
 const internalPrepStartTime$ = state<number | null>(null);
 const internalPrepElapsedMs$ = state(0);
 const internalReconnectAttempt$ = state(0);
-const internalInputMode$ = state<"hands-free" | "push-to-talk">("hands-free");
 const internalModel$ = state<RealtimeModel>("gpt-realtime-mini");
 
 const internalParentSignal$ = state<AbortSignal | null>(null);
@@ -242,6 +241,62 @@ export const vcTranscript$ = computed((get) => {
 export const vcEvents$ = computed((get) => {
   return get(internalEvents$);
 });
+
+export const vcSlowBrainEvents$ = computed((get) => {
+  return get(internalEvents$).filter((e) => {
+    return e.source === "slow-brain";
+  });
+});
+
+type ConversationItem =
+  | { kind: "transcript"; entry: TranscriptEntry; order: number; key: string }
+  | { kind: "slow-brain"; event: ContextEvent; order: number; key: string };
+
+export const vcConversationItems$ = (() => {
+  const orderMap = new Map<string, number>();
+  let counter = 0;
+
+  function assignOrder(key: string): number {
+    let order = orderMap.get(key);
+    if (order === undefined) {
+      order = counter++;
+      orderMap.set(key, order);
+    }
+    return order;
+  }
+
+  return computed((get) => {
+    const transcript = get(internalTranscript$);
+    const slowBrain = get(internalEvents$).filter((e) => {
+      return e.source === "slow-brain";
+    });
+
+    if (transcript.length === 0 && slowBrain.length === 0) {
+      orderMap.clear();
+      counter = 0;
+      return [] as ConversationItem[];
+    }
+
+    const items: ConversationItem[] = [];
+
+    for (const entry of transcript) {
+      const key = entry.id;
+      items.push({ kind: "transcript", entry, order: assignOrder(key), key });
+    }
+
+    for (const event of slowBrain) {
+      const key = `sb-${event.seq}`;
+      items.push({ kind: "slow-brain", event, order: assignOrder(key), key });
+    }
+
+    items.sort((a, b) => {
+      return a.order - b.order;
+    });
+
+    return items;
+  });
+})();
+
 export const vcMuted$ = computed((get) => {
   return get(internalMuted$);
 });
@@ -263,9 +318,6 @@ export const vcPrepElapsedMs$ = computed((get) => {
 });
 export const vcReconnectAttempt$ = computed((get) => {
   return get(internalReconnectAttempt$);
-});
-export const vcInputMode$ = computed((get) => {
-  return get(internalInputMode$);
 });
 export const vcMeetingPromptInput$ = computed((get) => {
   return get(meetingPromptInput$);
@@ -527,10 +579,6 @@ const setupWebRTC$ = command(
     set(internalDc$, dc);
 
     dc.addEventListener("open", () => {
-      const inputMode = get(internalInputMode$);
-      const turnDetection =
-        inputMode === "hands-free" ? HANDS_FREE_VAD_CONFIG : null;
-
       dc.send(
         JSON.stringify({
           type: "session.update",
@@ -539,7 +587,7 @@ const setupWebRTC$ = command(
             instructions: FAST_BRAIN_INSTRUCTIONS,
             input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
             input_audio_noise_reduction: { type: "far_field" },
-            turn_detection: turnDetection,
+            turn_detection: HANDS_FREE_VAD_CONFIG,
             tools: SESSION_TOOLS,
           },
         }),
@@ -643,54 +691,50 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!sid) {
     throw new Error("startPoll$ called before session ID is set");
   }
-  const ablyNotify = get(ablyNotify$);
 
-  await ablyNotify(
-    `voice:${sid}`,
-    async (signal: AbortSignal) => {
-      const sid = get(internalSessionId$);
-      if (!sid) {
-        return true;
-      }
+  const pollBody$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const sid = get(internalSessionId$);
+    if (!sid) {
+      return true;
+    }
 
-      const lastSeq = get(internalLastSeq$);
-      const fetchFn = get(fetch$);
-      const res = await fetchFn(
-        `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
-        { signal },
-      );
+    const lastSeq = get(internalLastSeq$);
+    const fetchFn = get(fetch$);
+    const res = await fetchFn(
+      `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
+      { signal },
+    );
 
-      if (!res.ok) {
-        consecutiveFailures++;
-        if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
-          set(internalError$, "Connection issues — retrying…");
-        }
-        return false;
-      }
-
+    if (!res.ok) {
+      consecutiveFailures++;
       if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
-        set(internalError$, null);
-      }
-      consecutiveFailures = 0;
-
-      const data = (await res.json()) as { events: ContextEvent[] };
-      signal.throwIfAborted();
-
-      if (data.events.length > 0) {
-        set(internalEvents$, (prev) => {
-          return [...prev, ...data.events];
-        });
-        const lastEvent = data.events[data.events.length - 1];
-        if (lastEvent) {
-          set(internalLastSeq$, lastEvent.seq);
-        }
-        set(injectSlowBrainEvents$, data.events);
+        set(internalError$, "Connection issues — retrying…");
       }
       return false;
-    },
-    POLL_INTERVAL_MS,
-    signal,
-  );
+    }
+
+    if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
+      set(internalError$, null);
+    }
+    consecutiveFailures = 0;
+
+    const data = (await res.json()) as { events: ContextEvent[] };
+    signal.throwIfAborted();
+
+    if (data.events.length > 0) {
+      set(internalEvents$, (prev) => {
+        return [...prev, ...data.events];
+      });
+      const lastEvent = data.events[data.events.length - 1];
+      if (lastEvent) {
+        set(internalLastSeq$, lastEvent.seq);
+      }
+      set(injectSlowBrainEvents$, data.events);
+    }
+    return false;
+  });
+
+  await set(setAblyLoop$, `voice:${sid}`, pollBody$, POLL_INTERVAL_MS, signal);
 });
 
 // --- WebRTC cleanup (preserves session state) ---
@@ -1023,10 +1067,8 @@ const prepareActivateConnect$ = command(
     const heartbeatPromise = set(startHeartbeat$, sessionSignal);
 
     // Poll for preparation-ready event with timeout
-    const ablyNotify = get(ablyNotify$);
-    await ablyNotify(
-      `voice:${sessionId}`,
-      async (loopSignal: AbortSignal) => {
+    const prepPollBody$ = command(
+      async ({ get, set }, loopSignal: AbortSignal) => {
         const elapsed = Date.now() - startTime;
         set(internalPrepElapsedMs$, elapsed);
 
@@ -1072,6 +1114,11 @@ const prepareActivateConnect$ = command(
         }
         return false;
       },
+    );
+    await set(
+      setAblyLoop$,
+      `voice:${sessionId}`,
+      prepPollBody$,
       POLL_INTERVAL_MS,
       sessionSignal,
     );
@@ -1127,7 +1174,7 @@ const prepareActivateConnect$ = command(
  * Falls through on failure so session creation can handle the unprepared case.
  */
 const awaitChatPreparation$ = command(
-  async ({ get }, agentId: string, signal: AbortSignal) => {
+  async ({ get, set }, agentId: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const prepClient = createClient(zeroVoiceChatPrepareTriggerContract);
     const prepRes = await accept(
@@ -1142,7 +1189,6 @@ const awaitChatPreparation$ = command(
     }
 
     const prepStart = Date.now();
-    const chatAblyNotify = get(ablyNotify$);
     const clerkInstance = await get(clerk$);
     signal.throwIfAborted();
     const prepUserId = clerkInstance.user?.id;
@@ -1151,21 +1197,23 @@ const awaitChatPreparation$ = command(
         "awaitChatPreparation$ called without authenticated user",
       );
     }
-    await chatAblyNotify(
+    const chatPollBody$ = command(async (_store, loopSignal: AbortSignal) => {
+      if (Date.now() - prepStart > PREP_TIMEOUT_CHAT_MS) {
+        return true; // Timeout — proceed without cache
+      }
+      const pollRes = await accept(
+        prepClient.trigger({ body: { agentId, mode: "chat" } }),
+        [200],
+        { toast: false },
+      );
+      loopSignal.throwIfAborted();
+      const status = pollRes.body.preparation.status;
+      return status === "ready" || status === "failed";
+    });
+    await set(
+      setAblyLoop$,
       `voice:prep:${prepUserId}`,
-      async (loopSignal: AbortSignal) => {
-        if (Date.now() - prepStart > PREP_TIMEOUT_CHAT_MS) {
-          return true; // Timeout — proceed without cache
-        }
-        const pollRes = await accept(
-          prepClient.trigger({ body: { agentId, mode: "chat" } }),
-          [200],
-          { toast: false },
-        );
-        loopSignal.throwIfAborted();
-        const status = pollRes.body.preparation.status;
-        return status === "ready" || status === "failed";
-      },
+      chatPollBody$,
       POLL_INTERVAL_MS,
       signal,
     );
@@ -1446,7 +1494,6 @@ export const endVoiceChat$ = command(({ get, set }) => {
   set(internalPrepStartTime$, null);
   set(internalPrepElapsedMs$, 0);
   set(internalReconnectAttempt$, 0);
-  set(internalInputMode$, "hands-free");
   set(internalModel$, "gpt-realtime-mini");
   set(internalParentSignal$, null);
   set(internalStatus$, "idle");
@@ -1474,74 +1521,4 @@ export const toggleVoiceChatMute$ = command(({ get, set }) => {
   const wasMuted = get(internalMuted$);
   track.enabled = wasMuted;
   set(internalMuted$, !wasMuted);
-});
-
-export const switchInputMode$ = command(
-  ({ get, set }, mode: "hands-free" | "push-to-talk") => {
-    const dc = get(internalDc$);
-    if (!dc || dc.readyState !== "open") {
-      return;
-    }
-
-    set(internalInputMode$, mode);
-
-    const turnDetection = mode === "hands-free" ? HANDS_FREE_VAD_CONFIG : null;
-
-    dc.send(
-      JSON.stringify({
-        type: "session.update",
-        session: { turn_detection: turnDetection },
-      }),
-    );
-
-    // PTT starts muted, hands-free starts unmuted
-    const stream = get(internalStream$);
-    if (!stream) {
-      return;
-    }
-    const track = stream.getAudioTracks()[0];
-    if (!track) {
-      return;
-    }
-
-    if (mode === "push-to-talk") {
-      track.enabled = false;
-      set(internalMuted$, true);
-    } else {
-      track.enabled = true;
-      set(internalMuted$, false);
-    }
-  },
-);
-
-export const startPTT$ = command(({ get, set }) => {
-  const stream = get(internalStream$);
-  if (!stream) {
-    return;
-  }
-  const track = stream.getAudioTracks()[0];
-  if (!track) {
-    return;
-  }
-  track.enabled = true;
-  set(internalMuted$, false);
-});
-
-export const stopPTT$ = command(({ get, set }) => {
-  const stream = get(internalStream$);
-  if (!stream) {
-    return;
-  }
-  const track = stream.getAudioTracks()[0];
-  if (!track) {
-    return;
-  }
-  track.enabled = false;
-  set(internalMuted$, true);
-
-  const dc = get(internalDc$);
-  if (dc && dc.readyState === "open") {
-    dc.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
-    dc.send(JSON.stringify({ type: "response.create" }));
-  }
 });

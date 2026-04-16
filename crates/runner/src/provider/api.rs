@@ -6,13 +6,13 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
 use reqeast::StatusCode;
 
 use super::JobProvider;
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
+use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse};
 
@@ -51,10 +51,10 @@ pub struct ApiProvider {
     /// Only one caller (main loop) — never contended in practice.
     discovery: tokio::sync::Mutex<DiscoveryState>,
     /// Per-job sandbox tokens for completion auth.
-    tokens: tokio::sync::Mutex<HashMap<Uuid, String>>,
+    tokens: tokio::sync::Mutex<HashMap<RunId, String>>,
     /// Shared map of per-job cancel tokens. When a `"cancel"` event arrives
     /// via Ably, `discover()` looks up the run and cancels it directly.
-    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
+    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     /// Session IDs held in the idle pool, sent in poll requests for affinity ordering.
     held_sessions: tokio::sync::Mutex<Vec<String>>,
     /// Shutdown signal.
@@ -83,7 +83,7 @@ impl ApiProvider {
         profiles: Vec<String>,
         runner_id: String,
         cancel: CancellationToken,
-        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let mut ably_retry: RetryState<AblyReconnectHandle> =
@@ -124,7 +124,7 @@ impl ApiProvider {
 
 #[async_trait::async_trait]
 impl JobProvider for ApiProvider {
-    async fn discover(&self) -> Option<(Uuid, String)> {
+    async fn discover(&self) -> Option<(RunId, String)> {
         let mut state = self.discovery.lock().await;
         loop {
             // Check shutdown
@@ -254,7 +254,7 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn claim(&self, run_id: Uuid) -> Option<ExecutionContext> {
+    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext> {
         match self.api.claim(run_id).await {
             Ok(ctx) => {
                 info!(run_id = %run_id, "job claimed");
@@ -306,7 +306,7 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn complete(&self, run_id: Uuid, exit_code: i32, error: Option<&str>) {
+    async fn complete(&self, run_id: RunId, exit_code: i32, error: Option<&str>) {
         let token = self.tokens.lock().await.remove(&run_id);
         let token = match token {
             Some(t) => t,
@@ -335,12 +335,12 @@ impl JobProvider for ApiProvider {
 
 /// Parsed job notification from Ably.
 struct JobNotification {
-    run_id: Uuid,
+    run_id: RunId,
     profile: Option<String>,
     target_runner_id: Option<String>,
 }
 
-fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<Uuid> {
+fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
     if msg.name.as_deref() != Some("cancel") {
         return None;
     }
@@ -549,7 +549,7 @@ impl ApiClient {
 
     /// Claim a job for execution. Returns [`RunnerError::AlreadyClaimed`] on
     /// HTTP 409 so callers can continue gracefully.
-    async fn claim(&self, run_id: Uuid) -> RunnerResult<ExecutionContext> {
+    async fn claim(&self, run_id: RunId) -> RunnerResult<ExecutionContext> {
         let path = format!("/api/runners/jobs/{run_id}/claim");
         let resp = self
             .http
@@ -581,7 +581,7 @@ impl ApiClient {
     async fn complete(
         &self,
         sandbox_token: &str,
-        run_id: Uuid,
+        run_id: RunId,
         exit_code: i32,
         error: Option<&str>,
     ) -> RunnerResult<()> {

@@ -11,6 +11,7 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
+import { mockAblyPublish } from "../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
 
@@ -20,6 +21,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
   let testComposeId: string;
 
   beforeEach(async () => {
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
 
@@ -267,6 +269,33 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       expect(cleanedResult.reason).toBe(
         "Run timed out while pending (never started)",
       );
+    });
+  });
+
+  describe("Signal Publishing", () => {
+    it("should publish runUpdated signal for each cleaned-up expired run", async () => {
+      vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+      reloadEnv();
+
+      const runCreationTime = Date.now();
+      const { runId } = await seedTestRun(user.userId, testComposeId);
+
+      // Mock Date.now to return time 6 minutes in the future (past pending timeout of 5 minutes)
+      context.mocks.dateNow.mockReturnValue(runCreationTime + 6 * 60 * 1000);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/cron/cleanup-sandboxes",
+        {
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+          },
+        },
+      );
+
+      const response = await GET(request);
+      expect(response.status).toBe(200);
+
+      expect(mockAblyPublish).toHaveBeenCalledWith(`runUpdated:${runId}`, null);
     });
   });
 });

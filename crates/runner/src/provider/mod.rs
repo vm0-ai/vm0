@@ -13,8 +13,7 @@ pub use api::ApiProvider;
 pub use local::LocalProvider;
 pub(crate) use local::{JobRequest, JobResponse};
 
-use uuid::Uuid;
-
+use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState};
 
 /// Abstraction over job lifecycle — discovery, claiming, and completion reporting.
@@ -38,7 +37,7 @@ pub trait JobProvider: Send + Sync {
     ///
     /// This method has **no server-side side effects** and can be safely
     /// dropped (cancelled) at any `.await` point.
-    async fn discover(&self) -> Option<(Uuid, String)>;
+    async fn discover(&self) -> Option<(RunId, String)>;
 
     /// Claim a discovered job. Returns `None` if the job was already claimed
     /// by another runner or an error occurred.
@@ -46,12 +45,12 @@ pub trait JobProvider: Send + Sync {
     /// Callers **must** invoke this from a non-cancellable context (e.g.
     /// inside a `select!` branch handler) to guarantee that a successful
     /// claim is always paired with a later [`complete()`](JobProvider::complete).
-    async fn claim(&self, run_id: Uuid) -> Option<ExecutionContext>;
+    async fn claim(&self, run_id: RunId) -> Option<ExecutionContext>;
 
     /// Report job completion. Called concurrently from spawned executor tasks.
     ///
     /// Implementations manage auth tokens and retry logic internally.
-    async fn complete(&self, run_id: Uuid, exit_code: i32, error: Option<&str>);
+    async fn complete(&self, run_id: RunId, exit_code: i32, error: Option<&str>);
 
     /// Report runner state to the server. Fire-and-forget — failures are
     /// logged but do not affect runner operation.

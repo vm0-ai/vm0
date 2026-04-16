@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use sandbox::{Sandbox, SandboxFactory};
+use sandbox::{Sandbox, SandboxFactory, SandboxId};
 
+use crate::status::IdleVm;
 use crate::types::StorageManifest;
 
 /// Default idle timeout for kept-alive VMs (30 minutes).
@@ -70,6 +71,10 @@ pub struct IdleEntry {
     pub sandbox: Box<dyn Sandbox>,
     pub factory: Arc<Box<dyn SandboxFactory>>,
     pub session_id: String,
+    /// Identity of the parked sandbox. Survives reuse (next job's `run_id`
+    /// differs, but `sandbox_id` stays the same) and is the join key for
+    /// doctor / kill / workspace-dir naming.
+    pub sandbox_id: SandboxId,
     pub profile_name: String,
     pub vcpu: u32,
     pub memory_mb: u32,
@@ -166,9 +171,31 @@ impl IdlePool {
         self.entries.remove(&oldest_key)
     }
 
-    /// Return the list of session IDs currently held in the pool.
+    /// Return a sorted-by-session_id snapshot of the idle pool suitable
+    /// for status.json. Produced in a single iteration so `session_id` and
+    /// `sandbox_id` can never drift out of pairing.
+    pub fn held_snapshot(&self) -> Vec<IdleVm> {
+        let mut vms: Vec<IdleVm> = self
+            .entries
+            .iter()
+            .map(|(session_id, entry)| IdleVm {
+                session_id: session_id.clone(),
+                sandbox_id: entry.sandbox_id,
+            })
+            .collect();
+        vms.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+        vms
+    }
+
+    /// Return the list of session IDs currently held in the pool, sorted
+    /// lexicographically for deterministic heartbeat output.
+    ///
+    /// Prefer [`held_snapshot`](Self::held_snapshot) when pairing with
+    /// sandbox IDs — it produces both views from a single iteration.
     pub fn held_sessions(&self) -> Vec<String> {
-        self.entries.keys().cloned().collect()
+        let mut sessions: Vec<String> = self.entries.keys().cloned().collect();
+        sessions.sort_unstable();
+        sessions
     }
 
     /// Number of idle VMs in the pool.
@@ -221,6 +248,7 @@ mod tests {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: "test-session".into(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu,
             memory_mb,
@@ -241,6 +269,7 @@ mod tests {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: "test-session".into(),
+            sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
             vcpu,
             memory_mb,
@@ -381,9 +410,33 @@ mod tests {
         let _ = pool.park("s1".into(), make_entry(2, 2048));
         let _ = pool.park("s2".into(), make_entry(2, 2048));
 
-        let mut sessions = pool.held_sessions();
-        sessions.sort();
+        let sessions = pool.held_sessions();
         assert_eq!(sessions, vec!["s1", "s2"]);
+    }
+
+    #[test]
+    fn held_snapshot_pairs_and_sorts() {
+        // Park in reverse order to ensure sort kicks in.
+        let mut pool = IdlePool::new(pool_config(0));
+        let entry_b = make_entry(2, 2048);
+        let sid_b = entry_b.sandbox_id;
+        let entry_a = make_entry(2, 2048);
+        let sid_a = entry_a.sandbox_id;
+        let _ = pool.park("sess-b".into(), entry_b);
+        let _ = pool.park("sess-a".into(), entry_a);
+
+        let vms = pool.held_snapshot();
+        assert_eq!(vms.len(), 2);
+        assert_eq!(vms[0].session_id, "sess-a");
+        assert_eq!(vms[0].sandbox_id, sid_a);
+        assert_eq!(vms[1].session_id, "sess-b");
+        assert_eq!(vms[1].sandbox_id, sid_b);
+    }
+
+    #[test]
+    fn held_snapshot_empty_pool() {
+        let pool = IdlePool::new(pool_config(0));
+        assert!(pool.held_snapshot().is_empty());
     }
 
     #[test]

@@ -1,7 +1,7 @@
-//! Process discovery via `/proc` scanning.
+//! Process discovery via `/proc` scanning and status.json helpers.
 //!
-//! Shared between `doctor` and `kill` commands. All cmdline parsers
-//! are pure functions testable without a running system.
+//! Shared between `doctor`, `kill`, and `exec` commands. All cmdline
+//! parsers are pure functions testable without a running system.
 
 use std::path::{Path, PathBuf};
 
@@ -20,7 +20,10 @@ pub struct RunnerProcessInfo {
 pub struct FirecrackerProcessInfo {
     pub pid: u32,
     pub ppid: Option<u32>,
-    pub run_id: String,
+    /// The sandbox identity, derived from the workspace dir basename
+    /// (`/proc/{pid}/cwd` = `{base_dir}/workspaces/{sandbox_id}/`). After
+    /// sandbox reuse this is stable across successive run_ids.
+    pub sandbox_id: String,
     pub base_dir: Option<PathBuf>,
 }
 
@@ -227,17 +230,17 @@ async fn scan_proc_cmdlines() -> Vec<(u32, String)> {
     result
 }
 
-/// Extract run_id and base_dir from a firecracker workspace CWD.
+/// Extract sandbox_id and base_dir from a firecracker workspace CWD.
 ///
-/// CWD is `{base_dir}/workspaces/{id}/`, so:
-/// - `id` is the last component (run_id)
+/// CWD is `{base_dir}/workspaces/{sandbox_id}/`, so:
+/// - `sandbox_id` is the last component
 /// - `base_dir` is the grandparent of `workspaces`
 fn parse_workspace_cwd(cwd: &Path) -> Option<(String, PathBuf)> {
-    let run_id = cwd.file_name()?.to_string_lossy().into_owned();
+    let sandbox_id = cwd.file_name()?.to_string_lossy().into_owned();
     let workspaces_dir = cwd.parent()?;
     if workspaces_dir.file_name().and_then(|n| n.to_str()) == Some("workspaces") {
         let base_dir = workspaces_dir.parent()?.to_path_buf();
-        Some((run_id, base_dir))
+        Some((sandbox_id, base_dir))
     } else {
         None
     }
@@ -275,21 +278,21 @@ pub async fn discover_all() -> DiscoveredProcesses {
         }
     }
 
-    // Resolve run_id + base_dir + ppid from CWD for firecracker processes
+    // Resolve sandbox_id + base_dir + ppid from CWD for firecracker processes
     let mut fc_infos = Vec::with_capacity(firecrackers.len());
     for pid in firecrackers {
         let cwd_info = read_cwd(pid)
             .await
             .and_then(|cwd| parse_workspace_cwd(&cwd));
         let ppid = read_ppid(pid).await;
-        let (run_id, base_dir) = match cwd_info {
+        let (sandbox_id, base_dir) = match cwd_info {
             Some((id, bd)) => (id, Some(bd)),
             None => (format!("pid-{pid}"), None),
         };
         fc_infos.push(FirecrackerProcessInfo {
             pid,
             ppid,
-            run_id,
+            sandbox_id,
             base_dir,
         });
     }
@@ -339,6 +342,164 @@ pub async fn is_orphan(pid: u32, runner_pids: &[u32]) -> bool {
         current = ppid;
     }
     false // max depth reached → don't flag
+}
+
+// ---------------------------------------------------------------------------
+// status.json helpers (shared by kill, exec, and potentially others)
+// ---------------------------------------------------------------------------
+
+/// Load only the `base_dir` field from a runner config YAML (best-effort).
+///
+/// Read / parse failures log at `warn` level and return `None` so a single
+/// broken runner config doesn't stop resolution for the rest.
+pub(crate) async fn load_base_dir(config_path: &Path) -> Option<PathBuf> {
+    #[derive(serde::Deserialize)]
+    struct ConfigShape {
+        base_dir: PathBuf,
+    }
+    let content = match tokio::fs::read_to_string(config_path).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(path = %config_path.display(), error = %e, "skipping runner: cannot read config");
+            return None;
+        }
+    };
+    let shape: ConfigShape = match serde_yaml_ng::from_str(&content) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(path = %config_path.display(), error = %e, "skipping runner: cannot parse config");
+            return None;
+        }
+    };
+    if shape.base_dir.is_absolute() {
+        Some(shape.base_dir)
+    } else {
+        config_path.parent().map(|p| p.join(&shape.base_dir))
+    }
+}
+
+/// Read `{base_dir}/status.json` and extract `(run_id, sandbox_id)` for
+/// every active run. Returns `None` if the file is missing or unparseable
+/// (logs at `warn` level so the operator sees the miss immediately).
+pub(crate) async fn read_active_runs(base_dir: &Path) -> Option<Vec<(String, String)>> {
+    #[derive(serde::Deserialize)]
+    struct StatusShape {
+        #[serde(default)]
+        active_runs: Vec<ActiveRunShape>,
+    }
+    #[derive(serde::Deserialize)]
+    struct ActiveRunShape {
+        run_id: String,
+        sandbox_id: String,
+    }
+    let path = base_dir.join("status.json");
+    let content = match tokio::fs::read_to_string(&path).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "skipping runner: cannot read status.json");
+            return None;
+        }
+    };
+    let shape: StatusShape = match serde_json::from_str(&content) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "skipping runner: cannot parse status.json");
+            return None;
+        }
+    };
+    Some(
+        shape
+            .active_runs
+            .into_iter()
+            .map(|r| (r.run_id, r.sandbox_id))
+            .collect(),
+    )
+}
+
+/// Result of collecting `(run_id, sandbox_id)` pairs from runners.
+pub(crate) struct ActiveRunMappings {
+    pub entries: Vec<(String, String)>,
+    /// How many runners were discovered on the host.
+    pub runners_total: usize,
+    /// How many runners had unreadable configs or status files.
+    pub runners_failed: usize,
+}
+
+/// Collect all `(run_id, sandbox_id)` pairs from every reachable runner's
+/// `status.json`. Used by `kill --run` and `exec --run` to translate a
+/// user-supplied run_id into the sandbox_id that identifies the FC.
+pub(crate) async fn collect_active_run_mappings(
+    runners: &[RunnerProcessInfo],
+) -> ActiveRunMappings {
+    let mut entries = Vec::new();
+    let mut failed = 0usize;
+    for runner in runners {
+        let Some(base_dir) = load_base_dir(&runner.config_path).await else {
+            failed += 1;
+            continue;
+        };
+        match read_active_runs(&base_dir).await {
+            Some(runs) => entries.extend(runs),
+            None => failed += 1,
+        }
+    }
+    ActiveRunMappings {
+        entries,
+        runners_total: runners.len(),
+        runners_failed: failed,
+    }
+}
+
+/// Given a `run_id` prefix, find the unique matching `sandbox_id` from
+/// collected status entries.
+///
+/// Returns the `sandbox_id` on unique match. Errors on empty or ambiguous.
+/// When no match is found and some runners were unreadable, the error
+/// message includes a diagnostic hint so the operator knows why.
+pub(crate) fn resolve_run_to_sandbox(
+    input: &str,
+    mappings: &ActiveRunMappings,
+) -> crate::error::RunnerResult<String> {
+    use crate::error::RunnerError;
+
+    if input.is_empty() {
+        return Err(RunnerError::Config("run id must not be empty".into()));
+    }
+
+    let mut matching: Vec<&(String, String)> = mappings
+        .entries
+        .iter()
+        .filter(|(rid, _)| rid.starts_with(input))
+        .collect();
+    matching.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    matching.dedup();
+
+    match matching.as_slice() {
+        [(_, sandbox_id)] => Ok(sandbox_id.clone()),
+        [] => {
+            let mut msg = format!("no active run matches '{input}'");
+            if mappings.runners_failed > 0 {
+                msg.push_str(&format!(
+                    " ({} of {} runner(s) had unreadable config/status — \
+                     check warnings above)",
+                    mappings.runners_failed, mappings.runners_total,
+                ));
+            } else if mappings.runners_total == 0 {
+                msg.push_str(" (no runner processes found on this host)");
+            }
+            Err(RunnerError::Config(msg))
+        }
+        _ => {
+            let lines: Vec<String> = matching
+                .iter()
+                .map(|(rid, sid)| format!("run={rid} sandbox={sid}"))
+                .collect();
+            Err(RunnerError::Config(format!(
+                "ambiguous run prefix '{input}', matches: [{}]",
+                lines.join(", ")
+            )))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -460,16 +621,16 @@ mod tests {
     #[test]
     fn parse_workspace_cwd_valid() {
         let cwd = Path::new("/data/runner-01/workspaces/550e8400");
-        let (run_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
-        assert_eq!(run_id, "550e8400");
+        let (sandbox_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(sandbox_id, "550e8400");
         assert_eq!(base_dir, Path::new("/data/runner-01"));
     }
 
     #[test]
     fn parse_workspace_cwd_uuid() {
         let cwd = Path::new("/data/r1/workspaces/550e8400-e29b-41d4-a716-446655440000");
-        let (run_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
-        assert_eq!(run_id, "550e8400-e29b-41d4-a716-446655440000");
+        let (sandbox_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(sandbox_id, "550e8400-e29b-41d4-a716-446655440000");
         assert_eq!(base_dir, Path::new("/data/r1"));
     }
 
@@ -511,5 +672,78 @@ mod tests {
         // Missing pgrp field
         let stat = "1234 (cmd) S 100";
         assert!(parse_pgid_from_stat(stat).is_none());
+    }
+
+    // -- load_base_dir / read_active_runs / resolve_run_to_sandbox ----------
+
+    #[tokio::test]
+    async fn load_base_dir_absolute() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("runner.yaml");
+        std::fs::write(&config, "base_dir: /data/runner-01\nname: test\n").unwrap();
+        let bd = load_base_dir(&config).await.unwrap();
+        assert_eq!(bd, Path::new("/data/runner-01"));
+    }
+
+    #[tokio::test]
+    async fn load_base_dir_relative() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("runner.yaml");
+        std::fs::write(&config, "base_dir: ./data\nname: test\n").unwrap();
+        let bd = load_base_dir(&config).await.unwrap();
+        assert_eq!(bd, dir.path().join("./data"));
+    }
+
+    #[tokio::test]
+    async fn load_base_dir_missing_file() {
+        let result = load_base_dir(Path::new("/no/such/config.yaml")).await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn load_base_dir_malformed_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("runner.yaml");
+        std::fs::write(&config, "not: valid: yaml: [[[").unwrap();
+        assert!(load_base_dir(&config).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_normal() {
+        let dir = tempfile::tempdir().unwrap();
+        let status = r#"{
+            "mode": "running",
+            "active_runs": [
+                {"run_id": "R1", "sandbox_id": "S1"},
+                {"run_id": "R2", "sandbox_id": "S2"}
+            ],
+            "started_at": "2026-01-01T00:00:00.000Z"
+        }"#;
+        std::fs::write(dir.path().join("status.json"), status).unwrap();
+        let runs = read_active_runs(dir.path()).await.unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0], ("R1".into(), "S1".into()));
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_missing_field_defaults_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        // status.json without active_runs field — serde(default) kicks in
+        std::fs::write(dir.path().join("status.json"), r#"{"mode":"running"}"#).unwrap();
+        let runs = read_active_runs(dir.path()).await.unwrap();
+        assert!(runs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_active_runs(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_malformed_json() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("status.json"), "not json").unwrap();
+        assert!(read_active_runs(dir.path()).await.is_none());
     }
 }

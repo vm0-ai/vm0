@@ -45,18 +45,24 @@ enum Warning {
     },
     /// status.json lists a proxy port but no mitmdump process found on it.
     NoMitmproxy { port: u16, base_dir: PathBuf },
-    /// status.json lists a run_id but no firecracker process found for it.
-    NoFirecrackerForRun { run_id: String, base_dir: PathBuf },
-    /// A firecracker process exists but its run_id is not in status.json.
+    /// status.json lists a run with its sandbox_id but no firecracker process
+    /// hosts that sandbox_id.
+    NoFirecrackerForRun {
+        run_id: String,
+        sandbox_id: String,
+        base_dir: PathBuf,
+    },
+    /// A firecracker process exists but its sandbox_id is not tracked in
+    /// either `active_runs` or `idle_vms` for this runner.
     FirecrackerNotInStatus {
         pid: u32,
-        run_id: String,
+        sandbox_id: String,
         base_dir: PathBuf,
     },
     /// A firecracker process whose ppid chain doesn't lead to any runner.
     OrphanFirecracker {
         pid: u32,
-        run_id: String,
+        sandbox_id: String,
         ppid: Option<u32>,
     },
     /// A mitmdump process on an unclaimed port whose ppid chain is orphaned.
@@ -87,17 +93,31 @@ impl fmt::Display for Warning {
             Self::NoDnsmasq { port, .. } => {
                 write!(f, "no dnsmasq process on port {port}")
             }
-            Self::NoFirecrackerForRun { run_id, .. } => {
-                write!(f, "no firecracker process for run {run_id}")
+            Self::NoFirecrackerForRun {
+                run_id, sandbox_id, ..
+            } => {
+                write!(
+                    f,
+                    "no firecracker process for run {run_id} (sandbox {sandbox_id})"
+                )
             }
-            Self::FirecrackerNotInStatus { pid, run_id, .. } => {
-                write!(f, "firecracker PID {pid} (run {run_id}) not in status.json")
+            Self::FirecrackerNotInStatus {
+                pid, sandbox_id, ..
+            } => {
+                write!(
+                    f,
+                    "firecracker PID {pid} (sandbox {sandbox_id}) not in status.json"
+                )
             }
-            Self::OrphanFirecracker { pid, run_id, ppid } => {
+            Self::OrphanFirecracker {
+                pid,
+                sandbox_id,
+                ppid,
+            } => {
                 let ppid_str = ppid.map_or("?".into(), |p| p.to_string());
                 write!(
                     f,
-                    "orphan firecracker PID {pid} (run {run_id}, ppid={ppid_str})"
+                    "orphan firecracker PID {pid} (sandbox {sandbox_id}, ppid={ppid_str})"
                 )
             }
             Self::OrphanMitmdump { pid, port, ppid } => {
@@ -167,31 +187,50 @@ impl Warning {
                 }
                 !matches!(read_status(base_dir).await, Some(st) if is_inactive_mode(&st.mode))
             }
-            Self::NoFirecrackerForRun { run_id, base_dir } => {
-                // Resolved if firecracker process now exists (startup completed)
+            Self::NoFirecrackerForRun {
+                run_id,
+                sandbox_id,
+                base_dir,
+            } => {
+                // Resolved if firecracker process now exists for this sandbox_id.
                 let fc_found = fresh.firecrackers.iter().any(|f| {
-                    f.run_id == *run_id && f.base_dir.as_deref() == Some(base_dir.as_path())
+                    f.sandbox_id == *sandbox_id && f.base_dir.as_deref() == Some(base_dir.as_path())
                 });
                 if fc_found {
                     return false;
                 }
-                // Resolved if run_id removed from status.json (cleanup completed)
+                // Resolved if the run itself is no longer active. We key on
+                // `run_id`, not `sandbox_id`: if the run finished and its
+                // sandbox got reused by another run, the reused sandbox is
+                // that other run's concern — this warning pertains to the
+                // original run and should clear.
+                //
+                // On status-read failure we clear (return `false`) rather
+                // than persist: if the runner's status.json is gone, any
+                // still-running FC will be picked up by the orphan path
+                // instead, and keeping a stale run-centric warning would
+                // be noise.
                 match read_status(base_dir).await {
-                    Some(st) => st.active_run_ids.contains(run_id),
+                    Some(st) => st.active_runs.iter().any(|r| r.run_id == *run_id),
                     None => false,
                 }
             }
             Self::FirecrackerNotInStatus {
                 pid,
-                run_id,
+                sandbox_id,
                 base_dir,
             } => {
-                // Resolved if process exited or now tracked in status.json.
+                // Resolved if process exited or sandbox_id is now known
+                // (either tracked as active or parked as idle).
                 if !pid_exists(*pid) {
                     return false;
                 }
                 match read_status(base_dir).await {
-                    Some(st) => !st.active_run_ids.iter().any(|id| id == run_id),
+                    Some(st) => {
+                        let active = st.active_runs.iter().any(|r| r.sandbox_id == *sandbox_id);
+                        let idle = st.idle_vms.iter().any(|v| v.sandbox_id == *sandbox_id);
+                        !(active || idle)
+                    }
                     None => true,
                 }
             }
@@ -266,11 +305,22 @@ enum ServiceType {
 struct StatusInfo {
     mode: String,
     started_at: String,
-    active_run_ids: Vec<String>,
+    active_runs: Vec<ActiveRunInfo>,
+    idle_vms: Vec<IdleVmInfo>,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
-    idle_vms: usize,
-    idle_sessions: Vec<String>,
+}
+
+/// Mirror of `status::ActiveRun` for doctor's read side.
+struct ActiveRunInfo {
+    run_id: String,
+    sandbox_id: String,
+}
+
+/// Mirror of `status::IdleVm` for doctor's read side.
+struct IdleVmInfo {
+    session_id: String,
+    sandbox_id: String,
 }
 
 struct InstalledService {
@@ -278,15 +328,22 @@ struct InstalledService {
     config_path: Option<PathBuf>,
 }
 
+/// One row in the per-runner jobs table. The inner `JobStatus` variant
+/// carries whichever identifier is meaningful for that row — `run_id`
+/// for tracked runs, `sandbox_id` for orphan firecrackers — so the two
+/// cannot be confused by downstream formatting.
 struct JobReport {
-    run_id: String,
     status: JobStatus,
 }
 
 enum JobStatus {
-    Running(u32),
-    NoProcess,
-    NotInStatus,
+    /// Active run with a matching firecracker process.
+    Running { run_id: String, pid: u32 },
+    /// Active run whose firecracker process is missing.
+    NoProcess { run_id: String },
+    /// Firecracker process present but not recorded in status.json.
+    /// Keyed by `sandbox_id` because no `run_id` is known.
+    NotInStatus { sandbox_id: String },
 }
 
 struct StoppedInfo {
@@ -695,16 +752,32 @@ fn find_stopped_services(
 #[derive(Deserialize)]
 struct StatusFile {
     mode: String,
-    active_run_ids: Vec<String>,
+    /// `#[serde(default)]` defends against transient schema skew during
+    /// rolling deploys: if a reader binary meets a status.json still
+    /// written by an older runner (or a newer one that renamed fields
+    /// again), we surface an empty active_runs rather than failing to
+    /// parse and losing the whole report.
+    #[serde(default)]
+    active_runs: Vec<ActiveRunFile>,
     started_at: String,
+    #[serde(default)]
+    idle_vms: Vec<IdleVmFile>,
     #[serde(default)]
     proxy_port: Option<u16>,
     #[serde(default)]
     dns_port: Option<u16>,
-    #[serde(default)]
-    idle_vms: usize,
-    #[serde(default)]
-    idle_sessions: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct ActiveRunFile {
+    run_id: String,
+    sandbox_id: String,
+}
+
+#[derive(Deserialize)]
+struct IdleVmFile {
+    session_id: String,
+    sandbox_id: String,
 }
 
 /// Returns `true` for modes where proxy absence is expected (not a warning).
@@ -719,11 +792,24 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
     Some(StatusInfo {
         mode: file.mode,
         started_at: file.started_at,
-        active_run_ids: file.active_run_ids,
+        active_runs: file
+            .active_runs
+            .into_iter()
+            .map(|r| ActiveRunInfo {
+                run_id: r.run_id,
+                sandbox_id: r.sandbox_id,
+            })
+            .collect(),
+        idle_vms: file
+            .idle_vms
+            .into_iter()
+            .map(|v| IdleVmInfo {
+                session_id: v.session_id,
+                sandbox_id: v.sandbox_id,
+            })
+            .collect(),
         proxy_port: file.proxy_port,
         dns_port: file.dns_port,
-        idle_vms: file.idle_vms,
-        idle_sessions: file.idle_sessions,
     })
 }
 
@@ -781,36 +867,51 @@ fn correlate_jobs(
         .filter(|p| p.base_dir.as_deref() == Some(base_dir))
         .collect();
 
-    // For each run_id in status, find matching firecracker process
-    for run_id in &status.active_run_ids {
-        let fc = my_fcs.iter().find(|p| p.run_id == *run_id);
-        let job_status = match fc {
-            Some(p) => JobStatus::Running(p.pid),
+    // For each active run, find the FC hosting its sandbox_id.
+    for active in &status.active_runs {
+        let fc = my_fcs.iter().find(|p| p.sandbox_id == active.sandbox_id);
+        let status_variant = match fc {
+            Some(p) => JobStatus::Running {
+                run_id: active.run_id.clone(),
+                pid: p.pid,
+            },
             None => {
                 warnings.push(Warning::NoFirecrackerForRun {
-                    run_id: run_id.clone(),
+                    run_id: active.run_id.clone(),
+                    sandbox_id: active.sandbox_id.clone(),
                     base_dir: base_dir.to_path_buf(),
                 });
-                JobStatus::NoProcess
+                JobStatus::NoProcess {
+                    run_id: active.run_id.clone(),
+                }
             }
         };
         jobs.push(JobReport {
-            run_id: run_id.clone(),
-            status: job_status,
+            status: status_variant,
         });
     }
 
-    // Firecracker processes not in status.json
+    // Known sandboxes = active + idle. FCs with sandbox_ids outside this set
+    // are flagged as orphans not reflected in status.json.
     for fc in &my_fcs {
-        if !status.active_run_ids.contains(&fc.run_id) {
+        let known = status
+            .active_runs
+            .iter()
+            .any(|r| r.sandbox_id == fc.sandbox_id)
+            || status
+                .idle_vms
+                .iter()
+                .any(|v| v.sandbox_id == fc.sandbox_id);
+        if !known {
             warnings.push(Warning::FirecrackerNotInStatus {
                 pid: fc.pid,
-                run_id: fc.run_id.clone(),
+                sandbox_id: fc.sandbox_id.clone(),
                 base_dir: base_dir.to_path_buf(),
             });
             jobs.push(JobReport {
-                run_id: fc.run_id.clone(),
-                status: JobStatus::NotInStatus,
+                status: JobStatus::NotInStatus {
+                    sandbox_id: fc.sandbox_id.clone(),
+                },
             });
         }
     }
@@ -883,7 +984,7 @@ async fn detect_orphan_firecrackers(
         if process::is_orphan(fc.pid, runner_pids).await {
             warnings.push(Warning::OrphanFirecracker {
                 pid: fc.pid,
-                run_id: fc.run_id.clone(),
+                sandbox_id: fc.sandbox_id.clone(),
                 ppid: fc.ppid,
             });
         }
@@ -1035,19 +1136,24 @@ fn print_report(
             let active_count = r
                 .jobs
                 .iter()
-                .filter(|j| matches!(j.status, JobStatus::Running(_) | JobStatus::NoProcess))
+                .filter(|j| {
+                    matches!(
+                        j.status,
+                        JobStatus::Running { .. } | JobStatus::NoProcess { .. }
+                    )
+                })
                 .count();
             println!("    Jobs:    {active_count} active");
             for job in &r.jobs {
-                match job.status {
-                    JobStatus::Running(pid) => {
-                        println!("      - run {} -> PID {pid}", job.run_id);
+                match &job.status {
+                    JobStatus::Running { run_id, pid } => {
+                        println!("      - run {run_id} -> PID {pid}");
                     }
-                    JobStatus::NoProcess => {
-                        println!("      - run {} -> NO PROCESS", job.run_id);
+                    JobStatus::NoProcess { run_id } => {
+                        println!("      - run {run_id} -> NO PROCESS");
                     }
-                    JobStatus::NotInStatus => {
-                        println!("      - run {} -> not in status.json", job.run_id);
+                    JobStatus::NotInStatus { sandbox_id } => {
+                        println!("      - sandbox {sandbox_id} -> not in status.json");
                     }
                 }
             }
@@ -1057,11 +1163,14 @@ fn print_report(
 
         // Idle VMs (keep-alive)
         if let Some(st) = &r.status
-            && st.idle_vms > 0
+            && !st.idle_vms.is_empty()
         {
-            println!("    Idle:    {} VMs", st.idle_vms);
-            for session in &st.idle_sessions {
-                println!("      - session {session}");
+            println!("    Idle:    {} VMs", st.idle_vms.len());
+            for vm in &st.idle_vms {
+                println!(
+                    "      - session {} -> sandbox {}",
+                    vm.session_id, vm.sandbox_id
+                );
             }
         }
 
@@ -1173,103 +1282,333 @@ mod tests {
         assert_eq!(parse_pool_index("vm0-ns-zz-00"), None);
     }
 
-    #[test]
-    fn correlate_jobs_matching() {
-        let status = StatusInfo {
+    fn status_info(active: Vec<(&str, &str)>, idle_sandboxes: Vec<&str>) -> StatusInfo {
+        StatusInfo {
             mode: "running".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
-            active_run_ids: vec!["abc".into(), "def".into()],
+            active_runs: active
+                .into_iter()
+                .map(|(r, s)| ActiveRunInfo {
+                    run_id: r.into(),
+                    sandbox_id: s.into(),
+                })
+                .collect(),
+            // Tests only need sandbox_id lookup for idle VMs; synthesize a
+            // placeholder session_id.
+            idle_vms: idle_sandboxes
+                .into_iter()
+                .enumerate()
+                .map(|(i, sbid)| IdleVmInfo {
+                    session_id: format!("sess-{i}"),
+                    sandbox_id: sbid.into(),
+                })
+                .collect(),
             proxy_port: None,
             dns_port: None,
-            idle_vms: 0,
-            idle_sessions: vec![],
-        };
+        }
+    }
+
+    fn fc_info(pid: u32, sandbox_id: &str, base_dir: &str) -> process::FirecrackerProcessInfo {
+        process::FirecrackerProcessInfo {
+            pid,
+            ppid: None,
+            sandbox_id: sandbox_id.into(),
+            base_dir: Some(PathBuf::from(base_dir)),
+        }
+    }
+
+    #[test]
+    fn correlate_jobs_matching() {
+        // sandbox_id == run_id (first-job case: doctor still joins correctly).
+        let status = status_info(vec![("abc", "abc"), ("def", "def")], vec![]);
         let fc = vec![
-            process::FirecrackerProcessInfo {
-                pid: 100,
-                ppid: None,
-                run_id: "abc".into(),
-                base_dir: Some(PathBuf::from("/data/r1")),
-            },
-            process::FirecrackerProcessInfo {
-                pid: 101,
-                ppid: None,
-                run_id: "def".into(),
-                base_dir: Some(PathBuf::from("/data/r1")),
-            },
+            fc_info(100, "abc", "/data/r1"),
+            fc_info(101, "def", "/data/r1"),
         ];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 2);
         assert!(warnings.is_empty());
         assert!(matches!(
             jobs.first().unwrap().status,
-            JobStatus::Running(100)
+            JobStatus::Running { pid: 100, .. }
         ));
     }
 
     #[test]
-    fn correlate_jobs_missing_process() {
-        let status = StatusInfo {
-            mode: "running".into(),
-            started_at: "2026-01-01T00:00:00.000Z".into(),
-            active_run_ids: vec!["abc".into()],
-            proxy_port: None,
-            dns_port: None,
-            idle_vms: 0,
-            idle_sessions: vec![],
-        };
-        let fc: Vec<process::FirecrackerProcessInfo> = vec![];
+    fn correlate_active_reused_no_warning() {
+        // Sandbox was reused: FC's sandbox_id differs from the active run_id
+        // but matches via the status mapping — should emit zero warnings.
+        let status = status_info(vec![("run-new", "sandbox-orig")], vec![]);
+        let fc = vec![fc_info(200, "sandbox-orig", "/data/r1")];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].to_string().contains("no firecracker process"));
+        assert!(warnings.is_empty(), "reused sandbox must not warn");
+        let JobStatus::Running { run_id, pid } = &jobs.first().unwrap().status else {
+            panic!("expected Running");
+        };
+        assert_eq!(
+            run_id, "run-new",
+            "Running should carry the run_id, not sandbox_id"
+        );
+        assert_eq!(*pid, 200);
     }
 
     #[test]
-    fn correlate_jobs_extra_process() {
-        let status = StatusInfo {
-            mode: "running".into(),
-            started_at: "2026-01-01T00:00:00.000Z".into(),
-            active_run_ids: vec![],
-            proxy_port: None,
-            dns_port: None,
-            idle_vms: 0,
-            idle_sessions: vec![],
-        };
-        let fc = vec![process::FirecrackerProcessInfo {
-            pid: 200,
-            ppid: None,
-            run_id: "orphan".into(),
-            base_dir: Some(PathBuf::from("/data/r1")),
-        }];
+    fn correlate_idle_vm_no_warning() {
+        // Parked idle VM: no active run, sandbox_id listed in idle_vms.
+        // This is the exact prod-3 v0.79.12 scenario that used to
+        // false-positive with 2 `FirecrackerNotInStatus` warnings.
+        let status = status_info(vec![], vec!["sandbox-idle"]);
+        let fc = vec![fc_info(300, "sandbox-idle", "/data/r1")];
+        let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
+        assert!(jobs.is_empty(), "idle FC should not surface as a job");
+        assert!(warnings.is_empty(), "idle FC must not warn");
+    }
+
+    #[test]
+    fn correlate_active_no_fc_warns() {
+        // Active run with no matching FC process.
+        let status = status_info(vec![("run-x", "sandbox-x")], vec![]);
+        let fc: Vec<process::FirecrackerProcessInfo> = vec![];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
+        assert!(matches!(
+            jobs.first().unwrap().status,
+            JobStatus::NoProcess { .. }
+        ));
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].to_string().contains("not in status.json"));
+        let msg = warnings[0].to_string();
+        assert!(msg.contains("no firecracker"), "{msg}");
+        assert!(msg.contains("run-x"), "{msg}");
+        assert!(msg.contains("sandbox-x"), "{msg}");
+    }
+
+    #[test]
+    fn correlate_orphan_fc_warns() {
+        // FC process with a sandbox_id outside both active and idle sets.
+        let status = status_info(vec![("run-a", "sandbox-a")], vec!["sandbox-idle"]);
+        let fc = vec![
+            fc_info(400, "sandbox-a", "/data/r1"),      // active, OK
+            fc_info(401, "sandbox-idle", "/data/r1"),   // idle, OK
+            fc_info(402, "sandbox-orphan", "/data/r1"), // orphan, warn
+        ];
+        let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
+        assert_eq!(jobs.len(), 2, "one active job + one orphan surface");
+        assert_eq!(warnings.len(), 1);
+        let msg = warnings[0].to_string();
+        assert!(msg.contains("sandbox-orphan"), "{msg}");
+        assert!(msg.contains("not in status.json"), "{msg}");
+
+        // The orphan row must carry the sandbox_id in `NotInStatus`, not
+        // misfiled into a `run_id` variant. Type-checking this here locks
+        // in the distinction so future refactors can't quietly regress.
+        let orphan_row = jobs
+            .iter()
+            .find(|j| matches!(j.status, JobStatus::NotInStatus { .. }))
+            .expect("orphan row missing");
+        let JobStatus::NotInStatus { sandbox_id } = &orphan_row.status else {
+            panic!("orphan row must be NotInStatus");
+        };
+        assert_eq!(sandbox_id, "sandbox-orphan");
     }
 
     #[test]
     fn correlate_jobs_ignores_other_runners() {
-        let status = StatusInfo {
-            mode: "running".into(),
-            started_at: "2026-01-01T00:00:00.000Z".into(),
-            active_run_ids: vec!["abc".into()],
-            proxy_port: None,
-            dns_port: None,
-            idle_vms: 0,
-            idle_sessions: vec![],
-        };
+        let status = status_info(vec![("abc", "sbox-abc")], vec![]);
         // This firecracker belongs to a different runner (different base_dir)
         let fc = vec![process::FirecrackerProcessInfo {
             pid: 300,
             ppid: None,
-            run_id: "abc".into(),
+            sandbox_id: "sbox-abc".into(),
             base_dir: Some(PathBuf::from("/data/r2")),
         }];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].to_string().contains("no firecracker process"));
+    }
+
+    #[test]
+    fn correlate_jobs_empty_status_empty_fcs() {
+        let status = status_info(vec![], vec![]);
+        let fc: Vec<process::FirecrackerProcessInfo> = vec![];
+        let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
+        assert!(jobs.is_empty());
+        assert!(warnings.is_empty());
+    }
+
+    // -- persists() recheck tests --------------------------------------------
+    //
+    // These exercise the resolution logic used in the recheck loop. Each
+    // writes a real status.json (since persists() calls read_status
+    // internally) and asserts whether the warning clears.
+
+    fn write_status_json(path: &std::path::Path, contents: &str) {
+        std::fs::write(path, contents).unwrap();
+    }
+
+    fn empty_fresh() -> process::DiscoveredProcesses {
+        process::DiscoveredProcesses {
+            runners: vec![],
+            firecrackers: vec![],
+            mitmdumps: vec![],
+            dnsmasqs: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn no_firecracker_for_run_resolves_when_run_removed_even_if_sandbox_reused() {
+        // Regression: a NoFirecrackerForRun warning for run R1 should clear
+        // once R1 is no longer in active_runs, even if R1's sandbox_id got
+        // reused by another active run R2. Keying on sandbox_id instead of
+        // run_id would wrongly keep R1's warning.
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        write_status_json(
+            &base_dir.join("status.json"),
+            r#"{
+                "mode": "running",
+                "max_concurrent": 4,
+                "active_runs": [
+                    {"run_id": "R2", "sandbox_id": "S1"}
+                ],
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z"
+            }"#,
+        );
+
+        let warning = Warning::NoFirecrackerForRun {
+            run_id: "R1".into(),
+            sandbox_id: "S1".into(),
+            base_dir: base_dir.clone(),
+        };
+        assert!(
+            !warning.persists(&empty_fresh()).await,
+            "warning about R1 must clear after R1 leaves active_runs even though S1 is reused"
+        );
+    }
+
+    #[tokio::test]
+    async fn no_firecracker_for_run_persists_while_run_still_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        write_status_json(
+            &base_dir.join("status.json"),
+            r#"{
+                "mode": "running",
+                "max_concurrent": 4,
+                "active_runs": [
+                    {"run_id": "R1", "sandbox_id": "S1"}
+                ],
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z"
+            }"#,
+        );
+
+        let warning = Warning::NoFirecrackerForRun {
+            run_id: "R1".into(),
+            sandbox_id: "S1".into(),
+            base_dir: base_dir.clone(),
+        };
+        // R1 is still active and there's no FC in fresh. Warning persists.
+        assert!(warning.persists(&empty_fresh()).await);
+    }
+
+    #[tokio::test]
+    async fn firecracker_not_in_status_clears_when_sandbox_becomes_idle() {
+        // A FirecrackerNotInStatus warning must clear once its sandbox_id
+        // shows up in idle_vms (the VM was parked between scans).
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        write_status_json(
+            &base_dir.join("status.json"),
+            r#"{
+                "mode": "running",
+                "max_concurrent": 4,
+                "active_runs": [],
+                "idle_vms": [
+                    {"session_id": "sess-1", "sandbox_id": "S1"}
+                ],
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z"
+            }"#,
+        );
+
+        // Use our own PID (which certainly exists) so the pid_exists check
+        // doesn't short-circuit.
+        let live_pid = std::process::id();
+        let warning = Warning::FirecrackerNotInStatus {
+            pid: live_pid,
+            sandbox_id: "S1".into(),
+            base_dir: base_dir.clone(),
+        };
+        assert!(
+            !warning.persists(&empty_fresh()).await,
+            "warning must clear once the sandbox is tracked as idle"
+        );
+    }
+
+    #[tokio::test]
+    async fn firecracker_not_in_status_clears_when_sandbox_becomes_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        write_status_json(
+            &base_dir.join("status.json"),
+            r#"{
+                "mode": "running",
+                "max_concurrent": 4,
+                "active_runs": [
+                    {"run_id": "R1", "sandbox_id": "S1"}
+                ],
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z"
+            }"#,
+        );
+
+        let live_pid = std::process::id();
+        let warning = Warning::FirecrackerNotInStatus {
+            pid: live_pid,
+            sandbox_id: "S1".into(),
+            base_dir: base_dir.clone(),
+        };
+        assert!(!warning.persists(&empty_fresh()).await);
+    }
+
+    #[tokio::test]
+    async fn firecracker_not_in_status_persists_when_still_orphan() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        write_status_json(
+            &base_dir.join("status.json"),
+            r#"{
+                "mode": "running",
+                "max_concurrent": 4,
+                "active_runs": [],
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z"
+            }"#,
+        );
+
+        let live_pid = std::process::id();
+        let warning = Warning::FirecrackerNotInStatus {
+            pid: live_pid,
+            sandbox_id: "S-ghost".into(),
+            base_dir: base_dir.clone(),
+        };
+        assert!(warning.persists(&empty_fresh()).await);
+    }
+
+    #[tokio::test]
+    async fn firecracker_not_in_status_clears_when_pid_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        // status.json doesn't matter — pid check short-circuits.
+        let warning = Warning::FirecrackerNotInStatus {
+            pid: u32::MAX, // never a valid pid
+            sandbox_id: "S-anything".into(),
+            base_dir,
+        };
+        assert!(!warning.persists(&empty_fresh()).await);
     }
 
     #[test]
@@ -1352,9 +1691,23 @@ mod tests {
     fn warning_display() {
         let w = Warning::NoFirecrackerForRun {
             run_id: "abc-123".into(),
+            sandbox_id: "sbox-abc".into(),
             base_dir: PathBuf::from("/data/r1"),
         };
-        assert_eq!(w.to_string(), "no firecracker process for run abc-123");
+        assert_eq!(
+            w.to_string(),
+            "no firecracker process for run abc-123 (sandbox sbox-abc)"
+        );
+
+        let w = Warning::FirecrackerNotInStatus {
+            pid: 17,
+            sandbox_id: "sbox-gone".into(),
+            base_dir: PathBuf::from("/data/r1"),
+        };
+        assert_eq!(
+            w.to_string(),
+            "firecracker PID 17 (sandbox sbox-gone) not in status.json"
+        );
 
         let w = Warning::ApiUnreachable {
             server_url: "https://example.com".into(),
@@ -1364,20 +1717,23 @@ mod tests {
 
         let w = Warning::OrphanFirecracker {
             pid: 42,
-            run_id: "xyz".into(),
+            sandbox_id: "xyz".into(),
             ppid: Some(10),
         };
         assert_eq!(
             w.to_string(),
-            "orphan firecracker PID 42 (run xyz, ppid=10)"
+            "orphan firecracker PID 42 (sandbox xyz, ppid=10)"
         );
 
         let w = Warning::OrphanFirecracker {
             pid: 42,
-            run_id: "xyz".into(),
+            sandbox_id: "xyz".into(),
             ppid: None,
         };
-        assert_eq!(w.to_string(), "orphan firecracker PID 42 (run xyz, ppid=?)");
+        assert_eq!(
+            w.to_string(),
+            "orphan firecracker PID 42 (sandbox xyz, ppid=?)"
+        );
 
         let w = Warning::StaleMitmproxy {
             pid: 555,

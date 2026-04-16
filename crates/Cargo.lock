@@ -2401,7 +2401,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.79.13"
+version = "0.81.1"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -2590,9 +2590,11 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "async-trait",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "uuid",
@@ -2600,7 +2602,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.25.2"
+version = "0.25.3"
 dependencies = [
  "async-trait",
  "base64",
@@ -2625,7 +2627,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-trait",
  "sandbox",

@@ -7,9 +7,9 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::Args;
-use uuid::Uuid;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::ids::RunId;
 use crate::paths::HomePaths;
 use crate::provider::{JobRequest, JobResponse};
 
@@ -75,7 +75,7 @@ fn cleanup_files(
     result_path: &std::path::Path,
     cancel_path: &std::path::Path,
     group_dir: &std::path::Path,
-    job_id: Uuid,
+    job_id: RunId,
 ) {
     let _ = std::fs::remove_file(job_path);
     let _ = std::fs::remove_file(result_path);
@@ -115,7 +115,7 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
         RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
     })?;
 
-    let job_id = Uuid::new_v4();
+    let job_id = RunId::new_v4();
     let request = JobRequest {
         job_id,
         prompt: args.prompt,
@@ -271,7 +271,7 @@ mod tests {
     fn cleanup_files_is_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
-        let job_id = Uuid::new_v4();
+        let job_id = RunId::new_v4();
         let job_path = group_dir.join(format!("{job_id}.job"));
         let result_path = group_dir.join(format!("{job_id}.result"));
         let cancel_path = group_dir.join(format!("{job_id}.cancel"));

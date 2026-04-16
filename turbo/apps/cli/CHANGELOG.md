@@ -1,5 +1,33 @@
 # Changelog
 
+## [9.117.0](https://github.com/vm0-ai/vm0/compare/cli-v9.116.3...cli-v9.117.0) (2026-04-16)
+
+
+### Features
+
+* add zero chat message send command with chat-message:write capability ([#9580](https://github.com/vm0-ai/vm0/issues/9580)) ([93692d7](https://github.com/vm0-ai/vm0/commit/93692d7cff357a7d9d015e194dd134f475dd9ccb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.190.0
+
+## [9.116.3](https://github.com/vm0-ai/vm0/compare/cli-v9.116.2...cli-v9.116.3) (2026-04-16)
+
+
+### Refactoring
+
+* **slack:** replace r2 pre-upload with on-demand download-file cli ([#9541](https://github.com/vm0-ai/vm0/issues/9541)) ([2cd0263](https://github.com/vm0-ai/vm0/commit/2cd02637302d63e7ca561fe13a9a25532465f763))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.189.1
+
 ## [9.116.2](https://github.com/vm0-ai/vm0/compare/cli-v9.116.1...cli-v9.116.2) (2026-04-15)
 
 

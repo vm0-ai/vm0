@@ -1,20 +1,8 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { summaryEntrySchema } from "./chat-threads";
 
 const c = initContract();
-
-/**
- * Stored chat message schema (persisted in agent_sessions.chat_messages JSONB)
- */
-const storedChatMessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  content: z.string(),
-  runId: z.string().optional(),
-  summaries: z.array(summaryEntrySchema).optional(),
-  createdAt: z.string(),
-});
 
 /**
  * Session response schema
@@ -26,20 +14,8 @@ const sessionResponseSchema = z.object({
   conversationId: z.string().nullable(),
   artifactName: z.string().nullable(),
   secretNames: z.array(z.string()).nullable(),
-  chatMessages: z.array(storedChatMessageSchema).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
-});
-
-/**
- * Session list item schema (lightweight, for listing)
- */
-const sessionListItemSchema = z.object({
-  id: z.string(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  messageCount: z.number(),
-  preview: z.string().nullable(),
 });
 
 /**
@@ -78,29 +54,6 @@ const checkpointResponseSchema = z.object({
   artifactSnapshot: artifactSnapshotSchema.nullable(),
   volumeVersionsSnapshot: volumeVersionsSnapshotSchema.nullable(),
   createdAt: z.string(),
-});
-
-/**
- * Sessions list route contract (/api/agent/sessions)
- */
-export const sessionsContract = c.router({
-  /**
-   * GET /api/agent/sessions?agentComposeId=X
-   * List chat sessions for an agent
-   */
-  list: {
-    method: "GET",
-    path: "/api/agent/sessions",
-    headers: authHeadersSchema,
-    query: z.object({
-      agentComposeId: z.string().min(1, "agentComposeId is required"),
-    }),
-    responses: {
-      200: z.object({ sessions: z.array(sessionListItemSchema) }),
-      401: apiErrorSchema,
-    },
-    summary: "List chat sessions for an agent",
-  },
 });
 
 /**
@@ -153,15 +106,12 @@ export const checkpointsByIdContract = c.router({
   },
 });
 
-export type SessionsContract = typeof sessionsContract;
 export type SessionsByIdContract = typeof sessionsByIdContract;
 export type CheckpointsByIdContract = typeof checkpointsByIdContract;
 
 // Export schemas for reuse
 export {
-  storedChatMessageSchema,
   sessionResponseSchema,
-  sessionListItemSchema,
   checkpointResponseSchema,
   agentComposeSnapshotSchema,
   artifactSnapshotSchema,
@@ -169,9 +119,7 @@ export {
 };
 
 // Export inferred types for consumers
-export type StoredChatMessage = z.infer<typeof storedChatMessageSchema>;
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
-export type SessionListItem = z.infer<typeof sessionListItemSchema>;
 export type CheckpointResponse = z.infer<typeof checkpointResponseSchema>;
 export type AgentComposeSnapshot = z.infer<typeof agentComposeSnapshotSchema>;
 export type ArtifactSnapshot = z.infer<typeof artifactSnapshotSchema>;

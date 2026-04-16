@@ -21,13 +21,14 @@ export const firewallPermissionSchema = z.object({
 });
 
 /**
- * Firewall API entry — a base URL with auth headers and optional permissions.
+ * Firewall API entry — a base URL with optional auth headers/query/base and permissions.
  */
 export const firewallApiSchema = z.object({
   base: z.string(),
   auth: z.object({
-    headers: z.record(z.string(), z.string()),
+    headers: z.record(z.string(), z.string()).optional(),
     base: z.string().optional(),
+    query: z.record(z.string(), z.string()).optional(),
   }),
   permissions: z.array(firewallPermissionSchema).optional(),
 });
@@ -199,7 +200,7 @@ export function extractSecretNamesFromApis(
 ): string[] {
   const names = new Set<string>();
   for (const entry of apis) {
-    for (const value of Object.values(entry.auth.headers)) {
+    for (const value of Object.values(entry.auth.headers ?? {})) {
       for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
         names.add(match[1]!);
       }
@@ -215,6 +216,15 @@ export function extractSecretNamesFromApis(
     if (entry.auth.base) {
       for (const match of entry.auth.base.matchAll(AUTH_SECRET_PATTERN)) {
         names.add(match[1]!);
+      }
+    }
+    // Scan auth.query for secret references (query-param auth connectors).
+    // Only simple ${{ secrets.X }} — basic() makes no sense in query params.
+    if (entry.auth.query) {
+      for (const value of Object.values(entry.auth.query)) {
+        for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
+          names.add(match[1]!);
+        }
       }
     }
   }

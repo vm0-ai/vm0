@@ -781,6 +781,7 @@ mod tests {
                         "Bearer ${{ secrets.GMAIL_TOKEN }}".to_string(),
                     )]),
                     base: None,
+                    query: None,
                 },
                 permissions: Some(vec![FirewallPermission {
                     name: "mail-read".to_string(),
@@ -919,6 +920,7 @@ mod tests {
                 auth: FirewallAuth {
                     headers: std::collections::HashMap::new(),
                     base: Some("${{ secrets.DISCORD_WEBHOOK_URL }}".to_string()),
+                    query: None,
                 },
                 permissions: None,
             }],
@@ -948,6 +950,74 @@ mod tests {
         assert_eq!(api["auth"]["base"], "${{ secrets.DISCORD_WEBHOOK_URL }}");
         // headers should be empty object
         assert_eq!(api["auth"]["headers"], serde_json::json!({}));
+    }
+
+    #[tokio::test]
+    async fn registry_firewall_auth_query_serialized() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let lock_path = dir.path().join("proxy-registry.lock");
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        let handle = ProxyRegistryHandle {
+            registry_path: registry_path.clone(),
+            lock_path,
+        };
+
+        let firewall_entries = vec![Firewall {
+            name: "serpapi".to_string(),
+            ref_key: "serpapi".to_string(),
+            apis: vec![FirewallApi {
+                id: String::new(),
+                base: "https://serpapi.com".to_string(),
+                auth: FirewallAuth {
+                    headers: std::collections::HashMap::new(),
+                    base: None,
+                    query: Some(
+                        [(
+                            "api_key".to_string(),
+                            "${{ secrets.SERPAPI_TOKEN }}".to_string(),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                },
+                permissions: None,
+            }],
+        }];
+
+        let registration = VmRegistration {
+            run_id: "run-query-auth",
+            sandbox_token: "tok",
+            network_log_path: std::path::Path::new("/tmp/network-run-query.jsonl"),
+            proxy_log_path: std::path::Path::new("/tmp/proxy-run-query.jsonl"),
+            firewalls: Some(&firewall_entries),
+            network_policies: None,
+            encrypted_secrets: Some("enc_data"),
+            secret_connector_map: None,
+            vars: None,
+            capture_network_bodies: false,
+        };
+        handle
+            .register_vm("10.200.0.8", &registration)
+            .await
+            .unwrap();
+
+        // Verify auth.query is preserved in the registry JSON.
+        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let api = &value["vms"]["10.200.0.8"]["firewalls"][0]["apis"][0];
+        assert_eq!(
+            api["auth"]["query"],
+            serde_json::json!({"api_key": "${{ secrets.SERPAPI_TOKEN }}"})
+        );
+        // headers should be empty object, base should be absent
+        assert_eq!(api["auth"]["headers"], serde_json::json!({}));
+        assert_eq!(api["auth"]["base"], serde_json::Value::Null);
     }
 
     #[tokio::test]

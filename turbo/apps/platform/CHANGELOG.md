@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.242.5](https://github.com/vm0-ai/vm0/compare/app-v0.242.4...app-v0.242.5) (2026-04-16)
+
+
+### Bug Fixes
+
+* **platform:** suppress permission dialog after connector connect during onboarding ([#9601](https://github.com/vm0-ai/vm0/issues/9601)) ([a209adb](https://github.com/vm0-ai/vm0/commit/a209adba532f2be0c664a964a0dcae276c23558d))
+* show agent display name on connector authorize/connect pages ([#9597](https://github.com/vm0-ai/vm0/issues/9597)) ([5afdfe9](https://github.com/vm0-ai/vm0/commit/5afdfe97bafbc29eabfc417ed0bbd6704ba93400))
+
+## [0.242.4](https://github.com/vm0-ai/vm0/compare/app-v0.242.3...app-v0.242.4) (2026-04-16)
+
+
+### Refactoring
+
+* **platform:** remove thinking indicator and run activity line from chat ([#9564](https://github.com/vm0-ai/vm0/issues/9564)) ([37bd298](https://github.com/vm0-ai/vm0/commit/37bd2983198d5c8a319834c3e3396ee215d51dc6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.190.0
+
+## [0.242.3](https://github.com/vm0-ai/vm0/compare/app-v0.242.2...app-v0.242.3) (2026-04-16)
+
+
+### Refactoring
+
+* **slack:** replace r2 pre-upload with on-demand download-file cli ([#9541](https://github.com/vm0-ai/vm0/issues/9541)) ([2cd0263](https://github.com/vm0-ai/vm0/commit/2cd02637302d63e7ca561fe13a9a25532465f763))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.189.1
+
+## [0.242.2](https://github.com/vm0-ai/vm0/compare/app-v0.242.1...app-v0.242.2) (2026-04-16)
+
+
+### Refactoring
+
+* **platform:** convert ably notify to ccstate command pattern ([#9554](https://github.com/vm0-ai/vm0/issues/9554)) ([129dc85](https://github.com/vm0-ai/vm0/commit/129dc85207207600dc383620b6bc92ebb006d1d5))
+
 ## [0.242.1](https://github.com/vm0-ai/vm0/compare/app-v0.242.0...app-v0.242.1) (2026-04-15)
 
 

@@ -46,7 +46,6 @@ import * as clientCreditUsageSchema from "./schema/client-credit-usage";
 import * as creditPricingSchema from "./schema/credit-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
 import * as zeroRunSchema from "./schema/zero-run";
-import * as zeroAgentSessionSchema from "./schema/zero-agent-session";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroSkillSchema from "./schema/zero-skill";
@@ -108,7 +107,6 @@ export const schema = {
   ...creditPricingSchema,
   ...zeroAgentSchema,
   ...zeroRunSchema,
-  ...zeroAgentSessionSchema,
   ...storageVersionLineageSchema,
   ...vm0ApiKeySchema,
   ...zeroSkillSchema,

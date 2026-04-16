@@ -1,5 +1,53 @@
 # Changelog
 
+## [12.244.0](https://github.com/vm0-ai/vm0/compare/web-v12.243.0...web-v12.244.0) (2026-04-16)
+
+
+### Features
+
+* add auth.query support to firewall schema for query-parameter authentication ([#9583](https://github.com/vm0-ai/vm0/issues/9583)) ([c39727a](https://github.com/vm0-ai/vm0/commit/c39727abd12ddd86271294324cf352fe86f96658))
+* add GET /api/zero/chat-threads/:id/messages with sinceId cursor pagination ([#9561](https://github.com/vm0-ai/vm0/issues/9561)) ([dcc04b4](https://github.com/vm0-ai/vm0/commit/dcc04b4feb23d25c75220b4ad983b91c0dd56fee))
+* add granular realtime signals for run and chat thread updates ([#9575](https://github.com/vm0-ai/vm0/issues/9575)) ([12c3e62](https://github.com/vm0-ai/vm0/commit/12c3e62e4e2769dd9e1e869f249bdf0933a52c66))
+* add zero chat message send command with chat-message:write capability ([#9580](https://github.com/vm0-ai/vm0/issues/9580)) ([93692d7](https://github.com/vm0-ai/vm0/commit/93692d7cff357a7d9d015e194dd134f475dd9ccb))
+
+
+### Bug Fixes
+
+* **zero:** inject custom skill volumes in zero run path ([#9582](https://github.com/vm0-ai/vm0/issues/9582)) ([0a11a98](https://github.com/vm0-ai/vm0/commit/0a11a98afbe1ed43c3d46e063d21c4b08e41e6b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.190.0
+
+## [12.243.0](https://github.com/vm0-ai/vm0/compare/web-v12.242.0...web-v12.243.0) (2026-04-16)
+
+
+### Features
+
+* **web:** replace use-case cards with role-based showcase and comparison section ([#9545](https://github.com/vm0-ai/vm0/issues/9545)) ([a30e66f](https://github.com/vm0-ai/vm0/commit/a30e66f19ec2e25f7d5cdd17e53bdbb80fac9bbd))
+
+
+### Refactoring
+
+* **slack:** replace r2 pre-upload with on-demand download-file cli ([#9541](https://github.com/vm0-ai/vm0/issues/9541)) ([2cd0263](https://github.com/vm0-ai/vm0/commit/2cd02637302d63e7ca561fe13a9a25532465f763))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.189.1
+
+## [12.242.0](https://github.com/vm0-ai/vm0/compare/web-v12.241.0...web-v12.242.0) (2026-04-16)
+
+
+### Features
+
+* add run_event_id to chat_messages for Anthropic message traceability ([#9559](https://github.com/vm0-ai/vm0/issues/9559)) ([7cbbec6](https://github.com/vm0-ai/vm0/commit/7cbbec653e7e1e39f4b13f24ebadd65e42b7969b))
+
 ## [12.241.0](https://github.com/vm0-ai/vm0/compare/web-v12.240.0...web-v12.241.0) (2026-04-15)
 
 

@@ -166,11 +166,11 @@ export async function bestEffort(p: Promise<unknown>): Promise<void> {
 // ---------------------------------------------------------------------------
 // Polling loop with fibonacci backoff
 // ---------------------------------------------------------------------------
-const FIB_DELAYS_MS = [
+export const FIB_DELAYS_MS = [
   1000, 1000, 2000, 3000, 5000, 8000, 13_000, 21_000, 34_000, 55_000, 60_000,
 ] as const;
 
-const MAX_LOOP_COUNT_IN_TEST = 1000;
+export const MAX_LOOP_COUNT_IN_TEST = 1000;
 /**
  * Run `loopBody` in a loop with `interval` between iterations.
  * Transient (non-abort) errors trigger fibonacci backoff retries.

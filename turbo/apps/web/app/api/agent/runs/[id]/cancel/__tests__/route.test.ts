@@ -364,6 +364,10 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
       expect(mockAblyPublish).toHaveBeenCalledWith(`thread:${run.runId}`, null);
       expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `runUpdated:${run.runId}`,
+        null,
+      );
     });
   });
 });

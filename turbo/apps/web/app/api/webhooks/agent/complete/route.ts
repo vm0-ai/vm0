@@ -51,6 +51,7 @@ function scheduleTerminalSideEffects(
 
     // Notify run owner that run state changed
     await publishUserSignal([userId], `thread:${runId}`);
+    await publishUserSignal([userId], `runUpdated:${runId}`);
     // Notify org members that task list may have changed
     const orgMembers = await getOrgMemberUserIds(orgId);
     await publishUserSignal(orgMembers, `tasks:${orgId}`);

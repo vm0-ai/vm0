@@ -1,5 +1,6 @@
-import { eq, asc, desc, and, isNotNull, isNull } from "drizzle-orm";
+import { eq, asc, desc, and, gt, isNotNull, isNull } from "drizzle-orm";
 import { chatMessages } from "../../../db/schema/chat-message";
+import { chatThreads } from "../../../db/schema/chat-thread";
 import { agentRuns } from "../../../db/schema/agent-run";
 
 /**
@@ -43,7 +44,7 @@ export async function insertChatMessage(params: {
 export async function insertAssistantEventMessages(
   runId: string,
   threadId: string,
-  items: { sequenceNumber: number; content: string }[],
+  items: { sequenceNumber: number; content: string; runEventId?: string }[],
 ): Promise<number> {
   if (items.length === 0) {
     return 0;
@@ -59,6 +60,7 @@ export async function insertAssistantEventMessages(
           role: "assistant" as const,
           content: item.content,
           sequenceNumber: item.sequenceNumber,
+          runEventId: item.runEventId ?? null,
         };
       }),
     )
@@ -71,21 +73,25 @@ export async function insertAssistantEventMessages(
 }
 
 /**
- * Resolve the chat_thread_id for a run from its placeholder assistant row.
- * Returns null when the run is not tied to a chat thread (e.g., non-chat
- * triggers like cron/schedule), so event consumers can silently skip it.
+ * Resolve the chat_thread_id and owner user_id for a run from its placeholder
+ * assistant row. Returns null when the run is not tied to a chat thread (e.g.,
+ * non-chat triggers like cron/schedule), so event consumers can silently skip it.
  */
 export async function getChatThreadIdForRun(
   runId: string,
-): Promise<string | null> {
+): Promise<{ chatThreadId: string; userId: string } | null> {
   const [row] = await globalThis.services.db
-    .select({ chatThreadId: chatMessages.chatThreadId })
+    .select({
+      chatThreadId: chatMessages.chatThreadId,
+      userId: chatThreads.userId,
+    })
     .from(chatMessages)
+    .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
     .where(
       and(eq(chatMessages.runId, runId), eq(chatMessages.role, "assistant")),
     )
     .limit(1);
-  return row?.chatThreadId ?? null;
+  return row ?? null;
 }
 
 /**
@@ -177,6 +183,72 @@ export async function getMessagesByThreadId(chatThreadId: string): Promise<
     .from(chatMessages)
     .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
     .where(eq(chatMessages.chatThreadId, chatThreadId))
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+}
+
+/**
+ * Get messages for a thread after a given cursor message, ordered by
+ * (created_at ASC, sequence_number ASC).
+ *
+ * When `sinceId` is provided, only messages whose `created_at` is strictly
+ * after the cursor message's `created_at` are returned. This uses the
+ * `idx_chat_messages_thread_created` btree index for efficient filtering.
+ *
+ * When `sinceId` is omitted all messages in the thread are returned —
+ * equivalent to `getMessagesByThreadId`.
+ */
+export async function getMessagesByThreadIdSince(
+  chatThreadId: string,
+  sinceId?: string,
+): Promise<
+  Array<{
+    id: string;
+    role: string;
+    content: string | null;
+    runId: string | null;
+    error: string | null;
+    sequenceNumber: number | null;
+    createdAt: Date;
+    runStatus: string | null;
+    runError: string | null;
+  }>
+> {
+  if (!sinceId) {
+    return getMessagesByThreadId(chatThreadId);
+  }
+
+  // Look up the cursor message's created_at
+  const [cursor] = await globalThis.services.db
+    .select({ createdAt: chatMessages.createdAt })
+    .from(chatMessages)
+    .where(eq(chatMessages.id, sinceId))
+    .limit(1);
+
+  if (!cursor) {
+    // sinceId not found — return empty rather than throw
+    return [];
+  }
+
+  return globalThis.services.db
+    .select({
+      id: chatMessages.id,
+      role: chatMessages.role,
+      content: chatMessages.content,
+      runId: chatMessages.runId,
+      error: chatMessages.error,
+      sequenceNumber: chatMessages.sequenceNumber,
+      createdAt: chatMessages.createdAt,
+      runStatus: agentRuns.status,
+      runError: agentRuns.error,
+    })
+    .from(chatMessages)
+    .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, chatThreadId),
+        gt(chatMessages.createdAt, cursor.createdAt),
+      ),
+    )
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 }
 

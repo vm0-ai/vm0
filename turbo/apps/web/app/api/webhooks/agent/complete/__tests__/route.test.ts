@@ -1053,6 +1053,10 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       expect(mockAblyPublish).toHaveBeenCalledWith(`thread:${testRunId}`, null);
       expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `runUpdated:${testRunId}`,
+        null,
+      );
     });
   });
 });

@@ -122,9 +122,6 @@ export async function handleOrgDirectMessage(
     {
       messageContent: context.messageText,
       files: context.files,
-      botToken,
-      channelId: context.channelId,
-      threadTs,
       client,
       userId: context.userId,
     },
@@ -156,8 +153,6 @@ export async function handleOrgDirectMessage(
     client,
     context.channelId,
     context.threadTs,
-    botUserId,
-    botToken,
     context.messageTs,
   );
 

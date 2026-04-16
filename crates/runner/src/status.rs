@@ -1,11 +1,13 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
+use sandbox::SandboxId;
 use serde::Serialize;
 use tokio::sync::Mutex;
 use tracing::warn;
-use uuid::Uuid;
+
+use crate::ids::RunId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -15,15 +17,33 @@ pub enum RunnerMode {
     Stopped,
 }
 
+/// One active run's identity: the `run_id` the user sees and the `sandbox_id`
+/// that identifies the Firecracker VM hosting it. After sandbox reuse these
+/// differ: the VM keeps its original `sandbox_id` while each successive job
+/// has a fresh `run_id`.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct ActiveRun {
+    pub run_id: RunId,
+    pub sandbox_id: SandboxId,
+}
+
+/// One parked (idle) sandbox's identity: the `session_id` it's keyed by in
+/// the idle pool and the `sandbox_id` of the Firecracker VM kept alive for
+/// reuse. Pairing these as a struct (rather than parallel arrays) matches
+/// `ActiveRun` and avoids the "indexed-by-position" bug class.
+#[derive(Debug, Clone, Serialize)]
+pub struct IdleVm {
+    pub session_id: String,
+    pub sandbox_id: SandboxId,
+}
+
 #[derive(Debug, Serialize)]
 struct RunnerStatus {
     mode: RunnerMode,
     max_concurrent: usize,
-    active_runs: usize,
-    active_run_ids: Vec<Uuid>,
-    idle_vms: usize,
+    active_runs: Vec<ActiveRun>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    idle_sessions: Vec<String>,
+    idle_vms: Vec<IdleVm>,
     #[serde(skip_serializing_if = "Option::is_none")]
     proxy_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -53,9 +73,14 @@ pub struct StatusTracker {
 
 struct MutableState {
     mode: RunnerMode,
-    active_run_ids: BTreeSet<Uuid>,
-    idle_vms: usize,
-    idle_sessions: Vec<String>,
+    /// Map of run_id → sandbox_id for all active runs. Keyed by run_id so
+    /// `remove_run(run_id)` stays O(log n); the paired `sandbox_id` is the
+    /// join key used by doctor and kill to find the FC process.
+    ///
+    /// BTreeMap (not HashMap) for deterministic iteration order — status.json
+    /// output should be stable across runs for readability and diffing.
+    active_runs: BTreeMap<RunId, SandboxId>,
+    idle_vms: Vec<IdleVm>,
 }
 
 impl StatusTracker {
@@ -68,9 +93,8 @@ impl StatusTracker {
             path,
             state: Mutex::new(MutableState {
                 mode: RunnerMode::Running,
-                active_run_ids: BTreeSet::new(),
-                idle_vms: 0,
-                idle_sessions: Vec::new(),
+                active_runs: BTreeMap::new(),
+                idle_vms: Vec::new(),
             }),
         }
     }
@@ -93,23 +117,22 @@ impl StatusTracker {
         self.write_status(&state).await;
     }
 
-    pub async fn add_run(&self, run_id: Uuid) {
+    pub async fn add_run(&self, run_id: RunId, sandbox_id: SandboxId) {
         let mut state = self.state.lock().await;
-        state.active_run_ids.insert(run_id);
+        state.active_runs.insert(run_id, sandbox_id);
         self.write_status(&state).await;
     }
 
-    pub async fn remove_run(&self, run_id: Uuid) {
+    pub async fn remove_run(&self, run_id: RunId) {
         let mut state = self.state.lock().await;
-        state.active_run_ids.remove(&run_id);
+        state.active_runs.remove(&run_id);
         self.write_status(&state).await;
     }
 
-    /// Update idle VM count and session list in the status file.
-    pub async fn set_idle_info(&self, idle_vms: usize, idle_sessions: Vec<String>) {
+    /// Replace the idle VM list in the status file with `idle_vms`.
+    pub async fn set_idle_info(&self, idle_vms: Vec<IdleVm>) {
         let mut state = self.state.lock().await;
         state.idle_vms = idle_vms;
-        state.idle_sessions = idle_sessions;
         self.write_status(&state).await;
     }
 
@@ -121,13 +144,20 @@ impl StatusTracker {
 
     /// Atomic write: write to a temp file in the same directory, then rename.
     async fn write_status(&self, state: &MutableState) {
+        let active_runs: Vec<ActiveRun> = state
+            .active_runs
+            .iter()
+            .map(|(rid, sid)| ActiveRun {
+                run_id: *rid,
+                sandbox_id: *sid,
+            })
+            .collect();
+
         let status = RunnerStatus {
             mode: state.mode,
             max_concurrent: self.max_concurrent,
-            active_runs: state.active_run_ids.len(),
-            active_run_ids: state.active_run_ids.iter().copied().collect(),
-            idle_vms: state.idle_vms,
-            idle_sessions: state.idle_sessions.clone(),
+            active_runs,
+            idle_vms: state.idle_vms.clone(),
             proxy_port: self.proxy_port,
             dns_port: self.dns_port,
             started_at: self.started_at,
@@ -173,8 +203,7 @@ mod tests {
         let status = read_status(&path);
         assert_eq!(status["mode"], "running");
         assert_eq!(status["max_concurrent"], 4);
-        assert_eq!(status["active_runs"], 0);
-        assert!(status["active_run_ids"].as_array().unwrap().is_empty());
+        assert!(status["active_runs"].as_array().unwrap().is_empty());
         assert!(status["started_at"].as_str().is_some());
         assert!(status["updated_at"].as_str().is_some());
     }
@@ -193,35 +222,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn add_run_records_sandbox_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4);
+
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+
+        tracker.write_initial().await;
+        tracker.add_run(run_id, sandbox_id).await;
+
+        let status = read_status(&path);
+        let runs = status["active_runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["run_id"], run_id.to_string());
+        assert_eq!(runs[0]["sandbox_id"], sandbox_id.to_string());
+    }
+
+    #[tokio::test]
     async fn add_and_remove_run() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4);
 
-        let id1 = Uuid::new_v4();
-        let id2 = Uuid::new_v4();
+        let run1 = RunId::new_v4();
+        let sb1 = SandboxId::new_v4();
+        let run2 = RunId::new_v4();
+        let sb2 = SandboxId::new_v4();
 
         tracker.write_initial().await;
-        tracker.add_run(id1).await;
-        tracker.add_run(id2).await;
+        tracker.add_run(run1, sb1).await;
+        tracker.add_run(run2, sb2).await;
 
         let status = read_status(&path);
-        assert_eq!(status["active_runs"], 2);
-        assert_eq!(status["active_run_ids"].as_array().unwrap().len(), 2);
+        assert_eq!(status["active_runs"].as_array().unwrap().len(), 2);
 
-        tracker.remove_run(id1).await;
+        tracker.remove_run(run1).await;
 
         let status = read_status(&path);
-        assert_eq!(status["active_runs"], 1);
-
-        let ids: Vec<String> = status["active_run_ids"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap().to_string())
-            .collect();
-        assert!(ids.contains(&id2.to_string()));
-        assert!(!ids.contains(&id1.to_string()));
+        let runs = status["active_runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["run_id"], run2.to_string());
+        assert_eq!(runs[0]["sandbox_id"], sb2.to_string());
     }
 
     #[tokio::test]
@@ -264,7 +307,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_idle_info_updates_file() {
+    async fn set_idle_info_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4);
@@ -272,37 +315,44 @@ mod tests {
         tracker.write_initial().await;
 
         let status = read_status(&path);
-        assert_eq!(status["idle_vms"], 0);
-        assert!(status.get("idle_sessions").is_none()); // empty vec omitted
+        assert!(status.get("idle_vms").is_none()); // empty vec omitted
 
+        let sb1 = SandboxId::new_v4();
+        let sb2 = SandboxId::new_v4();
         tracker
-            .set_idle_info(2, vec!["sess-1".into(), "sess-2".into()])
+            .set_idle_info(vec![
+                IdleVm {
+                    session_id: "sess-1".into(),
+                    sandbox_id: sb1,
+                },
+                IdleVm {
+                    session_id: "sess-2".into(),
+                    sandbox_id: sb2,
+                },
+            ])
             .await;
 
         let status = read_status(&path);
-        assert_eq!(status["idle_vms"], 2);
-        let sessions: Vec<String> = status["idle_sessions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap().to_string())
-            .collect();
-        assert_eq!(sessions, vec!["sess-1", "sess-2"]);
+        let vms = status["idle_vms"].as_array().unwrap();
+        assert_eq!(vms.len(), 2);
+        assert_eq!(vms[0]["session_id"], "sess-1");
+        assert_eq!(vms[0]["sandbox_id"], sb1.to_string());
+        assert_eq!(vms[1]["session_id"], "sess-2");
+        assert_eq!(vms[1]["sandbox_id"], sb2.to_string());
     }
 
     #[tokio::test]
-    async fn set_idle_info_empty_sessions_omitted() {
+    async fn set_idle_info_empty_omitted() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4);
 
-        tracker.set_idle_info(0, vec![]).await;
+        tracker.set_idle_info(vec![]).await;
 
         let status = read_status(&path);
-        assert_eq!(status["idle_vms"], 0);
         assert!(
-            status.get("idle_sessions").is_none(),
-            "empty idle_sessions should be omitted from JSON"
+            status.get("idle_vms").is_none(),
+            "empty idle_vms should be omitted from JSON"
         );
     }
 }
