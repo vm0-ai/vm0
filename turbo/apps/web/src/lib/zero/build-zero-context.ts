@@ -211,7 +211,7 @@ async function resolveSecretsAndEnvironment(
   // rules. Use allowedConnectorTypes (user-enabled connectors) rather than
   // connectorTypes (secret-dependent) so that firewalls are injected even when
   // the user hasn't linked the connector yet (no secrets). The proxy handles
-  // the missing-secrets case with a 502 "auth_unavailable" response.
+  // the missing-secrets case with a 424 "secrets_not_found" response.
   const connectorPermissionConfigs: ExpandedFirewallConfig[] = (
     allowedConnectorTypes ?? []
   )

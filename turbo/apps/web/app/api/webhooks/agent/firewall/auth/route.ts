@@ -448,7 +448,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: {
-          message: `Connector not linked. Missing secrets: ${missingSecrets.join(", ")}`,
+          message: `Missing secrets: ${missingSecrets.join(", ")}. Ensure the connector is linked and all required secrets are configured.`,
           code: "SECRETS_NOT_FOUND",
           missingSecrets,
         },
