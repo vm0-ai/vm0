@@ -164,7 +164,14 @@ export function getConnectorOAuthConfig(
  */
 export function isGoogleOAuthConnector(type: ConnectorType): boolean {
   const oauthConfig = getConnectorOAuthConfig(type);
-  return !!oauthConfig?.authorizationUrl?.includes("accounts.google.com");
+  if (!oauthConfig?.authorizationUrl) return false;
+  try {
+    return (
+      new URL(oauthConfig.authorizationUrl).hostname === "accounts.google.com"
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
