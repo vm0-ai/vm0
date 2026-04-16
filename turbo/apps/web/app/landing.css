@@ -713,6 +713,10 @@ body {
   z-index: 1000;
 }
 
+.language-switcher-dropdown[hidden] {
+  display: none;
+}
+
 .language-switcher-dropdown.dropdown-up {
   top: auto;
   bottom: calc(100% + 8px);

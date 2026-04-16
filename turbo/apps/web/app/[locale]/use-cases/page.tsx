@@ -62,7 +62,7 @@ export default async function UseCasesPage({ params }: PageProps) {
       return {
         "@type": "ListItem",
         position: i + 1,
-        url: `${BASE_URL}/en/use-cases/${uc.slug}`,
+        url: `${BASE_URL}/${locale}/use-cases/${uc.slug}`,
         name: t(`content.${uc.slug}.title`),
         description: t(`content.${uc.slug}.description`),
       };
