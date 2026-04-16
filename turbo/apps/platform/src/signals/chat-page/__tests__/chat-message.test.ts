@@ -883,10 +883,10 @@ describe("zero-chat signals", () => {
         context.signal,
       );
 
-      // The sent prompt should include the attachment
+      // The sent prompt should include the attachment download instruction
       expect(capturedBody).toBeDefined();
       expect(JSON.stringify(capturedBody)).toContain(
-        "https://example.com/report.pdf",
+        "zero web download-file upload-att-1",
       );
       expect(JSON.stringify(capturedBody)).toContain("report.pdf");
 
@@ -970,7 +970,9 @@ describe("zero-chat signals", () => {
 
       // API should receive non-empty prompt (attachment markdown)
       assert(isCapturedChatBody(capturedBody));
-      expect(capturedBody.prompt).toContain("https://example.com/photo.png");
+      expect(capturedBody.prompt).toContain(
+        "zero web download-file upload-img-1",
+      );
       expect(capturedBody.prompt).toContain("photo.png");
       expect(capturedBody.prompt).not.toMatch(/^\n/);
 
