@@ -318,12 +318,13 @@ describe("isGoogleOAuthConnector", () => {
 
       if (result) {
         // If classified as Google, the OAuth URL must point to accounts.google.com
+        const authorizationUrl = oauthConfig?.authorizationUrl;
         expect(
-          oauthConfig?.authorizationUrl,
+          authorizationUrl,
           `${type}: Google connector must have an authorizationUrl`,
         ).toBeDefined();
         expect(
-          new URL(oauthConfig!.authorizationUrl).hostname,
+          new URL(authorizationUrl as string).hostname,
           `${type}: Google connector authorizationUrl must use accounts.google.com`,
         ).toBe("accounts.google.com");
       } else if (oauthConfig?.authorizationUrl) {
