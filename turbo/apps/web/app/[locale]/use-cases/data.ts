@@ -115,6 +115,18 @@ const VM0: ConnectorRef = {
   icon: "/assets/connectors/vm0.svg",
 };
 
+const GOOGLE_SHEETS: ConnectorRef = {
+  id: "google-sheets",
+  label: "Google Sheets",
+  icon: "/assets/connectors/google-sheets.svg",
+};
+
+const INTERCOM: ConnectorRef = {
+  id: "intercom",
+  label: "Intercom",
+  icon: "/assets/connectors/intercom.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -511,6 +523,137 @@ export const USE_CASES: UseCase[] = [
       "sentry-triage",
       "tech-debt-scan",
       "product-health-briefing",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "release-gate-check",
+    color: "#7a8fa0",
+    avatar: {
+      rotation: 2,
+      skin: 4,
+      hairStyle: 1,
+      hairColor: 3,
+      expression: 4,
+      intensity: "h",
+    },
+    roles: ["engineering"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [GITHUB, SLACK],
+    integrations: [
+      { connector: GITHUB, required: true },
+      { connector: SLACK, required: true },
+    ],
+    relatedSlugs: [
+      "error-triage-daily",
+      "standup-summary",
+      "product-health-briefing",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "content-calendar-sync",
+    color: "#8a9e7c",
+    avatar: {
+      rotation: 4,
+      skin: 2,
+      hairStyle: 5,
+      hairColor: 1,
+      expression: 5,
+      intensity: "m",
+    },
+    roles: ["ops", "product"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [GOOGLE_SHEETS, NOTION, SLACK],
+    integrations: [
+      { connector: GOOGLE_SHEETS, required: true },
+      { connector: NOTION, required: true },
+      { connector: SLACK, required: false },
+    ],
+    relatedSlugs: [
+      "kol-cold-outreach",
+      "document-decisions",
+      "competitor-audit",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "meeting-kickoff",
+    color: "#9a8070",
+    avatar: {
+      rotation: 3,
+      skin: 3,
+      hairStyle: 2,
+      hairColor: 4,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["ops", "everyone"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [GOOGLE_CALENDAR, SLACK, NOTION],
+    integrations: [
+      { connector: GOOGLE_CALENDAR, required: true },
+      { connector: SLACK, required: true },
+      { connector: NOTION, required: false },
+    ],
+    relatedSlugs: [
+      "standup-summary",
+      "document-decisions",
+      "employee-onboarding",
+    ],
+    stepCount: 3,
+    nextActionCount: 2,
+    integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "intercom-to-issues",
+    color: "#7a6e9e",
+    avatar: {
+      rotation: 5,
+      skin: 1,
+      hairStyle: 3,
+      hairColor: 2,
+      expression: 2,
+      intensity: "h",
+    },
+    roles: ["product", "engineering"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [INTERCOM, GITHUB, SLACK],
+    integrations: [
+      { connector: INTERCOM, required: true },
+      { connector: GITHUB, required: true },
+      { connector: SLACK, required: false },
+    ],
+    relatedSlugs: [
+      "file-bugs-from-slack",
+      "sentry-triage",
+      "slack-triage",
     ],
     stepCount: 3,
     nextActionCount: 3,
