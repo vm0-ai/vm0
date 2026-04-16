@@ -5,16 +5,6 @@ const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async redirects() {
-    return [
-      {
-        source: "/:path*",
-        has: [{ type: "host", value: "vm0.ai" }],
-        destination: "https://www.vm0.ai/:path*",
-        permanent: true,
-      },
-    ];
-  },
   async headers() {
     return [
       {
