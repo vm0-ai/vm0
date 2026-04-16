@@ -95,7 +95,9 @@ export const setAblyLoop$ = command(
     const callback = (message: InboundMessage) => {
       L.debug("got message from topic", topic, message);
 
-      deferred.resolve(true);
+      if (!deferred.settled()) {
+        deferred.resolve(true);
+      }
     };
     signal.addEventListener("abort", () => {
       channel.unsubscribe(topic, callback);

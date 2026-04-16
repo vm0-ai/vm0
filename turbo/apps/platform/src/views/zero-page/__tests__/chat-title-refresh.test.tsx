@@ -52,14 +52,15 @@ describe("chat title refresh", () => {
 
     await sendMessageInUI(user, textarea, "Follow-up question");
 
-    // Wait for sidebar to be refetched (title is generated async on the server;
-    // the client schedules a delayed refresh to pick up the updated title)
+    // Complete the run — sendMessage$ now awaits watchRunStatus$, so
+    // reloadChatThreads$ only fires after the run reaches terminal status.
+    ctrl.completeRun();
+
+    // Wait for sidebar to be refetched (triggered by reloadChatThreads$ after run completes)
     await waitFor(() => {
       expect(threadListFetchCount).toBeGreaterThan(fetchCountBeforeSend);
     });
 
-    // Complete the run so polling stops
-    ctrl.completeRun();
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });

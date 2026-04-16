@@ -29,6 +29,12 @@ export function resetAblySubscriptions(): void {
   subscriptions.clear();
 }
 
+/** Debug: check if a topic has active subscriptions. */
+export function hasSubscription(topic: string): boolean {
+  const cbs = subscriptions.get(topic);
+  return cbs !== undefined && cbs.size > 0;
+}
+
 const fakeChannel = {
   subscribe(topic: string, callback: Callback): void {
     let cbs = subscriptions.get(topic);

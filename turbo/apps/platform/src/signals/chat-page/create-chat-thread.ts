@@ -667,11 +667,10 @@ export function createChatThreadSignals(
         return [...x, runId];
       });
 
-      // Watch for terminal status via Ably — runs in the background until
-      // the run reaches a terminal state, then removes it from pendingRunIds$.
-      // Cannot await here: sendMessage$ must resolve promptly so the composer
-      // re-enables. The parent signal aborts the loop on component unmount.
-      void set(watchRunStatus$, runId, signal).catch(throwIfNotAbort);
+      // Watch for terminal status via Ably — awaits until the run reaches a
+      // terminal state, then removes it from pendingRunIds$. This keeps
+      // sendLoadable in "loading" state so the UI stays in sending mode.
+      await set(watchRunStatus$, runId, signal);
 
       set(reloadChatThreads$);
     },
