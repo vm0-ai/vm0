@@ -120,7 +120,7 @@ function createThreadData(threadId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: message state (local messages, merged messages, allFinished)
+// Sub-factory: message state (local messages, merged messages)
 // ---------------------------------------------------------------------------
 
 function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
@@ -190,30 +190,30 @@ function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
     return merged;
   });
 
-  const allFinished$ = computed(async (get) => {
-    const msgs = await get(messages$);
-    return (
-      await Promise.all(
-        msgs.map(async (message) => {
-          if (message.role !== "assistant") {
-            return true;
-          }
-          if (!message.runLoop) {
-            return true;
-          }
-          return (await get(message.runLoop.finished$)) === true;
-        }),
-      )
-    ).every(Boolean);
-  });
-
   return {
     internalLocalMessages$,
     resetLocalMessages$,
     chatMessages$,
     messages$,
-    allFinished$,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: run tracker (active run IDs, allFinished)
+// ---------------------------------------------------------------------------
+
+function createRunTracker(threadData$: Computed<Promise<ChatThread | null>>) {
+  const internalActiveRunIds$ = state<Set<string>>(new Set());
+
+  const allFinished$ = computed(async (get) => {
+    // Gate on thread data so allFinished$ stays pending until the thread loads.
+    // This prevents a flash of "ready" state before loadMessages$ has a chance
+    // to populate active run IDs.
+    await get(threadData$);
+    return get(internalActiveRunIds$).size === 0;
+  });
+
+  return { internalActiveRunIds$, allFinished$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +245,7 @@ interface MessageCommandsInternalScope {
   reloadThread$: Command<void, []>;
   internalLocalMessages$: ReturnType<typeof state<ZeroChatMessage[]>>;
   chatMessages$: Computed<Promise<ChatMessages | null>>;
+  activeRunIds$: ReturnType<typeof state<Set<string>>>;
   draft: DraftSignals;
   reloadThinkingMessage$: Command<void, []>;
   cancelDraftSync$: Command<void, []>;
@@ -345,6 +346,14 @@ function createSendMessage(
     await set(deps.flushDraftClear$, signal);
     signal.throwIfAborted();
 
+    // Mark a pending send so allFinished$ stays false before we have a runId.
+    const pendingSentinel = `pending:${crypto.randomUUID()}`;
+    set(deps.activeRunIds$, (prev) => {
+      const next = new Set(prev);
+      next.add(pendingSentinel);
+      return next;
+    });
+
     // Yield one microtask tick so React can flush the optimistic user message
     // into the DOM before we scroll. Without this the scroll fires against the
     // old layout and is effectively a no-op.
@@ -365,6 +374,14 @@ function createSendMessage(
       [201],
     );
     signal.throwIfAborted();
+
+    // Replace the pending sentinel with the real run ID.
+    set(deps.activeRunIds$, (prev) => {
+      const next = new Set(prev);
+      next.delete(pendingSentinel);
+      next.add(sendResult.body.runId);
+      return next;
+    });
 
     set(reloadChatThreads$);
     set(deps.reloadThread$);
@@ -398,6 +415,13 @@ function createSendMessage(
       3000,
       signal,
     );
+
+    // Run finished — remove from active set.
+    set(deps.activeRunIds$, (prev) => {
+      const next = new Set(prev);
+      next.delete(sendResult.body.runId);
+      return next;
+    });
 
     // After the poll loop exits, the last `reloadThread$` ran at the START of
     // the final iteration — at that point the run's server-side status was
@@ -434,6 +458,7 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
     set(deps.scrollToBottom$);
 
     if (!msgs?.activeRunMessages.length) {
+      set(deps.activeRunIds$, new Set());
       return;
     }
 
@@ -446,10 +471,24 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
     );
 
     if (assistantMessages.length === 0) {
+      set(deps.activeRunIds$, new Set());
       set(reloadChatThreads$);
       set(deps.reloadThread$);
       return;
     }
+
+    // Populate active run set from server-known active runs.
+    // This also cleans up any stale entries from previously aborted navigations.
+    const serverActiveRunIds = new Set(
+      assistantMessages
+        .filter((m) => {
+          return !!m.legacyRunId;
+        })
+        .map((m) => {
+          return m.legacyRunId!;
+        }),
+    );
+    set(deps.activeRunIds$, serverActiveRunIds);
 
     await Promise.all(
       assistantMessages.map(async (message) => {
@@ -473,6 +512,15 @@ function createLoadMessages(deps: MessageCommandsInternalScope) {
           3000,
           signal,
         );
+
+        // Run finished — remove from active set.
+        if (message.legacyRunId) {
+          set(deps.activeRunIds$, (prev) => {
+            const next = new Set(prev);
+            next.delete(message.legacyRunId!);
+            return next;
+          });
+        }
 
         const content = await get(message.result$);
         signal.throwIfAborted();
@@ -787,11 +835,11 @@ export function createChatThreadSignals(
   const { threadData$, reloadThread$ } = createThreadData(threadId);
   const {
     internalLocalMessages$,
-    resetLocalMessages$,
+    resetLocalMessages$: resetMessages$,
     messages$,
     chatMessages$,
-    allFinished$,
   } = createMessageState(threadData$);
+  const { internalActiveRunIds$, allFinished$ } = createRunTracker(threadData$);
   const { setScrollContainer$, autoScroll$, scrollToBottom$ } =
     createScrollSignals();
   const { composerFileInput$, setComposerFileInput$ } =
@@ -804,6 +852,12 @@ export function createChatThreadSignals(
     copiedMessageId$,
     copyMessage$,
   } = createThreadUIState();
+
+  // Combined reset: clears local messages and run tracker state.
+  const resetLocalMessages$ = command(({ set }) => {
+    set(resetMessages$);
+    set(internalActiveRunIds$, new Set());
+  });
 
   const internalThinkingMessage$ = state(
     THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)],
@@ -840,6 +894,7 @@ export function createChatThreadSignals(
     reloadThread$,
     internalLocalMessages$,
     chatMessages$,
+    activeRunIds$: internalActiveRunIds$,
     draft,
     reloadThinkingMessage$,
     cancelDraftSync$,

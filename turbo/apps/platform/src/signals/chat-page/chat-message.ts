@@ -204,21 +204,17 @@ export const zeroChatMessages$ = computed(async (get) => {
   return merged;
 });
 
+// ---------------------------------------------------------------------------
+// Run tracker: active run IDs decoupled from messages
+// ---------------------------------------------------------------------------
+
+const internalActiveRunIds$ = state<Set<string>>(new Set());
+
 export const allFinished$ = computed(async (get) => {
-  const messages = await get(zeroChatMessages$);
-  return (
-    await Promise.all(
-      messages.map(async (message) => {
-        if (message.role !== "assistant") {
-          return true;
-        }
-        if (!message.runLoop) {
-          return true;
-        }
-        return (await get(message.runLoop.finished$)) === true;
-      }),
-    )
-  ).every(Boolean);
+  // Gate on thread data so allFinished$ stays pending until the current
+  // thread loads. This prevents a flash of "ready" state on page load.
+  await get(currentChatThread$);
+  return get(internalActiveRunIds$).size === 0;
 });
 
 interface EventContent {
@@ -636,6 +632,7 @@ export const loadChatMessages$ = command(
     const messages = await get(chatMessages$);
     signal.throwIfAborted();
     if (!messages?.activeRunMessages.length) {
+      set(internalActiveRunIds$, new Set());
       return;
     }
 
@@ -648,10 +645,23 @@ export const loadChatMessages$ = command(
     );
 
     if (assistantMessages.length === 0) {
+      set(internalActiveRunIds$, new Set());
       set(reloadChatThreads$);
       set(reloadCurrentChatThread$);
       return;
     }
+
+    // Populate active run set from server-known active runs.
+    const serverActiveRunIds = new Set(
+      assistantMessages
+        .filter((m) => {
+          return !!m.legacyRunId;
+        })
+        .map((m) => {
+          return m.legacyRunId!;
+        }),
+    );
+    set(internalActiveRunIds$, serverActiveRunIds);
 
     await Promise.all(
       assistantMessages.map(async (message) => {
@@ -676,6 +686,15 @@ export const loadChatMessages$ = command(
           signal,
         );
 
+        // Run finished — remove from active set.
+        if (message.legacyRunId) {
+          set(internalActiveRunIds$, (prev) => {
+            const next = new Set(prev);
+            next.delete(message.legacyRunId!);
+            return next;
+          });
+        }
+
         const content = await get(message.result$);
         signal.throwIfAborted();
         if (content) {
@@ -693,6 +712,7 @@ export const loadChatMessages$ = command(
 export const startNewZeroSession$ = command(({ set }) => {
   set(resetTalkSendSignal$);
   set(internalLocalMessages$, []);
+  set(internalActiveRunIds$, new Set());
 });
 
 const internalCreatingPromise$ = state<Promise<string | null> | undefined>(
@@ -922,6 +942,14 @@ export const sendExistingThreadMessage$ = command(
       return;
     }
 
+    // Mark a pending send so allFinished$ stays false before we have a runId.
+    const pendingSentinel = `pending:${crypto.randomUUID()}`;
+    set(internalActiveRunIds$, (prev) => {
+      const next = new Set(prev);
+      next.add(pendingSentinel);
+      return next;
+    });
+
     const { runId } = await set(
       sendChatMessageRequest$,
       {
@@ -930,6 +958,14 @@ export const sendExistingThreadMessage$ = command(
       },
       signal,
     );
+
+    // Replace the pending sentinel with the real run ID.
+    set(internalActiveRunIds$, (prev) => {
+      const next = new Set(prev);
+      next.delete(pendingSentinel);
+      next.add(runId);
+      return next;
+    });
 
     set(reloadChatThreads$);
     set(reloadCurrentChatThread$);
@@ -952,6 +988,13 @@ export const sendExistingThreadMessage$ = command(
       return set(runLoop.checkFinished$, sig);
     });
     await set(setAblyLoop$, `thread:${runId}`, loopBody$, 3000, signal);
+
+    // Run finished — remove from active set.
+    set(internalActiveRunIds$, (prev) => {
+      const next = new Set(prev);
+      next.delete(runId);
+      return next;
+    });
 
     // After the poll loop exits, the last `reloadCurrentChatThread$` ran at
     // the START of the final iteration — at that point the run's server-side

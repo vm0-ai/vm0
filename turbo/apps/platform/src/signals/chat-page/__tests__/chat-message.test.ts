@@ -228,6 +228,10 @@ describe("zero-chat signals", () => {
       // Run loop must have completed
       await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
 
+      // Force message chain evaluation to trigger pending thread reloads
+      // (in production, React does this via message list rendering).
+      await context.store.get(zeroChatMessages$);
+
       // finalizeCompletedRun$ must have invalidated the thread (at least one reload)
       expect(threadReloadCount).toBeGreaterThan(1);
     });
