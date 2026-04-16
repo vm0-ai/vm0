@@ -12,6 +12,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   directedAuthorizeType$,
   directedAuthorizeAgentId$,
+  directedAuthorizeAgentName$,
   agentEnabledTypes$,
   justAuthorizedTypes$,
   authorizeConnector$,
@@ -118,6 +119,7 @@ function Vm0Logo() {
 function DirectedAuthorizeCard() {
   const type = useGet(directedAuthorizeType$);
   const agentId = useGet(directedAuthorizeAgentId$);
+  const agentNameLoadable = useLastLoadable(directedAuthorizeAgentName$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
   const authorize = useSet(authorizeConnector$);
@@ -133,6 +135,10 @@ function DirectedAuthorizeCard() {
 
   const connectorType = type as ConnectorType;
   const config = CONNECTOR_TYPES[connectorType];
+  const agentName =
+    agentNameLoadable.state === "hasData" && agentNameLoadable.data
+      ? agentNameLoadable.data
+      : "Zero";
   const isConnecting = pollingType === connectorType;
   const isLoading =
     (!justConnected.has(connectorType) && allLoadable.state === "loading") ||
@@ -184,7 +190,7 @@ function DirectedAuthorizeCard() {
                 <h1 className="text-lg font-medium text-foreground">
                   {isAuthorized
                     ? `${config.label} authorized`
-                    : `Zero needs ${config.label} to proceed`}
+                    : `${agentName} needs ${config.label} to proceed`}
                 </h1>
                 <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
                   <ConnectorIcon type={connectorType} size={20} />
@@ -212,7 +218,7 @@ function DirectedAuthorizeCard() {
                   {isConnecting && (
                     <IconLoader2 size={14} className="animate-spin" />
                   )}
-                  {isConnecting ? "Connecting..." : "Authorize Zero"}
+                  {isConnecting ? "Connecting..." : `Authorize ${agentName}`}
                 </button>
               )}
             </div>
