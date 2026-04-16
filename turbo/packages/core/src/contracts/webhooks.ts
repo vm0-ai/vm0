@@ -507,9 +507,9 @@ export const webhookConnectorBillingContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
-      flowId: z.string().min(1, "flowId is required"),
-      connector: z.string().min(1, "connector is required"),
-      category: z.string().min(1, "category is required"),
+      flowId: z.string().min(1).max(100),
+      connector: z.string().min(1).max(50),
+      category: z.string().min(1).max(100),
       quantity: z.number().int().min(0),
     }),
     responses: {
