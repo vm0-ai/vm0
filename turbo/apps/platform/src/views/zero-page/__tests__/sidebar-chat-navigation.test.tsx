@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
 
@@ -97,9 +98,9 @@ describe("sidebar chat navigation from /team", () => {
       anchor!.click();
     });
 
-    // After clicking, the chat page content should render (not team page)
+    // After clicking, the URL should navigate to the chat page
     await waitFor(() => {
-      expect(screen.getByText("Who are you?")).toBeInTheDocument();
+      expect(pathname()).toBe("/chats/thread-abc-123");
     });
   });
 });
