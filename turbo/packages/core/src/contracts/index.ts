@@ -697,6 +697,10 @@ export {
   integrationsSlackUploadCompleteContract,
   type SlackUploadCompleteBody,
   type SlackUploadCompleteResponse,
+  integrationsChatMessageContract,
+  type IntegrationsChatMessageContract,
+  type SendChatMessageBody,
+  type SendChatMessageResponse,
 } from "./integrations";
 export {
   zeroBillingStatusContract,
