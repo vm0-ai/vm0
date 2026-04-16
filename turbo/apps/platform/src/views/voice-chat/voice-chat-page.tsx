@@ -11,13 +11,12 @@ import {
   IconUsers,
   IconCheck,
 } from "@tabler/icons-react";
-import { defaultAgentName$ } from "../../signals/agent.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   vcStatus$,
   vcTranscript$,
-  vcEvents$,
+  vcSlowBrainEvents$,
   vcMuted$,
   vcError$,
   vcEnabled$,
@@ -32,10 +31,6 @@ import {
   endVoiceChat$,
   retryVoiceChat$,
   toggleVoiceChatMute$,
-  vcInputMode$,
-  switchInputMode$,
-  startPTT$,
-  stopPTT$,
   vcModel$,
   setVcModel$,
   type RealtimeModel,
@@ -51,6 +46,11 @@ import {
   triggerPreparation$,
   clearPreparation$,
 } from "../../signals/voice-chat/voice-chat-preparation.ts";
+import {
+  VoiceUserBubble,
+  VoiceAssistantBubble,
+  SlowBrainIndicator,
+} from "./voice-chat-bubbles.tsx";
 
 type ConnectionStatus =
   | "idle"
@@ -115,91 +115,52 @@ function StatusBadge({
 
 function VoiceChatFooter({
   status,
-  inputMode,
   muted,
-  switchMode,
   toggleMute,
-  pttStart,
-  pttStop,
+  onEnd,
   onRetry,
 }: {
   status: string;
-  inputMode: "hands-free" | "push-to-talk";
   muted: boolean;
-  switchMode: (mode: "hands-free" | "push-to-talk") => void;
   toggleMute: () => void;
-  pttStart: () => void;
-  pttStop: () => void;
+  onEnd: () => void;
   onRetry: () => void;
 }) {
   return (
-    <div className="border-t px-4 py-3 flex flex-col items-center gap-3 md:flex-row md:justify-center md:gap-4">
-      {/* Left: Segmented Control */}
-      <Tabs
-        value={inputMode}
-        onValueChange={(v) => {
-          if (status === "connected") {
-            switchMode(v as "hands-free" | "push-to-talk");
-          }
-        }}
-      >
-        <TabsList
-          className={cn(
-            status !== "connected" && "pointer-events-none opacity-50",
-          )}
-        >
-          <TabsTrigger value="hands-free" className="text-xs px-2">
-            Hands-free
-          </TabsTrigger>
-          <TabsTrigger value="push-to-talk" className="text-xs px-2">
-            Push to Talk
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {/* Right: Context-Sensitive Action Button */}
+    <div className="border-t px-4 py-3 flex items-center justify-center gap-3">
       {status === "disconnected" ? (
         <Button
           variant="secondary"
-          className="h-12 w-full rounded-full md:w-auto md:px-6"
+          className="h-10 rounded-full px-5"
           onClick={onRetry}
         >
-          <IconRefresh size={20} className="mr-2" />
+          <IconRefresh size={18} className="mr-2" />
           Retry
-        </Button>
-      ) : inputMode === "push-to-talk" ? (
-        <Button
-          variant={muted ? "secondary" : "default"}
-          className="h-12 w-full rounded-full select-none md:w-auto md:px-6"
-          disabled={status !== "connected"}
-          onClick={() => {
-            if (muted) {
-              pttStart();
-            } else {
-              pttStop();
-            }
-          }}
-        >
-          <IconMicrophone size={20} className="mr-2" />
-          {muted ? "Push to Talk" : "Recording..."}
         </Button>
       ) : (
         <Button
           variant={muted ? "destructive" : "secondary"}
-          className="h-12 w-full rounded-full md:w-auto md:px-6"
+          className="h-10 rounded-full px-5"
           disabled={status !== "connected"}
-          onClick={() => {
-            toggleMute();
-          }}
+          onClick={toggleMute}
         >
           {muted ? (
-            <IconMicrophoneOff size={20} className="mr-2" />
+            <IconMicrophoneOff size={18} className="mr-2" />
           ) : (
-            <IconMicrophone size={20} className="mr-2" />
+            <IconMicrophone size={18} className="mr-2" />
           )}
           {muted ? "Unmute" : "Mute"}
         </Button>
       )}
+      <Button
+        variant="destructive"
+        size="sm"
+        className="h-10 rounded-full px-5"
+        onClick={onEnd}
+      >
+        <IconPhoneOff size={18} className="mr-2" />
+        End Session
+      </Button>
     </div>
   );
 }
@@ -355,7 +316,7 @@ export function VoiceChatPage() {
   const agentId = useLastResolved(vcAgentId$);
   const status = useGet(vcStatus$);
   const transcript = useGet(vcTranscript$);
-  const events = useGet(vcEvents$);
+  const slowBrainEvents = useGet(vcSlowBrainEvents$);
   const muted = useGet(vcMuted$);
   const error = useGet(vcError$);
   const startSession = useSet(startVoiceChat$);
@@ -363,15 +324,10 @@ export function VoiceChatPage() {
   const toggleMute = useSet(toggleVoiceChatMute$);
   const reconnectAttempt = useGet(vcReconnectAttempt$);
   const retrySession = useSet(retryVoiceChat$);
-  const inputMode = useGet(vcInputMode$);
-  const switchMode = useSet(switchInputMode$);
-  const pttStart = useSet(startPTT$);
-  const pttStop = useSet(stopPTT$);
   const prompt = useGet(vcPrompt$);
   const prepElapsedMs = useGet(vcPrepElapsedMs$);
   const model = useGet(vcModel$);
   const setModel = useSet(setVcModel$);
-  const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
   const setTranscriptContainer = useSet(setTranscriptScrollContainer$);
   const setEventsContainer = useSet(setEventsScrollContainer$);
 
@@ -482,32 +438,20 @@ export function VoiceChatPage() {
           <h2 className="text-sm font-medium text-muted-foreground mb-3">
             Slow Brain Activity
           </h2>
-          {events.filter((e) => {
-            return e.source === "slow-brain";
-          }).length === 0 && (
+          {slowBrainEvents.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">
               Waiting for slow brain to start preparation...
             </p>
           )}
-          {events
-            .filter((e) => {
-              return e.source === "slow-brain";
-            })
-            .map((event) => {
-              return (
-                <div
-                  key={event.seq}
-                  className="text-sm py-1.5 border-b border-border/50 last:border-0"
-                >
-                  <span className="text-muted-foreground font-mono text-xs">
-                    [{event.type}]
-                  </span>{" "}
-                  {event.content && (
-                    <span className="whitespace-pre-wrap">{event.content}</span>
-                  )}
-                </div>
-              );
-            })}
+          {slowBrainEvents.map((event) => {
+            return (
+              <SlowBrainIndicator
+                key={event.seq}
+                type={event.type}
+                content={event.content}
+              />
+            );
+          })}
         </div>
       </div>
     );
@@ -521,16 +465,6 @@ export function VoiceChatPage() {
           <h1 className="text-lg font-semibold">Voice Chat</h1>
           <StatusBadge status={status} reconnectAttempt={reconnectAttempt} />
         </div>
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => {
-            endSession();
-          }}
-        >
-          <IconPhoneOff size={16} className="mr-1.5" />
-          End Session
-        </Button>
       </div>
 
       {/* Error banner */}
@@ -540,20 +474,11 @@ export function VoiceChatPage() {
         </div>
       )}
 
-      {/* Main content: two-panel layout */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-0 overflow-hidden">
-        {/* Transcript panel */}
-        <div className="flex flex-col border-r overflow-hidden">
-          <div className="border-b px-4 py-2">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              Live Transcript
-            </h2>
-          </div>
-          <div
-            ref={setTranscriptContainer}
-            className="flex-1 overflow-y-auto p-4 space-y-3"
-          >
-            {transcript.length === 0 && (
+      {/* Main content: unified conversation view */}
+      <div ref={setTranscriptContainer} className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[900px] px-4 pt-4 pb-8">
+          <div className="flex flex-col gap-4">
+            {transcript.length === 0 && slowBrainEvents.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">
                 {status === "connecting"
                   ? "Connecting..."
@@ -561,58 +486,19 @@ export function VoiceChatPage() {
               </p>
             )}
             {transcript.map((entry) => {
-              return (
-                <div
-                  key={entry.id}
-                  className={cn(
-                    "rounded-lg px-3 py-2 text-sm max-w-[85%]",
-                    entry.role === "user"
-                      ? "bg-primary/10 ml-auto text-right"
-                      : "bg-muted mr-auto",
-                  )}
-                >
-                  <span className="text-xs font-medium text-muted-foreground block mb-0.5">
-                    {entry.role === "user" ? "You" : agentName}
-                  </span>
-                  {entry.text}
-                </div>
+              return entry.role === "user" ? (
+                <VoiceUserBubble key={entry.id} content={entry.text} />
+              ) : (
+                <VoiceAssistantBubble key={entry.id} content={entry.text} />
               );
             })}
-          </div>
-        </div>
-
-        {/* Shared context event log */}
-        <div className="flex flex-col overflow-hidden">
-          <div className="border-b px-4 py-2">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              Shared Context Events
-            </h2>
-          </div>
-          <div
-            ref={setEventsContainer}
-            className="flex-1 overflow-y-auto p-4 space-y-1"
-          >
-            {events.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No events yet.
-              </p>
-            )}
-            {events.map((event) => {
+            {slowBrainEvents.map((event) => {
               return (
-                <div
-                  key={event.seq}
-                  className="text-xs font-mono py-1 border-b border-border/50 last:border-0"
-                >
-                  <span className="text-muted-foreground">[{event.seq}]</span>{" "}
-                  <span className="font-semibold">{event.source}</span>
-                  <span className="text-muted-foreground">:</span>{" "}
-                  <span>{event.type}</span>
-                  {event.content && (
-                    <span className="text-muted-foreground ml-1 whitespace-pre-wrap">
-                      - {event.content}
-                    </span>
-                  )}
-                </div>
+                <SlowBrainIndicator
+                  key={`sb-${event.seq}`}
+                  type={event.type}
+                  content={event.content}
+                />
               );
             })}
           </div>
@@ -621,12 +507,11 @@ export function VoiceChatPage() {
 
       <VoiceChatFooter
         status={status}
-        inputMode={inputMode}
         muted={muted}
-        switchMode={switchMode}
         toggleMute={toggleMute}
-        pttStart={pttStart}
-        pttStop={pttStop}
+        onEnd={() => {
+          endSession();
+        }}
         onRetry={() => {
           detach(retrySession(pageSignal), Reason.DomCallback);
         }}
