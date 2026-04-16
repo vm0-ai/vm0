@@ -24,7 +24,7 @@ function makeEvent(
 
 describe("groupEventsIntoMessages", () => {
   it("returns empty array for no events", () => {
-    expect(groupEventsIntoMessages([])).toEqual([]);
+    expect(groupEventsIntoMessages([])).toStrictEqual([]);
   });
 
   it("groups a standalone system event", () => {
@@ -125,7 +125,7 @@ describe("groupEventsIntoMessages", () => {
     const op = grouped[0].toolOperations?.[0];
     expect(op?.result?.content).toBe("hello\n");
     expect(op?.result?.durationMs).toBe(50);
-    expect(op?.result?.isError).toBe(false);
+    expect(op?.result?.isError).toBeFalsy();
   });
 
   it("merges task_started and task_notification into a single message", () => {
@@ -324,7 +324,7 @@ describe("groupEventsIntoMessages", () => {
     const op = grouped[0].toolOperations?.[0];
 
     expect(op?.keyParam).toHaveLength(60);
-    expect(op?.keyParam?.endsWith("...")).toBe(true);
+    expect(op?.keyParam?.endsWith("...")).toBeTruthy();
   });
 });
 
@@ -341,18 +341,18 @@ describe("groupedMessageMatchesSearch", () => {
 
   it("matches when search term is empty", () => {
     const msg = makeGrouped({ textBefore: "some text" });
-    expect(groupedMessageMatchesSearch(msg, "")).toBe(true);
+    expect(groupedMessageMatchesSearch(msg, "")).toBeTruthy();
   });
 
   it("matches when search term is whitespace only", () => {
     const msg = makeGrouped({ textBefore: "some text" });
-    expect(groupedMessageMatchesSearch(msg, "   ")).toBe(true);
+    expect(groupedMessageMatchesSearch(msg, "   ")).toBeTruthy();
   });
 
   it("matches textBefore content", () => {
     const msg = makeGrouped({ textBefore: "Here is the plan" });
-    expect(groupedMessageMatchesSearch(msg, "plan")).toBe(true);
-    expect(groupedMessageMatchesSearch(msg, "xyz")).toBe(false);
+    expect(groupedMessageMatchesSearch(msg, "plan")).toBeTruthy();
+    expect(groupedMessageMatchesSearch(msg, "xyz")).toBeFalsy();
   });
 
   it("matches tool name in toolOperations", () => {
@@ -366,8 +366,8 @@ describe("groupedMessageMatchesSearch", () => {
         },
       ],
     });
-    expect(groupedMessageMatchesSearch(msg, "webfetch")).toBe(true);
-    expect(groupedMessageMatchesSearch(msg, "example.com")).toBe(true);
+    expect(groupedMessageMatchesSearch(msg, "webfetch")).toBeTruthy();
+    expect(groupedMessageMatchesSearch(msg, "example.com")).toBeTruthy();
   });
 
   it("matches tool result content", () => {
@@ -382,7 +382,7 @@ describe("groupedMessageMatchesSearch", () => {
         },
       ],
     });
-    expect(groupedMessageMatchesSearch(msg, "file1.txt")).toBe(true);
+    expect(groupedMessageMatchesSearch(msg, "file1.txt")).toBeTruthy();
   });
 
   it("matches system event subtype", () => {
@@ -390,7 +390,7 @@ describe("groupedMessageMatchesSearch", () => {
       type: "system",
       eventData: { subtype: "init", tools: ["Bash"] },
     });
-    expect(groupedMessageMatchesSearch(msg, "init")).toBe(true);
+    expect(groupedMessageMatchesSearch(msg, "init")).toBeTruthy();
   });
 
   it("matches task description in system task events", () => {
@@ -403,14 +403,14 @@ describe("groupedMessageMatchesSearch", () => {
         description: "Run database migration",
       },
     });
-    expect(groupedMessageMatchesSearch(msg, "database migration")).toBe(true);
-    expect(groupedMessageMatchesSearch(msg, "cache")).toBe(false);
+    expect(groupedMessageMatchesSearch(msg, "database migration")).toBeTruthy();
+    expect(groupedMessageMatchesSearch(msg, "cache")).toBeFalsy();
   });
 
   it("is case insensitive", () => {
     const msg = makeGrouped({ textBefore: "Hello World" });
-    expect(groupedMessageMatchesSearch(msg, "hello")).toBe(true);
-    expect(groupedMessageMatchesSearch(msg, "WORLD")).toBe(true);
+    expect(groupedMessageMatchesSearch(msg, "hello")).toBeTruthy();
+    expect(groupedMessageMatchesSearch(msg, "WORLD")).toBeTruthy();
   });
 
   it("matches result event content", () => {
@@ -418,6 +418,6 @@ describe("groupedMessageMatchesSearch", () => {
       type: "result",
       eventData: { result: "Task finished successfully" },
     });
-    expect(groupedMessageMatchesSearch(msg, "successfully")).toBe(true);
+    expect(groupedMessageMatchesSearch(msg, "successfully")).toBeTruthy();
   });
 });
