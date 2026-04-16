@@ -1,5 +1,39 @@
 # Changelog
 
+## [12.247.0](https://github.com/vm0-ai/vm0/compare/web-v12.246.1...web-v12.247.0) (2026-04-16)
+
+
+### Features
+
+* store connector billing in database via webhook ([#9678](https://github.com/vm0-ai/vm0/issues/9678)) ([105724f](https://github.com/vm0-ai/vm0/commit/105724f670637fdc16022907a97d0ab57b0b607c))
+
+
+### Bug Fixes
+
+* improve auth input border contrast in dark mode ([#9664](https://github.com/vm0-ai/vm0/issues/9664)) ([b2773ef](https://github.com/vm0-ai/vm0/commit/b2773ef7fece123022791d3421d780d01e6c2b25))
+* inject firewall for enabled connectors regardless of secret availability ([#9656](https://github.com/vm0-ai/vm0/issues/9656)) ([3f10868](https://github.com/vm0-ai/vm0/commit/3f108689ff2a595498d27c388726253085270bc6))
+
+
+### Refactoring
+
+* **infra:** generalize skill-upload to volume-upload and relocate system skill hash ([#9673](https://github.com/vm0-ai/vm0/issues/9673)) ([d09570a](https://github.com/vm0-ai/vm0/commit/d09570a5aca1119d9fdcce619af17b14f9e7ef61)), closes [#9672](https://github.com/vm0-ai/vm0/issues/9672)
+* **proxy:** return connector types instead of missing secret names in 424 response ([#9676](https://github.com/vm0-ai/vm0/issues/9676)) ([1de69bb](https://github.com/vm0-ai/vm0/commit/1de69bbc9648daf8447bb99027ffbf4b264b720f))
+* **zero:** remove skills from compose pipeline and server-side-compose ([#9675](https://github.com/vm0-ai/vm0/issues/9675)) ([28d10ef](https://github.com/vm0-ai/vm0/commit/28d10ef17d58f6fcbfb2b184869f627fe6d7b6f9)), closes [#9671](https://github.com/vm0-ai/vm0/issues/9671)
+
+
+### Performance Improvements
+
+* parallelize phase 1 db operations and eliminate cross-phase duplicates ([#9698](https://github.com/vm0-ai/vm0/issues/9698)) ([f522ad6](https://github.com/vm0-ai/vm0/commit/f522ad634fb65e6dce4f06a8a6e35e0d62c62497)), closes [#9692](https://github.com/vm0-ai/vm0/issues/9692)
+* **storage:** batch storage manifest version resolution ([#9697](https://github.com/vm0-ai/vm0/issues/9697)) ([b1222a4](https://github.com/vm0-ai/vm0/commit/b1222a4e6f6c9de8db632655486a858cfb60214a)), closes [#9691](https://github.com/vm0-ai/vm0/issues/9691)
+* **zero-runs:** defer dispatch with after() and remove redundant oauth pre-refresh ([#9694](https://github.com/vm0-ai/vm0/issues/9694)) ([57b09da](https://github.com/vm0-ai/vm0/commit/57b09dad2ef32e8436e84b5005c9c0f35b60949e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.192.0
+
 ## [12.246.1](https://github.com/vm0-ai/vm0/compare/web-v12.246.0...web-v12.246.1) (2026-04-16)
 
 

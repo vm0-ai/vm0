@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.192.0](https://github.com/vm0-ai/vm0/compare/core-v8.191.0...core-v8.192.0) (2026-04-16)
+
+
+### Features
+
+* **platform:** show google oauth verification notice before connecting ([#9619](https://github.com/vm0-ai/vm0/issues/9619)) ([203fb10](https://github.com/vm0-ai/vm0/commit/203fb1039031651b90d6ff87684beb5c1dd6fabb))
+* store connector billing in database via webhook ([#9678](https://github.com/vm0-ai/vm0/issues/9678)) ([105724f](https://github.com/vm0-ai/vm0/commit/105724f670637fdc16022907a97d0ab57b0b607c))
+
 ## [8.191.0](https://github.com/vm0-ai/vm0/compare/core-v8.190.1...core-v8.191.0) (2026-04-16)
 
 

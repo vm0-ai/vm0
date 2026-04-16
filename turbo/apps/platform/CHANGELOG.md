@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.244.0](https://github.com/vm0-ai/vm0/compare/app-v0.243.1...app-v0.244.0) (2026-04-16)
+
+
+### Features
+
+* add voice chat mic button to chat homepage ([#9685](https://github.com/vm0-ai/vm0/issues/9685)) ([745e68d](https://github.com/vm0-ai/vm0/commit/745e68d3840c3dc7333f4bc4c14146c01d326a5f))
+* **platform:** show google oauth verification notice before connecting ([#9619](https://github.com/vm0-ai/vm0/issues/9619)) ([203fb10](https://github.com/vm0-ai/vm0/commit/203fb1039031651b90d6ff87684beb5c1dd6fabb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.192.0
+
 ## [0.243.1](https://github.com/vm0-ai/vm0/compare/app-v0.243.0...app-v0.243.1) (2026-04-16)
 
 

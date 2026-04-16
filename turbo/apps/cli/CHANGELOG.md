@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.119.1](https://github.com/vm0-ai/vm0/compare/cli-v9.119.0...cli-v9.119.1) (2026-04-16)
+
+
+### Bug Fixes
+
+* **cli:** bundle @sentry/node to eliminate intermittent ci module resolution failures ([#9681](https://github.com/vm0-ai/vm0/issues/9681)) ([a42a45f](https://github.com/vm0-ai/vm0/commit/a42a45f07a3e0c6fb5812f22c5cd625a357a2324))
+* **cli:** update init next steps to use auth login and --secrets flag ([#9674](https://github.com/vm0-ai/vm0/issues/9674)) ([27d1637](https://github.com/vm0-ai/vm0/commit/27d16371f4c4712b5c48ff6af7bc77478c33d814))
+
+
+### Refactoring
+
+* **cli:** remove cook command ([#9665](https://github.com/vm0-ai/vm0/issues/9665)) ([f88a5db](https://github.com/vm0-ai/vm0/commit/f88a5dbb30d7b9bd624cc4591bed775f7ee39e40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.192.0
+
 ## [9.119.0](https://github.com/vm0-ai/vm0/compare/cli-v9.118.0...cli-v9.119.0) (2026-04-16)
 
 

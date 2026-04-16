@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.82.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.81.4...runner-rs-v0.82.0) (2026-04-16)
+
+
+### Features
+
+* store connector billing in database via webhook ([#9678](https://github.com/vm0-ai/vm0/issues/9678)) ([105724f](https://github.com/vm0-ai/vm0/commit/105724f670637fdc16022907a97d0ab57b0b607c))
+
+
+### Bug Fixes
+
+* inject firewall for enabled connectors regardless of secret availability ([#9656](https://github.com/vm0-ai/vm0/issues/9656)) ([3f10868](https://github.com/vm0-ai/vm0/commit/3f108689ff2a595498d27c388726253085270bc6))
+* **runner:** wait for proxy usage reports to flush before stopping mitmdump ([#9687](https://github.com/vm0-ai/vm0/issues/9687)) ([3518dcd](https://github.com/vm0-ai/vm0/commit/3518dcdfaf3f69fe16a618fa2b9069f9dfeabcab))
+
+
+### Refactoring
+
+* **proxy:** return connector types instead of missing secret names in 424 response ([#9676](https://github.com/vm0-ai/vm0/issues/9676)) ([1de69bb](https://github.com/vm0-ai/vm0/commit/1de69bbc9648daf8447bb99027ffbf4b264b720f))
+
 ## [0.81.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.81.3...runner-rs-v0.81.4) (2026-04-16)
 
 
