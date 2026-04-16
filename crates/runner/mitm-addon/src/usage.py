@@ -58,11 +58,8 @@ def _write_pending() -> None:
         with open(tmp, "w") as f:
             f.write(f"{_in_flight_flows}:{_pending_reports}")
         os.replace(tmp, _pending_path)
-    except OSError as e:
-        # best-effort; runner will timeout if file is stale
-        import sys
-
-        print(f"[usage] _write_pending failed: {e}", file=sys.stderr)
+    except OSError:
+        pass  # best-effort; runner will timeout if file is stale
 
 
 def increment_flows() -> None:
