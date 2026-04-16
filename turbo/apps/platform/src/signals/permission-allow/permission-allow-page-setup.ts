@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { MinimalSidebarLayout } from "../../views/zero-page/zero-directed-connect-page.tsx";
+import { MinimalSidebarLayout } from "../../views/zero-page/zero-directed-shared.tsx";
 import { PermissionAllowPage } from "../../views/permission-allow/permission-allow-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
