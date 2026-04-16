@@ -13,9 +13,17 @@ import type {
   FirewallPolicyValue,
 } from "../contracts/firewalls";
 import type { ConnectorType } from "../contracts/connectors";
-import { gmailDefaultAllowed, gmailCategories } from "./gmail.generated";
-import { slackDefaultAllowed, slackCategories } from "./slack.generated";
-import { vercelCategories } from "./vercel.generated";
+import {
+  gmailDefaultAllowed,
+  gmailCategories,
+  gmailCategoryOrder,
+} from "./gmail.generated";
+import {
+  slackDefaultAllowed,
+  slackCategories,
+  slackCategoryOrder,
+} from "./slack.generated";
+import { vercelCategories, vercelCategoryOrder } from "./vercel.generated";
 import { getConnectorEnvironmentMapping } from "../contracts/connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
 import { agentphoneFirewall } from "./agentphone.generated";
@@ -373,9 +381,9 @@ export type PermissionNamesOf<T extends FirewallConfig> =
 const CONNECTOR_CATEGORIES: Partial<
   Record<FirewallConnectorType, ConnectorCategories>
 > = {
-  gmail: gmailCategories,
-  slack: slackCategories,
-  vercel: vercelCategories,
+  gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
+  slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
+  vercel: { categories: vercelCategories, displayOrder: vercelCategoryOrder },
 };
 
 /** Get the category data for a connector type (null if uncategorized). */

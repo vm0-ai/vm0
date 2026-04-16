@@ -204,7 +204,7 @@ export interface CategoryConfig {
 }
 
 /**
- * Render a categories export as a typed const object.
+ * Render a categories export grouped by category with count comments.
  * Exhaustiveness is enforced at compile time via
  * `Record<PermissionNamesOf<typeof xxxFirewall>, string>`.
  *
@@ -217,22 +217,35 @@ export function renderCategories(
   firewallVar: string,
   config: CategoryConfig,
 ): string[] {
+  // Group permissions by category in displayOrder
+  const grouped = new Map<string, string[]>();
+  for (const cat of config.displayOrder) {
+    grouped.set(cat, []);
+  }
+  for (const [name, category] of Object.entries(config.categories)) {
+    grouped.get(category)?.push(name);
+  }
+
+  const orderVarName = `${varName.replace(/Categories$/, "")}CategoryOrder`;
+
   const lines: string[] = [
     "",
-    `export const ${varName}: {`,
-    `  categories: Record<PermissionNamesOf<typeof ${firewallVar}>, string>;`,
-    "  displayOrder: readonly string[];",
-    "} = {",
-    "  categories: {",
+    `export const ${varName}: Record<`,
+    `  PermissionNamesOf<typeof ${firewallVar}>,`,
+    "  string",
+    "> = {",
   ];
-  for (const [name, category] of Object.entries(config.categories)) {
-    lines.push(`    "${escapeString(name)}": "${escapeString(category)}",`);
+  for (const [category, perms] of grouped) {
+    lines.push(`  // — ${category} (${perms.length}) —`);
+    for (const name of perms) {
+      lines.push(`  "${escapeString(name)}": "${escapeString(category)}",`);
+    }
   }
-  lines.push("  },");
-  lines.push(
-    `  displayOrder: [${config.displayOrder.map((c) => `"${escapeString(c)}"`).join(", ")}],`,
-  );
   lines.push("};");
+  lines.push("");
+  lines.push(
+    `export const ${orderVarName} = [${config.displayOrder.map((c) => `"${escapeString(c)}"`).join(", ")}] as const;`,
+  );
   lines.push("");
   return lines;
 }
