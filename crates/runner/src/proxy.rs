@@ -1180,4 +1180,11 @@ mod tests {
         std::fs::write(dir.path().join("usage-pending"), "").unwrap();
         assert!(wait_usage_flush(dir.path(), Duration::from_secs(1)).await);
     }
+
+    #[tokio::test]
+    async fn wait_usage_flush_accepts_plain_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("usage-pending"), "0").unwrap();
+        assert!(wait_usage_flush(dir.path(), Duration::from_secs(1)).await);
+    }
 }

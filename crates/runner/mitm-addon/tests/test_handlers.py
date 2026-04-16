@@ -3009,3 +3009,38 @@ class TestUsagePendingCounter:
             assert content == "0:0"
         finally:
             usage.usage_executor = old_executor
+
+    def test_decorator_pop_prevents_double_decrement(self, tmp_path):
+        """If both response() and error() fire for the same flow, decrement only once."""
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        usage.increment_flows()
+        assert usage._in_flight_flows == 1
+
+        flow = _make_http_flow()
+        flow.metadata["_usage_flow_tracked"] = True
+
+        # Simulate response() followed by error() on the same flow.
+        @mitm_addon._track_usage_flow
+        def fake_handler(f):
+            pass
+
+        fake_handler(flow)  # first call: pops flag, decrements
+        assert usage._in_flight_flows == 0
+
+        fake_handler(flow)  # second call: flag already popped, no decrement
+        assert usage._in_flight_flows == 0  # stays at 0, not -1
+
+    def test_untracked_flow_not_decremented(self, tmp_path):
+        """Flows without _usage_flow_tracked should not touch the counter."""
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        usage.increment_flows()  # simulate one tracked flow in flight
+
+        flow = _make_http_flow()
+        # No _usage_flow_tracked in metadata — this is a regular flow.
+
+        @mitm_addon._track_usage_flow
+        def fake_handler(f):
+            pass
+
+        fake_handler(flow)
+        assert usage._in_flight_flows == 1  # unchanged
