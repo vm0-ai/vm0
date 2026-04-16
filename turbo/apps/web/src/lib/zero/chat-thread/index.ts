@@ -3,6 +3,7 @@ export {
   listChatThreads,
   getChatThread,
   getChatThreadMessages,
+  getActiveRunIdsForThread,
   updateChatThreadTitle,
   updateChatThreadDraft,
   deleteChatThread,

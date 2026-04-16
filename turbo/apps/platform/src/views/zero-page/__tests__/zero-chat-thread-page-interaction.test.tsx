@@ -39,9 +39,9 @@ describe("zero chat thread page - sending state affects composer button display"
 
     // Wait for loadPagedMessages$ to subscribe before completing
     await waitFor(() => {
-      expect(hasSubscription(`chatThreadMessageCreated:${THREAD_ID}`)).toBe(
-        true,
-      );
+      expect(
+        hasSubscription(`chatThreadMessageCreated:${THREAD_ID}`),
+      ).toBeTruthy();
     });
 
     ctrl.completeRun("Done");

@@ -176,6 +176,7 @@ describe("mission control page", () => {
           agentId: "00000000-0000-4000-a000-000000000000",
           chatMessages: [],
           latestSessionId: null,
+          activeRunIds: [],
           createdAt: "2026-04-10T10:00:00Z",
           updatedAt: "2026-04-10T10:00:00Z",
         });

@@ -9,6 +9,7 @@ import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import {
   getChatThread,
   getChatThreadMessages,
+  getActiveRunIdsForThread,
   updateChatThreadDraft,
   deleteChatThread,
 } from "../../../../../src/lib/zero/chat-thread";
@@ -30,10 +31,11 @@ const router = tsr.router(chatThreadByIdContract, {
 
     try {
       const thread = await getChatThread(params.id, userId);
-      const { chatMessages, latestSessionId } = await getChatThreadMessages(
-        params.id,
-        userId,
-      );
+      const [{ chatMessages, latestSessionId }, activeRunIds] =
+        await Promise.all([
+          getChatThreadMessages(params.id, userId),
+          getActiveRunIdsForThread(params.id),
+        ]);
 
       return {
         status: 200 as const,
@@ -43,6 +45,7 @@ const router = tsr.router(chatThreadByIdContract, {
           agentId: thread.agentComposeId,
           chatMessages,
           latestSessionId,
+          activeRunIds,
           createdAt: thread.createdAt.toISOString(),
           updatedAt: thread.updatedAt.toISOString(),
           draftContent: thread.draftContent,

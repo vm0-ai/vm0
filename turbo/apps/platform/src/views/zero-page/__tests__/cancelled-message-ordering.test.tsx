@@ -60,6 +60,7 @@ describe("cancelled message ordering after page refresh", () => {
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
+          activeRunIds: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:01:01Z",
         });

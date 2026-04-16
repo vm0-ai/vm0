@@ -92,6 +92,7 @@ function createThreadData(threadId: string) {
       title: body.title ?? null,
       agentId: body.agentId,
       latestSessionId: body.latestSessionId ?? null,
+      activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
@@ -483,30 +484,12 @@ function createPagedMessages(threadId: string) {
     return false;
   });
 
-  const loadPagedMessages$ = command(async ({ set }, signal: AbortSignal) => {
-    await set(fetchNextPage$, signal);
-    signal.throwIfAborted();
-
-    const pagedLoopBody$ = command(async ({ set }, sig: AbortSignal) => {
-      await set(fetchNextPage$, sig);
-      return false;
-    });
-
-    await set(
-      setAblyLoop$,
-      `chatThreadMessageCreated:${threadId}`,
-      pagedLoopBody$,
-      signal,
-    );
-  });
-
   return {
     pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
     hasActiveRun$,
     fetchNextPage$,
-    loadPagedMessages$,
   };
 }
 
@@ -548,6 +531,125 @@ function createInputRef() {
 }
 
 // ---------------------------------------------------------------------------
+// Factory: createRunTracking
+// ---------------------------------------------------------------------------
+
+function createRunTracking(
+  threadId: string,
+  threadData$: Computed<Promise<ChatThread | null>>,
+  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>,
+  messageBasedActiveRun$: Computed<boolean>,
+) {
+  const pendingRunIds$ = state<string[]>([]);
+
+  const terminalStatuses = new Set([
+    "completed",
+    "failed",
+    "timeout",
+    "cancelled",
+  ]);
+
+  const trackRun$ = command(
+    async ({ get, set }, runId: string, signal: AbortSignal) => {
+      const already = get(pendingRunIds$);
+      if (!already.includes(runId)) {
+        set(pendingRunIds$, [...already, runId]);
+      }
+
+      const checkRun$ = command(async ({ get, set }, sig: AbortSignal) => {
+        const client = get(zeroClient$)(zeroRunsByIdContract);
+        const res = await accept(
+          client.getById({
+            params: { id: runId },
+            fetchOptions: { signal: sig },
+          }),
+          [200],
+        );
+        if (terminalStatuses.has(res.body.status)) {
+          set(pendingRunIds$, (ids) => {
+            return ids.filter((id) => {
+              return id !== runId;
+            });
+          });
+          return true;
+        }
+        return false;
+      });
+
+      await set(setAblyLoop$, `runUpdated:${runId}`, checkRun$, signal);
+    },
+  );
+
+  const hasActiveRun$ = computed((get) => {
+    if (get(pendingRunIds$).length > 0) {
+      return true;
+    }
+    return get(messageBasedActiveRun$);
+  });
+
+  const loadPagedMessages$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      await set(fetchNextPage$, signal);
+      signal.throwIfAborted();
+
+      // Track any runs that were already active when the page loaded.
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      if (!thread) {
+        return;
+      }
+
+      await Promise.all([
+        (async () => {
+          const pagedLoopBody$ = command(async ({ set }, sig: AbortSignal) => {
+            await set(fetchNextPage$, sig);
+            return false;
+          });
+
+          await set(
+            setAblyLoop$,
+            `chatThreadMessageCreated:${threadId}`,
+            pagedLoopBody$,
+            signal,
+          );
+        })(),
+        ...thread.activeRunIds.map((runId) => {
+          return set(trackRun$, runId, signal);
+        }),
+      ]);
+      signal.throwIfAborted();
+    },
+  );
+
+  const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroRunsCancelContract);
+    const removedIds: string[] = [];
+
+    await Promise.all(
+      get(pendingRunIds$).map(async (runId) => {
+        await accept(
+          client.cancel({
+            params: { id: runId },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        removedIds.push(runId);
+      }),
+    );
+    signal.throwIfAborted();
+
+    set(pendingRunIds$, (x) => {
+      return x.filter((id) => {
+        return removedIds.indexOf(id) === -1;
+      });
+    });
+  });
+
+  return { trackRun$, hasActiveRun$, loadPagedMessages$, cancelRun$ };
+}
+
+// ---------------------------------------------------------------------------
 // Factory: createChatThreadSignals
 // ---------------------------------------------------------------------------
 
@@ -574,7 +676,6 @@ export function createChatThreadSignals(
     groupedChatMessages$,
     hasActiveRun$: messageBasedActiveRun$,
     fetchNextPage$,
-    loadPagedMessages$,
   } = createPagedMessages(threadId);
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
@@ -582,50 +683,13 @@ export function createChatThreadSignals(
 
   const prepareUserMessage$ = createPrepareUserMessage(draft);
 
-  const pendingRunIds$ = state<string[]>([]);
-
-  const removePendingRunId$ = command(({ get, set }, runId: string) => {
-    set(pendingRunIds$, (ids) => {
-      return ids.filter((id) => {
-        return id !== runId;
-      });
-    });
-  });
-
-  const TERMINAL_STATUSES = new Set([
-    "completed",
-    "failed",
-    "timeout",
-    "cancelled",
-  ]);
-
-  /** Subscribe to `runUpdated:${runId}` and remove the id when terminal. */
-  const watchRunStatus$ = command(
-    async ({ get, set }, runId: string, signal: AbortSignal) => {
-      const checkRun$ = command(async ({ get, set }, sig: AbortSignal) => {
-        const client = get(zeroClient$)(zeroRunsByIdContract);
-        const res = await accept(
-          client.getById({
-            params: { id: runId },
-            fetchOptions: { signal: sig },
-          }),
-          [200],
-        );
-        if (TERMINAL_STATUSES.has(res.body.status)) {
-          set(removePendingRunId$, runId);
-          return true;
-        }
-        return false;
-      });
-
-      await set(setAblyLoop$, `runUpdated:${runId}`, checkRun$, signal);
-    },
-  );
-
-  const hasActiveRun$ = computed((get) => {
-    if (get(pendingRunIds$).length > 0) return true;
-    return get(messageBasedActiveRun$);
-  });
+  const { trackRun$, hasActiveRun$, loadPagedMessages$, cancelRun$ } =
+    createRunTracking(
+      threadId,
+      threadData$,
+      fetchNextPage$,
+      messageBasedActiveRun$,
+    );
 
   const sendMessage$ = command(
     async ({ get, set }, prompt: string, signal: AbortSignal) => {
@@ -662,44 +726,13 @@ export function createChatThreadSignals(
       );
       signal.throwIfAborted();
 
-      const runId = sendResult.body.runId;
-      set(pendingRunIds$, (x) => {
-        return [...x, runId];
-      });
-
-      // Watch for terminal status via Ably — awaits until the run reaches a
-      // terminal state, then removes it from pendingRunIds$. This keeps
-      // sendLoadable in "loading" state so the UI stays in sending mode.
-      await set(watchRunStatus$, runId, signal);
-
       set(reloadChatThreads$);
+
+      // Track run until terminal — keeps sendLoadable in "loading" state
+      // so the UI stays in sending mode until the run finishes.
+      await set(trackRun$, sendResult.body.runId, signal);
     },
   );
-
-  const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroRunsCancelContract);
-    const removedIds: string[] = [];
-
-    await Promise.all(
-      get(pendingRunIds$).map(async (runId) => {
-        await accept(
-          client.cancel({
-            params: { id: runId },
-            fetchOptions: { signal },
-          }),
-          [200],
-        );
-        removedIds.push(runId);
-      }),
-    );
-    signal.throwIfAborted();
-
-    set(pendingRunIds$, (x) => {
-      return x.filter((id) => {
-        return removedIds.indexOf(id) === -1;
-      });
-    });
-  });
 
   const { setInputRef$, focusInput$ } = createInputRef();
 

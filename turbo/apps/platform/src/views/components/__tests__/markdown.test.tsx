@@ -12,6 +12,7 @@ const THREAD_BASE = {
   title: null,
   agentId: "c0000000-0000-4000-a000-000000000001",
   latestSessionId: null,
+  activeRunIds: [],
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
 } as const;

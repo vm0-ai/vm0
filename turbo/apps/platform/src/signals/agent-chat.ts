@@ -50,6 +50,7 @@ export interface ChatThread {
   agentId?: string;
   title: string | null;
   latestSessionId: string | null;
+  activeRunIds: string[];
   isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
@@ -75,6 +76,7 @@ export const currentChatThread$ = computed(
       title: body.title ?? null,
       agentId: body.agentId,
       latestSessionId: body.latestSessionId ?? null,
+      activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,

@@ -31,6 +31,7 @@ function setupBaseHandlers(threadId: string) {
         agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
         latestSessionId: null,
+        activeRunIds: [],
         unsavedRuns: [],
         draftContent: null,
         draftAttachments: null,

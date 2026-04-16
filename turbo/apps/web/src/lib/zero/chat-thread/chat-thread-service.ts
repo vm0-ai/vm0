@@ -1,5 +1,7 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { chatThreads } from "../../../db/schema/chat-thread";
+import { zeroRuns } from "../../../db/schema/zero-run";
+import { agentRuns } from "../../../db/schema/agent-run";
 import { notFound } from "../../shared/errors";
 import {
   getMessagesByThreadId,
@@ -258,6 +260,27 @@ export async function getChatThreadMessages(
     chatMessages,
     latestSessionId: latestSessionId ?? null,
   };
+}
+
+/**
+ * Return run IDs for this thread that are not yet in a terminal state.
+ */
+export async function getActiveRunIdsForThread(
+  threadId: string,
+): Promise<string[]> {
+  const rows = await globalThis.services.db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ),
+    );
+  return rows.map((r) => {
+    return r.id;
+  });
 }
 
 type ChatMessageWithId = {

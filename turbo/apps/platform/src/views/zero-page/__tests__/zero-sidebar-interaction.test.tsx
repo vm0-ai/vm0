@@ -277,6 +277,7 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
           agentId: DEFAULT_AGENT_ID,
           chatMessages: [],
           latestSessionId: null,
+          activeRunIds: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -346,6 +347,7 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
           agentId: DEFAULT_AGENT_ID,
           chatMessages: [],
           latestSessionId: null,
+          activeRunIds: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });

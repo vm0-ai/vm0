@@ -70,6 +70,7 @@ const chatThreadDetailSchema = z.object({
   agentId: z.string(),
   chatMessages: z.array(storedChatMessageSchema),
   latestSessionId: z.string().nullable(),
+  activeRunIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),

@@ -104,6 +104,7 @@ export const setAblyLoop$ = command(
     });
     await channel.subscribe(topic, callback);
     signal.throwIfAborted();
+    L.debug("subscribed to topic: " + topic);
 
     let fibIndex = 0;
     while (!signal.aborted) {
