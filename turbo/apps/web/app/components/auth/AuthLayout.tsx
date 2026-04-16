@@ -74,9 +74,14 @@ const CLERK_CSS = `
   color: hsl(var(--foreground)) !important;
 }
 
-/* Input field styles - border on the outermost formFieldInput container */
+/* Input field styles
+   - formFieldInput containers (div wrappers with eye icons etc.) get the border
+   - plain input[type] selectors cover fields that render without a wrapper div */
 .cl-formFieldInput,
-.cl-card [class*="formFieldInput"]:not(input):not([class*="Checkbox"]):not([class*="checkbox"]) {
+.cl-card [class*="formFieldInput"],
+.cl-card input[type="text"],
+.cl-card input[type="email"],
+.cl-card input[type="password"] {
   height: 36px !important;
   background-color: transparent !important;
   border: 1px solid hsl(var(--border)) !important;
@@ -88,20 +93,23 @@ const CLERK_CSS = `
   box-shadow: none !important;
 }
 
-/* Strip border from actual <input> elements and from any nested formFieldInput
-   containers so only the outermost wrapper shows one border */
-.cl-formFieldInput input,
-.cl-formFieldInput > *,
-.cl-card input[type="text"],
-.cl-card input[type="email"],
-.cl-card input[type="password"],
-.cl-card [class*="formFieldInput"] input,
+/* Strip border from <input> elements that sit INSIDE a formFieldInput wrapper —
+   the wrapper already provides the visible border, adding one on the input too
+   causes the double-border. Higher specificity wins over the rule above. */
+.cl-card [class*="formFieldInput"] input {
+  border: none !important;
+  box-shadow: none !important;
+  height: 100% !important;
+  background-color: transparent !important;
+}
+
+/* Strip border from nested formFieldInput divs (handles layered wrappers) */
 .cl-card [class*="formFieldInput"] > [class*="formFieldInput"] {
   border: none !important;
   box-shadow: none !important;
 }
 
-/* Checkbox wrappers must not inherit input field border/height */
+/* Checkbox containers must not inherit input wrapper border/height */
 .cl-formFieldCheckboxInput,
 .cl-formFieldCheckbox,
 .cl-formFieldCheckboxWrapper {
