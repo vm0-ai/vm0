@@ -85,6 +85,7 @@ export interface AdditionalVolume {
   name: string; // Storage name
   version?: string; // Version hash or "latest" (defaults to "latest")
   mountPath: string; // Absolute path in sandbox
+  system?: boolean; // When true, resolve against SYSTEM_ORG first, fallback to runtime org
 }
 
 /**

@@ -1,13 +1,17 @@
 import { describe, it, expect, beforeEach } from "vitest";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Internal infrastructure: no API route
 import { prepareStorageManifest } from "../storage-service";
-import { createTestVolume } from "../../../../__tests__/api-test-helpers";
+import {
+  createTestVolume,
+  createTestVolumeForOrg,
+} from "../../../../__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
   type UserContext,
 } from "../../../../__tests__/test-helpers";
 import type { AdditionalVolume, AgentVolumeConfig } from "../types";
+import { SYSTEM_ORG_ID } from "@vm0/core";
 
 const context = testContext();
 
@@ -282,5 +286,94 @@ describe("Additional Volumes", () => {
     });
     expect(mountPaths).toContain("/data");
     expect(mountPaths).toContain("/mnt/extra");
+  });
+
+  describe("system flag resolution", () => {
+    it("should resolve system volume from SYSTEM_ORG when available", async () => {
+      const storageName = uniqueId("sys-vol");
+      const { versionId } = await createTestVolumeForOrg(
+        SYSTEM_ORG_ID,
+        storageName,
+      );
+
+      const additional: AdditionalVolume[] = [
+        { name: storageName, mountPath: "/mnt/system", system: true },
+      ];
+
+      const manifest = await prepareStorageManifest(
+        undefined,
+        {},
+        user.orgId,
+        user.orgId,
+        user.userId,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        additional,
+      );
+
+      expect(manifest.storages).toHaveLength(1);
+      expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
+      expect(manifest.storages[0]!.vasVersionId).toBe(versionId);
+    });
+
+    it("should fall back to runtime org when system volume not in SYSTEM_ORG", async () => {
+      const storageName = uniqueId("sys-fallback");
+      const { versionId } = await createTestVolume(storageName);
+
+      const additional: AdditionalVolume[] = [
+        { name: storageName, mountPath: "/mnt/fallback", system: true },
+      ];
+
+      const manifest = await prepareStorageManifest(
+        undefined,
+        {},
+        user.orgId,
+        user.orgId,
+        user.userId,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        additional,
+      );
+
+      expect(manifest.storages).toHaveLength(1);
+      expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
+      expect(manifest.storages[0]!.vasVersionId).toBe(versionId);
+    });
+
+    it("should resolve non-system volume from runtime org only", async () => {
+      const storageName = uniqueId("nonsys-vol");
+      const { versionId } = await createTestVolume(storageName);
+
+      const additional: AdditionalVolume[] = [
+        { name: storageName, mountPath: "/mnt/regular" },
+      ];
+
+      const manifest = await prepareStorageManifest(
+        undefined,
+        {},
+        user.orgId,
+        user.orgId,
+        user.userId,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        additional,
+      );
+
+      expect(manifest.storages).toHaveLength(1);
+      expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
+      expect(manifest.storages[0]!.vasVersionId).toBe(versionId);
+    });
   });
 });
