@@ -98,7 +98,7 @@ describe("chat immediate feedback after sending", () => {
     });
   });
 
-  it("should disable Send button immediately after submission", async () => {
+  it("should show thinking indicator and disable Send button immediately after submission", async () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
@@ -113,11 +113,17 @@ describe("chat immediate feedback after sending", () => {
 
     await sendMessageInUI(user, textarea, "Hello");
 
-    // With the placeholder fix, sending state should be visible even before the POST responds.
-    // Stop button replaces Send while sending.
+    // With the placeholder fix, sending state and thinking indicator
+    // should be visible even before the POST responds.
+    // With mutual exclusion ternary, Stop button replaces Send while sending.
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
     });
 
     ctrl.completeRun();

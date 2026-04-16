@@ -152,7 +152,6 @@ export function mockChatLifecycle(options?: {
   let events: AgentEvent[] = [];
   let queuePosition = 0;
   let resultContent = "";
-  let completedContent: string | null = null;
   let threadList: ThreadListItem[] = [];
   let runPrompt: string | null = null;
   let runAssociated = false;
@@ -172,7 +171,7 @@ export function mockChatLifecycle(options?: {
             },
             {
               role: "assistant" as const,
-              content: completedContent,
+              content: null,
               runId: "a0000000-0000-4000-a000-000000000001",
               status: runStatus,
               error: runError ?? undefined,
@@ -239,17 +238,9 @@ export function mockChatLifecycle(options?: {
         artifact: { name: null, version: null },
       });
     }),
-    http.get("*/api/zero/runs/:id/telemetry/agent", ({ request }) => {
-      const url = new URL(request.url);
-      const since = url.searchParams.get("since");
-      const filteredEvents =
-        since !== null
-          ? events.filter((e) => {
-              return e.sequenceNumber > Number(since);
-            })
-          : events;
+    http.get("*/api/zero/runs/:id/telemetry/agent", () => {
       return HttpResponse.json({
-        events: filteredEvents,
+        events,
         hasMore: false,
         framework: "claude-code",
       });
@@ -293,7 +284,6 @@ export function mockChatLifecycle(options?: {
     completeRun: (content?: string) => {
       runStatus = "completed";
       resultContent = content ?? "";
-      completedContent = content ?? null;
       threadTitle = threadTitle ?? runPrompt;
       if (content) {
         events = [

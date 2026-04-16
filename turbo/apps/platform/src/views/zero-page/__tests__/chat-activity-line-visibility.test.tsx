@@ -7,7 +7,7 @@ import { mockChatLifecycle, makeToolUseEvent } from "./chat-test-helpers.ts";
 const context = testContext();
 
 describe("activity line visibility while run is still running", () => {
-  it("should show activity steps when result arrives while run is still running", async () => {
+  it("should keep showing activity line when result arrives but run is still running", async () => {
     const ctrl = mockChatLifecycle({
       threadId: "thread-activity-vis",
       chatMessages: [
@@ -33,40 +33,38 @@ describe("activity line visibility while run is still running", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-activity-vis" });
 
-    // Wait for the active run to appear — Stop button visible while running
+    // Wait for the active run to appear with thinking state
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
     });
 
-    // Add tool use events so activity steps appear
+    // Add tool use events so the activity line shows summary steps
     ctrl.setEvents([
       makeToolUseEvent("Bash", { command: "ls" }, 1),
       {
         sequenceNumber: 2,
-        eventType: "assistant",
-        eventData: {
-          message: {
-            content: [
-              { type: "text", text: "Here is the first part of the answer." },
-            ],
-          },
-        },
+        eventType: "result",
+        eventData: { result: "Here is the first part of the answer." },
         createdAt: "2026-03-10T00:00:30Z",
       },
       makeToolUseEvent("Read", { path: "/tmp/data.txt" }, 3),
     ]);
 
-    // The result text is shown as it streams in via texts$
+    // The activity line (shimmer) should remain visible while the run is still running
     await waitFor(() => {
-      expect(
-        screen.getByText("Here is the first part of the answer."),
-      ).toBeInTheDocument();
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
     });
 
-    // Stop button remains visible while run is still active
-    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    // The result body should NOT appear while the run is still active (prevents layout shift)
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Here is the first part of the answer."),
+      ).not.toBeInTheDocument();
+    });
 
-    // Complete the run — the result body should remain visible after terminal state
+    // Complete the run — the result body should appear after terminal state
     ctrl.completeRun("Here is the first part of the answer.");
 
     await waitFor(() => {
@@ -76,7 +74,7 @@ describe("activity line visibility while run is still running", () => {
     });
   });
 
-  it("should show result body when run reaches terminal status", async () => {
+  it("should hide activity line only after run reaches terminal status", async () => {
     const ctrl = mockChatLifecycle({
       threadId: "thread-activity-terminal",
       chatMessages: [
@@ -97,40 +95,42 @@ describe("activity line visibility while run is still running", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-activity-terminal" });
 
-    // Stop button visible while run is active
+    // Thinking state initially
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
     });
 
-    // An assistant text event arrives while run is still "running" — shown immediately via texts$
+    // A result event arrives while run is still "running"
     ctrl.setEvents([
       {
         sequenceNumber: 1,
-        eventType: "assistant",
-        eventData: {
-          message: {
-            content: [{ type: "text", text: "Intermediate result" }],
-          },
-        },
+        eventType: "result",
+        eventData: { result: "Intermediate result" },
         createdAt: "2026-03-10T00:00:10Z",
       },
     ]);
 
-    // Result body is visible as streaming content
+    // Result body should NOT be visible while run is still active (prevents layout shift)
     await waitFor(() => {
-      expect(screen.getByText("Intermediate result")).toBeInTheDocument();
+      expect(screen.queryByText("Intermediate result")).not.toBeInTheDocument();
     });
 
-    // Now complete the run — body should remain and Stop should disappear
+    // Activity line should still be visible (run is "running")
+    expect(document.querySelector(".zero-shimmer-text")).toBeInTheDocument();
+
+    // Now complete the run — activity line should disappear and body should appear
     ctrl.completeRun("Final result");
 
     await waitFor(() => {
       expect(screen.getByText("Final result")).toBeInTheDocument();
     });
 
-    // After completion, Stop button is gone
+    // After completion, no more shimmer/activity
     await waitFor(() => {
-      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(
+        document.querySelector(".zero-shimmer-text"),
+      ).not.toBeInTheDocument();
     });
   });
 });

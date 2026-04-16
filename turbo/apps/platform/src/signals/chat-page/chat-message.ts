@@ -93,7 +93,7 @@ export interface AssistantChatMessage {
   runLoop?: ReturnType<typeof createRunLoop>;
   summaries$?: Computed<Promise<string[]>>;
   /** All intermediate text outputs from the run's event stream (live). */
-  texts$?: Computed<Promise<AssistantTextItem[]>>;
+  texts$?: Computed<Promise<string[]>>;
   createdAt?: string;
 }
 
@@ -413,42 +413,26 @@ async function collectAllEvents(
   return allEvents;
 }
 
-export interface AssistantTextItem {
-  /**
-   * Stable key derived from the event's sequence number and block index for
-   * React reconciliation. Format: `${sequenceNumber}-${blockIndex}`.
-   */
-  key: string;
-  text: string;
-}
-
 /**
  * Extract ALL assistant text outputs from the event stream, in order.
- * Each item carries a stable key composed of the event's sequenceNumber and
- * the block's position within that event.
  */
-function extractTexts(events: AgentEvent[]): AssistantTextItem[] {
-  const items: AssistantTextItem[] = [];
+function extractTexts(events: AgentEvent[]): string[] {
+  const texts: string[] = [];
   for (const event of events) {
     if (event.eventType === "assistant") {
-      let blockIndex = 0;
       for (const block of getEventContent(event)) {
         if (block.type === "text" && block.text) {
-          items.push({
-            key: `${event.sequenceNumber}-${blockIndex}`,
-            text: block.text,
-          });
-          blockIndex++;
+          texts.push(block.text);
         }
       }
     }
   }
-  return items;
+  return texts;
 }
 
 function extractResult(events: AgentEvent[]): string {
-  const items = extractTexts(events);
-  return items[items.length - 1]?.text ?? "";
+  const texts = extractTexts(events);
+  return texts[texts.length - 1] ?? "";
 }
 
 function extractSummaries(events: AgentEvent[]): string[] {

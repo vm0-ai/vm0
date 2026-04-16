@@ -199,7 +199,7 @@ describe("agent avatar link", () => {
 });
 
 describe("chat message activity line", () => {
-  it("should show result text when result arrives while run is still running", async () => {
+  it("should keep activity line visible when result arrives but run is still running", async () => {
     const lifecycle = mockChatLifecycle({
       threadId: "thread-activity-running",
       chatMessages: [
@@ -218,36 +218,34 @@ describe("chat message activity line", () => {
       ],
     });
 
-    // Provide an assistant text event while keeping the run status as "running"
+    // Provide a result event while keeping the run status as "running"
     lifecycle.setEvents([
       {
         sequenceNumber: 1,
-        eventType: "assistant",
-        eventData: {
-          message: {
-            content: [{ type: "text", text: "Here is the partial result" }],
-          },
-        },
+        eventType: "result",
+        eventData: { result: "Here is the partial result" },
         createdAt: "2026-03-10T00:00:10Z",
       },
     ]);
 
     detachedSetupPage({ context, path: "/chats/thread-activity-running" });
 
-    // Stop button is visible since the run is not terminal
+    // The activity line (spinner) should be visible since the run is not terminal.
+    // The response body is hidden during active runs to prevent layout shift.
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
     });
 
-    // The result text is shown as it streams in
+    // The result body should not be rendered while the run is still active
     await waitFor(() => {
       expect(
-        screen.getByText("Here is the partial result"),
-      ).toBeInTheDocument();
+        screen.queryByText("Here is the partial result"),
+      ).not.toBeInTheDocument();
     });
   });
 
-  it("should show result body after run reaches terminal status", async () => {
+  it("should hide activity line after run reaches terminal status", async () => {
     const lifecycle = mockChatLifecycle({
       threadId: "thread-activity-done",
       chatMessages: [
@@ -266,27 +264,35 @@ describe("chat message activity line", () => {
       ],
     });
 
-    // Start with no events — text will appear when run completes
-    lifecycle.setEvents([]);
+    // Start with a result event while still running
+    lifecycle.setEvents([
+      {
+        sequenceNumber: 1,
+        eventType: "result",
+        eventData: { result: "Final answer" },
+        createdAt: "2026-03-10T00:00:10Z",
+      },
+    ]);
 
     detachedSetupPage({ context, path: "/chats/thread-activity-done" });
 
-    // Stop button visible while running
+    // Activity line should be visible while running; body is hidden during active runs
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
     });
 
     // Now complete the run
     lifecycle.completeRun("Final answer");
 
-    // Result body should appear after reaching terminal status
+    // Activity line should disappear and body should appear after reaching terminal status
     await waitFor(() => {
-      expect(screen.getByText("Final answer")).toBeInTheDocument();
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).not.toBeInTheDocument();
     });
 
-    // Stop button is gone after completion
     await waitFor(() => {
-      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(screen.getByText("Final answer")).toBeInTheDocument();
     });
   });
 });

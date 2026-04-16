@@ -11,11 +11,14 @@
 
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { openQueueDrawer$ } from "../../../signals/queue-page/queue-drawer-state.ts";
+import { pathname$ } from "../../../signals/route.ts";
+import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -164,5 +167,57 @@ describe("queue drawer", () => {
     });
 
     expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
+  });
+
+  it("clicking 'View queue' in chat should open drawer without navigating away", async () => {
+    const user = userEvent.setup();
+
+    const ctrl = mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Do something",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-queue-1",
+          status: "queued",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    ctrl.setRunStatus("queued");
+    ctrl.setQueuePosition(2);
+
+    server.use(
+      http.get("*/api/zero/runs/queue", () => {
+        return HttpResponse.json(
+          queueResponse({
+            concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const link = await waitFor(() => {
+      return screen.getByText("View queue");
+    });
+
+    expect(context.store.get(pathname$)).toBe("/chats/thread-test-1");
+
+    await user.click(link);
+
+    // Should stay on the chat page and open the queue drawer in-place
+    expect(context.store.get(pathname$)).toBe("/chats/thread-test-1");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /waiting in line/ }),
+      ).toBeInTheDocument();
+    });
   });
 });

@@ -5,6 +5,7 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import {
   mockChatLifecycle,
+  makeToolUseEvent,
   mockSubagentThread,
   SUB_AGENT_ID,
 } from "./chat-test-helpers.ts";
@@ -84,10 +85,10 @@ describe("zero chat thread page display - attachment file preview", () => {
   });
 });
 
-// CHAT-D-038: Stop button visible while run is active
-describe("zero chat thread page display - run active state", () => {
-  it("shows Stop button while a run is active", async () => {
-    mockChatLifecycle({
+// CHAT-D-038: Run activity line renders summaries
+describe("zero chat thread page display - run activity line summaries", () => {
+  it("displays a tool-use summary in the run activity line", async () => {
+    const ctrl = mockChatLifecycle({
       chatMessages: [
         {
           role: "user",
@@ -103,18 +104,19 @@ describe("zero chat thread page display - run active state", () => {
         },
       ],
     });
+    ctrl.setEvents([makeToolUseEvent("Bash", { command: "ls" }, 1)]);
 
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.getByLabelText("Current activity")).toBeInTheDocument();
     });
   });
 });
 
-// CHAT-D-039: Stop button visible when run is queued
-describe("zero chat thread page display - run queued state", () => {
-  it("shows Stop button when run is queued", async () => {
+// CHAT-D-039: Run activity line renders queue position
+describe("zero chat thread page display - run activity line queue position", () => {
+  it("displays an in-queue message with position info", async () => {
     const ctrl = mockChatLifecycle({
       chatMessages: [
         {
@@ -137,7 +139,13 @@ describe("zero chat thread page display - run queued state", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      const el = screen.getByText((_content, element) => {
+        return (
+          element?.tagName === "P" &&
+          (element.textContent?.includes("In queue") ?? false)
+        );
+      });
+      expect(el).toBeInTheDocument();
     });
   });
 });

@@ -111,10 +111,14 @@ describe("chat session switch", () => {
       pathParams: { threadId: "thread-running" },
     });
 
-    // Stop button should appear for the active run
+    // The running thread should show the thinking/shimmer state
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
     });
+
+    // Stop button should appear for the active run
+    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
   });
 
   it("should load different messages when switching between completed sessions", async () => {
