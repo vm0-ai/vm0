@@ -14,6 +14,7 @@ import {
   chatMessagesContract,
   chatThreadsContract,
   chatThreadByIdContract,
+  type PagedChatMessage,
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
@@ -44,12 +45,12 @@ export type { PagedChatMessage } from "@vm0/core";
 export interface GroupedChatMessageGroup {
   beginMessageId: string;
   role: "user" | "assistant";
-  messages: import("@vm0/core").PagedChatMessage[];
+  messages: PagedChatMessage[];
 }
 
 /** Group consecutive messages by role. */
 export function groupMessagesByRole(
-  messages: import("@vm0/core").PagedChatMessage[],
+  messages: PagedChatMessage[],
 ): GroupedChatMessageGroup[] {
   const groups: GroupedChatMessageGroup[] = [];
   for (const msg of messages) {
