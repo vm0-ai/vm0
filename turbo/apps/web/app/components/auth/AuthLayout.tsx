@@ -85,7 +85,7 @@ const CLERK_CSS = `
 .cl-card input[type="email"],
 .cl-card input[type="password"] {
   height: 36px !important;
-  background-color: transparent !important;
+  background-color: hsl(var(--input)) !important;
   border: 1px solid hsl(var(--border)) !important;
   border-radius: 0.5rem !important;
   color: hsl(var(--foreground)) !important;
@@ -93,6 +93,17 @@ const CLERK_CSS = `
     border-color 0.2s,
     box-shadow 0.2s !important;
   box-shadow: none !important;
+}
+
+/* Dark mode: --border (gray-200 = #2F2F32) and --input (gray-200) are nearly
+   identical to the card background (gray-100 = #252527) — borders are invisible.
+   Use --gray-400 (#434550, labelled "stronger border" in the design system). */
+[data-theme="dark"] .cl-formFieldInput,
+[data-theme="dark"] .cl-card [class*="formFieldInput"]:not(:has([class*="formFieldInput"])),
+[data-theme="dark"] .cl-card input[type="text"],
+[data-theme="dark"] .cl-card input[type="email"],
+[data-theme="dark"] .cl-card input[type="password"] {
+  border-color: hsl(var(--gray-400)) !important;
 }
 
 /* Password input sits inside a wrapper that has the border — strip the input's
