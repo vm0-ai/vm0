@@ -555,7 +555,7 @@ export function createChatThreadSignals(
     pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
-    hasActiveRun$,
+    hasActiveRun$: messageBasedActiveRun$,
     fetchNextPage$,
     loadPagedMessages$,
   } = createPagedMessages(threadId);
@@ -566,6 +566,11 @@ export function createChatThreadSignals(
   const prepareUserMessage$ = createPrepareUserMessage(draft);
 
   const pendingRunIds$ = state<string[]>([]);
+
+  const hasActiveRun$ = computed((get) => {
+    if (get(pendingRunIds$).length > 0) return true;
+    return get(messageBasedActiveRun$);
+  });
 
   const sendMessage$ = command(
     async ({ get, set }, prompt: string, signal: AbortSignal) => {
