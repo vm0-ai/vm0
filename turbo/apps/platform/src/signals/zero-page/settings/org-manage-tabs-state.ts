@@ -363,6 +363,31 @@ export const setInlineCapValue$ = command(
   },
 );
 
+export const discardAllInlineCapValues$ = command(({ set }) => {
+  set(internalInlineCapValues$, new Map());
+});
+
+export const inlineCapsDirty$ = computed((get) => {
+  const capValues = get(internalInlineCapValues$);
+  if (capValues.size === 0) {
+    return false;
+  }
+  const members = get(internalUsageMembers$);
+  for (const [userId, value] of capValues) {
+    const member = members.find((m) => {
+      return m.userId === userId;
+    });
+    const savedValue =
+      member?.creditCap !== null && member?.creditCap !== undefined
+        ? String(member.creditCap)
+        : "";
+    if (value !== savedValue) {
+      return true;
+    }
+  }
+  return false;
+});
+
 // ---------------------------------------------------------------------------
 // org-usage-tab: members cache for optimistic cap updates
 // ---------------------------------------------------------------------------
@@ -557,33 +582,49 @@ export const setDomainVerified$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// org-usage-tab: InlineCapInput async command
+// org-usage-tab: batch cap commit
 // ---------------------------------------------------------------------------
 
-export const inlineCapCommit$ = command(
-  async (
-    { set },
-    params: {
+export const inlineCapBatchCommit$ = command(
+  async ({ get, set }, members: MemberUsage[], signal: AbortSignal) => {
+    const capValues = get(internalInlineCapValues$);
+    const tasks: {
       userId: string;
       creditCap: number | null;
       memberCreditCap: number | null;
-    },
-    signal: AbortSignal,
-  ) => {
-    if (params.creditCap === params.memberCreditCap) {
-      return;
-    }
-    await set(
-      setMemberCreditCap$,
-      { userId: params.userId, creditCap: params.creditCap },
-      signal,
-    );
-    set(internalUsageMembers$, (prev) => {
-      return prev.map((m) => {
-        return m.userId === params.userId
-          ? { ...m, creditCap: params.creditCap }
-          : m;
+    }[] = [];
+    for (const [userId, raw] of capValues) {
+      const member = members.find((m) => {
+        return m.userId === userId;
       });
-    });
+      if (!member) {
+        continue;
+      }
+      const trimmed = raw.trim();
+      const num = trimmed === "" ? 0 : Number(trimmed);
+      if (!Number.isInteger(num) || num < 0) {
+        continue;
+      }
+      const cap = num === 0 ? null : num;
+      if (cap === member.creditCap) {
+        continue;
+      }
+      tasks.push({ userId, creditCap: cap, memberCreditCap: member.creditCap });
+    }
+    for (const task of tasks) {
+      await set(
+        setMemberCreditCap$,
+        { userId: task.userId, creditCap: task.creditCap },
+        signal,
+      );
+      set(internalUsageMembers$, (prev) => {
+        return prev.map((m) => {
+          return m.userId === task.userId
+            ? { ...m, creditCap: task.creditCap }
+            : m;
+        });
+      });
+    }
+    set(internalInlineCapValues$, new Map());
   },
 );

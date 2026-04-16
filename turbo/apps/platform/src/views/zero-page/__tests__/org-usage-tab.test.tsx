@@ -177,7 +177,7 @@ describe("org usage tab - member usage table", () => {
 });
 
 describe("org usage tab - inline cap editing", () => {
-  it("should allow setting a credit cap via inline input", async () => {
+  it("should allow setting a credit cap via unsaved bar", async () => {
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -205,14 +205,18 @@ describe("org usage tab - inline cap editing", () => {
     });
 
     // Find the inline cap input (type=number)
-    const capInput = screen.getByRole("spinbutton");
+    const capInput = screen.getByPlaceholderText("No limit");
     expect(capInput).toBeInTheDocument();
 
-    // Type a cap value and click Save
+    // Type a cap value — unsaved bar appears
     await fill(capInput, "5000");
 
-    const saveButton = screen.getByRole("button", { name: "Save" });
-    await userEvent.setup().click(saveButton);
+    await waitFor(() => {
+      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(screen.getByTestId("save-button"));
 
     // Wait for save to complete
     await waitFor(() => {
@@ -220,8 +224,7 @@ describe("org usage tab - inline cap editing", () => {
     });
   });
 
-  it("should allow committing cap via Enter key", async () => {
-    const user = userEvent.setup();
+  it("should discard cap changes via unsaved bar", async () => {
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -229,7 +232,7 @@ describe("org usage tab - inline cap editing", () => {
       hasSubscription: true,
     });
 
-    const capStore = mockAPIs([
+    mockAPIs([
       {
         userId: "user-a",
         email: "alice@example.com",
@@ -248,12 +251,18 @@ describe("org usage tab - inline cap editing", () => {
       expect(screen.getByText("alice@example.com")).toBeInTheDocument();
     });
 
-    const capInput = screen.getByRole("spinbutton");
+    const capInput = screen.getByPlaceholderText("No limit");
     await fill(capInput, "3000");
-    await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(capStore["user-a"]).toBe(3000);
+      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(screen.getByTestId("discard-button"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
     });
   });
 });

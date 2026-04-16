@@ -168,7 +168,7 @@ test("shows editable credit cap input for admins", async () => {
   mockAPIs({ members: [makeMember("user-a", "alice@example.com", 500, 3000)] });
   await openUsageTab();
   await waitFor(() => {
-    expect(screen.getByRole("spinbutton")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("No limit")).toBeInTheDocument();
   });
 });
 
@@ -191,15 +191,14 @@ test("redirects non-admins to general tab when usage tab is requested", async ()
   // Non-admins are redirected to general tab; usage tab content is never shown
   await waitFor(() => {
     // No cap input spinbutton is visible
-    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("No limit")).not.toBeInTheDocument();
     // Usage tab error/error state is also not present
     expect(screen.queryByTestId("usage-tab-error")).not.toBeInTheDocument();
   });
 });
 
 // ORG-I-057
-test("credit cap input accepts value and saves via Save button", async () => {
-  const user = userEvent.setup();
+test("credit cap input accepts value and saves via unsaved bar", async () => {
   setMockBillingStatus({
     tier: "pro",
     credits: 20_000,
@@ -220,12 +219,15 @@ test("credit cap input accepts value and saves via Save button", async () => {
   );
   await openUsageTab();
   await waitFor(() => {
-    expect(screen.getByRole("spinbutton")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("No limit")).toBeInTheDocument();
   });
-  const capInput = screen.getByRole("spinbutton");
+  const capInput = screen.getByPlaceholderText("No limit");
   await fill(capInput, "5000");
-  const saveButton = screen.getByRole("button", { name: "Save" });
-  await user.click(saveButton);
+  await waitFor(() => {
+    expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
+  });
+  const saveUser = userEvent.setup({ pointerEventsCheck: 0 });
+  await saveUser.click(screen.getByTestId("save-button"));
   await waitFor(() => {
     expect(capturedCap).toBe(5000);
   });
