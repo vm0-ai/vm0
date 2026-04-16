@@ -30,7 +30,7 @@ export function resetAblySubscriptions(): void {
 }
 
 const fakeChannel = {
-  async subscribe(topic: string, callback: Callback): Promise<void> {
+  subscribe(topic: string, callback: Callback): void {
     let cbs = subscriptions.get(topic);
     if (!cbs) {
       cbs = new Set();

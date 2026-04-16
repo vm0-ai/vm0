@@ -3,11 +3,7 @@ import { platformRealtimeTokenContract } from "@vm0/core";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
-import {
-  createDeferredPromise,
-  FIB_DELAYS_MS,
-  throwIfAbort,
-} from "./utils.ts";
+import { createDeferredPromise, FIB_DELAYS_MS, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
 import { delay } from "signal-timers";
 
