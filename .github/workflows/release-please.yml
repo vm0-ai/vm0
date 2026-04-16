@@ -853,7 +853,6 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/toolchain-init
 
       - name: Install Python3 and Ansible
         run: |
