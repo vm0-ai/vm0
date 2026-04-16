@@ -158,113 +158,38 @@ struct GcCandidate {
     _lock: Flock<std::fs::File>,
 }
 
-/// GC a single flat artifact directory.
+/// Try to delete an orphaned rootfs directory (no surviving snapshots).
 ///
-/// Each subdirectory is named by its content hash. We try an exclusive nonblocking
-/// flock on the corresponding lock file — if it succeeds the resource is unused.
-/// The exclusive lock is held until deletion to prevent TOCTOU races.
-///
-/// Only used by tests now — image GC migrated to `gc_nested_images`.
-#[cfg(test)]
-async fn gc_dir(
-    label: &str,
-    dir: &Path,
-    lock_path_fn: impl Fn(&str) -> PathBuf,
-    keep_latest: Option<usize>,
-    dry_run: bool,
-) -> RunnerResult<u64> {
-    let mut entries = match tokio::fs::read_dir(dir).await {
-        Ok(rd) => rd,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-        Err(e) => {
-            return Err(RunnerError::Internal(format!(
-                "read {}: {e}",
-                dir.display()
-            )));
-        }
-    };
-
-    let mut candidates: Vec<GcCandidate> = Vec::new();
-
-    while let Some(entry) = next_entry_warn(&mut entries, label, dir).await {
-        let path = entry.path();
-        let Some(hash) = path.file_name().and_then(|n| n.to_str()).map(String::from) else {
-            continue;
-        };
-
-        let lock_path = lock_path_fn(&hash);
-        match probe_lock(&lock_path) {
-            LockProbe::Free(lock) => {
-                let (size, mtime) = dir_stats(&path).await;
-                candidates.push(GcCandidate {
-                    path,
-                    hash,
-                    size,
-                    mtime,
-                    _lock: lock,
-                });
-            }
-            LockProbe::Held => {
-                info!("{label}/{hash}: in use, skipping");
-            }
-            LockProbe::Error(e) => {
-                info!("{label}/{hash}: lock probe failed ({e}), skipping");
-            }
-        }
-    }
-
-    // Protect recently-created artifacts from deletion. This closes the race
-    // window between `runner build` releasing its lock and `runner start`
-    // acquiring a shared lock.
-    let now = SystemTime::now();
-    let mut protected = Vec::new();
-    candidates.retain(|c| {
-        let age = now.duration_since(c.mtime).unwrap_or_default();
-        if age < GC_MIN_AGE {
-            protected.push((c.hash.clone(), age));
-            false
-        } else {
-            true
-        }
-    });
-    for (hash, age) in &protected {
+/// Caller must hold the exclusive rootfs lock. Returns bytes freed (0 if
+/// skipped due to age, dry-run, or deletion error).
+async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run: bool) -> u64 {
+    let (rootfs_size, rootfs_mtime) = dir_stats(rootfs_path).await;
+    let age = SystemTime::now()
+        .duration_since(rootfs_mtime)
+        .unwrap_or_default();
+    if age < GC_MIN_AGE {
         info!(
-            "{label}/{hash}: too recent ({}s old), skipping",
+            "images/{rootfs_hash}: orphaned but too recent ({}s), keeping",
             age.as_secs()
         );
+        return 0;
     }
-
-    // Sort by mtime descending (newest first) so keep_latest keeps the most recent.
-    candidates.sort_by(|a, b| b.mtime.cmp(&a.mtime));
-
-    let keep_count = keep_latest.unwrap_or(0);
-    for c in candidates.iter().take(keep_count) {
+    if dry_run {
         info!(
-            "{label}/{}: keeping (latest unused, {})",
-            c.hash,
-            human_bytes(c.size)
+            "[dry-run] would delete orphaned rootfs images/{rootfs_hash} ({})",
+            human_bytes(rootfs_size)
         );
+        return 0;
     }
-
-    let mut freed = 0u64;
-    for c in candidates.iter().skip(keep_count) {
-        if dry_run {
-            info!(
-                "[dry-run] would delete {label}/{} ({})",
-                c.hash,
-                human_bytes(c.size)
-            );
-        } else {
-            if let Err(e) = tokio::fs::remove_dir_all(&c.path).await {
-                warn!("failed to remove {label}/{}: {e} (skipping)", c.hash);
-                continue;
-            }
-            info!("deleted {label}/{} ({})", c.hash, human_bytes(c.size));
-        }
-        freed += c.size;
+    if let Err(e) = tokio::fs::remove_dir_all(rootfs_path).await {
+        warn!("failed to remove orphaned rootfs images/{rootfs_hash}: {e}");
+        return 0;
     }
-
-    Ok(freed)
+    info!(
+        "deleted orphaned rootfs images/{rootfs_hash} ({})",
+        human_bytes(rootfs_size)
+    );
+    rootfs_size
 }
 
 /// GC for the nested image layout: `<images>/<rootfs>/snapshots/<snapshot>/`.
@@ -329,33 +254,9 @@ async fn gc_nested_images(
             Ok(rd) => rd,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // No snapshots/ subdirectory — orphaned rootfs.
-                // Can only delete if we hold the rootfs lock.
                 if can_delete_rootfs {
-                    let (rootfs_size, rootfs_mtime) = dir_stats(&rootfs_path).await;
-                    let age = SystemTime::now()
-                        .duration_since(rootfs_mtime)
-                        .unwrap_or_default();
-                    if age >= GC_MIN_AGE {
-                        if dry_run {
-                            info!(
-                                "[dry-run] would delete orphaned rootfs images/{rootfs_hash} ({})",
-                                human_bytes(rootfs_size)
-                            );
-                        } else if let Err(e) = tokio::fs::remove_dir_all(&rootfs_path).await {
-                            warn!("failed to remove orphaned rootfs images/{rootfs_hash}: {e}");
-                        } else {
-                            info!(
-                                "deleted orphaned rootfs images/{rootfs_hash} ({})",
-                                human_bytes(rootfs_size)
-                            );
-                            total_freed += rootfs_size;
-                        }
-                    } else {
-                        info!(
-                            "images/{rootfs_hash}: no snapshots, too recent ({}s), keeping",
-                            age.as_secs()
-                        );
-                    }
+                    total_freed +=
+                        try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
                 }
                 continue;
             }
@@ -461,31 +362,7 @@ async fn gc_nested_images(
             Err(_) => false,
         };
         if !has_snapshots && can_delete_rootfs {
-            let (rootfs_size, rootfs_mtime) = dir_stats(&rootfs_path).await;
-            let age = SystemTime::now()
-                .duration_since(rootfs_mtime)
-                .unwrap_or_default();
-            if age >= GC_MIN_AGE {
-                if dry_run {
-                    info!(
-                        "[dry-run] would delete orphaned rootfs images/{rootfs_hash} ({})",
-                        human_bytes(rootfs_size)
-                    );
-                } else if let Err(e) = tokio::fs::remove_dir_all(&rootfs_path).await {
-                    warn!("failed to remove orphaned rootfs images/{rootfs_hash}: {e}");
-                } else {
-                    info!(
-                        "deleted orphaned rootfs images/{rootfs_hash} ({})",
-                        human_bytes(rootfs_size)
-                    );
-                    total_freed += rootfs_size;
-                }
-            } else {
-                info!(
-                    "images/{rootfs_hash}: orphaned but too recent ({}s), keeping",
-                    age.as_secs()
-                );
-            }
+            total_freed += try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
         }
     }
 
@@ -1234,191 +1111,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn gc_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks_dir = dir.path().join("locks");
-        std::fs::create_dir_all(&locks_dir).unwrap();
-
-        let artifacts_dir = dir.path().join("rootfs");
-        std::fs::create_dir_all(&artifacts_dir).unwrap();
-
-        let freed = gc_dir(
-            "rootfs",
-            &artifacts_dir,
-            |hash| locks_dir.join(format!("rootfs-{hash}.lock")),
-            None,
-            false,
-        )
-        .await
-        .unwrap();
-        assert_eq!(freed, 0);
-    }
-
-    #[tokio::test]
-    async fn gc_deletes_unused_dir() {
-        use std::fs::FileTimes;
-        use std::time::Duration;
-
-        let dir = tempfile::tempdir().unwrap();
-        let locks_dir = dir.path().join("locks");
-        std::fs::create_dir_all(&locks_dir).unwrap();
-
-        let artifacts_dir = dir.path().join("rootfs");
-        let hash_dir = artifacts_dir.join("abc123");
-        std::fs::create_dir_all(&hash_dir).unwrap();
-        std::fs::write(hash_dir.join("rootfs.ext4"), b"data").unwrap();
-        // Set mtime past GC_MIN_AGE so the artifact is eligible for deletion.
-        let old_time = SystemTime::now() - Duration::from_secs(3600);
-        std::fs::File::open(&hash_dir)
-            .unwrap()
-            .set_times(FileTimes::new().set_modified(old_time))
-            .unwrap();
-
-        let freed = gc_dir(
-            "rootfs",
-            &artifacts_dir,
-            |hash| locks_dir.join(format!("rootfs-{hash}.lock")),
-            None,
-            false,
-        )
-        .await
-        .unwrap();
-
-        assert!(!hash_dir.exists(), "dir should be deleted");
-        assert!(freed > 0 || cfg!(target_os = "macos")); // blocks may be 0 on some FS
-    }
-
-    #[tokio::test]
-    async fn gc_skips_locked_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks_dir = dir.path().join("locks");
-        std::fs::create_dir_all(&locks_dir).unwrap();
-
-        let artifacts_dir = dir.path().join("rootfs");
-        let hash_dir = artifacts_dir.join("abc123");
-        std::fs::create_dir_all(&hash_dir).unwrap();
-        std::fs::write(hash_dir.join("rootfs.ext4"), b"data").unwrap();
-
-        // Hold a shared lock (simulating runner start).
-        let lock_path = locks_dir.join("rootfs-abc123.lock");
-        let file = std::fs::File::options()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .unwrap();
-        let _shared = Flock::lock(file, FlockArg::LockShared).unwrap();
-
-        let freed = gc_dir(
-            "rootfs",
-            &artifacts_dir,
-            |hash| locks_dir.join(format!("rootfs-{hash}.lock")),
-            None,
-            false,
-        )
-        .await
-        .unwrap();
-
-        assert!(hash_dir.exists(), "dir should NOT be deleted");
-        assert_eq!(freed, 0);
-    }
-
-    #[tokio::test]
-    async fn gc_dry_run_does_not_delete() {
-        use std::fs::FileTimes;
-        use std::time::Duration;
-
-        let dir = tempfile::tempdir().unwrap();
-        let locks_dir = dir.path().join("locks");
-        std::fs::create_dir_all(&locks_dir).unwrap();
-
-        let artifacts_dir = dir.path().join("rootfs");
-        let hash_dir = artifacts_dir.join("abc123");
-        std::fs::create_dir_all(&hash_dir).unwrap();
-        std::fs::write(hash_dir.join("rootfs.ext4"), b"data").unwrap();
-        // Set mtime past GC_MIN_AGE so the artifact is eligible for deletion.
-        let old_time = SystemTime::now() - Duration::from_secs(3600);
-        std::fs::File::open(&hash_dir)
-            .unwrap()
-            .set_times(FileTimes::new().set_modified(old_time))
-            .unwrap();
-
-        let freed = gc_dir(
-            "rootfs",
-            &artifacts_dir,
-            |hash| locks_dir.join(format!("rootfs-{hash}.lock")),
-            None,
-            true,
-        )
-        .await
-        .unwrap();
-
-        assert!(hash_dir.exists(), "dry-run should not delete");
-        assert!(freed > 0 || cfg!(target_os = "macos"));
-    }
-
-    #[tokio::test]
-    async fn gc_keep_latest_preserves_newest() {
-        use std::fs::FileTimes;
-        use std::time::Duration;
-
-        let dir = tempfile::tempdir().unwrap();
-        let locks_dir = dir.path().join("locks");
-        std::fs::create_dir_all(&locks_dir).unwrap();
-
-        let artifacts_dir = dir.path().join("snapshots");
-
-        // Create two dirs and set explicit directory mtimes for determinism.
-        // dir_stats uses the root directory mtime as the "last used" signal.
-        let old_dir = artifacts_dir.join("old_hash");
-        std::fs::create_dir_all(&old_dir).unwrap();
-        std::fs::write(old_dir.join("snapshot.bin"), b"old").unwrap();
-        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        std::fs::File::open(&old_dir)
-            .unwrap()
-            .set_times(FileTimes::new().set_modified(old_time))
-            .unwrap();
-
-        let new_dir = artifacts_dir.join("new_hash");
-        std::fs::create_dir_all(&new_dir).unwrap();
-        std::fs::write(new_dir.join("snapshot.bin"), b"new").unwrap();
-        let new_time = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
-        std::fs::File::open(&new_dir)
-            .unwrap()
-            .set_times(FileTimes::new().set_modified(new_time))
-            .unwrap();
-
-        gc_dir(
-            "snapshots",
-            &artifacts_dir,
-            |hash| locks_dir.join(format!("snapshot-{hash}.lock")),
-            Some(1),
-            false,
-        )
-        .await
-        .unwrap();
-
-        assert!(new_dir.exists(), "newest should be kept");
-        assert!(!old_dir.exists(), "oldest should be deleted");
-    }
-
-    #[tokio::test]
-    async fn gc_nonexistent_dir_is_ok() {
-        let dir = tempfile::tempdir().unwrap();
-        let freed = gc_dir(
-            "rootfs",
-            &dir.path().join("nonexistent"),
-            |hash| dir.path().join(format!("{hash}.lock")),
-            None,
-            false,
-        )
-        .await
-        .unwrap();
-        assert_eq!(freed, 0);
-    }
-
     fn test_home(root: &Path) -> HomePaths {
         HomePaths::with_root(root.to_path_buf())
     }
@@ -1839,6 +1531,39 @@ mod tests {
         assert!(freed > 0);
     }
 
+    /// A locked snapshot must survive even with keep_latest=0 and old mtime.
+    #[tokio::test]
+    async fn gc_nested_images_skips_locked_snapshot() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let rootfs_dir = images_dir.join("rootfs_lock_test");
+        let snap = rootfs_dir.join("snapshots").join("snap_locked");
+        std::fs::create_dir_all(&snap).unwrap();
+        std::fs::write(snap.join("snapshot.bin"), b"data").unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        // Make old enough to be GC-eligible.
+        let old_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        std::fs::File::open(&snap)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        // Hold a shared lock on the snapshot (simulating runner start).
+        let snap_lock_file = lock::open_lock_file(&home.snapshot_lock("snap_locked")).unwrap();
+        let _snap_held = Flock::lock(snap_lock_file, FlockArg::LockShared).unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+        assert!(snap.exists(), "locked snapshot must survive");
+        assert_eq!(freed, 0);
+    }
+
     #[test]
     fn gc_protect_version_flag_is_accepted() {
         let r = GcCli::try_parse_from(["gc", "--protect-version", "v0.78.3"]);
@@ -1900,67 +1625,6 @@ mod tests {
         assert_eq!(removed, 2);
         assert!(!system_log.exists());
         assert!(!metrics_log.exists());
-    }
-
-    #[tokio::test]
-    async fn gc_min_age_preserves_recent_artifact() {
-        let dir = tempfile::tempdir().unwrap();
-        let locks_dir = dir.path().join("locks");
-        std::fs::create_dir_all(&locks_dir).unwrap();
-
-        let artifacts_dir = dir.path().join("rootfs");
-        let recent_dir = artifacts_dir.join("recent_hash");
-        std::fs::create_dir_all(&recent_dir).unwrap();
-        std::fs::write(recent_dir.join("rootfs.ext4"), b"data").unwrap();
-        // mtime defaults to now — well within GC_MIN_AGE (10 min)
-
-        let freed = gc_dir(
-            "rootfs",
-            &artifacts_dir,
-            |hash| locks_dir.join(format!("rootfs-{hash}.lock")),
-            Some(0), // keep_latest=0 would normally delete everything
-            false,
-        )
-        .await
-        .unwrap();
-
-        assert!(recent_dir.exists(), "recent artifact should be protected");
-        assert_eq!(freed, 0);
-    }
-
-    #[tokio::test]
-    async fn gc_min_age_allows_old_artifact_deletion() {
-        use std::fs::FileTimes;
-        use std::time::Duration;
-
-        let dir = tempfile::tempdir().unwrap();
-        let locks_dir = dir.path().join("locks");
-        std::fs::create_dir_all(&locks_dir).unwrap();
-
-        let artifacts_dir = dir.path().join("rootfs");
-        let old_dir = artifacts_dir.join("old_hash");
-        std::fs::create_dir_all(&old_dir).unwrap();
-        std::fs::write(old_dir.join("rootfs.ext4"), b"data").unwrap();
-
-        // Set mtime to 1 hour ago — well past GC_MIN_AGE
-        let old_time = SystemTime::now() - Duration::from_secs(3600);
-        std::fs::File::open(&old_dir)
-            .unwrap()
-            .set_times(FileTimes::new().set_modified(old_time))
-            .unwrap();
-
-        let freed = gc_dir(
-            "rootfs",
-            &artifacts_dir,
-            |hash| locks_dir.join(format!("rootfs-{hash}.lock")),
-            Some(0),
-            false,
-        )
-        .await
-        .unwrap();
-
-        assert!(!old_dir.exists(), "old artifact should be deleted");
-        assert!(freed > 0 || cfg!(target_os = "macos"));
     }
 
     #[tokio::test]
