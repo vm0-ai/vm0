@@ -1,6 +1,12 @@
 import type { MouseEvent } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import { IconFile, IconPhoto, IconLoader2, IconX } from "@tabler/icons-react";
+import {
+  IconFile,
+  IconPhoto,
+  IconVideo,
+  IconLoader2,
+  IconX,
+} from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
 import {
   lightboxUrl$,
@@ -130,7 +136,9 @@ function AttachmentChip({
   const lightboxUrl = useGet(lightboxUrl$);
   const setLightboxUrlFn = useSet(setLightboxUrl$);
   const isImage = attachment.contentType.startsWith("image/");
-  const iconSrc = isImage ? null : getFileTypeIcon(attachment.filename);
+  const isVideo = attachment.contentType.startsWith("video/");
+  const iconSrc =
+    isImage || isVideo ? null : getFileTypeIcon(attachment.filename);
   return (
     <>
       <div
@@ -164,6 +172,8 @@ function AttachmentChip({
               />
             )}
           </button>
+        ) : isVideo ? (
+          <IconVideo size={28} stroke={1.5} className="text-muted-foreground" />
         ) : iconSrc ? (
           <img
             alt=""

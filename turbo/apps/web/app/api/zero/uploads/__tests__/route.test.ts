@@ -132,6 +132,20 @@ describe("POST /api/zero/uploads", () => {
       expect(data.contentType).toBe("image/png");
     });
 
+    it("should upload a valid video file", async () => {
+      const file = new File([new ArrayBuffer(100)], "clip.mp4", {
+        type: "video/mp4",
+      });
+      const request = createUploadRequest(file);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.filename).toBe("clip.mp4");
+      expect(data.contentType).toBe("video/mp4");
+    });
+
     it("should upload a valid PDF file", async () => {
       const file = new File([new ArrayBuffer(50)], "document.pdf", {
         type: "application/pdf",
