@@ -22,6 +22,7 @@ import { reloadEnv } from "../../../../../../src/env";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -31,6 +32,7 @@ const URL = "http://localhost:3000/api/zero/chat/messages";
 
 describe("POST /api/zero/chat/messages", () => {
   beforeEach(() => {
+    mockAblyPublish.mockClear();
     context.setupMocks();
   });
 
@@ -418,6 +420,37 @@ describe("POST /api/zero/chat/messages", () => {
       await context.mocks.flushAfter();
 
       expect(openRouterHandler.mocked).toHaveBeenCalledTimes(1);
+    });
+
+    describe("Signal Publishing", () => {
+      it("should publish chatThreadRunCreated and chatThreadMessageCreated signals after sending a message", async () => {
+        vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+        reloadEnv();
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "hello signal test",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const data = await response.json();
+
+        await context.mocks.flushAfter();
+
+        expect(mockAblyPublish).toHaveBeenCalledWith(
+          `chatThreadRunCreated:${data.threadId}`,
+          null,
+        );
+        expect(mockAblyPublish).toHaveBeenCalledWith(
+          `chatThreadMessageCreated:${data.threadId}`,
+          null,
+        );
+      });
     });
   });
 });
