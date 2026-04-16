@@ -194,6 +194,68 @@ export function renderDefaultAllowed(
   return lines;
 }
 
+// ── Categories ──────────────────────────────────────────────────────────
+
+export interface CategoryConfig {
+  /** Permission name → category label (e.g. "Read", "Write", "Admin"). */
+  categories: Record<string, string>;
+  /** Category display order (first = top of list). */
+  displayOrder: string[];
+}
+
+/**
+ * Render a categories export grouped by category with count comments.
+ * Exhaustiveness is enforced at compile time via
+ * `Record<PermissionNamesOf<typeof xxxFirewall>, string>`.
+ *
+ * @param varName - Export variable name (e.g. "slackCategories")
+ * @param firewallVar - The firewall config variable for type checking
+ * @param config - Category mapping and display order
+ */
+export function renderCategories(
+  varName: string,
+  firewallVar: string,
+  config: CategoryConfig,
+): string[] {
+  // Group permissions by category in displayOrder
+  const grouped = new Map<string, string[]>();
+  for (const cat of config.displayOrder) {
+    grouped.set(cat, []);
+  }
+  for (const [name, category] of Object.entries(config.categories)) {
+    const list = grouped.get(category);
+    if (!list) {
+      throw new Error(
+        `renderCategories: category "${category}" (from permission "${name}") is not in displayOrder [${config.displayOrder.join(", ")}]`,
+      );
+    }
+    list.push(name);
+  }
+
+  const orderVarName = `${varName.replace(/Categories$/, "")}CategoryOrder`;
+
+  const lines: string[] = [
+    "",
+    `export const ${varName}: Record<`,
+    `  PermissionNamesOf<typeof ${firewallVar}>,`,
+    "  string",
+    "> = {",
+  ];
+  for (const [category, perms] of grouped) {
+    lines.push(`  // — ${category} (${perms.length}) —`);
+    for (const name of perms) {
+      lines.push(`  "${escapeString(name)}": "${escapeString(category)}",`);
+    }
+  }
+  lines.push("};");
+  lines.push("");
+  lines.push(
+    `export const ${orderVarName} = [${config.displayOrder.map((c) => `"${escapeString(c)}"`).join(", ")}] as const;`,
+  );
+  lines.push("");
+  return lines;
+}
+
 // ── File I/O ─────────────────────────────────────────────────────────────
 
 /**

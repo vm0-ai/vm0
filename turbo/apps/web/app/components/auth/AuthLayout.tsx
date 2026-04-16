@@ -74,14 +74,16 @@ const CLERK_CSS = `
   color: hsl(var(--foreground)) !important;
 }
 
-/* Input field styles */
+/* Input field styles.
+   The glob uses :not(:has(...)) to target only leaf-level wrappers — it excludes
+   any parent container that itself contains a nested formFieldInput element (e.g. a
+   section wrapper that groups multiple fields). plain input[type] selectors cover
+   fields that Clerk renders without a wrapper div. */
 .cl-formFieldInput,
-.cl-formFieldInput input,
+.cl-card [class*="formFieldInput"]:not(:has([class*="formFieldInput"])),
 .cl-card input[type="text"],
 .cl-card input[type="email"],
-.cl-card input[type="password"],
-.cl-card [class*="formFieldInput"],
-.cl-card [class*="formFieldInput"] input {
+.cl-card input[type="password"] {
   height: 36px !important;
   background-color: transparent !important;
   border: 1px solid hsl(var(--border)) !important;
@@ -93,10 +95,24 @@ const CLERK_CSS = `
   box-shadow: none !important;
 }
 
-/* Remove inner/outer borders */
-.cl-formFieldInput > *,
-.cl-card [class*="formFieldInput"] > * {
+/* Password input sits inside a wrapper that has the border — strip the input's
+   own border to prevent doubling. Only target password; text/email inputs may
+   have no wrapper and need their own border. */
+.cl-card [class*="formFieldInput"] input[type="password"] {
   border: none !important;
+  box-shadow: none !important;
+  height: 100% !important;
+  background-color: transparent !important;
+}
+
+/* Checkbox containers must not inherit input wrapper border/height */
+.cl-formFieldCheckboxInput,
+.cl-formFieldCheckbox,
+.cl-formFieldCheckboxWrapper {
+  border: none !important;
+  height: auto !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
 }
 
 /* Input focus state */
@@ -308,6 +324,37 @@ a[class*="resendCode"] {
 /* Legal consent checkbox label links (Terms of Service, Privacy Policy) */
 .cl-formFieldCheckboxLabel a {
   color: hsl(var(--primary)) !important;
+}
+
+/* Legal consent checkbox - clear visual distinction between checked/unchecked states */
+.cl-card input[type="checkbox"],
+.cl-formFieldCheckboxInput input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none !important;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  border: 1.5px solid hsl(var(--foreground) / 0.35) !important;
+  border-radius: 3px !important;
+  background-color: transparent !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+}
+
+.cl-card input[type="checkbox"]:checked,
+.cl-formFieldCheckboxInput input[type="checkbox"]:checked {
+  background-color: transparent !important;
+  border-color: hsl(var(--primary)) !important;
+  background-image: url("/checkmark-primary.svg") !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 70% !important;
+}
+
+.cl-card input[type="checkbox"]:hover,
+.cl-formFieldCheckboxInput input[type="checkbox"]:hover {
+  border-color: hsl(var(--primary)) !important;
 }
 `;
 

@@ -77,6 +77,7 @@ function buildAgentToolsPrompt(): string {
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- Update your own configuration: `zero agent edit --help`.",
     "- Manage custom skills: `zero skill --help`.",
+    "- Send a direct message to the user via web chat: `zero chat message send --help`.",
     "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
   ].join("\n");
 }

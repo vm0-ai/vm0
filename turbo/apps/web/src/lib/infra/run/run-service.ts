@@ -115,11 +115,12 @@ export interface CreateRunParams {
   // Per-permission policies from zero agent configuration (includes unknownPolicy).
   permissionPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
-  // Additional volumes to mount (e.g., custom skills).
+  // Additional volumes to mount (e.g., system skills, custom skills).
   additionalVolumes?: Array<{
     name: string;
     version?: string;
     mountPath: string;
+    system?: boolean;
   }>;
   // Pre-loaded compose data. When provided, skips the internal loadCompose() call.
   preloadedCompose?: {
@@ -404,6 +405,7 @@ interface InsertRunParams {
     name: string;
     version?: string;
     mountPath: string;
+    system?: boolean;
   }>;
   resumedFromCheckpointId?: string;
   sessionId?: string;

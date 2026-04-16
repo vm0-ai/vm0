@@ -81,9 +81,13 @@ export function SlowBrainIndicator({
       <div className="min-w-0">
         <span className="font-medium">{slowBrainLabel(type)}</span>
         {content?.trim() && (
-          <p className="mt-0.5 text-muted-foreground/80 line-clamp-3 break-words">
-            {content}
-          </p>
+          <details className="group mt-0.5 cursor-pointer">
+            <summary className="list-none">
+              <p className="text-muted-foreground/80 line-clamp-3 group-open:line-clamp-none break-words">
+                {content}
+              </p>
+            </summary>
+          </details>
         )}
       </div>
     </div>

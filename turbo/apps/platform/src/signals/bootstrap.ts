@@ -45,8 +45,8 @@ import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-p
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
-import { pollUserInvitations$ } from "./user-invitations.ts";
 import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
+import { pollUserInvitations$ } from "./user-invitations.ts";
 import { setupRealtime$ } from "./realtime.ts";
 
 /**
@@ -318,14 +318,12 @@ export const bootstrap$ = command(
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
       set(pollUserInvitations$, signal),
+      set(startSkeletonCycling$, signal),
       (async () => {
         await set(setupClerk$, signal);
         await set(watchOrgSwitch$, signal);
       })(),
       set(setupRoutes$, signal),
-
-      // never resolved task
-      set(startSkeletonCycling$, signal),
     ]);
 
     signal.throwIfAborted();

@@ -205,6 +205,22 @@ describe("zero schedule setup command", () => {
     });
   });
 
+  describe("help text", () => {
+    it("should include notification guidance in notes", () => {
+      // addHelpText content is not included in helpInformation(),
+      // so we capture it via the help event
+      let helpOutput = "";
+      setupCommand.configureOutput({
+        writeOut: (str: string) => {
+          helpOutput += str;
+        },
+      });
+      setupCommand.outputHelp();
+      expect(helpOutput).toContain("notified when a schedule completes");
+      expect(helpOutput).toContain("web chat or Slack");
+    });
+  });
+
   describe("error handling", () => {
     it("should handle agent not found", async () => {
       server.use(

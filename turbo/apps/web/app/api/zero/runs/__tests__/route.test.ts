@@ -440,6 +440,87 @@ describe("POST /api/zero/runs", () => {
         expect(skillStorage).toBeDefined();
       });
     });
+
+    describe("system skill volume injection", () => {
+      it("should inject system skill volumes into additionalVolumes for new run", async () => {
+        const response = await postRun({ agentId, prompt: "Hello" });
+        expect(response.status).toBe(201);
+        const data = await response.json();
+
+        const run = await findTestRunRecord(data.runId);
+        expect(run).toBeDefined();
+        expect(run!.additionalVolumes).toBeDefined();
+
+        // Verify a known SEED_SKILLS entry is present
+        const deepDiveVolume = run!.additionalVolumes!.find((v) => {
+          return v.name.includes("deep-dive");
+        });
+        expect(deepDiveVolume).toBeDefined();
+        expect(deepDiveVolume!.mountPath).toBe(
+          "/home/user/.claude/skills/deep-dive",
+        );
+        expect(deepDiveVolume!.system).toBe(true);
+
+        // Verify storage name format
+        expect(deepDiveVolume!.name).toMatch(/^agent-skills@/);
+      });
+
+      it("should inject system skill volumes on session continue", async () => {
+        const compose = await createTestCompose(uniqueId("sys-skill-agent"));
+        const sysSkillAgentId = await getTestZeroAgentId(
+          user.orgId,
+          compose.name,
+        );
+        await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+
+        const session = await createTestSessionWithConversation(
+          user.userId,
+          sysSkillAgentId,
+          compose.versionId,
+          "claude-code",
+        );
+
+        const response = await postRun({
+          agentId: sysSkillAgentId,
+          sessionId: session.id,
+          prompt: "Continue session",
+        });
+        const data = await response.json();
+        expect(response.status).toBe(201);
+
+        const run = await findTestRunRecord(data.runId);
+        expect(run).toBeDefined();
+
+        const deepDiveVolume = run!.additionalVolumes!.find((v) => {
+          return v.name.includes("deep-dive");
+        });
+        expect(deepDiveVolume).toBeDefined();
+        expect(deepDiveVolume!.system).toBe(true);
+      });
+
+      it("should place custom skills after system skills in additionalVolumes", async () => {
+        const skillName = uniqueId("test-skill");
+        await bindCustomSkillToAgent(agentId, skillName);
+
+        const response = await postRun({ agentId, prompt: "Hello" });
+        expect(response.status).toBe(201);
+        const data = await response.json();
+
+        const run = await findTestRunRecord(data.runId);
+        expect(run).toBeDefined();
+
+        const volumes = run!.additionalVolumes!;
+        const systemIndex = volumes.findIndex((v) => {
+          return v.system === true;
+        });
+        const customIndex = volumes.findIndex((v) => {
+          return v.name === getCustomSkillStorageName(skillName);
+        });
+
+        expect(systemIndex).toBeGreaterThanOrEqual(0);
+        expect(customIndex).toBeGreaterThan(systemIndex);
+      });
+    });
   });
 
   describe("parameter forwarding", () => {

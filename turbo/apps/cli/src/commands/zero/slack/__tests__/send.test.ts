@@ -31,6 +31,15 @@ describe("zero slack message send command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
+  describe("help text", () => {
+    it("should document 'me' shorthand for --user flag", () => {
+      const userOption = sendCommand.options.find((o) => {
+        return o.long === "--user";
+      });
+      expect(userOption?.description).toContain('"me"');
+    });
+  });
+
   describe("successful send", () => {
     it("should send a message with --text", async () => {
       server.use(

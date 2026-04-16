@@ -79,6 +79,65 @@ async function resolveUserMention(runId: string): Promise<string | undefined> {
   return row ? `<@${row.slackUserId}>` : undefined;
 }
 
+/**
+ * Resolve "me" to the current user's Slack user ID via org connections.
+ * Returns null if no Slack connection is found.
+ */
+async function resolveCurrentUserSlackId(
+  userId: string,
+  orgId: string,
+): Promise<string | null> {
+  const [conn] = await globalThis.services.db
+    .select({ slackUserId: slackOrgConnections.slackUserId })
+    .from(slackOrgConnections)
+    .innerJoin(
+      slackOrgInstallations,
+      eq(
+        slackOrgConnections.slackWorkspaceId,
+        slackOrgInstallations.slackWorkspaceId,
+      ),
+    )
+    .where(
+      and(
+        eq(slackOrgConnections.vm0UserId, userId),
+        eq(slackOrgInstallations.orgId, orgId),
+      ),
+    )
+    .limit(1);
+  return conn?.slackUserId ?? null;
+}
+
+/** Resolve footer parts from the auth run context (best-effort, never throws). */
+async function resolveFooterParts(
+  authRunId: string | undefined,
+): Promise<string[]> {
+  if (!authRunId) return [];
+
+  const [agentLabel, scheduleLabel, userMention] = await Promise.all([
+    resolveAgentLabel(authRunId).catch(() => {
+      return undefined;
+    }),
+    resolveScheduleLabel(authRunId).catch(() => {
+      return undefined;
+    }),
+    resolveUserMention(authRunId).catch(() => {
+      return undefined;
+    }),
+  ]);
+
+  const parts: string[] = [];
+  if (agentLabel) parts.push(`Sent via ${agentLabel}`);
+  if (scheduleLabel) parts.push(`Triggered by schedule "${scheduleLabel}"`);
+  if (userMention) {
+    parts.push(
+      scheduleLabel
+        ? `Created by ${userMention}`
+        : `Triggered by ${userMention}`,
+    );
+  }
+  return parts;
+}
+
 const router = tsr.router(integrationsSlackMessageContract, {
   sendMessage: async ({ body, headers }) => {
     initServices();
@@ -89,43 +148,35 @@ const router = tsr.router(integrationsSlackMessageContract, {
     );
     if (isSlackClientError(slackCtx)) return slackCtx;
 
-    // Resolve agent name and schedule context for footer (best-effort)
-    const agentLabel = slackCtx.authRunId
-      ? await resolveAgentLabel(slackCtx.authRunId).catch(() => {
-          return undefined;
-        })
-      : undefined;
-    const scheduleLabel = slackCtx.authRunId
-      ? await resolveScheduleLabel(slackCtx.authRunId).catch(() => {
-          return undefined;
-        })
-      : undefined;
-
-    // Resolve user mention for footer attribution (best-effort)
-    const userMention = slackCtx.authRunId
-      ? await resolveUserMention(slackCtx.authRunId).catch(() => {
-          return undefined;
-        })
-      : undefined;
-
-    // Build combined footer text from available context
-    const footerParts: string[] = [];
-    if (agentLabel) footerParts.push(`Sent via ${agentLabel}`);
-    if (scheduleLabel)
-      footerParts.push(`Triggered by schedule "${scheduleLabel}"`);
-    if (userMention) {
-      footerParts.push(
-        scheduleLabel
-          ? `Created by ${userMention}`
-          : `Triggered by ${userMention}`,
-      );
-    }
+    const footerParts = await resolveFooterParts(slackCtx.authRunId);
 
     // Resolve target channel: DM via user ID or direct channel ID
     let targetChannel: string;
     if (body.user) {
+      // Resolve "me" to the current user's Slack user ID
+      let slackUserId = body.user;
+      if (slackUserId === "me") {
+        const resolved = await resolveCurrentUserSlackId(
+          slackCtx.userId,
+          slackCtx.orgId,
+        );
+        if (!resolved) {
+          return {
+            status: 404 as const,
+            body: {
+              error: {
+                message:
+                  "No Slack connection found for current user. Connect your Slack account first.",
+                code: "NOT_FOUND",
+              },
+            },
+          };
+        }
+        slackUserId = resolved;
+      }
+
       try {
-        targetChannel = await openDMChannel(slackCtx.client, body.user);
+        targetChannel = await openDMChannel(slackCtx.client, slackUserId);
       } catch (error) {
         if (isSlackPlatformError(error)) {
           return {

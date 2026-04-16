@@ -2034,14 +2034,14 @@ class TestLogConnectorUsage:
         assert entry["billable_counts"] == {"tweet.read": 3}
 
     def test_logs_batch_ids_with_deletions(self, tmp_path):
-        """Batch with some missing ids → max(ids, data) wins (over-count safe)."""
+        """Batch with some missing ids → body parsed, bills actual data returned."""
         body = json.dumps({"data": [{"id": "1"}, {"id": "3"}]}).encode()
         flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=body)
         usage.log_connector_usage(flow, "run-abc-123")
         entry = self._read_entry(tmp_path)
         assert entry["request_ids_count"] == 3
         assert entry["response_data_count"] == 2
-        assert entry["billable_counts"] == {"tweet.read": 3}  # max(3, 2)
+        assert entry["billable_counts"] == {"tweet.read": 2}  # actual data returned
 
     def test_logs_expansions_includes(self, tmp_path):
         """?expansions=author_id → response_includes carries users + media counts."""
@@ -2072,10 +2072,9 @@ class TestLogConnectorUsage:
             "media.read": 2,
         }
 
-    def test_logs_empty_search_still_bills_one(self, tmp_path):
-        """Search returning zero results still bills 1 — the search request
-        itself may cost even when data is empty, and a floor of 1 guarantees
-        we never report 0 for a successful (2xx) billable request."""
+    def test_logs_empty_search_bills_zero(self, tmp_path):
+        """Search returning zero results bills 0 — X bills per post returned,
+        not per request.  Body parsed + no data = nothing to bill."""
         body = json.dumps({"data": [], "meta": {"result_count": 0}}).encode()
         flow = self._make_x_flow(
             tmp_path,
@@ -2088,7 +2087,51 @@ class TestLogConnectorUsage:
         entry = self._read_entry(tmp_path)
         assert entry["response_data_count"] == 0
         assert entry["response_result_count"] == 0
-        assert entry["billable_counts"] == {"tweet.read": 1}
+        assert entry["billable_counts"] == {"tweet.read": 0}
+
+    def test_soft_error_bills_zero(self, tmp_path):
+        """HTTP 200 + errors array + no data field → bills 0 (issue #9620)."""
+        body = json.dumps(
+            {
+                "errors": [
+                    {
+                        "value": "999999999999999999",
+                        "detail": "Could not find tweet with id: [999999999999999999].",
+                        "title": "Not Found Error",
+                        "resource_type": "tweet",
+                        "parameter": "id",
+                        "type": "https://api.twitter.com/2/problems/resource-not-found",
+                    }
+                ]
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            tmp_path, path="/2/tweets/999999999999999999", body=body, rule="GET /2/tweets/{id}"
+        )
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["body_parsed"] is True
+        assert "response_data_count" not in entry
+        assert entry["response_errors_count"] == 1
+        assert entry["billable_counts"] == {"tweet.read": 0}
+
+    def test_zero_result_search_with_max_results_bills_zero(self, tmp_path):
+        """Search with max_results=10 returning 0 results → bills 0 (issue #9620)."""
+        body = json.dumps({"meta": {"result_count": 0, "newest_id": None}}).encode()
+        flow = self._make_x_flow(
+            tmp_path,
+            path="/2/tweets/search/recent",
+            query="query=xyzzy_no_results&max_results=10",
+            body=body,
+            rule="GET /2/tweets/search/recent",
+        )
+        usage.log_connector_usage(flow, "run-abc-123")
+        entry = self._read_entry(tmp_path)
+        assert entry["body_parsed"] is True
+        assert entry["max_results"] == 10
+        assert entry["response_result_count"] == 0
+        assert "response_data_count" not in entry
+        assert entry["billable_counts"] == {"tweet.read": 0}
 
     def test_logs_expansions_users_and_referenced_tweets(self, tmp_path):
         """includes.users → users.read; includes.tweets accumulates into tweet.read primary."""
@@ -2163,8 +2206,8 @@ class TestLogConnectorUsage:
         assert entry["response_data_count"] == 20
         assert entry["response_result_count"] == 20
         assert entry["max_results"] == 100
-        # max(0, 20, 20, 100, 1) = 100 — over-count via max_results upper bound
-        assert entry["billable_counts"] == {"tweet.read": 100}
+        # Body parsed → trust actual counts: max(20, 20) = 20
+        assert entry["billable_counts"] == {"tweet.read": 20}
 
     def test_logs_repeated_ids_param(self, tmp_path):
         """?ids=1,2&ids=3 → request_ids_count=3 (sums all occurrences)."""
@@ -2191,9 +2234,8 @@ class TestLogConnectorUsage:
         usage.log_connector_usage(flow, "run-abc-123")
         entry = self._read_entry(tmp_path)
         assert entry["request_ids_count"] == 3
-        # max(3 usernames, 2 returned) = 3 — over-count safe when one
-        # username is suspended/missing.
-        assert entry["billable_counts"] == {"users.read": 3}
+        # Body parsed → trust actual data: max(2, 0) = 2
+        assert entry["billable_counts"] == {"users.read": 2}
 
     def test_combines_ids_and_usernames(self, tmp_path):
         """Defensive: if a request carries both ids and usernames, both
@@ -2355,7 +2397,7 @@ class TestLogConnectorUsage:
         assert entry["billable_counts"]["users.read"] == 47
 
     def test_logs_x_stream_empty_no_fallback(self, tmp_path):
-        """Stream that delivered 0 tweets bills 1 (min), NOT _X_UNPARSEABLE_READ_FALLBACK."""
+        """Stream that delivered 0 tweets bills 0, NOT _X_UNPARSEABLE_READ_FALLBACK."""
         flow = self._make_x_flow(
             tmp_path,
             path="/2/tweets/search/stream",
@@ -2373,9 +2415,8 @@ class TestLogConnectorUsage:
         assert entry["body_parsed"] is True
         assert entry["body_format"] == "ndjson"
         assert entry["response_data_count"] == 0
-        # No fallback — body_parsed=True so _X_UNPARSEABLE_READ_FALLBACK is not triggered.
-        # primary = max(0,0,0,0,1) = 1
-        assert entry["billable_counts"] == {"tweet.read": 1}
+        # Body parsed + 0 data → 0 (X bills per post returned)
+        assert entry["billable_counts"] == {"tweet.read": 0}
 
     def test_logs_x_stream_ignores_buffer_when_ndjson_state_present(self, tmp_path):
         """When x_ndjson_state is present, stream_buffer contents are ignored."""

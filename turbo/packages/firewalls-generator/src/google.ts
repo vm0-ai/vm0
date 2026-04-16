@@ -9,12 +9,13 @@ import {
   escapeString,
   fetchSpec,
   logStats,
+  renderCategories,
   renderDefaultAllowed,
   renderPermissions,
   sanitizeAndSortRules,
   writeOutput,
 } from "./codegen";
-import type { PermissionGroup } from "./codegen";
+import type { CategoryConfig, PermissionGroup } from "./codegen";
 
 // Short scope names: strip the common prefix for readable permission names.
 const SCOPE_PREFIX = "https://www.googleapis.com/auth/";
@@ -257,6 +258,16 @@ function generateTypeScript(
     lines.push("");
   }
 
+  if (config.categories) {
+    lines.push(
+      ...renderCategories(
+        config.categories.varName,
+        `${exportName}Firewall`,
+        config.categories.config,
+      ),
+    );
+  }
+
   return lines.join("\n");
 }
 
@@ -309,6 +320,14 @@ interface GoogleFirewallConfig {
   defaultAllowed?: {
     varName: string;
     permissions: string[];
+  };
+  /**
+   * Permission categories export.
+   * Generates a typed const object mapping permission names to UI categories.
+   */
+  categories?: {
+    varName: string;
+    config: CategoryConfig;
   };
 }
 
@@ -510,6 +529,31 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
         "gmail.compose",
         "gmail.labels",
       ],
+    },
+    categories: {
+      varName: "gmailCategories",
+      config: {
+        categories: {
+          // Read (5)
+          "gmail.readonly": "Read",
+          "gmail.metadata": "Read",
+          "gmail.addons.current.message.readonly": "Read",
+          "gmail.addons.current.message.metadata": "Read",
+          "gmail.addons.current.message.action": "Read",
+          // Compose (6)
+          gmail: "Compose",
+          "gmail.modify": "Compose",
+          "gmail.compose": "Compose",
+          "gmail.send": "Compose",
+          "gmail.insert": "Compose",
+          "gmail.addons.current.action.compose": "Compose",
+          // Admin (3)
+          "gmail.settings.basic": "Admin",
+          "gmail.settings.sharing": "Admin",
+          "gmail.labels": "Admin",
+        },
+        displayOrder: ["Read", "Compose", "Admin"],
+      },
     },
   },
   "google-calendar": {

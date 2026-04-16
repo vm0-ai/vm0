@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.243.0](https://github.com/vm0-ai/vm0/compare/app-v0.242.6...app-v0.243.0) (2026-04-16)
+
+
+### Features
+
+* **web:** add zero web download-file command for web-uploaded files ([#9584](https://github.com/vm0-ai/vm0/issues/9584)) ([bf35045](https://github.com/vm0-ai/vm0/commit/bf350455cc2a7bddcd8ffe5e3305f224ed82f679))
+
+
+### Refactoring
+
+* **voice-chat:** unify preparing and connected states into single continuous view ([#9634](https://github.com/vm0-ai/vm0/issues/9634)) ([69b3e4e](https://github.com/vm0-ai/vm0/commit/69b3e4e02a9423ef93d4eaeac63867cfe4741549))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.191.0
+
 ## [0.242.6](https://github.com/vm0-ai/vm0/compare/app-v0.242.5...app-v0.242.6) (2026-04-16)
 
 

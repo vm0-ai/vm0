@@ -170,7 +170,7 @@ export const FIB_DELAYS_MS = [
   1000, 1000, 2000, 3000, 5000, 8000, 13_000, 21_000, 34_000, 55_000, 60_000,
 ] as const;
 
-export const MAX_LOOP_COUNT_IN_TEST = 1000;
+export const MAX_LOOP_COUNT_IN_TEST = 100;
 /**
  * Run `loopBody` in a loop with `interval` between iterations.
  * Transient (non-abort) errors trigger fibonacci backoff retries.
@@ -185,7 +185,9 @@ export async function setLoop(
   let loopCount = 0;
   while (!signal.aborted) {
     if (IN_VITEST && loopCount++ > MAX_LOOP_COUNT_IN_TEST) {
-      return;
+      throw new Error(
+        `setLoop: infinite loop detected — exceeded ${MAX_LOOP_COUNT_IN_TEST} iterations in test`,
+      );
     }
 
     // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff

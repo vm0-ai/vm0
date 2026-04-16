@@ -13,20 +13,17 @@ import type {
   FirewallPolicyValue,
 } from "../contracts/firewalls";
 import type { ConnectorType } from "../contracts/connectors";
-import { gmailDefaultAllowed } from "./gmail.generated";
-import { slackDefaultAllowed } from "./slack.generated";
-
-// Category registrations (side-effect imports)
-import "./slack.categories";
-import "./gmail.categories";
-import "./vercel.categories";
-
-export {
-  getPermissionCategories,
-  groupPermissionsByCategory,
-  type ConnectorCategories,
-  type PermissionGroup,
-} from "./categories";
+import {
+  gmailDefaultAllowed,
+  gmailCategories,
+  gmailCategoryOrder,
+} from "./gmail.generated";
+import {
+  slackDefaultAllowed,
+  slackCategories,
+  slackCategoryOrder,
+} from "./slack.generated";
+import { vercelCategories, vercelCategoryOrder } from "./vercel.generated";
 import { getConnectorEnvironmentMapping } from "../contracts/connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
 import { agentphoneFirewall } from "./agentphone.generated";
@@ -161,6 +158,20 @@ import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
 import { zendeskFirewall } from "./zendesk.generated";
 import { zeptomailFirewall } from "./zeptomail.generated";
+
+// ── Permission categories ───────────────────────────────────────────────
+
+export interface ConnectorCategories {
+  /** Map of permission name to category label */
+  categories: Record<string, string>;
+  /** Display order of categories (first = top of list) */
+  displayOrder: readonly string[];
+}
+
+export interface PermissionGroup<T extends { name: string }> {
+  category: string;
+  permissions: T[];
+}
 
 const CONNECTOR_FIREWALLS = {
   agentmail: agentmailFirewall,
@@ -366,6 +377,59 @@ export type PermissionNamesOf<T extends FirewallConfig> =
         : never
       : never
     : never;
+
+const CONNECTOR_CATEGORIES: Partial<
+  Record<FirewallConnectorType, ConnectorCategories>
+> = {
+  gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
+  slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
+  vercel: { categories: vercelCategories, displayOrder: vercelCategoryOrder },
+};
+
+/** Get the category data for a connector type (null if uncategorized). */
+export function getPermissionCategories(
+  type: string,
+): ConnectorCategories | null {
+  return CONNECTOR_CATEGORIES[type as FirewallConnectorType] ?? null;
+}
+
+/**
+ * Group permissions by their category for a given connector type.
+ * Returns null when the connector has no category data (caller should
+ * fall back to a flat list).
+ */
+export function groupPermissionsByCategory<T extends { name: string }>(
+  permissions: T[],
+  connectorType: string,
+): PermissionGroup<T>[] | null {
+  const categoryData = getPermissionCategories(connectorType);
+  if (!categoryData) {
+    return null;
+  }
+
+  const grouped = new Map<string, T[]>();
+  for (const category of categoryData.displayOrder) {
+    grouped.set(category, []);
+  }
+
+  for (const perm of permissions) {
+    const category = categoryData.categories[perm.name];
+    if (category) {
+      const list = grouped.get(category);
+      if (list) {
+        list.push(perm);
+      }
+    }
+  }
+
+  return [...grouped.entries()]
+    .filter(([, perms]) => {
+      return perms.length > 0;
+    })
+    .map(([category, perms]) => {
+      return { category, permissions: perms };
+    });
+}
 
 /**
  * Connector types that do not have a firewall config.

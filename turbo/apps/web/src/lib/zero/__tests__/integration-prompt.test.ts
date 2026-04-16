@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildIntegrationPrompt,
+  buildSchedulePrompt,
   buildVoiceChatQuickPrepPrompt,
   buildVoiceChatMeetingPrompt,
   buildSlackPrompt,
@@ -63,23 +64,21 @@ describe("buildIntegrationPrompt", () => {
     expect(result).not.toContain("Thread ID");
   });
 
-  it("should include schedule options", () => {
-    const result = buildIntegrationPrompt("Schedule", {
-      scheduleDescription: "Daily report generation",
-      triggerType: "cron",
-    });
-
-    expect(result).toContain("You are currently running inside: Schedule");
-    expect(result).toContain("Schedule description: Daily report generation");
-    expect(result).toContain("Trigger type: cron");
-  });
-
-  it("should omit schedule fields when not provided", () => {
+  it("should not include schedule fields in base prompt", () => {
     const result = buildIntegrationPrompt("Schedule");
 
     expect(result).toContain("You are currently running inside: Schedule");
     expect(result).not.toContain("Schedule description");
     expect(result).not.toContain("Trigger type");
+  });
+});
+
+describe("buildSchedulePrompt", () => {
+  it("should include schedule header and trigger type", () => {
+    const result = buildSchedulePrompt({ triggerType: "cron" });
+
+    expect(result).toContain("You are currently running inside: Schedule");
+    expect(result).toContain("Trigger type: cron");
   });
 });
 

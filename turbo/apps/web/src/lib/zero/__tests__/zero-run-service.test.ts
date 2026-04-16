@@ -244,15 +244,21 @@ describe("createZeroRun() — service-only parameters", () => {
       );
     });
 
-    it("should not inject additionalVolumes when agent has no custom skills", async () => {
+    it("should inject only system skill volumes when agent has no custom skills", async () => {
       const result = await createZeroRun(baseParams());
 
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
-      expect(run!.additionalVolumes).toBeNull();
+      expect(run!.additionalVolumes).toBeDefined();
+      expect(run!.additionalVolumes!.length).toBeGreaterThan(0);
+      expect(
+        run!.additionalVolumes!.every((v) => {
+          return v.system === true;
+        }),
+      ).toBe(true);
     });
 
-    it("should inject multiple skills preserving order", async () => {
+    it("should inject multiple custom skills after system skills preserving order", async () => {
       const agentName = uniqueId("multi-skill");
       await createTestCompose(agentName);
       const multiAgentId = await getTestZeroAgentId(user.orgId, agentName);
@@ -264,8 +270,12 @@ describe("createZeroRun() — service-only parameters", () => {
 
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
-      expect(run!.additionalVolumes).toHaveLength(3);
-      expect(run!.additionalVolumes).toEqual([
+      const volumes = run!.additionalVolumes!;
+      // Custom skills appear at the end, after system skills
+      const customVolumes = volumes.filter((v) => {
+        return !v.system;
+      });
+      expect(customVolumes).toEqual([
         {
           name: "custom-skill@alpha",
           mountPath: "/home/user/.claude/skills/alpha",
@@ -307,12 +317,20 @@ describe("createZeroRun() — service-only parameters", () => {
 
       const resumedRun = await findTestRunRecord(resumed.runId);
       expect(resumedRun).toBeDefined();
-      expect(resumedRun!.additionalVolumes).toEqual([
-        {
-          name: "custom-skill@my-skill",
-          mountPath: "/home/user/.claude/skills/my-skill",
-        },
-      ]);
+      expect(resumedRun!.additionalVolumes).toEqual(
+        expect.arrayContaining([
+          {
+            name: "custom-skill@my-skill",
+            mountPath: "/home/user/.claude/skills/my-skill",
+          },
+        ]),
+      );
+      // System skills are also present
+      expect(
+        resumedRun!.additionalVolumes!.some((v) => {
+          return v.system === true;
+        }),
+      ).toBe(true);
     });
   });
 

@@ -567,6 +567,10 @@ def _parse_x_response_metadata(flow: http.HTTPFlow) -> dict:
     elif isinstance(payload, dict):
         result["response_data_count"] = 1
 
+    errors = data.get("errors")
+    if isinstance(errors, list) and errors:
+        result["response_errors_count"] = len(errors)
+
     includes = data.get("includes")
     if isinstance(includes, dict):
         counts = {k: len(v) for k, v in includes.items() if isinstance(v, list)}
@@ -627,10 +631,17 @@ def _compute_x_billable_counts(method: str, req_meta: dict, resp_meta: dict, end
 
     Reads (GET):
 
-    - **Primary**: ``max(ids_count, data_count, result_count,
-      max_results, 1)``.  When the body can't be parsed and no URL hints
-      exist, falls back to :data:`_X_UNPARSEABLE_READ_FALLBACK` (100) to
-      avoid silent undercount.
+    X bills per post returned ("only successful responses that return
+    data are billed"), so the primary count must reflect what was
+    actually in the response, not what was requested.
+
+    - **Body parsed**: ``max(data_count, result_count)`` — trust the
+      actual response.  Soft errors (HTTP 200 + ``errors`` array, no
+      ``data``) and zero-result searches correctly yield 0.
+    - **Body NOT parsed**: fall back to request-side hints
+      ``max(ids_count, max_results, 1)``, or
+      :data:`_X_UNPARSEABLE_READ_FALLBACK` (100) when no hints exist,
+      to avoid silent undercount.
     - **Includes**: each ``includes.<key>`` is mapped via
       :data:`_INCLUDES_TO_PERMISSION` when that type has a dedicated
       firewall permission (``users`` → ``users.read``, ``tweets`` →
@@ -643,18 +654,21 @@ def _compute_x_billable_counts(method: str, req_meta: dict, resp_meta: dict, end
     if method != "GET":
         return {endpoint: 1}
 
-    ids = req_meta.get("request_ids_count") or 0
-    max_r = req_meta.get("max_results") or 0
     data = resp_meta.get("response_data_count") or 0
     result = resp_meta.get("response_result_count") or 0
-    primary = max(ids, data, result, max_r, 1)
 
-    # Body parse failed AND no URL or response count hints available →
-    # conservative fallback.  Without this, max(...) degenerates to 1 and
-    # a search returning dozens of results would be billed as a single
-    # read.
-    if not resp_meta.get("body_parsed") and not any((ids, data, result, max_r)):
-        primary = max(primary, _X_UNPARSEABLE_READ_FALLBACK)
+    if resp_meta.get("body_parsed"):
+        # Body was parsed — trust actual response counts.
+        # Soft errors (no data field) and empty searches correctly yield 0.
+        primary = max(data, result)
+    else:
+        # Body couldn't be parsed — fall back to request-side hints.
+        ids = req_meta.get("request_ids_count") or 0
+        max_r = req_meta.get("max_results") or 0
+        primary = max(ids, max_r, 1)
+        # No hints at all → conservative fallback to avoid silent undercount.
+        if not any((ids, data, result, max_r)):
+            primary = max(primary, _X_UNPARSEABLE_READ_FALLBACK)
 
     counts: dict = {endpoint: primary}
 

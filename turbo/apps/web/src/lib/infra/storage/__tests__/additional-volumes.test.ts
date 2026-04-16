@@ -348,6 +348,66 @@ describe("Additional Volumes", () => {
       expect(manifest.storages[0]!.vasVersionId).toBe(versionId);
     });
 
+    it("should prefer SYSTEM_ORG over runtime org when both have the volume", async () => {
+      const storageName = uniqueId("sys-priority");
+      const { versionId: systemVersionId } = await createTestVolumeForOrg(
+        SYSTEM_ORG_ID,
+        storageName,
+      );
+      // Also create in runtime org — should NOT be used
+      await createTestVolume(storageName);
+
+      const additional: AdditionalVolume[] = [
+        { name: storageName, mountPath: "/mnt/priority", system: true },
+      ];
+
+      const manifest = await prepareStorageManifest(
+        undefined,
+        {},
+        user.orgId,
+        user.orgId,
+        user.userId,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        additional,
+      );
+
+      expect(manifest.storages).toHaveLength(1);
+      expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
+      expect(manifest.storages[0]!.vasVersionId).toBe(systemVersionId);
+    });
+
+    it("should silently skip system volume not found in either org", async () => {
+      const additional: AdditionalVolume[] = [
+        {
+          name: "nonexistent-system-vol",
+          mountPath: "/mnt/missing-sys",
+          system: true,
+        },
+      ];
+
+      const manifest = await prepareStorageManifest(
+        undefined,
+        {},
+        user.orgId,
+        user.orgId,
+        user.userId,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        additional,
+      );
+
+      expect(manifest.storages).toHaveLength(0);
+    });
+
     it("should resolve non-system volume from runtime org only", async () => {
       const storageName = uniqueId("nonsys-vol");
       const { versionId } = await createTestVolume(storageName);

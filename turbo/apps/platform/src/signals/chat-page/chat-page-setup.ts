@@ -74,8 +74,6 @@ export const setupChatPage$ = command(
       );
     }
 
-    // Fetch the initial page of messages, scroll to bottom so the user
-    // lands at the end of the conversation, then start the poll loop.
     await set(thread.fetchNextPage$, signal);
     set(thread.scrollToBottom$);
 

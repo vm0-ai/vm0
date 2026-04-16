@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.81.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.81.2...runner-rs-v0.81.3) (2026-04-16)
+
+
+### Bug Fixes
+
+* **billing:** trust parsed response counts for x connector billing ([#9644](https://github.com/vm0-ai/vm0/issues/9644)) ([321cbf0](https://github.com/vm0-ai/vm0/commit/321cbf0adeb46fa0943be991a0b4652fcf399e77)), closes [#9620](https://github.com/vm0-ai/vm0/issues/9620)
+* **runner:** only count successfully removed locks in gc_orphaned_locks ([#9645](https://github.com/vm0-ai/vm0/issues/9645)) ([e364fa0](https://github.com/vm0-ai/vm0/commit/e364fa0150e38926c7a63d2f227f529c3fae1e99)), closes [#9585](https://github.com/vm0-ai/vm0/issues/9585)
+
 ## [0.81.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.81.1...runner-rs-v0.81.2) (2026-04-16)
 
 

@@ -9,6 +9,7 @@ import {
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   createTestSlackOrgInstallation,
+  createTestSlackOrgConnection,
   seedTestSlackOrgConnection,
 } from "../../../../../../../src/__tests__/db-test-seeders/slack";
 import { createTestZeroAgent } from "../../../../../../../src/__tests__/db-test-seeders/agents";
@@ -255,6 +256,68 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const data = await response.json();
     expect(data.error.code).toBe("NOT_FOUND");
     expect(data.error.message).toContain("user_not_found");
+  });
+
+  it("resolves 'me' to current user's Slack ID and sends DM", async () => {
+    mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
+    const token = await generateZeroToken(user.userId, "run-1", user.orgId);
+
+    const { slackWorkspaceId } = await createTestSlackOrgInstallation({
+      orgId: user.orgId,
+    });
+    const { slackUserId } = await createTestSlackOrgConnection({
+      slackWorkspaceId,
+      vm0UserId: user.userId,
+    });
+
+    const request = createTestRequest(URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ user: "me", text: "Hello self!" }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    // Verify conversations.open was called with the resolved Slack user ID
+    const mockClient = vi.mocked(new WebClient(""));
+    expect(mockClient.conversations.open).toHaveBeenCalledWith({
+      users: slackUserId,
+    });
+  });
+
+  it("returns 404 when 'me' is used but no Slack connection exists", async () => {
+    mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
+    const token = await generateZeroToken(user.userId, "run-1", user.orgId);
+    await createTestSlackOrgInstallation({ orgId: user.orgId });
+
+    const request = createTestRequest(URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ user: "me", text: "hello" }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(404);
+
+    const data = await response.json();
+    expect(data.error.message).toContain("No Slack connection found");
   });
 
   it("appends 'Sent via' footer when agent is resolvable from run", async () => {
