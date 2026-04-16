@@ -242,6 +242,7 @@ export function mockChatLifecycle(options?: {
       }
       options?.onRunCreate?.();
       runAssociated = true;
+      triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
       return HttpResponse.json(
         {
           runId: "run-test-1",

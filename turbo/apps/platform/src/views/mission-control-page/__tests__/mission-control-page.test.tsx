@@ -9,11 +9,10 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
   addOptimisticTask$,
-  setupTasksLoop$,
   taskSignals$,
 } from "../../../signals/mission-control-page/mission-control-tasks.ts";
 import { createAndShowChatTask$ } from "../../../signals/mission-control-page/mission-control.ts";
-import { detach, Reason } from "../../../signals/utils.ts";
+import { triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 
@@ -56,13 +55,14 @@ function mockTasksAPI(
   );
 }
 
-function mockActivityAPIs(runId: string) {
+function mockActivityAPIs(runId: string, overrides?: { status?: string }) {
+  const status = overrides?.status ?? "completed";
   server.use(
     http.get(`*/api/zero/logs/${runId}`, () => {
       return HttpResponse.json({
         id: "00000000-0000-4000-a000-000000000001",
         displayName: "Test Agent",
-        status: "completed",
+        status,
         agentId: "agent-1",
         sessionId: null,
         triggerSource: null,
@@ -76,7 +76,7 @@ function mockActivityAPIs(runId: string) {
         error: null,
         createdAt: "2026-04-10T10:00:00Z",
         startedAt: "2026-04-10T10:00:01Z",
-        completedAt: "2026-04-10T10:00:05Z",
+        completedAt: status === "completed" ? "2026-04-10T10:00:05Z" : null,
         artifact: { name: null, version: null },
       });
     }),
@@ -86,6 +86,20 @@ function mockActivityAPIs(runId: string) {
         hasMore: false,
         framework: "unknown",
       });
+    }),
+    http.get(`*/api/zero/runs/${runId}`, () => {
+      return HttpResponse.json({
+        runId: "00000000-0000-4000-a000-000000000001",
+        agentComposeVersionId: null,
+        status,
+        prompt: "",
+        appendSystemPrompt: null,
+        result: null,
+        createdAt: "2026-04-10T10:00:00Z",
+      });
+    }),
+    http.get("*/api/zero/queue-position", () => {
+      return HttpResponse.json({ position: 0 });
     }),
   );
 }
@@ -447,7 +461,12 @@ describe("mission control page", () => {
     detachedSetupPage({
       context,
       path: "/_/mission-control",
-      withoutRender: true,
+    });
+
+    // Wait for the page setup's tasks loop to complete its first fetch,
+    // which confirms realtime channel is established.
+    await waitFor(() => {
+      expect(screen.getByText("No active tasks")).toBeInTheDocument();
     });
 
     // Insert optimistic entry with optimisticInsertedAt set 31 seconds in the past
@@ -462,7 +481,7 @@ describe("mission control page", () => {
     );
     dateSpy.mockRestore();
 
-    // Entry must exist before the loop runs
+    // Entry must exist before the next poll
     const signalsBefore = await context.store.get(taskSignals$);
     expect(
       signalsBefore.some((ts) => {
@@ -470,10 +489,8 @@ describe("mission control page", () => {
       }),
     ).toBeTruthy();
 
-    // Run the loop with the test-scoped signal — Date.now() returns real time
-    // (31s after staleInsertedAt), so the TTL check fires and prunes the entry.
-    // The loop is aborted by afterEach when the test context signal is aborted.
-    detach(context.store.set(setupTasksLoop$, context.signal), Reason.Daemon);
+    // Trigger the tasks loop to poll again — the TTL check prunes the stale entry.
+    triggerAblyEvent("tasks:org_default");
 
     await waitFor(async () => {
       const signals = await context.store.get(taskSignals$);
