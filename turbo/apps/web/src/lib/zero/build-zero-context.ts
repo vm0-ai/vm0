@@ -207,10 +207,14 @@ async function resolveSecretsAndEnvironment(
     ? getModelProviderFirewall(modelProviderFirewallType)
     : undefined;
 
-  // Build connector permission configs for placeholder injection.
-  // connectorPermissionConfigs carry `placeholders` (custom placeholder values),
-  // which expandEnvironmentFromCompose needs to replace secrets with placeholders.
-  const connectorPermissionConfigs: ExpandedFirewallConfig[] = connectorTypes
+  // Build connector permission configs for placeholder injection and firewall
+  // rules. Use allowedConnectorTypes (user-enabled connectors) rather than
+  // connectorTypes (secret-dependent) so that firewalls are injected even when
+  // the user hasn't linked the connector yet (no secrets). The proxy handles
+  // the missing-secrets case with a 502 "auth_unavailable" response.
+  const connectorPermissionConfigs: ExpandedFirewallConfig[] = (
+    allowedConnectorTypes ?? []
+  )
     .filter(isFirewallConnectorType)
     .map((type) => {
       return {

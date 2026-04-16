@@ -266,8 +266,6 @@ function collectReferencedSecrets(
 /**
  * Resolve a single secrets.X or vars.X reference inside a basic() call.
  * Returns the resolved value, or empty string if the slot is omitted/missing.
- * Missing values produce a warning log but don't fail the request — consistent
- * with simple ${{ secrets.X }} resolution behavior.
  */
 function resolveBasicArg(
   namespace: string | undefined,
@@ -275,21 +273,11 @@ function resolveBasicArg(
   secrets: Record<string, string>,
   vars: Record<string, string>,
   resolvedKeys: Set<string>,
-  runId: string,
 ): string {
   if (!namespace || !key) return "";
   if (namespace === "secrets") {
     resolvedKeys.add(key);
-    if (!(key in secrets)) {
-      log.warn(`[${runId}] No secret value for "${key}" in basic()`);
-      return "";
-    }
     return secrets[key] ?? "";
-  }
-  // namespace === "vars"
-  if (!(key in vars)) {
-    log.warn(`[${runId}] No var value for "${key}" in basic()`);
-    return "";
   }
   return vars[key] ?? "";
 }
@@ -302,7 +290,6 @@ function resolveTemplates(
   authHeaders: Record<string, string>,
   secrets: Record<string, string>,
   vars: Record<string, string>,
-  runId: string,
   authBase?: string,
   authQuery?: Record<string, string>,
 ): {
@@ -319,16 +306,7 @@ function resolveTemplates(
       (_match, namespace: string, key: string) => {
         if (namespace === "secrets") {
           resolvedKeys.add(key);
-          if (!(key in secrets)) {
-            log.warn(`[${runId}] No secret value for "${key}" in template`);
-            return "";
-          }
           return secrets[key] ?? "";
-        }
-        // namespace === "vars"
-        if (!(key in vars)) {
-          log.warn(`[${runId}] No var value for "${key}" in template`);
-          return "";
         }
         return vars[key] ?? "";
       },
@@ -343,22 +321,8 @@ function resolveTemplates(
     resolved = resolved.replace(
       basicAuthTemplateRe(),
       (_match, ns1?: string, key1?: string, ns2?: string, key2?: string) => {
-        const user = resolveBasicArg(
-          ns1,
-          key1,
-          secrets,
-          vars,
-          resolvedKeys,
-          runId,
-        );
-        const pass = resolveBasicArg(
-          ns2,
-          key2,
-          secrets,
-          vars,
-          resolvedKeys,
-          runId,
-        );
+        const user = resolveBasicArg(ns1, key1, secrets, vars, resolvedKeys);
+        const pass = resolveBasicArg(ns2, key2, secrets, vars, resolvedKeys);
         return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
       },
     );
@@ -475,6 +439,24 @@ export async function POST(request: Request) {
     authQuery,
   );
 
+  // Check that all referenced secrets exist in the decrypted secrets map.
+  // Missing secrets indicate the connector is enabled but not linked (no OAuth/API token).
+  const missingSecrets = [...referencedKeys].filter((key) => {
+    return !(key in secrets);
+  });
+  if (missingSecrets.length > 0) {
+    return NextResponse.json(
+      {
+        error: {
+          message: `Connector not linked. Missing secrets: ${missingSecrets.join(", ")}`,
+          code: "SECRETS_NOT_FOUND",
+          missingSecrets,
+        },
+      },
+      { status: 424 },
+    );
+  }
+
   // Refresh expired OAuth tokens (mutates secrets map with fresh values)
   let expiresAt: number | null = null;
   let refreshedConnectors: string[] = [];
@@ -513,7 +495,6 @@ export async function POST(request: Request) {
     authHeaders,
     secrets,
     vars ?? {},
-    auth.runId,
     authBase,
     authQuery,
   );
