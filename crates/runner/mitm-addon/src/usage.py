@@ -234,7 +234,7 @@ def _report_usage_with_retry(
                 "Usage report succeeded",
                 type="usage",
                 api_url=api_url,
-                **usage,
+                usage=usage,
             )
             return
         except Exception as exc:
@@ -247,7 +247,7 @@ def _report_usage_with_retry(
                     api_url=api_url,
                     error=str(exc),
                     attempt=attempt + 1,
-                    **usage,
+                    usage=usage,
                 )
                 time.sleep(0.5)
             else:
@@ -258,8 +258,8 @@ def _report_usage_with_retry(
                     type="usage",
                     api_url=api_url,
                     error=str(exc),
-                    attempts=attempt + 1,
-                    **usage,
+                    attempt=attempt + 1,
+                    usage=usage,
                 )
 
 
@@ -281,7 +281,7 @@ def _enqueue_usage(
         "Usage report enqueued",
         type="usage",
         api_url=api_url,
-        **copied,
+        usage=copied,
     )
     try:
         usage_executor.submit(
