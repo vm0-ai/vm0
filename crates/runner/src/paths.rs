@@ -127,8 +127,12 @@ impl HomePaths {
         self.locks_dir().join(format!("base-dir-{hash}.lock"))
     }
 
+    /// Lock file for a rootfs hash.
+    ///
+    /// Keeps the `image-` prefix for backward compatibility: during rolling
+    /// deploys, old runner binaries still hold locks under this name.
     pub fn rootfs_lock(&self, hash: &str) -> PathBuf {
-        self.locks_dir().join(format!("rootfs-{hash}.lock"))
+        self.locks_dir().join(format!("image-{hash}.lock"))
     }
 
     pub fn snapshot_lock(&self, hash: &str) -> PathBuf {
@@ -297,7 +301,7 @@ mod tests {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let rootfs_lock = home.rootfs_lock("abc123");
         assert!(rootfs_lock.starts_with("/test/locks/"));
-        assert!(rootfs_lock.to_string_lossy().contains("rootfs-abc123"));
+        assert!(rootfs_lock.to_string_lossy().contains("image-abc123"));
     }
 
     #[test]
