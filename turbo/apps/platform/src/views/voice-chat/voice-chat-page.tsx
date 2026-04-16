@@ -116,7 +116,7 @@ function VoiceChatFooter({
   onEnd,
   onRetry,
 }: {
-  status: string;
+  status: ConnectionStatus;
   muted: boolean;
   toggleMute: () => void;
   onEnd: () => void;
