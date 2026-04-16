@@ -126,7 +126,7 @@ export const initCommand = new Command()
         `  2. Edit ${chalk.cyan("AGENTS.md")} to customize your agent's workflow`,
       );
       console.log(
-        `  3. Run your agent: ${chalk.cyan('vm0 cook "let\'s start working"')}`,
+        `  3. Run your agent: ${chalk.cyan('vm0 run "let\'s start working"')}`,
       );
     }),
   );

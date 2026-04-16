@@ -45,7 +45,7 @@ describe("zero CLI program", () => {
       "volume",
       "artifact",
       "memory",
-      "cook",
+
       "init",
       "upgrade",
       "info",

@@ -193,7 +193,7 @@ describe("init command", () => {
         expect.stringContaining("AGENTS.md"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 cook"),
+        expect.stringContaining("vm0 run"),
       );
     });
 
