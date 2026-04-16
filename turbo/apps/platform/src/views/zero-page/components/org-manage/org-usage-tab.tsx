@@ -177,9 +177,6 @@ function OverviewSection() {
   const rawMembers = usageData?.members ?? [];
   useSet(syncUsageMembersFromLoadable$)(rawMembers);
 
-  const totalUsed = members.reduce((s, m) => {
-    return s + m.creditsCharged;
-  }, 0);
   return (
     <div className="flex flex-col gap-8">
       {/* Credit balance */}
