@@ -66,9 +66,10 @@
         R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
       register: default_build_output
 
-    - name: Parse default build hash
+    - name: Parse default build hashes
       set_fact:
-        default_image_hash: "{{ default_build_output.stdout_lines | select('match', '^image_hash=') | first | regex_replace('^image_hash=', '') }}"
+        default_rootfs_hash: "{{ default_build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
+        default_snapshot_hash: "{{ default_build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
 
     # ========================================
     # Phase 3: Configure + Install
@@ -77,7 +78,8 @@
       command: >
         {{ bin_dir }}/runner config
         --profile vm0/default
-        --image-hash {{ default_image_hash }}
+        --rootfs-hash {{ default_rootfs_hash }}
+        --snapshot-hash {{ default_snapshot_hash }}
         --name {{ runner_name }}
         --group {{ runner_group }}
         --runner-dirname {{ runner_name }}

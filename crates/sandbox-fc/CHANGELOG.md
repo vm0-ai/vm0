@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.3...sandbox-fc-v0.25.4) (2026-04-16)
+
+
+### Refactoring
+
+* **runner:** split image hash into rootfs_hash and snapshot_hash ([#9622](https://github.com/vm0-ai/vm0/issues/9622)) ([bbeaa44](https://github.com/vm0-ai/vm0/commit/bbeaa44f59d3066caa78348c45f98617fda18b02))
+
 ## [0.25.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.2...sandbox-fc-v0.25.3) (2026-04-16)
 
 

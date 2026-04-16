@@ -301,7 +301,8 @@ jobs:
     outputs:
       host: ${{ needs.detect.outputs.metal-host }}
       job-ref: ${{ needs.detect.outputs.metal-job-ref }}
-      default-image-hash: ${{ steps.build.outputs.default-image-hash }}
+      default-rootfs-hash: ${{ steps.build.outputs.default-rootfs-hash }}
+      default-snapshot-hash: ${{ steps.build.outputs.default-snapshot-hash }}
     steps:
       - uses: actions/checkout@v6
 
@@ -312,7 +313,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match release-please.yml so image_hash is
+      # custom RUSTFLAGS) must match release-please.yml so rootfs_hash is
       # identical across pipelines and R2 cache hits on deploy. See #9192.
       - name: Cross-compile guest binaries for ARM64
         run: |
@@ -412,14 +413,16 @@ jobs:
             R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
             R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
             ${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
-          DEFAULT_IMAGE_HASH=$(grep '^image_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
+          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
+          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
           rm -f "$BUILD_LOG_DEFAULT"
 
-          if [ -z "$DEFAULT_IMAGE_HASH" ]; then
-            echo "ERROR: Failed to extract default image hash"
+          if [ -z "$DEFAULT_ROOTFS_HASH" ] || [ -z "$DEFAULT_SNAPSHOT_HASH" ]; then
+            echo "ERROR: Failed to extract rootfs_hash or snapshot_hash"
             exit 1
           fi
-          echo "default-image-hash=${DEFAULT_IMAGE_HASH}" >> "$GITHUB_OUTPUT"
+          echo "default-rootfs-hash=${DEFAULT_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
+          echo "default-snapshot-hash=${DEFAULT_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
 
   runner-benchmark:
     runs-on: ubuntu-latest
@@ -441,7 +444,8 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          DEFAULT_IMAGE_HASH: ${{ needs.runner-build.outputs.default-image-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
@@ -453,7 +457,8 @@ jobs:
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
-            --image-hash ${DEFAULT_IMAGE_HASH} \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
             --name ${JOB_REF}-bench \
             --group vm0/development-${JOB_REF} \
             --runner-dirname ${JOB_REF}-bench \
@@ -496,7 +501,8 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          DEFAULT_IMAGE_HASH: ${{ needs.runner-build.outputs.default-image-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
@@ -506,7 +512,8 @@ jobs:
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
-            --image-hash ${DEFAULT_IMAGE_HASH} \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
             --name ${JOB_REF}-exec \
             --group vm0/exec-${JOB_REF} \
             --runner-dirname ${JOB_REF}-exec \
@@ -757,7 +764,8 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          DEFAULT_IMAGE_HASH: ${{ needs.runner-build.outputs.default-image-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
@@ -767,7 +775,8 @@ jobs:
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
-            --image-hash ${DEFAULT_IMAGE_HASH} \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
             --name ${JOB_REF}-cancel \
             --group vm0/cancel-${JOB_REF} \
             --runner-dirname ${JOB_REF}-cancel \
@@ -868,7 +877,8 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          DEFAULT_IMAGE_HASH: ${{ needs.runner-build.outputs.default-image-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
@@ -878,7 +888,8 @@ jobs:
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
-            --image-hash ${DEFAULT_IMAGE_HASH} \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
             --name ${JOB_REF}-balloon \
             --group vm0/balloon-${JOB_REF} \
             --runner-dirname ${JOB_REF}-balloon \
@@ -1076,7 +1087,8 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          DEFAULT_IMAGE_HASH: ${{ needs.runner-build.outputs.default-image-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
@@ -1088,7 +1100,8 @@ jobs:
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
               --profile vm0/default \
-              --image-hash ${DEFAULT_IMAGE_HASH} \
+              --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+              --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
               --name ${JOB_REF}-${SUFFIX} \
               --group ${GROUP} \
               --runner-dirname ${JOB_REF}-${SUFFIX} \
@@ -1192,7 +1205,8 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          DEFAULT_IMAGE_HASH: ${{ needs.runner-build.outputs.default-image-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
@@ -1202,7 +1216,8 @@ jobs:
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
-            --image-hash ${DEFAULT_IMAGE_HASH} \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
             --name ${JOB_REF}-keepalive \
             --group vm0/keepalive-${JOB_REF} \
             --runner-dirname ${JOB_REF}-keepalive \

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.190.1](https://github.com/vm0-ai/vm0/compare/core-v8.190.0...core-v8.190.1) (2026-04-16)
+
+
+### Refactoring
+
+* **firewalls:** make auth.headers optional in firewall schema ([#9617](https://github.com/vm0-ai/vm0/issues/9617)) ([657b74f](https://github.com/vm0-ai/vm0/commit/657b74fcb19080e58a61ec7d1005eec89a617627))
+
 ## [8.190.0](https://github.com/vm0-ai/vm0/compare/core-v8.189.1...core-v8.190.0) (2026-04-16)
 
 

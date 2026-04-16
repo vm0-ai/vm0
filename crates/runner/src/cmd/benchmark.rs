@@ -63,10 +63,9 @@ pub async fn run_benchmark(
         .clone();
     // Block until memory.bin is in page cache so benchmark numbers are stable.
     {
-        let path = home
-            .images_dir()
-            .join(&default_profile.image_hash)
-            .join("memory.bin");
+        let path = crate::paths::RootfsPaths::new(&home, &default_profile.rootfs_hash)
+            .snapshot(&default_profile.snapshot_hash)
+            .memory_bin();
         let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;
     }
 

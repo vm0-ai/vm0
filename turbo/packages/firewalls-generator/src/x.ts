@@ -48,6 +48,111 @@ function extractScopeDescriptions(spec: OpenApiSpec): Record<string, string> {
   return oauth?.flows?.authorizationCode?.scopes ?? {};
 }
 
+// ── Scope priority for primary-group selection ──────────────────────────
+//
+// When an endpoint requires multiple OAuth scopes (conjunctive — all must
+// be granted), we assign the rule to a single "primary" permission group:
+// the scope with the highest priority.
+//
+// Rationale: X API uses `tweet.read` and `users.read` as broad base scopes
+// required by almost every endpoint. The *specific* scope (e.g. `like.write`,
+// `dm.read`) describes the actual action and should own the rule for both
+// firewall authorization and billing attribution.
+//
+// If the highest priority is tied, codegen fails — add the new scope to
+// the table with a distinct priority. If a scope is missing entirely,
+// codegen also fails — add it before regenerating.
+
+const SCOPE_PRIORITY: Record<string, number> = {
+  // write scopes — highest (the action the endpoint performs)
+  "tweet.write": 100,
+  "tweet.moderate.write": 100,
+  "like.write": 100,
+  "dm.write": 100,
+  "follows.write": 100,
+  "list.write": 100,
+  "bookmark.write": 100,
+  "mute.write": 100,
+  "block.write": 100,
+  "media.write": 100,
+
+  // specific read scopes — the domain-level read capability
+  "like.read": 50,
+  "dm.read": 50,
+  "follows.read": 50,
+  "list.read": 50,
+  "bookmark.read": 50,
+  "block.read": 50,
+  "mute.read": 50,
+  "space.read": 50,
+  "timeline.read": 50,
+
+  // broad read scopes — required by many endpoints as base scopes.
+  // Same priority: tie is broken by path-based heuristic below.
+  "users.read": 5,
+  "tweet.read": 5,
+};
+
+// Path prefix → scope mapping for breaking ties between same-priority scopes.
+// When two scopes have equal priority, the scope whose prefix matches the
+// API path wins.  Entries are checked in order; first match wins.
+const PATH_TIEBREAKER: Array<[prefix: string, scope: string]> = [
+  ["/2/tweets", "tweet.read"],
+  ["/2/users", "users.read"],
+  ["/2/communities", "users.read"],
+  ["/2/news", "users.read"],
+];
+
+/** Look up scope priority; throws on unknown scope for fail-fast. */
+export function scopePriority(scope: string, rule: string): number {
+  const p = SCOPE_PRIORITY[scope];
+  if (p === undefined) {
+    throw new Error(
+      `Unknown scope "${scope}" on ${rule}. ` +
+        `Add it to SCOPE_PRIORITY in x.ts before regenerating.`,
+    );
+  }
+  return p;
+}
+
+/**
+ * Pick the single primary scope for an endpoint with multiple OAuth scopes.
+ * Fails loudly on unknown scopes or unresolvable priority ties.
+ */
+export function pickPrimaryScope(scopes: string[], rule: string): string {
+  if (scopes.length === 1) return scopes[0] ?? "";
+
+  // Validate all scopes and sort by priority descending
+  const sorted = [...scopes].sort(
+    (a, b) => scopePriority(b, rule) - scopePriority(a, rule),
+  );
+
+  const first = sorted[0] ?? "";
+  const second = sorted[1] ?? "";
+
+  // No tie → return highest
+  if (scopePriority(first, rule) !== scopePriority(second, rule)) {
+    return first;
+  }
+
+  // Tie: collect all scopes at the top priority
+  const topPriority = scopePriority(first, rule);
+  const tied = sorted.filter((s) => scopePriority(s, rule) === topPriority);
+
+  // Try path-based tiebreaker: extract path from rule ("METHOD /path")
+  const path = rule.split(" ")[1] ?? "";
+  for (const [prefix, scope] of PATH_TIEBREAKER) {
+    if (path.startsWith(prefix) && tied.includes(scope)) {
+      return scope;
+    }
+  }
+
+  throw new Error(
+    `Priority tie between ${tied.map((s) => `"${s}"`).join(", ")} on ${rule}. ` +
+      `Add a PATH_TIEBREAKER entry or adjust SCOPE_PRIORITY in x.ts.`,
+  );
+}
+
 // ── Grouping ─────────────────────────────────────────────────────────────
 
 /** Group name for endpoints that only support app-only (BearerToken) auth. */
@@ -92,15 +197,14 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
       const rule = `${methodLower.toUpperCase()} ${apiPath}`;
 
       if (oauthScopes.size > 0) {
-        // Group by each OAuth scope
-        for (const scope of oauthScopes) {
-          let ruleSet = groups.get(scope);
-          if (!ruleSet) {
-            ruleSet = new Set();
-            groups.set(scope, ruleSet);
-          }
-          ruleSet.add(rule);
+        // Assign rule to a single primary scope (highest priority)
+        const primary = pickPrimaryScope([...oauthScopes], rule);
+        let ruleSet = groups.get(primary);
+        if (!ruleSet) {
+          ruleSet = new Set();
+          groups.set(primary, ruleSet);
         }
+        ruleSet.add(rule);
       } else {
         // BearerToken-only endpoint (app-only auth, no user scopes)
         let ruleSet = groups.get(APP_ONLY_GROUP);

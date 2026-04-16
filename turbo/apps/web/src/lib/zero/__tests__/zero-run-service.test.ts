@@ -281,7 +281,7 @@ describe("createZeroRun() — service-only parameters", () => {
       ]);
     });
 
-    it("should skip custom skill injection for session resume", async () => {
+    it("should inject custom skill volumes on session resume", async () => {
       const agentName = uniqueId("resume-agent");
       const compose = await createTestCompose(agentName);
       const resumeAgentId = await getTestZeroAgentId(user.orgId, agentName);
@@ -296,7 +296,7 @@ describe("createZeroRun() — service-only parameters", () => {
         compose.versionId,
       );
 
-      // Resume with sessionId — should NOT inject custom skills
+      // Resume with sessionId — should inject custom skills (agent-level binding)
       const resumed = await createZeroRunRecord({
         userId: user.userId,
         prompt: "continue",
@@ -307,7 +307,12 @@ describe("createZeroRun() — service-only parameters", () => {
 
       const resumedRun = await findTestRunRecord(resumed.runId);
       expect(resumedRun).toBeDefined();
-      expect(resumedRun!.additionalVolumes).toBeNull();
+      expect(resumedRun!.additionalVolumes).toEqual([
+        {
+          name: "custom-skill@my-skill",
+          mountPath: "/home/user/.claude/skills/my-skill",
+        },
+      ]);
     });
   });
 

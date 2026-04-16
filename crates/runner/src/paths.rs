@@ -127,20 +127,30 @@ impl HomePaths {
         self.locks_dir().join(format!("base-dir-{hash}.lock"))
     }
 
-    pub fn image_lock(&self, hash: &str) -> PathBuf {
+    /// Lock file for a rootfs hash.
+    ///
+    /// Keeps the `image-` prefix for backward compatibility: during rolling
+    /// deploys, old runner binaries still hold locks under this name.
+    pub fn rootfs_lock(&self, hash: &str) -> PathBuf {
         self.locks_dir().join(format!("image-{hash}.lock"))
+    }
+
+    pub fn snapshot_lock(&self, hash: &str) -> PathBuf {
+        self.locks_dir().join(format!("snapshot-{hash}.lock"))
     }
 }
 
-/// Paths for a unified image build output (rootfs + snapshot, keyed by image hash).
-pub struct ImagePaths {
+/// Paths for a rootfs build output, keyed by rootfs hash.
+///
+/// Layout: `<images_dir>/<rootfs_hash>/rootfs.ext4`
+pub struct RootfsPaths {
     dir: PathBuf,
 }
 
-impl ImagePaths {
-    pub fn new(home: &HomePaths, hash: &str) -> Self {
+impl RootfsPaths {
+    pub fn new(home: &HomePaths, rootfs_hash: &str) -> Self {
         Self {
-            dir: home.images_dir().join(hash),
+            dir: home.images_dir().join(rootfs_hash),
         }
     }
 
@@ -150,6 +160,39 @@ impl ImagePaths {
 
     pub fn rootfs(&self) -> PathBuf {
         self.dir.join("rootfs.ext4")
+    }
+
+    /// All files that must exist for the rootfs to be considered complete.
+    pub fn expected_files(&self) -> [PathBuf; 1] {
+        [self.rootfs()]
+    }
+
+    /// Derive snapshot paths nested under this rootfs.
+    pub fn snapshot(&self, snapshot_hash: &str) -> SnapshotPaths {
+        SnapshotPaths {
+            dir: self.dir.join("snapshots").join(snapshot_hash),
+        }
+    }
+
+    /// Parent directory for all snapshots under this rootfs.
+    #[cfg(test)]
+    pub fn snapshots_dir(&self) -> PathBuf {
+        self.dir.join("snapshots")
+    }
+}
+
+/// Paths for a snapshot build output, nested under a [`RootfsPaths`].
+///
+/// Layout: `<images_dir>/<rootfs_hash>/snapshots/<snapshot_hash>/{snapshot.bin,memory.bin,cow.img}`
+///
+/// Constructed via [`RootfsPaths::snapshot`].
+pub struct SnapshotPaths {
+    dir: PathBuf,
+}
+
+impl SnapshotPaths {
+    pub fn dir(&self) -> &Path {
+        &self.dir
     }
 
     pub fn snapshot_bin(&self) -> PathBuf {
@@ -164,14 +207,9 @@ impl ImagePaths {
         self.dir.join("cow.img")
     }
 
-    /// All files that must exist for the image to be considered complete.
-    pub fn expected_files(&self) -> [PathBuf; 4] {
-        [
-            self.rootfs(),
-            self.snapshot_bin(),
-            self.memory_bin(),
-            self.cow_img(),
-        ]
+    /// All files that must exist for the snapshot to be considered complete.
+    pub fn expected_files(&self) -> [PathBuf; 3] {
+        [self.snapshot_bin(), self.memory_bin(), self.cow_img()]
     }
 }
 
@@ -261,9 +299,9 @@ mod tests {
     #[test]
     fn lock_paths() {
         let home = HomePaths::with_root(PathBuf::from("/test"));
-        let image_lock = home.image_lock("abc123");
-        assert!(image_lock.starts_with("/test/locks/"));
-        assert!(image_lock.to_string_lossy().contains("image-abc123"));
+        let rootfs_lock = home.rootfs_lock("abc123");
+        assert!(rootfs_lock.starts_with("/test/locks/"));
+        assert!(rootfs_lock.to_string_lossy().contains("image-abc123"));
     }
 
     #[test]
@@ -294,24 +332,51 @@ mod tests {
     }
 
     #[test]
-    fn image_paths_structure() {
+    fn rootfs_paths_layout() {
         let home = HomePaths::with_root(PathBuf::from("/test"));
-        let ip = ImagePaths::new(&home, "abc123");
-        assert_eq!(ip.dir(), Path::new("/test/images/abc123"));
+        let rp = RootfsPaths::new(&home, "aaa");
+        assert_eq!(rp.dir(), Path::new("/test/images/aaa"));
+        assert_eq!(rp.rootfs(), PathBuf::from("/test/images/aaa/rootfs.ext4"));
         assert_eq!(
-            ip.rootfs(),
-            PathBuf::from("/test/images/abc123/rootfs.ext4")
+            rp.snapshots_dir(),
+            PathBuf::from("/test/images/aaa/snapshots")
+        );
+    }
+
+    #[test]
+    fn snapshot_paths_layout() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let sp = RootfsPaths::new(&home, "aaa").snapshot("bbb");
+        assert_eq!(sp.dir(), Path::new("/test/images/aaa/snapshots/bbb"));
+        assert_eq!(
+            sp.snapshot_bin(),
+            PathBuf::from("/test/images/aaa/snapshots/bbb/snapshot.bin")
         );
         assert_eq!(
-            ip.snapshot_bin(),
-            PathBuf::from("/test/images/abc123/snapshot.bin")
+            sp.memory_bin(),
+            PathBuf::from("/test/images/aaa/snapshots/bbb/memory.bin")
         );
         assert_eq!(
-            ip.memory_bin(),
-            PathBuf::from("/test/images/abc123/memory.bin")
+            sp.cow_img(),
+            PathBuf::from("/test/images/aaa/snapshots/bbb/cow.img")
         );
-        assert_eq!(ip.cow_img(), PathBuf::from("/test/images/abc123/cow.img"));
-        assert_eq!(ip.expected_files().len(), 4);
+        assert_eq!(sp.expected_files().len(), 3);
+    }
+
+    #[test]
+    fn rootfs_expected_files() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let rp = RootfsPaths::new(&home, "aaa");
+        let files = rp.expected_files();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0], rp.rootfs());
+    }
+
+    #[test]
+    fn snapshot_lock_path() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let lock = home.snapshot_lock("bbb");
+        assert_eq!(lock, PathBuf::from("/test/locks/snapshot-bbb.lock"));
     }
 
     #[test]

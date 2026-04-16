@@ -305,6 +305,7 @@ export async function createTestSessionWithConversation(
   userId: string,
   agentComposeId: string,
   existingVersionId?: string,
+  cliAgentType: string = "claude",
 ): Promise<{ id: string }> {
   initServices();
   // Look up orgId from the compose
@@ -338,7 +339,7 @@ export async function createTestSessionWithConversation(
     .insert(conversations)
     .values({
       runId: run!.id,
-      cliAgentType: "claude",
+      cliAgentType: cliAgentType,
       cliAgentSessionId: uniqueId("cli-session"),
       cliAgentSessionHistory: "[]",
     })
