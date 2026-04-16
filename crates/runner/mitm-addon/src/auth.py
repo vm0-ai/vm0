@@ -302,7 +302,7 @@ async def handle_firewall_request(
     encrypted_secrets = vm_info.get("encryptedSecrets")
     auth_headers = api_entry.get("auth", {}).get("headers", {})
     auth_base = api_entry.get("auth", {}).get("base")
-    auth_query = api_entry.get("auth", {}).get("query") or None
+    auth_query = api_entry.get("auth", {}).get("query")
     secret_connector_map = vm_info.get("secretConnectorMap")
     vars_map = vm_info.get("vars")
 
@@ -388,15 +388,17 @@ async def handle_firewall_request(
     if resolved_base:
         new_url = build_rewrite_url(resolved_base, match_info, flow.request.pretty_url)
 
-        # Merge resolved auth.query params into the forwarded URL
+        # Merge resolved auth.query params into the forwarded URL.
+        # Uses parse_qs + merge so auth.query overwrites duplicate keys
+        # (consistent with the standard path's flow.request.query[k] = v).
         if resolved_query:
             parsed = urllib.parse.urlparse(new_url)
-            qs_parts: list[str] = []
-            if parsed.query:
-                qs_parts.append(parsed.query)
-            qs_parts.append(urllib.parse.urlencode(resolved_query))
+            existing_qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            for key, value in resolved_query.items():
+                existing_qs[key] = [value]
+            new_qs = urllib.parse.urlencode(existing_qs, doseq=True)
             new_url = urllib.parse.urlunparse(
-                (parsed.scheme, parsed.netloc, parsed.path, "", "&".join(qs_parts), "")
+                (parsed.scheme, parsed.netloc, parsed.path, "", new_qs, "")
             )
 
         # Merge original request headers with resolved auth headers

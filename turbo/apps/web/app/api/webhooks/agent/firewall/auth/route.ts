@@ -395,8 +395,9 @@ function resolveTemplates(
  * on demand and an expiresAt timestamp is returned for addon-side TTL caching.
  *
  * Auth: Sandbox JWT
- * Body: { encryptedSecrets, authHeaders, secretConnectorMap?, vars? }
- * Response: { headers, expiresAt? } or 502 { error } when token refresh fails
+ * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?, vars? }
+ * Response: { headers, base?, query?, expiresAt?, resolvedSecrets, refreshedConnectors, refreshedSecrets }
+ *           or 502 { error } when token refresh fails
  */
 export async function POST(request: Request) {
   initServices();

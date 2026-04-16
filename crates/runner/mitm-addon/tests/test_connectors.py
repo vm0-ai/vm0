@@ -2026,6 +2026,43 @@ class TestAuthQueryInjection:
         assert "auth_url_rewrite" not in flow.metadata
         assert flow.request.query["api_key"] == "resolved-key-123"
 
+    async def test_query_param_overwrites_existing_key(self):
+        """auth.query overwrites a query param already present in the original request."""
+        flow = _make_http_flow(path="/search?api_key=agent-value&q=test")
+        flow.request.pretty_url = "https://serpapi.com/search?api_key=agent-value&q=test"
+        flow.request.query = {"api_key": "agent-value", "q": "test"}
+        api_entry = {
+            "base": "https://serpapi.com",
+            "auth": {"headers": {}, "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"}},
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok",
+            "encryptedSecrets": "iv:tag:data",
+        }
+        match_info = {
+            "name": "serpapi",
+            "ref": "serpapi",
+            "permission": "search",
+            "rule": "GET /search",
+            "params": {},
+        }
+        token_meta = {
+            "headers": {},
+            "resolved_secrets": ["SERPAPI_TOKEN"],
+            "cache_hit": False,
+            "query": {"api_key": "real-secret-key"},
+        }
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
+        ):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
+        # auth.query overwrites the agent's api_key
+        assert flow.request.query["api_key"] == "real-secret-key"
+        # Other query params are preserved
+        assert flow.request.query["q"] == "test"
+
     async def test_query_params_with_headers_simultaneously(self):
         """auth.query and auth.headers can coexist on the standard path."""
         flow = _make_http_flow()
