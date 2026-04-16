@@ -45,6 +45,20 @@ function eventText(event: AgentEvent): string | null {
 }
 
 /**
+ * Extract the Anthropic message ID from an assistant event.
+ * Real Claude Code events include message.id (e.g. "msg_01abc...").
+ * Returns undefined for mock/test events that lack this field.
+ */
+function eventMessageId(event: AgentEvent): string | undefined {
+  const msg = event.message;
+  if (typeof msg !== "object" || msg === null || !("id" in msg)) {
+    return undefined;
+  }
+  const id = (msg as { id: unknown }).id;
+  return typeof id === "string" ? id : undefined;
+}
+
+/**
  * POST /api/internal/event-consumers/chat-assistant
  *
  * Handles "assistant" events for chat threads. For each event, inserts a
@@ -64,11 +78,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { runId, events } = result.data;
 
-  const items: { sequenceNumber: number; content: string }[] = [];
+  const items: {
+    sequenceNumber: number;
+    content: string;
+    runEventId?: string;
+  }[] = [];
   for (const event of events) {
     const text = eventText(event);
     if (text === null) continue;
-    items.push({ sequenceNumber: event.sequenceNumber, content: text });
+    items.push({
+      sequenceNumber: event.sequenceNumber,
+      content: text,
+      runEventId: eventMessageId(event),
+    });
   }
 
   if (items.length === 0) {

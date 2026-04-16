@@ -43,7 +43,7 @@ export async function insertChatMessage(params: {
 export async function insertAssistantEventMessages(
   runId: string,
   threadId: string,
-  items: { sequenceNumber: number; content: string }[],
+  items: { sequenceNumber: number; content: string; runEventId?: string }[],
 ): Promise<number> {
   if (items.length === 0) {
     return 0;
@@ -59,6 +59,7 @@ export async function insertAssistantEventMessages(
           role: "assistant" as const,
           content: item.content,
           sequenceNumber: item.sequenceNumber,
+          runEventId: item.runEventId ?? null,
         };
       }),
     )
