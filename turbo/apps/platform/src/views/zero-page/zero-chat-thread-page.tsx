@@ -38,7 +38,6 @@ import {
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { realtimeChannel$ } from "../../signals/realtime.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
@@ -298,10 +297,8 @@ function ChatThreadComposer({
   const hasMessages = groups.length > 0;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const hasActiveRun = useGet(thread.hasActiveRun$);
-  const realtimeChannel = useGet(realtimeChannel$);
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const sending =
-    hasActiveRun || sendLoadable.state === "loading" || !realtimeChannel;
+  const sending = hasActiveRun || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);

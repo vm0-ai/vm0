@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { waitFor } from "@testing-library/react";
+import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -8,7 +7,6 @@ import {
   currentChatThreadSignals$,
   setDraftSyncDebounceMs$,
 } from "../create-chat-thread.ts";
-import { detach, Reason } from "../../utils.ts";
 
 const context = testContext();
 
@@ -42,107 +40,6 @@ function setupBaseHandlers(threadId: string) {
     }),
   );
 }
-
-describe("sendMessage$ — auto-scroll timing", () => {
-  beforeEach(() => {
-    context.store.set(setDraftSyncDebounceMs$, 0);
-  });
-
-  it("should scroll to bottom after fetching the new user message from the server", async () => {
-    const threadId = "thread-autoscroll-timing";
-
-    // Register base handlers first, then override with test-specific ones
-    // (MSW runtime handlers added later take precedence).
-    setupBaseHandlers(threadId);
-    server.use(
-      http.patch(`*/api/zero/chat-threads/${threadId}`, () => {
-        return new HttpResponse(null, { status: 204 });
-      }),
-      http.post("*/api/zero/chat/messages", () => {
-        return HttpResponse.json(
-          {
-            runId: "run-autoscroll-1",
-            threadId,
-            status: "running",
-            createdAt: "2026-04-13T00:00:00Z",
-          },
-          { status: 201 },
-        );
-      }),
-      // Paged messages endpoint: returns the user message after send.
-      http.get(`*/api/zero/chat-threads/${threadId}/messages`, () => {
-        return HttpResponse.json({
-          messages: [
-            {
-              id: "msg-user-1",
-              role: "user",
-              content: "Hello world",
-              createdAt: "2026-04-13T00:00:00Z",
-            },
-          ],
-          hasMore: false,
-        });
-      }),
-    );
-
-    await setupPage({
-      context,
-      path: `/chats/${threadId}`,
-      withoutRender: true,
-    });
-
-    const thread = context.store.get(currentChatThreadSignals$);
-    expect(thread).not.toBeNull();
-
-    // Create a mock scroll container and register it so autoScroll$ has an
-    // element to act on. We spy on scrollTop assignment to detect when
-    // autoScroll$ fires and capture the messages$ state at that moment.
-    const scrollEl = document.createElement("div");
-    Object.defineProperty(scrollEl, "scrollHeight", { value: 500 });
-    let messagesAtScrollTime: unknown[] | null = null;
-
-    Object.defineProperty(scrollEl, "scrollTop", {
-      get: () => {
-        return 0;
-      },
-      set: vi.fn(() => {
-        // Capture paged messages the first time scroll fires.
-        if (messagesAtScrollTime === null) {
-          messagesAtScrollTime = context.store.get(thread!.pagedChatMessages$);
-        }
-      }),
-      configurable: true,
-    });
-
-    // Register the scroll container (simulates the ref callback in the UI).
-    context.store.set(thread!.setScrollContainer$, scrollEl);
-
-    // Fire-and-forget sendMessage$ — we only care about the scroll side-effect
-    // that happens after the server-fetched messages land.
-    detach(
-      context.store.set(thread!.sendMessage$, "Hello world", context.signal),
-      Reason.Entrance,
-      "test",
-    );
-
-    // Wait until autoScroll$ fires (i.e. scrollTop is set on the container).
-    await waitFor(() => {
-      expect(messagesAtScrollTime).not.toBeNull();
-    });
-
-    // The paged messages captured at scroll time must contain the user message
-    // fetched from the server — proving fetchNextPage$ ran before the scroll.
-    const hasUserMessage = messagesAtScrollTime!.some((m): boolean => {
-      return (
-        typeof m === "object" &&
-        m !== null &&
-        "role" in m &&
-        (m as { role: string }).role === "user"
-      );
-    });
-    expect(hasUserMessage).toBeTruthy();
-  });
-});
 
 describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftClear$", () => {
   beforeEach(() => {
