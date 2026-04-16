@@ -45,6 +45,9 @@ describe("Zero Agent E2E: create → run → zero token access", () => {
     const run = (await runRes.json()) as { runId: string };
     expect(run.runId).toBeTruthy();
 
+    // Flush deferred after() callbacks (dispatch is deferred)
+    await context.mocks.flushAfter();
+
     // ── 5. Claim job as official runner via API ──
     // The run was dispatched to runner_job_queue (RUNNER_DEFAULT_GROUP=vm0/default).
     // Official runner token = vm0_official_<OFFICIAL_RUNNER_SECRET>
