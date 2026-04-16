@@ -2176,6 +2176,915 @@
           "Add Plausible to see which posts drove real site visits — a post with a high engagement score but zero traffic clicks is a vanity win, not a growth win.",
           "Use the format experiment debrief at the end of each 2-week sprint to decide which content formats to scale, iterate, or retire."
         ]
+      },
+      "kb-ingest": {
+        "title": "Capture knowledge from Slack without leaving the conversation",
+        "description": "Drop a link in Slack and ask Zero to ingest it. Zero fetches the content, summarizes it, and stores it in your team knowledge base — no context switch required.",
+        "timeSaved": "~15 min saved",
+        "headings": {
+          "scenario": "Why good content gets lost in Slack",
+          "prompt": "How to ask Zero to ingest a link into the KB",
+          "steps": "How Zero fetches, summarizes, and stores the content",
+          "nextActions": "Query the KB, compile articles, or chain into a weekly digest",
+          "integrations": "Required integrations: Slack and GitHub",
+          "tips": "Best practices for building a living team knowledge base"
+        },
+        "scenario": "Someone shares a good article, a competitor announcement, or a research paper in #news. It gets a few reacts, maybe a comment, and then it's gone. Three weeks later someone asks 'didn't we read something about this?' and nobody can find it. Zero turns any shared link into a permanent entry in your team KB — fetched, summarized, and categorized from a single Slack message.",
+        "promptVariants": [
+          {
+            "label": "Basic",
+            "prompt": "@Zero kb ingest https://x.com/example/status/123456"
+          },
+          {
+            "label": "With context",
+            "prompt": "@Zero kb ingest https://github.com/example/repo — focus on the architecture section, we might borrow this pattern."
+          },
+          {
+            "label": "Batch",
+            "prompt": "@Zero kb ingest the top 5 links shared in #news this week."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero kb ingest https://x.com/anthropicai/status/2044138481790648323"
+          },
+          {
+            "name": "Zero",
+            "text": "Ingested. File: anthropic-automated-alignment-researchers.md → vm0-kb/raw/\n\nSummary: Anthropic's new Automated Alignment Researchers experiment ran 9 instances of Claude Opus 4.6 as autonomous researchers on interpretability. Key finding: AI-assisted alignment research can compress months of human work."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero fetches the content",
+            "description": "Zero retrieves the full text of the linked page — X thread, GitHub repo, blog post, or documentation — and extracts the meaningful content."
+          },
+          {
+            "title": "Zero summarizes and categorizes",
+            "description": "Zero writes a concise summary capturing the key insight, source, and date. It adds context from the Slack thread if relevant."
+          },
+          {
+            "title": "Stored in the team KB",
+            "description": "The article is saved to your team knowledge base as a markdown file, ready to be queried, compiled into wiki articles, or surfaced in future searches."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Query what was ingested",
+            "description": "Ask Zero to find relevant KB content on a topic",
+            "examplePrompt": "@Zero what does the KB say about sandbox isolation approaches?"
+          },
+          {
+            "title": "Compile a KB article",
+            "description": "Turn raw ingested content into a structured wiki article",
+            "examplePrompt": "@Zero compile a KB article on agentic AI trends from the last month of ingested content."
+          },
+          {
+            "title": "Schedule weekly ingestion",
+            "description": "Automatically ingest top links from a channel on a schedule",
+            "examplePrompt": "@Zero every Friday, ingest the top 3 most-reacted links shared in #news this week."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack is where the link is shared and where Zero receives the ingest command."
+          },
+          {
+            "description": "GitHub is optional. Zero commits the markdown file directly to your KB repository."
+          }
+        ],
+        "tips": [
+          "Add a note after the URL to give Zero context: 'kb ingest [url] — this is relevant to our sandbox architecture.' The note gets included in the stored file.",
+          "Set up a dedicated #news or #kb-ingest channel so your team has a shared habit of dropping links for Zero to capture.",
+          "Pair with a weekly KB compile to turn raw ingested articles into structured, searchable wiki entries."
+        ]
+      },
+      "pr-review": {
+        "title": "Get a PR reviewed with severity-ranked issues before you merge",
+        "description": "Ask Zero to review any pull request. Zero reads the diff, flags critical issues as P0, improvement opportunities as P1, and surfaces them in Slack so the team can act before merging.",
+        "timeSaved": "~30 min saved per PR",
+        "headings": {
+          "scenario": "Why PRs get merged before they should",
+          "prompt": "How to ask Zero to review a pull request",
+          "steps": "How Zero reads the diff and ranks its findings",
+          "nextActions": "Create GitHub issues, request fixes, or verify CI status",
+          "integrations": "Required integrations: GitHub",
+          "tips": "Best practices for AI-assisted code review"
+        },
+        "scenario": "PRs pile up. Reviewers are busy. Someone hits 'approve' to clear their queue and a subtle bug ships. Zero gives every PR a thorough read without the queue. Point it at any PR number, and it returns a structured review — critical issues that must be fixed before merge, plus lower-priority suggestions — posted directly in Slack.",
+        "promptVariants": [
+          {
+            "label": "Standard review",
+            "prompt": "@Zero review vm0-ai/vm0#8886"
+          },
+          {
+            "label": "Focused review",
+            "prompt": "@Zero review vm0-ai/vm0#9215 — focus on the auth middleware changes and any potential security issues."
+          },
+          {
+            "label": "Re-review after fixes",
+            "prompt": "@Zero re-review vm0-ai/vm0#8886 — I pushed a second commit addressing your P0 feedback."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero review vm0-ai/vm0#8886"
+          },
+          {
+            "name": "Zero",
+            "text": "Review for vm0-ai/vm0#8886 — 1 commit reviewed.\n\nP0 (must fix before merge):\n• createPlainSupportThread has 5 paths that return false instead of throwing — silent failures in prod.\n\nP1 (improvement):\n• Error messages don't include the SDK error code — harder to debug from logs."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads the full diff",
+            "description": "Zero fetches the PR via GitHub, reads every changed file, and understands the intent of the change from the PR title, description, and commit messages."
+          },
+          {
+            "title": "Zero ranks issues by severity",
+            "description": "Findings are classified as P0 (must fix before merge — bugs, security issues, silent failures) or P1 (improvements — better error handling, test coverage, naming)."
+          },
+          {
+            "title": "Review posted to Slack",
+            "description": "Zero posts the full review in the Slack thread where it was requested, with specific file references and line numbers so the author knows exactly what to fix."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Create a GitHub issue from a finding",
+            "description": "Log a P0 as a tracked issue if it can't be fixed immediately",
+            "examplePrompt": "@Zero create a GitHub issue for the P0 in that review. Assign to Ethan and label as bug, priority-high."
+          },
+          {
+            "title": "Re-review after changes",
+            "description": "Verify that P0 feedback was addressed",
+            "examplePrompt": "@Zero re-review #8886, second commit — confirm the P0 is resolved."
+          },
+          {
+            "title": "Check CI status",
+            "description": "See if all checks pass before merging",
+            "examplePrompt": "@Zero what's the CI status on vm0-ai/vm0#8886? Is it safe to merge?"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub is required. Zero needs read access to pull requests and the full diff."
+          },
+          {
+            "description": "Slack is where the review request is made and where findings are delivered."
+          }
+        ],
+        "tips": [
+          "Include the specific concern in your prompt — 'focus on auth changes' or 'check for race conditions' — to get a more targeted review than a general diff scan.",
+          "Use re-review for iterative PRs. After the author pushes fixes, ask Zero to re-check only the P0 items to confirm they're resolved.",
+          "Set a team norm: Zero review before any merge to main. It catches the class of issues that slip through async human review."
+        ]
+      },
+      "api-performance": {
+        "title": "Investigate API performance and surface slow endpoints before they page you",
+        "description": "Ask Zero to pull TP95 data from Axiom for any API endpoint. Zero surfaces the slowest events, identifies patterns, and creates a GitHub issue with findings — all from one Slack message.",
+        "timeSaved": "~45 min saved",
+        "headings": {
+          "scenario": "Why API slowdowns stay invisible until they become incidents",
+          "prompt": "How to ask Zero to investigate an API endpoint",
+          "steps": "How Zero pulls metrics, surfaces slow events, and creates an issue",
+          "nextActions": "Assign the issue, schedule monitoring, or dig into a specific event",
+          "integrations": "Required integrations: Axiom and GitHub",
+          "tips": "Best practices for proactive API performance monitoring"
+        },
+        "scenario": "TP95 spikes don't always page you. They sit in your metrics dashboards, quietly degrading user experience while your team is focused on shipping. Zero makes it easy to check any endpoint's performance on demand — pull the last 7 days of TP95 data, see which requests are slow, and get a GitHub issue filed automatically so nothing gets dropped.",
+        "promptVariants": [
+          {
+            "label": "TP95 check",
+            "prompt": "@Zero check Axiom for the POST /api/zero/runs endpoint — show me the TP95 for the last 7 days and flag any events over 5s."
+          },
+          {
+            "label": "File an issue",
+            "prompt": "@Zero pull Axiom TP95 for /api/zero/runs over the last 7 days and create a GitHub issue with the findings, assigned to Lancy."
+          },
+          {
+            "label": "Compare endpoints",
+            "prompt": "@Zero compare the last 7 days of TP95 for /api/zero/runs vs /api/chat/send on Axiom. Which is slower and what's the pattern?"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero check Axiom for zero run create API — last 7 days TP95"
+          },
+          {
+            "name": "Zero",
+            "text": "POST /api/zero/runs — 7-day TP95 summary:\n\nWorst: 6,857ms on Apr 12\nSlow events (>5s): 14 total\nRoot cause: sync dispatch pipeline blocks the response — it waits for sandbox allocation before returning.\n\nGitHub issue filed: vm0-ai/vm0#9682, assigned to Lancy."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero queries Axiom for the endpoint",
+            "description": "Zero pulls all request events for the specified endpoint over the time window, computing TP50, TP95, and TP99 per day."
+          },
+          {
+            "title": "Zero surfaces slow events",
+            "description": "Zero filters for events above the threshold (default: 5 seconds), groups them by time of day and error pattern, and identifies the likely root cause."
+          },
+          {
+            "title": "GitHub issue created with findings",
+            "description": "Zero files a structured GitHub issue with the metric table, slow event list, and root cause analysis — ready for the engineering team to act on."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Assign and prioritize",
+            "description": "Route the issue to the right engineer",
+            "examplePrompt": "@Zero assign the Axiom issue to Ethan and add the label performance, priority-high."
+          },
+          {
+            "title": "Schedule regular monitoring",
+            "description": "Set up a weekly TP95 check for key endpoints",
+            "examplePrompt": "@Zero every Monday at 9am, pull the last 7 days of TP95 for /api/zero/runs and post to #dev. File a GitHub issue only if TP95 exceeds 3s."
+          },
+          {
+            "title": "Investigate a specific slow event",
+            "description": "Dig into a single outlier event",
+            "examplePrompt": "@Zero pull the full trace for the 6,857ms event on Apr 12 from Axiom and tell me where the time is spent."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Axiom is required. Zero queries your Axiom dataset for request events filtered by endpoint path and time window."
+          },
+          {
+            "description": "GitHub is optional. Zero creates issues from findings when asked, with the metric table embedded in the body."
+          }
+        ],
+        "tips": [
+          "Specify a threshold in your prompt — 'flag events over 3 seconds' — so Zero's findings match your SLO, not a generic cutoff.",
+          "Ask Zero to check the endpoint right after a deploy to catch regressions before they affect users at scale.",
+          "Combine with Daily Error Triage for a complete morning health check: errors from Sentry plus performance from Axiom in one brief."
+        ]
+      },
+      "marketing-analytics": {
+        "title": "Analyze your traffic channels and surface growth insights from Plausible",
+        "description": "Ask Zero to pull your Plausible traffic data and tell you what's working. Zero breaks down sources, channels, and trends — then surfaces the insight you actually need to act on.",
+        "timeSaved": "~20 min saved",
+        "headings": {
+          "scenario": "Why traffic analysis stays on the to-do list",
+          "prompt": "How to ask Zero to analyze your Plausible traffic",
+          "steps": "How Zero pulls, analyzes, and delivers traffic insights",
+          "nextActions": "Dig into a channel, schedule a weekly report, or correlate with content",
+          "integrations": "Required integrations: Plausible and Slack",
+          "tips": "Best practices for marketing analytics with Zero"
+        },
+        "scenario": "You know your traffic dashboard exists. You even open it occasionally. But turning raw pageview counts into an actionable insight takes time you don't have. Zero reads your Plausible data and delivers the answer — which channels are growing, which are flat, where the bounce rate spiked — in plain language, in Slack, on demand.",
+        "promptVariants": [
+          {
+            "label": "Weekly overview",
+            "prompt": "@Zero based on Plausible traffic, analyze our performance last week — channels, sources, any standout trends."
+          },
+          {
+            "label": "Channel deep dive",
+            "prompt": "@Zero pull Plausible for the last 30 days and break down organic vs direct vs referral traffic. Which channel grew the most week-over-week?"
+          },
+          {
+            "label": "Scheduled report",
+            "prompt": "@Zero every Monday at 9am, pull last week's Plausible traffic and post a summary to #marketing — top 3 sources, WoW change, and one insight."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero based on plausible traffic, analyze our recent traffic performance, channels, sources, any insights?"
+          },
+          {
+            "name": "Zero",
+            "text": "Last 7 days — Plausible traffic breakdown:\n\nTop sources: Direct (38%), Organic search (29%), X/Twitter (18%)\nWoW: Overall UV +12%, PV +8%\nStandout: X-driven sessions are up 34% WoW — the Apr 13 thread drove a spike. Organic is flat.\n\nRecommendation: The X spike is worth investigating. If that thread's topic drives conversions, consider a follow-up post."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero queries Plausible for the time window",
+            "description": "Zero pulls visitors, pageviews, bounce rate, and session data for the specified period, broken down by source and channel."
+          },
+          {
+            "title": "Zero analyzes trends",
+            "description": "Zero computes week-over-week changes, identifies the fastest-growing and fastest-declining channels, and flags any anomalies worth investigating."
+          },
+          {
+            "title": "Insights delivered in Slack",
+            "description": "Zero posts a concise summary: top channels, growth rates, and one concrete observation — not just a data dump, but a read."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Correlate with content",
+            "description": "See which posts drove real site visits",
+            "examplePrompt": "@Zero compare Plausible traffic spikes last week with the X posts published on those days. Which post drove the most visits?"
+          },
+          {
+            "title": "Schedule a weekly report",
+            "description": "Automate traffic analysis every Monday",
+            "examplePrompt": "@Zero every Monday at 9am, pull last week's Plausible data and post a traffic summary to #marketing with WoW changes."
+          },
+          {
+            "title": "Archive to Notion",
+            "description": "Save the weekly report for trend tracking",
+            "examplePrompt": "@Zero save today's Plausible traffic analysis to Notion under 'Weekly Traffic Reports > Week of [date]'."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Plausible is required. Zero reads your site analytics including sessions, sources, and pageviews."
+          },
+          {
+            "description": "Notion is optional. Zero archives traffic reports to a Notion database for week-over-week trend tracking."
+          }
+        ],
+        "tips": [
+          "Specify the time window explicitly — 'last 7 days' vs 'last 30 days' produces very different reads on channel trends.",
+          "Ask Zero to flag anomalies, not just report numbers. 'Tell me if anything looks unusual' catches spikes you wouldn't notice otherwise.",
+          "Pair with Content Performance Report to close the loop: traffic from Plausible plus engagement from X in one session."
+        ]
+      },
+      "production-db-query": {
+        "title": "Query live production data in plain English without touching a database client",
+        "description": "Ask Zero a question about your production data. Zero writes the SQL, runs it read-only against your live database, and returns the answer in Slack — no credentials, no client, no risk of a mutating query.",
+        "timeSaved": "~20 min saved",
+        "headings": {
+          "scenario": "Why answering a simple data question takes longer than it should",
+          "prompt": "How to ask Zero to query production data",
+          "steps": "How Zero translates your question into a safe read-only query",
+          "nextActions": "Export results, schedule recurring counts, or file an issue from findings",
+          "integrations": "Required integrations: vm0 (production database skill)",
+          "tips": "Best practices for safe production data access"
+        },
+        "scenario": "A stakeholder asks how many users completed onboarding in the last 30 days. It's a simple question, but answering it means opening a DB client, finding the right table, writing a query, making sure you're on read-only credentials, running it, and formatting the result. Zero handles the whole chain — just ask the question in Slack.",
+        "promptVariants": [
+          {
+            "label": "Count query",
+            "prompt": "@Zero how many users signed up in the last 30 days? Query the production database."
+          },
+          {
+            "label": "Trend query",
+            "prompt": "@Zero query production — show me daily active user counts for the last 14 days, broken down by plan tier."
+          },
+          {
+            "label": "Anomaly check",
+            "prompt": "@Zero check production DB — are there any users with a free credit balance above 1000? List the top 10."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero check the production database — how many zero run records were created in the last 7 days?"
+          },
+          {
+            "name": "Zero",
+            "text": "Production DB query result (read-only):\n\nzero_runs created in last 7 days: 4,218\nBreakdown: Mon 523, Tue 641, Wed 688, Thu 712, Fri 654\nWeekend: 0 (expected — team usage pattern)\n\nQuery ran in 42ms."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero interprets your question",
+            "description": "Zero maps your plain-language question to the relevant tables and columns in your production schema."
+          },
+          {
+            "title": "Zero runs a read-only query",
+            "description": "Zero executes only SELECT statements against production. No writes, no mutations. Credentials are retrieved securely via Doppler — they never appear in the conversation."
+          },
+          {
+            "title": "Results returned in Slack",
+            "description": "Zero posts the query result in the thread, formatted as a readable summary. For large result sets, it returns the key numbers and offers to export the full table."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Export to a spreadsheet",
+            "description": "Get the full result set in a usable format",
+            "examplePrompt": "@Zero re-run that query and export the results to a Google Sheet named 'DAU by Plan — April 2026'."
+          },
+          {
+            "title": "Schedule a recurring count",
+            "description": "Track a metric automatically",
+            "examplePrompt": "@Zero every Monday morning, query production for last week's new user count and post to #metrics."
+          },
+          {
+            "title": "File an issue from a finding",
+            "description": "Escalate an anomaly you discovered",
+            "examplePrompt": "@Zero create a GitHub issue for the users with credit balance above 1000 — title 'Credit balance anomaly', assign to Ethan."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "vm0's production database skill is required. It provides a read-only connection to your Postgres instance via securely managed credentials — no manual setup needed."
+          },
+          {
+            "description": "Slack is where you ask the question and receive the result."
+          }
+        ],
+        "tips": [
+          "Always specify 'production database' or 'prod DB' in your prompt so Zero knows which connection to use if you have multiple environments.",
+          "Zero runs only SELECT queries. If you need to modify data, Zero will flag it and ask you to handle it through the appropriate workflow instead.",
+          "For sensitive queries, prefix with 'do not log the results' — Zero will deliver the answer in an ephemeral message visible only to you."
+        ]
+      },
+      "office-ac-control": {
+        "title": "Control the office AC from Slack without leaving your desk",
+        "description": "Ask Zero to turn the office AC on or off, adjust the temperature, or schedule it for a specific time — all from Slack. Physical office operations, zero friction.",
+        "timeSaved": "~5 min saved",
+        "headings": {
+          "scenario": "Why office controls shouldn't require walking to a panel",
+          "prompt": "How to ask Zero to control the office AC",
+          "steps": "How Zero connects to and controls office equipment",
+          "nextActions": "Schedule recurring settings or link to calendar events",
+          "integrations": "Required integrations: Slack and vm0",
+          "tips": "Best practices for office environment automation"
+        },
+        "scenario": "It's 8:55am and the office is going to be sweltering by the time people arrive. The AC unit is on the other side of the room, and the control panel is cryptic. Or you're remote, and someone in the office is asking you to deal with it. Zero handles it: one Slack message and the AC is on, the temperature is set, or a schedule is configured.",
+        "promptVariants": [
+          {
+            "label": "Turn on",
+            "prompt": "@Zero turn on the office AC and set it to 22°C."
+          },
+          {
+            "label": "Schedule",
+            "prompt": "@Zero turn on the office AC at 8:30am weekdays and off at 7pm. Start from tomorrow."
+          },
+          {
+            "label": "Quick check",
+            "prompt": "@Zero what's the office AC currently set to?"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero 关掉 AC 吧"
+          },
+          {
+            "name": "Zero",
+            "text": "Office AC is off. Temperature was set to 23°C when it shut down."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero receives the command in Slack",
+            "description": "Zero parses the request — on, off, temperature, or schedule — from the plain-language message."
+          },
+          {
+            "title": "Zero sends the command to the AC unit",
+            "description": "Zero calls the office AC control skill, which connects to the WeWork AC unit via the configured integration."
+          },
+          {
+            "title": "Confirmation in Slack",
+            "description": "Zero confirms the action in the thread: current status, temperature if set, and schedule if configured."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Set a weekday schedule",
+            "description": "Pre-cool the office before the team arrives",
+            "examplePrompt": "@Zero schedule the office AC: on at 8:30am weekdays at 22°C, off at 7pm."
+          },
+          {
+            "title": "Link to calendar",
+            "description": "Turn the AC on automatically when a meeting is scheduled in the conference room",
+            "examplePrompt": "@Zero whenever there's a meeting in the office conference room calendar, turn the AC on 30 minutes before and off 30 minutes after."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack is where the command is sent and where confirmation is received."
+          },
+          {
+            "description": "vm0's office AC skill provides the connection to the physical WeWork unit. Configuration is one-time setup."
+          }
+        ],
+        "tips": [
+          "Set a default weekday schedule once and let Zero handle it — only message Zero when the schedule needs to change or override.",
+          "If multiple people use the AC command, designate one Slack channel as the control point so the current state is always visible.",
+          "Ask Zero to confirm the current status before making changes — 'what's the AC set to?' — to avoid overriding a setting someone just made."
+        ]
+      },
+      "phone-call-automation": {
+        "title": "Place a phone call with a custom voice and automated message from Slack",
+        "description": "Ask Zero to call a number, deliver a message, navigate an IVR, or dial into a meeting. Zero places the call with a specified voice, handles prompts automatically, and reports back when done.",
+        "timeSaved": "~10 min saved",
+        "headings": {
+          "scenario": "When sending a message isn't enough and calling is too much friction",
+          "prompt": "How to ask Zero to place a phone call",
+          "steps": "How Zero places the call, navigates IVRs, and delivers the message",
+          "nextActions": "Follow up via Slack, schedule recurring calls, or chain with email",
+          "integrations": "Required integrations: Slack and vm0",
+          "tips": "Best practices for automated phone call workflows"
+        },
+        "scenario": "You need to dial into a conference call with a PIN, or deliver a time-sensitive message to someone who isn't responding to Slack. Or there's an IVR system that needs to be navigated to check something on your behalf. Zero can place the call, speak the message, enter the PIN, and report back — all triggered from one Slack message.",
+        "promptVariants": [
+          {
+            "label": "Deliver a message",
+            "prompt": "@Zero call +1-555-123-4567 and say: 'Hi, this is Zero calling on behalf of the vm0 team. We wanted to confirm receipt of your application. Please call us back at your earliest convenience.'"
+          },
+          {
+            "label": "Dial into a meeting",
+            "prompt": "@Zero dial into the board meeting at +1-800-555-0199, PIN 48291#. Stay on for 2 minutes then hang up."
+          },
+          {
+            "label": "Navigate an IVR",
+            "prompt": "@Zero call +1-800-555-0100. When prompted, press 2 for support, then press 1 for billing. Ask about the status of invoice #4892."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero dial into the all-hands at +1 (347) 507-7532, PIN 100690767#, and deliver this message: 'Hi everyone, Lancy here — joining remotely.'"
+          },
+          {
+            "name": "Zero",
+            "text": "Call placed successfully.\n• From: +1 (662) 568-8364\n• To: +1 (347) 507-7532\n• Status: Connected\nZero entered PIN 100690767# when prompted and delivered the message. Call ended after 45 seconds."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero places the call",
+            "description": "Zero dials the specified number using the configured voice — professional, conversational, or custom — and waits for the line to connect."
+          },
+          {
+            "title": "Zero navigates IVRs and delivers the message",
+            "description": "Zero listens for prompts, enters PINs or numeric inputs when required, and delivers the scripted message at the right moment."
+          },
+          {
+            "title": "Confirmation in Slack",
+            "description": "Zero posts a call summary in the thread: connected status, duration, and any responses or notes from the call if applicable."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Follow up via email",
+            "description": "Chain the call with a written follow-up",
+            "examplePrompt": "@Zero after the call, draft a Gmail follow-up to the same contact confirming what was discussed."
+          },
+          {
+            "title": "Schedule a recurring call",
+            "description": "Automate a weekly or daily phone check-in",
+            "examplePrompt": "@Zero every weekday at 4pm, call +1-800-555-0100 and check the status queue. Post the result to #ops."
+          },
+          {
+            "title": "Notify a Slack channel on completion",
+            "description": "Let the team know the call went through",
+            "examplePrompt": "@Zero after the call to the support line, post a summary of what was said to #customer-success."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack is where the call is triggered and where the result is delivered."
+          },
+          {
+            "description": "vm0's phone call skill provides the outbound call capability with voice selection and IVR navigation."
+          }
+        ],
+        "tips": [
+          "Write the message script in full — Zero reads it verbatim. Clear, natural language works best; avoid bullet points or formatting.",
+          "For IVR navigation, describe the menu tree if you know it: 'press 2 for billing, then 1 for invoice status.' The more detail, the more reliably Zero navigates.",
+          "Use a custom voice to match the context — a professional voice for customer calls, a more casual one for internal dial-ins."
+        ]
+      },
+      "marketing-content-automation": {
+        "title": "Run a full content pipeline from research to scoring — without a content team",
+        "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
+        "timeSaved": "~5 hrs saved per week",
+        "headings": {
+          "scenario": "Why content pipelines stall without automation",
+          "prompt": "How to set up the three-agent content loop",
+          "steps": "How the researcher, Zero, and monitor agents work together",
+          "nextActions": "Scale what works, retire what doesn't, and expand to new channels",
+          "integrations": "Required integrations: Slack, X (Twitter), and Notion",
+          "tips": "Best practices for AI-driven content pipelines"
+        },
+        "scenario": "Consistent content output is a compounding advantage. But maintaining it manually — researching trends, drafting posts, tracking what performs, retiring what doesn't — consumes hours that compound in the wrong direction. The vm0 marketing content automation pipeline puts three agents to work: a researcher drafts 8+ posts every morning from X and Reddit, Zero saves template inspirations as you find them in Slack, and a monitor scores every post weekly and tells you what to scale.",
+        "promptVariants": [
+          {
+            "label": "Save a template inspiration",
+            "prompt": "@Zero save template https://x.com/example/post note: strong contrarian hook, good for the Hot Take template."
+          },
+          {
+            "label": "Check this week's drafts",
+            "prompt": "@Zero what drafts did the researcher generate today? Show me the ones marked for approval."
+          },
+          {
+            "label": "Run the monitor now",
+            "prompt": "@Zero run the content performance monitor now and show me this week's Green/Yellow/Red breakdown."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero save template https://x.com/mlejva/status/12345 note: great founder reflection format, fits Template B."
+          },
+          {
+            "name": "Zero",
+            "text": "Saved to vm0 My Templates in Notion.\n\nTemplate type: B (Founder Reflection)\nNote: great founder reflection format, fits Template B.\nSource: https://x.com/mlejva/status/12345"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Researcher agent drafts content daily",
+            "description": "Every morning, the researcher agent scans competitor X accounts, trending topics, and Reddit communities. It generates 8+ draft posts using your content templates and saves them to a Notion queue for your review."
+          },
+          {
+            "title": "You review and Zero saves inspirations",
+            "description": "You approve or reject drafts in Notion. When you spot a post worth saving as a template inspiration, you tell Zero in Slack — it saves it with your notes and categorization instantly."
+          },
+          {
+            "title": "Monitor scores performance weekly",
+            "description": "Every Monday, the monitor agent pulls engagement metrics for all published posts, applies your scoring formula, and delivers a Green/Yellow/Red breakdown with recommendations: scale the Greens, tweak the Yellows, retire the Reds."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Scale a Green template",
+            "description": "Double down on what's working",
+            "examplePrompt": "@Zero tell the researcher to generate 5 variants of Template C (Hot Take) for next week — the last 3 scored Green."
+          },
+          {
+            "title": "Retire a Red template",
+            "description": "Remove underperformers from the pipeline",
+            "examplePrompt": "@Zero retire Template D from the researcher — it hasn't scored above Yellow in 4 sprints."
+          },
+          {
+            "title": "Add a new competitor to monitor",
+            "description": "Expand the researcher's source list",
+            "examplePrompt": "@Zero add @new_competitor to the researcher's monitored accounts for daily content scanning."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack is the command interface — you save inspirations, check drafts, and manage the pipeline through Slack messages."
+          },
+          {
+            "description": "X (Twitter) is the primary research source for the researcher agent and the platform where approved posts are published."
+          },
+          {
+            "description": "Notion stores the content queue, template inspirations, trend intelligence, and weekly performance reports."
+          }
+        ],
+        "tips": [
+          "Review and approve drafts daily — the pipeline only works if you maintain the habit of publishing approved content. The researcher generates, you curate.",
+          "Iterate on templates based on monitor data. Treat content like a product: run 2-week sprints, kill what scores Red after 3+ posts, double down on Greens.",
+          "Save template inspirations as you find them in the wild — the best content ideas come from scrolling, not from scheduled research sessions."
+        ]
+      },
+      "engineering-brief": {
+        "title": "Get an evening engineering brief with PR counts, highlights, and team recognition",
+        "description": "Every evening, Zero pulls GitHub activity, counts PRs merged per engineer, surfaces commit highlights, and picks an MVP of the day — posted to Slack with no manual work.",
+        "timeSaved": "~30 min saved per day",
+        "headings": {
+          "scenario": "Why engineering work goes unrecognized without a system",
+          "prompt": "How to set up the evening engineering brief",
+          "steps": "How Zero gathers activity, computes stats, and writes the brief",
+          "nextActions": "Customize the brief, adjust cadence, or extend to Linear",
+          "integrations": "Required integrations: Slack and GitHub",
+          "tips": "Best practices for team engineering briefs"
+        },
+        "scenario": "PRs get merged. Engineers do good work. But without a ritual to surface it, the work is invisible — especially to team members who weren't in those review threads. Zero runs a brief every evening: how many PRs did we merge today, who shipped what, and who had the standout contribution. It creates a shared sense of progress and recognition without any overhead.",
+        "promptVariants": [
+          {
+            "label": "Set up evening brief",
+            "prompt": "@Zero every weekday at 6pm, pull today's merged PRs from vm0-ai/vm0, count per engineer, surface 3 commit highlights, and pick an MVP. Post to #all-vm0."
+          },
+          {
+            "label": "Run it now",
+            "prompt": "@Zero run today's engineering brief now and post to #dev."
+          },
+          {
+            "label": "Weekly rollup",
+            "prompt": "@Zero pull this week's engineering activity from GitHub — total PRs, most active engineers, top 5 commits — and post a weekly summary to #all-vm0."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Evening Brief — April 14, 2026\n\nToday the team merged 53 PRs and closed 70+ issues.\n\n🏆 You Liang — 27 PRs. Today's MVP.\n• CI infrastructure full overhaul\n• Flaky test elimination\n\nLancy — 15 PRs. Connector architecture refactor.\nEthan — 8 PRs. Performance improvements."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero pulls GitHub activity for the day",
+            "description": "Zero fetches all PRs merged today in the specified repo, along with commit messages and authors."
+          },
+          {
+            "title": "Zero counts, ranks, and selects highlights",
+            "description": "Zero counts PRs per engineer, identifies the top contributor, and selects the 2-3 most impactful commits based on description scope and team impact."
+          },
+          {
+            "title": "Brief posted to Slack",
+            "description": "Zero posts the evening brief to the specified channel — total PRs, per-engineer counts, commit highlights, and MVP recognition with a short description of why they stood out today."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Add Linear to the brief",
+            "description": "Include issues closed alongside PRs merged",
+            "examplePrompt": "@Zero update the evening brief to also include Linear issues closed today per engineer, alongside the GitHub PR counts."
+          },
+          {
+            "title": "Adjust the MVP criteria",
+            "description": "Change how the MVP is selected",
+            "examplePrompt": "@Zero update the MVP selection logic: weight architectural changes more heavily than feature PRs."
+          },
+          {
+            "title": "Add a weekly rollup on Fridays",
+            "description": "Celebrate the full week's output",
+            "examplePrompt": "@Zero on Fridays, post an extended brief: week total, individual PR counts, and the top 3 commits of the week."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub is required. Zero reads merged PRs and commit data from your repository."
+          },
+          {
+            "description": "Slack is required. Zero posts the brief to your chosen channel at the scheduled time."
+          },
+          {
+            "description": "Linear is optional. Zero can pull issues closed per engineer to complement the GitHub PR data."
+          }
+        ],
+        "tips": [
+          "Post to a channel the whole team sees — #all-vm0 or #engineering — not just a leadership channel. The recognition lands differently when it's public.",
+          "Keep the brief concise: total count, per-engineer, and one standout highlight per MVP. More than 10 lines and people stop reading.",
+          "Run the brief at the same time every day. Predictable cadence builds the habit of checking it."
+        ]
+      },
+      "security-compliance": {
+        "title": "Research your infrastructure for compliance requirements in one Slack thread",
+        "description": "Ask Zero to audit your infrastructure setup against a compliance requirement. Zero checks your config across GitHub, cloud providers, and documentation — and posts a structured findings brief.",
+        "timeSaved": "~2 hrs saved",
+        "headings": {
+          "scenario": "Why compliance audits take days instead of hours",
+          "prompt": "How to ask Zero to research a compliance question",
+          "steps": "How Zero gathers, cross-references, and summarizes compliance findings",
+          "nextActions": "Document findings to Notion, create remediation issues, or schedule periodic audits",
+          "integrations": "Required integrations: GitHub",
+          "tips": "Best practices for AI-assisted compliance research"
+        },
+        "scenario": "Your compliance team flags a question: where is customer data stored, and does it meet regional requirements? Answering it means checking your cloud provider configs, reading your deployment settings, cross-referencing documentation, and writing a summary. Zero does all of this from one Slack message — checking your Vercel regions, Cloudflare R2 config, and infrastructure files, then posting a structured brief.",
+        "promptVariants": [
+          {
+            "label": "Region audit",
+            "prompt": "@Zero check our infrastructure for data residency — where are our Cloudflare R2 buckets located, what region does Vercel deploy to, and is there any cross-region replication configured?"
+          },
+          {
+            "label": "Security review",
+            "prompt": "@Zero audit our GitHub repo for any hardcoded secrets or API keys accidentally committed in the last 90 days."
+          },
+          {
+            "label": "Compliance brief",
+            "prompt": "@Zero research our infrastructure setup and write a brief on whether we meet SOC 2 Type I requirements for data storage and access controls. Save it to Notion under 'Compliance > SOC 2 Prep'."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Yuma",
+            "text": "@Zero check our Cloudflare R2 region and Vercel deployment region for the Kaamel compliance audit."
+          },
+          {
+            "name": "Zero",
+            "text": "Cloudflare R2: Region set to auto (Cloudflare selects nearest region). No cross-region replication configured.\n\nVercel: Defaults to iad1 (US East, Washington DC) for serverless functions. Static assets served from CDN edge globally.\n\nSummary: Data is US-based by default. If EU residency is required, both R2 and Vercel need explicit region configuration."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero gathers config from your infrastructure",
+            "description": "Zero reads your repository configuration files, deployment configs, and checks connected cloud services for the relevant settings."
+          },
+          {
+            "title": "Zero cross-references against the compliance requirement",
+            "description": "Zero maps each finding against the specific requirement — data residency, access control, encryption — and flags any gaps."
+          },
+          {
+            "title": "Findings brief posted and optionally saved",
+            "description": "Zero posts a structured brief in Slack with findings per service and a summary recommendation. On request, it saves the full report to Notion."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Save to Notion for the audit",
+            "description": "Archive the findings for your compliance record",
+            "examplePrompt": "@Zero save the compliance brief to Notion under 'Compliance > Infrastructure Audit > April 2026'."
+          },
+          {
+            "title": "Create remediation issues",
+            "description": "Turn gaps into tracked engineering work",
+            "examplePrompt": "@Zero create GitHub issues for each gap in the compliance brief. Label them compliance and assign to Ethan."
+          },
+          {
+            "title": "Schedule a quarterly audit",
+            "description": "Make compliance checks a recurring practice",
+            "examplePrompt": "@Zero every quarter, run this infrastructure compliance check and post findings to #compliance."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub is required. Zero reads your infrastructure and deployment config files from the repository."
+          },
+          {
+            "description": "Notion is optional. Zero saves compliance briefs and findings for audit trail documentation."
+          }
+        ],
+        "tips": [
+          "Be specific about the compliance framework or requirement — 'SOC 2 data residency' produces a more useful brief than 'check if we're compliant.'",
+          "Ask Zero to DM you the sensitive findings rather than posting to a channel — some compliance gaps shouldn't be broadcast publicly.",
+          "Archive findings to Notion immediately. Compliance auditors want documentation of the process, not just the conclusion."
+        ]
+      },
+      "cross-tool-context": {
+        "title": "Get a unified status brief on any project from Slack, Notion, Linear, and GitHub",
+        "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief — state, owner, blockers, last update — and flags if sources disagree.",
+        "timeSaved": "~25 min saved",
+        "headings": {
+          "scenario": "Why project status is scattered across four tools",
+          "prompt": "How to ask Zero for a cross-tool status brief",
+          "steps": "How Zero searches, synthesizes, and surfaces the brief",
+          "nextActions": "Log the brief to Notion, schedule weekly updates, or escalate blockers",
+          "integrations": "Required integrations: Slack and Linear",
+          "tips": "Best practices for cross-tool status queries"
+        },
+        "scenario": "Someone asks about the status of the Stripe integration. The last Slack thread is from two weeks ago. There's a Linear ticket but the status says 'In Progress' with no update. The Notion doc has a decision log from last month. GitHub has three open PRs. None of these sources tell the full story alone. Zero searches all four in parallel and gives you one answer.",
+        "promptVariants": [
+          {
+            "label": "Basic",
+            "prompt": "@Zero what's the current status of the Stripe integration? Search Slack (last 14 days), Notion, Linear, and GitHub. Return: current state, owner, blockers, and last meaningful update with source."
+          },
+          {
+            "label": "Deep dive",
+            "prompt": "@Zero pull everything on the auth refactor from the last 30 days across Slack, Notion, Linear, and GitHub. Write a full status doc with owner, decision history, and what's next."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday morning, DM me a status brief on the mobile SDK project — current state, owner, blockers, last update."
+          },
+          {
+            "label": "Conflict-aware",
+            "prompt": "@Zero check Slack and Linear for the latest on the onboarding redesign and flag if the two sources disagree on status or ownership."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero what's the current status of the connector architecture refactor? Search Slack, Linear, and GitHub."
+          },
+          {
+            "name": "Zero",
+            "text": "Connector Architecture Refactor — Status Brief\n\nState: In progress — environment variables migrated from skill frontmatter to connector definitions. Core refactor merged.\nOwner: Lancy\nBlockers: None active.\nLast update: Apr 14 (GitHub) — PR #9312 merged.\n\nSources agree."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero searches all sources in parallel",
+            "description": "Zero queries Slack, Notion, Linear, and GitHub simultaneously for the topic within the specified time window — returning raw findings from each source."
+          },
+          {
+            "title": "Zero synthesizes and flags conflicts",
+            "description": "Zero extracts state, owner, blockers, and last update per source. If sources disagree — e.g., Linear says 'Done' but Slack has an open question from yesterday — Zero flags the conflict explicitly."
+          },
+          {
+            "title": "4-part brief delivered in Slack",
+            "description": "Zero returns: current state in one sentence, owner/DRI, active blockers, and the most recent meaningful update with its source citation."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Log the brief to Notion",
+            "description": "Create a searchable record of the status snapshot",
+            "examplePrompt": "@Zero save this status brief to Notion under 'Project Status > Stripe Integration > April 2026'."
+          },
+          {
+            "title": "Schedule weekly updates",
+            "description": "Get a status DM every Monday without asking",
+            "examplePrompt": "@Zero every Monday at 9am, DM me the status of the mobile SDK across Slack, Linear, and GitHub."
+          },
+          {
+            "title": "Escalate a blocker",
+            "description": "Turn a found blocker into a tracked issue",
+            "examplePrompt": "@Zero the blocker you found — create a GitHub issue for it and assign to the owner."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack is required. It's the primary source of async discussion and where the brief is delivered."
+          },
+          {
+            "description": "Linear is required. It's the source of truth for task ownership and current status."
+          },
+          {
+            "description": "Notion is optional. Zero searches long-form decisions and context when included."
+          },
+          {
+            "description": "GitHub is optional. Zero includes PR and commit activity for technical topics."
+          }
+        ],
+        "tips": [
+          "Be specific — 'the Stripe integration' works better than 'the payment feature.' Specific terms match across tools; vague ones don't.",
+          "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
+          "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
+        ]
       }
     }
   },
