@@ -188,8 +188,8 @@ describe("enrichMessageContent", () => {
     });
 
     expect(result.prompt).toContain("take a look");
-    expect(result.prompt).toContain("[Slack file]: diagram.png (image/png)");
-    expect(result.prompt).toContain("[ID]: F1");
+    expect(result.prompt).toContain("[Slack file] diagram.png (image/png)");
+    expect(result.prompt).toContain("[ID] F1");
   });
 });
 
@@ -378,8 +378,8 @@ describe("fetchConversationContexts", () => {
 
     expect(executionContext).toContain("# Recent Channel Messages");
     expect(executionContext).toContain(
-      "[Slack file]: screenshot.png (image/png)",
+      "[Slack file] screenshot.png (image/png)",
     );
-    expect(executionContext).toContain("[ID]: F999");
+    expect(executionContext).toContain("[ID] F999");
   });
 });

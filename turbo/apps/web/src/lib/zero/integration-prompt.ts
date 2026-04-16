@@ -429,16 +429,16 @@ export function buildWebChatPrompt(): string {
 }
 
 /**
- * Build the "Web Attached Files" system prompt section for files the user
- * attached to their message. Only describes each attachment (name, type, id).
+ * Build file-attachment blocks for files the user attached to their web message.
+ * Only describes each attachment (name, type, id).
  * The agent learns how to download and read files from `zero web download-file -h`.
  */
 export function buildWebAttachFilesPrompt(
   files: Array<{ id: string; filename: string; contentType: string }>,
 ): string {
   const blocks = files.map((f) => {
-    return `[Web file]: ${f.filename} (${f.contentType})\n   [ID]: ${f.id}`;
+    return `[Web file] ${f.filename} (${f.contentType})\n   [ID] ${f.id}`;
   });
 
-  return ["# Web Attached Files", ...blocks].join("\n\n");
+  return blocks.join("\n");
 }

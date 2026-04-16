@@ -470,8 +470,8 @@ function ChatMessageRow({
  *
  * Handles three formats:
  * 1. Legacy: `[Attached file: name](url)` with optional curl line
- * 2. Web:    `# Web Attached Files` header + `[Web file]: ...` blocks
- * 3. Slack:  `[Slack file]: ...` blocks
+ * 2. Web:    `[Web file] ...` blocks (legacy: with `# Web Attached Files` header)
+ * 3. Slack:  `[Slack file] ...` blocks
  *
  * Returns the cleaned content and any legacy parsed attachments.
  */
@@ -491,9 +491,10 @@ function parseInlineAttachments(content: string): {
     },
   );
 
-  // Web/Slack file blocks: [Web file]: ... or [Slack file]: ... with metadata lines
+  // Web/Slack file blocks: [Web file] ... or [Slack file] ... with metadata lines
+  // Also handles legacy format with colon after bracket: [Web file]: ...
   cleaned = cleaned.replace(
-    /(?:# (?:Web|Slack) Attached Files\n\n)?(?:\[(?:Web|Slack) file\]: [^\n]+\n(?:\s+\[[^\]]+\]: [^\n]+\n?)*)(?:\n?)/g,
+    /(?:# (?:Web|Slack) Attached Files\n\n)?(?:\[(?:Web|Slack) file\]:? [^\n]+\n(?:\s+\[[^\]]+\]:? [^\n]+\n?)*)(?:\n?)/g,
     "",
   );
 

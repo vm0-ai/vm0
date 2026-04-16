@@ -251,14 +251,14 @@ function formatFileInfo(file: SlackFile): string {
 
   const name = file.name || file.title || "Untitled";
   const type = file.pretty_type || file.mimetype || "file";
-  parts.push(`[Slack file]: ${name} (${type})`);
+  parts.push(`[Slack file] ${name} (${type})`);
 
   if (file.original_w && file.original_h) {
-    parts.push(`   [Dimensions]: ${file.original_w}x${file.original_h}`);
+    parts.push(`   [Dimensions] ${file.original_w}x${file.original_h}`);
   }
 
   if (file.id) {
-    parts.push(`   [ID]: ${file.id}`);
+    parts.push(`   [ID] ${file.id}`);
   } else {
     // Without a file id the agent cannot fetch via the backend proxy.
     // Fall back to an informational URL reference if available.
@@ -268,7 +268,7 @@ function formatFileInfo(file: SlackFile): string {
       file.thumb_360 ||
       file.permalink;
     if (url) {
-      parts.push(`   [URL]: ${url}`);
+      parts.push(`   [URL] ${url}`);
     }
   }
 
@@ -291,7 +291,7 @@ function formatAttachmentImage(attachment: SlackAttachment): string | null {
 
   if (attachment.image_width && attachment.image_height) {
     parts.push(
-      `   [Dimensions]: ${attachment.image_width}x${attachment.image_height}`,
+      `   [Dimensions] ${attachment.image_width}x${attachment.image_height}`,
     );
   }
 

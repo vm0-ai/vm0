@@ -70,9 +70,9 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages, "thread");
 
-      expect(result).toContain("[Slack file]: screenshot.png (image/png)");
-      expect(result).toContain("[Dimensions]: 1920x1080");
-      expect(result).toContain("[ID]: F123");
+      expect(result).toContain("[Slack file] screenshot.png (image/png)");
+      expect(result).toContain("[Dimensions] 1920x1080");
+      expect(result).toContain("[ID] F123");
       expect(result).not.toContain("Step");
       expect(result).not.toContain("curl");
     });
@@ -96,8 +96,8 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[Slack file]: demo.mp4 (video/mp4)");
-      expect(result).toContain("[ID]: FVID");
+      expect(result).toContain("[Slack file] demo.mp4 (video/mp4)");
+      expect(result).toContain("[ID] FVID");
       expect(result).not.toContain("ffmpeg");
     });
 
@@ -118,9 +118,9 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[Slack file]: mystery.bin");
-      expect(result).toContain("[URL]: https://example.com/mystery.bin");
-      expect(result).not.toContain("[ID]:");
+      expect(result).toContain("[Slack file] mystery.bin");
+      expect(result).toContain("[URL] https://example.com/mystery.bin");
+      expect(result).not.toContain("[ID]");
     });
 
     it("should include id when file has an id but no filetype", () => {
@@ -132,8 +132,8 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[Slack file]: thing (file)");
-      expect(result).toContain("[ID]: F_NO_TYPE");
+      expect(result).toContain("[Slack file] thing (file)");
+      expect(result).toContain("[ID] F_NO_TYPE");
     });
   });
 
@@ -158,7 +158,7 @@ describe("Feature: Format Context For Agent", () => {
       const result = formatContextForAgent(messages);
 
       expect(result).toContain("[image]: preview");
-      expect(result).toContain("[Dimensions]: 400x300");
+      expect(result).toContain("[Dimensions] 400x300");
       expect(result).toContain(
         'curl -sS -o /tmp/attachment_image.jpg "https://example.com/preview.png"',
       );
@@ -225,10 +225,10 @@ describe("Feature: Format Current Message Files", () => {
 
     const result = formatCurrentMessageFiles(files);
 
-    expect(result).toContain("[Slack file]: a.png (image/png)");
-    expect(result).toContain("[ID]: F1");
-    expect(result).toContain("[Slack file]: b.pdf (application/pdf)");
-    expect(result).toContain("[ID]: F2");
+    expect(result).toContain("[Slack file] a.png (image/png)");
+    expect(result).toContain("[ID] F1");
+    expect(result).toContain("[Slack file] b.pdf (application/pdf)");
+    expect(result).toContain("[ID] F2");
   });
 
   it("should return empty string for empty file array", () => {
