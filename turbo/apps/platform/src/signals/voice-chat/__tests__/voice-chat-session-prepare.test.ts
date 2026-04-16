@@ -2,10 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import {
-  setupPage,
-  detachedSetupPage,
-} from "../../../__tests__/page-helper.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { detach, Reason } from "../../utils.ts";
 import { setupVoiceChatPage$ } from "../voice-chat-setup.ts";

@@ -11,7 +11,6 @@ import {
   zeroActivityHasPrev$,
   initZeroActivityAgentName$,
   setZeroActivityFilter$,
-  setupActivityLogLoop$,
   zeroActivityDetail$,
   formatLogTime,
   formatDuration,

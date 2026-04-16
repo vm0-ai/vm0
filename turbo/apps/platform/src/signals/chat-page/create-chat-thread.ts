@@ -17,6 +17,7 @@ import {
   chatMessagesContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  zeroRunsByIdContract,
   zeroRunsCancelContract,
   type PersistedAttachment,
   type PagedChatMessage,
@@ -530,6 +531,22 @@ export const ensureDraft$ = command(
   },
 );
 
+function createInputRef() {
+  const internalInputRef$ = state<HTMLElement | null>(null);
+  const setInputRef$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalInputRef$, null);
+      });
+      set(internalInputRef$, el);
+    }),
+  );
+  const focusInput$ = command(({ get }) => {
+    get(internalInputRef$)?.focus();
+  });
+  return { setInputRef$, focusInput$ };
+}
+
 // ---------------------------------------------------------------------------
 // Factory: createChatThreadSignals
 // ---------------------------------------------------------------------------
@@ -566,6 +583,44 @@ export function createChatThreadSignals(
   const prepareUserMessage$ = createPrepareUserMessage(draft);
 
   const pendingRunIds$ = state<string[]>([]);
+
+  const removePendingRunId$ = command(({ get, set }, runId: string) => {
+    set(pendingRunIds$, (ids) => {
+      return ids.filter((id) => {
+        return id !== runId;
+      });
+    });
+  });
+
+  const TERMINAL_STATUSES = new Set([
+    "completed",
+    "failed",
+    "timeout",
+    "cancelled",
+  ]);
+
+  /** Subscribe to `runUpdated:${runId}` and remove the id when terminal. */
+  const watchRunStatus$ = command(
+    async ({ get, set }, runId: string, signal: AbortSignal) => {
+      const checkRun$ = command(async ({ get, set }, sig: AbortSignal) => {
+        const client = get(zeroClient$)(zeroRunsByIdContract);
+        const res = await accept(
+          client.getById({
+            params: { id: runId },
+            fetchOptions: { signal: sig },
+          }),
+          [200],
+        );
+        if (TERMINAL_STATUSES.has(res.body.status)) {
+          set(removePendingRunId$, runId);
+          return true;
+        }
+        return false;
+      });
+
+      await set(setAblyLoop$, `runUpdated:${runId}`, checkRun$, signal);
+    },
+  );
 
   const hasActiveRun$ = computed((get) => {
     if (get(pendingRunIds$).length > 0) return true;
@@ -607,10 +662,16 @@ export function createChatThreadSignals(
       );
       signal.throwIfAborted();
 
-      // Store the runId so cancelRun$ can act immediately.
+      const runId = sendResult.body.runId;
       set(pendingRunIds$, (x) => {
-        return [...x, sendResult.body.runId];
+        return [...x, runId];
       });
+
+      // Watch for terminal status via Ably — runs in the background until
+      // the run reaches a terminal state, then removes it from pendingRunIds$.
+      // Cannot await here: sendMessage$ must resolve promptly so the composer
+      // re-enables. The parent signal aborts the loop on component unmount.
+      void set(watchRunStatus$, runId, signal).catch(throwIfNotAbort);
 
       set(reloadChatThreads$);
     },
@@ -641,18 +702,7 @@ export function createChatThreadSignals(
     });
   });
 
-  const internalInputRef$ = state<HTMLElement | null>(null);
-  const setInputRef$ = onRef(
-    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener("abort", () => {
-        set(internalInputRef$, null);
-      });
-      set(internalInputRef$, el);
-    }),
-  );
-  const focusInput$ = command(({ get }) => {
-    get(internalInputRef$)?.focus();
-  });
+  const { setInputRef$, focusInput$ } = createInputRef();
 
   return {
     threadData$,
