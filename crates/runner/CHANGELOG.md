@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.80.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.13...runner-rs-v0.80.0) (2026-04-16)
+
+
+### Features
+
+* **runner:** parse x ndjson streams incrementally and bound buffer ([#9551](https://github.com/vm0-ai/vm0/issues/9551)) ([f82b20d](https://github.com/vm0-ai/vm0/commit/f82b20d50575ba3ea45651fcdde5732348a8bada))
+
 ## [0.79.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.79.12...runner-rs-v0.79.13) (2026-04-15)
 
 

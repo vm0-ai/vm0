@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.242.2](https://github.com/vm0-ai/vm0/compare/app-v0.242.1...app-v0.242.2) (2026-04-16)
+
+
+### Refactoring
+
+* **platform:** convert ably notify to ccstate command pattern ([#9554](https://github.com/vm0-ai/vm0/issues/9554)) ([129dc85](https://github.com/vm0-ai/vm0/commit/129dc85207207600dc383620b6bc92ebb006d1d5))
+
 ## [0.242.1](https://github.com/vm0-ai/vm0/compare/app-v0.242.0...app-v0.242.1) (2026-04-15)
 
 
