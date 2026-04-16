@@ -81,7 +81,11 @@ function mockActivityAPIs(runId: string) {
       });
     }),
     http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
-      return HttpResponse.json({ events: [], hasMore: false, framework: "unknown" });
+      return HttpResponse.json({
+        events: [],
+        hasMore: false,
+        framework: "unknown",
+      });
     }),
   );
 }

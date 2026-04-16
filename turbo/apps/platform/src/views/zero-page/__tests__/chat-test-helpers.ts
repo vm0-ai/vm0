@@ -1,6 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
+import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 
 import { fill } from "../../../__tests__/page-helper.ts";
@@ -334,15 +335,21 @@ export function mockChatLifecycle(options?: {
           },
         ];
       }
+      triggerAblyEvent(`thread:run-test-1`);
+      triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
     },
     failRun: (error: string) => {
       runStatus = "failed";
       runError = error;
       assistantVersion++;
+      triggerAblyEvent(`thread:run-test-1`);
+      triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
     },
     cancelRun: () => {
       runStatus = "cancelled";
       assistantVersion++;
+      triggerAblyEvent(`thread:run-test-1`);
+      triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
     },
   };
 }
