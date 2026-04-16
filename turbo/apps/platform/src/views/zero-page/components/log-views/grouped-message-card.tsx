@@ -183,12 +183,12 @@ function TaskMessageCard({
               Task
             </span>
             {description && (
-              <span className="text-sm text-muted-foreground truncate">
+              <span className="text-sm text-muted-foreground truncate min-w-0">
                 {description}
               </span>
             )}
             {toolCount > 0 && (
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground shrink-0">
                 {toolCount} steps
               </span>
             )}
