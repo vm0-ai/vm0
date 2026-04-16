@@ -12,9 +12,6 @@ import type {
  * Agent Session Service - Pure Infra Functions
  * Manages VM0 agent sessions - lightweight compose <-> conversation associations
  * Sessions always use HEAD compose version at runtime -- no snapshotting
- *
- * Note: zeroAgentSessions operations (chat messages, session listing with messages,
- * session response) have been moved to zero-session-service.ts
  */
 
 /**

@@ -10,10 +10,6 @@ import { agentSessions } from "../../db/schema/agent-session";
 import { chatThreads } from "../../db/schema/chat-thread";
 import { conversations } from "../../db/schema/conversation";
 import { zeroAgents } from "../../db/schema/zero-agent";
-import {
-  zeroAgentSessions,
-  type StoredChatMessage,
-} from "../../db/schema/zero-agent-session";
 import { composeJobs } from "../../db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
 import {
@@ -354,63 +350,6 @@ export async function createTestSessionWithConversation(
     })
     .returning({ id: agentSessions.id });
   return session!;
-}
-
-/**
- * Insert a test agent session with chat messages for export testing.
- *
- * @why-db-direct Inserts session with specific chat messages; no API
- * exists for direct message injection into agent sessions.
- */
-export async function insertTestAgentSessionWithMessages(
-  userId: string,
-  agentComposeId: string,
-  chatMessages: StoredChatMessage[],
-) {
-  initServices();
-  const [compose] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentComposeId))
-    .limit(1);
-  if (!compose) throw new Error(`Compose ${agentComposeId} not found`);
-  const [session] = await globalThis.services.db
-    .insert(agentSessions)
-    .values({ userId, orgId: compose.orgId, agentComposeId })
-    .returning({ id: agentSessions.id });
-  await globalThis.services.db
-    .insert(zeroAgentSessions)
-    .values({ id: session!.id, chatMessages });
-  return session!;
-}
-
-/**
- * Append chat messages to a zero_agent_sessions record.
- *
- * @why-db-direct Appends to zero_agent_sessions chat history; no API
- * exists for direct history manipulation.
- */
-export async function appendTestChatMessages(
-  sessionId: string,
-  messages: StoredChatMessage[],
-): Promise<void> {
-  initServices();
-  const [existing] = await globalThis.services.db
-    .select({ chatMessages: zeroAgentSessions.chatMessages })
-    .from(zeroAgentSessions)
-    .where(eq(zeroAgentSessions.id, sessionId))
-    .limit(1);
-
-  const currentMessages = (existing?.chatMessages ?? []) as StoredChatMessage[];
-  const updated = [...currentMessages, ...messages];
-
-  await globalThis.services.db
-    .insert(zeroAgentSessions)
-    .values({ id: sessionId, chatMessages: updated })
-    .onConflictDoUpdate({
-      target: zeroAgentSessions.id,
-      set: { chatMessages: updated },
-    });
 }
 
 /**

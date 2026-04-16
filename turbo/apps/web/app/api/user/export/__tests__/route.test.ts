@@ -6,7 +6,8 @@ import {
   createTestRequest,
   createTestCompose,
   findTestExportJobById,
-  insertTestAgentSessionWithMessages,
+  insertTestChatThread,
+  insertTestChatMessage,
   insertTestArtifactStorage,
 } from "../../../../../src/__tests__/api-test-helpers";
 
@@ -45,19 +46,22 @@ describe("POST /api/user/export", () => {
         framework: "claude-code",
       });
 
-      // Create test session with chat messages
-      await insertTestAgentSessionWithMessages(user.userId, composeId, [
-        {
-          role: "user",
-          content: "hello",
-          createdAt: new Date().toISOString(),
-        },
-        {
-          role: "assistant",
-          content: "hi there",
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+      // Create test chat thread with messages
+      const threadId = await insertTestChatThread(
+        user.userId,
+        composeId,
+        "test thread",
+      );
+      await insertTestChatMessage({
+        chatThreadId: threadId,
+        role: "user",
+        content: "hello",
+      });
+      await insertTestChatMessage({
+        chatThreadId: threadId,
+        role: "assistant",
+        content: "hi there",
+      });
 
       // Create test artifact storage
       await insertTestArtifactStorage(user.userId, user.orgId, "test-artifact");

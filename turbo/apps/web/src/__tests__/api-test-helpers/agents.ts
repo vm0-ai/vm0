@@ -22,8 +22,6 @@ export {
   ensureZeroAgentRow,
   createTestAgentSession,
   createTestSessionWithConversation,
-  insertTestAgentSessionWithMessages,
-  appendTestChatMessages,
   insertTestChatThread,
   insertTestChatMessage,
   getTestChatMessagesByThread,
@@ -33,7 +31,6 @@ export {
 } from "../db-test-seeders/agents";
 
 export {
-  getTestSessionChatMessages,
   getTestAgentSessionWithConversation,
   getTestAgentComposeName,
 } from "../db-test-assertions/agents";

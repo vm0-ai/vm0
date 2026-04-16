@@ -264,23 +264,17 @@ export {
   getVm0Vendor,
 } from "./model-providers";
 export {
-  sessionsContract,
   sessionsByIdContract,
   checkpointsByIdContract,
-  storedChatMessageSchema,
   sessionResponseSchema,
-  sessionListItemSchema,
   checkpointResponseSchema,
   agentComposeSnapshotSchema,
   artifactSnapshotSchema,
   volumeVersionsSnapshotSchema,
-  type SessionsContract,
   type SessionsByIdContract,
   type CheckpointsByIdContract,
   // Inferred types
-  type StoredChatMessage,
   type SessionResponse,
-  type SessionListItem,
   type CheckpointResponse,
   type AgentComposeSnapshot,
   type ArtifactSnapshot,
@@ -682,10 +676,6 @@ export {
   type ZeroVariablesContract,
   type ZeroVariablesByNameContract,
 } from "./zero-secrets";
-export {
-  zeroSessionsByIdContract,
-  type ZeroSessionsByIdContract,
-} from "./zero-sessions";
 export {
   integrationsSlackMessageContract,
   type IntegrationsSlackMessageContract,

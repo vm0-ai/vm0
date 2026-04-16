@@ -6,10 +6,6 @@ import {
 } from "../../db/schema/agent-compose";
 import { agentSessions } from "../../db/schema/agent-session";
 import { zeroAgents } from "../../db/schema/zero-agent";
-import {
-  zeroAgentSessions,
-  type StoredChatMessage,
-} from "../../db/schema/zero-agent-session";
 
 /**
  * Read the headVersionId and updatedAt of a compose record.
@@ -105,21 +101,6 @@ export async function getTestZeroAgent(
 // ---------------------------------------------------------------------------
 
 /**
- * Get chat messages for a zero_agent_sessions record.
- */
-export async function getTestSessionChatMessages(
-  sessionId: string,
-): Promise<StoredChatMessage[]> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ chatMessages: zeroAgentSessions.chatMessages })
-    .from(zeroAgentSessions)
-    .where(eq(zeroAgentSessions.id, sessionId))
-    .limit(1);
-  return (row?.chatMessages ?? []) as StoredChatMessage[];
-}
-
-/**
  * Get an agent session with its conversation data.
  */
 export async function getTestAgentSessionWithConversation(
@@ -132,7 +113,6 @@ export async function getTestAgentSessionWithConversation(
       agentComposeId: string;
       conversationId: string | null;
       memoryName: string | null;
-      chatMessages: StoredChatMessage[];
     }
   | undefined
 > {
@@ -145,12 +125,6 @@ export async function getTestAgentSessionWithConversation(
 
   if (!session) return undefined;
 
-  const [zeroSession] = await globalThis.services.db
-    .select({ chatMessages: zeroAgentSessions.chatMessages })
-    .from(zeroAgentSessions)
-    .where(eq(zeroAgentSessions.id, sessionId))
-    .limit(1);
-
   return {
     id: session.id,
     userId: session.userId,
@@ -158,7 +132,6 @@ export async function getTestAgentSessionWithConversation(
     agentComposeId: session.agentComposeId,
     conversationId: session.conversationId ?? null,
     memoryName: session.memoryName ?? null,
-    chatMessages: (zeroSession?.chatMessages ?? []) as StoredChatMessage[],
   };
 }
 
