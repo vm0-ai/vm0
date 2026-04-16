@@ -129,6 +129,7 @@ import { revenuecatFirewall } from "./revenuecat.generated";
 import { runwayFirewall } from "./runway.generated";
 import { salesforceFirewall } from "./salesforce.generated";
 import { scrapeninjaFirewall } from "./scrapeninja.generated";
+import { seedanceFirewall } from "./seedance.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
 import { shortioFirewall } from "./shortio.generated";
@@ -278,6 +279,7 @@ const CONNECTOR_FIREWALLS = {
   runway: runwayFirewall,
   salesforce: salesforceFirewall,
   scrapeninja: scrapeninjaFirewall,
+  seedance: seedanceFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
   shortio: shortioFirewall,
