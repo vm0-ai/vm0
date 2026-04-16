@@ -68,12 +68,15 @@ const cycleSkeletonMessage$ = command(({ set }) => {
   });
 });
 
+const MAX_SKELETON_CYCLES = 3;
+
 export const startSkeletonCycling$ = command(
   async ({ set }, parentSignal: AbortSignal) => {
+    let cycles = 0;
     await setLoop(
       () => {
         set(cycleSkeletonMessage$);
-        return false;
+        return ++cycles >= MAX_SKELETON_CYCLES;
       },
       4000,
       set(resetSkeletonCycling$, parentSignal),
