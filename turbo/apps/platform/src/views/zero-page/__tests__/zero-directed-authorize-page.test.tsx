@@ -19,6 +19,24 @@ const context = testContext();
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 
+function mockAgentWithName(agentId: string, displayName: string) {
+  server.use(
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: agentId,
+          displayName,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
+    }),
+  );
+}
+
 function mockConnectorsConnected(type: string) {
   server.use(
     http.get("*/api/zero/connectors", () => {
@@ -166,6 +184,23 @@ describe("directed authorize page", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
+  });
+
+  it("shows agent display name instead of 'Zero' when agent has a name", async () => {
+    mockAgentWithName(AGENT_ID, "My Assistant");
+    mockConnectorsConnected("gmail");
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("My Assistant needs Gmail to proceed"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Authorize My Assistant")).toBeInTheDocument();
   });
 
   it("has a logo link that navigates to /connectors", async () => {
