@@ -242,12 +242,6 @@ export const vcEvents$ = computed((get) => {
   return get(internalEvents$);
 });
 
-export const vcSlowBrainEvents$ = computed((get) => {
-  return get(internalEvents$).filter((e) => {
-    return e.source === "slow-brain";
-  });
-});
-
 type ConversationItem =
   | { kind: "transcript"; entry: TranscriptEntry; order: number; key: string }
   | { kind: "slow-brain"; event: ContextEvent; order: number; key: string };
