@@ -1419,6 +1419,46 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     }
 
+    /// Host-side deadline fires when the guest never sends process_exit.
+    ///
+    /// This exercises the `tokio::time::sleep_until(deadline)` arm of the
+    /// `select!` loop in `wait_for_exit` — the only exit path that was
+    /// previously untested (see issue #9611).
+    #[tokio::test]
+    async fn test_wait_for_exit_timeout() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            // Read spawn_watch, reply with pid — but never send process_exit.
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            let payload = vsock_proto::encode_spawn_watch_result(55);
+            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+
+            // Keep connection alive so the timeout, not the close path, fires.
+            let mut discard = [0u8; 1];
+            let _ = guest.read(&mut discard).await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (pid, _stdout_rx) = host
+            .spawn_watch("long-running", 0, &[], false, None)
+            .await
+            .unwrap();
+        assert_eq!(pid, 55);
+
+        let err = host
+            .wait_for_exit(pid, Duration::from_millis(100))
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    }
+
     /// Prove the core requirement: wait_for_exit and exec can run concurrently.
     #[tokio::test]
     async fn test_concurrent_exec_and_wait_exit() {
