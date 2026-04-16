@@ -802,7 +802,7 @@ const prepareUserMessage$ = command(
     }
 
     const attachmentLines = ready.map((r) => {
-      return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`;
+      return `[Attached file: ${r.attachment.filename}]\nDownload with: zero web download-file ${r.info.id} -o /tmp/${r.attachment.filename}`;
     });
 
     // Build fullPrompt without leading \n\n when text is empty
