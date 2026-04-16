@@ -515,16 +515,13 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
             LockProbe::Free(_lock) => {
                 if dry_run {
                     info!("[dry-run] would remove unused lock {name}");
+                    removed += 1;
+                } else if let Err(e) = tokio::fs::remove_file(&lock_path).await {
+                    tracing::debug!("cannot remove {}: {e}", lock_path.display());
                 } else {
-                    match tokio::fs::remove_file(&lock_path).await {
-                        Ok(()) => info!("removed unused lock {name}"),
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                        Err(e) => {
-                            tracing::debug!("cannot remove {}: {e}", lock_path.display());
-                        }
-                    }
+                    info!("removed unused lock {name}");
+                    removed += 1;
                 }
-                removed += 1;
             }
             LockProbe::Held | LockProbe::Error(_) => {}
         }
