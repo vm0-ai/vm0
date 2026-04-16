@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.242.0](https://github.com/vm0-ai/vm0/compare/web-v12.241.0...web-v12.242.0) (2026-04-16)
+
+
+### Features
+
+* add run_event_id to chat_messages for Anthropic message traceability ([#9559](https://github.com/vm0-ai/vm0/issues/9559)) ([7cbbec6](https://github.com/vm0-ai/vm0/commit/7cbbec653e7e1e39f4b13f24ebadd65e42b7969b))
+
 ## [12.241.0](https://github.com/vm0-ai/vm0/compare/web-v12.240.0...web-v12.241.0) (2026-04-15)
 
 
