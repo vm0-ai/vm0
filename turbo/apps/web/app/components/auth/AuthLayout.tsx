@@ -106,16 +106,6 @@ const CLERK_CSS = `
   border-color: hsl(var(--gray-400)) !important;
 }
 
-/* Password input sits inside a wrapper that has the border — strip the input's
-   own border to prevent doubling. Only target password; text/email inputs may
-   have no wrapper and need their own border. */
-.cl-card [class*="formFieldInput"] input[type="password"] {
-  border: none !important;
-  box-shadow: none !important;
-  height: 100% !important;
-  background-color: transparent !important;
-}
-
 /* Checkbox containers must not inherit input wrapper border/height */
 .cl-formFieldCheckboxInput,
 .cl-formFieldCheckbox,
