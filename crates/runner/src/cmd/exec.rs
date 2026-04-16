@@ -8,17 +8,25 @@ use clap::Args;
 use sandbox::{SandboxControl, SandboxControlError};
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::process;
 
 // ---------------------------------------------------------------------------
 // CLI args
 // ---------------------------------------------------------------------------
 
 #[derive(Args)]
+#[command(group = clap::ArgGroup::new("target").required(true))]
 pub struct ExecArgs {
-    /// Sandbox ID (full UUID or unique prefix). This is the workspace
-    /// directory basename shown by `runner doctor`, not the run ID from
-    /// the dashboard. Socket dirs are keyed by sandbox_id.
-    sandbox_id: String,
+    /// Target by run ID (full UUID or prefix) — resolved to a sandbox
+    /// via status.json. Use this when you have a job ID from the
+    /// dashboard.
+    #[arg(long, group = "target")]
+    run: Option<String>,
+
+    /// Target by sandbox ID (full UUID or prefix) — used directly as
+    /// the socket directory name. Visible in `runner doctor` output.
+    #[arg(long, group = "target")]
+    sandbox: Option<String>,
 
     /// Timeout in seconds for the command
     #[arg(long, default_value = "30")]
@@ -34,7 +42,7 @@ pub struct ExecArgs {
     /// variable expansion must be invoked explicitly via a shell:
     ///
     /// ```text
-    /// runner exec <id> -- sh -c 'ls /tmp | wc -l'
+    /// runner exec --sandbox <id> -- sh -c 'ls /tmp | wc -l'
     /// ```
     #[arg(last = true, required = true)]
     command: Vec<String>,
@@ -68,6 +76,20 @@ fn shell_quote(arg: &str) -> String {
 }
 
 pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerResult<ExitCode> {
+    // Resolve the target to a sandbox_id string.
+    let sandbox_id = if let Some(ref sid) = args.sandbox {
+        sid.clone()
+    } else if let Some(ref rid) = args.run {
+        let discovered = process::discover_all().await;
+        let entries = process::collect_active_run_mappings(&discovered.runners).await;
+        process::resolve_run_to_sandbox(rid, &entries)?
+    } else {
+        // clap group guarantees one is set — this branch is unreachable.
+        return Err(RunnerError::Config(
+            "one of --run or --sandbox is required".into(),
+        ));
+    };
+
     let command = args
         .command
         .iter()
@@ -77,7 +99,7 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
     let timeout = Duration::from_secs(u64::from(args.timeout));
 
     match control
-        .exec_remote(&args.sandbox_id, &command, timeout, args.sudo)
+        .exec_remote(&sandbox_id, &command, timeout, args.sudo)
         .await
     {
         Ok(result) => {
@@ -107,7 +129,8 @@ mod tests {
 
     fn make_args(sandbox_id: &str, command: &str) -> ExecArgs {
         ExecArgs {
-            sandbox_id: sandbox_id.into(),
+            run: None,
+            sandbox: Some(sandbox_id.into()),
             timeout: 5,
             sudo: false,
             command: command.split_whitespace().map(String::from).collect(),
@@ -116,7 +139,8 @@ mod tests {
 
     fn make_args_vec(command: Vec<&str>) -> ExecArgs {
         ExecArgs {
-            sandbox_id: "id".into(),
+            run: None,
+            sandbox: Some("id".into()),
             timeout: 5,
             sudo: false,
             command: command.into_iter().map(String::from).collect(),

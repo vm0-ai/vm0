@@ -1,7 +1,7 @@
-//! Process discovery via `/proc` scanning.
+//! Process discovery via `/proc` scanning and status.json helpers.
 //!
-//! Shared between `doctor` and `kill` commands. All cmdline parsers
-//! are pure functions testable without a running system.
+//! Shared between `doctor`, `kill`, and `exec` commands. All cmdline
+//! parsers are pure functions testable without a running system.
 
 use std::path::{Path, PathBuf};
 
@@ -342,6 +342,135 @@ pub async fn is_orphan(pid: u32, runner_pids: &[u32]) -> bool {
         current = ppid;
     }
     false // max depth reached → don't flag
+}
+
+// ---------------------------------------------------------------------------
+// status.json helpers (shared by kill, exec, and potentially others)
+// ---------------------------------------------------------------------------
+
+/// Load only the `base_dir` field from a runner config YAML (best-effort).
+///
+/// Read / parse failures log at `warn` level and return `None` so a single
+/// broken runner config doesn't stop resolution for the rest.
+pub(crate) async fn load_base_dir(config_path: &Path) -> Option<PathBuf> {
+    #[derive(serde::Deserialize)]
+    struct ConfigShape {
+        base_dir: PathBuf,
+    }
+    let content = match tokio::fs::read_to_string(config_path).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(path = %config_path.display(), error = %e, "skipping runner: cannot read config");
+            return None;
+        }
+    };
+    let shape: ConfigShape = match serde_yaml_ng::from_str(&content) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(path = %config_path.display(), error = %e, "skipping runner: cannot parse config");
+            return None;
+        }
+    };
+    if shape.base_dir.is_absolute() {
+        Some(shape.base_dir)
+    } else {
+        config_path.parent().map(|p| p.join(&shape.base_dir))
+    }
+}
+
+/// Read `{base_dir}/status.json` and extract `(run_id, sandbox_id)` for
+/// every active run. Returns `None` if the file is missing or unparseable
+/// (logs at `warn` level so the operator sees the miss immediately).
+pub(crate) async fn read_active_runs(base_dir: &Path) -> Option<Vec<(String, String)>> {
+    #[derive(serde::Deserialize)]
+    struct StatusShape {
+        #[serde(default)]
+        active_runs: Vec<ActiveRunShape>,
+    }
+    #[derive(serde::Deserialize)]
+    struct ActiveRunShape {
+        run_id: String,
+        sandbox_id: String,
+    }
+    let path = base_dir.join("status.json");
+    let content = match tokio::fs::read_to_string(&path).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "skipping runner: cannot read status.json");
+            return None;
+        }
+    };
+    let shape: StatusShape = match serde_json::from_str(&content) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "skipping runner: cannot parse status.json");
+            return None;
+        }
+    };
+    Some(
+        shape
+            .active_runs
+            .into_iter()
+            .map(|r| (r.run_id, r.sandbox_id))
+            .collect(),
+    )
+}
+
+/// Collect all `(run_id, sandbox_id)` pairs from every reachable runner's
+/// `status.json`. Used by `kill --run` and `exec --run` to translate a
+/// user-supplied run_id into the sandbox_id that identifies the FC.
+pub(crate) async fn collect_active_run_mappings(
+    runners: &[RunnerProcessInfo],
+) -> Vec<(String, String)> {
+    let mut entries = Vec::new();
+    for runner in runners {
+        let Some(base_dir) = load_base_dir(&runner.config_path).await else {
+            continue;
+        };
+        if let Some(runs) = read_active_runs(&base_dir).await {
+            entries.extend(runs);
+        }
+    }
+    entries
+}
+
+/// Given a `run_id` prefix, find the unique matching `sandbox_id` from a
+/// set of `(run_id, sandbox_id)` status entries.
+///
+/// Returns the `sandbox_id` on unique match. Errors on empty or ambiguous.
+pub(crate) fn resolve_run_to_sandbox(
+    input: &str,
+    status_entries: &[(String, String)],
+) -> crate::error::RunnerResult<String> {
+    use crate::error::RunnerError;
+
+    if input.is_empty() {
+        return Err(RunnerError::Config("run id must not be empty".into()));
+    }
+
+    let mut matching: Vec<&(String, String)> = status_entries
+        .iter()
+        .filter(|(rid, _)| rid.starts_with(input))
+        .collect();
+    matching.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    matching.dedup();
+
+    match matching.as_slice() {
+        [(_, sandbox_id)] => Ok(sandbox_id.clone()),
+        [] => Err(RunnerError::Config(format!(
+            "no active run matches '{input}'"
+        ))),
+        _ => {
+            let lines: Vec<String> = matching
+                .iter()
+                .map(|(rid, sid)| format!("run={rid} sandbox={sid}"))
+                .collect();
+            Err(RunnerError::Config(format!(
+                "ambiguous run prefix '{input}', matches: [{}]",
+                lines.join(", ")
+            )))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
