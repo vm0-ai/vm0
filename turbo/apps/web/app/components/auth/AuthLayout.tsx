@@ -318,19 +318,19 @@ a[class*="resendCode"] {
   width: 16px !important;
   height: 16px !important;
   min-width: 16px !important;
-  border: 1.5px solid hsl(var(--muted-foreground)) !important;
+  border: 1.5px solid hsl(var(--foreground) / 0.35) !important;
   border-radius: 3px !important;
-  background-color: hsl(var(--input)) !important;
+  background-color: transparent !important;
   cursor: pointer !important;
   flex-shrink: 0 !important;
-  transition: background-color 0.15s ease, border-color 0.15s ease !important;
+  transition: border-color 0.15s ease !important;
 }
 
 .cl-card input[type="checkbox"]:checked,
 .cl-formFieldCheckboxInput input[type="checkbox"]:checked {
-  background-color: hsl(var(--primary)) !important;
+  background-color: transparent !important;
   border-color: hsl(var(--primary)) !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='13%2C4 6%2C11 3%2C8'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23ED4E01' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='13%2C4 6%2C11 3%2C8'%3E%3C/polyline%3E%3C/svg%3E") !important;
   background-repeat: no-repeat !important;
   background-position: center !important;
   background-size: 70% !important;
