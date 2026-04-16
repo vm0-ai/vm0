@@ -117,6 +117,7 @@ const CONNECTOR_ICON_COLORFUL = {
   reddit: true,
   reportei: true,
   salesforce: true,
+  seedance: true,
   serpapi: true,
   shortio: true,
   similarweb: true,
