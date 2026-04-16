@@ -49,9 +49,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 
-/** @deprecated Use isGoogleOAuthConnector from @vm0/core instead. Kept for tooltip usage. */
-const isGoogleConnector = isGoogleOAuthConnector;
-
 function GlobalConnectorCard({
   connector,
   isPolling,
@@ -234,7 +231,7 @@ function AvailableConnectorCard({
           data-testid="connector-help-text"
           className="text-xs text-muted-foreground line-clamp-2"
         >
-          {isGoogleConnector(connector.type) ? (
+          {isGoogleOAuthConnector(connector.type) ? (
             <>
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
@@ -317,7 +314,7 @@ export function ZeroConnectorsPage() {
       (ct &&
         ct.availableAuthMethods.length === 1 &&
         ct.availableAuthMethods[0] === "api-token") ||
-      isGoogleConnector(type)
+      isGoogleOAuthConnector(type)
     ) {
       setSelected(type);
     } else {

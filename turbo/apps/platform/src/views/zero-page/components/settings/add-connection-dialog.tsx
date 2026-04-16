@@ -30,8 +30,7 @@ import {
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
-import { AvatarSvgPreview } from "../../avatar-svg-preview.tsx";
-import { getAvatarPresets } from "../../zero-avatars.ts";
+import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
 
 // ---------------------------------------------------------------------------
 // Inline markdown renderer for help text
@@ -202,30 +201,7 @@ function ConnectModalContent({
 
   return (
     <div className="flex flex-col gap-4">
-      {hasOAuth && isGoogleOAuth && (
-        <div className="flex flex-col gap-3 rounded-lg bg-muted/50 px-4 py-4">
-          <AvatarSvgPreview
-            config={getAvatarPresets()[0]}
-            size={36}
-            className="h-9 w-9 rounded-full"
-            alt="Zero"
-          />
-          <div className="text-xs leading-relaxed text-muted-foreground space-y-1.5">
-            <p>
-              Google will show a security warning because we&rsquo;re still
-              completing their app verification. This is a standard review
-              process for new integrations and does not affect your security.
-            </p>
-            <p>
-              To continue, select{" "}
-              <strong className="text-foreground">Advanced</strong> then{" "}
-              <strong className="text-foreground">Go to vm0.ai (unsafe)</strong>
-              . We only request the minimum permissions needed, and your
-              credentials are encrypted at rest.
-            </p>
-          </div>
-        </div>
-      )}
+      {isGoogleOAuth && <GoogleOAuthNotice />}
 
       {hasOAuth && (
         <Button
