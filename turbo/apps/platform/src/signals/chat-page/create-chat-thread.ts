@@ -90,7 +90,6 @@ function createThreadData(threadId: string) {
       id: threadId,
       title: body.title ?? null,
       agentId: body.agentId,
-      chatMessages: body.chatMessages ?? [],
       latestSessionId: body.latestSessionId ?? null,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
@@ -592,16 +591,18 @@ function createPagedMessages(threadId: string) {
     await set(fetchNextPage$, signal);
     signal.throwIfAborted();
 
-    const pagedLoopBody$ = command(async ({ get, set }, sig: AbortSignal) => {
-      const noNew = await set(fetchNextPage$, sig);
-      if (!noNew) {
-        return false; // got new messages, keep polling
-      }
-      // No new messages — stop if no run is still active.
-      return !get(hasActiveRun$);
+    const pagedLoopBody$ = command(async ({ set }, sig: AbortSignal) => {
+      await set(fetchNextPage$, sig);
+      return false;
     });
 
-    await set(setAblyLoop$, `paged:${threadId}`, pagedLoopBody$, 3000, signal);
+    await set(
+      setAblyLoop$,
+      `chatThreadMessageCreated:${threadId}`,
+      pagedLoopBody$,
+      3000,
+      signal,
+    );
   });
 
   return {

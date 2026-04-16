@@ -1,4 +1,4 @@
-import { command, state, type Command } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/core";
 import {
   Realtime,
@@ -27,6 +27,10 @@ const L = logger("Realtime");
 // ---------------------------------------------------------------------------
 
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
+
+export const realtimeChannel$ = computed((get) => {
+  return get(internalUserChannel$);
+});
 
 /**
  * Initialize the Ably realtime client and subscribe to the user's channel.
@@ -124,6 +128,7 @@ export const setAblyLoop$ = command(
   ) => {
     const channel = get(internalUserChannel$);
     if (!channel) {
+      L.debug("fallback to interval");
       return setLoop(
         (sig) => {
           return set(loopCommand$, sig);

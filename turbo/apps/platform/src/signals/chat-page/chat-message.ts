@@ -116,7 +116,7 @@ const internalCreateNewChatSession$ = command(
     if (
       currentThread &&
       currentThread.agentId === resolvedComposeId &&
-      currentThread.chatMessages.length === 0
+      currentThread.title === null
     ) {
       set(startNewZeroSession$);
       return currentThread.id;

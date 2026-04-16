@@ -49,14 +49,6 @@ export interface ChatThread {
   id: string;
   agentId?: string;
   title: string | null;
-  chatMessages: {
-    role: "user" | "assistant";
-    content: string | null;
-    runId?: string;
-    error?: string;
-    status?: string;
-    createdAt: string;
-  }[];
   latestSessionId: string | null;
   isLegacySession: boolean;
   draftContent: string | null;
@@ -82,7 +74,6 @@ export const currentChatThread$ = computed(
       id: threadId,
       title: body.title ?? null,
       agentId: body.agentId,
-      chatMessages: body.chatMessages ?? [],
       latestSessionId: body.latestSessionId ?? null,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
