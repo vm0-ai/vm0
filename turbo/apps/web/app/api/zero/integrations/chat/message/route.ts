@@ -41,13 +41,17 @@ const router = tsr.router(integrationsChatMessageContract, {
         throw badRequest("Can only create chat threads for yourself");
       }
 
+      if (!body.agent) {
+        throw badRequest("Agent is required when creating a new thread");
+      }
+
       // Verify agent exists and belongs to caller's org
       const [agent] = await globalThis.services.db
         .select({ id: agentComposes.id })
         .from(agentComposes)
         .where(
           and(
-            eq(agentComposes.id, body.agent!),
+            eq(agentComposes.id, body.agent),
             orgId ? eq(agentComposes.orgId, orgId) : undefined,
           ),
         )
@@ -57,7 +61,7 @@ const router = tsr.router(integrationsChatMessageContract, {
         throw notFound("Agent not found");
       }
 
-      const newThread = await createChatThread(body.user, body.agent!);
+      const newThread = await createChatThread(body.user, body.agent);
       threadId = newThread.id;
     }
 
