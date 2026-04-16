@@ -29,6 +29,7 @@ import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client"
 import { getOrgMemberUserIds } from "../../../../../src/lib/infra/realtime/audience";
 import { after } from "next/server";
 import { env } from "../../../../../src/env";
+import { updateAssistantMessageByRunId } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 
 const log = logger("webhook:complete");
 
@@ -256,6 +257,16 @@ const router = tsr.router(webhookCompleteContract, {
 
       finalStatus = "failed";
       log.warn(`Run ${body.runId} failed: ${errorMessage}`);
+    }
+
+    // When upgrading from "timeout", refresh the stale chat placeholder so the
+    // user no longer sees "Run timed out (no heartbeat)".
+    if (run.status === "timeout") {
+      await updateAssistantMessageByRunId(
+        body.runId,
+        finalStatus === "failed" ? errorMessage! : null,
+        finalStatus === "failed" ? errorMessage : undefined,
+      );
     }
 
     // Dispatch all registered callbacks and drain run queue (non-blocking)

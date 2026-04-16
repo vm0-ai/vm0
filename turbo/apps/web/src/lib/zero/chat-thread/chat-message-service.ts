@@ -139,7 +139,7 @@ async function cleanupAssistantPlaceholderIfEventsExist(
  * Update an assistant placeholder message with content from the run callback.
  * Used for failed runs to surface the error message in the assistant bubble.
  */
-async function updateAssistantMessageByRunId(
+export async function updateAssistantMessageByRunId(
   runId: string,
   content: string | null,
   error: string | undefined,

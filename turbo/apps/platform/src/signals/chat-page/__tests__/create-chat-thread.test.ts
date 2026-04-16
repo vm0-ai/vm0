@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   currentChatThreadSignals$,
   setDraftSyncDebounceMs$,
@@ -63,17 +63,20 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       );
       setupBaseHandlers(threadId);
 
-      await setupPage({
+      detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
         withoutRender: true,
       });
 
-      const thread = context.store.get(currentChatThreadSignals$);
-      expect(thread).not.toBeNull();
+      await vi.waitFor(() => {
+        expect(context.store.get(currentChatThreadSignals$)).not.toBeNull();
+      });
+
+      const thread = context.store.get(currentChatThreadSignals$)!;
 
       // Set draft input so the PATCH has content to sync
-      context.store.set(thread!.draft.setInput$, "hello world");
+      context.store.set(thread.draft.setInput$, "hello world");
 
       // Schedule a debounced sync (debounce is 0ms in tests)
       context.store.set(thread!.scheduleDraftSync$, context.signal);
@@ -106,10 +109,14 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       );
       setupBaseHandlers(threadId);
 
-      await setupPage({
+      detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
         withoutRender: true,
+      });
+
+      await vi.waitFor(() => {
+        expect(context.store.get(currentChatThreadSignals$)).not.toBeNull();
       });
 
       const thread = context.store.get(currentChatThreadSignals$)!;
@@ -149,10 +156,14 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       );
       setupBaseHandlers(threadId);
 
-      await setupPage({
+      detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
         withoutRender: true,
+      });
+
+      await vi.waitFor(() => {
+        expect(context.store.get(currentChatThreadSignals$)).not.toBeNull();
       });
 
       const thread = context.store.get(currentChatThreadSignals$)!;
