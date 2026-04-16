@@ -434,6 +434,12 @@ mod tests {
     }
 
     #[test]
+    fn held_snapshot_empty_pool() {
+        let pool = IdlePool::new(pool_config(0));
+        assert!(pool.held_snapshot().is_empty());
+    }
+
+    #[test]
     fn drain() {
         let mut pool = IdlePool::new(pool_config(0));
         let _ = pool.park("s1".into(), make_entry(2, 2048));

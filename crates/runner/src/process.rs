@@ -644,4 +644,77 @@ mod tests {
         let stat = "1234 (cmd) S 100";
         assert!(parse_pgid_from_stat(stat).is_none());
     }
+
+    // -- load_base_dir / read_active_runs / resolve_run_to_sandbox ----------
+
+    #[tokio::test]
+    async fn load_base_dir_absolute() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("runner.yaml");
+        std::fs::write(&config, "base_dir: /data/runner-01\nname: test\n").unwrap();
+        let bd = load_base_dir(&config).await.unwrap();
+        assert_eq!(bd, Path::new("/data/runner-01"));
+    }
+
+    #[tokio::test]
+    async fn load_base_dir_relative() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("runner.yaml");
+        std::fs::write(&config, "base_dir: ./data\nname: test\n").unwrap();
+        let bd = load_base_dir(&config).await.unwrap();
+        assert_eq!(bd, dir.path().join("./data"));
+    }
+
+    #[tokio::test]
+    async fn load_base_dir_missing_file() {
+        let result = load_base_dir(Path::new("/no/such/config.yaml")).await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn load_base_dir_malformed_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("runner.yaml");
+        std::fs::write(&config, "not: valid: yaml: [[[").unwrap();
+        assert!(load_base_dir(&config).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_normal() {
+        let dir = tempfile::tempdir().unwrap();
+        let status = r#"{
+            "mode": "running",
+            "active_runs": [
+                {"run_id": "R1", "sandbox_id": "S1"},
+                {"run_id": "R2", "sandbox_id": "S2"}
+            ],
+            "started_at": "2026-01-01T00:00:00.000Z"
+        }"#;
+        std::fs::write(dir.path().join("status.json"), status).unwrap();
+        let runs = read_active_runs(dir.path()).await.unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0], ("R1".into(), "S1".into()));
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_missing_field_defaults_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        // status.json without active_runs field — serde(default) kicks in
+        std::fs::write(dir.path().join("status.json"), r#"{"mode":"running"}"#).unwrap();
+        let runs = read_active_runs(dir.path()).await.unwrap();
+        assert!(runs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_active_runs(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_malformed_json() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("status.json"), "not json").unwrap();
+        assert!(read_active_runs(dir.path()).await.is_none());
+    }
 }

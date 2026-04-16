@@ -88,3 +88,32 @@ pub struct RuntimeConfig {
     /// DNS proxy port for DNS query interception. Shared across all factories.
     pub dns_port: Option<u16>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sandbox_id_serde_transparent_roundtrip() {
+        let id = SandboxId::new_v4();
+        let json = serde_json::to_string(&id).unwrap();
+        assert!(json.starts_with('"'), "expected bare UUID string: {json}");
+        let parsed: SandboxId = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, id);
+    }
+
+    #[test]
+    fn sandbox_id_as_uuid_roundtrip() {
+        let id = SandboxId::new_v4();
+        let uuid = id.as_uuid();
+        let back = SandboxId::from(uuid);
+        assert_eq!(back, id);
+    }
+
+    #[test]
+    fn sandbox_id_from_str() {
+        let id = SandboxId::new_v4();
+        let parsed: SandboxId = id.to_string().parse().unwrap();
+        assert_eq!(parsed, id);
+    }
+}
