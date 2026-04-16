@@ -32,6 +32,13 @@ Output:
   Prints a JSON object to stdout on success:
     {"path":"/tmp/slack-F01234ABCD","mimetype":"image/png","size":12345}
 
+How to read the downloaded file:
+  - Images (png/jpg/gif/webp/svg): open the file path with your image viewing tool
+  - Videos (mp4/mov/webm): extract frames first with
+      ffmpeg -i <path> -vf "fps=1" -q:v 2 /tmp/<file-id>_frame_%03d.jpg
+    then view the extracted frames
+  - PDF/text/csv/json/markdown: read the file directly
+
 Notes:
   - Uses the bot token on the server side; no user Slack token is needed
   - Streams the file bytes directly to disk`,

@@ -62,6 +62,22 @@ function buildContinueFromScheduleSystemPrompt(
   );
 }
 
+function buildAppendSystemPrompt(
+  continueFromSchedulePrompt: string | undefined,
+  attachFiles:
+    | Array<{ id: string; filename: string; contentType: string }>
+    | undefined,
+): string {
+  const parts = [buildWebChatPrompt()];
+  if (continueFromSchedulePrompt) {
+    parts.push(continueFromSchedulePrompt);
+  }
+  if (attachFiles && attachFiles.length > 0) {
+    parts.push(buildWebAttachFilesPrompt(attachFiles));
+  }
+  return parts.join("\n\n");
+}
+
 const router = tsr.router(chatMessagesContract, {
   send: async ({ body, headers }) => {
     initServices();
@@ -175,15 +191,6 @@ const router = tsr.router(chatMessagesContract, {
           ? body.modelProvider
           : undefined;
 
-      // Build system prompt: web chat base + optional schedule context + optional attach files
-      const systemPromptParts = [buildWebChatPrompt()];
-      if (continueFromSchedulePrompt) {
-        systemPromptParts.push(continueFromSchedulePrompt);
-      }
-      if (body.attachFiles && body.attachFiles.length > 0) {
-        systemPromptParts.push(buildWebAttachFilesPrompt(body.attachFiles));
-      }
-
       // Create the run record (pre-flight checks + advisory-locked INSERT).
       // Does NOT dispatch — tokens, secrets, and runner dispatch are deferred.
       const result = await createZeroRunRecord({
@@ -193,7 +200,10 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
-        appendSystemPrompt: systemPromptParts.join("\n\n"),
+        appendSystemPrompt: buildAppendSystemPrompt(
+          continueFromSchedulePrompt,
+          body.attachFiles,
+        ),
         callbacks: [chatCallback],
       });
 
