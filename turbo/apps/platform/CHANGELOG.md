@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.243.1](https://github.com/vm0-ai/vm0/compare/app-v0.243.0...app-v0.243.1) (2026-04-16)
+
+
+### Bug Fixes
+
+* **voice-chat:** make slow-brain indicator content collapsible instead of truncated ([#9652](https://github.com/vm0-ai/vm0/issues/9652)) ([7fe7d11](https://github.com/vm0-ai/vm0/commit/7fe7d11050edf21798ee0d0b047423de291401b0))
+
+
+### Refactoring
+
+* **platform:** detect setloop infinite loops and remove invitation polling ([#9647](https://github.com/vm0-ai/vm0/issues/9647)) ([29015dc](https://github.com/vm0-ai/vm0/commit/29015dc81ec05db864ba67ddaa329494b50e7182))
+* **web:** simplify credit balance and support cmd+click on upgrade buttons ([#9648](https://github.com/vm0-ai/vm0/issues/9648)) ([267aace](https://github.com/vm0-ai/vm0/commit/267aace238c8a44b498f3d360c592725e7644437))
+
 ## [0.243.0](https://github.com/vm0-ai/vm0/compare/app-v0.242.6...app-v0.243.0) (2026-04-16)
 
 

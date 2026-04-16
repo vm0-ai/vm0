@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.81.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.81.3...runner-rs-v0.81.4) (2026-04-16)
+
+
+### Bug Fixes
+
+* **runner:** use continue instead of break on /proc entry read error ([#9661](https://github.com/vm0-ai/vm0/issues/9661)) ([96fa8b5](https://github.com/vm0-ai/vm0/commit/96fa8b53199fa50ecc962cf9cbd8ac7d8574d1dd)), closes [#9657](https://github.com/vm0-ai/vm0/issues/9657)
+* **runner:** validate --concurrency-factor in run_config before writing config ([#9653](https://github.com/vm0-ai/vm0/issues/9653)) ([4b5d0bb](https://github.com/vm0-ai/vm0/commit/4b5d0bbaf78219feceb2d55b492611825af76769)), closes [#9650](https://github.com/vm0-ai/vm0/issues/9650)
+
 ## [0.81.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.81.2...runner-rs-v0.81.3) (2026-04-16)
 
 

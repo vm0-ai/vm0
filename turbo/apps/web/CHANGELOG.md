@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.246.1](https://github.com/vm0-ai/vm0/compare/web-v12.246.0...web-v12.246.1) (2026-04-16)
+
+
+### Bug Fixes
+
+* **web:** invert dark connector logos in use-cases for dark mode ([#8837](https://github.com/vm0-ai/vm0/issues/8837)) ([05ac420](https://github.com/vm0-ai/vm0/commit/05ac420cfb523c6b4ed896bcfa9352f59652f37b))
+* **web:** resolve hreflang, canonical, and crawler seo issues ([#9658](https://github.com/vm0-ai/vm0/issues/9658)) ([3840eed](https://github.com/vm0-ai/vm0/commit/3840eedc090585a5a72deaf298f8f7c9773f9d8e))
+
 ## [12.246.0](https://github.com/vm0-ai/vm0/compare/web-v12.245.0...web-v12.246.0) (2026-04-16)
 
 
