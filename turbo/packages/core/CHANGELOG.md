@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.191.0](https://github.com/vm0-ai/vm0/compare/core-v8.190.1...core-v8.191.0) (2026-04-16)
+
+
+### Features
+
+* **web:** add zero web download-file command for web-uploaded files ([#9584](https://github.com/vm0-ai/vm0/issues/9584)) ([bf35045](https://github.com/vm0-ai/vm0/commit/bf350455cc2a7bddcd8ffe5e3305f224ed82f679))
+
 ## [8.190.1](https://github.com/vm0-ai/vm0/compare/core-v8.190.0...core-v8.190.1) (2026-04-16)
 
 
