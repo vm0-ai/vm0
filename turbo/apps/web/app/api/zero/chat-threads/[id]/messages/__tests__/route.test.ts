@@ -225,7 +225,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(data.hasMore).toBe(true);
   });
 
-  it("should include run status on assistant placeholder rows", async () => {
+  it("should return only user message when run has no assistant events", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -249,14 +249,8 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.messages).toHaveLength(2);
-
-    const assistantMsg = data.messages.find((m: { role: string }) => {
-      return m.role === "assistant";
-    });
-    expect(assistantMsg).toBeDefined();
-    expect(assistantMsg.runId).toBe(runId);
-    expect(assistantMsg.status).toBe("cancelled");
+    expect(data.messages).toHaveLength(1);
+    expect(data.messages[0].role).toBe("user");
   });
 
   it("should not expose run-level error on event-backed assistant rows", async () => {

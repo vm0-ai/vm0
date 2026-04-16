@@ -1,8 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { setChatAgentId$ } from "../../agent-chat.ts";
 import {
   meetingPrepStatus$,
@@ -23,8 +27,8 @@ const context = testContext();
 
 const TEST_AGENT_ID = "agent-123";
 
-function setup() {
-  detachedSetupPage({
+async function setup() {
+  await setupPage({
     context,
     path: "/",
     withoutRender: true,
@@ -57,7 +61,7 @@ function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
 
 describe("voice-chat-preparation signals", () => {
   it("should set status to ready when preparation is cached", async () => {
-    setup();
+    await setup();
     const responses = [{ status: "ready" }];
     mockPrepareEndpoint(responses);
 
@@ -75,7 +79,7 @@ describe("voice-chat-preparation signals", () => {
   });
 
   it("should set status to failed immediately when initial status is failed", async () => {
-    setup();
+    await setup();
     const responses = [{ status: "failed" }];
     const counter = mockPrepareEndpoint(responses);
 
@@ -91,7 +95,7 @@ describe("voice-chat-preparation signals", () => {
   });
 
   it("should poll until ready when preparation is in progress", async () => {
-    setup();
+    await setup();
     const responses = [
       { status: "preparing" },
       { status: "preparing" },
@@ -99,33 +103,52 @@ describe("voice-chat-preparation signals", () => {
     ];
     const counter = mockPrepareEndpoint(responses);
 
-    await context.store.set(
+    const done = context.store.set(
       triggerPreparation$,
       "review sprint items",
       context.signal,
     );
 
+    // Wait for the first API call (which enters setAblyLoop$ and subscribes),
+    // then drive the polling loop forward via Ably events.
+    await vi.waitFor(() => {
+      expect(counter.count).toBeGreaterThanOrEqual(1);
+    });
+    triggerAblyEvent("voice:prep:test-user-123");
+    await vi.waitFor(() => {
+      expect(counter.count).toBeGreaterThanOrEqual(2);
+    });
+    triggerAblyEvent("voice:prep:test-user-123");
+
+    await done;
+
     expect(context.store.get(meetingPrepStatus$)).toBe("ready");
-    // Initial call + 2 poll calls (preparing, ready)
     expect(counter.count).toBeGreaterThanOrEqual(3);
   });
 
   it("should set status to failed when preparation fails during poll", async () => {
-    setup();
+    await setup();
     const responses = [{ status: "preparing" }, { status: "failed" }];
-    mockPrepareEndpoint(responses);
+    const counter = mockPrepareEndpoint(responses);
 
-    await context.store.set(
+    const done = context.store.set(
       triggerPreparation$,
       "team standup",
       context.signal,
     );
 
+    await vi.waitFor(() => {
+      expect(counter.count).toBeGreaterThanOrEqual(1);
+    });
+    triggerAblyEvent("voice:prep:test-user-123");
+
+    await done;
+
     expect(context.store.get(meetingPrepStatus$)).toBe("failed");
   });
 
   it("should set status to failed when endpoint returns error", async () => {
-    setup();
+    await setup();
     server.use(
       http.post("*/api/zero/voice-chat/prepare", () => {
         return new HttpResponse(null, { status: 500 });
@@ -142,7 +165,7 @@ describe("voice-chat-preparation signals", () => {
   });
 
   it("should set status to failed when no agent is selected", async () => {
-    setup();
+    await setup();
     context.store.set(setChatAgentId$, null);
 
     await context.store.set(
@@ -155,7 +178,7 @@ describe("voice-chat-preparation signals", () => {
   });
 
   it("should reset all state on clearPreparation$", async () => {
-    setup();
+    await setup();
     const responses = [{ status: "ready" }];
     mockPrepareEndpoint(responses);
 

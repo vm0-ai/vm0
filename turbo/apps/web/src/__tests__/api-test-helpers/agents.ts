@@ -27,7 +27,6 @@ export {
   getTestChatMessagesByThread,
   addTestRunToThread,
   insertTestAssistantEventMessages,
-  updateTestAssistantMessageByRunId,
 } from "../db-test-seeders/agents";
 
 export {

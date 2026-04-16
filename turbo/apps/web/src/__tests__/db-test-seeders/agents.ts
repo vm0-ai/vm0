@@ -18,8 +18,6 @@ import {
   getMessagesByThreadId,
   insertAssistantEventMessages,
 } from "../../lib/zero/chat-thread/chat-message-service";
-import { chatMessages } from "../../db/schema/chat-message";
-import { isNull } from "drizzle-orm";
 
 /**
  * @why-db-direct Creates compose + zero_agents WITHOUT a version — API always
@@ -415,8 +413,8 @@ export async function getTestChatMessagesByThread(
 }
 
 /**
- * Link a run to a chat thread by inserting chat messages (user + assistant placeholder)
- * and updating zero_runs.chat_thread_id so getChatThreadIdForRun can resolve the thread.
+ * Link a run to a chat thread by inserting a user message and setting
+ * zero_runs.chat_thread_id so getChatThreadIdForRun can resolve the thread.
  *
  * @why-db-direct Run-to-thread linking happens inside the chat messages
  * API route during run dispatch. Tests need direct seeding for isolated setup.
@@ -432,12 +430,6 @@ export async function addTestRunToThread(
     role: "user",
     content: prompt ?? "test prompt",
     runId: null,
-  });
-  await insertChatMessage({
-    chatThreadId: threadId,
-    role: "assistant",
-    content: null,
-    runId,
   });
   await globalThis.services.db
     .update(zeroRuns)
@@ -457,27 +449,4 @@ export async function insertTestAssistantEventMessages(
   items: { sequenceNumber: number; content: string }[],
 ): Promise<number> {
   return insertAssistantEventMessages(runId, threadId, items);
-}
-
-/**
- * Update an assistant placeholder message with content/error from the run callback.
- *
- * @why-db-direct Placeholder updates happen inside the chat callback
- * route handler. Tests need direct seeding for setup.
- */
-export async function updateTestAssistantMessageByRunId(
-  runId: string,
-  content: string | null,
-  error: string | undefined,
-): Promise<void> {
-  await globalThis.services.db
-    .update(chatMessages)
-    .set({ content, error: error ?? null })
-    .where(
-      and(
-        eq(chatMessages.runId, runId),
-        eq(chatMessages.role, "assistant"),
-        isNull(chatMessages.sequenceNumber),
-      ),
-    );
 }

@@ -228,9 +228,10 @@ const router = tsr.router(chatMessagesContract, {
         modelProvider,
         appendSystemPrompt: buildAppendSystemPrompt(continueFromSchedulePrompt),
         callbacks: [chatCallback],
+        chatThreadId: threadId,
       });
 
-      // Persist user message + assistant placeholder to chat_messages.
+      // Persist user message to chat_messages.
       // Only file IDs are stored — metadata is resolved at query time from S3.
       await insertChatMessage({
         chatThreadId: threadId,
@@ -240,12 +241,6 @@ const router = tsr.router(chatMessagesContract, {
         attachFiles: body.attachFiles?.map((f) => {
           return f.id;
         }),
-      });
-      await insertChatMessage({
-        chatThreadId: threadId,
-        role: "assistant",
-        content: null,
-        runId: result.runId,
       });
 
       // Notify subscribers that a new run and messages were created on this thread

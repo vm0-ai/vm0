@@ -250,7 +250,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
       prompt: "This was cancelled",
     });
 
-    // Link run to thread (creates user + assistant placeholder in chat_messages)
+    // Link run to thread (creates user message and sets zeroRuns.chatThreadId)
     await addTestRunToThread(threadId, runId, testUserId);
 
     // GET thread detail
@@ -262,21 +262,14 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    // chatMessages has user msg + assistant msg (cancelled placeholder with status)
-    expect(data.chatMessages).toHaveLength(2);
+    // chatMessages has only the user message (no assistant placeholder)
+    expect(data.chatMessages).toHaveLength(1);
 
-    const assistantMsg = data.chatMessages.find((m: { role: string }) => {
-      return m.role === "assistant";
+    const userMsg = data.chatMessages.find((m: { role: string }) => {
+      return m.role === "user";
     });
-    expect(assistantMsg).toBeDefined();
-    expect(assistantMsg.runId).toBe(runId);
-    expect(assistantMsg.content).toBeNull();
-    expect(assistantMsg.status).toBe("cancelled");
-    expect(assistantMsg.createdAt).toBeDefined();
-    // Verify it's a valid ISO 8601 date string
-    expect(new Date(assistantMsg.createdAt).toISOString()).toBe(
-      assistantMsg.createdAt,
-    );
+    expect(userMsg).toBeDefined();
+    expect(userMsg.content).toBe("test prompt");
   });
 
   it("should not mask event-backed assistant content with run-level timeout error", async () => {
@@ -334,20 +327,6 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
       expect(row.error).toBeUndefined();
       expect(row.content).not.toContain("Run timed out");
     }
-
-    // The placeholder row (sequence_number IS NULL, content IS NULL) keeps
-    // the fallback behavior — it inherits the run-level error because its
-    // own error is null. This covers the case where the terminal callback
-    // never delivered and chat_messages.error was never written.
-    const placeholder = data.chatMessages.find(
-      (m: { role: string; content: string | null; runId?: string }) => {
-        return (
-          m.role === "assistant" && m.content === null && m.runId === runId
-        );
-      },
-    );
-    expect(placeholder).toBeDefined();
-    expect(placeholder.error).toBe("Run timed out (no heartbeat)");
   });
 });
 

@@ -95,7 +95,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     // Create an agent session (used for session continuity via run result)
     const session = await createTestAgentSession(user.userId, agentId);
 
-    // Link run to thread by inserting user + assistant placeholder in chat_messages
+    // Link run to thread by inserting user message and setting zeroRuns.chatThreadId
     await addTestRunToThread(threadId, runId, user.userId);
 
     // Create a callback record
@@ -264,10 +264,9 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // chat_messages is append-only: the placeholder stays, and event-backed
-      // rows are added alongside it — 1 user + 1 placeholder + 1 event-backed.
+      // 1 user message + 1 event-backed assistant message.
       const chatMessages = await getTestChatMessagesByThread(threadId);
-      expect(chatMessages).toHaveLength(3);
+      expect(chatMessages).toHaveLength(2);
 
       const userMsg = chatMessages.find((m) => {
         return m.role === "user";
@@ -338,8 +337,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(r2.status).toBe(200);
 
       const chatMessages = await getTestChatMessagesByThread(threadId);
-      // append-only: 1 user + 1 placeholder (null) + 2 event-backed = 4 rows, no dups.
-      expect(chatMessages).toHaveLength(4);
+      // 1 user + 2 event-backed = 3 rows, no dups.
+      expect(chatMessages).toHaveLength(3);
       const eventContents = chatMessages
         .filter((m) => {
           return m.role === "assistant" && m.sequenceNumber !== null;
@@ -353,7 +352,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       ]);
     });
 
-    it("should keep placeholder with null content when no events from Axiom", async () => {
+    it("should have no assistant messages when no events from Axiom", async () => {
       const { threadId, runId, secret } = await setupRunAndThread();
 
       // Axiom returns no events
@@ -373,22 +372,15 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // No event rows arrived → placeholder stays so the UI still renders
-      // an (empty) assistant bubble with terminal status.
+      // No event rows arrived → only the user message exists.
       const chatMessages = await getTestChatMessagesByThread(threadId);
-      expect(chatMessages).toHaveLength(2);
+      expect(chatMessages).toHaveLength(1);
 
       const userMsg = chatMessages.find((m) => {
         return m.role === "user";
       });
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("test prompt");
-
-      const assistantMsg = chatMessages.find((m) => {
-        return m.role === "assistant";
-      });
-      expect(assistantMsg).toBeDefined();
-      expect(assistantMsg!.content).toBeNull();
     });
 
     it("should persist user + error messages on failed run", async () => {
@@ -411,9 +403,9 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // append-only: 1 user + 1 placeholder (null) + 1 new error row = 3 rows.
+      // 1 user + 1 error row = 2 rows.
       const chatMessages = await getTestChatMessagesByThread(threadId);
-      expect(chatMessages).toHaveLength(3);
+      expect(chatMessages).toHaveLength(2);
 
       const userMsg = chatMessages.find((m) => {
         return m.role === "user";

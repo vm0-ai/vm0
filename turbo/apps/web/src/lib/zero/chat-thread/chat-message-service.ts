@@ -1,10 +1,11 @@
-import { eq, asc, desc, and, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import { eq, asc, desc, and, sql } from "drizzle-orm";
 import {
   chatMessages,
   type ChatMessageAttachFiles,
 } from "../../../db/schema/chat-message";
 import { chatThreads } from "../../../db/schema/chat-thread";
 import { agentRuns } from "../../../db/schema/agent-run";
+import { zeroRuns } from "../../../db/schema/zero-run";
 
 /**
  * Insert a user message. Called immediately on send, before run dispatch.
@@ -80,8 +81,8 @@ export async function insertAssistantEventMessages(
 }
 
 /**
- * Resolve the chat_thread_id and owner user_id for a run from its placeholder
- * assistant row. Returns null when the run is not tied to a chat thread (e.g.,
+ * Resolve the chat_thread_id and owner user_id for a run from the zero_runs
+ * table. Returns null when the run is not tied to a chat thread (e.g.,
  * non-chat triggers like cron/schedule), so event consumers can silently skip it.
  */
 export async function getChatThreadIdForRun(
@@ -89,74 +90,15 @@ export async function getChatThreadIdForRun(
 ): Promise<{ chatThreadId: string; userId: string } | null> {
   const [row] = await globalThis.services.db
     .select({
-      chatThreadId: chatMessages.chatThreadId,
+      chatThreadId: zeroRuns.chatThreadId,
       userId: chatThreads.userId,
     })
-    .from(chatMessages)
-    .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
-    .where(
-      and(eq(chatMessages.runId, runId), eq(chatMessages.role, "assistant")),
-    )
+    .from(zeroRuns)
+    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
+    .where(eq(zeroRuns.id, runId))
     .limit(1);
-  return row ?? null;
-}
-
-/**
- * Remove the assistant placeholder for a run once event-backed rows exist.
- * If no event-backed rows arrived (e.g., tool-only run), the placeholder
- * is left in place and the UI renders an empty assistant bubble.
- */
-async function cleanupAssistantPlaceholderIfEventsExist(
-  runId: string,
-): Promise<void> {
-  const [hasEventRow] = await globalThis.services.db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.runId, runId),
-        isNotNull(chatMessages.sequenceNumber),
-      ),
-    )
-    .limit(1);
-
-  if (!hasEventRow) {
-    return;
-  }
-
-  await globalThis.services.db
-    .delete(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.runId, runId),
-        eq(chatMessages.role, "assistant"),
-        isNull(chatMessages.sequenceNumber),
-      ),
-    );
-}
-
-/**
- * Update an assistant placeholder message with content from the run callback.
- * Used for failed runs to surface the error message in the assistant bubble.
- */
-export async function updateAssistantMessageByRunId(
-  runId: string,
-  content: string | null,
-  error: string | undefined,
-): Promise<void> {
-  await globalThis.services.db
-    .update(chatMessages)
-    .set({
-      content,
-      error: error ?? null,
-    })
-    .where(
-      and(
-        eq(chatMessages.runId, runId),
-        eq(chatMessages.role, "assistant"),
-        isNull(chatMessages.sequenceNumber),
-      ),
-    );
+  if (!row?.chatThreadId) return null;
+  return { chatThreadId: row.chatThreadId, userId: row.userId };
 }
 
 /**
@@ -269,7 +211,7 @@ export async function getMessagesSince(
 
 /**
  * Get the latest session ID for a thread by finding the most recent
- * completed run's result.agentSessionId.
+ * run's result.agentSessionId via zero_runs → agent_runs.
  * Used for runner session continuity (continuedFromSessionId).
  */
 export async function getLatestSessionIdForThread(
@@ -279,16 +221,10 @@ export async function getLatestSessionIdForThread(
     .select({
       result: agentRuns.result,
     })
-    .from(chatMessages)
-    .innerJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreadId),
-        eq(chatMessages.role, "assistant"),
-        isNotNull(chatMessages.runId),
-      ),
-    )
-    .orderBy(desc(chatMessages.createdAt))
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(eq(zeroRuns.chatThreadId, chatThreadId))
+    .orderBy(desc(agentRuns.createdAt))
     .limit(5);
 
   for (const row of rows) {
