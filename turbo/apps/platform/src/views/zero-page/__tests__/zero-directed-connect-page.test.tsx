@@ -388,6 +388,64 @@ describe("directed connect page", () => {
     });
   });
 
+  it("shows Google OAuth notice for a Google connector when not connected (CONN-D-060)", async () => {
+    detachedSetupPage({ context, path: "/connectors/gmail/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Gmail to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText(/Google will show a security warning/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Advanced")).toBeInTheDocument();
+    expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
+  });
+
+  it("shows Google OAuth notice for other Google connectors (CONN-D-061)", async () => {
+    detachedSetupPage({ context, path: "/connectors/google-sheets/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Google Sheets to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText(/Google will show a security warning/),
+    ).toBeInTheDocument();
+  });
+
+  it("does not show Google OAuth notice for non-Google OAuth connectors (CONN-D-062)", async () => {
+    detachedSetupPage({ context, path: "/connectors/github/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs GitHub to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/Google will show a security warning/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show Google OAuth notice when Google connector is already connected (CONN-D-063)", async () => {
+    mockConnectors([{ type: "gmail" }]);
+
+    detachedSetupPage({ context, path: "/connectors/gmail/connect" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Gmail connected")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/Google will show a security warning/),
+    ).not.toBeInTheDocument();
+  });
+
   it("does not call authorize after API token connect when agentId is absent", async () => {
     const user = userEvent.setup();
 
