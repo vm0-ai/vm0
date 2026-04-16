@@ -3,6 +3,11 @@
 //! `RunId` is the server/API-facing job handle — visible on dashboards,
 //! used in claim/complete/cancel. It is distinct from [`sandbox::SandboxId`]
 //! which identifies the Firecracker VM workspace and survives sandbox reuse.
+//!
+//! `SandboxId` lives in the `sandbox` crate (not here) because sandbox
+//! creation, socket paths, and workspace dirs are sandbox-crate concepts.
+//! `RunId` lives here because it is purely a runner/API concept — the
+//! sandbox crate has no notion of "jobs" or "runs".
 
 use std::fmt;
 use std::str::FromStr;
