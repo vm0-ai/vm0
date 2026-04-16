@@ -170,7 +170,7 @@ describe("enrichMessageContent", () => {
     expect(result.prompt).not.toContain("<@U456>");
   });
 
-  it("should append download-file instructions for attached files", async () => {
+  it("should append file descriptions to prompt", async () => {
     const client = createMockSlackClient({ ok: false });
 
     const result = await enrichMessageContent({
@@ -188,10 +188,8 @@ describe("enrichMessageContent", () => {
     });
 
     expect(result.prompt).toContain("take a look");
-    expect(result.prompt).toContain("[file]: diagram.png (image/png)");
-    expect(result.prompt).toContain(
-      "Step 1 - Download: zero slack download-file F1 -o /tmp/F1.png",
-    );
+    expect(result.prompt).toContain("[Slack file] diagram.png (image/png)");
+    expect(result.prompt).toContain("[ID] F1");
   });
 });
 
@@ -352,7 +350,7 @@ describe("fetchConversationContexts", () => {
     expect(client.conversations.history).not.toHaveBeenCalled();
   });
 
-  it("should render file attachments as download-file instructions in channel prefix", async () => {
+  it("should render file attachments as metadata in channel prefix", async () => {
     const client = createMockConversationClient({
       threadMessages: [{ user: "U100", text: "Thread parent", ts: "100.0" }],
       channelMessages: [
@@ -379,9 +377,9 @@ describe("fetchConversationContexts", () => {
     );
 
     expect(executionContext).toContain("# Recent Channel Messages");
-    expect(executionContext).toContain("[file]: screenshot.png (image/png)");
     expect(executionContext).toContain(
-      "Step 1 - Download: zero slack download-file F999 -o /tmp/F999.png",
+      "[Slack file] screenshot.png (image/png)",
     );
+    expect(executionContext).toContain("[ID] F999");
   });
 });

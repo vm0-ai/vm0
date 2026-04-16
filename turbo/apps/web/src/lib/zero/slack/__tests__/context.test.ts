@@ -48,8 +48,8 @@ describe("Feature: Extract Message Content", () => {
 });
 
 describe("Feature: Format Context For Agent", () => {
-  describe("Scenario: Render files as download-file instructions", () => {
-    it("should render uploaded images with Step 1 / Step 2 download + read instructions", () => {
+  describe("Scenario: Render files as Slack file blocks", () => {
+    it("should render uploaded images with [Slack file] tag, dimensions, and id", () => {
       const messages = [
         {
           user: "U123",
@@ -70,18 +70,14 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages, "thread");
 
-      expect(result).toContain("[file]: screenshot.png (image/png)");
-      expect(result).toContain("Dimensions: 1920x1080");
-      expect(result).toContain(
-        "Step 1 - Download: zero slack download-file F123 -o /tmp/F123.png",
-      );
-      expect(result).toContain(
-        "Step 2 - Read: open /tmp/F123.png with the appropriate tool",
-      );
+      expect(result).toContain("[Slack file] screenshot.png (image/png)");
+      expect(result).toContain("[Dimensions] 1920x1080");
+      expect(result).toContain("[ID] F123");
+      expect(result).not.toContain("Step");
       expect(result).not.toContain("curl");
     });
 
-    it("should render videos with Step 1 download, Step 2 ffmpeg frames, Step 3 read", () => {
+    it("should render videos with [Slack file] tag and id", () => {
       const messages = [
         {
           user: "U123",
@@ -100,13 +96,9 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain(
-        "Step 1 - Download: zero slack download-file FVID -o /tmp/FVID.mp4",
-      );
-      expect(result).toContain(
-        'Step 2 - Extract frames: ffmpeg -i /tmp/FVID.mp4 -vf "fps=1" -q:v 2 /tmp/FVID_frame_%03d.jpg',
-      );
-      expect(result).toContain("Step 3 - Read: view the extracted frames");
+      expect(result).toContain("[Slack file] demo.mp4 (video/mp4)");
+      expect(result).toContain("[ID] FVID");
+      expect(result).not.toContain("ffmpeg");
     });
 
     it("should fall back to URL reference when file has no id", () => {
@@ -126,12 +118,12 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("[file]: mystery.bin");
-      expect(result).toContain("URL: https://example.com/mystery.bin");
-      expect(result).not.toContain("download-file");
+      expect(result).toContain("[Slack file] mystery.bin");
+      expect(result).toContain("[URL] https://example.com/mystery.bin");
+      expect(result).not.toContain("[ID]");
     });
 
-    it("should default to .bin extension when filetype is missing", () => {
+    it("should include id when file has an id but no filetype", () => {
       const messages = [
         {
           files: [{ id: "F_NO_TYPE", name: "thing" }],
@@ -140,9 +132,8 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain(
-        "Step 1 - Download: zero slack download-file F_NO_TYPE -o /tmp/F_NO_TYPE.bin",
-      );
+      expect(result).toContain("[Slack file] thing (file)");
+      expect(result).toContain("[ID] F_NO_TYPE");
     });
   });
 
@@ -167,7 +158,7 @@ describe("Feature: Format Context For Agent", () => {
       const result = formatContextForAgent(messages);
 
       expect(result).toContain("[image]: preview");
-      expect(result).toContain("Dimensions: 400x300");
+      expect(result).toContain("[Dimensions] 400x300");
       expect(result).toContain(
         'curl -sS -o /tmp/attachment_image.jpg "https://example.com/preview.png"',
       );
@@ -175,15 +166,13 @@ describe("Feature: Format Context For Agent", () => {
   });
 
   describe("Scenario: Message formatting", () => {
-    it("should produce thread header and preamble with file-access guidance", () => {
+    it("should produce thread header and preamble", () => {
       const messages = [{ user: "U1", text: "hi", ts: "1" }];
 
       const result = formatContextForAgent(messages, "thread");
 
       expect(result).toContain("# Slack Thread Context");
-      expect(result).toContain(
-        "follow the numbered Step instructions to download and read the file",
-      );
+      expect(result).toContain("RELATIVE_INDEX");
     });
 
     it("should produce channel header when contextType is channel", () => {
@@ -228,7 +217,7 @@ describe("Feature: Format Context For Agent", () => {
 });
 
 describe("Feature: Format Current Message Files", () => {
-  it("should format each file with three-step instructions", () => {
+  it("should format each file with [Slack file] tag and id", () => {
     const files = [
       { id: "F1", name: "a.png", mimetype: "image/png", filetype: "png" },
       { id: "F2", name: "b.pdf", mimetype: "application/pdf", filetype: "pdf" },
@@ -236,12 +225,10 @@ describe("Feature: Format Current Message Files", () => {
 
     const result = formatCurrentMessageFiles(files);
 
-    expect(result).toContain(
-      "Step 1 - Download: zero slack download-file F1 -o /tmp/F1.png",
-    );
-    expect(result).toContain(
-      "Step 1 - Download: zero slack download-file F2 -o /tmp/F2.pdf",
-    );
+    expect(result).toContain("[Slack file] a.png (image/png)");
+    expect(result).toContain("[ID] F1");
+    expect(result).toContain("[Slack file] b.pdf (application/pdf)");
+    expect(result).toContain("[ID] F2");
   });
 
   it("should return empty string for empty file array", () => {

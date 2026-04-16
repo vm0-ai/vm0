@@ -290,6 +290,8 @@ export {
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
+  attachFileSchema,
+  resolvedAttachFileSchema,
   type SummaryEntry,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
@@ -299,6 +301,8 @@ export {
   type ChatThreadDetail,
   type PagedChatMessage,
   type PersistedAttachment,
+  type AttachFile,
+  type ResolvedAttachFile,
 } from "./chat-threads";
 export {
   runnersPollContract,

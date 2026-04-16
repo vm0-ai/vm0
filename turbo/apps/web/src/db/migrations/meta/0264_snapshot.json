@@ -1,6 +1,6 @@
 {
-  "id": "97604def-e138-441b-8a28-75fb570b74ce",
-  "prevId": "0e80f655-fb11-49ce-a932-3519f0a682d5",
+  "id": "5a7c3e2d-1f8b-4d6a-9e0c-b2a4f8d71e39",
+  "prevId": "89fceb3d-98c7-48f4-be1e-cd022a013593",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1057,6 +1057,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "attach_files": {
+          "name": "attach_files",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -7931,12 +7937,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "chat_thread_id": {
-          "name": "chat_thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "summary": {
           "name": "summary",
           "type": "text",
@@ -7986,15 +7986,6 @@
           "tableFrom": "zero_runs",
           "tableTo": "agent_composes",
           "columnsFrom": ["trigger_agent_id"],
-          "columnsTo": ["id"],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "zero_runs_chat_thread_id_chat_threads_id_fk": {
-          "name": "zero_runs_chat_thread_id_chat_threads_id_fk",
-          "tableFrom": "zero_runs",
-          "tableTo": "chat_threads",
-          "columnsFrom": ["chat_thread_id"],
           "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"

@@ -25,6 +25,7 @@ function buildCommands(): Command[] {
     new Command("variable"),
     new Command("whoami"),
     new Command("voice-chat"),
+    new Command("web"),
   ];
 }
 
@@ -129,7 +130,12 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toEqual(["agent", "schedule", "whoami"]);
+    expect(visibleCommandNames(prog)).toEqual([
+      "agent",
+      "schedule",
+      "whoami",
+      "web",
+    ]);
     expect(hiddenCommandNames(prog)).toEqual([
       "org",
       "connector",
@@ -172,7 +178,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toEqual(["whoami"]);
+    expect(visibleCommandNames(prog)).toEqual(["whoami", "web"]);
   });
 
   it("should show slack when slack:write capability is present", () => {
@@ -247,7 +253,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toEqual(["schedule", "whoami"]);
+    expect(visibleCommandNames(prog)).toEqual(["schedule", "whoami", "web"]);
     expect(hiddenCommandNames(prog)).toContain("agent");
   });
 

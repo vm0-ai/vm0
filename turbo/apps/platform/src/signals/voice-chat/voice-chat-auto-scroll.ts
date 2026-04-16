@@ -1,11 +1,6 @@
 import { createScrollSignals } from "../auto-scroll.ts";
 
-// --- Transcript panel ---
+// --- Voice chat scroll container ---
 
-export const { setScrollContainer$: setTranscriptScrollContainer$ } =
-  createScrollSignals();
-
-// --- Events panel ---
-
-export const { setScrollContainer$: setEventsScrollContainer$ } =
+export const { setScrollContainer$: setVoiceChatScrollContainer$ } =
   createScrollSignals();

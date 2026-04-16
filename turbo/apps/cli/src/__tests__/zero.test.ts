@@ -31,6 +31,7 @@ describe("zero CLI program", () => {
       "developer-support",
       "computer-use",
       "voice-chat",
+      "web",
     ];
     for (const name of expectedCommands) {
       expect(commandNames).toContain(name);
@@ -54,7 +55,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 18 commands", () => {
-    expect(commandNames).toHaveLength(18);
+  it("should have exactly 19 commands", () => {
+    expect(commandNames).toHaveLength(19);
   });
 });

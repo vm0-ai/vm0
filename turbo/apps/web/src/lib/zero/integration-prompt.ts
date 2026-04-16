@@ -427,3 +427,18 @@ export function buildWebChatPrompt(): string {
     "You are communicating with the user through the web chat UI. The final result you return will be displayed to the user directly in the chat.";
   return [header, description].join("\n\n");
 }
+
+/**
+ * Build file-attachment blocks for files the user attached to their web message.
+ * Only describes each attachment (name, type, id).
+ * The agent learns how to download and read files from `zero web download-file -h`.
+ */
+export function buildWebAttachFilesPrompt(
+  files: Array<{ id: string; filename: string; contentType: string }>,
+): string {
+  const blocks = files.map((f) => {
+    return `[Web file] ${f.filename} (${f.contentType})\n   [ID] ${f.id}`;
+  });
+
+  return blocks.join("\n");
+}

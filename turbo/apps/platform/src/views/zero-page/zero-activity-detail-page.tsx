@@ -895,7 +895,12 @@ function summarizePrompt(prompt: string): string {
       !line.startsWith("#") &&
       !line.startsWith("---") &&
       !line.startsWith("- ") &&
-      !line.startsWith("[file]")
+      !line.startsWith("[file]") &&
+      !line.startsWith("[Web file]") &&
+      !line.startsWith("[Slack file]") &&
+      !line.startsWith("[ID]") &&
+      !line.startsWith("[Dimensions]") &&
+      !line.startsWith("[URL]")
     ) {
       return line.length > 80 ? `${line.slice(0, 77)}...` : line;
     }

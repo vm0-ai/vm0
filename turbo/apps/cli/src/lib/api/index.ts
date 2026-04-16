@@ -200,3 +200,6 @@ export {
 
 // Domain modules - Zero Voice Chat Prepare
 export { completeVoiceChatPreparation } from "./domains/zero-voice-chat-prepare";
+
+// Domain modules - Web
+export { downloadWebFile } from "./domains/web";

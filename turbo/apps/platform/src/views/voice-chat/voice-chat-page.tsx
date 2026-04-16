@@ -15,7 +15,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   vcStatus$,
-  vcSlowBrainEvents$,
   vcMuted$,
   vcError$,
   vcEnabled$,
@@ -35,10 +34,7 @@ import {
   vcConversationItems$,
   type RealtimeModel,
 } from "../../signals/voice-chat/voice-chat-session.ts";
-import {
-  setTranscriptScrollContainer$,
-  setEventsScrollContainer$,
-} from "../../signals/voice-chat/voice-chat-auto-scroll.ts";
+import { setVoiceChatScrollContainer$ } from "../../signals/voice-chat/voice-chat-auto-scroll.ts";
 import {
   meetingPrepStatus$,
   meetingPrepPrompt$,
@@ -120,7 +116,7 @@ function VoiceChatFooter({
   onEnd,
   onRetry,
 }: {
-  status: string;
+  status: ConnectionStatus;
   muted: boolean;
   toggleMute: () => void;
   onEnd: () => void;
@@ -128,39 +124,62 @@ function VoiceChatFooter({
 }) {
   return (
     <div className="border-t px-4 py-3 flex items-center justify-center gap-3">
-      {status === "disconnected" ? (
+      {status === "preparing" ? (
         <Button
-          variant="secondary"
+          variant="destructive"
+          size="sm"
           className="h-10 rounded-full px-5"
-          onClick={onRetry}
+          onClick={onEnd}
         >
-          <IconRefresh size={18} className="mr-2" />
-          Retry
+          <IconPhoneOff size={18} className="mr-2" />
+          Cancel
         </Button>
+      ) : status === "disconnected" ? (
+        <>
+          <Button
+            variant="secondary"
+            className="h-10 rounded-full px-5"
+            onClick={onRetry}
+          >
+            <IconRefresh size={18} className="mr-2" />
+            Retry
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="h-10 rounded-full px-5"
+            onClick={onEnd}
+          >
+            <IconPhoneOff size={18} className="mr-2" />
+            End Session
+          </Button>
+        </>
       ) : (
-        <Button
-          variant={muted ? "destructive" : "secondary"}
-          className="h-10 rounded-full px-5"
-          disabled={status !== "connected"}
-          onClick={toggleMute}
-        >
-          {muted ? (
-            <IconMicrophoneOff size={18} className="mr-2" />
-          ) : (
-            <IconMicrophone size={18} className="mr-2" />
-          )}
-          {muted ? "Unmute" : "Mute"}
-        </Button>
+        <>
+          <Button
+            variant={muted ? "destructive" : "secondary"}
+            className="h-10 rounded-full px-5"
+            disabled={status !== "connected"}
+            onClick={toggleMute}
+          >
+            {muted ? (
+              <IconMicrophoneOff size={18} className="mr-2" />
+            ) : (
+              <IconMicrophone size={18} className="mr-2" />
+            )}
+            {muted ? "Unmute" : "Mute"}
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="h-10 rounded-full px-5"
+            onClick={onEnd}
+          >
+            <IconPhoneOff size={18} className="mr-2" />
+            End Session
+          </Button>
+        </>
       )}
-      <Button
-        variant="destructive"
-        size="sm"
-        className="h-10 rounded-full px-5"
-        onClick={onEnd}
-      >
-        <IconPhoneOff size={18} className="mr-2" />
-        End Session
-      </Button>
     </div>
   );
 }
@@ -315,7 +334,6 @@ export function VoiceChatPage() {
   const enabled = useLastResolved(vcEnabled$);
   const agentId = useLastResolved(vcAgentId$);
   const status = useGet(vcStatus$);
-  const slowBrainEvents = useGet(vcSlowBrainEvents$);
   const muted = useGet(vcMuted$);
   const error = useGet(vcError$);
   const startSession = useSet(startVoiceChat$);
@@ -327,8 +345,7 @@ export function VoiceChatPage() {
   const prepElapsedMs = useGet(vcPrepElapsedMs$);
   const model = useGet(vcModel$);
   const setModel = useSet(setVcModel$);
-  const setTranscriptContainer = useSet(setTranscriptScrollContainer$);
-  const setEventsContainer = useSet(setEventsScrollContainer$);
+  const setScrollContainer = useSet(setVoiceChatScrollContainer$);
   const conversationItems = useGet(vcConversationItems$);
 
   const elapsedSeconds = Math.floor(prepElapsedMs / 1000);
@@ -396,67 +413,6 @@ export function VoiceChatPage() {
     );
   }
 
-  if (status === "preparing") {
-    return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold">
-              {prompt ? "Preparing Meeting" : "Preparing..."}
-            </h1>
-            {elapsedSeconds > 0 && (
-              <span className="text-sm tabular-nums text-muted-foreground">
-                {Math.floor(elapsedSeconds / 60)}:
-                {String(elapsedSeconds % 60).padStart(2, "0")}
-              </span>
-            )}
-            <StatusBadge status={status} />
-          </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              endSession();
-            }}
-          >
-            <IconPhoneOff size={16} className="mr-1.5" />
-            Cancel
-          </Button>
-        </div>
-
-        {prompt && (
-          <div className="border-b px-4 py-3">
-            <p className="text-sm text-muted-foreground">Your prompt:</p>
-            <p className="text-sm mt-1">{prompt}</p>
-          </div>
-        )}
-
-        <div
-          ref={setEventsContainer}
-          className="flex-1 overflow-y-auto p-4 space-y-2"
-        >
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">
-            Slow Brain Activity
-          </h2>
-          {slowBrainEvents.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              Waiting for slow brain to start preparation...
-            </p>
-          )}
-          {slowBrainEvents.map((event) => {
-            return (
-              <SlowBrainIndicator
-                key={event.seq}
-                type={event.type}
-                content={event.content}
-              />
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -464,8 +420,22 @@ export function VoiceChatPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold">Voice Chat</h1>
           <StatusBadge status={status} reconnectAttempt={reconnectAttempt} />
+          {status === "preparing" && elapsedSeconds > 0 && (
+            <span className="text-sm tabular-nums text-muted-foreground">
+              {Math.floor(elapsedSeconds / 60)}:
+              {String(elapsedSeconds % 60).padStart(2, "0")}
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Prompt banner */}
+      {prompt && (
+        <div className="border-b px-4 py-3">
+          <p className="text-sm text-muted-foreground">Your prompt:</p>
+          <p className="text-sm mt-1">{prompt}</p>
+        </div>
+      )}
 
       {/* Error banner */}
       {error && (
@@ -475,14 +445,16 @@ export function VoiceChatPage() {
       )}
 
       {/* Main content: unified conversation view */}
-      <div ref={setTranscriptContainer} className="flex-1 overflow-y-auto">
+      <div ref={setScrollContainer} className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[900px] px-4 pt-4 pb-8">
           <div className="flex flex-col gap-4">
             {conversationItems.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">
-                {status === "connecting"
-                  ? "Connecting..."
-                  : "Speak to start the conversation."}
+                {status === "preparing"
+                  ? "Waiting for preparation to begin..."
+                  : status === "connecting"
+                    ? "Connecting..."
+                    : "Speak to start the conversation."}
               </p>
             )}
             {conversationItems.map((item) => {

@@ -1849,6 +1849,13 @@
       "when": 1776318321277,
       "tag": "0264_low_dazzler",
       "breakpoints": true
+    },
+    {
+      "idx": 264,
+      "version": "7",
+      "when": 1776315282104,
+      "tag": "0264_spooky_fat_cobra",
+      "breakpoints": true
     }
   ]
 }

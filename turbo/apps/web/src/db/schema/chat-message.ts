@@ -6,9 +6,13 @@ import {
   index,
   integer,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 import { agentRuns } from "./agent-run";
+
+/** attach_files stores only file IDs — metadata is resolved at query time. */
+export type ChatMessageAttachFiles = string[];
 
 /**
  * Chat Messages table
@@ -50,6 +54,7 @@ export const chatMessages = pgTable(
     error: text("error"),
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
+    attachFiles: jsonb("attach_files").$type<ChatMessageAttachFiles>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

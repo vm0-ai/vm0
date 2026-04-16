@@ -275,13 +275,36 @@ async function resolveAdditionalVolume(
 ): Promise<ManifestStorage | null> {
   const version = vol.version || "latest";
   try {
-    const { versionId, s3Key } = await resolveVersion(
-      runtimeClerkOrgId,
-      vol.name,
-      "volume",
-      version,
-      VOLUME_ORG_USER_ID,
-    );
+    let resolved: { versionId: string; s3Key: string } | undefined;
+
+    if (vol.system) {
+      try {
+        resolved = await resolveVersion(
+          SYSTEM_ORG_ID,
+          vol.name,
+          "volume",
+          version,
+          VOLUME_ORG_USER_ID,
+        );
+      } catch (error) {
+        if (!(error instanceof Error && error.message.includes("not found"))) {
+          throw error;
+        }
+        // System org miss — fall through to runtime org
+      }
+    }
+
+    if (!resolved) {
+      resolved = await resolveVersion(
+        runtimeClerkOrgId,
+        vol.name,
+        "volume",
+        version,
+        VOLUME_ORG_USER_ID,
+      );
+    }
+
+    const { versionId, s3Key } = resolved;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const archiveUrl = await generatePresignedUrl(bucketName, archiveKey);
     return {

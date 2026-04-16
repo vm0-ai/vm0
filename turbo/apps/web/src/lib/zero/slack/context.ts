@@ -240,34 +240,26 @@ export function extractTextFromBlocks(
   return result.length > 0 ? result : undefined;
 }
 
-function isVideoMimeType(mimetype: string | undefined): boolean {
-  if (!mimetype) return false;
-  return mimetype.startsWith("video/");
-}
-
 /**
  * Format a Slack file reference for the agent prompt.
  *
- * Emits a three-step instruction block that guides the agent to:
- *   1. Download via `zero slack download-file`
- *   2. (videos only) Extract frames with ffmpeg
- *   3. Read the file using the appropriate tool
- *
- * The file is NOT fetched server-side; the agent pulls bytes on demand
- * through the bot-token-authenticated backend proxy.
+ * Only describes the attachment itself (name, type, dimensions, id).
+ * The agent learns how to download and read files from `zero slack download-file -h`.
  */
 function formatFileInfo(file: SlackFile): string {
   const parts: string[] = [];
 
   const name = file.name || file.title || "Untitled";
   const type = file.pretty_type || file.mimetype || "file";
-  parts.push(`[file]: ${name} (${type})`);
+  parts.push(`[Slack file] ${name} (${type})`);
 
   if (file.original_w && file.original_h) {
-    parts.push(`   Dimensions: ${file.original_w}x${file.original_h}`);
+    parts.push(`   [Dimensions] ${file.original_w}x${file.original_h}`);
   }
 
-  if (!file.id) {
+  if (file.id) {
+    parts.push(`   [ID] ${file.id}`);
+  } else {
     // Without a file id the agent cannot fetch via the backend proxy.
     // Fall back to an informational URL reference if available.
     const url =
@@ -276,28 +268,8 @@ function formatFileInfo(file: SlackFile): string {
       file.thumb_360 ||
       file.permalink;
     if (url) {
-      parts.push(`   URL: ${url}`);
+      parts.push(`   [URL] ${url}`);
     }
-    return parts.join("\n");
-  }
-
-  const ext = file.filetype || "bin";
-  const localPath = `/tmp/${file.id}.${ext}`;
-
-  parts.push(
-    `   Step 1 - Download: zero slack download-file ${file.id} -o ${localPath}`,
-  );
-
-  if (isVideoMimeType(file.mimetype)) {
-    const framePattern = `/tmp/${file.id}_frame_%03d.jpg`;
-    parts.push(
-      `   Step 2 - Extract frames: ffmpeg -i ${localPath} -vf "fps=1" -q:v 2 ${framePattern}`,
-    );
-    parts.push(
-      `   Step 3 - Read: view the extracted frames to understand the video content`,
-    );
-  } else {
-    parts.push(`   Step 2 - Read: open ${localPath} with the appropriate tool`);
   }
 
   return parts.join("\n");
@@ -319,7 +291,7 @@ function formatAttachmentImage(attachment: SlackAttachment): string | null {
 
   if (attachment.image_width && attachment.image_height) {
     parts.push(
-      `   Dimensions: ${attachment.image_width}x${attachment.image_height}`,
+      `   [Dimensions] ${attachment.image_width}x${attachment.image_height}`,
     );
   }
 
@@ -414,14 +386,13 @@ const CONTEXT_PREAMBLE = [
   "- Match the tone of the conversation — casual messages deserve casual replies.",
   "- Only provide technical analysis when explicitly asked a technical question.",
   "- Keep responses proportional to the message length and complexity.",
-  "- When a message includes a [file] block, follow the numbered Step instructions to download and read the file before responding about its contents.",
 ].join("\n");
 
 /**
  * Format messages into context for the agent prompt.
  *
- * File attachments are rendered with three-step instructions that point the
- * agent at `zero slack download-file <id>`; no bytes are fetched here.
+ * File attachments are rendered as metadata only (name, type, id);
+ * the agent learns how to download via `zero slack download-file -h`.
  *
  * @param messages - Array of Slack messages
  * @param contextType - Type of context: "thread" or "channel"

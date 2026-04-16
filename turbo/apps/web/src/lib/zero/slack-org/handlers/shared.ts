@@ -337,8 +337,9 @@ export async function resolveSessionCompose(
  * Enrich message content with file attachments and Slack user info.
  * Shared between direct-message and mention handlers.
  *
- * Returns prompt (message text + files) and userInfoExtras (Slack-specific user metadata)
- * separately so callers can merge Slack fields into the base user info block.
+ * File descriptions ([Slack file] blocks) are appended to the prompt so the
+ * agent sees them as part of the user message. The agent learns how to
+ * download via `zero slack download-file -h`.
  */
 export async function enrichMessageContent(opts: {
   messageContent: string;
@@ -348,7 +349,7 @@ export async function enrichMessageContent(opts: {
 }): Promise<{ prompt: string; userInfoExtras: UserInfoOptions }> {
   let prompt = opts.messageContent;
 
-  // Include files attached to the current message in the prompt
+  // Append file descriptions to prompt
   if (opts.files && opts.files.length > 0) {
     const filesText = formatCurrentMessageFiles(opts.files);
     prompt = `${prompt}\n\n${filesText}`;

@@ -5,7 +5,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { chatMessagesContract } from "@vm0/core";
+import { chatMessagesContract, type AttachFile } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -15,7 +15,10 @@ import {
   createZeroRunRecord,
   dispatchZeroRun,
 } from "../../../../../src/lib/zero/zero-run-service";
-import { buildWebChatPrompt } from "../../../../../src/lib/zero/integration-prompt";
+import {
+  buildWebChatPrompt,
+  buildWebAttachFilesPrompt,
+} from "../../../../../src/lib/zero/integration-prompt";
 import { isApiError } from "../../../../../src/lib/shared/errors";
 import {
   createChatThread,
@@ -59,6 +62,93 @@ function buildContinueFromScheduleSystemPrompt(
   );
 }
 
+function buildAppendSystemPrompt(
+  continueFromSchedulePrompt: string | undefined,
+): string {
+  const parts = [buildWebChatPrompt()];
+  if (continueFromSchedulePrompt) {
+    parts.push(continueFromSchedulePrompt);
+  }
+  return parts.join("\n\n");
+}
+
+/**
+ * Build the full prompt including file descriptions appended after user text.
+ */
+function buildFullPrompt(
+  prompt: string,
+  attachFiles: AttachFile[] | undefined,
+): string {
+  if (!attachFiles || attachFiles.length === 0) return prompt;
+  return `${prompt}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
+}
+
+interface ResolvedThread {
+  threadId: string;
+  sessionId: string | undefined;
+  previousContext: { role: "user" | "assistant"; content: string }[];
+  continueFromSchedulePrompt: string | undefined;
+}
+
+/**
+ * Resolve an existing thread or create a new one.
+ * Returns thread metadata needed for run creation and title generation.
+ */
+async function resolveThread(
+  userId: string,
+  agentId: string,
+  existingThreadId: string | undefined,
+): Promise<ResolvedThread> {
+  if (!existingThreadId) {
+    const thread = await createChatThread(userId, agentId);
+    return {
+      threadId: thread.id,
+      sessionId: undefined,
+      previousContext: [],
+      continueFromSchedulePrompt: undefined,
+    };
+  }
+
+  const thread = await getChatThread(existingThreadId, userId);
+  const sessionId = await getLatestSessionIdForThread(thread.id);
+  const messages = await getMessagesByThreadId(thread.id);
+  const previousContext = messages
+    .filter((m) => {
+      return m.content !== null;
+    })
+    .slice(-10)
+    .map((m) => {
+      return {
+        role: m.role as "user" | "assistant",
+        content: m.content as string,
+      };
+    });
+
+  let continueFromSchedulePrompt: string | undefined;
+  if (thread.sourceScheduleRunId && messages.length === 0) {
+    const [sourceSchedule] = await globalThis.services.db
+      .select({ name: zeroAgentSchedules.name })
+      .from(zeroRuns)
+      .innerJoin(
+        zeroAgentSchedules,
+        eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
+      )
+      .where(eq(zeroRuns.id, thread.sourceScheduleRunId))
+      .limit(1);
+    continueFromSchedulePrompt = buildContinueFromScheduleSystemPrompt(
+      thread.sourceScheduleRunId,
+      sourceSchedule?.name ?? null,
+    );
+  }
+
+  return {
+    threadId: thread.id,
+    sessionId,
+    previousContext,
+    continueFromSchedulePrompt,
+  };
+}
+
 const router = tsr.router(chatMessagesContract, {
   send: async ({ body, headers }) => {
     initServices();
@@ -84,75 +174,27 @@ const router = tsr.router(chatMessagesContract, {
       };
     }
 
-    let threadId: string | undefined;
-
     try {
-      // Resolve or create thread
-      let sessionId: string | undefined;
-      let previousContext: Array<{
-        role: "user" | "assistant";
-        content: string;
-      }> = [];
-      // Seeded once on the first run of a thread started from a scheduled run.
-      // Subsequent runs inherit the session context so we don't re-apply it.
-      let continueFromSchedulePrompt: string | undefined;
-
-      if (body.threadId) {
-        const thread = await getChatThread(body.threadId, authCtx.userId);
-        threadId = thread.id;
-        // Derive sessionId from latest completed run (for runner continuity)
-        sessionId = await getLatestSessionIdForThread(thread.id);
-        // Build previous context from chat_messages for title generation
-        const messages = await getMessagesByThreadId(thread.id);
-        previousContext = messages
-          .filter((m) => {
-            return m.content !== null;
-          })
-          .slice(-10)
-          .map((m) => {
-            return {
-              role: m.role as "user" | "assistant",
-              content: m.content as string,
-            };
-          });
-        if (thread.sourceScheduleRunId && messages.length === 0) {
-          const [sourceSchedule] = await globalThis.services.db
-            .select({ name: zeroAgentSchedules.name })
-            .from(zeroRuns)
-            .innerJoin(
-              zeroAgentSchedules,
-              eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
-            )
-            .where(eq(zeroRuns.id, thread.sourceScheduleRunId))
-            .limit(1);
-          continueFromSchedulePrompt = buildContinueFromScheduleSystemPrompt(
-            thread.sourceScheduleRunId,
-            sourceSchedule?.name ?? null,
-          );
-        }
-      } else {
-        const thread = await createChatThread(authCtx.userId, body.agentId);
-        threadId = thread.id;
-        sessionId = undefined;
-      }
+      const {
+        threadId,
+        sessionId,
+        previousContext,
+        continueFromSchedulePrompt,
+      } = await resolveThread(authCtx.userId, body.agentId, body.threadId);
 
       // Only generate title when prompt has actual user text
       if (body.hasTextContent !== false) {
-        const capturedThreadId = threadId;
         void generateChatTitle(
           body.prompt,
           previousContext.length > 0 ? previousContext : undefined,
         )
           .then((title) => {
             if (title) {
-              return updateChatThreadTitle(capturedThreadId, title);
+              return updateChatThreadTitle(threadId, title);
             }
           })
           .catch((err: unknown) => {
-            log.warn("Chat title generation failed", {
-              threadId: capturedThreadId,
-              err,
-            });
+            log.warn("Chat title generation failed", { threadId, err });
           });
       }
 
@@ -172,29 +214,38 @@ const router = tsr.router(chatMessagesContract, {
           ? body.modelProvider
           : undefined;
 
+      // Build prompt: user text + file descriptions appended
+      const fullPrompt = buildFullPrompt(body.prompt, body.attachFiles);
+
       // Create the run record (pre-flight checks + advisory-locked INSERT).
       // Does NOT dispatch — tokens, secrets, and runner dispatch are deferred.
       const result = await createZeroRunRecord({
         userId: authCtx.userId,
-        prompt: body.prompt,
+        prompt: fullPrompt,
         agentId: body.agentId,
         sessionId,
         triggerSource: "web",
         modelProvider,
-        chatThreadId: threadId,
-        appendSystemPrompt: continueFromSchedulePrompt
-          ? [buildWebChatPrompt(), continueFromSchedulePrompt].join("\n\n")
-          : buildWebChatPrompt(),
+        appendSystemPrompt: buildAppendSystemPrompt(continueFromSchedulePrompt),
         callbacks: [chatCallback],
       });
 
-      // Persist user message (chat_messages is append-only — assistant rows
-      // are inserted by the event consumer and callback final sweep).
+      // Persist user message + assistant placeholder to chat_messages.
+      // Only file IDs are stored — metadata is resolved at query time from S3.
       await insertChatMessage({
         chatThreadId: threadId,
         role: "user",
         content: body.prompt,
         runId: null,
+        attachFiles: body.attachFiles?.map((f) => {
+          return f.id;
+        }),
+      });
+      await insertChatMessage({
+        chatThreadId: threadId,
+        role: "assistant",
+        content: null,
+        runId: result.runId,
       });
 
       // Notify subscribers that a new run and messages were created on this thread
