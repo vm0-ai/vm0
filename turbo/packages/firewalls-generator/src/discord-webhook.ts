@@ -32,7 +32,6 @@ function generateTypeScript(): string {
     "    {",
     `      base: "${PLACEHOLDER_BASE}",`,
     "      auth: {",
-    "        headers: {},",
     '        base: "${{ secrets.DISCORD_WEBHOOK_URL }}",',
     "      },",
     "      permissions: [],",
