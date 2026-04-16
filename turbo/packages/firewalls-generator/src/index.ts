@@ -103,6 +103,7 @@ import { generate as generateResend } from "./resend";
 import { generate as generateRevenuecat } from "./revenuecat";
 import { generate as generateRunway } from "./runway";
 import { generate as generateScrapeninja } from "./scrapeninja";
+import { generate as generateSeedance } from "./seedance";
 import { generate as generateSalesforce } from "./salesforce";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
@@ -233,6 +234,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   runway: generateRunway,
   salesforce: generateSalesforce,
   scrapeninja: generateScrapeninja,
+  seedance: generateSeedance,
   sentry: generateSentry,
   serpapi: generateSerpapi,
   shortio: generateShortio,
