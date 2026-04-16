@@ -904,12 +904,12 @@ describe("zero-chat signals", () => {
       interface CapturedChatBody {
         prompt: string;
         hasTextContent: boolean;
-        attachFiles?: Array<{
+        attachFiles?: {
           id: string;
           filename: string;
           contentType: string;
           size: number;
-        }>;
+        }[];
       }
 
       function isCapturedChatBody(v: unknown): v is CapturedChatBody {
