@@ -825,7 +825,7 @@ jobs:
 
           # Test 1: cancel the job via runner local cancel
           echo "--- Test: runner local cancel ---"
-          sudo "$BIN_DIR/runner" local cancel --group "$GROUP" "$RUN_ID" || fail "cancel command failed"
+          sudo "$BIN_DIR/runner" local cancel --run "$RUN_ID" --group "$GROUP" || fail "cancel command failed"
           echo "PASS: cancel command succeeded"
 
           # Test 2: submit should exit quickly (not after 300s timeout)
