@@ -8,53 +8,43 @@ export const sendCommand = new Command()
   .name("send")
   .description("Send a message to a web chat thread")
   .option("-t, --thread <id>", "Existing chat thread ID")
-  .option("-u, --user <userId>", "Target user ID (creates a new thread)")
-  .option("-a, --agent <agentId>", "Agent ID (required with --user)")
+  .option("-a, --agent <agentId>", "Agent ID (creates a new thread)")
   .option("--text <message>", "Message text")
+  .option("--title <title>", "Thread title (only with --agent)")
   .addHelpText(
     "after",
     `
 Examples:
-  Send to existing thread:  zero chat message send -t <thread-id> --text "Hello!"
-  Send to user (new thread): zero chat message send -u <user-id> -a <agent-id> --text "Hello!"
+  Send to existing thread:   zero chat message send -t <thread-id> --text "Hello!"
+  Send to agent (new thread): zero chat message send -a <agent-id> --text "Hello!"
 
 Notes:
-  - Either --thread or --user is required; they are mutually exclusive
-  - --agent is required when using --user
+  - Either --thread or --agent is required; they are mutually exclusive
   - --text is required (or pipe via stdin)`,
   )
   .action(
     withErrorHandler(
       async (options: {
         thread?: string;
-        user?: string;
         agent?: string;
         text?: string;
+        title?: string;
       }) => {
         let text = options.text;
-        const { thread, user, agent } = options;
+        const { thread, agent, title } = options;
 
-        // Validate mutual exclusion: exactly one of --thread or --user
-        if (!thread && !user) {
-          throw new Error("Either --thread or --user must be provided", {
+        // Validate mutual exclusion: exactly one of --thread or --agent
+        if (!thread && !agent) {
+          throw new Error("Either --thread or --agent must be provided", {
             cause: new Error(
-              'Usage: zero chat message send -t THREAD_ID --text "your message"\n       zero chat message send -u USER_ID -a AGENT_ID --text "your message"',
+              'Usage: zero chat message send -t THREAD_ID --text "your message"\n       zero chat message send -a AGENT_ID --text "your message"',
             ),
           });
         }
-        if (thread && user) {
-          throw new Error("--thread and --user are mutually exclusive", {
+        if (thread && agent) {
+          throw new Error("--thread and --agent are mutually exclusive", {
             cause: new Error(
-              "Provide either --thread to send to an existing thread or --user to create a new thread, not both",
-            ),
-          });
-        }
-
-        // Validate --agent is required with --user
-        if (user && !agent) {
-          throw new Error("--agent is required when --user is provided", {
-            cause: new Error(
-              'Usage: zero chat message send -u USER_ID -a AGENT_ID --text "your message"',
+              "Provide either --thread to send to an existing thread or --agent to create a new thread, not both",
             ),
           });
         }
@@ -74,9 +64,9 @@ Notes:
 
         const result = await sendChatMessage({
           thread: thread || undefined,
-          user: user || undefined,
           agent: agent || undefined,
           text,
+          title: title || undefined,
         });
 
         console.log(

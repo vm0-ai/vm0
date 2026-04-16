@@ -137,21 +137,15 @@ export type SlackUploadCompleteResponse = z.infer<
 const sendChatMessageBodySchema = z
   .object({
     thread: z.string().uuid("Invalid thread ID").optional(),
-    user: z.string().min(1, "User ID is required").optional(),
     agent: z.string().uuid("Invalid agent ID").optional(),
     text: z.string().min(1, "Message text is required"),
+    title: z.string().min(1, "Title must not be empty").optional(),
   })
   .refine(
     (data) => {
-      return Boolean(data.thread) !== Boolean(data.user);
+      return Boolean(data.thread) !== Boolean(data.agent);
     },
-    { message: "Exactly one of 'thread' or 'user' must be provided" },
-  )
-  .refine(
-    (data) => {
-      return !data.user || data.agent;
-    },
-    { message: "'agent' is required when 'user' is provided" },
+    { message: "Exactly one of 'thread' or 'agent' must be provided" },
   );
 
 export type SendChatMessageBody = z.infer<typeof sendChatMessageBodySchema>;

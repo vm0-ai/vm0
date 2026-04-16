@@ -61,7 +61,7 @@ describe("zero chat message send command", () => {
       expect(logCalls).toContain("thread-456");
     });
 
-    it("should send a message to a user with --agent", async () => {
+    it("should send a message with --agent (new thread)", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 
       server.use(
@@ -81,8 +81,6 @@ describe("zero chat message send command", () => {
       await sendCommand.parseAsync([
         "node",
         "cli",
-        "--user",
-        "user_abc123",
         "--agent",
         "550e8400-e29b-41d4-a716-446655440001",
         "--text",
@@ -90,7 +88,6 @@ describe("zero chat message send command", () => {
       ]);
 
       expect(capturedBody).toMatchObject({
-        user: "user_abc123",
         agent: "550e8400-e29b-41d4-a716-446655440001",
         text: "Hello from agent!",
       });
@@ -99,52 +96,74 @@ describe("zero chat message send command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Message sent");
     });
+
+    it("should send a message with --title when creating a new thread", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(CHAT_MESSAGE_URL, async ({ request }) => {
+          capturedBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(
+            {
+              messageId: "msg-title",
+              threadId: "thread-titled",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+            { status: 201 },
+          );
+        }),
+      );
+
+      await sendCommand.parseAsync([
+        "node",
+        "cli",
+        "--agent",
+        "550e8400-e29b-41d4-a716-446655440001",
+        "--text",
+        "Hello!",
+        "--title",
+        "greeting",
+      ]);
+
+      expect(capturedBody).toMatchObject({
+        agent: "550e8400-e29b-41d4-a716-446655440001",
+        text: "Hello!",
+        title: "greeting",
+      });
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Message sent");
+      expect(logCalls).toContain("thread-titled");
+    });
   });
 
   describe("validation errors", () => {
-    it("should error when both --thread and --user are provided", async () => {
+    it("should error when both --thread and --agent are provided", async () => {
       await expect(async () => {
         await sendCommand.parseAsync([
           "node",
           "cli",
           "--thread",
           "550e8400-e29b-41d4-a716-446655440000",
-          "--user",
-          "user_abc123",
+          "--agent",
+          "550e8400-e29b-41d4-a716-446655440001",
           "--text",
           "hello",
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--thread and --user are mutually exclusive"),
+        expect.stringContaining("--thread and --agent are mutually exclusive"),
       );
     });
 
-    it("should error when neither --thread nor --user is provided", async () => {
+    it("should error when neither --thread nor --agent is provided", async () => {
       await expect(async () => {
         await sendCommand.parseAsync(["node", "cli", "--text", "hello"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Either --thread or --user must be provided"),
-      );
-    });
-
-    it("should error when --user is provided without --agent", async () => {
-      await expect(async () => {
-        await sendCommand.parseAsync([
-          "node",
-          "cli",
-          "--user",
-          "user_abc123",
-          "--text",
-          "hello",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--agent is required when --user is provided"),
+        expect.stringContaining("Either --thread or --agent must be provided"),
       );
     });
 

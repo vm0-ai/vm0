@@ -36,11 +36,7 @@ const router = tsr.router(integrationsChatMessageContract, {
       const thread = await getChatThread(body.thread, userId);
       threadId = thread.id;
     } else {
-      // Mode B: Create new thread for user
-      if (body.user !== userId) {
-        throw badRequest("Can only create chat threads for yourself");
-      }
-
+      // Mode B: Create new thread for the authenticated user
       if (!body.agent) {
         throw badRequest("Agent is required when creating a new thread");
       }
@@ -61,7 +57,7 @@ const router = tsr.router(integrationsChatMessageContract, {
         throw notFound("Agent not found");
       }
 
-      const newThread = await createChatThread(body.user, body.agent);
+      const newThread = await createChatThread(userId, body.agent, body.title);
       threadId = newThread.id;
     }
 
