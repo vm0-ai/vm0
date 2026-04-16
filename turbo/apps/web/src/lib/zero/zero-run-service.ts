@@ -359,15 +359,13 @@ export async function createZeroRunRecord(
   appendSystemPrompt = systemParts.join("\n\n");
 
   // 2. Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
-  //    Inject custom skill volumes for new runs (session resume inherits from checkpoint).
-  const skillVolumes = !params.sessionId
-    ? (row?.customSkills ?? []).map((name) => {
-        return {
-          name: getCustomSkillStorageName(name),
-          mountPath: `/home/user/.claude/skills/${name}`,
-        };
-      })
-    : [];
+  //    Inject custom skill volumes (agent-level, needed on every run).
+  const skillVolumes = (row?.customSkills ?? []).map((name) => {
+    return {
+      name: getCustomSkillStorageName(name),
+      mountPath: `/home/user/.claude/skills/${name}`,
+    };
+  });
 
   const runParams: CreateRunParams = {
     userId: params.userId,

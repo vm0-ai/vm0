@@ -406,6 +406,39 @@ describe("POST /api/zero/runs", () => {
         });
         expect(skillStorage).toBeDefined();
       });
+
+      it("should inject custom skill volume on session continue", async () => {
+        const skillName = uniqueId("test-skill");
+        const compose = await createTestCompose(uniqueId("skill-agent"));
+        const skillAgentId = await getTestZeroAgentId(user.orgId, compose.name);
+        await bindCustomSkillToAgent(skillAgentId, skillName);
+        await createTestVolume(getCustomSkillStorageName(skillName));
+        await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+
+        const session = await createTestSessionWithConversation(
+          user.userId,
+          skillAgentId,
+          compose.versionId,
+          "claude-code",
+        );
+
+        const response = await postRun({
+          agentId: skillAgentId,
+          sessionId: session.id,
+          prompt: "Continue session",
+        });
+        const data = await response.json();
+        expect(response.status).toBe(201);
+
+        const job = await findTestRunnerJobEntry(data.runId);
+        expect(job).toBeDefined();
+        const storages = job!.executionContext.storageManifest!.storages;
+        const expectedMountPath = `/home/user/.claude/skills/${skillName}`;
+        const skillStorage = storages.find((s) => {
+          return s.mountPath === expectedMountPath;
+        });
+        expect(skillStorage).toBeDefined();
+      });
     });
   });
 
