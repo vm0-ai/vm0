@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.119.0](https://github.com/vm0-ai/vm0/compare/cli-v9.118.0...cli-v9.119.0) (2026-04-16)
+
+
+### Features
+
+* **platform:** add chat message send command to agent tools prompt ([#9623](https://github.com/vm0-ai/vm0/issues/9623)) ([a27488d](https://github.com/vm0-ai/vm0/commit/a27488ddface8dc57941d0de0df2e80faa942292))
+
 ## [9.118.0](https://github.com/vm0-ai/vm0/compare/cli-v9.117.1...cli-v9.118.0) (2026-04-16)
 
 

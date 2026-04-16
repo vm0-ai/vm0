@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.246.0](https://github.com/vm0-ai/vm0/compare/web-v12.245.0...web-v12.246.0) (2026-04-16)
+
+
+### Features
+
+* **platform:** add chat message send command to agent tools prompt ([#9623](https://github.com/vm0-ai/vm0/issues/9623)) ([a27488d](https://github.com/vm0-ai/vm0/commit/a27488ddface8dc57941d0de0df2e80faa942292))
+
 ## [12.245.0](https://github.com/vm0-ai/vm0/compare/web-v12.244.1...web-v12.245.0) (2026-04-16)
 
 
