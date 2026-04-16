@@ -35,7 +35,7 @@ pub enum SandboxControlError {
 /// backend-specific types (sockets, paths, wire protocol).
 #[async_trait]
 pub trait SandboxControl: Send + Sync {
-    /// Execute a command inside a running sandbox identified by run ID
+    /// Execute a command inside a running sandbox identified by sandbox ID
     /// (full UUID or unique prefix).
     ///
     /// `timeout` is the command timeout; the implementation may add extra

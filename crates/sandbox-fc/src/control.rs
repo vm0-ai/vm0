@@ -294,7 +294,7 @@ impl SandboxControl for FirecrackerControl {
     }
 }
 
-/// Find the control socket for a given run ID (full UUID or prefix).
+/// Find the control socket for a given sandbox ID (full UUID or prefix).
 ///
 /// Scans the runtime socket directory for directories matching the prefix
 /// that contain a `control.sock` file.

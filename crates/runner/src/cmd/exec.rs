@@ -15,8 +15,10 @@ use crate::error::{RunnerError, RunnerResult};
 
 #[derive(Args)]
 pub struct ExecArgs {
-    /// Run ID (full UUID or unique prefix)
-    run_id: String,
+    /// Sandbox ID (full UUID or unique prefix). This is the workspace
+    /// directory basename shown by `runner doctor`, not the run ID from
+    /// the dashboard. Socket dirs are keyed by sandbox_id.
+    sandbox_id: String,
 
     /// Timeout in seconds for the command
     #[arg(long, default_value = "30")]
@@ -75,7 +77,7 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
     let timeout = Duration::from_secs(u64::from(args.timeout));
 
     match control
-        .exec_remote(&args.run_id, &command, timeout, args.sudo)
+        .exec_remote(&args.sandbox_id, &command, timeout, args.sudo)
         .await
     {
         Ok(result) => {
@@ -103,9 +105,9 @@ mod tests {
 
     use super::*;
 
-    fn make_args(run_id: &str, command: &str) -> ExecArgs {
+    fn make_args(sandbox_id: &str, command: &str) -> ExecArgs {
         ExecArgs {
-            run_id: run_id.into(),
+            sandbox_id: sandbox_id.into(),
             timeout: 5,
             sudo: false,
             command: command.split_whitespace().map(String::from).collect(),
@@ -114,7 +116,7 @@ mod tests {
 
     fn make_args_vec(command: Vec<&str>) -> ExecArgs {
         ExecArgs {
-            run_id: "id".into(),
+            sandbox_id: "id".into(),
             timeout: 5,
             sudo: false,
             command: command.into_iter().map(String::from).collect(),
