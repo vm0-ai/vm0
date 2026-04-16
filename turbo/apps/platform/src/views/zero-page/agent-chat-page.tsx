@@ -319,7 +319,9 @@ export function AgentChatPage() {
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => navigate(ROUTES.voiceChat)}
+                        onClick={() => {
+                          navigate(ROUTES.voiceChat);
+                        }}
                         className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
                         aria-label="Start voice chat"
                       >
