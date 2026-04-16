@@ -4,7 +4,7 @@
  * Data source: https://docs.browserless.io/rest-apis/intro
  *
  * Browserless is a headless browser automation platform.
- * Uses Bearer token authentication.
+ * Authenticates via the `token` URL query parameter.
  * Token format: UUID v4 (e.g., 094632bb-e326-4c63-b953-82b55700b14c).
  * Three regional base URLs: production-sfo, production-lon, production-ams.
  */
@@ -22,8 +22,9 @@ function generateTypeScript(): string {
     (region) => `    {
       base: "https://production-${region}.browserless.io",
       auth: {
-        headers: {
-          Authorization: "Bearer $\{{ secrets.BROWSERLESS_TOKEN }}",
+        headers: {},
+        query: {
+          token: "$\{{ secrets.BROWSERLESS_TOKEN }}",
         },
       },
       permissions: [],
