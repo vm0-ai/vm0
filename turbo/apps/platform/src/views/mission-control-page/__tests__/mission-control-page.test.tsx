@@ -55,10 +55,10 @@ function mockTasksAPI(
   );
 }
 
-function mockActivityAPIs(runId: string, overrides?: { status?: string }) {
+function mockActivityAPIs(_runId?: string, overrides?: { status?: string }) {
   const status = overrides?.status ?? "completed";
   server.use(
-    http.get(`*/api/zero/logs/${runId}`, () => {
+    http.get("*/api/zero/logs/:id", () => {
       return HttpResponse.json({
         id: "00000000-0000-4000-a000-000000000001",
         displayName: "Test Agent",
@@ -80,14 +80,14 @@ function mockActivityAPIs(runId: string, overrides?: { status?: string }) {
         artifact: { name: null, version: null },
       });
     }),
-    http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
+    http.get("*/api/zero/runs/:id/telemetry/agent", () => {
       return HttpResponse.json({
         events: [],
         hasMore: false,
         framework: "unknown",
       });
     }),
-    http.get(`*/api/zero/runs/${runId}`, () => {
+    http.get("*/api/zero/runs/:id", () => {
       return HttpResponse.json({
         runId: "00000000-0000-4000-a000-000000000001",
         agentComposeVersionId: null,
@@ -1402,9 +1402,10 @@ describe("mission control page", () => {
       }),
     );
 
-    // The page's background task loop will pick up the new latestRunId and
-    // call refreshPanel$, swapping the panel entry to run-refresh-v2.
-    // The panel now renders the v2 prompt.
+    // Trigger the tasks loop to poll again — it discovers the new latestRunId
+    // and calls refreshPanel$, swapping the panel entry to run-refresh-v2.
+    triggerAblyEvent("tasks:org_default");
+
     await waitFor(() => {
       expect(screen.getByText("Prompt from run v2")).toBeInTheDocument();
     });
@@ -1431,7 +1432,7 @@ describe("mission control page", () => {
     server.use(
       http.get("*/api/zero/logs/run-close-1", () => {
         return HttpResponse.json({
-          id: "run-close-1",
+          id: "00000000-0000-4000-a000-000000000099",
           displayName: "Test Agent",
           status: "running",
           agentId: "agent-1",
@@ -1441,13 +1442,14 @@ describe("mission control page", () => {
           modelProvider: null,
           selectedModel: null,
           framework: null,
-          prompt: null,
+          scheduleId: null,
+          prompt: "",
           appendSystemPrompt: null,
           error: null,
           createdAt: "2026-04-10T10:00:00Z",
           startedAt: "2026-04-10T10:00:01Z",
           completedAt: null,
-          artifact: null,
+          artifact: { name: null, version: null },
         });
       }),
       http.get("*/api/zero/runs/run-close-1/telemetry/agent", () => {

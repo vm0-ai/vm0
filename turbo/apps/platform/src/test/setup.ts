@@ -35,18 +35,17 @@ beforeEach(() => {
   //   (render() runs inside act, then route setup updates page$ outside act).
   //   Silently ignored.
   // - Everything else: thrown so real problems surface early.
-  // Temporarily disabled to debug unhandled MSW requests
-  // vi.spyOn(console, "error").mockImplementation((...message: unknown[]) => {
-  //   const str = message.map(String).join(" ");
-  //   if (str.includes("NotSupportedError") || str.includes("AbortError")) {
-  //     return;
-  //   }
-  //   if (str.includes("not wrapped in act(")) {
-  //     return;
-  //   }
-  //   const err = message[0];
-  //   throw err instanceof Error ? err : new Error(str);
-  // });
+  vi.spyOn(console, "error").mockImplementation((...message: unknown[]) => {
+    const str = message.map(String).join(" ");
+    if (str.includes("NotSupportedError") || str.includes("AbortError")) {
+      return;
+    }
+    if (str.includes("not wrapped in act(")) {
+      return;
+    }
+    const err = message[0];
+    throw err instanceof Error ? err : new Error(err as unknown as string);
+  });
 });
 
 // Reset handlers after each test
