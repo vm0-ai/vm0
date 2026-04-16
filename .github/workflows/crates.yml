@@ -543,18 +543,25 @@ jobs:
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
 
           # Wait for OUR runner's sandbox to have a control socket.
-          # Read the run ID from our runner's status.json (not from /run/vm0/sock/)
-          # to avoid matching sandboxes from parallel CI jobs (benchmark, upgrade).
+          # Read the sandbox_id from our runner's status.json (not from
+          # /run/vm0/sock/) to avoid matching sandboxes from parallel CI
+          # jobs (benchmark, upgrade). `runner exec` / socket paths are
+          # keyed by sandbox_id (#9552), which differs from run_id.
           echo "--- Waiting for sandbox control socket ---"
           for i in $(seq 1 60); do
-            RUN_ID=$(sudo grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
-              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
-            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
-            RUN_ID=""
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$SANDBOX_ID" ] && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
+            SANDBOX_ID=""
             sleep 1
           done
-          [ -z "$RUN_ID" ] && fail "control socket not found after 60s"
-          echo "Found sandbox: $RUN_ID"
+          [ -z "$SANDBOX_ID" ] && fail "control socket not found after 60s"
+          echo "Found sandbox: $SANDBOX_ID"
+
+          # Alias retained so the rest of the script — which predates the
+          # #9552 run_id/sandbox_id split — keeps working with `runner exec`
+          # (which resolves its CLI arg against sandbox_id sock dirs).
+          RUN_ID="$SANDBOX_ID"
 
           # Test 1: basic exec
           echo "--- Test: basic exec ---"
@@ -802,17 +809,24 @@ jobs:
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
           SUBMIT_PID=$!
 
-          # Wait for sandbox to be running
+          # Wait for sandbox to be running. Post #9552, run_id and sandbox_id
+          # are distinct: `runner local cancel` takes the run_id (what submit
+          # returned), while the socket path uses sandbox_id. Read both from
+          # status.json rather than picking the first UUID we see.
           echo "--- Waiting for sandbox ---"
           for i in $(seq 1 60); do
-            RUN_ID=$(sudo grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
-              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
-            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
+            RUN_ID=$(sudo jq -r '.active_runs[0].run_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$RUN_ID" ] && [ -n "$SANDBOX_ID" ] \
+              && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
             RUN_ID=""
+            SANDBOX_ID=""
             sleep 1
           done
           [ -z "$RUN_ID" ] && fail "sandbox not found after 60s"
-          echo "Found sandbox: $RUN_ID"
+          echo "Found run $RUN_ID (sandbox $SANDBOX_ID)"
 
           # Test 1: cancel the job via runner local cancel
           echo "--- Test: runner local cancel ---"
@@ -914,19 +928,27 @@ jobs:
           echo "--- Submitting long-running job ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
 
-          # Wait for sandbox control socket
+          # Wait for sandbox control socket. Socket and api.sock paths use
+          # sandbox_id (distinct from run_id after #9552). `runner exec`
+          # resolves its CLI arg against sandbox_id sock dirs, so SANDBOX_ID
+          # is what we need here.
           echo "--- Waiting for sandbox control socket ---"
           for i in $(seq 1 60); do
-            RUN_ID=$(sudo grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
-              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
-            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
-            RUN_ID=""
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$SANDBOX_ID" ] && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
+            SANDBOX_ID=""
             sleep 1
           done
-          [ -z "$RUN_ID" ] && fail "control socket not found after 60s"
-          echo "Found sandbox: $RUN_ID"
+          [ -z "$SANDBOX_ID" ] && fail "control socket not found after 60s"
+          echo "Found sandbox: $SANDBOX_ID"
 
-          API_SOCK="/run/vm0/sock/$RUN_ID/api.sock"
+          # Alias retained so the rest of the script — which predates the
+          # #9552 run_id/sandbox_id split — keeps working with `runner exec`
+          # (which resolves its CLI arg against sandbox_id sock dirs).
+          RUN_ID="$SANDBOX_ID"
+
+          API_SOCK="/run/vm0/sock/$SANDBOX_ID/api.sock"
 
           # Helper: read current balloon actual_mib (returns 0 if VM is dead)
           balloon_mib() {

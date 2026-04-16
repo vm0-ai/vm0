@@ -239,6 +239,11 @@ async fn load_base_dir(config_path: &Path) -> Option<PathBuf> {
 async fn read_active_runs(base_dir: &Path) -> Option<Vec<(String, String)>> {
     #[derive(Deserialize)]
     struct StatusShape {
+        /// `#[serde(default)]` defends against transient schema skew during
+        /// rolling deploys: a reader that meets a stale status.json lacking
+        /// `active_runs` should fall through to the orphan path instead of
+        /// failing the whole kill command.
+        #[serde(default)]
         active_runs: Vec<ActiveRunShape>,
     }
     #[derive(Deserialize)]

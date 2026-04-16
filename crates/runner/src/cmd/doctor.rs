@@ -328,15 +328,22 @@ struct InstalledService {
     config_path: Option<PathBuf>,
 }
 
+/// One row in the per-runner jobs table. The inner `JobStatus` variant
+/// carries whichever identifier is meaningful for that row — `run_id`
+/// for tracked runs, `sandbox_id` for orphan firecrackers — so the two
+/// cannot be confused by downstream formatting.
 struct JobReport {
-    run_id: String,
     status: JobStatus,
 }
 
 enum JobStatus {
-    Running(u32),
-    NoProcess,
-    NotInStatus,
+    /// Active run with a matching firecracker process.
+    Running { run_id: String, pid: u32 },
+    /// Active run whose firecracker process is missing.
+    NoProcess { run_id: String },
+    /// Firecracker process present but not recorded in status.json.
+    /// Keyed by `sandbox_id` because no `run_id` is known.
+    NotInStatus { sandbox_id: String },
 }
 
 struct StoppedInfo {
@@ -745,6 +752,12 @@ fn find_stopped_services(
 #[derive(Deserialize)]
 struct StatusFile {
     mode: String,
+    /// `#[serde(default)]` defends against transient schema skew during
+    /// rolling deploys: if a reader binary meets a status.json still
+    /// written by an older runner (or a newer one that renamed fields
+    /// again), we surface an empty active_runs rather than failing to
+    /// parse and losing the whole report.
+    #[serde(default)]
     active_runs: Vec<ActiveRunFile>,
     started_at: String,
     #[serde(default)]
@@ -857,20 +870,24 @@ fn correlate_jobs(
     // For each active run, find the FC hosting its sandbox_id.
     for active in &status.active_runs {
         let fc = my_fcs.iter().find(|p| p.sandbox_id == active.sandbox_id);
-        let job_status = match fc {
-            Some(p) => JobStatus::Running(p.pid),
+        let status_variant = match fc {
+            Some(p) => JobStatus::Running {
+                run_id: active.run_id.clone(),
+                pid: p.pid,
+            },
             None => {
                 warnings.push(Warning::NoFirecrackerForRun {
                     run_id: active.run_id.clone(),
                     sandbox_id: active.sandbox_id.clone(),
                     base_dir: base_dir.to_path_buf(),
                 });
-                JobStatus::NoProcess
+                JobStatus::NoProcess {
+                    run_id: active.run_id.clone(),
+                }
             }
         };
         jobs.push(JobReport {
-            run_id: active.run_id.clone(),
-            status: job_status,
+            status: status_variant,
         });
     }
 
@@ -892,8 +909,9 @@ fn correlate_jobs(
                 base_dir: base_dir.to_path_buf(),
             });
             jobs.push(JobReport {
-                run_id: fc.sandbox_id.clone(),
-                status: JobStatus::NotInStatus,
+                status: JobStatus::NotInStatus {
+                    sandbox_id: fc.sandbox_id.clone(),
+                },
             });
         }
     }
@@ -1118,19 +1136,24 @@ fn print_report(
             let active_count = r
                 .jobs
                 .iter()
-                .filter(|j| matches!(j.status, JobStatus::Running(_) | JobStatus::NoProcess))
+                .filter(|j| {
+                    matches!(
+                        j.status,
+                        JobStatus::Running { .. } | JobStatus::NoProcess { .. }
+                    )
+                })
                 .count();
             println!("    Jobs:    {active_count} active");
             for job in &r.jobs {
-                match job.status {
-                    JobStatus::Running(pid) => {
-                        println!("      - run {} -> PID {pid}", job.run_id);
+                match &job.status {
+                    JobStatus::Running { run_id, pid } => {
+                        println!("      - run {run_id} -> PID {pid}");
                     }
-                    JobStatus::NoProcess => {
-                        println!("      - run {} -> NO PROCESS", job.run_id);
+                    JobStatus::NoProcess { run_id } => {
+                        println!("      - run {run_id} -> NO PROCESS");
                     }
-                    JobStatus::NotInStatus => {
-                        println!("      - run {} -> not in status.json", job.run_id);
+                    JobStatus::NotInStatus { sandbox_id } => {
+                        println!("      - sandbox {sandbox_id} -> not in status.json");
                     }
                 }
             }
@@ -1307,7 +1330,7 @@ mod tests {
         assert!(warnings.is_empty());
         assert!(matches!(
             jobs.first().unwrap().status,
-            JobStatus::Running(100)
+            JobStatus::Running { pid: 100, .. }
         ));
     }
 
@@ -1320,10 +1343,14 @@ mod tests {
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
         assert!(warnings.is_empty(), "reused sandbox must not warn");
-        assert!(matches!(
-            jobs.first().unwrap().status,
-            JobStatus::Running(200)
-        ));
+        let JobStatus::Running { run_id, pid } = &jobs.first().unwrap().status else {
+            panic!("expected Running");
+        };
+        assert_eq!(
+            run_id, "run-new",
+            "Running should carry the run_id, not sandbox_id"
+        );
+        assert_eq!(*pid, 200);
     }
 
     #[test]
@@ -1345,7 +1372,10 @@ mod tests {
         let fc: Vec<process::FirecrackerProcessInfo> = vec![];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
-        assert!(matches!(jobs.first().unwrap().status, JobStatus::NoProcess));
+        assert!(matches!(
+            jobs.first().unwrap().status,
+            JobStatus::NoProcess { .. }
+        ));
         assert_eq!(warnings.len(), 1);
         let msg = warnings[0].to_string();
         assert!(msg.contains("no firecracker"), "{msg}");
@@ -1368,6 +1398,18 @@ mod tests {
         let msg = warnings[0].to_string();
         assert!(msg.contains("sandbox-orphan"), "{msg}");
         assert!(msg.contains("not in status.json"), "{msg}");
+
+        // The orphan row must carry the sandbox_id in `NotInStatus`, not
+        // misfiled into a `run_id` variant. Type-checking this here locks
+        // in the distinction so future refactors can't quietly regress.
+        let orphan_row = jobs
+            .iter()
+            .find(|j| matches!(j.status, JobStatus::NotInStatus { .. }))
+            .expect("orphan row missing");
+        let JobStatus::NotInStatus { sandbox_id } = &orphan_row.status else {
+            panic!("orphan row must be NotInStatus");
+        };
+        assert_eq!(sandbox_id, "sandbox-orphan");
     }
 
     #[test]
