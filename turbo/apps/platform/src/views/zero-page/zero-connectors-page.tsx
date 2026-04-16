@@ -8,7 +8,11 @@ import {
   IconLoader2,
   IconDotsVertical,
 } from "@tabler/icons-react";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  isGoogleOAuthConnector,
+} from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
@@ -45,15 +49,8 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 
-function isGoogleConnector(type: string) {
-  return (
-    type === "gmail" ||
-    type === "google-sheets" ||
-    type === "google-docs" ||
-    type === "google-drive" ||
-    type === "google-calendar"
-  );
-}
+/** @deprecated Use isGoogleOAuthConnector from @vm0/core instead. Kept for tooltip usage. */
+const isGoogleConnector = isGoogleOAuthConnector;
 
 function GlobalConnectorCard({
   connector,
@@ -317,9 +314,10 @@ export function ZeroConnectorsPage() {
       return c.type === type;
     });
     if (
-      ct &&
-      ct.availableAuthMethods.length === 1 &&
-      ct.availableAuthMethods[0] === "api-token"
+      (ct &&
+        ct.availableAuthMethods.length === 1 &&
+        ct.availableAuthMethods[0] === "api-token") ||
+      isGoogleConnector(type)
     ) {
       setSelected(type);
     } else {

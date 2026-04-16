@@ -13,7 +13,11 @@ import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
 import slackPreviewImg from "./assets/Slack.png";
 import { Button, Input } from "@vm0/ui";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  isGoogleOAuthConnector,
+} from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroWorkspaceName$,
@@ -257,7 +261,10 @@ function ConnectStepContent() {
     if (connector?.connected) {
       return;
     }
-    if (connector?.availableAuthMethods.includes("api-token")) {
+    if (
+      connector?.availableAuthMethods.includes("api-token") ||
+      isGoogleOAuthConnector(type)
+    ) {
       setSelectedConnector(type);
     } else {
       // During onboarding the backend authorizes connectors for the default

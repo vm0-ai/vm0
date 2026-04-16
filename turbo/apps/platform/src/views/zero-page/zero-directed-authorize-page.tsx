@@ -1,6 +1,12 @@
 import type { ReactNode } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  isGoogleOAuthConnector,
+} from "@vm0/core";
+import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
+import { getAvatarPresets } from "./zero-avatars.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
@@ -198,6 +204,36 @@ function DirectedAuthorizeCard() {
                 <p className="w-60 text-sm text-muted-foreground">
                   {config.helpText}
                 </p>
+                {!isAuthorized &&
+                  !isConnected &&
+                  isGoogleOAuthConnector(connectorType) && (
+                    <div className="w-full mt-2 flex flex-col gap-3 rounded-lg bg-muted/50 px-4 py-4 text-left">
+                      <AvatarSvgPreview
+                        config={getAvatarPresets()[0]}
+                        size={36}
+                        className="h-9 w-9 rounded-full"
+                        alt="Zero"
+                      />
+                      <div className="text-xs leading-relaxed text-muted-foreground space-y-1.5">
+                        <p>
+                          Google will show a security warning because
+                          we&rsquo;re still completing their app verification.
+                          This is a standard review process for new integrations
+                          and does not affect your security.
+                        </p>
+                        <p>
+                          To continue, select{" "}
+                          <strong className="text-foreground">Advanced</strong>{" "}
+                          then{" "}
+                          <strong className="text-foreground">
+                            Go to vm0.ai (unsafe)
+                          </strong>
+                          . We only request the minimum permissions needed, and
+                          your credentials are encrypted at rest.
+                        </p>
+                      </div>
+                    </div>
+                  )}
               </>
             )}
           </div>

@@ -382,6 +382,7 @@ export {
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorOAuthConfig,
+  isGoogleOAuthConnector,
   hasRequiredScopes,
   getScopeDiff,
   type ScopeDiff,
