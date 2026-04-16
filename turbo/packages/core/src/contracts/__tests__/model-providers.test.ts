@@ -132,24 +132,22 @@ describe("model selection for Anthropic-native providers", () => {
   });
 });
 
-describe("Anthropic firewall base URL scope (#9560)", () => {
-  it.each(["anthropic-api-key", "claude-code-oauth-token"] as const)(
+describe("firewall base URL scoped to /v1/messages (#9560)", () => {
+  it.each([
+    ["anthropic-api-key", "https://api.anthropic.com/v1/messages"],
+    ["claude-code-oauth-token", "https://api.anthropic.com/v1/messages"],
+    ["openrouter-api-key", "https://openrouter.ai/api/v1/messages"],
+    ["moonshot-api-key", "https://api.moonshot.ai/anthropic/v1/messages"],
+    ["minimax-api-key", "https://api.minimax.io/anthropic/v1/messages"],
+    ["deepseek-api-key", "https://api.deepseek.com/anthropic/v1/messages"],
+    ["zai-api-key", "https://api.z.ai/api/anthropic/v1/messages"],
+    ["vercel-ai-gateway", "https://ai-gateway.vercel.sh/v1/messages"],
+  ] as const)(
     "%s scopes firewall to /v1/messages path prefix",
-    (type) => {
+    (type, expectedBase) => {
       const config = MODEL_PROVIDER_FIREWALL_CONFIGS[type];
       expect(config.apis).toHaveLength(1);
-      expect(config.apis[0]!.base).toBe(
-        "https://api.anthropic.com/v1/messages",
-      );
+      expect(config.apis[0]!.base).toBe(expectedBase);
     },
   );
-
-  it("third-party providers are not affected by Anthropic scoping", () => {
-    expect(
-      MODEL_PROVIDER_FIREWALL_CONFIGS["openrouter-api-key"].apis[0]!.base,
-    ).toBe("https://openrouter.ai/api");
-    expect(
-      MODEL_PROVIDER_FIREWALL_CONFIGS["moonshot-api-key"].apis[0]!.base,
-    ).toBe("https://api.moonshot.ai/anthropic");
-  });
 });
