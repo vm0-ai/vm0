@@ -35,6 +35,44 @@ test("connect button opens api-token form (CONN-I-011)", async () => {
   expect(screen.getByText("Save")).toBeInTheDocument();
 });
 
+test("connect button on Google connector opens dialog with OAuth notice (CONN-I-020)", async () => {
+  const user = userEvent.setup();
+  detachedSetupPage({ context, path: "/connectors" });
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("Connect Gmail")).toBeInTheDocument();
+  });
+
+  await user.click(screen.getByLabelText("Connect Gmail"));
+
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+  expect(
+    screen.getByText(/Google will show a security warning/),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Advanced")).toBeInTheDocument();
+  expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
+});
+
+test("connect button on api-token-only connector opens dialog without OAuth notice (CONN-I-021)", async () => {
+  const user = userEvent.setup();
+  detachedSetupPage({ context, path: "/connectors" });
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
+  });
+
+  await user.click(screen.getByLabelText("Connect Axiom"));
+
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+  expect(
+    screen.queryByText(/Google will show a security warning/),
+  ).not.toBeInTheDocument();
+});
+
 test("review button opens scope diff with added permissions (CONN-I-013)", async () => {
   const user = userEvent.setup();
   mockConnectors([{ type: "github", oauthScopes: [] }]);
