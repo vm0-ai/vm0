@@ -13,6 +13,57 @@ import { server } from "../../../../mocks/server";
 import { listCommand } from "../list";
 import chalk from "chalk";
 
+const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
+const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
+
+const connectedGithub = {
+  id: "1",
+  type: "github",
+  authMethod: "oauth",
+  externalId: "12345",
+  externalUsername: "octocat",
+  externalEmail: "octocat@github.com",
+  oauthScopes: ["repo", "project", "workflow"],
+  needsReconnect: false,
+  createdAt: "2025-01-01T00:00:00Z",
+  updatedAt: "2025-01-01T00:00:00Z",
+};
+
+function stubConnectors(connectors: Array<Record<string, unknown>>) {
+  return http.get("http://localhost:3000/api/zero/connectors", () => {
+    return HttpResponse.json({
+      connectors,
+      configuredTypes: connectors.map((c) => {
+        return c.type as string;
+      }),
+    });
+  });
+}
+
+function stubAgent(id: string, displayName: string | null) {
+  return http.get(`http://localhost:3000/api/zero/agents/${id}`, () => {
+    return HttpResponse.json({
+      agentId: id,
+      ownerId: "owner-1",
+      description: null,
+      displayName,
+      sound: null,
+      avatarUrl: null,
+      permissionPolicies: null,
+      customSkills: [],
+    });
+  });
+}
+
+function stubUserConnectors(id: string, enabledTypes: string[]) {
+  return http.get(
+    `http://localhost:3000/api/zero/agents/${id}/user-connectors`,
+    () => {
+      return HttpResponse.json({ enabledTypes });
+    },
+  );
+}
+
 describe("zero connector list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -32,87 +83,127 @@ describe("zero connector list command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
-  describe("successful list", () => {
-    it("should show connected connector with status and account", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                type: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo", "project", "workflow"],
-                needsReconnect: false,
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            configuredTypes: ["github"],
-          });
-        }),
-      );
+  describe("without agent context", () => {
+    it("renders TYPE and CONNECTED AS columns for a connected connector", async () => {
+      server.use(stubConnectors([connectedGithub]));
 
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("TYPE");
-      expect(logCalls).toContain("STATUS");
-      expect(logCalls).toContain("ACCOUNT");
+      expect(logCalls).toContain("CONNECTED AS");
+      expect(logCalls).not.toContain("ACCOUNT");
+      expect(logCalls).not.toContain("STATUS");
+      expect(logCalls).not.toContain("AUTHORIZED FOR");
       expect(logCalls).toContain("github");
-      expect(logCalls).toContain("✓");
       expect(logCalls).toContain("@octocat");
     });
 
-    it("should show not-connected status when no connectors", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
-          return HttpResponse.json({ connectors: [], configuredTypes: [] });
-        }),
-      );
+    it("renders (not connected) for types with no connector", async () => {
+      server.use(stubConnectors([]));
 
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("github");
-      expect(logCalls).not.toContain("✓");
+      expect(logCalls).toContain("(not connected)");
       expect(logCalls).not.toContain("@octocat");
     });
 
-    it("should show reconnect needed status", async () => {
+    it("renders reconnect-needed state", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                type: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo", "project", "workflow"],
-                needsReconnect: true,
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            configuredTypes: ["github"],
-          });
-        }),
+        stubConnectors([{ ...connectedGithub, needsReconnect: true }]),
       );
 
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("!");
-      expect(logCalls).toContain("(reconnect needed)");
+      expect(logCalls).toContain("@octocat (reconnect needed)");
+    });
+  });
+
+  describe("with agent context", () => {
+    it("renders AUTHORIZED FOR column with displayName when --agent is provided", async () => {
+      server.use(
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, ["github"]),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("AUTHORIZED FOR maya");
+      expect(logCalls).toContain("✓");
+    });
+
+    it("renders AUTHORIZED FOR column when $ZERO_AGENT_ID is set", async () => {
+      vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
+      server.use(
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, ["github"]),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("AUTHORIZED FOR maya");
+      expect(logCalls).toContain("✓");
+    });
+
+    it("--agent overrides $ZERO_AGENT_ID", async () => {
+      vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
+      server.use(
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, ["github"]),
+        http.get(
+          `http://localhost:3000/api/zero/agents/${ALT_AGENT_UUID}`,
+          () => {
+            return HttpResponse.json(
+              { error: { message: "should not be called", code: "ERR" } },
+              { status: 500 },
+            );
+          },
+        ),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("AUTHORIZED FOR maya");
+    });
+
+    it("falls back to agent UUID when displayName is null", async () => {
+      server.use(
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, null),
+        stubUserConnectors(AGENT_UUID, ["github"]),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(`AUTHORIZED FOR ${AGENT_UUID}`);
+    });
+
+    it("renders - for connectors the agent is not authorized for", async () => {
+      server.use(
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("AUTHORIZED FOR maya");
       expect(logCalls).not.toContain("✓");
+      expect(logCalls).toContain("-");
     });
   });
 

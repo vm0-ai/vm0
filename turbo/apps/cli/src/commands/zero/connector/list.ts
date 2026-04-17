@@ -4,25 +4,65 @@ import {
   CONNECTOR_TYPES,
   hasRequiredScopes,
   isFeatureEnabled,
+  type ConnectorListResponse,
   type ConnectorType,
 } from "@vm0/core";
 import { listZeroConnectors } from "../../../lib/api";
 import { getActiveOrg } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";
+import { resolveAgentContext } from "./agent-context";
+
+type Connector = ConnectorListResponse["connectors"][number];
+
+function renderIdentity(connector: Connector): string {
+  if (connector.externalUsername) return `@${connector.externalUsername}`;
+  if (connector.externalEmail) return connector.externalEmail;
+  return "-";
+}
+
+function renderConnectedAsCell(connector: Connector | undefined): string {
+  if (!connector) return chalk.dim("(not connected)");
+  const identity = renderIdentity(connector);
+  if (connector.needsReconnect) {
+    return chalk.yellow(`${identity} (reconnect needed)`);
+  }
+  const scopeMismatch =
+    connector.authMethod === "oauth" &&
+    !hasRequiredScopes(connector.type, connector.oauthScopes);
+  if (scopeMismatch) {
+    return chalk.yellow(`${identity} (permissions update available)`);
+  }
+  return identity;
+}
+
+const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
+
+function stripAnsi(s: string): string {
+  return s.replace(ANSI_PATTERN, "");
+}
+
+function padEndAnsi(s: string, width: number): string {
+  const visible = stripAnsi(s).length;
+  return s + " ".repeat(Math.max(0, width - visible));
+}
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all connectors and their status")
+  .option("--agent <id>", "Show per-agent authorization column")
   .action(
-    withErrorHandler(async () => {
-      const result = await listZeroConnectors();
+    withErrorHandler(async (options: { agent?: string }) => {
+      const [{ connectors }, orgId, agentCtx] = await Promise.all([
+        listZeroConnectors(),
+        getActiveOrg(),
+        resolveAgentContext(options.agent),
+      ]);
       const connectedMap = new Map(
-        result.connectors.map((c) => {
+        connectors.map((c) => {
           return [c.type, c];
         }),
       );
-      const orgId = await getActiveOrg();
 
       const allTypesRaw = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
       const allTypes: ConnectorType[] = [];
@@ -35,48 +75,49 @@ export const listCommand = new Command()
         allTypes.push(type);
       }
 
-      // Calculate column widths
       const typeWidth = Math.max(
         4,
         ...allTypes.map((t) => {
           return t.length;
         }),
       );
-      const statusText = "STATUS";
-      const statusWidth = statusText.length;
+
+      const connectedAsHeader = "CONNECTED AS";
+      const connectedCells = allTypes.map((type) => {
+        return renderConnectedAsCell(connectedMap.get(type));
+      });
+      const connectedAsWidth = Math.max(
+        connectedAsHeader.length,
+        ...connectedCells.map((c) => {
+          return stripAnsi(c).length;
+        }),
+      );
+
+      const authorizedHeader = agentCtx
+        ? `AUTHORIZED FOR ${agentCtx.displayName}`
+        : null;
 
       // Print header
-      const header = [
+      const headerParts = [
         "TYPE".padEnd(typeWidth),
-        statusText.padEnd(statusWidth),
-        "ACCOUNT",
-      ].join("  ");
-      console.log(chalk.dim(header));
+        connectedAsHeader.padEnd(connectedAsWidth),
+      ];
+      if (authorizedHeader) headerParts.push(authorizedHeader);
+      console.log(chalk.dim(headerParts.join("  ")));
 
       // Print rows
-      for (const type of allTypes) {
-        const connector = connectedMap.get(type);
-        const scopeMismatch =
-          connector !== undefined &&
-          connector.authMethod === "oauth" &&
-          !hasRequiredScopes(type, connector.oauthScopes);
-        const status = connector
-          ? connector.needsReconnect
-            ? chalk.yellow("!".padEnd(statusWidth))
-            : scopeMismatch
-              ? chalk.yellow("!".padEnd(statusWidth))
-              : chalk.green("✓".padEnd(statusWidth))
-          : chalk.dim("-".padEnd(statusWidth));
-        const account = connector?.needsReconnect
-          ? chalk.yellow("(reconnect needed)")
-          : scopeMismatch
-            ? chalk.yellow("(permissions update available)")
-            : connector?.externalUsername
-              ? `@${connector.externalUsername}`
-              : chalk.dim("-");
-
-        const row = [type.padEnd(typeWidth), status, account].join("  ");
-        console.log(row);
+      for (let i = 0; i < allTypes.length; i++) {
+        const type = allTypes[i]!;
+        const connectedCell = padEndAnsi(connectedCells[i]!, connectedAsWidth);
+        const parts = [type.padEnd(typeWidth), connectedCell];
+        if (agentCtx) {
+          parts.push(
+            agentCtx.authorizedTypes.has(type)
+              ? chalk.green("✓")
+              : chalk.dim("-"),
+          );
+        }
+        console.log(parts.join("  "));
       }
     }),
   );

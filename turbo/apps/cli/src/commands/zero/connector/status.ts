@@ -9,6 +9,8 @@ import {
 import { getZeroConnector } from "../../../lib/api";
 import { formatDateTime } from "../../../lib/domain/schedule-utils";
 import { withErrorHandler } from "../../../lib/command";
+import { resolveAgentContext } from "./agent-context";
+import { getPlatformOrigin } from "../doctor/platform-url";
 
 const LABEL_WIDTH = 16;
 
@@ -16,8 +18,9 @@ export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a connector")
   .argument("<type>", "Connector type (e.g., github)")
+  .option("--agent <id>", "Show authorization state for the given agent")
   .action(
-    withErrorHandler(async (type: string) => {
+    withErrorHandler(async (type: string, options: { agent?: string }) => {
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
         const available = Object.keys(CONNECTOR_TYPES).join(", ");
@@ -26,7 +29,10 @@ export const statusCommand = new Command()
         });
       }
 
-      const connector = await getZeroConnector(parseResult.data);
+      const [connector, agentCtx] = await Promise.all([
+        getZeroConnector(parseResult.data),
+        resolveAgentContext(options.agent),
+      ]);
 
       console.log(`Connector: ${chalk.cyan(type)}`);
       console.log();
@@ -81,6 +87,22 @@ export const statusCommand = new Command()
         console.log(
           `${"Status:".padEnd(LABEL_WIDTH)}${chalk.dim("not connected")}`,
         );
+      }
+
+      if (agentCtx) {
+        const authorized = agentCtx.authorizedTypes.has(parseResult.data);
+        const glyph = authorized ? chalk.green("✓") : chalk.dim("-");
+        console.log();
+        console.log(
+          `${"Authorized:".padEnd(LABEL_WIDTH)}${glyph} for agent ${agentCtx.displayName}`,
+        );
+        if (!authorized) {
+          const origin = await getPlatformOrigin();
+          const url = `${origin}/connectors/${parseResult.data}/authorize?agentId=${agentCtx.agentId}`;
+          console.log(
+            `${"".padEnd(LABEL_WIDTH)}${chalk.dim("Authorize:")} ${url}`,
+          );
+        }
       }
     }),
   );
