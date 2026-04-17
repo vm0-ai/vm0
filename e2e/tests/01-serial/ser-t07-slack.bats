@@ -62,8 +62,9 @@ teardown_file() {
     run slack_post_command "/vm0" "connect" "$TEAM_ID" "$SLACK_USER_ID" "$CHANNEL_ID"
     assert_success
     assert_output --partial '"response_type":"ephemeral"'
-    # Login message contains an authorize URL.
-    assert_output --partial "authorize"
+    # buildLoginMessage renders a Connect button linking to /settings/slack.
+    assert_output --partial "Please connect your account"
+    assert_output --partial "/settings/slack"
 }
 
 @test "slack: app_mention dispatches an agent run" {
