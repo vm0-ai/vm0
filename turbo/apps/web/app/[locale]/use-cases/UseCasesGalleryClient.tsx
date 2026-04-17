@@ -1,14 +1,26 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Link } from "../../../navigation";
 import Footer from "../../components/Footer";
 import Particles from "../../components/Particles";
 import { USE_CASES } from "./data";
-import type { UseCase, ConnectorRef, AvatarConfig } from "./data";
+import type { UseCase, ConnectorRef, AvatarConfig, Role } from "./data";
 
 const AVATAR_BASE = "/assets/avatar";
+
+const ROLE_OPTIONS: Role[] = [
+  "engineering",
+  "product",
+  "marketing",
+  "sales",
+  "ops",
+  "hr",
+  "founders",
+  "everyone",
+];
 
 function AgentAvatar({ config, size }: { config: AvatarConfig; size: number }) {
   const cls = "absolute inset-0 h-full w-full";
@@ -70,7 +82,7 @@ function UseCaseCard({
   return (
     <Link
       href={`/use-cases/${useCase.slug}`}
-      className="group block overflow-hidden rounded-[20px] bg-white transition-all duration-300 hover:-translate-y-0.5"
+      className="group block overflow-hidden rounded-[20px] bg-white transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-18px_rgba(15,23,42,0.18)]"
       style={{ textDecoration: "none" }}
     >
       {/* Colorful top area */}
@@ -103,9 +115,15 @@ function UseCaseCard({
         <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] group-hover:text-[#ed4e01]">
           {title}
         </h3>
-        <p className="line-clamp-3 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-          {description}
-        </p>
+
+        {/* Hover-expand drawer: collapsed (grid-rows 0fr) at rest, expanded (1fr) on hover */}
+        <div className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-out group-hover:grid-rows-[1fr]">
+          <div className="overflow-hidden">
+            <p className="text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
+              {description}
+            </p>
+          </div>
+        </div>
       </div>
     </Link>
   );
@@ -113,51 +131,98 @@ function UseCaseCard({
 
 export default function UseCasesGalleryClient() {
   const t = useTranslations("useCases");
+  const [selectedRole, setSelectedRole] = useState<Role | "all">("all");
+
+  const filtered = useMemo(() => {
+    if (selectedRole === "all") return USE_CASES;
+    return USE_CASES.filter((uc) => uc.roles.includes(selectedRole));
+  }, [selectedRole]);
 
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
       <Particles />
 
       {/* Hero */}
-      <section className="hero-section" style={{ paddingBottom: "40px" }}>
+      <section className="hero-section" style={{ paddingBottom: "32px" }}>
         <div className="container">
           <h1 className="hero-title">{t("heroTitle")}</h1>
           <p className="hero-description">{t("heroSubtitle")}</p>
         </div>
       </section>
 
-      {/* Card grid */}
-      <section style={{ paddingBottom: "120px" }}>
-        <div className="uc-grid">
-          {USE_CASES.map((uc) => {
-            return (
-              <UseCaseCard
-                key={uc.slug}
-                useCase={uc}
-                title={t(`content.${uc.slug}.title`)}
-                description={t(`content.${uc.slug}.description`)}
-              />
-            );
-          })}
-
-          {/* Coming soon */}
-          <div className="flex flex-col justify-between overflow-hidden rounded-[20px] bg-white px-6 pb-7 pt-5">
-            <div className="flex flex-col gap-2">
-              <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))]">
-                {t("gallery.moreToCome")}
-              </h3>
-              <p className="text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                {t("gallery.moreToComeDesc")}
-              </p>
-            </div>
-            <a
-              href="mailto:contact@vm0.ai"
-              className="mt-4 inline-flex items-center gap-1 text-[14px] font-medium text-[#ed4e01] transition-all hover:gap-2"
+      {/* Role filter chip bar */}
+      <section style={{ paddingBottom: "32px" }}>
+        <div className="uc-filters">
+          <div className="uc-filter-row" role="tablist" aria-label={t("role")}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedRole === "all"}
+              className={`uc-pill${selectedRole === "all" ? " uc-pill--active" : ""}`}
+              onClick={() => setSelectedRole("all")}
             >
-              {t("gallery.submitYourCase")}
-            </a>
+              {t("all")}
+            </button>
+            {ROLE_OPTIONS.map((role) => {
+              const active = selectedRole === role;
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`uc-pill${active ? " uc-pill--active" : ""}`}
+                  onClick={() => setSelectedRole(role)}
+                >
+                  {t(`roleLabels.${role}`)}
+                </button>
+              );
+            })}
           </div>
         </div>
+      </section>
+
+      {/* Card grid */}
+      <section style={{ paddingBottom: "120px" }}>
+        {filtered.length === 0 ? (
+          <div
+            className="text-center text-[15px] font-light text-[hsl(var(--muted-foreground))]"
+            style={{ padding: "48px 24px" }}
+          >
+            {t("noResults")}
+          </div>
+        ) : (
+          <div className="uc-grid">
+            {filtered.map((uc) => {
+              return (
+                <UseCaseCard
+                  key={uc.slug}
+                  useCase={uc}
+                  title={t(`content.${uc.slug}.title`)}
+                  description={t(`content.${uc.slug}.description`)}
+                />
+              );
+            })}
+
+            {/* Coming soon */}
+            <div className="flex flex-col justify-between overflow-hidden rounded-[20px] bg-white px-6 pb-7 pt-5">
+              <div className="flex flex-col gap-2">
+                <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))]">
+                  {t("gallery.moreToCome")}
+                </h3>
+                <p className="text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
+                  {t("gallery.moreToComeDesc")}
+                </p>
+              </div>
+              <a
+                href="mailto:contact@vm0.ai"
+                className="mt-4 inline-flex items-center gap-1 text-[14px] font-medium text-[#ed4e01] transition-all hover:gap-2"
+              >
+                {t("gallery.submitYourCase")}
+              </a>
+            </div>
+          </div>
+        )}
       </section>
 
       <Footer />
