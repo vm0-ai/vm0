@@ -534,8 +534,8 @@ export async function prepareStorageManifest(
 
 /** Partitioned volumes for batch vs individual resolution */
 interface PartitionedVolumes {
-  latestSkillVolumes: ResolvedVolume[];
-  latestNonSkillVolumes: ResolvedVolume[];
+  latestSystemComposeVolumes: ResolvedVolume[];
+  latestNonSystemComposeVolumes: ResolvedVolume[];
   nonLatestVolumes: ResolvedVolume[];
   latestSystemAdditional: AdditionalVolume[];
   latestNonSystemAdditional: AdditionalVolume[];
@@ -550,8 +550,8 @@ function partitionVolumes(
   additionalVolumes: AdditionalVolume[],
   volumeVersionOverrides: Record<string, string> | undefined,
 ): PartitionedVolumes {
-  const latestSkillVolumes: ResolvedVolume[] = [];
-  const latestNonSkillVolumes: ResolvedVolume[] = [];
+  const latestSystemComposeVolumes: ResolvedVolume[] = [];
+  const latestNonSystemComposeVolumes: ResolvedVolume[] = [];
   const nonLatestVolumes: ResolvedVolume[] = [];
 
   for (const volume of volumes) {
@@ -566,10 +566,10 @@ function partitionVolumes(
 
     if (volume.vasVersion !== "latest") {
       nonLatestVolumes.push(volume);
-    } else if (volume.vasStorageName.startsWith("agent-skills@")) {
-      latestSkillVolumes.push(volume);
+    } else if (volume.system === true) {
+      latestSystemComposeVolumes.push(volume);
     } else {
-      latestNonSkillVolumes.push(volume);
+      latestNonSystemComposeVolumes.push(volume);
     }
   }
 
@@ -589,8 +589,8 @@ function partitionVolumes(
   }
 
   return {
-    latestSkillVolumes,
-    latestNonSkillVolumes,
+    latestSystemComposeVolumes,
+    latestNonSystemComposeVolumes,
     nonLatestVolumes,
     latestSystemAdditional,
     latestNonSystemAdditional,
@@ -625,9 +625,9 @@ async function executeBatchResolution(
   artifactSource: ResolvedArtifact | null,
   memoryName: string | undefined,
 ): Promise<Map<string, { versionId: string; s3Key: string }>> {
-  // Phase 1: System org batch (skills + system additional volumes)
+  // Phase 1: System org batch (system compose volumes + system additional volumes)
   const systemLookups: StorageLookup[] = [
-    ...partitioned.latestSkillVolumes.map((v) => {
+    ...partitioned.latestSystemComposeVolumes.map((v) => {
       return systemVolumeLookup(v.vasStorageName);
     }),
     ...partitioned.latestSystemAdditional.map((v) => {
@@ -638,11 +638,18 @@ async function executeBatchResolution(
   const systemResults = await batchResolveLatestVersions(systemLookups);
 
   // Identify misses for fallback
-  const skillMisses = partitioned.latestSkillVolumes.filter((v) => {
-    return !systemResults.has(
-      lookupKey(SYSTEM_ORG_ID, VOLUME_ORG_USER_ID, v.vasStorageName, "volume"),
-    );
-  });
+  const systemComposeMisses = partitioned.latestSystemComposeVolumes.filter(
+    (v) => {
+      return !systemResults.has(
+        lookupKey(
+          SYSTEM_ORG_ID,
+          VOLUME_ORG_USER_ID,
+          v.vasStorageName,
+          "volume",
+        ),
+      );
+    },
+  );
   const systemAdditionalMisses = partitioned.latestSystemAdditional.filter(
     (v) => {
       return !systemResults.has(
@@ -651,12 +658,12 @@ async function executeBatchResolution(
     },
   );
 
-  // Phase 2: Remaining lookups (non-skill volumes, misses, additional, artifact, memory)
+  // Phase 2: Remaining lookups (non-system compose volumes, misses, additional, artifact, memory)
   const remainingLookups: StorageLookup[] = [
-    ...partitioned.latestNonSkillVolumes.map((v) => {
+    ...partitioned.latestNonSystemComposeVolumes.map((v) => {
       return orgVolumeLookup(agentClerkOrgId, v.vasStorageName);
     }),
-    ...skillMisses.map((v) => {
+    ...systemComposeMisses.map((v) => {
       return orgVolumeLookup(agentClerkOrgId, v.vasStorageName);
     }),
     ...systemAdditionalMisses.map((v) => {
@@ -702,10 +709,9 @@ async function resolveNonLatestVolumes(
   return Promise.all(
     volumes.map(async (volume) => {
       try {
-        const isSkill = volume.vasStorageName.startsWith("agent-skills@");
         let resolved: { versionId: string; s3Key: string } | undefined;
 
-        if (isSkill) {
+        if (volume.system === true) {
           try {
             resolved = await resolveVersion(
               SYSTEM_ORG_ID,
@@ -806,8 +812,8 @@ async function buildManifestFromResults(
 ): Promise<StorageManifest> {
   const composeEntryPromises: Promise<ManifestStorage>[] = [];
 
-  // Skill volumes: try system org, then agent org
-  for (const volume of partitioned.latestSkillVolumes) {
+  // System-flagged compose volumes: try system org, then agent org
+  for (const volume of partitioned.latestSystemComposeVolumes) {
     const resolved = lookupWithFallback(
       allResults,
       lookupKey(
@@ -845,8 +851,8 @@ async function buildManifestFromResults(
     }
   }
 
-  // Non-skill volumes: agent org only
-  for (const volume of partitioned.latestNonSkillVolumes) {
+  // Non-system compose volumes: agent org only
+  for (const volume of partitioned.latestNonSystemComposeVolumes) {
     const key = lookupKey(
       agentClerkOrgId,
       VOLUME_ORG_USER_ID,

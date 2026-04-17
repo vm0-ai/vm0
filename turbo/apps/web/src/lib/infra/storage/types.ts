@@ -26,6 +26,8 @@ export interface ResolvedVolume {
   vasVersion: string; // Version hash or "latest"
   /** When true, skip mounting without error if volume doesn't exist */
   optional?: boolean;
+  /** When true, resolve SYSTEM_ORG first, agent org as fallback */
+  system?: boolean;
 }
 
 /**
@@ -71,7 +73,6 @@ export interface AgentVolumeConfig {
       framework?: string; // Framework name (e.g., "claude-code") for mount path resolution
       volumes?: string[];
       instructions?: string; // Path to instructions file (stored as agent-instructions@{name} volume)
-      skills?: string[]; // GitHub tree URLs (stored as agent-skills@{path} volumes)
     }
   >;
   volumes?: Record<string, VolumeConfig>;
