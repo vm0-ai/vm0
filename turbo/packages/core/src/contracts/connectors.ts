@@ -674,10 +674,13 @@ const CONNECTOR_TYPES_DEF = {
     oauth: {
       authorizationUrl: "https://slack.com/oauth/v2/authorize",
       tokenUrl: "https://slack.com/api/oauth.v2.access",
+      // Note: Slack does not approve `search:read` or user `*:history`
+      // scopes outside of RTS / MCP applications. The personal connector
+      // intentionally omits them. Bot-side history access is provided
+      // separately by the org install flow's SLACK_BOT_SCOPES.
       scopes: [
         // Channels
         "channels:read",
-        "channels:history",
         // Messaging
         "chat:write",
         // Users
@@ -687,16 +690,12 @@ const CONNECTOR_TYPES_DEF = {
         "files:read",
         "files:write",
         // Direct messages (high priority)
-        "im:history",
         "im:write",
         // Reactions (high priority)
         "reactions:read",
         "reactions:write",
-        // Search (high priority)
-        "search:read",
         // Private channels (high priority)
         "groups:read",
-        "groups:history",
         // Reminders (medium priority)
         "reminders:read",
         "reminders:write",
@@ -705,8 +704,6 @@ const CONNECTOR_TYPES_DEF = {
         "pins:write",
         // User groups (medium priority)
         "usergroups:read",
-        // Multi-person DMs (medium priority)
-        "mpim:history",
         // Do Not Disturb (low priority)
         "dnd:read",
         // Bookmarks (low priority)
