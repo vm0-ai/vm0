@@ -179,11 +179,14 @@ const router = tsr.router(runnersJobClaimContract, {
         })
       : null;
 
-    // Return execution context (context already prepared at job creation)
+    // Return execution context (context already prepared at job creation).
+    // Spread storedContext so any future field added to storedExecutionContextSchema
+    // auto-forwards — avoids the silent-drop class of bug (see #9868).
     // Note: apiUrl is not returned - runner uses its configured server.url
     return {
       status: 200 as const,
       body: {
+        ...storedContext,
         runId: run.id,
         prompt: run.prompt,
         appendSystemPrompt: run.appendSystemPrompt,
@@ -191,26 +194,7 @@ const router = tsr.router(runnersJobClaimContract, {
         vars: (run.vars as Record<string, string>) ?? null,
         checkpointId: run.resumedFromCheckpointId ?? null,
         sandboxToken,
-        // From stored context (prepared at job creation):
-        workingDir: storedContext.workingDir,
-        storageManifest: storedContext.storageManifest,
-        environment: storedContext.environment,
-        resumeSession: storedContext.resumeSession,
         secretValues, // Decrypted secret values for log masking
-        encryptedSecrets: storedContext.encryptedSecrets, // Encrypted blob for auth resolution
-        cliAgentType: storedContext.cliAgentType,
-        firewalls: storedContext.firewalls,
-        networkPolicies: storedContext.networkPolicies,
-        disallowedTools: storedContext.disallowedTools,
-        tools: storedContext.tools,
-        settings: storedContext.settings,
-        experimentalProfile: storedContext.experimentalProfile,
-        debugNoMockClaude: storedContext.debugNoMockClaude,
-        captureNetworkBodies: storedContext.captureNetworkBodies,
-        apiStartTime: storedContext.apiStartTime,
-        userTimezone: storedContext.userTimezone,
-        memoryName: storedContext.memoryName,
-        featureFlags: storedContext.featureFlags,
       },
     };
   },

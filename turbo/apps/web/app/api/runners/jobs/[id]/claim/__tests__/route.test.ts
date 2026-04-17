@@ -530,5 +530,52 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       expect(data.settings).toBeUndefined();
       expect(data.tools).toBeUndefined();
     });
+
+    // Regression for #9868 — claim route used to hand-pick fields from
+    // storedContext and silently dropped secretConnectorMap, breaking the
+    // mitmproxy OAuth refresh path. Pin both secretConnectorMap and
+    // encryptedSecrets so any future refactor of the response body can't
+    // drop them without tripping a test.
+    it("should forward secretConnectorMap and encryptedSecrets to the runner", async () => {
+      const { versionId } = await createTestCompose(
+        "test-secret-connector-map",
+      );
+
+      const encryptedSecrets = encryptSecretsMap(
+        { GMAIL_ACCESS_TOKEN: "fake-access-token" },
+        globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+      );
+      const secretConnectorMap = {
+        GMAIL_ACCESS_TOKEN: "gmail",
+        GMAIL_TOKEN: "gmail",
+      };
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        "vm0/default",
+        { encryptedSecrets, secretConnectorMap },
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.secretConnectorMap).toEqual(secretConnectorMap);
+      expect(data.encryptedSecrets).toBe(encryptedSecrets);
+    });
   });
 });

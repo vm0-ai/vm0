@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
-import { pathname } from "../../../signals/location.ts";
+import { pathname, search } from "../../../signals/location.ts";
 
 const context = testContext();
 
@@ -191,5 +191,34 @@ describe("onboarding navigation", () => {
     await waitFor(() => {
       expect(pathname()).not.toBe("/onboarding");
     });
+  });
+
+  it("should forward ?prompt= and ?connector= to /onboarding", async () => {
+    mockOnboardingNeededAdmin();
+
+    detachedSetupPage({
+      context,
+      path: "/?prompt=summarize%20this&connector=gmail,slack",
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/onboarding");
+    });
+
+    const forwarded = new URLSearchParams(search());
+    expect(forwarded.get("prompt")).toBe("summarize this");
+    expect(forwarded.get("connector")).toBe("gmail,slack");
+  });
+
+  it("should redirect to /onboarding without query string when no params", async () => {
+    mockOnboardingNeededAdmin();
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/onboarding");
+    });
+
+    expect(search()).toBe("");
   });
 });

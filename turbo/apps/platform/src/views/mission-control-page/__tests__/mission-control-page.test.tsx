@@ -9,11 +9,10 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import {
   addOptimisticTask$,
-  setupTasksLoop$,
   taskSignals$,
 } from "../../../signals/mission-control-page/mission-control-tasks.ts";
 import { createAndShowChatTask$ } from "../../../signals/mission-control-page/mission-control.ts";
-import { detach, Reason } from "../../../signals/utils.ts";
+import { triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 
@@ -56,13 +55,14 @@ function mockTasksAPI(
   );
 }
 
-function mockActivityAPIs(runId: string) {
+function mockActivityAPIs(_runId?: string, overrides?: { status?: string }) {
+  const status = overrides?.status ?? "completed";
   server.use(
-    http.get(`*/api/zero/logs/${runId}`, () => {
+    http.get("*/api/zero/logs/:id", () => {
       return HttpResponse.json({
-        id: runId,
+        id: "00000000-0000-4000-a000-000000000001",
         displayName: "Test Agent",
-        status: "completed",
+        status,
         agentId: "agent-1",
         sessionId: null,
         triggerSource: null,
@@ -70,17 +70,36 @@ function mockActivityAPIs(runId: string) {
         modelProvider: null,
         selectedModel: null,
         framework: null,
-        prompt: null,
+        scheduleId: null,
+        prompt: "",
         appendSystemPrompt: null,
         error: null,
         createdAt: "2026-04-10T10:00:00Z",
         startedAt: "2026-04-10T10:00:01Z",
-        completedAt: "2026-04-10T10:00:05Z",
-        artifact: null,
+        completedAt: status === "completed" ? "2026-04-10T10:00:05Z" : null,
+        artifact: { name: null, version: null },
       });
     }),
-    http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
-      return HttpResponse.json({ events: [], hasMore: false });
+    http.get("*/api/zero/runs/:id/telemetry/agent", () => {
+      return HttpResponse.json({
+        events: [],
+        hasMore: false,
+        framework: "unknown",
+      });
+    }),
+    http.get("*/api/zero/runs/:id", () => {
+      return HttpResponse.json({
+        runId: "00000000-0000-4000-a000-000000000001",
+        agentComposeVersionId: null,
+        status,
+        prompt: "",
+        appendSystemPrompt: null,
+        result: null,
+        createdAt: "2026-04-10T10:00:00Z",
+      });
+    }),
+    http.get("*/api/zero/queue-position", () => {
+      return HttpResponse.json({ position: 0 });
     }),
   );
 }
@@ -157,6 +176,7 @@ describe("mission control page", () => {
           agentId: "00000000-0000-4000-a000-000000000000",
           chatMessages: [],
           latestSessionId: null,
+          activeRunIds: [],
           createdAt: "2026-04-10T10:00:00Z",
           updatedAt: "2026-04-10T10:00:00Z",
         });
@@ -442,7 +462,12 @@ describe("mission control page", () => {
     detachedSetupPage({
       context,
       path: "/_/mission-control",
-      withoutRender: true,
+    });
+
+    // Wait for the page setup's tasks loop to complete its first fetch,
+    // which confirms realtime channel is established.
+    await waitFor(() => {
+      expect(screen.getByText("No active tasks")).toBeInTheDocument();
     });
 
     // Insert optimistic entry with optimisticInsertedAt set 31 seconds in the past
@@ -457,7 +482,7 @@ describe("mission control page", () => {
     );
     dateSpy.mockRestore();
 
-    // Entry must exist before the loop runs
+    // Entry must exist before the next poll
     const signalsBefore = await context.store.get(taskSignals$);
     expect(
       signalsBefore.some((ts) => {
@@ -465,10 +490,8 @@ describe("mission control page", () => {
       }),
     ).toBeTruthy();
 
-    // Run the loop with the test-scoped signal — Date.now() returns real time
-    // (31s after staleInsertedAt), so the TTL check fires and prunes the entry.
-    // The loop is aborted by afterEach when the test context signal is aborted.
-    detach(context.store.set(setupTasksLoop$, context.signal), Reason.Daemon);
+    // Trigger the tasks loop to poll again — the TTL check prunes the stale entry.
+    triggerAblyEvent("tasks:org_default");
 
     await waitFor(async () => {
       const signals = await context.store.get(taskSignals$);
@@ -1380,9 +1403,10 @@ describe("mission control page", () => {
       }),
     );
 
-    // The page's background task loop will pick up the new latestRunId and
-    // call refreshPanel$, swapping the panel entry to run-refresh-v2.
-    // The panel now renders the v2 prompt.
+    // Trigger the tasks loop to poll again — it discovers the new latestRunId
+    // and calls refreshPanel$, swapping the panel entry to run-refresh-v2.
+    triggerAblyEvent("tasks:org_default");
+
     await waitFor(() => {
       expect(screen.getByText("Prompt from run v2")).toBeInTheDocument();
     });
@@ -1409,7 +1433,7 @@ describe("mission control page", () => {
     server.use(
       http.get("*/api/zero/logs/run-close-1", () => {
         return HttpResponse.json({
-          id: "run-close-1",
+          id: "00000000-0000-4000-a000-000000000099",
           displayName: "Test Agent",
           status: "running",
           agentId: "agent-1",
@@ -1419,13 +1443,14 @@ describe("mission control page", () => {
           modelProvider: null,
           selectedModel: null,
           framework: null,
-          prompt: null,
+          scheduleId: null,
+          prompt: "",
           appendSystemPrompt: null,
           error: null,
           createdAt: "2026-04-10T10:00:00Z",
           startedAt: "2026-04-10T10:00:01Z",
           completedAt: null,
-          artifact: null,
+          artifact: { name: null, version: null },
         });
       }),
       http.get("*/api/zero/runs/run-close-1/telemetry/agent", () => {

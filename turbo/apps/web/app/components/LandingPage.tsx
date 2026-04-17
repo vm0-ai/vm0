@@ -1584,7 +1584,7 @@ export default function LandingPage({
         <section className="px-5 py-10 sm:px-6 sm:py-12 md:py-16">
           <div className="mx-auto max-w-[1152px]">
             <div className="reveal flex flex-col items-center">
-              <h2 className="landing-heading whitespace-nowrap text-center text-[22px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[28px] md:text-[36px]">
+              <h2 className="landing-heading text-center text-[22px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[28px] md:whitespace-nowrap md:text-[36px]">
                 {t("comparison.heading")}
               </h2>
             </div>

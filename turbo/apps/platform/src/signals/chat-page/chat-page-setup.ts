@@ -74,6 +74,10 @@ export const setupChatPage$ = command(
       );
     }
 
-    await set(thread.loadMessages$, signal);
+    await get(thread.groupedChatMessages$);
+    signal.throwIfAborted();
+    set(thread.scrollToBottom$);
+
+    await set(thread.loadPagedMessages$, signal);
   },
 );

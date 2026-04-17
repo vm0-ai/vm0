@@ -14,12 +14,9 @@ export default defineConfig({
         __dirname,
         "./src/test/mocks/clerk-react.ts",
       ),
-      // Resolve ably via the stable pnpm virtual store path.
-      // Vitest does not read tsconfig paths, so an explicit alias is required.
-      ably: path.resolve(
-        __dirname,
-        "../../node_modules/.pnpm/node_modules/ably",
-      ),
+      // Mock ably in tests so setupRealtime$ creates a fake channel and
+      // setAblyLoop$ uses the real subscribe/deferred code path.
+      ably: path.resolve(__dirname, "./src/mocks/ably.ts"),
     },
   },
   define: {

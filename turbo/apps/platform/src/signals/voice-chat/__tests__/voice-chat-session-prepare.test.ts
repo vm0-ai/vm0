@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { detach, Reason } from "../../utils.ts";
 import { setupVoiceChatPage$ } from "../voice-chat-setup.ts";
 import {
@@ -18,8 +19,8 @@ const context = testContext();
 // Must match the defaultAgentId from the onboarding mock (api-onboarding.ts)
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
-function setup() {
-  detachedSetupPage({
+async function setup() {
+  await setupPage({
     context,
     path: "/voice-chat",
     withoutRender: true,
@@ -73,7 +74,7 @@ function mockSessionEndpointError() {
 describe("chat mode preparation cache", () => {
   describe("setupVoiceChatPage$ proactive preparation", () => {
     it("should fire preparation request on page load", async () => {
-      setup();
+      await setup();
       const calls = mockPrepareEndpoint([{ status: "ready" }]);
 
       await context.store.set(setupVoiceChatPage$, context.signal);
@@ -90,7 +91,7 @@ describe("chat mode preparation cache", () => {
     });
 
     it("should not block page setup when preparation fails", async () => {
-      setup();
+      await setup();
       server.use(
         http.post("*/api/zero/voice-chat/prepare", () => {
           return new HttpResponse(null, { status: 500 });
@@ -102,7 +103,7 @@ describe("chat mode preparation cache", () => {
     });
 
     it("should send mode chat in preparation request", async () => {
-      setup();
+      await setup();
       const calls = mockPrepareEndpoint([{ status: "preparing" }]);
 
       await context.store.set(setupVoiceChatPage$, context.signal);
@@ -120,7 +121,7 @@ describe("chat mode preparation cache", () => {
 
   describe("startVoiceChat$ preparation before session", () => {
     it("should call preparation and proceed to session when already ready", async () => {
-      setup();
+      await setup();
       const prepCalls = mockPrepareEndpoint([{ status: "ready" }]);
       const sessionCalls = mockSessionEndpointError();
 
@@ -142,7 +143,7 @@ describe("chat mode preparation cache", () => {
     });
 
     it("should poll preparation until ready then proceed to session", async () => {
-      setup();
+      await setup();
       const prepCalls = mockPrepareEndpoint([
         { status: "preparing" },
         { status: "preparing" },
@@ -150,7 +151,18 @@ describe("chat mode preparation cache", () => {
       ]);
       const sessionCalls = mockSessionEndpointError();
 
-      await context.store.set(startVoiceChat$, context.signal);
+      const done = context.store.set(startVoiceChat$, context.signal);
+
+      await vi.waitFor(() => {
+        expect(prepCalls.length).toBeGreaterThanOrEqual(1);
+      });
+      triggerAblyEvent("voice:prep:test-user-123");
+      await vi.waitFor(() => {
+        expect(prepCalls.length).toBeGreaterThanOrEqual(2);
+      });
+      triggerAblyEvent("voice:prep:test-user-123");
+
+      await done;
 
       // Initial call + 2 poll calls (preparing, ready)
       expect(prepCalls.length).toBeGreaterThanOrEqual(3);
@@ -160,7 +172,7 @@ describe("chat mode preparation cache", () => {
     });
 
     it("should proceed to session when preparation API fails", async () => {
-      setup();
+      await setup();
       server.use(
         http.post("*/api/zero/voice-chat/prepare", () => {
           return new HttpResponse(null, { status: 500 });
@@ -176,14 +188,21 @@ describe("chat mode preparation cache", () => {
     });
 
     it("should proceed to session when preparation poll returns failed", async () => {
-      setup();
+      await setup();
       const prepCalls = mockPrepareEndpoint([
         { status: "preparing" },
         { status: "failed" },
       ]);
       const sessionCalls = mockSessionEndpointError();
 
-      await context.store.set(startVoiceChat$, context.signal);
+      const done = context.store.set(startVoiceChat$, context.signal);
+
+      await vi.waitFor(() => {
+        expect(prepCalls.length).toBeGreaterThanOrEqual(1);
+      });
+      triggerAblyEvent("voice:prep:test-user-123");
+
+      await done;
 
       // Initial call + 1 poll (failed stops the loop)
       expect(prepCalls.length).toBeGreaterThanOrEqual(2);
@@ -288,7 +307,7 @@ describe("chat mode preparation cache", () => {
     }
 
     it("should pre-fetch cached events before WebRTC connection", async () => {
-      setup();
+      await setup();
       mockPrepareEndpoint([{ status: "ready" }]);
       mockSessionPrepared();
       mockActivateOk();
@@ -329,7 +348,7 @@ describe("chat mode preparation cache", () => {
     });
 
     it("should gracefully handle context fetch failure on cached path", async () => {
-      setup();
+      await setup();
       mockPrepareEndpoint([{ status: "ready" }]);
       mockSessionPrepared();
       mockActivateOk();
@@ -453,7 +472,7 @@ describe("chat mode preparation cache", () => {
     }
 
     it("should pre-fetch cached events before WebRTC connection", async () => {
-      setup();
+      await setup();
       mockMeetingSessionPrepared();
       mockActivateOk();
       const ctxCalls = mockContextEndpoint();

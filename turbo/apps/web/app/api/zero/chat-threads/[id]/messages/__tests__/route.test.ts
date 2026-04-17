@@ -1,0 +1,301 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { GET } from "../route";
+import { POST } from "../../../route";
+import {
+  createTestRequest,
+  createTestCompose,
+  insertTestChatMessage,
+  addTestRunToThread,
+  insertTestAssistantEventMessages,
+} from "../../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
+import { transitionRunStatus } from "../../../../../../../src/lib/infra/run/run-status";
+
+const context = testContext();
+
+describe("GET /api/zero/chat-threads/:threadId/messages", () => {
+  let testComposeId: string;
+  let testUserId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    const user = await context.setupUser();
+    testUserId = user.userId;
+
+    const { composeId } = await createTestCompose(uniqueId("msg-page"));
+    testComposeId = composeId;
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await GET(
+      createTestRequest(
+        "http://localhost:3000/api/zero/chat-threads/some-thread-id/messages",
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should return 404 for a non-existent thread", async () => {
+    const response = await GET(
+      createTestRequest(
+        "http://localhost:3000/api/zero/chat-threads/00000000-0000-0000-0000-000000000000/messages",
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    const data = await response.json();
+    expect(data.error.code).toBe("NOT_FOUND");
+  });
+
+  it("should return 404 for a thread owned by another user", async () => {
+    // Create thread as user 1
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const { id: threadId } = await createRes.json();
+
+    // Switch to user 2
+    await context.setupUser({ prefix: "other-user" });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages`,
+      ),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("should return empty messages list for a thread with no messages", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const { id: threadId } = await createRes.json();
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.messages).toEqual([]);
+    expect(data.hasMore).toBe(false);
+  });
+
+  it("should return messages in ascending createdAt order", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "user",
+      content: "Hello",
+    });
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "Hi there",
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.messages).toHaveLength(2);
+    expect(data.messages[0].role).toBe("user");
+    expect(data.messages[0].content).toBe("Hello");
+    expect(data.messages[1].role).toBe("assistant");
+    expect(data.messages[1].content).toBe("Hi there");
+    expect(data.hasMore).toBe(false);
+    // Verify createdAt is a valid ISO 8601 string
+    expect(new Date(data.messages[0].createdAt).toISOString()).toBe(
+      data.messages[0].createdAt,
+    );
+  });
+
+  it("should paginate using sinceId cursor", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const msg1 = await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "user",
+      content: "First",
+    });
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "Second",
+    });
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "user",
+      content: "Third",
+    });
+
+    // Fetch messages after msg1 (the first message)
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages?sinceId=${msg1.id}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.messages).toHaveLength(2);
+    expect(data.messages[0].content).toBe("Second");
+    expect(data.messages[1].content).toBe("Third");
+    expect(data.hasMore).toBe(false);
+  });
+
+  it("should set hasMore=true when more messages exist beyond the limit", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    // Insert 3 messages, then request with limit=2
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "user",
+      content: "A",
+    });
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "B",
+    });
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "user",
+      content: "C",
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages?limit=2`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.messages).toHaveLength(2);
+    expect(data.hasMore).toBe(true);
+  });
+
+  it("should return only user message when run has no assistant events", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "cancelled",
+      prompt: "test",
+    });
+    await addTestRunToThread(threadId, runId, testUserId, "test");
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.messages).toHaveLength(1);
+    expect(data.messages[0].role).toBe("user");
+  });
+
+  it("should not expose run-level error on event-backed assistant rows", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "running",
+      prompt: "test",
+    });
+    await addTestRunToThread(threadId, runId, testUserId, "test");
+    await insertTestAssistantEventMessages(runId, threadId, [
+      { sequenceNumber: 0, content: "Partial response" },
+    ]);
+    await transitionRunStatus(
+      runId,
+      {
+        status: "timeout",
+        completedAt: new Date(),
+        error: "Run timed out (no heartbeat)",
+      },
+      ["pending", "running"],
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+
+    const eventRow = data.messages.find(
+      (m: { role: string; content: string | null }) => {
+        return m.role === "assistant" && m.content === "Partial response";
+      },
+    );
+    expect(eventRow).toBeDefined();
+    expect(eventRow.error).toBeUndefined();
+  });
+});

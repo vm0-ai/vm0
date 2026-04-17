@@ -13,8 +13,6 @@ import { clerk$ } from "../auth.ts";
 
 type PreparationStatus = "idle" | "preparing" | "ready" | "failed";
 
-const POLL_INTERVAL_MS = 5000;
-
 // --- Internal state ---
 
 const internalPrepStatus$ = state<PreparationStatus>("idle");
@@ -121,13 +119,7 @@ export const triggerPreparation$ = command(
 
       return false;
     });
-    await set(
-      setAblyLoop$,
-      `voice:prep:${userId}`,
-      pollBody$,
-      POLL_INTERVAL_MS,
-      signal,
-    );
+    await set(setAblyLoop$, `voice:prep:${userId}`, pollBody$, signal);
   },
 );
 

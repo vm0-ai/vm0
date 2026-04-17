@@ -11,24 +11,40 @@ const context = testContext();
 
 function mockChatSessionAPIs() {
   server.use(
+    http.get(
+      "*/api/zero/chat-threads/session-thread-1/messages",
+      ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("sinceId")) {
+          return HttpResponse.json({ messages: [], hasMore: false });
+        }
+        return HttpResponse.json({
+          messages: [
+            {
+              id: "msg-1",
+              role: "user",
+              content: "Run the task",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-2",
+              role: "assistant",
+              content: "Task is running.",
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+          hasMore: false,
+        });
+      },
+    ),
     http.get("*/api/zero/chat-threads/:id", () => {
       return HttpResponse.json({
         id: "session-thread-1",
         title: "Session navigation test",
         agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages: [
-          {
-            role: "user",
-            content: "Run the task",
-            createdAt: "2026-03-10T00:00:00Z",
-          },
-          {
-            role: "assistant",
-            content: "Task is running.",
-            createdAt: "2026-03-10T00:00:01Z",
-          },
-        ],
+        chatMessages: [],
         latestSessionId: "session-wrapper-1",
+        activeRunIds: [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
       });

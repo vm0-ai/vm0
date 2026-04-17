@@ -47,7 +47,6 @@ import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
 import { setupRealtime$ } from "./realtime.ts";
-import { throwIfNotAbort } from "./utils.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -312,6 +311,7 @@ export const bootstrap$ = command(
 
     set(handleBillingRedirect$);
     set(handleSlackRedirect$);
+    await set(setupRealtime$, signal);
 
     await Promise.all([
       set(setupGlobalMethod$, signal),
@@ -320,7 +320,6 @@ export const bootstrap$ = command(
       set(startSkeletonCycling$, signal),
       (async () => {
         await set(setupClerk$, signal);
-        void set(setupRealtime$, signal).catch(throwIfNotAbort);
         await set(watchOrgSwitch$, signal);
       })(),
       set(setupRoutes$, signal),

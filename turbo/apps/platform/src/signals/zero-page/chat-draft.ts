@@ -232,7 +232,7 @@ export const talkDraft$ = computed((get) => {
  * Returns `talkDraft$` when there is no chatThreadId (talk page / landing),
  * or the thread's draft from the map.
  */
-export const currentDraft$ = computed((get) => {
+const currentDraft$ = computed((get) => {
   const threadId = get(currentChatThreadId$);
   if (!threadId) {
     return get(talkDraft$);
@@ -240,27 +240,9 @@ export const currentDraft$ = computed((get) => {
   return get(internalDraftMap$)[threadId] ?? null;
 });
 
-// ---------------------------------------------------------------------------
-// Convenience signals — backward-compatible API
-// ---------------------------------------------------------------------------
-
-export const zeroChatInput$ = computed((get) => {
+const zeroChatInput$ = computed((get) => {
   const draft = get(currentDraft$);
   return draft ? get(draft.input$) : "";
-});
-
-export const setZeroChatInput$ = command(({ get, set }, value: string) => {
-  const draft = get(currentDraft$);
-  if (draft) {
-    set(draft.setInput$, value);
-  }
-});
-
-export const clearZeroChatInput$ = command(({ get, set }) => {
-  const draft = get(currentDraft$);
-  if (draft) {
-    set(draft.setInput$, "");
-  }
 });
 
 export const zeroChatAttachments$ = computed((get) => {

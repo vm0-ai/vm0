@@ -14,6 +14,36 @@ describe("chat skeleton on switch", () => {
     const threadBDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
+      http.get(
+        "*/api/zero/chat-threads/:id/messages",
+        async ({ request, params }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          const id = params.id as string;
+          if (id === "thread-b") {
+            await threadBDeferred.promise;
+          }
+          return HttpResponse.json({
+            messages: [
+              {
+                id: "msg-1",
+                role: "user" as const,
+                content: `Question for ${id}`,
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-2",
+                role: "assistant" as const,
+                content: `Answer for ${id}`,
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
       http.get("*/api/zero/chat-threads/:id", async ({ params }) => {
         const id = params.id as string;
         if (id === "thread-b") {
@@ -23,19 +53,9 @@ describe("chat skeleton on switch", () => {
           id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [
-            {
-              role: "user" as const,
-              content: `Question for ${id}`,
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-            {
-              role: "assistant" as const,
-              content: `Answer for ${id}`,
-              createdAt: "2026-03-10T00:00:01Z",
-            },
-          ],
+          chatMessages: [],
           latestSessionId: null,
+          activeRunIds: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });

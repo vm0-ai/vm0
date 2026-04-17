@@ -332,7 +332,7 @@ pub async fn run_start(
         min_memory_mb,
         kmsg_handle,
         dns_handle,
-        mode_rx: None,
+        signal_override: None,
     };
 
     run(config).await
@@ -362,9 +362,10 @@ struct RunConfig {
     min_memory_mb: u32,
     kmsg_handle: kmsg_log::KmsgHandle,
     dns_handle: dns::DnsProxy,
-    /// External mode channel. When `Some`, the signal handler is not spawned
-    /// and the caller controls mode transitions directly.
-    mode_rx: Option<tokio::sync::watch::Receiver<RunnerMode>>,
+    /// External signal controller. When `Some`, the real signal handler is
+    /// not spawned and the caller drives mode transitions and hard-shutdown
+    /// state directly. Used by integration tests.
+    signal_override: Option<SignalController>,
 }
 
 type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
@@ -392,7 +393,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         min_memory_mb,
         kmsg_handle,
         dns_handle,
-        mode_rx: external_mode_rx,
+        signal_override,
     } = config;
 
     // Build per-profile factories via the sandbox runtime.
@@ -449,7 +450,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Signal handling / mode channel
     // -----------------------------------------------------------------------
-    let mut mode_rx = external_mode_rx.unwrap_or_else(|| setup_signal_handler(cancel.clone()));
+    let signal = signal_override
+        .unwrap_or_else(|| SignalController::spawn(cancel.clone(), Arc::clone(&cancel_tokens)));
+    let mut mode_rx = signal.mode_rx;
+    let mode_tx = signal.mode_tx;
+    let signal_handler_abort = signal.handler_abort;
 
     // -----------------------------------------------------------------------
     // Idle pool cleanup interval (every 10 seconds)
@@ -505,7 +510,91 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             status.set_mode(mode).await;
         }
         match mode {
-            RunnerMode::Draining | RunnerMode::Stopped => break,
+            // Stopped should not normally reach here — teardown sets it and
+            // exits. Treat as a safety break.
+            RunnerMode::Stopped => break,
+            // Stopping entry — skip the Draining soft-drain and go straight
+            // to teardown.
+            RunnerMode::Stopping => break,
+            RunnerMode::Draining => {
+                // Soft drain. Destroy the idle pool on entry (releases
+                // budget — matches pre-split teardown behavior). Heartbeats
+                // and mitm keep running. Exit the arm when any of: jobs
+                // drain naturally / mode flips externally (Running on
+                // SIGUSR2, Stopping on SIGTERM/SIGINT).
+                drain_idle_pool(&idle_pool, &budget, &status, "draining").await;
+
+                'draining: loop {
+                    if jobs.is_empty() {
+                        // Natural drain complete — commit to Stopping so
+                        // teardown is observable to heartbeat and status.json.
+                        // Broadcasting via mode_tx keeps mode_rx consistent
+                        // with current_mode for the next outer-loop iteration.
+                        //
+                        // Guard the transition on `mode == Draining`: an
+                        // unconditional `send(Stopping)` would silently
+                        // overwrite a concurrent SIGUSR2 that flipped us back
+                        // to Running. `send_if_modified` with the Draining
+                        // check lets SIGUSR2 win the race — resume should
+                        // never lose to an auto-transition.
+                        info!("draining: jobs drained, transitioning to Stopping");
+                        let transitioned = mode_tx.send_if_modified(|v| {
+                            if *v == RunnerMode::Draining {
+                                *v = RunnerMode::Stopping;
+                                true
+                            } else {
+                                // SIGUSR2 raced us to Running — keep that.
+                                false
+                            }
+                        });
+                        if transitioned {
+                            // Live observability: fire an immediate "stopping"
+                            // heartbeat so operator dashboards see the
+                            // transition before teardown completes and the
+                            // runner disappears. Otherwise the last live tick
+                            // is the previous "draining" heartbeat (up to 10s
+                            // stale) and the only "stopping" signal would be
+                            // the terminal heartbeat during teardown.
+                            send_heartbeat(&hb_ctx, RunnerMode::Stopping).await;
+                        }
+                        break 'draining;
+                    }
+
+                    maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
+
+                    tokio::select! {
+                        _ = mode_rx.changed() => {
+                            // External transition (SIGUSR2 → Running or
+                            // SIGTERM → Stopping). Re-evaluate at outer loop top.
+                            break 'draining;
+                        }
+                        result = jobs.join_next() => {
+                            handle_job_result(result, &cancel_tokens).await;
+                        }
+                        Some(result) = destroy_tasks.join_next() => {
+                            if let Err(e) = result {
+                                warn!(error = %e, "destroy task panicked");
+                            }
+                        }
+                        _ = mitm_crash_rx.recv() => {
+                            warn!("mitmproxy exited unexpectedly, scheduling restart");
+                            mitm_retry.schedule();
+                        }
+                        result = recv_retry(&mut mitm_retry.handle) => {
+                            handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
+                        }
+                        () = sleep_until_retry(&mitm_retry.restart_at) => {}
+                        _ = heartbeat_tick.tick() => {
+                            send_heartbeat(&hb_ctx, current_mode).await;
+                        }
+                    }
+                }
+
+                // Re-read mode at outer loop top: Running → resume normal
+                // discovery; Stopping → break to teardown; Draining shouldn't
+                // happen (the arm only exits on a mode change or commit).
+                continue;
+            }
             RunnerMode::Running => {}
         }
 
@@ -605,6 +694,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         continue;
                     }
                     tokens.insert(run_id, job_cancel.clone());
+                }
+                // Close a TOCTOU race against hard shutdown: the signal
+                // handler sends Stopping *before* locking cancel_tokens. If
+                // the handler's iteration ran over an empty map between our
+                // discover and insert, we catch it here by re-reading mode.
+                // The watch channel's write/read fence makes this check
+                // happens-after the send(Stopping).
+                if matches!(*mode_rx.borrow(), RunnerMode::Stopping) {
+                    job_cancel.cancel();
                 }
                 // claim() runs in the branch handler — non-interruptible,
                 // so a successful claim is always paired with complete().
@@ -773,22 +871,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // same Mutex that the still-alive discover_fut holds.
     drop(discover_fut);
 
-    // Drain idle pool first — these VMs hold budget reservations.
-    let idle_entries = idle_pool.lock().await.drain();
-    if !idle_entries.is_empty() {
-        info!(count = idle_entries.len(), "draining idle VMs");
-        for entry in idle_entries {
-            let vcpu = entry.vcpu;
-            let memory_mb = entry.memory_mb;
-            entry.stop_and_destroy().await;
-            budget.release(vcpu, memory_mb);
-        }
-    }
+    // Drain idle pool first — these VMs hold budget reservations. This
+    // also clears `idle_vms` in status.json so the final snapshot is
+    // consistent with the empty pool.
+    drain_idle_pool(&idle_pool, &budget, &status, "shutdown").await;
 
     provider.shutdown().await;
 
-    // Send final heartbeat with draining state so the server stops routing
-    // jobs to this runner immediately, without waiting for TTL expiry.
+    // Send final heartbeat with Stopping so the server stops routing jobs
+    // to this runner immediately, without waiting for TTL expiry.
     {
         let pool = idle_pool.lock().await;
         let state = collect_heartbeat_state(
@@ -798,7 +889,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             &profiles,
             &budget,
             &pool,
-            RunnerMode::Draining,
+            RunnerMode::Stopping,
         );
         drop(pool);
         provider.heartbeat(&state).await;
@@ -840,6 +931,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
     if let Some(h) = mitm_retry.handle {
         h.abort();
+    }
+    if let Some(abort) = signal_handler_abort {
+        abort.abort();
     }
 
     info!("shutting down factories");
@@ -914,6 +1008,16 @@ struct SpawnContext {
     budget: Arc<ResourceBudget>,
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
+    /// Snapshot of [`RunnerMode`] at spawn time. Each `jobs.spawn` captures
+    /// this value, so the post-exec park decision uses the mode that was
+    /// current **when the job was claimed**, not when it finished. Only
+    /// jobs spawned in `Running` are eligible for parking.
+    ///
+    /// Consequence: a job spawned in `Running` that completes during
+    /// `Draining` may park — the entry is cleaned up by the teardown
+    /// drain, so this wastes work rather than leaking. On `Stopping` the
+    /// per-job cancel token fires, taking the cancelled branch and skipping
+    /// park entirely.
     mode: RunnerMode,
     /// Notifies the main loop to send an immediate heartbeat after parking a VM.
     /// This eliminates the up-to-10s blind spot where the server doesn't know
@@ -1129,6 +1233,34 @@ fn spawn_job(
     });
 }
 
+/// Drain the idle pool synchronously: destroy every entry and release each
+/// one's budget. Called from both the Draining arm (soft-drain entry) and
+/// teardown — both need the same sequence, and teardown also wants the
+/// `status.json` `idle_vms` list cleared so the final snapshot is
+/// consistent with the empty pool.
+///
+/// `context` is logged alongside the destroyed count for operator clarity
+/// (e.g. "draining" vs "shutdown").
+async fn drain_idle_pool(
+    idle_pool: &SharedIdlePool,
+    budget: &ResourceBudget,
+    status: &StatusTracker,
+    context: &'static str,
+) {
+    let entries = idle_pool.lock().await.drain();
+    if entries.is_empty() {
+        return;
+    }
+    info!(count = entries.len(), context, "destroying idle VMs");
+    for entry in entries {
+        let vcpu = entry.vcpu;
+        let memory_mb = entry.memory_mb;
+        entry.stop_and_destroy().await;
+        budget.release(vcpu, memory_mb);
+    }
+    status.set_idle_info(Vec::new()).await;
+}
+
 /// Destroy an idle sandbox entry and release its budget.
 async fn destroy_idle_entry(entry: IdleEntry, budget: Arc<ResourceBudget>) {
     let vcpu = entry.vcpu;
@@ -1161,34 +1293,134 @@ async fn handle_job_result(
     }
 }
 
-/// Spawn a signal-handler task and return the mode-change receiver.
+/// Signal-driven mode channel shared between the signal handler task and
+/// the main run loop.
 ///
-/// When SIGTERM, SIGINT, or SIGUSR1 arrives the handler sends
-/// [`RunnerMode::Draining`] and cancels the shared token.
-fn setup_signal_handler(cancel: CancellationToken) -> tokio::sync::watch::Receiver<RunnerMode> {
-    let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
-    tokio::spawn(async move {
-        use tokio::signal::unix::{SignalKind, signal};
+/// The `RunnerMode` enum is the single source of truth for runner lifecycle
+/// state — `mode_tx` has two writers (the handler for external signals,
+/// and the main loop for the internal Draining → Stopping transition when
+/// `jobs.is_empty()`).
+pub(crate) struct SignalController {
+    pub mode_rx: tokio::sync::watch::Receiver<RunnerMode>,
+    pub mode_tx: tokio::sync::watch::Sender<RunnerMode>,
+    /// Abort handle for the spawned signal-handler task. `None` for test
+    /// overrides where no task was spawned. Teardown calls `.abort()` to
+    /// reap the task symmetrically with `mitm_retry.handle.abort()` — the
+    /// handler otherwise would run until runtime drop, which is safe for
+    /// the runner binary but leaks the task when `run()` is embedded in a
+    /// longer-lived host runtime.
+    pub handler_abort: Option<tokio::task::AbortHandle>,
+}
 
-        let mut sigterm = signal(SignalKind::terminate()).ok();
-        let mut sigint = signal(SignalKind::interrupt()).ok();
-        let mut sigusr1 = signal(SignalKind::user_defined1()).ok();
+impl SignalController {
+    /// Spawn the signal-handler task and return a controller handle.
+    ///
+    /// Signal semantics:
+    /// - **SIGUSR1** (drain): from `Running`, send `Draining` (soft,
+    ///   resumable). Ignored from any other state.
+    /// - **SIGUSR2** (resume): from `Draining`, send `Running` (resume normal
+    ///   discovery). Ignored from `Running` / `Stopping` / `Stopped`.
+    /// - **SIGTERM / SIGINT** (hard): send `Stopping`, cancel every in-flight
+    ///   job's token, cancel the discovery token. Bypasses the soft drain
+    ///   so `systemctl stop` exits promptly rather than waiting up to
+    ///   `JOB_TIMEOUT = 2h` for jobs to finish naturally.
+    ///
+    /// ## Race handling
+    ///
+    /// `handle_stopping_signal` sends Stopping **before** locking
+    /// `cancel_tokens`. This ordering lets the main loop close the TOCTOU
+    /// window where a new job is claimed between the handler's iteration
+    /// and its own token insert: the main loop re-reads `mode_rx` after
+    /// insert and sees Stopping via watch's write/read fence.
+    ///
+    /// ## Lifetime
+    ///
+    /// The spawned task loops forever and is implicitly cancelled when the
+    /// tokio runtime is dropped. Its `JoinHandle` is discarded — panics in
+    /// the handler will be logged by tokio but not surfaced.
+    fn spawn(
+        cancel: CancellationToken,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    ) -> Self {
+        let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
+        let tx_for_task = mode_tx.clone();
+        let handle = tokio::spawn(async move {
+            use tokio::signal::unix::{SignalKind, signal};
 
-        tokio::select! {
-            _ = recv_signal(&mut sigterm) => {
-                info!("received SIGTERM, draining");
+            let mut sigterm = signal(SignalKind::terminate()).ok();
+            let mut sigint = signal(SignalKind::interrupt()).ok();
+            let mut sigusr1 = signal(SignalKind::user_defined1()).ok();
+            let mut sigusr2 = signal(SignalKind::user_defined2()).ok();
+
+            loop {
+                tokio::select! {
+                    _ = recv_signal(&mut sigterm) => {
+                        handle_stopping_signal("SIGTERM", &cancel, &cancel_tokens, &tx_for_task).await;
+                    }
+                    _ = recv_signal(&mut sigint) => {
+                        handle_stopping_signal("SIGINT", &cancel, &cancel_tokens, &tx_for_task).await;
+                    }
+                    _ = recv_signal(&mut sigusr1) => {
+                        handle_drain_signal(&tx_for_task);
+                    }
+                    _ = recv_signal(&mut sigusr2) => {
+                        handle_resume_signal(&tx_for_task);
+                    }
+                }
             }
-            _ = recv_signal(&mut sigint) => {
-                info!("received SIGINT, draining");
-            }
-            _ = recv_signal(&mut sigusr1) => {
-                info!("received SIGUSR1, draining");
-            }
+        });
+        Self {
+            mode_rx,
+            mode_tx,
+            handler_abort: Some(handle.abort_handle()),
         }
-        let _ = mode_tx.send(RunnerMode::Draining);
-        cancel.cancel();
-    });
-    mode_rx
+    }
+}
+
+fn handle_drain_signal(mode_tx: &tokio::sync::watch::Sender<RunnerMode>) {
+    let current = *mode_tx.borrow();
+    if current != RunnerMode::Running {
+        warn!(mode = ?current, "SIGUSR1 ignored — only valid from Running");
+        return;
+    }
+    info!("received SIGUSR1, entering Draining (soft drain)");
+    let _ = mode_tx.send(RunnerMode::Draining);
+}
+
+fn handle_resume_signal(mode_tx: &tokio::sync::watch::Sender<RunnerMode>) {
+    let current = *mode_tx.borrow();
+    if current != RunnerMode::Draining {
+        warn!(mode = ?current, "SIGUSR2 ignored — only valid from Draining");
+        return;
+    }
+    info!("received SIGUSR2, resuming to Running");
+    let _ = mode_tx.send(RunnerMode::Running);
+}
+
+async fn handle_stopping_signal(
+    name: &str,
+    cancel: &CancellationToken,
+    cancel_tokens: &Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    mode_tx: &tokio::sync::watch::Sender<RunnerMode>,
+) {
+    if *mode_tx.borrow() == RunnerMode::Stopping {
+        warn!(signal = name, "already Stopping, ignoring repeat");
+        return;
+    }
+    info!(signal = name, "initiating hard shutdown");
+    // Send Stopping *before* locking cancel_tokens so that the main loop's
+    // post-insert `mode_rx.borrow()` check catches any job claimed after
+    // our iteration but before send would otherwise publish the state.
+    let _ = mode_tx.send(RunnerMode::Stopping);
+    let tokens = cancel_tokens.lock().await;
+    let count = tokens.len();
+    for (run_id, token) in tokens.iter() {
+        info!(run_id = %run_id, "cancelling active job for hard shutdown");
+        token.cancel();
+    }
+    drop(tokens);
+    info!(active_jobs = count, "dispatched per-job cancellations");
+    cancel.cancel();
 }
 
 /// Await a signal if registered, or pend forever if registration failed.
@@ -1316,6 +1548,17 @@ fn collect_heartbeat_state(
     idle_pool: &crate::idle_pool::IdlePool,
     mode: RunnerMode,
 ) -> HeartbeatState {
+    // Stopped is set only by `status.set_mode(Stopped)` immediately before
+    // `run()` returns, after the last heartbeat has been sent. If a caller
+    // reaches here with Stopped it means a new code path was added that
+    // heartbeats post-teardown, which breaks the contract that the server
+    // never sees mode=stopped on the wire. Debug-only: release still falls
+    // through to the defensive "stopping" mapping below.
+    debug_assert_ne!(
+        mode,
+        RunnerMode::Stopped,
+        "Stopped is never live-heartbeated",
+    );
     let (allocated_vcpu, allocated_memory_mb, budget_running) = budget.allocated();
     // budget.allocated() includes parked (idle) VMs that hold their budget.
     // Report only actively running jobs so the scheduler sees real capacity.
@@ -1335,7 +1578,9 @@ fn collect_heartbeat_state(
         held_sessions: idle_pool.held_sessions(),
         mode: match mode {
             RunnerMode::Running => "running".to_string(),
-            RunnerMode::Draining | RunnerMode::Stopped => "draining".to_string(),
+            RunnerMode::Draining => "draining".to_string(),
+            // Stopped caught by the debug_assert above; release falls here.
+            RunnerMode::Stopping | RunnerMode::Stopped => "stopping".to_string(),
         },
     }
 }
@@ -1679,8 +1924,30 @@ mod tests {
         provider: Arc<MockJobProvider>,
         idle_pool: SharedIdlePool,
         mode_tx: tokio::sync::watch::Sender<RunnerMode>,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
         cancel: CancellationToken,
         _temp_dir: tempfile::TempDir,
+    }
+
+    impl MockRunEnv {
+        /// Simulate SIGUSR1 by driving the real `handle_drain_signal` so
+        /// tests exercise the same state-guard path production does
+        /// (ignored unless current mode is Running).
+        fn drain(&self) {
+            handle_drain_signal(&self.mode_tx);
+        }
+
+        /// Simulate SIGUSR2 via the real `handle_resume_signal` — only
+        /// transitions when current mode is Draining.
+        fn resume(&self) {
+            handle_resume_signal(&self.mode_tx);
+        }
+
+        /// Simulate SIGTERM by driving the real `handle_stopping_signal`.
+        /// Keeps the test path in sync with production.
+        async fn trigger_stopping(&self) {
+            handle_stopping_signal("TEST", &self.cancel, &self.cancel_tokens, &self.mode_tx).await;
+        }
     }
 
     /// Assemble a complete `RunConfig` with all mock/noop dependencies.
@@ -1747,6 +2014,8 @@ mod tests {
         let provider_ref = Arc::clone(&provider);
 
         let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
+        let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
         let home = HomePaths::with_root(temp_dir.path().to_path_buf());
         let registry_path = temp_dir.path().join("registry.json");
@@ -1788,7 +2057,7 @@ mod tests {
             mitm,
             mitm_crash_rx,
             provider,
-            cancel_tokens: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            cancel_tokens: Arc::clone(&cancel_tokens),
             cancel: cancel.clone(),
             exec_config: Arc::new(executor::ExecutorConfig {
                 api_url: "http://localhost:0".into(),
@@ -1806,7 +2075,11 @@ mod tests {
             min_memory_mb,
             kmsg_handle: kmsg_log::KmsgHandle::noop(),
             dns_handle: crate::dns::DnsProxy::noop(),
-            mode_rx: Some(mode_rx),
+            signal_override: Some(SignalController {
+                mode_rx,
+                mode_tx: mode_tx.clone(),
+                handler_abort: None,
+            }),
         };
 
         let env = MockRunEnv {
@@ -1814,6 +2087,7 @@ mod tests {
             provider: provider_ref,
             idle_pool,
             mode_tx,
+            cancel_tokens,
             cancel,
             _temp_dir: temp_dir,
         };
@@ -1984,11 +2258,11 @@ mod tests {
         // Let the main loop start and enter select!.
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        // Only send Draining — do NOT cancel. discover_fut remains suspended
-        // holding the discovery Mutex. The main loop breaks at the top-of-loop
-        // mode check, then `drop(discover_fut)` releases the Mutex before
-        // `provider.shutdown()`. Without that drop → deadlock.
-        let _ = env.mode_tx.send(RunnerMode::Draining);
+        // Only send Draining — do NOT cancel. The Draining arm sees
+        // `jobs.is_empty()` immediately (no active jobs), breaks to
+        // teardown, and `drop(discover_fut)` releases the Mutex before
+        // `provider.shutdown()`. Without that drop → deadlock (regression #8898).
+        env.drain();
 
         match tokio::time::timeout(Duration::from_secs(2), run_handle).await {
             Ok(Ok(Ok(()))) => {}
@@ -1998,6 +2272,456 @@ mod tests {
                 panic!("deadlock detected: run() did not finish within 2s (regression #8898)")
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Draining / resume / hard-shutdown state machine
+    // -----------------------------------------------------------------------
+
+    /// SIGUSR1 → SIGUSR2 round-trip. While draining, the runner keeps the
+    /// in-flight job alive and, on resume, returns to claiming new jobs.
+    #[tokio::test]
+    async fn drain_then_resume_keeps_jobs_running() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+        let run_handle = tokio::spawn(run(config));
+
+        // Claim a job and let it reach the gated wait.
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+        let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        // Enter Draining. The job keeps running; no cancellation is fired.
+        env.drain();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Resume. Job is still alive in the executor.
+        env.resume();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Release the gated job so it completes normally.
+        gate.notify_one();
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete after resume");
+        let c = completion.unwrap();
+        assert_eq!(c.exit_code, 0, "job ran to normal completion");
+        assert!(c.error.is_none(), "no cancellation error");
+
+        // Runner is back in Running — a second job is claimed (cancel_token
+        // inserted). Don't wait for completion here; the shared wait_exit_gate
+        // would also block this job's exit.
+        let run_id_2 = RunId::new_v4();
+        push_job(
+            &env,
+            run_id_2,
+            "vm0/default",
+            Some(minimal_context(run_id_2)),
+        );
+        let _token_2 =
+            wait_cancel_token(&env.cancel_tokens, run_id_2, Duration::from_secs(5)).await;
+
+        // Tear down hard — the shared gate would otherwise block the
+        // second job's natural completion during Draining.
+        env.trigger_stopping().await;
+        let result = tokio::time::timeout(Duration::from_secs(5), run_handle)
+            .await
+            .expect("run should exit within 5s after hard shutdown")
+            .expect("task should not panic");
+        assert!(result.is_ok());
+    }
+
+    /// With no active jobs, SIGUSR1 transitions straight through Draining
+    /// and exits within a few hundred ms.
+    #[tokio::test]
+    async fn drain_without_active_jobs_exits_promptly() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        env.drain();
+
+        match tokio::time::timeout(Duration::from_secs(2), run_handle).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+            Ok(Err(e)) => panic!("task panicked: {e}"),
+            Err(_) => panic!("drain with no active jobs should exit within 2s"),
+        }
+    }
+
+    /// SIGUSR2 on an already-Running runner is a no-op: it does not disturb
+    /// normal discovery.
+    #[tokio::test(start_paused = true)]
+    async fn resume_on_running_is_noop() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        // SIGUSR2 while already Running — state guard blocks the send,
+        // leaving mode unchanged and discovery uninterrupted.
+        env.resume();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Runner is still claiming jobs.
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(
+            completion.is_some(),
+            "resume on Running should not break discovery"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    /// SIGTERM while a job is in flight: per-job cancellation fires, the
+    /// executor aborts, and run() exits within a couple of seconds rather
+    /// than blocking on the 2h JOB_TIMEOUT.
+    #[tokio::test]
+    async fn hard_shutdown_cancels_active_jobs() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            gate,
+        ));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        // Wait for the job to enter the gated wait — cancel token is now in the map.
+        let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        // SIGTERM equivalent: latch hard-shutdown, cancel all in-flight jobs.
+        env.trigger_stopping().await;
+
+        match tokio::time::timeout(Duration::from_secs(3), run_handle).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+            Ok(Err(e)) => panic!("task panicked: {e}"),
+            Err(_) => panic!("hard shutdown should exit within 3s — got stuck"),
+        }
+
+        // The cancelled job reports the synthetic "cancelled by user" error.
+        let comps = env.handle.completions.lock().unwrap();
+        let c = comps
+            .iter()
+            .find(|c| c.run_id == run_id)
+            .expect("cancelled job should still report completion");
+        assert_eq!(c.error.as_deref(), Some("cancelled by user"));
+    }
+
+    /// SIGUSR1 → SIGTERM upgrade. Starts Draining, then hard-shutdown fires
+    /// mid-drain and the run exits promptly with the active job cancelled.
+    #[tokio::test]
+    async fn drain_then_hard_shutdown_upgrades() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            gate,
+        ));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+        let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        // Draining. Without hard shutdown, this would wait up to JOB_TIMEOUT = 2h.
+        env.drain();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Upgrade to hard shutdown.
+        env.trigger_stopping().await;
+
+        match tokio::time::timeout(Duration::from_secs(3), run_handle).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+            Ok(Err(e)) => panic!("task panicked: {e}"),
+            Err(_) => panic!("Draining → hard shutdown should exit within 3s"),
+        }
+    }
+
+    /// TOCTOU regression: a SIGTERM that iterates `cancel_tokens` *before*
+    /// the main loop inserts a newly-claimed job's token would leave that
+    /// job running uncancelled. The fix is a post-insert `mode_rx.borrow()`
+    /// check that catches Stopping and cancels the token in that window.
+    ///
+    /// To reproduce deterministically, we use `send_if_modified` to flip
+    /// the watch value to `Stopping` **without** waking `mode_rx.changed()`
+    /// — this is exactly what the racy window looks like to the main loop:
+    /// its outer select! is still polling discover_fut, unaware that the
+    /// value has changed. When discover yields a job, the main loop takes
+    /// the claim path, inserts the token, then reads `mode_rx.borrow()`
+    /// and catches the Stopping value that was silently written.
+    #[tokio::test]
+    async fn claim_after_stopping_sent_cancels_new_job() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Flip the watch value to Stopping without firing changed().
+        env.mode_tx.send_if_modified(|v| {
+            *v = RunnerMode::Stopping;
+            false
+        });
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(
+            c.is_some(),
+            "job must report cancellation even when the handler missed the token"
+        );
+        assert_eq!(c.unwrap().error.as_deref(), Some("cancelled by user"));
+
+        // Let run() exit — fire changed() now so the main loop observes
+        // Stopping at loop top and breaks to teardown.
+        env.mode_tx.send_modify(|v| {
+            *v = RunnerMode::Stopping;
+        });
+        env.cancel.cancel();
+        let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    }
+
+    /// SIGUSR2 received while Stopping is committed is ignored — the
+    /// runner cannot resume out of Stopping.
+    #[tokio::test]
+    async fn resume_after_stopping_is_ignored() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Enter Stopping first.
+        env.trigger_stopping().await;
+
+        // handle_resume_signal refuses any transition except from Draining.
+        handle_resume_signal(&env.mode_tx);
+        assert_eq!(
+            *env.mode_tx.borrow(),
+            RunnerMode::Stopping,
+            "mode must remain Stopping after ignored SIGUSR2"
+        );
+
+        match tokio::time::timeout(Duration::from_secs(2), run_handle).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+            Ok(Err(e)) => panic!("task panicked: {e}"),
+            Err(_) => panic!("hard shutdown should exit within 2s"),
+        }
+    }
+
+    /// `handle_drain_signal` state guard: SIGUSR1 is honored only from
+    /// Running. Mirrors `handle_resume_signal`'s Draining-only guard.
+    #[test]
+    fn drain_signal_state_guards() {
+        // Running → Draining (sanity: the one legal transition).
+        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Running);
+        handle_drain_signal(&tx);
+        assert_eq!(*tx.borrow(), RunnerMode::Draining);
+
+        // Draining → ignored (no self-transition).
+        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Draining);
+        handle_drain_signal(&tx);
+        assert_eq!(*tx.borrow(), RunnerMode::Draining);
+
+        // Stopping → ignored (cannot reverse teardown).
+        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopping);
+        handle_drain_signal(&tx);
+        assert_eq!(*tx.borrow(), RunnerMode::Stopping);
+
+        // Stopped → ignored (runner has exited its loop).
+        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopped);
+        handle_drain_signal(&tx);
+        assert_eq!(*tx.borrow(), RunnerMode::Stopped);
+    }
+
+    /// `handle_resume_signal` state guard: SIGUSR2 is honored only from
+    /// Draining. The integration test `resume_after_stopping_is_ignored`
+    /// covers the Stopping case; this pins the full matrix as a unit test.
+    #[test]
+    fn resume_signal_state_guards() {
+        // Draining → Running (sanity: the one legal transition).
+        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Draining);
+        handle_resume_signal(&tx);
+        assert_eq!(*tx.borrow(), RunnerMode::Running);
+
+        // Running → ignored (nothing to resume from).
+        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Running);
+        handle_resume_signal(&tx);
+        assert_eq!(*tx.borrow(), RunnerMode::Running);
+
+        // Stopping → ignored (too late).
+        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopping);
+        handle_resume_signal(&tx);
+        assert_eq!(*tx.borrow(), RunnerMode::Stopping);
+
+        // Stopped → ignored.
+        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Stopped);
+        handle_resume_signal(&tx);
+        assert_eq!(*tx.borrow(), RunnerMode::Stopped);
+    }
+
+    /// `handle_stopping_signal` idempotency: a repeat invocation takes the
+    /// "already Stopping" guard and returns without re-iterating
+    /// `cancel_tokens` or re-cancelling `cancel`.
+    #[tokio::test]
+    async fn stopping_signal_repeat_is_idempotent() {
+        let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Running);
+        let cancel = CancellationToken::new();
+        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        // First call: transitions, cancels main cancel.
+        handle_stopping_signal("SIGTERM", &cancel, &tokens, &tx).await;
+        assert_eq!(*tx.borrow(), RunnerMode::Stopping);
+        assert!(cancel.is_cancelled());
+
+        // Insert a sentinel token *after* the first call so we can prove
+        // the repeat did not re-iterate the map.
+        let sentinel = CancellationToken::new();
+        tokens
+            .lock()
+            .await
+            .insert(RunId::new_v4(), sentinel.clone());
+
+        // Repeat call: must early-return on the already-Stopping guard.
+        handle_stopping_signal("SIGTERM", &cancel, &tokens, &tx).await;
+        assert_eq!(*tx.borrow(), RunnerMode::Stopping);
+        assert!(
+            !sentinel.is_cancelled(),
+            "repeat must not re-iterate cancel_tokens and cancel late-inserted sentinel",
+        );
+    }
+
+    /// Draining auto-transitions to Stopping when jobs drain naturally.
+    /// Verifies the internal `mode_tx.send(Stopping)` in the Draining arm.
+    #[tokio::test]
+    async fn drain_with_jobs_transitions_to_stopping_when_empty() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        // Let a quick job complete, then drain.
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+        let _ = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+
+        // Give the main loop a moment to clean up the jobset, then drain.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        env.drain();
+
+        // The Draining arm should observe jobs.is_empty() and self-send
+        // Stopping, leading to teardown and run() exit.
+        match tokio::time::timeout(Duration::from_secs(3), run_handle).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+            Ok(Err(e)) => panic!("task panicked: {e}"),
+            Err(_) => panic!("Draining natural drain should exit within 3s"),
+        }
+
+        assert_eq!(
+            *env.mode_tx.borrow(),
+            RunnerMode::Stopping,
+            "mode_tx must reflect Stopping after natural drain transition"
+        );
+
+        // Observability pin: the Draining → Stopping auto-transition must
+        // emit a one-shot heartbeat with mode="stopping" before teardown,
+        // in addition to the terminal heartbeat during teardown. Two or
+        // more "stopping" heartbeats prove both sites fire (the one-shot
+        // at the transition and the terminal one). A single hit would mean
+        // one of the two was removed.
+        let stopping_count = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|h| h.mode == "stopping")
+            .count();
+        assert!(
+            stopping_count >= 2,
+            "expected at least 2 stopping heartbeats (one-shot + terminal), got {stopping_count}",
+        );
+    }
+
+    /// Race regression: the Draining → Stopping auto-transition must be
+    /// guarded on `mode == Draining`, so a concurrent SIGUSR2 that flips
+    /// mode back to Running is preserved rather than silently overwritten.
+    ///
+    /// We simulate the race deterministically:
+    /// 1. Claim a gated job — mode is Draining, the Draining arm is waiting
+    ///    in `select!`.
+    /// 2. Silently flip mode to Running via `send_if_modified(false)`
+    ///    (equivalent to SIGUSR2 arriving *after* the arm noticed jobs was
+    ///    non-empty but *before* the next iteration's guard).
+    /// 3. Release the gate — the job completes, the arm reaps it, loops to
+    ///    top, sees `jobs.is_empty()`, and evaluates the guarded
+    ///    `send_if_modified`. The guard rejects the overwrite because mode
+    ///    is no longer Draining.
+    /// 4. Outer loop re-reads mode → Running → resumes normal discovery.
+    #[tokio::test]
+    async fn draining_auto_stop_preserves_concurrent_resume() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+        let run_handle = tokio::spawn(run(config));
+
+        // Claim a job and hold it at the gate so the Draining arm has
+        // something to wait on — without a live job the auto-transition
+        // fires before any concurrent signal could race.
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+        let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        env.drain();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(*env.mode_tx.borrow(), RunnerMode::Draining);
+
+        // Silently flip to Running — the `false` return suppresses
+        // `changed()`, so the arm does not wake on a mode transition. The
+        // guard will only observe the new value on its next iteration's
+        // send_if_modified closure.
+        env.mode_tx.send_if_modified(|v| {
+            *v = RunnerMode::Running;
+            false
+        });
+
+        // Release the gate: job completes, the arm reaps, then checks
+        // jobs.is_empty() → true → calls the guarded send_if_modified.
+        gate.notify_one();
+        let _ = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        assert_eq!(
+            *env.mode_tx.borrow(),
+            RunnerMode::Running,
+            "SIGUSR2 must win the race against the Draining auto-Stop",
+        );
+
+        // Tear down cleanly.
+        env.trigger_stopping().await;
+        let _ = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
     }
 
     // -----------------------------------------------------------------------
@@ -2797,6 +3521,139 @@ mod tests {
         assert_eq!(idle_pool.lock().await.len(), 0, "pool should be drained");
         let (_, _, count) = budget.allocated();
         assert_eq!(count, 0, "all budget should be released after drain");
+    }
+
+    /// Regression (G1): a job spawned in Running but completing during
+    /// Draining captures `mode = Running` in its spawn snapshot, so the
+    /// post-exec path still calls `park()`. The resulting pool entry
+    /// lands *after* the Draining arm's initial drain — teardown's final
+    /// `drain_idle_pool` is the only safety net that prevents a VM leak.
+    /// Without it, the late-parked VM would remain in the pool and its
+    /// budget would never be released.
+    #[tokio::test]
+    async fn late_park_during_draining_cleaned_by_teardown() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            Arc::clone(&gate),
+        ));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let run_handle = tokio::spawn(run(config));
+
+        // Claim a gated job with session + reuse — the spawn-time snapshot
+        // captures `mode = Running`.
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-late-park")),
+        );
+        let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        // Enter Draining. The arm drains an empty pool and waits for the
+        // gated job.
+        env.drain();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            0,
+            "Draining arm should have drained an empty pool",
+        );
+
+        // Release the gate: the job completes, post-exec parks the sandbox
+        // (snapshot says Running), and the entry lands in the already-
+        // drained pool.
+        gate.notify_one();
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        // Arm observes jobs.is_empty → auto-Stop → teardown → the second
+        // `drain_idle_pool` call cleans the late-parked VM.
+        match tokio::time::timeout(Duration::from_secs(5), run_handle).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+            Ok(Err(e)) => panic!("task panicked: {e}"),
+            Err(_) => panic!("natural drain + late park should exit within 5s"),
+        }
+
+        // Leak proof: pool empty, budget fully released.
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            0,
+            "teardown must clean the late-parked VM",
+        );
+        assert_eq!(
+            budget.allocated().2,
+            0,
+            "budget must be fully released (no held entries, no stray reservations)",
+        );
+    }
+
+    /// Regression (G2): on SIGTERM from Running, teardown's
+    /// `drain_idle_pool` is the *only* site that clears `idle_vms` in
+    /// `status.json` — the Draining arm is skipped entirely. Pre-fix, the
+    /// stale list leaked into the final `"stopped"` snapshot.
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_clears_idle_vms_in_status_json() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let status_path = env._temp_dir.path().join("status.json");
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let run_handle = tokio::spawn(run(config));
+
+        // Park a VM via a normal job → status.json records the idle VM.
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-status-clean")),
+        );
+        let _ = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(idle_pool.lock().await.len(), 1, "VM parked");
+
+        // Pre-shutdown sanity: status.json lists the idle VM.
+        let pre: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(&status_path).await.unwrap()).unwrap();
+        let pre_len = pre
+            .get("idle_vms")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        assert_eq!(pre_len, 1, "pre-shutdown status.json should list the VM");
+
+        // SIGTERM path: Draining arm is bypassed, so teardown's
+        // drain_idle_pool is the only site that can clear idle_vms.
+        env.trigger_stopping().await;
+        match tokio::time::timeout(Duration::from_secs(5), run_handle).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+            Ok(Err(e)) => panic!("task panicked: {e}"),
+            Err(_) => panic!("hard shutdown should exit within 5s"),
+        }
+
+        // Post-shutdown: mode=stopped, idle_vms empty/absent.
+        let post: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(&status_path).await.unwrap()).unwrap();
+        assert_eq!(post["mode"], "stopped");
+        let post_len = post
+            .get("idle_vms")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        assert_eq!(
+            post_len, 0,
+            "status.json idle_vms must be cleared after shutdown: {post}",
+        );
     }
 
     // -----------------------------------------------------------------------

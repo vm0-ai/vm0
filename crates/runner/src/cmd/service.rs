@@ -24,6 +24,8 @@ enum ServiceCommand {
     Uninstall(ServiceUninstallArgs),
     /// Drain the runner (SIGUSR1, non-blocking — returns immediately)
     Drain(ServiceDrainArgs),
+    /// Resume a draining runner (SIGUSR2, reverses `drain` before teardown begins)
+    Resume(ServiceResumeArgs),
     /// Show service status (all runner services if --name is omitted)
     Status(ServiceStatusArgs),
     /// Show service logs
@@ -75,6 +77,13 @@ struct ServiceDrainArgs {
 }
 
 #[derive(Args)]
+struct ServiceResumeArgs {
+    /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
+    #[arg(long)]
+    name: String,
+}
+
+#[derive(Args)]
 struct ServiceStatusArgs {
     /// Service name suffix (omit to show all runner services)
     #[arg(long)]
@@ -105,6 +114,7 @@ pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
         ServiceCommand::Install(a) => install(a).await,
         ServiceCommand::Uninstall(a) => uninstall(a).await,
         ServiceCommand::Drain(a) => drain(a).await,
+        ServiceCommand::Resume(a) => resume(a).await,
         ServiceCommand::Status(a) => status(a).await,
         ServiceCommand::Logs(a) => logs(a).await,
     }
@@ -354,16 +364,16 @@ enum GateDecision {
 /// Pure decision logic shared by the gate — testable without systemctl.
 ///
 /// Short-circuit order:
-/// 1. `mode == "stopped"` — runner's own drain finished. Covers the brief
-///    window between the final status.json write and systemd marking the
-///    unit inactive.
+/// 1. `mode == "stopped"` or `"stopping"` — teardown has already started.
+///    The runner is actively cancelling any in-flight jobs itself; a user
+///    `stop`/`uninstall` just accelerates the process and is safe.
 /// 2. `run_ids.is_empty()` — nothing to protect, regardless of mode.
 /// 3. Otherwise refuse; `draining=true` when `mode == "draining"` so the
 ///    error message suggests waiting rather than re-running `drain`.
 ///
 /// Mode strings mirror [`crate::status::RunnerMode`] (serde lowercase).
 fn decide_gate(status: &RunnerStatusSnapshot) -> GateDecision {
-    if status.mode == "stopped" {
+    if matches!(status.mode.as_str(), "stopped" | "stopping") {
         return GateDecision::Bypass;
     }
     if status.run_ids.is_empty() {
@@ -683,12 +693,79 @@ async fn drain(args: ServiceDrainArgs) -> RunnerResult<()> {
     .map_err(|e| RunnerError::Internal(format!("SIGUSR1 to PID {pid}: {e}")))?;
     info!(unit = %unit, pid, "sent SIGUSR1 (drain)");
 
-    // Disable so it won't restart on reboot
+    // Disable so it won't restart on reboot. The SIGUSR1 has already been
+    // delivered, so a disable failure is a partial-success condition — the
+    // operator can re-run the command manually. Surface the hint on stderr
+    // in addition to the structured log so CLI users don't miss it.
     let svc = format!("{unit}.service");
     if let Err(e) = run_systemctl(&["disable", &svc]).await {
         warn!(unit = %unit, error = %e, "failed to disable unit");
+        eprintln!(
+            "WARNING: drain signal was sent but `systemctl disable {svc}` failed: {e}. \
+             Run it manually to prevent the unit from restarting on reboot."
+        );
     } else {
         info!(unit = %unit, "disabled (won't restart on reboot)");
+    }
+
+    Ok(())
+}
+
+/// `service resume` — send SIGUSR2, re-enable unit.
+///
+/// Reverses a prior `service drain` while the runner is still `Draining`.
+/// If the runner has already transitioned to `Stopping` (teardown in
+/// progress) or exited, resume is refused. SIGUSR2 on an already-`Running`
+/// runner is a no-op on the runner side (the state guard rejects the
+/// transition).
+async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
+    let unit = unit_name(&args.name)?;
+    if !is_unit_active(&unit).await? {
+        return Err(RunnerError::Internal(format!(
+            "{unit} is not active — cannot resume an inactive runner"
+        )));
+    }
+
+    // Preflight: if status.json shows the runner is already past the
+    // resumable point (Stopping = teardown in progress, Stopped = exited),
+    // SIGUSR2 is too late.
+    if let Some(base_dir) = runner_base_dir(&args.name)
+        && let Some(status) = read_runner_status(&base_dir).await
+        && matches!(status.mode.as_str(), "stopping" | "stopped")
+    {
+        return Err(RunnerError::Internal(format!(
+            "{unit} is already shutting down (mode={}) — cannot resume",
+            status.mode
+        )));
+    }
+
+    let pid = get_service_pid(&unit)
+        .await?
+        .ok_or_else(|| RunnerError::Internal(format!("{unit} has no main PID")))?;
+
+    let raw_pid =
+        i32::try_from(pid).map_err(|_| RunnerError::Internal(format!("PID {pid} out of range")))?;
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(raw_pid),
+        nix::sys::signal::Signal::SIGUSR2,
+    )
+    .map_err(|e| RunnerError::Internal(format!("SIGUSR2 to PID {pid}: {e}")))?;
+    info!(unit = %unit, pid, "sent SIGUSR2 (resume)");
+
+    // Re-enable so the unit restarts on reboot (undoes the disable from drain).
+    // Use `enable` (not `--now`) — the service is already running. SIGUSR2
+    // has already been delivered so the runner IS resumed; a re-enable
+    // failure is partial success. Surface the hint on stderr so CLI users
+    // don't miss it.
+    let svc = format!("{unit}.service");
+    if let Err(e) = run_systemctl(&["enable", &svc]).await {
+        warn!(unit = %unit, error = %e, "failed to re-enable unit");
+        eprintln!(
+            "WARNING: runner resumed but `systemctl enable {svc}` failed: {e}. \
+             Run it manually to restore the restart-on-reboot behavior."
+        );
+    } else {
+        info!(unit = %unit, "re-enabled (will restart on reboot)");
     }
 
     Ok(())
@@ -1197,6 +1274,14 @@ mod tests {
         // Covers the narrow window between status.json being rewritten
         // with "stopped" and systemd marking the unit inactive.
         assert_eq!(decide_gate(&snapshot("stopped", 2)), GateDecision::Bypass);
+    }
+
+    #[test]
+    fn decide_gate_stopping_bypasses() {
+        // Stopping = teardown in progress. The runner is already cancelling
+        // in-flight jobs itself; user stop/uninstall accelerates rather than
+        // endangers — bypass the active-jobs gate.
+        assert_eq!(decide_gate(&snapshot("stopping", 3)), GateDecision::Bypass);
     }
 
     #[test]

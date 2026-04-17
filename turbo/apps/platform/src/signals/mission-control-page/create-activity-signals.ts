@@ -52,13 +52,7 @@ export function createActivitySignals(runId: string): ActivitySignals {
   });
 
   const startPolling$ = command(async ({ set }, signal: AbortSignal) => {
-    await set(
-      setAblyLoop$,
-      `thread:${runId}`,
-      runLoop.checkFinished$,
-      3000,
-      signal,
-    );
+    await set(setAblyLoop$, `thread:${runId}`, runLoop.checkFinished$, signal);
   });
 
   const focusInput$ = command(() => {});

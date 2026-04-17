@@ -95,7 +95,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     // Create an agent session (used for session continuity via run result)
     const session = await createTestAgentSession(user.userId, agentId);
 
-    // Link run to thread by inserting user + assistant placeholder in chat_messages
+    // Link run to thread by inserting user message and setting zeroRuns.chatThreadId
     await addTestRunToThread(threadId, runId, user.userId);
 
     // Create a callback record
@@ -264,8 +264,7 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // The placeholder is dropped when event-backed rows exist, leaving
-      // exactly: 1 user + 1 event-backed assistant row.
+      // 1 user message + 1 event-backed assistant message.
       const chatMessages = await getTestChatMessagesByThread(threadId);
       expect(chatMessages).toHaveLength(2);
 
@@ -275,12 +274,12 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("test prompt");
 
-      const assistantMsg = chatMessages.find((m) => {
-        return m.role === "assistant";
+      const eventMsg = chatMessages.find((m) => {
+        return m.role === "assistant" && m.sequenceNumber !== null;
       });
-      expect(assistantMsg).toBeDefined();
-      expect(assistantMsg!.content).toBe("Done. Created 3 files.");
-      expect(assistantMsg!.runId).toBe(runId);
+      expect(eventMsg).toBeDefined();
+      expect(eventMsg!.content).toBe("Done. Created 3 files.");
+      expect(eventMsg!.runId).toBe(runId);
     });
 
     it("should not duplicate assistant messages when callback runs concurrently", async () => {
@@ -338,22 +337,22 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(r2.status).toBe(200);
 
       const chatMessages = await getTestChatMessagesByThread(threadId);
-      // Exactly: 1 user + 2 assistant = 3 rows (placeholder dropped, no dups).
+      // 1 user + 2 event-backed = 3 rows, no dups.
       expect(chatMessages).toHaveLength(3);
-      const assistantContents = chatMessages
+      const eventContents = chatMessages
         .filter((m) => {
-          return m.role === "assistant";
+          return m.role === "assistant" && m.sequenceNumber !== null;
         })
         .map((m) => {
           return m.content;
         });
-      expect(assistantContents).toEqual([
+      expect(eventContents).toEqual([
         "Let me start by fetching the teams.",
         "Linear is not connected. Please connect it.",
       ]);
     });
 
-    it("should keep placeholder with null content when no events from Axiom", async () => {
+    it("should have no assistant messages when no events from Axiom", async () => {
       const { threadId, runId, secret } = await setupRunAndThread();
 
       // Axiom returns no events
@@ -373,22 +372,15 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // No event rows arrived → placeholder stays so the UI still renders
-      // an (empty) assistant bubble with terminal status.
+      // No event rows arrived → only the user message exists.
       const chatMessages = await getTestChatMessagesByThread(threadId);
-      expect(chatMessages).toHaveLength(2);
+      expect(chatMessages).toHaveLength(1);
 
       const userMsg = chatMessages.find((m) => {
         return m.role === "user";
       });
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("test prompt");
-
-      const assistantMsg = chatMessages.find((m) => {
-        return m.role === "assistant";
-      });
-      expect(assistantMsg).toBeDefined();
-      expect(assistantMsg!.content).toBeNull();
     });
 
     it("should persist user + error messages on failed run", async () => {
@@ -411,7 +403,7 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
 
-      // Verify chat_messages table: user msg + assistant msg with error
+      // 1 user + 1 error row = 2 rows.
       const chatMessages = await getTestChatMessagesByThread(threadId);
       expect(chatMessages).toHaveLength(2);
 
@@ -421,13 +413,13 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("test prompt");
 
-      const assistantMsg = chatMessages.find((m) => {
-        return m.role === "assistant";
+      const errorMsg = chatMessages.find((m) => {
+        return m.role === "assistant" && m.error !== null;
       });
-      expect(assistantMsg).toBeDefined();
-      expect(assistantMsg!.content).toBe("Agent crashed");
-      expect(assistantMsg!.runId).toBe(runId);
-      expect(assistantMsg!.error).toBe("Agent crashed");
+      expect(errorMsg).toBeDefined();
+      expect(errorMsg!.content).toBe("Agent crashed");
+      expect(errorMsg!.runId).toBe(runId);
+      expect(errorMsg!.error).toBe("Agent crashed");
     });
 
     it("should not derive sessionId on failed run without agentSessionId", async () => {

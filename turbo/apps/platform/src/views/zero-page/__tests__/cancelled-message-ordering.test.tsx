@@ -13,36 +13,54 @@ describe("cancelled message ordering after page refresh", () => {
     // After page refresh, message A should appear before message B because
     // A was created earlier.
     server.use(
+      http.get(
+        "*/api/zero/chat-threads/thread-ordering/messages",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          return HttpResponse.json({
+            messages: [
+              {
+                id: "msg-1",
+                role: "user",
+                content: "First message (cancelled)",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-2",
+                role: "assistant",
+                content: null,
+                runId: "run-cancelled",
+                status: "cancelled",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-3",
+                role: "user",
+                content: "Second message (completed)",
+                createdAt: "2026-03-10T00:01:00Z",
+              },
+              {
+                id: "msg-4",
+                role: "assistant",
+                content: "Reply to second message",
+                createdAt: "2026-03-10T00:01:01Z",
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
       http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "thread-ordering",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [
-            {
-              role: "user",
-              content: "First message (cancelled)",
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-            {
-              role: "assistant",
-              content: null,
-              runId: "run-cancelled",
-              status: "cancelled",
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-            {
-              role: "user",
-              content: "Second message (completed)",
-              createdAt: "2026-03-10T00:01:00Z",
-            },
-            {
-              role: "assistant",
-              content: "Reply to second message",
-              createdAt: "2026-03-10T00:01:01Z",
-            },
-          ],
+          chatMessages: [],
           latestSessionId: null,
+          activeRunIds: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:01:01Z",
         });

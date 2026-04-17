@@ -193,7 +193,8 @@ describe("POST /api/zero/chat/messages", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      // Verify the run is visible in thread detail as a chatMessage placeholder
+      // Verify the thread contains the user message (no assistant placeholder
+      // is inserted at send time — only the user message is appended).
       const threadResponse = await GET(
         createTestRequest(
           `http://localhost:3000/api/zero/chat-threads/${data.threadId}`,
@@ -202,15 +203,11 @@ describe("POST /api/zero/chat/messages", () => {
       );
       expect(threadResponse.status).toBe(200);
       const threadData = await threadResponse.json();
-      const assistantMsgs = threadData.chatMessages.filter(
-        (m: { role: string; runId?: string }) => {
-          return m.role === "assistant" && m.runId;
-        },
-      );
-      const allRunIds = assistantMsgs.map((m: { runId: string }) => {
-        return m.runId;
+      const userMsgs = threadData.chatMessages.filter((m: { role: string }) => {
+        return m.role === "user";
       });
-      expect(allRunIds).toContain(data.runId);
+      expect(userMsgs).toHaveLength(1);
+      expect(userMsgs[0].content).toBe("test association");
     });
 
     it("should register a chat callback", async () => {

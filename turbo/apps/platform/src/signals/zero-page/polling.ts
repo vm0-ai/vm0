@@ -21,7 +21,7 @@ function isTerminalStatus(status: string | null): boolean {
   );
 }
 
-export interface PagedRunEvents {
+interface PagedRunEvents {
   events: AgentEvent[];
   hasMore: boolean;
 }

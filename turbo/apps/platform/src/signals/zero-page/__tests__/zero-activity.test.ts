@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import {
   zeroActivityData$,
   zeroActivityHasPrev$,
   initZeroActivityAgentName$,
   setZeroActivityFilter$,
-  setupActivityLogLoop$,
   zeroActivityDetail$,
   formatLogTime,
   formatDuration,
@@ -232,12 +234,11 @@ describe("zero-activity signals", () => {
         ),
       );
 
-      detachedSetupPage({
+      await setupPage({
         context,
         path: "/activities/a0000000-0000-4000-a000-000000000001",
         withoutRender: true,
       });
-      await context.store.set(setupActivityLogLoop$, context.signal);
 
       const detail = await context.store.get(zeroActivityDetail$);
       expect(detail).not.toBeNull();
