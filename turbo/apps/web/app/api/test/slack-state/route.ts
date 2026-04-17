@@ -16,6 +16,7 @@ import {
   insertSlackConnectionIfMissing,
   upsertSlackInstallation,
 } from "../../../../src/lib/zero/slack/seed-install";
+import { seedDefaultAgent } from "../../../../src/lib/test-endpoints/seed-default-agent";
 
 /**
  * GET /api/test/slack-state?team_id=...
@@ -98,6 +99,12 @@ interface SeedBody {
   email?: string;
   /** When true, also inserts a slack_org_connections row for the user. */
   seed_connection?: boolean;
+  /**
+   * When true, also seeds a minimal agent compose with a head version and
+   * sets it as the org's default agent. Required for mention / DM
+   * dispatch to actually create a run row.
+   */
+  seed_default_agent?: boolean;
 }
 
 /**
@@ -150,12 +157,22 @@ export async function POST(request: Request) {
     connectionId = result.connectionId;
   }
 
+  let defaultAgent: { composeId: string; versionId: string } | undefined;
+  if (raw.seed_default_agent) {
+    defaultAgent = await seedDefaultAgent(services, {
+      orgId,
+      userId,
+      name: "e2e-slack-agent",
+    });
+  }
+
   return NextResponse.json({
     ok: true,
     team_id: raw.team_id,
     org_id: orgId,
     vm0_user_id: userId,
     connection_id: connectionId ?? null,
+    default_agent_id: defaultAgent?.composeId ?? null,
   });
 }
 

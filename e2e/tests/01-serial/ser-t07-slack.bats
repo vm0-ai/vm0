@@ -16,7 +16,12 @@ load '../../helpers/slack'
 
 # Unique identifiers per run to avoid collisions between parallel previews.
 # Base identifiers come from helpers/slack-fixtures.sh (sourced via helpers/slack).
-TEAM_ID="${SLACK_FIXTURE_TEAM_ID:-T_E2E}_${GITHUB_RUN_ID:-local}_$$"
+# IMPORTANT: don't include $$ here — BATS runs each @test in a new subshell,
+# so $$ varies between setup_file and each test, making TEAM_ID inconsistent
+# and causing the slash-command handler to miss the seeded installation.
+# GITHUB_RUN_ID is stable across the whole job, which is the isolation scope
+# we actually want against a shared preview DB.
+TEAM_ID="${SLACK_FIXTURE_TEAM_ID:-T_E2E}_${GITHUB_RUN_ID:-local}"
 CHANNEL_ID="${SLACK_FIXTURE_CHANNEL_ID:-C_E2E_MOCK}_${GITHUB_RUN_ID:-local}"
 SLACK_USER_ID="${SLACK_FIXTURE_USER_USER_ID:-U_E2E_USER}"
 
@@ -63,7 +68,7 @@ teardown_file() {
 
 @test "slack: app_mention dispatches an agent run" {
     local seed_resp vm0_user_id
-    seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection)
+    seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection --with-default-agent)
     vm0_user_id=$(echo "$seed_resp" | jq -r '.vm0_user_id')
     [[ -n "$vm0_user_id" && "$vm0_user_id" != "null" ]]
 
@@ -94,7 +99,7 @@ teardown_file() {
 
 @test "slack: DM dispatches an agent run" {
     local seed_resp vm0_user_id
-    seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection)
+    seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection --with-default-agent)
     vm0_user_id=$(echo "$seed_resp" | jq -r '.vm0_user_id')
     [[ -n "$vm0_user_id" && "$vm0_user_id" != "null" ]]
 

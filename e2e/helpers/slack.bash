@@ -95,18 +95,26 @@ slack_fetch_state() {
         "$VM0_API_URL/api/test/slack-state?team_id=$team_id"
 }
 
-# Seed a Slack installation (and optionally a connection) for the test user.
-# Usage: slack_seed_state <team_id> <slack_user_id> [--with-connection]
+# Seed a Slack installation (and optionally a connection / default agent)
+# for the test user.
+# Usage: slack_seed_state <team_id> <slack_user_id> [flags...]
+#   --with-connection      also create slack_org_connections row
+#   --with-default-agent   also seed a compose + zero_agent + set org default
 #
 # The test user's email is read from E2E_SERIAL_EMAIL (set by CI to match
 # the Clerk user provisioned for this run). When unset, the server falls
 # back to its own DEFAULT_TEST_EMAIL, which will only exist in local dev.
 slack_seed_state() {
     local team_id="$1" slack_user_id="$2"
+    shift 2
     local seed_connection="false"
-    if [[ "${3:-}" == "--with-connection" ]]; then
-        seed_connection="true"
-    fi
+    local seed_default_agent="false"
+    for flag in "$@"; do
+        case "$flag" in
+            --with-connection) seed_connection="true" ;;
+            --with-default-agent) seed_default_agent="true" ;;
+        esac
+    done
     local email="${E2E_SERIAL_EMAIL:-}"
     local body
     body=$(jq -nc \
@@ -114,7 +122,10 @@ slack_seed_state() {
         --arg slack_user_id "$slack_user_id" \
         --arg email "$email" \
         --argjson seed_connection "$seed_connection" \
-        '{team_id: $team_id, slack_user_id: $slack_user_id, seed_connection: $seed_connection}
+        --argjson seed_default_agent "$seed_default_agent" \
+        '{team_id: $team_id, slack_user_id: $slack_user_id,
+          seed_connection: $seed_connection,
+          seed_default_agent: $seed_default_agent}
          + (if $email == "" then {} else {email: $email} end)')
     local -a bypass=()
     _slack_bypass_args bypass
