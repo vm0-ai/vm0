@@ -101,17 +101,18 @@ async fn handle_read(
         return Ok(());
     }
     let mut data = vec![0u8; request.length as usize];
-    {
+    let result = {
         let cow = cow.read().await;
-        if let Err(e) = cow.read(request.offset, &mut data) {
-            tracing::warn!(
-                offset = request.offset,
-                len = request.length,
-                "read error: {e}"
-            );
-            send_error_reply(writer, request.handle, libc::EIO as u32).await?;
-            return Ok(());
-        }
+        cow.read(request.offset, &mut data)
+    };
+    if let Err(e) = result {
+        tracing::warn!(
+            offset = request.offset,
+            len = request.length,
+            "read error: {e}"
+        );
+        send_error_reply(writer, request.handle, libc::EIO as u32).await?;
+        return Ok(());
     }
 
     let reply = NbdReply {
@@ -140,14 +141,15 @@ async fn handle_write(
     let mut data = vec![0u8; request.length as usize];
     reader.read_exact(&mut data).await?;
 
-    {
+    let failed = {
         let mut cow = cow.write().await;
         match cow.write(request.offset, &data) {
             Ok(needs_flush) => {
                 if needs_flush && let Err(e) = cow.flush() {
                     tracing::warn!("flush error after write: {e}");
-                    send_error_reply(writer, request.handle, libc::EIO as u32).await?;
-                    return Ok(());
+                    true
+                } else {
+                    false
                 }
             }
             Err(e) => {
@@ -156,10 +158,13 @@ async fn handle_write(
                     len = request.length,
                     "write error: {e}"
                 );
-                send_error_reply(writer, request.handle, libc::EIO as u32).await?;
-                return Ok(());
+                true
             }
         }
+    };
+    if failed {
+        send_error_reply(writer, request.handle, libc::EIO as u32).await?;
+        return Ok(());
     }
 
     let reply = NbdReply {
@@ -174,13 +179,14 @@ async fn handle_flush(
     cow: &Arc<RwLock<CowLayer>>,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
-    {
+    let result = {
         let mut cow = cow.write().await;
-        if let Err(e) = cow.sync() {
-            tracing::warn!("sync error: {e}");
-            send_error_reply(writer, request.handle, libc::EIO as u32).await?;
-            return Ok(());
-        }
+        cow.sync()
+    };
+    if let Err(e) = result {
+        tracing::warn!("sync error: {e}");
+        send_error_reply(writer, request.handle, libc::EIO as u32).await?;
+        return Ok(());
     }
 
     let reply = NbdReply {
