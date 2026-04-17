@@ -216,14 +216,19 @@ impl JobProvider for LocalProvider {
             Ok(r) => r,
             Err(e) => {
                 warn!(run_id = %run_id, error = %e, "local: invalid job JSON, marking job as failed");
-                // Atomic-write is used by submit, so a malformed .job is a
-                // permanent error — retrying will just spin. Delete the .job
-                // so discover won't return it again, then write a .result so
-                // the submitter unblocks.
-                let _ = std::fs::remove_file(&job_file);
+                // Submit writes .job atomically (tmp + rename), so a malformed
+                // .job is a permanent error — retrying the parse will just
+                // spin. Ordering below is chosen so a failure inside complete()
+                // leaves the job retryable instead of stranded:
+                //   1. remove .claim — lets another runner (or the next poll)
+                //      rediscover the job if complete() below fails;
+                //   2. write .result via complete() — notifies the submitter;
+                //   3. remove .job — only after the submitter has a result, so
+                //      a complete() failure keeps .job around for retry.
                 let _ = std::fs::remove_file(&claim_file);
                 self.complete(run_id, 1, Some(&format!("invalid job JSON: {e}")))
                     .await;
+                let _ = std::fs::remove_file(&job_file);
                 return None;
             }
         };
