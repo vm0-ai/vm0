@@ -76,12 +76,16 @@ const router = tsr.router(webhookEventsContract, {
     // webhook returns. With `after()`, fast mock-claude runs completed before Axiom
     // ingestion finished, leaving the CLI with no `● Bash(...)` rendering.
     // Per-consumer failures are swallowed inside the dispatcher (Promise.allSettled).
+    const dispatchStart = Date.now();
     await dispatchToEventConsumers(body.runId, body.events, {
       userId,
       orgId: run.orgId,
       modelProvider: run.modelProvider ?? undefined,
       selectedModel: run.selectedModel ?? undefined,
     });
+    log.debug(
+      `Events ${firstSequence}-${lastSequence} dispatched for run ${body.runId} (${Date.now() - dispatchStart}ms)`,
+    );
 
     // Notify run owner that new events are available
     after(() => {

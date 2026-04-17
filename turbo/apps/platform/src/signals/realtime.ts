@@ -3,9 +3,8 @@ import { platformRealtimeTokenContract } from "@vm0/core";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
-import { createDeferredPromise, FIB_DELAYS_MS, throwIfAbort } from "./utils.ts";
+import { createDeferredPromise, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
-import { delay } from "signal-timers";
 
 const L = logger("Realtime");
 // ---------------------------------------------------------------------------
@@ -106,7 +105,6 @@ export const setAblyLoop$ = command(
     signal.throwIfAborted();
     L.debug("subscribed to topic: " + topic);
 
-    let fibIndex = 0;
     while (!signal.aborted) {
       await deferred.promise;
       signal.throwIfAborted();
@@ -116,21 +114,13 @@ export const setAblyLoop$ = command(
       // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
       try {
         const done = await set(loopCommand$, signal);
-        fibIndex = 0;
         if (done) {
           channel.unsubscribe(topic, callback);
           return;
         }
       } catch (error) {
         throwIfAbort(error);
-        const backoff =
-          FIB_DELAYS_MS[Math.min(fibIndex, FIB_DELAYS_MS.length - 1)] ?? 60_000;
-        L.warn(
-          `setAblyLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
-          error,
-        );
-        fibIndex++;
-        await delay(backoff, { signal });
+        L.warn(`transient error in ably notification`, error);
       }
     }
   },
