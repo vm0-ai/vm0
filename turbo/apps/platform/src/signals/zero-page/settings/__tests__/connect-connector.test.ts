@@ -107,6 +107,64 @@ describe("connectConnector$", () => {
     expect(polling).toBeNull();
   });
 
+  it("keeps polling on reconnect until updatedAt changes", async () => {
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    const mockWindow = { closed: false, close: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
+
+    // Existing connector with a stable updatedAt simulates the pre-reconnect
+    // state; the poll loop should not exit until the updatedAt changes.
+    const initialUpdatedAt = "2026-01-01T00:00:00.000Z";
+    const initialResponse: ConnectorListResponse = {
+      ...makeGithubConnectorResponse(),
+      connectors: [
+        {
+          ...makeGithubConnectorResponse().connectors[0],
+          oauthScopes: ["repo"],
+          createdAt: initialUpdatedAt,
+          updatedAt: initialUpdatedAt,
+        },
+      ],
+    };
+
+    let pollCount = 0;
+    const reconnectedUpdatedAt = "2026-02-01T00:00:00.000Z";
+    server.use(
+      http.get("*/api/zero/connectors", () => {
+        pollCount++;
+        // First poll captures initialUpdatedAt; second poll still shows the
+        // stale value (OAuth callback not yet complete); third poll reflects
+        // the completed reconnect with a new updatedAt.
+        if (pollCount <= 2) {
+          return HttpResponse.json(initialResponse);
+        }
+        return HttpResponse.json({
+          ...initialResponse,
+          connectors: [
+            {
+              ...initialResponse.connectors[0],
+              oauthScopes: ["repo", "project"],
+              updatedAt: reconnectedUpdatedAt,
+            },
+          ],
+        });
+      }),
+    );
+
+    const result = await context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
+    );
+
+    expect(result).toBeTruthy();
+    // One capture poll + one stale poll + one fresh poll.
+    expect(pollCount).toBeGreaterThanOrEqual(3);
+    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(context.store.get(permissionDialogType$)).toBe("github");
+  });
+
   it("exits when popup is closed even if connector not found", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
