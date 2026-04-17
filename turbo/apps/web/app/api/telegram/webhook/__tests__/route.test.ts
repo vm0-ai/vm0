@@ -23,7 +23,11 @@ import { POST } from "../[installationId]/route";
 async function flushAfterCallbacks() {
   const callbacks = [...globalThis.nextAfterCallbacks];
   globalThis.nextAfterCallbacks = [];
-  await Promise.all(callbacks.map((cb) => cb()));
+  await Promise.all(
+    callbacks.map((cb) => {
+      return cb();
+    }),
+  );
 }
 
 const context = testContext();
