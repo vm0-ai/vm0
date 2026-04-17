@@ -214,6 +214,7 @@ impl JobProvider for LocalProvider {
             Ok(b) => b,
             Err(e) => {
                 warn!(run_id = %run_id, error = %e, "local: failed to read job file");
+                let _ = std::fs::remove_file(&claim_file);
                 return None;
             }
         };
@@ -221,6 +222,7 @@ impl JobProvider for LocalProvider {
             Ok(r) => r,
             Err(e) => {
                 warn!(run_id = %run_id, error = %e, "local: invalid job JSON");
+                let _ = std::fs::remove_file(&claim_file);
                 return None;
             }
         };
@@ -624,6 +626,44 @@ mod tests {
         assert!(
             !cancel_path.exists(),
             "cancel file should be deleted after trigger"
+        );
+    }
+
+    /// Regression: if the job file is missing when claim() reads it, the
+    /// .claim file must be removed so the job doesn't get stranded forever.
+    #[tokio::test]
+    async fn claim_cleans_up_on_missing_job_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        let claim_path = dir.path().join(format!("{run_id}.claim"));
+
+        // No .job file — claim() should fail at the read step.
+        assert!(provider.claim(run_id).await.is_none());
+        assert!(
+            !claim_path.exists(),
+            "claim file must be removed when job read fails"
+        );
+    }
+
+    /// Regression: if the job file contains invalid JSON, claim() must
+    /// remove the .claim file instead of leaving the job permanently stuck.
+    #[tokio::test]
+    async fn claim_cleans_up_on_invalid_job_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        let claim_path = dir.path().join(format!("{run_id}.claim"));
+        std::fs::write(dir.path().join(format!("{run_id}.job")), b"not json").unwrap();
+
+        assert!(provider.claim(run_id).await.is_none());
+        assert!(
+            !claim_path.exists(),
+            "claim file must be removed when job JSON parse fails"
         );
     }
 }
