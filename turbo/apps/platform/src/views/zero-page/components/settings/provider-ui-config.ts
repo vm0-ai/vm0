@@ -210,7 +210,7 @@ export function getUIAuthMethodLabel(
  * Human-readable display names for model IDs across all providers.
  * Falls back to the raw model ID if no mapping is found.
  */
-const MODEL_DISPLAY_NAMES: Record<string, string> = {
+const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // Anthropic direct (claude-code-oauth-token, anthropic-api-key, vm0)
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "claude-opus-4-6": "Claude Opus 4.6",
@@ -236,7 +236,7 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "glm-4.7": "GLM-4.7",
   "glm-4.5-air": "GLM-4.5 Air",
   "zai/glm-5-turbo": "GLM-5 Turbo",
-};
+});
 
 /**
  * Get a human-readable display name for a model ID.
