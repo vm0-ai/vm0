@@ -930,7 +930,7 @@ jobs:
           # would auto-Stop the runner before resume can take effect.
           echo "--- Submitting long-running job ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 45 && echo done' &
-          SUBMIT_PID=$!
+          SUBMIT_A_PID=$!
 
           # Wait for sandbox to appear in status.json.
           echo "--- Waiting for sandbox ---"
@@ -1014,10 +1014,10 @@ jobs:
           # Test 6: the long-running A that straddled drain+resume finishes
           # normally (exit 0) — drain must not cancel in-flight jobs.
           echo "--- Test: A completes normally through drain+resume ---"
-          wait "$SUBMIT_PID"
-          SUBMIT_EXIT=$?
-          [ "$SUBMIT_EXIT" -eq 0 ] \
-            || fail "A expected exit 0, got $SUBMIT_EXIT — job was killed"
+          wait "$SUBMIT_A_PID"
+          SUBMIT_A_EXIT=$?
+          [ "$SUBMIT_A_EXIT" -eq 0 ] \
+            || fail "A expected exit 0, got $SUBMIT_A_EXIT — job was killed"
           echo "PASS: A completed normally through drain+resume"
 
           # Test 7: drain on an idle runner → auto-Stop path. With no active
