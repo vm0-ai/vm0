@@ -26,7 +26,7 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             arch: amd64
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
@@ -93,10 +93,15 @@ jobs:
 
       - name: Export digests
         run: |
+          set -euo pipefail
           mkdir -p /tmp/digests/toolchain /tmp/digests/toolchain-rust /tmp/digests/dev
           tc_digest="${{ steps.build-toolchain.outputs.digest }}"
           tr_digest="${{ steps.build-toolchain-rust.outputs.digest }}"
           dev_digest="${{ steps.build-dev.outputs.digest }}"
+          for name in tc_digest tr_digest dev_digest; do
+            value="${!name}"
+            [ -n "${value#sha256:}" ] || { echo "empty $name from build step" >&2; exit 1; }
+          done
           touch "/tmp/digests/toolchain/${tc_digest#sha256:}"
           touch "/tmp/digests/toolchain-rust/${tr_digest#sha256:}"
           touch "/tmp/digests/dev/${dev_digest#sha256:}"
