@@ -536,6 +536,7 @@ export function ZeroSchedulePage() {
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     detach(
+      // eslint-disable-next-line ccstate/no-abort-swallower -- known debt: useLoadableSet's setter both sets saveError state AND rethrows; the empty .then reject handler silences the rethrow so detach does not double-log a rejection the dialog already shows. Tracked for follow-up.
       saveScheduleTracked(
         {
           prompt: values.prompt.trim(),

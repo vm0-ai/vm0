@@ -42,15 +42,6 @@ ruleTester.run("no-abort-swallower", rule, {
     {
       code: `async function run() { try { await doWork(); } catch (e) { throwIfNotAbort(e); } }`,
     },
-    // .then(onSuccess, () => {}) — narrow silencer that only swallows the
-    // input promise's rejection; legitimate when the rejection is already
-    // tracked elsewhere (e.g. useLoadableSet).
-    {
-      code: `fetchExtra(id).then((x) => { use(x); }, () => {});`,
-    },
-    {
-      code: `fetchExtra(id).then(process, function () {});`,
-    },
   ],
   invalid: [
     // .catch(throwIfNotAbort) — the main pattern
@@ -67,6 +58,15 @@ ruleTester.run("no-abort-swallower", rule, {
     {
       code: `fetchData().then(process, throwIfNotAbort);`,
       errors: [{ messageId: "noAbortSwallower" }],
+    },
+    // .then(_, () => {}) — empty rejection handler; swallows input rejection
+    {
+      code: `fetchExtra(id).then((x) => { use(x); }, () => {});`,
+      errors: [{ messageId: "noEmptyThenReject" }],
+    },
+    {
+      code: `fetchExtra(id).then(process, function () {});`,
+      errors: [{ messageId: "noEmptyThenReject" }],
     },
   ],
 });

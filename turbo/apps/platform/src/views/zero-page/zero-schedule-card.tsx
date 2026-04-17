@@ -368,6 +368,7 @@ export function ZeroScheduleCard({
   const handleCreateSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
+        // eslint-disable-next-line ccstate/no-abort-swallower -- known debt: useLoadableSet's setter both sets saveError state AND rethrows; the empty .then reject handler silences the rethrow so detach does not double-log a rejection the dialog already shows. Tracked for follow-up.
         onSave({
           prompt: values.prompt.trim(),
           description: values.description.trim() || undefined,
@@ -419,6 +420,7 @@ export function ZeroScheduleCard({
   const handleEditSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
+        // eslint-disable-next-line ccstate/no-abort-swallower -- known debt: useLoadableSet's setter both sets saveError state AND rethrows; the empty .then reject handler silences the rethrow so detach does not double-log a rejection the dialog already shows. Tracked for follow-up.
         onSave({
           prompt: values.prompt.trim(),
           description: values.description.trim() || undefined,

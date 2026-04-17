@@ -181,37 +181,6 @@ onDownload={() => {
 }}
 ```
 
-#### When `.then(onSuccess, () => {})` is OK
-
-An empty rejection handler on `.then` is narrower than `.catch(() => {})`:
-it only swallows the input promise's rejection, not errors thrown by
-`onSuccess`. This is legitimate when the input promise's rejection is
-already tracked elsewhere — for example when `useLoadableSet` exposes
-the error through a loadable state that drives a UI banner. `detach`
-still wraps the chain so any unexpected error from `onSuccess` is
-reported. `no-abort-swallower` therefore permits this pattern and only
-flags named swallowers like `throwIfNotAbort`.
-
-```ts
-// ✅ — save error surfaced via useLoadableSet.saveError; empty handler
-//     only silences the *already-tracked* save rejection, not onSuccess.
-const [saveLoadable, saveTracked] = useLoadableSet(save$);
-const handleSave = (values) => {
-  detach(
-    saveTracked(values, pageSignal).then(
-      (result) => {
-        setOpen(false);
-        navigateToResult(result);
-      },
-      () => {
-        // saveLoadable.state === "hasError" drives the dialog error banner
-      },
-    ),
-    Reason.DomCallback,
-  );
-};
-```
-
 ### Signals — command that kicks off external async work
 
 Inside `signals/` you cannot use `detach()` (`ccstate/no-detach-in-signals`).
