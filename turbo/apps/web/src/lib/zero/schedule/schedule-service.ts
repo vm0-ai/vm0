@@ -10,12 +10,8 @@ import { notFound, badRequest, schedulePast } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
 import { buildSchedulePrompt } from "../integration-prompt";
-import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
 import { generateScheduleDescription } from "../ai/lightweight-model";
-import type {
-  ScheduleLoopCallbackPayload,
-  ScheduleCronCallbackPayload,
-} from "../../infra/callback/callback-payloads";
+import { adaptScheduleTrigger } from "./adapt-schedule-trigger";
 
 const log = logger("service:schedule");
 
@@ -849,41 +845,6 @@ export async function executeSchedule(
     throw new Error(`Compose ${compose.name} has no versions`);
   }
 
-  // Build callbacks for run completion
-  const callbacks: Array<{
-    url: string;
-    secret: string;
-    payload: ScheduleLoopCallbackPayload | ScheduleCronCallbackPayload;
-  }> = [];
-
-  // Loop schedule advancement callback (triggers next iteration on completion)
-  if (schedule.triggerType === "loop") {
-    const loopPayload: ScheduleLoopCallbackPayload = {
-      scheduleId: schedule.id,
-    };
-    callbacks.push({
-      url: `${getApiUrl()}/api/internal/callbacks/schedule/loop`,
-      secret: generateCallbackSecret(),
-      payload: loopPayload,
-    });
-  }
-
-  // Cron/once schedule completion callback (tracks failures, advances next run, generates summary)
-  if (schedule.triggerType === "cron" || schedule.triggerType === "once") {
-    const cronPayload: ScheduleCronCallbackPayload = {
-      scheduleId: schedule.id,
-      ...(schedule.cronExpression && {
-        cronExpression: schedule.cronExpression,
-      }),
-      timezone: schedule.timezone,
-    };
-    callbacks.push({
-      url: `${getApiUrl()}/api/internal/callbacks/schedule/cron`,
-      secret: generateCallbackSecret(),
-      payload: cronPayload,
-    });
-  }
-
   // Build schedule integration context for the agent
   // (User info is injected centrally by createZeroRunRecord)
   const integrationContext = buildSchedulePrompt({
@@ -899,15 +860,18 @@ export async function executeSchedule(
   // Note: schedule state (nextRunAt, lastRunAt, enabled) is already advanced
   // by the atomic CAS claim in executeDueSchedules(). We only need to persist
   // lastRunId after successful run creation.
-  const result = await createZeroRun({
-    userId: schedule.userId,
-    prompt: schedule.prompt,
-    appendSystemPrompt,
-    agentId: schedule.agentId,
-    scheduleId: schedule.id,
-    triggerSource: "schedule",
-    callbacks,
-  });
+  const result = await createZeroRun(
+    adaptScheduleTrigger({
+      userId: schedule.userId,
+      agentId: schedule.agentId,
+      scheduleId: schedule.id,
+      prompt: schedule.prompt,
+      appendSystemPrompt,
+      triggerType: schedule.triggerType,
+      cronExpression: schedule.cronExpression ?? undefined,
+      timezone: schedule.timezone,
+    }),
+  );
 
   // Persist lastRunId so the active-run check in executeDueSchedules works
   await globalThis.services.db
