@@ -4,25 +4,17 @@ import { readFile, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { parse as parseYaml } from "yaml";
-import { extractAndGroupVariables, resolveSkillRef } from "@vm0/core";
+import { extractAndGroupVariables } from "@vm0/core";
 import {
   getComposeByName,
   createOrUpdateCompose,
   listZeroSecrets,
   listZeroVariables,
   listZeroConnectors,
-  resolveSkills,
 } from "../../lib/api";
 import { validateAgentCompose } from "../../lib/domain/yaml-validator";
-import {
-  downloadGitHubDirectory,
-  parseGitHubTreeUrl,
-} from "../../lib/domain/github-skills";
-import {
-  uploadInstructions,
-  uploadSkill,
-  type SkillUploadResult,
-} from "../../lib/storage/system-storage";
+import { downloadGitHubDirectory } from "../../lib/domain/github-skills";
+import { uploadInstructions } from "../../lib/storage/system-storage";
 import { isInteractive, promptConfirm } from "../../lib/utils/prompt-utils";
 import {
   startSilentUpgrade,
@@ -71,7 +63,6 @@ function getVarsFromComposeContent(content: unknown): Set<string> {
 interface AgentConfig {
   instructions?: string;
   framework?: string;
-  skills?: string[];
   environment?: Record<string, string>;
 }
 
@@ -133,82 +124,48 @@ function hasVolumes(config: unknown): boolean {
   );
 }
 
-/**
- * Upload instructions and skills, returning skill results.
- */
-async function uploadAssets(
+async function uploadInstructionsIfPresent(
   agentName: string,
   agent: AgentConfig,
   basePath: string,
   jsonMode?: boolean,
-): Promise<SkillUploadResult[]> {
-  if (agent.instructions) {
-    if (!jsonMode) {
-      console.log(`Uploading instructions: ${agent.instructions}`);
-    }
-    const result = await uploadInstructions(
-      agentName,
-      agent.instructions,
-      basePath,
-      agent.framework,
+): Promise<void> {
+  if (!agent.instructions) return;
+
+  if (!jsonMode) {
+    console.log(`Uploading instructions: ${agent.instructions}`);
+  }
+  const result = await uploadInstructions(
+    agentName,
+    agent.instructions,
+    basePath,
+    agent.framework,
+  );
+  if (!jsonMode) {
+    console.log(
+      chalk.green(
+        `✓ Instructions ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
+      ),
     );
-    if (!jsonMode) {
-      console.log(
-        chalk.green(
-          `✓ Instructions ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.versionId.slice(0, 8)}`,
-        ),
-      );
-    }
   }
+}
 
-  const skillResults: SkillUploadResult[] = [];
-  if (agent.skills && Array.isArray(agent.skills)) {
-    // Normalize bare skill names to full GitHub URLs before upload
-    agent.skills = agent.skills.map(resolveSkillRef);
-
-    if (!jsonMode) {
-      console.log(`Uploading ${agent.skills.length} skill(s)...`);
-    }
-
-    // Batch resolve official skills against server cache
-    const { resolved, unresolved } = await resolveSkills(agent.skills);
-
-    // Use resolved skills directly (no download, no upload)
-    for (const skillUrl of agent.skills) {
-      const skill = resolved[skillUrl];
-      if (skill) {
-        const parsed = parseGitHubTreeUrl(skillUrl);
-        skillResults.push({
-          name: skill.storageName,
-          versionId: skill.versionHash,
-          action: "resolved",
-          skillName: parsed.skillName,
-          frontmatter: skill.frontmatter,
-        });
-        if (!jsonMode) {
-          console.log(chalk.green(`  ✓ ${parsed.skillName} (cached)`));
-        }
-      }
-    }
-
-    // Fall back to old flow for unresolved skills
-    for (const skillUrl of unresolved) {
-      if (!jsonMode) {
-        console.log(chalk.dim(`  Downloading: ${skillUrl}`));
-      }
-      const result = await uploadSkill(skillUrl);
-      skillResults.push(result);
-      if (!jsonMode) {
-        console.log(
-          chalk.green(
-            `  ✓ Skill ${result.action === "deduplicated" ? "(unchanged)" : "uploaded"}: ${result.skillName} (${result.versionId.slice(0, 8)})`,
-          ),
-        );
+/**
+ * Remove legacy `skills:` fields from every agent before POSTing the compose.
+ * Belt-and-braces with server-side stripping planned in sibling sub-issue #9754.
+ */
+function stripSkillsFromAgents(config: unknown): unknown {
+  if (!config || typeof config !== "object") return config;
+  const cfg = structuredClone(config) as Record<string, unknown>;
+  const agents = cfg.agents;
+  if (agents && typeof agents === "object" && !Array.isArray(agents)) {
+    for (const agent of Object.values(agents as Record<string, unknown>)) {
+      if (agent && typeof agent === "object" && !Array.isArray(agent)) {
+        delete (agent as Record<string, unknown>).skills;
       }
     }
   }
-
-  return skillResults;
+  return cfg;
 }
 
 /**
@@ -310,7 +267,8 @@ async function finalizeCompose(
   if (!options.json) {
     console.log("Uploading compose...");
   }
-  const response = await createOrUpdateCompose({ content: config });
+  const contentToPost = stripSkillsFromAgents(config);
+  const response = await createOrUpdateCompose({ content: contentToPost });
 
   const shortVersionId = response.versionId.slice(0, 8);
   const displayName = response.name;
@@ -433,8 +391,8 @@ async function handleGitHubCompose(
       });
     }
 
-    // Upload instructions and skills
-    await uploadAssets(agentName, agent, basePath, options.json);
+    // Upload instructions
+    await uploadInstructionsIfPresent(agentName, agent, basePath, options.json);
 
     // Finalize compose (upload, display)
     return await finalizeCompose(config, agent, options);
@@ -508,8 +466,13 @@ export const composeCommand = new Command()
             const { config, agentName, agent, basePath } =
               await loadAndValidateConfig(resolvedConfigFile);
 
-            // 3. Upload instructions and skills
-            await uploadAssets(agentName, agent, basePath, options.json);
+            // 3. Upload instructions
+            await uploadInstructionsIfPresent(
+              agentName,
+              agent,
+              basePath,
+              options.json,
+            );
 
             // 4. Finalize compose (upload, display)
             result = await finalizeCompose(config, agent, options);

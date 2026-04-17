@@ -41,9 +41,6 @@ export {
   updateZeroUserPreferences,
 } from "./domains/zero-user-preferences";
 
-// Domain modules - Skills
-export { resolveSkills } from "./domains/skills";
-
 // Domain modules - Zero Organizations
 export {
   getZeroOrg,
