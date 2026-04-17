@@ -12,6 +12,10 @@ export interface ConnectorRef {
   darkIcon?: string;
   /** true when the icon SVG is dark-coloured and needs inversion in dark mode */
   dark?: boolean;
+  /** true when the icon SVG's artwork only fills a fraction of its viewBox
+   *  (e.g. the official Slack Mark's 270×270 viewBox with artwork centred in
+   *  ~45%). The renderer scales the <img> up to compensate. */
+  looseViewBox?: boolean;
 }
 
 export interface IntegrationData {
@@ -55,6 +59,7 @@ const SLACK: ConnectorRef = {
   id: "slack",
   label: "Slack",
   icon: "/assets/mockup/slack.svg",
+  looseViewBox: true,
 };
 
 const SENTRY: ConnectorRef = {
