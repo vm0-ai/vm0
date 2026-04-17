@@ -85,8 +85,8 @@ export async function POST(
   const chatId = String(message.chat.id);
 
   // Route to appropriate handler
-  after(
-    (async () => {
+  after(() => {
+    return (async () => {
       const messageText = message.text ?? message.caption;
       const command = parseBotCommand(messageText, installation.botUsername);
 
@@ -149,8 +149,8 @@ export async function POST(
       await storeTelegramMessage(installationId, chatId, message);
     })().catch((error) => {
       log.error("Error handling telegram webhook", { error, installationId });
-    }),
-  );
+    });
+  });
 
   // Return 200 immediately
   return new Response("OK", { status: 200 });
