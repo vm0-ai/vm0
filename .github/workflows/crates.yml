@@ -966,18 +966,21 @@ jobs:
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo B done' &
           SUBMIT_B_PID=$!
 
-          # Give the queue file time to land but far short of a normal
-          # claim + exec cycle. If the runner were still claiming, B would
-          # complete in well under 10s; with drain in effect it must remain
-          # alive and `active_runs` must stay at 1 (A only).
-          sleep 10
-          if ! kill -0 "$SUBMIT_B_PID" 2>/dev/null; then
-            fail "B submit completed during Draining — runner should not claim new jobs"
-          fi
-          ACTIVE_COUNT=$(sudo jq -r '.active_runs | length' "$RUNNER_DIR/status.json" 2>/dev/null)
-          [ "$ACTIVE_COUNT" = "1" ] \
-            || fail "expected 1 active run during drain, got '$ACTIVE_COUNT'"
-          echo "PASS: B is pending, only A is active while Draining"
+          # Continuously monitor for 10s that B stays pending (submit PID
+          # alive) and active_runs stays at 1 (A only). Sampling once after
+          # a fixed sleep can miss a transient claim-then-release bug; a
+          # continuous poll catches it at the iteration where the invariant
+          # breaks.
+          for i in $(seq 1 10); do
+            if ! kill -0 "$SUBMIT_B_PID" 2>/dev/null; then
+              fail "B submit completed at t=${i}s during Draining — runner should not claim new jobs"
+            fi
+            ACTIVE_COUNT=$(sudo jq -r '.active_runs | length' "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ "$ACTIVE_COUNT" = "1" ] \
+              || fail "active_runs changed to '$ACTIVE_COUNT' at t=${i}s — runner claimed B during Draining"
+            sleep 1
+          done
+          echo "PASS: B is pending, only A is active throughout 10s of Draining"
 
           # Test 3: resume → mode=running.
           echo "--- Test: service resume ---"
