@@ -118,7 +118,9 @@ export async function POST(request: Request) {
     return new NextResponse("Not found", { status: 404 });
   }
 
-  const raw = (await request.json().catch(() => null)) as SeedBody | null;
+  const raw = (await request.json().catch(() => {
+    return null;
+  })) as SeedBody | null;
   if (!raw?.team_id || !raw.slack_user_id) {
     return NextResponse.json(
       { error: "team_id and slack_user_id are required" },

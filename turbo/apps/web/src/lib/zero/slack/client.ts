@@ -1,5 +1,6 @@
 import { WebClient } from "@slack/web-api";
 import type { Block, KnownBlock, View } from "@slack/web-api";
+import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 
 const log = logger("slack:client");
@@ -11,12 +12,12 @@ const log = logger("slack:client");
  * traffic is redirected to `/api/test/slack-mock/` on the same deployment.
  */
 function resolveSlackApiUrl(): string | undefined {
-  if (process.env.SLACK_API_URL) return process.env.SLACK_API_URL;
-  const mockEnabled =
-    process.env.E2E_SLACK_MOCK_ENABLED === "1" ||
-    process.env.E2E_SLACK_MOCK_ENABLED === "true";
-  if (mockEnabled && process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/test/slack-mock/`;
+  const e = env();
+  if (e.SLACK_API_URL) return e.SLACK_API_URL;
+  const flag = e.E2E_SLACK_MOCK_ENABLED;
+  const mockEnabled = flag === "1" || flag === "true";
+  if (mockEnabled && e.VERCEL_URL) {
+    return `https://${e.VERCEL_URL}/api/test/slack-mock/`;
   }
   return undefined;
 }

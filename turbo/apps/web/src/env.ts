@@ -217,6 +217,7 @@ function initEnv() {
       CLAUDE_CODE_VERSION_URL: z.url().optional(),
       // Vercel platform detection
       VERCEL: z.string().optional(),
+      VERCEL_URL: z.string().optional(),
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
       // AgentPhone (platform-level phone channel)
       AGENTPHONE_API_KEY: z.string().min(1).optional(),
@@ -378,6 +379,7 @@ function initEnv() {
       VM0_DEBUG: process.env.VM0_DEBUG,
       CLAUDE_CODE_VERSION_URL: process.env.CLAUDE_CODE_VERSION_URL,
       VERCEL: process.env.VERCEL,
+      VERCEL_URL: process.env.VERCEL_URL,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
       AGENTPHONE_API_KEY: process.env.AGENTPHONE_API_KEY,

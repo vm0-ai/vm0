@@ -4,9 +4,9 @@ import { isTestEndpointAllowed } from "../../../../../src/lib/test-endpoints/gua
 async function readUserId(request: Request): Promise<string> {
   const ctype = request.headers.get("content-type") ?? "";
   if (ctype.includes("application/json")) {
-    const body = (await request.json().catch(() => ({}))) as {
-      user?: string;
-    };
+    const body = (await request.json().catch(() => {
+      return {};
+    })) as { user?: string };
     if (body.user) return body.user;
   } else {
     const text = await request.text();
