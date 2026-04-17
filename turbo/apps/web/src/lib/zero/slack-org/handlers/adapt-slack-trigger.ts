@@ -4,7 +4,7 @@ import { buildSlackPrompt } from "../../integration-prompt";
 import type { UserInfoOptions } from "../../integration-prompt";
 import type { CreateZeroRunParams } from "../../zero-run-service";
 
-export interface SlackTriggerContext {
+interface SlackTriggerContext {
   userId: string;
   agentId: string;
   sessionId: string | undefined;
@@ -20,13 +20,9 @@ export interface SlackTriggerContext {
 
 /**
  * Pure transform: Slack trigger input → createZeroRun params.
- *
- * `secret` is overridable for deterministic testing; production callers
- * omit it and get a fresh callback secret.
  */
 export function adaptSlackTrigger(
   ctx: SlackTriggerContext,
-  secret: string = generateCallbackSecret(),
 ): CreateZeroRunParams {
   const appendSystemPrompt =
     buildSlackPrompt(
@@ -50,7 +46,7 @@ export function adaptSlackTrigger(
     callbacks: [
       {
         url: `${getApiUrl()}/api/internal/callbacks/slack/org`,
-        secret,
+        secret: generateCallbackSecret(),
         payload: ctx.callbackContext,
       },
     ],
