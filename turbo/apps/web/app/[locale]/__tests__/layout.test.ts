@@ -44,13 +44,13 @@ vi.mock("next-intl/server", () => {
 import { generateMetadata } from "../layout";
 
 describe("locale layout generateMetadata", () => {
-  it("returns metadata with alternates for valid locale", async () => {
+  it("returns metadata with openGraph for valid locale", async () => {
     const metadata = await generateMetadata({
       children: null,
       params: Promise.resolve({ locale: "en" }),
     });
 
-    expect(metadata.alternates?.canonical).toBe("https://www.vm0.ai/en");
+    expect(metadata.openGraph?.url).toBe("https://www.vm0.ai/en");
     expect(metadata.openGraph).toBeDefined();
     expect(metadata.twitter).toBeDefined();
   });
@@ -62,9 +62,7 @@ describe("locale layout generateMetadata", () => {
         params: Promise.resolve({ locale }),
       });
 
-      expect(metadata.alternates?.canonical).toBe(
-        `https://www.vm0.ai/${locale}`,
-      );
+      expect(metadata.openGraph?.url).toBe(`https://www.vm0.ai/${locale}`);
     }
   });
 
