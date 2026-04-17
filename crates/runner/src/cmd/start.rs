@@ -31,6 +31,7 @@ use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
+use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, HeartbeatState};
 
 /// Initial backoff before retrying mitmproxy after a crash.
@@ -1114,18 +1115,26 @@ fn spawn_job(
                     outcome.sandbox,
                     outcome.source_ip,
                     outcome.guest_session_id,
-                    Some(telemetry),
+                    telemetry,
                 )
             }
             Err(e) => {
                 error!(run_id = %run_id, error = %e, "executor task panicked");
+                // Panic lost the in-flight telemetry buffer; substitute an
+                // empty collector so the post-complete flush path stays
+                // unconditional. `flush` early-returns on empty pending_ops.
+                let empty_telemetry = JobTelemetry::new(
+                    exec_config_for_upload.http.clone(),
+                    run_id,
+                    sandbox_token.clone(),
+                );
                 (
                     1,
                     Some(format!("internal error: {e}")),
                     None,
                     String::new(),
                     None,
-                    None,
+                    empty_telemetry,
                 )
             }
         };
@@ -1241,17 +1250,19 @@ fn spawn_job(
         // user-visible run-complete signal isn't blocked on these uploads.
         // They're still awaited (not spawned) so the surrounding `jobs`
         // JoinSet drains them on graceful shutdown — no data loss on SIGTERM.
-        if let Some(telemetry) = telemetry {
-            telemetry.flush().await;
-        }
+        // Flush and upload run concurrently — they share no state and both
+        // target the telemetry endpoint, so parallelism shortens the drain
+        // window (~383 ms + ~1.6 s → ~1.6 s).
         let network_log_path = exec_config_for_upload.log_paths.network_log(run_id);
-        network_logs::upload_network_logs(
-            &exec_config_for_upload.http,
-            run_id,
-            &sandbox_token,
-            &network_log_path,
-        )
-        .await;
+        tokio::join!(
+            telemetry.flush(),
+            network_logs::upload_network_logs(
+                &exec_config_for_upload.http,
+                run_id,
+                &sandbox_token,
+                &network_log_path,
+            ),
+        );
 
         Some(run_id)
     });
