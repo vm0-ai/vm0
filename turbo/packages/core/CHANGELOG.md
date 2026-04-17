@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.193.0](https://github.com/vm0-ai/vm0/compare/core-v8.192.0...core-v8.193.0) (2026-04-17)
+
+
+### Features
+
+* add claude-opus-4-7 to vm0 managed model provider ([#9709](https://github.com/vm0-ai/vm0/issues/9709)) ([9906c32](https://github.com/vm0-ai/vm0/commit/9906c32b58966c988c7c479e76e5349dc35cb6d8))
+
 ## [8.192.0](https://github.com/vm0-ai/vm0/compare/core-v8.191.0...core-v8.192.0) (2026-04-16)
 
 
