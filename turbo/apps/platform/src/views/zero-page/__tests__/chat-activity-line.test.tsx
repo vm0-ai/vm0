@@ -116,6 +116,41 @@ describe("chat activity line", () => {
     expect(screen.queryByText("Running Grep...")).toBeNull();
   });
 
+  it("hides the activity line once the run completes", async () => {
+    const ctrl = mockChatLifecycle({
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Starting",
+          runId: RUN_ID,
+          sequenceNumber: 1,
+          status: "running",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Starting")).toBeInTheDocument();
+    });
+
+    ctrl.setEvents([buildAssistantEvent(2, { type: "tool_use", name: "Bash" })]);
+    triggerAblyEvent(`runEventCreated:${RUN_ID}`);
+
+    await waitFor(() => {
+      expect(screen.getByText("Running Bash...")).toBeInTheDocument();
+    });
+
+    ctrl.completeRun("Done");
+
+    await waitFor(() => {
+      expect(screen.queryByText("Running Bash...")).toBeNull();
+    });
+  });
+
   it("does not render the activity line when no tail run has a sequenceNumber", async () => {
     mockChatLifecycle({
       threadId: THREAD_ID,

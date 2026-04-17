@@ -267,16 +267,16 @@ export function ZeroChatThreadPageInner({
                 </p>
               </div>
             )}
-            {groups.map((group) => {
+            {groups.map((group, index) => {
               return (
                 <PagedGroupRow
                   key={group.beginMessageId}
                   group={group}
                   thread={thread}
+                  isLast={index === groups.length - 1}
                 />
               );
             })}
-            <RunActivityLine thread={thread} />
             <ThinkingIndicator thread={thread} />
           </div>
         </main>
@@ -485,8 +485,9 @@ function summarizeAgentEvent(event: AgentEvent): string | null {
 }
 
 function RunActivityLine({ thread }: { thread: ChatThreadSignals }) {
+  const allFinished = useLastResolved(thread.allFinished$) ?? false;
   const events = useLastResolved(thread.activityEvents$);
-  if (!events || events.length === 0) {
+  if (allFinished || !events || events.length === 0) {
     return null;
   }
   const lines = events
@@ -506,28 +507,25 @@ function RunActivityLine({ thread }: { thread: ChatThreadSignals }) {
   }
 
   return (
-    <div
+    <ul
       data-role="run-activity-line"
-      className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+      className="flex flex-col gap-1 text-xs text-muted-foreground"
     >
-      <div className="hidden @[900px]:block" />
-      <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {lines.map((line) => {
-          return (
-            <li
-              key={line.sequenceNumber}
-              className="flex items-center gap-2 min-w-0"
-            >
-              <IconLoader2
-                size={12}
-                className="animate-spin text-foreground/50 shrink-0"
-              />
-              <span className="truncate zero-shimmer-text">{line.text}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+      {lines.map((line) => {
+        return (
+          <li
+            key={line.sequenceNumber}
+            className="flex items-center gap-2 min-w-0"
+          >
+            <IconLoader2
+              size={12}
+              className="animate-spin text-foreground/50 shrink-0"
+            />
+            <span className="truncate zero-shimmer-text">{line.text}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -651,14 +649,16 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
 function PagedGroupRow({
   group,
   thread,
+  isLast,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  isLast: boolean;
 }) {
   if (group.role === "user") {
     return <PagedUserGroup group={group} />;
   }
-  return <PagedAssistantGroup group={group} thread={thread} />;
+  return <PagedAssistantGroup group={group} thread={thread} isLast={isLast} />;
 }
 
 function PagedUserGroup({ group }: { group: GroupedChatMessageGroup }) {
@@ -756,9 +756,11 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
 function PagedAssistantGroup({
   group,
   thread,
+  isLast,
 }: {
   group: GroupedChatMessageGroup;
   thread: ChatThreadSignals;
+  isLast: boolean;
 }) {
   const fullContent = group.messages
     .map((m) => {
@@ -778,6 +780,7 @@ function PagedAssistantGroup({
           {group.messages.map((msg) => {
             return <PagedAssistantMessageItem key={msg.id} message={msg} />;
           })}
+          {isLast && <RunActivityLine thread={thread} />}
         </div>
       </div>
       <PagedGroupActions group={group} content={fullContent} thread={thread} />
