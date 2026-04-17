@@ -3,7 +3,6 @@ import { NextIntlClientProvider } from "next-intl";
 import { notFound } from "next/navigation";
 import { locales, type Locale } from "../../i18n";
 import SiteHeader from "../components/SiteHeader";
-import { buildLocaleAlternates } from "../lib/seo/alternates";
 import type { Metadata } from "next";
 
 type Props = {
@@ -27,14 +26,9 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     ja: "ja_JP",
   };
 
-  // Fallback hreflang for any route that doesn't provide page-level metadata.
-  // All real pages under [locale] should override this via buildLocaleAlternates
-  // with their own path so hreflang alternates point to the correct translation.
-  const alternates = buildLocaleAlternates("", locale);
-  const ogUrl = alternates.canonical;
+  const ogUrl = `https://www.vm0.ai/${locale}`;
 
   return {
-    alternates,
     openGraph: {
       locale: localeNames[locale] || "en_US",
       alternateLocale: locales

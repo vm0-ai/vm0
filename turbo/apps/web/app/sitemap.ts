@@ -133,9 +133,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
       const alternates = buildAlternates(`/blog/posts/${post.slug}`, available);
 
-      const imageUrl = post.cover.startsWith("http")
-        ? post.cover
-        : `${blogBaseUrl}${post.cover}`;
+      const imageUrl = post.cover
+        ? post.cover.startsWith("http")
+          ? post.cover
+          : `${blogBaseUrl}${post.cover}`
+        : undefined;
 
       for (const locale of available) {
         urls.push({
@@ -143,7 +145,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           lastModified: new Date(post.publishedAt),
           changeFrequency: "monthly",
           priority: 0.7,
-          images: [imageUrl],
+          ...(imageUrl && { images: [imageUrl] }),
           alternates: { languages: alternates },
         });
       }

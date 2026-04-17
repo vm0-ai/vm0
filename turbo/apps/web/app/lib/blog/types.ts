@@ -11,5 +11,5 @@ export interface BlogPost {
   publishedAt: string;
   readTime: string;
   featured?: boolean;
-  cover: string;
+  cover?: string;
 }

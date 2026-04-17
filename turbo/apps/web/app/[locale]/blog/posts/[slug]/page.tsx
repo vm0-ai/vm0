@@ -42,9 +42,15 @@ export async function generateMetadata({
   }
 
   const postUrl = `${getBlogBaseUrl()}/${locale}/blog/posts/${slug}`;
-  const imageUrl = post.cover.startsWith("http")
-    ? post.cover
-    : `${getBlogBaseUrl()}${post.cover}`;
+  const imageUrl = post.cover
+    ? post.cover.startsWith("http")
+      ? post.cover
+      : `${getBlogBaseUrl()}${post.cover}`
+    : undefined;
+
+  const ogImages = imageUrl
+    ? [{ url: imageUrl, width: 1200, height: 630, alt: post.title }]
+    : undefined;
 
   return {
     title: post.title,
@@ -61,20 +67,13 @@ export async function generateMetadata({
       publishedTime: post.publishedAt,
       authors: [post.author.name],
       url: postUrl,
-      images: [
-        {
-          url: imageUrl,
-          width: 1200,
-          height: 630,
-          alt: post.title,
-        },
-      ],
+      images: ogImages,
     },
     twitter: {
       card: "summary_large_image",
       title: post.title,
       description: post.excerpt,
-      images: [imageUrl],
+      images: imageUrl ? [imageUrl] : undefined,
       creator: "@vm0_ai",
       site: "@vm0_ai",
     },
@@ -121,9 +120,11 @@ export default async function BlogPostPage({ params }: PageProps) {
     .slice(0, 3);
 
   const postUrl = `${getBlogBaseUrl()}/${locale}/blog/posts/${post.slug}`;
-  const imageUrl = post.cover.startsWith("http")
-    ? post.cover
-    : `${getBlogBaseUrl()}${post.cover}`;
+  const imageUrl = post.cover
+    ? post.cover.startsWith("http")
+      ? post.cover
+      : `${getBlogBaseUrl()}${post.cover}`
+    : undefined;
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
@@ -157,7 +158,7 @@ export default async function BlogPostPage({ params }: PageProps) {
     description: post.excerpt,
     url: postUrl,
     datePublished: post.publishedAt,
-    image: imageUrl,
+    ...(imageUrl && { image: imageUrl }),
     author: {
       "@type": "Person",
       name: post.author.name,
@@ -288,14 +289,16 @@ export default async function BlogPostPage({ params }: PageProps) {
                     style={{ textDecoration: "none" }}
                   >
                     <article className="blog-card">
-                      <div className="blog-card-cover">
-                        <Image
-                          src={relatedPost.cover}
-                          alt={relatedPost.title}
-                          fill
-                          style={{ objectFit: "cover" }}
-                        />
-                      </div>
+                      {relatedPost.cover && (
+                        <div className="blog-card-cover">
+                          <Image
+                            src={relatedPost.cover}
+                            alt={relatedPost.title}
+                            fill
+                            style={{ objectFit: "cover" }}
+                          />
+                        </div>
+                      )}
                       <div className="blog-card-body">
                         <div className="blog-card-meta">
                           <span className="blog-card-category">

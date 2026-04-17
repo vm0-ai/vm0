@@ -79,15 +79,17 @@ export default function BlogContent({
                     {featuredPost.excerpt}
                   </p>
                 </div>
-                <div className="featured-post-visual">
-                  <Image
-                    src={featuredPost.cover}
-                    alt={featuredPost.title}
-                    width={800}
-                    height={500}
-                    style={{ width: "100%", height: "auto" }}
-                  />
-                </div>
+                {featuredPost.cover && (
+                  <div className="featured-post-visual">
+                    <Image
+                      src={featuredPost.cover}
+                      alt={featuredPost.title}
+                      width={800}
+                      height={500}
+                      style={{ width: "100%", height: "auto" }}
+                    />
+                  </div>
+                )}
               </article>
             </Link>
           </div>
@@ -143,14 +145,16 @@ export default function BlogContent({
                   style={{ textDecoration: "none" }}
                 >
                   <article className="blog-card">
-                    <div className="blog-card-cover">
-                      <Image
-                        src={post.cover}
-                        alt={post.title}
-                        fill
-                        style={{ objectFit: "cover" }}
-                      />
-                    </div>
+                    {post.cover && (
+                      <div className="blog-card-cover">
+                        <Image
+                          src={post.cover}
+                          alt={post.title}
+                          fill
+                          style={{ objectFit: "cover" }}
+                        />
+                      </div>
+                    )}
                     <div className="blog-card-body">
                       <div className="blog-card-meta">
                         <span className="blog-card-category">

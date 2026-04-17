@@ -73,7 +73,7 @@ interface StrapiArticle {
 }
 
 function transformArticle(article: StrapiArticle): BlogPost {
-  let coverUrl = "/covers/default.png";
+  let coverUrl: string | undefined;
   if (article.cover?.url) {
     const url = article.cover.url;
     coverUrl = url.startsWith("http") ? url : `${getStrapiUrl()}${url}`;
