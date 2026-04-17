@@ -533,13 +533,16 @@ async fn run_with_firecracker(
 
     // 11. Create snapshot — Firecracker writes directly to output_dir.
     //
-    // File content durability is guaranteed upstream: Firecracker v1.14.1
-    // calls `flush()` + `sync_all()` on both files before the API response
-    // returns. See snapshot_state_to_file in src/vmm/src/persist.rs and
-    // snapshot_memory_to_file in src/vmm/src/vstate/vm.rs. We therefore do
-    // not fsync the file contents on the host side. Directory-entry
-    // durability (persisting the `name → inode` mapping) is a separate
-    // concern handled elsewhere.
+    // File content durability is guaranteed upstream: as of Firecracker
+    // v1.14.1 (see `FIRECRACKER_VERSION` in `runner/src/deps.rs`), both
+    // snapshot.bin and memory.bin are flushed and fsynced before the API
+    // response returns. References (pinned to the v1.14.1 tag):
+    //   - `snapshot_state_to_file` — https://github.com/firecracker-microvm/firecracker/blob/v1.14.1/src/vmm/src/persist.rs
+    //   - `snapshot_memory_to_file` — https://github.com/firecracker-microvm/firecracker/blob/v1.14.1/src/vmm/src/vstate/vm.rs
+    // Re-verify this guarantee whenever `FIRECRACKER_VERSION` is bumped;
+    // if it ever regresses, add a host-side `sync_all` on both files here.
+    // Directory-entry durability (persisting the `name → inode` mapping)
+    // is handled separately; see #9825.
     let snapshot_str = output.snapshot().display().to_string();
     let memory_str = output.memory().display().to_string();
     client.create_snapshot(&snapshot_str, &memory_str).await?;
