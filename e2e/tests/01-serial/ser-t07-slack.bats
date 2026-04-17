@@ -62,6 +62,28 @@ setup_file() {
     fi
     export E2E_SEED_VM0_USER_ID
     E2E_SEED_VM0_USER_ID=$(echo "$preflight" | jq -r '.vm0_user_id')
+
+    # Probe every mock Slack endpoint to catch routing regressions early —
+    # Next.js has historically been finicky about dotted folder names, and
+    # a silent 404 here would masquerade as a dispatch failure much later.
+    local -a bypass=()
+    _slack_bypass_args bypass
+    local mock
+    for mock in chat.postMessage chat.postEphemeral conversations.open \
+                conversations.history conversations.replies views.publish \
+                assistant.threads.setStatus users.info auth.test \
+                oauth.v2.access; do
+        local code
+        code=$(curl -sS -o /dev/null -w "%{http_code}" -X POST \
+            -H "Content-Type: application/json" \
+            "${bypass[@]}" \
+            --data '{}' \
+            "$VM0_API_URL/api/test/slack-mock/$mock")
+        if [[ "$code" != "200" ]]; then
+            echo "# mock endpoint /api/test/slack-mock/$mock returned HTTP $code" >&2
+            return 1
+        fi
+    done
 }
 
 teardown_file() {
