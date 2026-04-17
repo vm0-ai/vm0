@@ -213,7 +213,10 @@
     "termsOfUse": "Terms of Use",
     "privacyPolicy": "Privacy Policy",
     "consentPreferences": "Consent Preferences",
-    "support": "Support"
+    "support": "Support",
+    "aiDisclaimerHeading": "Please note",
+    "aiDisclaimerInaccuracy": "Zero is powered by large language models. Responses, summaries, and other outputs may be inaccurate, incomplete, or outdated — please verify important information before acting on it.",
+    "aiDisclaimerPaidPlan": "Using the AI agent inside the Slack app container requires a paid Slack plan. @mentions and direct messages to Zero are available on all Slack plans."
   },
   "skills": {
     "hero": {
