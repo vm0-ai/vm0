@@ -3,6 +3,7 @@ import {
   useSet,
   useLastLoadable,
   useLastResolved,
+  useLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -217,18 +218,20 @@ export function ZeroChatThreadPageInner({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
-  const groups = useGet(thread.groupedChatMessages$);
-
-  // Use threadData$ for loading/error detection (async computed has proper
-  // loading/error state whereas the sync paged computed does not).
+  const groupsLoadable = useLoadable(thread.groupedChatMessages$);
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const sessionError =
     threadDataLoadable.state === "hasError"
       ? threadDataLoadable.error instanceof Error
         ? threadDataLoadable.error.message
         : "Failed to load chat"
-      : null;
-  const messagesLoading = threadDataLoadable.state === "loading";
+      : groupsLoadable.state === "hasError"
+        ? groupsLoadable.error instanceof Error
+          ? groupsLoadable.error.message
+          : "Failed to load messages"
+        : null;
+  const messagesLoading = groupsLoadable.state === "loading";
+  const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
 
   return (
@@ -293,7 +296,7 @@ function ChatThreadComposer({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
-  const groups = useGet(thread.groupedChatMessages$);
+  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const hasMessages = groups.length > 0;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinished = useLastResolved(thread.allFinished$) ?? false;
@@ -409,7 +412,7 @@ function ChatSkeleton() {
 // ---------------------------------------------------------------------------
 
 function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
-  const groups = useGet(thread.groupedChatMessages$);
+  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const lastGroup = groups[groups.length - 1];
   const show = lastGroup && lastGroup.role !== "assistant";
 

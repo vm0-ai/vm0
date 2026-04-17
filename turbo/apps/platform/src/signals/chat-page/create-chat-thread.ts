@@ -66,9 +66,8 @@ export interface ChatThreadSignals {
   // ── Draft sync ────────────────────────────────────────────────────────────
   scheduleDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // ── Paged messages (sole rendering path) ─────────────────────────────────
-  pagedChatMessages$: Computed<PagedChatMessage[]>;
-  latestChatMessageId$: Computed<string | undefined>;
-  groupedChatMessages$: Computed<GroupedChatMessageGroup[]>;
+  latestChatMessageId$: Computed<Promise<string | undefined>>;
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
@@ -441,33 +440,74 @@ function mergeIntoGroups(
 }
 
 function createPagedMessages(threadId: string) {
-  const internalGroups$ = state<GroupedChatMessageGroup[]>([]);
+  // Initial page — threadId is captured in closure so this computed runs
+  // exactly once per thread signal instance. View subscription is what
+  // triggers the fetch.
+  const initialMessages$ = computed(
+    async (get): Promise<PagedChatMessage[]> => {
+      const client = get(zeroClient$)(chatThreadMessagesContract);
+      const result = await accept(
+        client.list({
+          params: { threadId },
+          query: { limit: 50 },
+        }),
+        [200],
+      );
+      L.debug("initialMessages$", {
+        threadId,
+        count: result.body.messages.length,
+      });
+      return result.body.messages;
+    },
+  );
 
-  const groupedChatMessages$ = computed((get) => {
-    return get(internalGroups$);
-  });
+  // Everything beyond the initial page: subsequent fetchNextPage results
+  // and optimistic inserts. Dedup on write (keyed by id).
+  const deltaMessages$ = state<PagedChatMessage[]>([]);
 
-  const pagedChatMessages$ = computed((get) => {
-    const groups = get(internalGroups$);
-    const all: PagedChatMessage[] = [];
-    for (const group of groups) {
-      all.push(...group.messages);
+  const appendDeltaMessages$ = command(({ set }, msgs: PagedChatMessage[]) => {
+    if (msgs.length === 0) {
+      return;
     }
-    return all;
+    set(deltaMessages$, (prev) => {
+      const byId = new Map<string, PagedChatMessage>();
+      for (const m of prev) {
+        byId.set(m.id, m);
+      }
+      let changed = false;
+      for (const m of msgs) {
+        const existing = byId.get(m.id);
+        if (existing !== m) {
+          byId.set(m.id, m);
+          changed = true;
+        }
+      }
+      return changed ? Array.from(byId.values()) : prev;
+    });
   });
 
-  const latestChatMessageId$ = computed((get) => {
-    const groups = get(internalGroups$);
-    const lastGroup = groups[groups.length - 1];
-    if (!lastGroup) {
-      return undefined;
-    }
-    const msgs = lastGroup.messages;
-    return msgs[msgs.length - 1].id;
-  });
+  const groupedChatMessages$ = computed(
+    async (get): Promise<GroupedChatMessageGroup[]> => {
+      const initial = await get(initialMessages$);
+      const deltas = get(deltaMessages$);
+      return mergeIntoGroups([], [...initial, ...deltas]);
+    },
+  );
+
+  const latestChatMessageId$ = computed(
+    async (get): Promise<string | undefined> => {
+      const groups = await get(groupedChatMessages$);
+      const lastGroup = groups[groups.length - 1];
+      if (!lastGroup) {
+        return undefined;
+      }
+      const msgs = lastGroup.messages;
+      return msgs[msgs.length - 1]?.id;
+    },
+  );
 
   const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const sinceId = get(latestChatMessageId$);
+    const sinceId = await get(latestChatMessageId$);
     signal.throwIfAborted();
 
     const client = get(zeroClient$)(chatThreadMessagesContract);
@@ -495,24 +535,18 @@ function createPagedMessages(threadId: string) {
     });
 
     if (result.body.messages.length === 0) {
-      return true; // no new messages
+      return true;
     }
 
-    set(internalGroups$, (prev) => {
-      return mergeIntoGroups(prev, result.body.messages);
-    });
-
+    set(appendDeltaMessages$, result.body.messages);
     return false;
   });
 
   const insertOptimisticMessage$ = command(({ set }, msg: PagedChatMessage) => {
-    set(internalGroups$, (prev) => {
-      return mergeIntoGroups(prev, [msg]);
-    });
+    set(appendDeltaMessages$, [msg]);
   });
 
   return {
-    pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
     fetchNextPage$,
@@ -583,11 +617,7 @@ function createRunTracking(
       }
 
       const threadId = thread.id;
-      L.debug("loadPagedMessages$ start", { threadId });
-      await set(fetchNextPage$, signal);
-      signal.throwIfAborted();
-
-      L.debug("loadPagedMessages$ thread loaded", {
+      L.debug("loadPagedMessages$ start", {
         threadId,
         activeRunIds: thread.activeRunIds,
       });
@@ -676,7 +706,6 @@ export function createChatThreadSignals(
     copyMessage$,
   } = createThreadUIState();
   const {
-    pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
     fetchNextPage$,
@@ -777,7 +806,6 @@ export function createChatThreadSignals(
     setInputRef$,
     focusInput$,
     scheduleDraftSync$,
-    pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
     allFinished$,
