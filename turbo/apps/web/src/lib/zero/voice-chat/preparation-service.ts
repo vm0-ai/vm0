@@ -1,6 +1,6 @@
 import { eq, and, gt, lt, desc, isNull } from "drizzle-orm";
 import { voiceChatPreparations } from "../../../db/schema/voice-chat";
-import { createZeroRun } from "../zero-run-service";
+import { createZeroRun, type CreateZeroRunResult } from "../zero-run-service";
 import {
   buildVoiceChatPrepareOnlyPrompt,
   buildVoiceChatMeetingPreparePrompt,
@@ -166,7 +166,7 @@ export async function dispatchPreparationRun(
   userId: string,
   agentId: string,
   options?: { mode?: "chat" | "meeting"; prompt?: string },
-) {
+): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
   const meetingPrompt =
     options?.mode === "meeting" ? options.prompt : undefined;

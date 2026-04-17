@@ -606,8 +606,12 @@ async function dispatchZeroRun(
  * Only fields populated by Phase 1 (pre-flight + INSERT) are exposed; Phase 2
  * (tokens, context, dispatch) runs deferred inside after() so its outputs
  * (sandboxId, final dispatched status) are not available at return time.
+ *
+ * `status` reflects Phase 1 state only — it is always `"pending"` (record
+ * inserted, dispatch scheduled via after()) or `"queued"` (concurrency limit,
+ * will be dispatched by the queue worker). It is NEVER a post-dispatch status.
  */
-interface CreateZeroRunResult {
+export interface CreateZeroRunResult {
   runId: string;
   status: RunStatus;
   createdAt: Date;

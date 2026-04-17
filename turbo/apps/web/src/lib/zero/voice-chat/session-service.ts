@@ -3,7 +3,7 @@ import {
   voiceChatSessions,
   voiceChatEvents,
 } from "../../../db/schema/voice-chat";
-import { createZeroRun } from "../zero-run-service";
+import { createZeroRun, type CreateZeroRunResult } from "../zero-run-service";
 import { cancelRun } from "../zero-run-cancel";
 import {
   buildVoiceChatQuickPrepPrompt,
@@ -146,7 +146,7 @@ export async function dispatchSlowBrain(
   userId: string,
   agentId: string,
   options?: { mode?: "chat" | "meeting"; prompt?: string },
-) {
+): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
   const meetingPrompt =
     options?.mode === "meeting" ? options.prompt : undefined;
@@ -242,7 +242,7 @@ export async function dispatchObservationSlowBrain(session: {
   id: string;
   userId: string;
   agentId: string;
-}) {
+}): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
   const appendSystemPrompt = buildVoiceChatObservationOnlyPrompt(session.id);
   const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Preparation is complete. Start observing the conversation.`;
