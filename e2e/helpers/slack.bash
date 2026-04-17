@@ -148,22 +148,25 @@ slack_reset_state() {
 
 # Poll test-state until `recent_runs` contains at least one entry or timeout.
 # Usage: wait_for_slack_run <team_id> [timeout_seconds]
+#
+# Tracks wall-clock via $SECONDS so a slow curl against a cold Vercel
+# lambda doesn't silently eat the polling budget. Always prints the last
+# state on timeout — critical for diagnosing dispatch failures where no
+# run row was ever inserted.
 wait_for_slack_run() {
     local team_id="$1"
     local timeout="${2:-$SLACK_POLL_TIMEOUT_S}"
-    local elapsed=0
-    while (( elapsed < timeout )); do
-        local state
+    local start=$SECONDS
+    local state count
+    while (( SECONDS - start < timeout )); do
         state=$(slack_fetch_state "$team_id")
-        local count
-        count=$(printf '%s' "$state" | jq -r '.recent_runs | length')
-        if [[ "$count" -gt 0 ]]; then
+        count=$(printf '%s' "$state" | jq -r '.recent_runs | length' 2>/dev/null)
+        if [[ "$count" =~ ^[0-9]+$ && "$count" -gt 0 ]]; then
             return 0
         fi
         sleep "$SLACK_POLL_INTERVAL_S"
-        (( elapsed += SLACK_POLL_INTERVAL_S ))
     done
-    echo "# wait_for_slack_run: timed out after ${timeout}s for team $team_id" >&2
+    echo "# wait_for_slack_run: timed out after $((SECONDS - start))s for team $team_id" >&2
     echo "# last state: $(slack_fetch_state "$team_id")" >&2
     return 1
 }

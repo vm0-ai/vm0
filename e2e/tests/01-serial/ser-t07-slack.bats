@@ -14,6 +14,13 @@
 load '../../helpers/setup'
 load '../../helpers/slack'
 
+# Per-test timeout needs to cover: seed (~1s) + post event (~1s) +
+# wait_for_slack_run polling loop (SLACK_POLL_TIMEOUT_S) + final state
+# fetch on failure (~1s). The default 30s budget set by the workflow
+# runner is too tight once cold-start latency eats into polling.
+# Set at file-scope so BATS applies it before each @test forks.
+export BATS_TEST_TIMEOUT=90
+
 # Unique identifiers per run to avoid collisions between parallel previews.
 # Base identifiers come from helpers/slack-fixtures.sh (sourced via helpers/slack).
 # IMPORTANT: don't include $$ here — BATS runs each @test in a new subshell,
@@ -32,6 +39,12 @@ setup_file() {
     if [[ -z "${SLACK_SIGNING_SECRET:-}" ]]; then
         skip "SLACK_SIGNING_SECRET not set"
     fi
+    # Per-test timeout needs to cover: seed (~1s) + post event (~1s) +
+    # wait_for_slack_run polling loop (SLACK_POLL_TIMEOUT_S) + final
+    # state fetch on failure (~1s). The default 30s budget set by the
+    # workflow runner is too tight once cold-start latency eats into
+    # the polling budget.
+    export BATS_TEST_TIMEOUT=90
     export TEAM_ID CHANNEL_ID SLACK_USER_ID
     slack_reset_state "$TEAM_ID"
 

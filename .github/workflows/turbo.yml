@@ -1323,9 +1323,11 @@ jobs:
           USE_MOCK_CLAUDE: "true"
           SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
           E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
-          # Keep Slack wait_for_slack_run within the 30s BATS_TEST_TIMEOUT.
-          SLACK_POLL_TIMEOUT_S: 25
-          SLACK_POLL_INTERVAL_S: 2
+          # Slack tests override BATS_TEST_TIMEOUT to 90s at file scope,
+          # so the polling budget can go up to ~60s and still leave
+          # margin for the state fetch + seed round-trips.
+          SLACK_POLL_TIMEOUT_S: 60
+          SLACK_POLL_INTERVAL_S: 3
 
       - name: Print E2E trace log
         if: always()
