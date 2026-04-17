@@ -176,7 +176,7 @@ describe("blog/strapi", () => {
         slug: "minimal-post",
         category: "General",
         author: { name: "VM0 Team" },
-        cover: "/covers/default.png",
+        cover: undefined,
       });
     });
   });
