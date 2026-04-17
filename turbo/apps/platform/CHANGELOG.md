@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.245.1](https://github.com/vm0-ai/vm0/compare/app-v0.245.0...app-v0.245.1) (2026-04-17)
+
+
+### Bug Fixes
+
+* truncate task description on mobile when steps badge present ([#9680](https://github.com/vm0-ai/vm0/issues/9680)) ([05f7daa](https://github.com/vm0-ai/vm0/commit/05f7daa39c46bc001c6a80ab90f06de64e96a2e1))
+
 ## [0.245.0](https://github.com/vm0-ai/vm0/compare/app-v0.244.1...app-v0.245.0) (2026-04-17)
 
 

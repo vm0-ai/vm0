@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.1...nbd-cow-v0.4.2) (2026-04-17)
+
+
+### Performance Improvements
+
+* **nbd-cow:** drop lock guard before sending error replies ([#9742](https://github.com/vm0-ai/vm0/issues/9742)) ([ea3568c](https://github.com/vm0-ai/vm0/commit/ea3568c567db437b37b3bd9a7b6251f37d5205b2))
+
 ## [0.4.1](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.0...nbd-cow-v0.4.1) (2026-04-12)
 
 

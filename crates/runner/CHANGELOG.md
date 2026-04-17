@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.82.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.82.0...runner-rs-v0.82.1) (2026-04-17)
+
+
+### Bug Fixes
+
+* **runner:** remove claim file when job read or parse fails ([#9740](https://github.com/vm0-ai/vm0/issues/9740)) ([c5df0f6](https://github.com/vm0-ai/vm0/commit/c5df0f6c36b168f823b2fb2af4c708695731dabc)), closes [#9689](https://github.com/vm0-ai/vm0/issues/9689)
+
+
+### Performance Improvements
+
+* **runner:** offload dns and kmsg_log file i/o to blocking pool ([#9741](https://github.com/vm0-ai/vm0/issues/9741)) ([4858807](https://github.com/vm0-ai/vm0/commit/48588070b96a00256857abb90d790c5f43fdaa75))
+
 ## [0.82.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.81.4...runner-rs-v0.82.0) (2026-04-16)
 
 

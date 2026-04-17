@@ -1,5 +1,18 @@
 # Changelog
 
+## [12.248.1](https://github.com/vm0-ai/vm0/compare/web-v12.248.0...web-v12.248.1) (2026-04-17)
+
+
+### Refactoring
+
+* **api:** stop auto-injecting custom skills on /api/agent/runs ([#9766](https://github.com/vm0-ai/vm0/issues/9766)) ([26e5cdd](https://github.com/vm0-ai/vm0/commit/26e5cdd32da81e7e3ce16473e4a2762bbf4c03ed))
+* extract pure adapter for telegram trigger handler ([#9761](https://github.com/vm0-ai/vm0/issues/9761)) ([e5e97c5](https://github.com/vm0-ai/vm0/commit/e5e97c55729aabcef746c3ce609c710296075658)), closes [#9727](https://github.com/vm0-ai/vm0/issues/9727)
+* extract pure adapters for email inbound-reply and inbound-trigger ([#9756](https://github.com/vm0-ai/vm0/issues/9756)) ([d3b0e9d](https://github.com/vm0-ai/vm0/commit/d3b0e9d0f670a6044312f04fb330a267a17320ca)), closes [#9729](https://github.com/vm0-ai/vm0/issues/9729)
+* extract pure adapters for phone and imessage trigger handlers ([#9775](https://github.com/vm0-ai/vm0/issues/9775)) ([a4497e7](https://github.com/vm0-ai/vm0/commit/a4497e781fde613ae23c48070b24f4d37137f4ee))
+* hide after() inside createZeroRun and collapse optimized routes ([#9739](https://github.com/vm0-ai/vm0/issues/9739)) ([2252e51](https://github.com/vm0-ai/vm0/commit/2252e5194fe054378c24b2baa39571d7902da29f))
+* **slack-org:** extract slack trigger adapter as pure function ([#9726](https://github.com/vm0-ai/vm0/issues/9726)) ([#9763](https://github.com/vm0-ai/vm0/issues/9763)) ([1f9867a](https://github.com/vm0-ai/vm0/commit/1f9867ab440970b5020445daaecc9f0d3ad3c66c))
+* **zero-runs:** extract pure adapter for github issue-event handler ([#9774](https://github.com/vm0-ai/vm0/issues/9774)) ([b3e2c08](https://github.com/vm0-ai/vm0/commit/b3e2c08af5a3720ce975ef98ac6f9aad9437c7e1))
+
 ## [12.248.0](https://github.com/vm0-ai/vm0/compare/web-v12.247.0...web-v12.248.0) (2026-04-17)
 
 

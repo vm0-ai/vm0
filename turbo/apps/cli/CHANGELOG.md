@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.119.3](https://github.com/vm0-ai/vm0/compare/cli-v9.119.2...cli-v9.119.3) (2026-04-17)
+
+
+### Refactoring
+
+* **cli:** remove zero connector connect and disconnect commands ([#9755](https://github.com/vm0-ai/vm0/issues/9755)) ([886dc4c](https://github.com/vm0-ai/vm0/commit/886dc4c5ba9070c3474f21fd6093f09804ece8ac)), closes [#9747](https://github.com/vm0-ai/vm0/issues/9747)
+
 ## [9.119.2](https://github.com/vm0-ai/vm0/compare/cli-v9.119.1...cli-v9.119.2) (2026-04-17)
 
 
