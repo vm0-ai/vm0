@@ -770,49 +770,6 @@ agents:
     });
   });
 
-  describe("skill URL validation", () => {
-    it("should reject invalid GitHub URL in skills", async () => {
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"
-agents:
-  test-agent:
-    framework: claude-code
-    skills:
-      - https://example.com/not-a-github-url`,
-      );
-
-      await expect(async () => {
-        await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid skill URL"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should reject non-tree GitHub URLs", async () => {
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"
-agents:
-  test-agent:
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/blob/main/github`,
-      );
-
-      await expect(async () => {
-        await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid skill URL"),
-      );
-    });
-  });
-
   describe("instructions validation", () => {
     it("should reject empty instructions string", async () => {
       await fs.writeFile(
@@ -1543,6 +1500,54 @@ agents:
           return log.includes("--porcelain is deprecated");
         }),
       ).toBe(true);
+    });
+  });
+
+  describe("legacy skills field", () => {
+    it("accepts the field in YAML but strips it from the posted compose content", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"
+agents:
+  my-agent:
+    framework: claude-code
+    skills:
+      - slack
+      - https://github.com/acme/repo/tree/main/tool`,
+      );
+
+      let capturedBody: unknown;
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.post(
+          "http://localhost:3000/api/agent/composes",
+          async ({ request }) => {
+            capturedBody = await request.json();
+            return HttpResponse.json({
+              composeId: "cmp-123",
+              name: "my-agent",
+              versionId: "a".repeat(64),
+              action: "created",
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/org", () => {
+          return HttpResponse.json(orgResponse);
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "vm0.yaml", "--yes"]);
+
+      const body = capturedBody as {
+        content: { agents: Record<string, Record<string, unknown>> };
+      };
+      expect(body.content.agents["my-agent"]).toBeDefined();
+      expect(body.content.agents["my-agent"]).not.toHaveProperty("skills");
     });
   });
 });
