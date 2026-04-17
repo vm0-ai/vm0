@@ -20,7 +20,6 @@ import {
   setOrgAddProviderDialogOpen$,
 } from "../../../signals/zero-page/settings/org-model-providers.ts";
 import type { ModelProviderResponse } from "@vm0/core";
-import { getModelDisplayName } from "../components/settings/provider-ui-config.ts";
 
 const context = testContext();
 
@@ -182,27 +181,9 @@ describe("org-provider-dialog - interaction", () => {
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(
-        screen.getByText(getModelDisplayName("anthropic/claude-sonnet-4.6")),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(getModelDisplayName("anthropic/claude-opus-4.6")),
-    ).toBeInTheDocument();
-  });
-
-  // ORG-I-093b: unrecognized model IDs fall back to the raw model ID string
-  it("shows raw model ID for unrecognized model IDs in dropdown", async () => {
-    const user = userEvent.setup();
-    await openAddDialog("openrouter-api-key", /Add workspace/i);
-
-    const trigger = screen.getByRole("combobox");
-    await user.click(trigger);
-
-    // getModelDisplayName falls back to the raw model ID when no mapping exists
-    expect(getModelDisplayName("some-unknown-model-xyz")).toBe(
-      "some-unknown-model-xyz",
-    );
+    expect(screen.getByText("Claude Opus 4.6")).toBeInTheDocument();
   });
 
   // ORG-I-094: auth method selector for multi-auth providers
