@@ -117,7 +117,12 @@ teardown_file() {
     run slack_post_event "$payload"
     assert_success
 
-    wait_for_slack_run "$TEAM_ID"
+    if ! wait_for_slack_run "$TEAM_ID"; then
+        echo "# dispatch-probe diagnostic:" >&2
+        slack_dispatch_probe "$TEAM_ID" "$CHANNEL_ID" "$SLACK_USER_ID" \
+            "hello from e2e mention probe" "$ts" "channel" >&2
+        return 1
+    fi
     local state first_run
     state=$(slack_fetch_state "$TEAM_ID")
     [[ "$(echo "$state" | jq -r '.recent_runs | length')" -gt 0 ]]
@@ -148,7 +153,12 @@ teardown_file() {
     run slack_post_event "$payload"
     assert_success
 
-    wait_for_slack_run "$TEAM_ID"
+    if ! wait_for_slack_run "$TEAM_ID"; then
+        echo "# dispatch-probe diagnostic:" >&2
+        slack_dispatch_probe "$TEAM_ID" "D_E2E_DM" "$SLACK_USER_ID" \
+            "hello from e2e DM probe" "$ts" "im" >&2
+        return 1
+    fi
     local state first_run
     state=$(slack_fetch_state "$TEAM_ID")
     [[ "$(echo "$state" | jq -r '.recent_runs | length')" -gt 0 ]]

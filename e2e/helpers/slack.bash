@@ -171,6 +171,34 @@ wait_for_slack_run() {
     return 1
 }
 
+# Run the mention/DM handler synchronously against the dispatch-probe
+# endpoint and print the response. Use this as a diagnostic: if the real
+# events route succeeds but wait_for_slack_run never sees a run, this
+# endpoint surfaces the error that was swallowed by after().catch().
+# Usage: slack_dispatch_probe <team_id> <channel_id> <user_id> <text> <ts> [channel_type]
+slack_dispatch_probe() {
+    local team_id="$1" channel_id="$2" user_id="$3" text="$4" ts="$5"
+    local channel_type="${6:-channel}"
+    local body
+    body=$(jq -nc \
+        --arg team_id "$team_id" \
+        --arg channel_id "$channel_id" \
+        --arg user_id "$user_id" \
+        --arg message_text "$text" \
+        --arg message_ts "$ts" \
+        --arg channel_type "$channel_type" \
+        '{team_id: $team_id, channel_id: $channel_id, user_id: $user_id,
+          message_text: $message_text, message_ts: $message_ts,
+          channel_type: $channel_type}')
+    local -a bypass=()
+    _slack_bypass_args bypass
+    curl -sS -X POST \
+        -H "Content-Type: application/json" \
+        "${bypass[@]}" \
+        --data "$body" \
+        "$VM0_API_URL/api/test/slack-dispatch-probe"
+}
+
 # Substitute common placeholders in a JSON fixture file.
 # Usage: slack_render_fixture <path> <team_id> <channel_id> <user_id> [extra_ts]
 slack_render_fixture() {
