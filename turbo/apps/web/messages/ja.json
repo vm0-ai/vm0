@@ -1375,6 +1375,88 @@
           "Sentryのプロジェクトタグまたは環境を使用して、Zeroのクエリをプロダクションのみに絞りましょう。ステージングは含めません。",
           "プロダクトヘルスブリーフィングと連携させましょう：8:45に分類を実行し、9:00のブリーフィングに出力を含めれば、チームがすべてを一箇所で確認できます。"
         ]
+      },
+      "managed-agent-workers": {
+        "title": "Anthropic Managed Agent のワーカーを起動・確認する",
+        "description": "コードレビュー、テスト、技術的負債、ビルド用に専用の Managed Agent を作り込んであるはず。Zero がそのフリートの管理役になり、起動・ステータス確認・結果の取得まで、すべて Slack から実行できます。",
+        "timeSaved": "ワーカー作業あたり約 20 分の削減",
+        "headings": {
+          "scenario": "ワーカーエージェントのフリートを 1 人で回すのはなぜ大変か",
+          "prompt": "Managed Agent の起動・監視を Zero に頼む方法",
+          "steps": "Zero が Managed Agent のフリートをどう動かすか",
+          "nextActions": "特定のエージェントの起動、定期実行、ワーカーの連携",
+          "integrations": "必要な連携: Anthropic Managed Agents と GitHub",
+          "tips": "Managed Agent ワーカーフリート運用のベストプラクティス"
+        },
+        "scenario": "Anthropic Managed Agents 上に専用ワーカーを育ててきたはず — Tech Debt Cleaner、PR Reviewer、Test Runner、Build Watcher のように。それぞれが独自のシステムプロンプト、ツール、そして隔離されたクラウド環境を持っています。今のところ、どれか 1 体を動かすには Anthropic のコンソールを開いてセッションを作成し、ステータスを何度もリロードして、結果をワークフローに貼り戻す必要があります。複数が同時に動き出すと、誰が忙しくて誰が終わったのか、どの結果にもう目を通したのか、あっという間に分からなくなります。そこで Zero にフリートの様子を聞くだけで、エージェントの一覧、アクティブなもの、最新の出力が返ってきて、セッションが完了すれば Slack に結果が流れてきます。",
+        "promptVariants": [
+          {
+            "label": "ワーカーを起動",
+            "prompt": "@Zero vm0-ai/vm0 の main に対して Tech Debt Cleaner を起動して。セッションが終わったら結果をここに流して。"
+          },
+          {
+            "label": "フリートを確認",
+            "prompt": "@Zero いまの Managed Agent ワーカーの状況を教えて。エージェントごとのステータスと、いま何をやっているかを一覧で。"
+          },
+          {
+            "label": "定期実行",
+            "prompt": "@Zero 毎晩 22:00 に main で Test Runner を起動して、翌朝 9:00 までに結果一式をここに投稿して。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero Tech Debt Cleaner はどんな状況?"
+          },
+          {
+            "name": "Zero",
+            "text": "Tech Debt Cleaner はアクティブです — セッション sesn_011Ca8 が vm0-ai/vm0 の main に対して 14 分稼働中。現在 turbo/apps/web/components を処理中で、直近のログは「デッドコードの import を 7 件検出」。\n\n他のワーカー:\n- PR Reviewer — idle\n- Test Runner — アクティブ(2 分経過、voice-chat.test.tsx を実行中)\n- Build Watcher — idle\n\nTech Debt Cleaner のフルレポートは、セッション完了時にこちらへ投稿します。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero がワーカーフリートを読み取る",
+            "description": "Zero が Anthropic Managed Agents の API を叩いて、設定済みのすべてのエージェントをリストアップします。説明文、モデル、利用可能なツールまで含めて、Zero が扱えるワーカーのディレクトリとして扱われます。"
+          },
+          {
+            "title": "Zero がフリート全体のセッション状態を確認",
+            "description": "各エージェントについて、アクティブなセッションと直近のセッションを問い合わせます。idle のワーカー、稼働中のワーカー、それぞれの経過時間、最新の出力行までを返してくれるので、コンソールを行き来する必要はありません。"
+          },
+          {
+            "title": "Zero が依頼に応じて起動・監視",
+            "description": "エージェントの実行を頼むと、Zero が指定のターゲット(リポジトリ、PR、ブランチ)で新しいセッションを作成し、完了までポーリングします。最終出力を取得したあと、構造化されたサマリーを Slack に投稿します。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "特定のワーカーを起動",
+            "description": "単一のエージェントを特定のターゲットで走らせる",
+            "examplePrompt": "@Zero PR #9711 に対して PR Reviewer を起動して。終わったらレビューコメントをここに流して。"
+          },
+          {
+            "title": "ワーカーの定期実行",
+            "description": "一定のサイクルで自動的に走らせる",
+            "examplePrompt": "@Zero 毎晩 22:00 に main で Test Runner を起動して、翌朝 9:00 までに結果一式をここに投稿して。"
+          },
+          {
+            "title": "ワーカーをパイプラインで連携",
+            "description": "あるワーカーの出力を次のワーカーにつなげる",
+            "examplePrompt": "@Zero Tech Debt Cleaner の次の実行が終わったら、そのとき作られたブランチに対して PR Reviewer を起動して。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Anthropic Managed Agents — Zero がエージェントを一覧表示し、セッションを起動し、ステータスや出力を取得します。app.vm0.ai/connectors から Anthropic の API キーで接続してください。"
+          },
+          {
+            "description": "GitHub — 多くのワーカーはレビュー、テスト、ビルドのためにリポジトリへのアクセスが必要です。Zero は GitHub 連携を使って、対象のブランチや PR を正しく指定します。"
+          }
+        ],
+        "tips": [
+          "Anthropic のコンソールでは、各エージェントに人間が読みやすい明確な名前を付けておきましょう。「Tech Debt Cleaner」は、Zero の返答のなかで agent_011 系の ID よりもずっと読みやすくなります。",
+          "各エージェントは 1 つの目的に絞りましょう。PR レビューとテスト実行を兼ねたワーカーは、どちらも精度が落ちます。システムプロンプトを絞るほど、出力はシャープになり、オーケストレーションも楽になります。",
+          "条件付きプロンプトでワーカーをつなげましょう — 「X が終わったら、その出力で Y を起動して」。専門化したエージェントのフリートが、追加のインフラなしにそのままパイプラインになります。"
+        ]
       }
     }
   },

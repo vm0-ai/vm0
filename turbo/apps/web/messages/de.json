@@ -1375,6 +1375,88 @@
           "Nutzen Sie Sentrys Projekt-Tags oder Umgebungen, um Zeros Abfrage nur auf Produktion einzuschränken, nicht auf Staging.",
           "Verketten Sie dies mit dem Produkt-Health-Briefing: Triage um 8:45 Uhr ausführen, Ausgabe in das 9:00-Uhr-Briefing einbeziehen, damit das Team alles an einem Ort sieht."
         ]
+      },
+      "managed-agent-workers": {
+        "title": "Deine Anthropic Managed Agent Worker starten und überwachen",
+        "description": "Du hast dir spezialisierte Managed Agents für Code-Reviews, Tests, Tech Debt und Builds gebaut. Zero wird dein Flotten-Manager — starte sie, prüfe den Status und hole dir die Ergebnisse, alles aus Slack heraus.",
+        "timeSaved": "~20 Min pro Worker-Aufgabe gespart",
+        "headings": {
+          "scenario": "Warum eine Flotte aus Worker-Agents allein schwer zu überblicken ist",
+          "prompt": "So bittest du Zero, deine Managed Agents zu starten oder zu überwachen",
+          "steps": "Wie Zero deine Managed-Agent-Flotte orchestriert",
+          "nextActions": "Einzelne Agents starten, Läufe planen oder Worker verketten",
+          "integrations": "Erforderliche Integrationen: Anthropic Managed Agents und GitHub",
+          "tips": "Best Practices für den Betrieb einer Managed-Agent-Worker-Flotte"
+        },
+        "scenario": "Du hast bei Anthropic Managed Agents spezialisierte Worker aufgesetzt — einen Tech Debt Cleaner, einen PR Reviewer, einen Test Runner, einen Build Watcher. Jeder hat seinen eigenen System-Prompt, eigene Tools und läuft in einer isolierten Cloud-Umgebung. Willst du heute einen davon laufen lassen, heißt das: Anthropic-Konsole öffnen, Session anlegen, auf Aktualisierung warten, Ergebnis zurück in den Workflow kopieren. Laufen mehrere parallel, verlierst du schnell den Überblick — wer ist beschäftigt, wer ist fertig, welches Ergebnis hast du schon gesehen? Du fragst Zero, wie die Flotte steht. Zero listet deine Agents auf, sagt dir, wer gerade aktiv ist, und postet die Ergebnisse direkt nach Slack, sobald eine Session abgeschlossen ist.",
+        "promptVariants": [
+          {
+            "label": "Worker starten",
+            "prompt": "@Zero starte meinen Tech Debt Cleaner auf vm0-ai/vm0 main. Schick die Ergebnisse hierher, wenn die Session fertig ist."
+          },
+          {
+            "label": "Flotte checken",
+            "prompt": "@Zero wie stehen meine Managed Agent Worker gerade? Liste alle Agents mit Status und der aktuellen Aufgabe auf."
+          },
+          {
+            "label": "Wiederkehrender Lauf",
+            "prompt": "@Zero jeden Abend um 22 Uhr den Test Runner auf main starten und die kompletten Ergebnisse bis 9 Uhr morgens hierher posten."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero wie läuft mein Tech Debt Cleaner?"
+          },
+          {
+            "name": "Zero",
+            "text": "Tech Debt Cleaner ist aktiv — Session sesn_011Ca8 läuft seit 14 Min auf vm0-ai/vm0 main. Bearbeitet gerade turbo/apps/web/components. Letzte Ausgabe: 7 Dead-Code-Imports markiert.\n\nAndere Worker:\n- PR Reviewer — idle\n- Test Runner — aktiv (2 Min, läuft voice-chat.test.tsx)\n- Build Watcher — idle\n\nDen vollständigen Report vom Tech Debt Cleaner schicke ich dir hierher, sobald die Session durch ist."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero liest deine Worker-Flotte aus",
+            "description": "Zero fragt die Anthropic-Managed-Agents-API ab und listet jeden Agent, den du konfiguriert hast — inklusive Beschreibung, Modell und Tool-Zugriff. Das ist das Verzeichnis der Worker, die Zero bedienen kann."
+          },
+          {
+            "title": "Zero prüft den Session-Status der gesamten Flotte",
+            "description": "Für jeden Agent holt Zero die aktiven und letzten Sessions. Du erfährst, welche Worker idle sind, welche laufen, seit wann, und was die letzte Log-Zeile war. Kein Hin- und Hergeklicke in der Konsole."
+          },
+          {
+            "title": "Zero startet und überwacht auf Zuruf",
+            "description": "Wenn du einen Agent laufen lassen willst, legt Zero eine neue Session auf dem Ziel an, das du angibst (Repo, PR, Branch). Zero pollt bis zum Abschluss, zieht das finale Ergebnis und postet eine strukturierte Zusammenfassung nach Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einen bestimmten Worker starten",
+            "description": "Einen einzelnen Agent auf ein konkretes Ziel ansetzen",
+            "examplePrompt": "@Zero starte meinen PR Reviewer auf PR #9711. Schick die Review-Kommentare hierher, wenn er fertig ist."
+          },
+          {
+            "title": "Worker-Läufe planen",
+            "description": "Einen Worker in festem Takt laufen lassen",
+            "examplePrompt": "@Zero jeden Abend um 22 Uhr den Test Runner auf main starten. Die kompletten Ergebnisse bitte bis 9 Uhr morgens hierher."
+          },
+          {
+            "title": "Worker zu einer Pipeline verketten",
+            "description": "Das Ergebnis eines Workers den nächsten anstoßen lassen",
+            "examplePrompt": "@Zero sobald der Tech Debt Cleaner seinen nächsten Lauf beendet, starte den PR Reviewer auf dem Branch, den er eröffnet."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Anthropic Managed Agents — Zero listet deine Agents, startet Sessions, prüft den Status und holt die Ausgaben. Verbinden mit einem Anthropic-API-Key über app.vm0.ai/connectors."
+          },
+          {
+            "description": "GitHub — die meisten Worker brauchen Repo-Zugriff für Reviews, Tests oder Builds. Zero nutzt deine GitHub-Verbindung, um den richtigen Branch oder PR anzusteuern."
+          }
+        ],
+        "tips": [
+          "Gib jedem Agent in der Anthropic-Konsole einen klaren, menschenlesbaren Namen. 'Tech Debt Cleaner' liest sich in Zeros Antworten deutlich besser als irgendeine agent_011-ID.",
+          "Halte jeden Agent fokussiert auf eine Aufgabe. Ein Worker, der PRs reviewt und gleichzeitig Tests laufen lässt, verliert bei beidem an Schärfe. Enge System-Prompts ergeben klarere Ergebnisse und sauberere Orchestrierung.",
+          "Verkette Worker mit bedingten Prompts — 'wenn X fertig ist, starte Y mit dem Ergebnis'. Eine Flotte fokussierter Agents wird so ganz ohne Extra-Infrastruktur zu einer Pipeline."
+        ]
       }
     }
   },

@@ -1375,6 +1375,88 @@
           "Usa las etiquetas de proyecto o ambientes de Sentry para limitar la consulta de Zero solo a producción, no a staging.",
           "Encadena esto con el informe de salud del producto: ejecuta la clasificación a las 8:45, incluye la salida en el informe de las 9:00 para que el equipo vea todo en un solo lugar."
         ]
+      },
+      "managed-agent-workers": {
+        "title": "Ejecuta y consulta a tus workers de Anthropic Managed Agent",
+        "description": "Tienes Managed Agents especializados para revisión de código, tests, deuda técnica y builds. Zero se convierte en el mánager de tu flota — los lanza, consulta su estado y trae sus resultados, todo desde Slack.",
+        "timeSaved": "~20 min ahorrados por tarea",
+        "headings": {
+          "scenario": "Por qué una flota de Worker Agents es difícil de coordinar a solas",
+          "prompt": "Cómo pedirle a Zero que ejecute o supervise tus Managed Agents",
+          "steps": "Cómo Zero orquesta tu flota de Managed Agents",
+          "nextActions": "Lanza agentes concretos, programa ejecuciones o encadena workers",
+          "integrations": "Integraciones necesarias: Anthropic Managed Agents y GitHub",
+          "tips": "Buenas prácticas para operar una flota de Managed Agents"
+        },
+        "scenario": "Has invertido en construir Worker Agents especializados sobre Anthropic Managed Agents: un Tech Debt Cleaner, un PR Reviewer, un Test Runner, un Build Watcher. Cada uno tiene su propio system prompt, sus herramientas y un entorno cloud aislado. Ejecutar cualquiera de ellos hoy implica abrir la consola de Anthropic, crear una sesión, refrescar para ver el estado y copiar el resultado de vuelta a tu flujo de trabajo. Cuando varios están corriendo a la vez, pierdes el rastro de quién está ocupado, quién ya terminó y qué salida ya revisaste. Le pides a Zero que mire la flota: te enumera los agentes, te dice cuáles están activos y lanza los resultados a Slack en cuanto una sesión termina.",
+        "promptVariants": [
+          {
+            "label": "Lanzar un worker",
+            "prompt": "@Zero lanza mi Tech Debt Cleaner sobre vm0-ai/vm0 en main. Publica los hallazgos aquí cuando la sesión termine."
+          },
+          {
+            "label": "Revisar la flota",
+            "prompt": "@Zero ¿cómo van mis Managed Agent workers? Lista cada agente, su estado y en qué está trabajando ahora."
+          },
+          {
+            "label": "Ejecución recurrente",
+            "prompt": "@Zero cada noche a las 22:00, lanza el Test Runner sobre main y publica aquí los resultados completos antes de las 9:00."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero ¿cómo va mi Tech Debt Cleaner?"
+          },
+          {
+            "name": "Zero",
+            "text": "Tech Debt Cleaner está activo — la sesión sesn_011Ca8 lleva 14 min corriendo sobre vm0-ai/vm0 main. Está procesando turbo/apps/web/components. Última salida: 7 imports de código muerto detectados.\n\nOtros workers:\n- PR Reviewer — idle\n- Test Runner — activo (2 min, corriendo voice-chat.test.tsx)\n- Build Watcher — idle\n\nPublico el informe completo del Tech Debt Cleaner aquí en cuanto termine la sesión."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee tu flota de workers",
+            "description": "Zero llama a la API de Anthropic Managed Agents para listar todos los agentes que tienes configurados, con su descripción, modelo y acceso a herramientas. Esa lista es el directorio de workers que Zero puede operar."
+          },
+          {
+            "title": "Zero revisa el estado de las sesiones",
+            "description": "Para cada agente, Zero consulta sesiones activas y recientes. Te dice cuáles están idle, cuáles están corriendo, cuánto llevan activos y cuál es la última línea de salida. Sin saltar entre pestañas de la consola."
+          },
+          {
+            "title": "Zero lanza y supervisa bajo petición",
+            "description": "Cuando le pides ejecutar un agente, Zero crea una nueva sesión con el objetivo que indiques (repo, PR, rama). Sondea hasta el final, recupera la salida y publica un resumen estructurado en Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Lanzar un worker concreto",
+            "description": "Arranca un solo agente sobre un objetivo específico",
+            "examplePrompt": "@Zero lanza mi PR Reviewer sobre el PR #9711. Publica los comentarios de la revisión aquí cuando termine."
+          },
+          {
+            "title": "Programar ejecuciones recurrentes",
+            "description": "Ejecuta un worker con una cadencia fija",
+            "examplePrompt": "@Zero cada noche a las 22:00, lanza el Test Runner sobre main. Publica aquí los resultados completos antes de las 9:00."
+          },
+          {
+            "title": "Encadenar workers en un pipeline",
+            "description": "Haz que la salida de un worker dispare el siguiente",
+            "examplePrompt": "@Zero cuando el Tech Debt Cleaner termine su próxima ejecución, lanza el PR Reviewer sobre la rama que haya abierto."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Anthropic Managed Agents — Zero lista tus agentes, lanza sesiones, revisa estados y recupera salidas. Conéctalo con una API key de Anthropic desde app.vm0.ai/connectors."
+          },
+          {
+            "description": "GitHub — la mayoría de los workers necesita acceso al repositorio para hacer reviews, correr tests o builds. Zero usa tu conexión de GitHub para apuntar a la rama o PR correcta."
+          }
+        ],
+        "tips": [
+          "Ponle a cada agente un nombre claro y legible en la consola de Anthropic. 'Tech Debt Cleaner' se lee mucho mejor en las respuestas de Zero que un agent_011 cualquiera.",
+          "Mantén cada agente con un único propósito. Un worker que hace review de PRs y también corre tests pierde foco en ambos. System prompts estrechos producen salidas más nítidas y una orquestación más limpia.",
+          "Encadena workers con prompts condicionales: 'cuando termine X, lanza Y sobre su salida'. Una flota de agentes enfocados se convierte en un pipeline sin infraestructura adicional."
+        ]
       }
     }
   },
