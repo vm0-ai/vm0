@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  agentDefinitionSchema,
-  volumeConfigSchema,
-  resolveSkillRef,
-} from "@vm0/core";
+import { agentDefinitionSchema, volumeConfigSchema } from "@vm0/core";
 
 /**
  * CLI-specific agent name schema that allows 3-character names.
@@ -19,43 +15,13 @@ const cliAgentNameSchema = z
   );
 
 /**
- * CLI-extended agent definition schema with skills URL validation
- *
- * Note: Framework validation is handled server-side.
- * The server rejects unsupported frameworks.
- */
-const cliAgentDefinitionSchema = agentDefinitionSchema.superRefine(
-  (agent, ctx) => {
-    // Validate skills: bare names or full GitHub URLs
-    if (agent.skills) {
-      for (let i = 0; i < agent.skills.length; i++) {
-        const skillRef = agent.skills[i];
-        if (skillRef) {
-          try {
-            resolveSkillRef(skillRef);
-          } catch (error) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message:
-                error instanceof Error
-                  ? error.message
-                  : `Invalid skill reference: ${skillRef}`,
-              path: ["skills", i],
-            });
-          }
-        }
-      }
-    }
-  },
-);
-
-/**
- * CLI compose schema with single-agent rule and volume mount validation
+ * CLI compose schema with single-agent rule and volume mount validation.
+ * Framework validation is handled server-side.
  */
 const cliComposeSchema = z
   .object({
     version: z.string().min(1, "Missing config.version"),
-    agents: z.record(cliAgentNameSchema, cliAgentDefinitionSchema),
+    agents: z.record(cliAgentNameSchema, agentDefinitionSchema),
     volumes: z.record(z.string(), volumeConfigSchema).optional(),
   })
   .superRefine((config, ctx) => {
