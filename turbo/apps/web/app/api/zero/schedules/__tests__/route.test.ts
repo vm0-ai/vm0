@@ -5,6 +5,7 @@ import {
   createTestCompose,
   createTestOrg,
   createTestSchedule,
+  enableTestSchedule,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
@@ -237,6 +238,37 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
 
     expect(response.status).toBe(400);
     expect(data.error.code).toBe("SCHEDULE_PAST");
+  });
+
+  it("should preserve enabled state and nextRunAt when update omits enabled for enabled loop", async () => {
+    // Regression: an enabled loop schedule updated without the `enabled` field
+    // (e.g. CLI shortening intervalSeconds) used to get nextRunAt wiped to null
+    // while staying enabled=true — stranding it from executeDueSchedules.
+    await createTestSchedule(testComposeId, "loop-shorten", {
+      intervalSeconds: 300,
+      prompt: "Loop",
+    });
+    await enableTestSchedule(testComposeId, "loop-shorten");
+
+    const response = await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "loop-shorten",
+          intervalSeconds: 60,
+          timezone: "UTC",
+          prompt: "Loop",
+        }),
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.schedule.enabled).toBe(true);
+    expect(data.schedule.intervalSeconds).toBe(60);
+    expect(data.schedule.nextRunAt).not.toBeNull();
   });
 
   it("should update schedule trigger type from cron to loop", async () => {

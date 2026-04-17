@@ -486,6 +486,7 @@ async function buildAndDeploy(params: {
   intervalSeconds: number | undefined;
   timezone: string;
   prompt: string;
+  existingEnabled: boolean | undefined;
 }): Promise<DeployResult> {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
@@ -506,6 +507,9 @@ async function buildAndDeploy(params: {
     `\nDeploying schedule for agent ${chalk.cyan(params.agentName)}...`,
   );
 
+  // Preserve enabled state on update so loop schedules don't lose nextRunAt.
+  // On create, existingEnabled is undefined → omit the field so the server
+  // applies its default (disabled; enable happens later via the enable flow).
   const deployResult = await deployZeroSchedule({
     name: params.scheduleName,
     agentId: params.agentId,
@@ -514,6 +518,9 @@ async function buildAndDeploy(params: {
     intervalSeconds: params.intervalSeconds,
     timezone: params.timezone,
     prompt: params.prompt,
+    ...(params.existingEnabled !== undefined && {
+      enabled: params.existingEnabled,
+    }),
   });
 
   return deployResult;
@@ -726,6 +733,7 @@ Notes:
         intervalSeconds,
         timezone,
         prompt: promptText_,
+        existingEnabled: existingSchedule?.enabled,
       });
 
       // 8. Display deployment result

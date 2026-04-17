@@ -408,6 +408,15 @@ export async function deploySchedule(
     )
     .limit(1);
 
+  // Partial-update semantics: when updating an existing schedule and the
+  // request omits `enabled`, inherit the current persisted value. Without
+  // this, a loop schedule's nextRunAt gets wiped to null (resolveTrigger
+  // maps falsy enabled → null), leaving enabled=true but nextRunAt=null —
+  // a stuck state executeDueSchedules can never pick up.
+  if (existing && request.enabled === undefined) {
+    request = { ...request, enabled: existing.enabled };
+  }
+
   const { triggerType, nextRunAt } = resolveTrigger(request);
   const displayName = agent.displayName ?? null;
 
