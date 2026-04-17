@@ -217,8 +217,20 @@ export function mockChatLifecycle(options?: {
     }),
     http.get("*/api/zero/chat-threads/:id", () => {
       const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
-      const activeRunIds =
+      const seedActiveRunIds = chatMessages
+        .filter((m): m is typeof m & { runId: string; status: string } => {
+          return (
+            m.runId !== undefined &&
+            m.status !== undefined &&
+            !terminal.has(m.status)
+          );
+        })
+        .map((m) => {
+          return m.runId;
+        });
+      const lifecycleActiveRunIds =
         runAssociated && !terminal.has(runStatus) ? ["run-test-1"] : [];
+      const activeRunIds = [...seedActiveRunIds, ...lifecycleActiveRunIds];
       return HttpResponse.json({
         id: threadId,
         title: threadTitle,

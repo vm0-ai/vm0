@@ -526,73 +526,75 @@ function createInputRef() {
 // Factory: createRunTracking
 // ---------------------------------------------------------------------------
 
+function isTerminalStatus(status: string): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "timeout" ||
+    status === "cancelled"
+  );
+}
+
+function createTrackRun(
+  threadId: string,
+  pendingRunIds$: ReturnType<typeof state<string[]>>,
+) {
+  return command(async ({ get, set }, runId: string, signal: AbortSignal) => {
+    const already = get(pendingRunIds$);
+    if (already.includes(runId)) {
+      L.debug("trackRun$ already tracking", { threadId, runId });
+    } else {
+      const next = [...already, runId];
+      set(pendingRunIds$, next);
+      L.debug("trackRun$ added to pendingRunIds", {
+        threadId,
+        runId,
+        pendingRunIds: next,
+      });
+    }
+
+    const checkRun$ = command(async ({ get, set }, sig: AbortSignal) => {
+      const client = get(zeroClient$)(zeroRunsByIdContract);
+      const res = await accept(
+        client.getById({
+          params: { id: runId },
+          fetchOptions: { signal: sig },
+        }),
+        [200],
+      );
+      L.debug("checkRun$ poll", { threadId, runId, status: res.body.status });
+      if (isTerminalStatus(res.body.status)) {
+        set(pendingRunIds$, (ids) => {
+          return ids.filter((id) => {
+            return id !== runId;
+          });
+        });
+        L.debug("checkRun$ terminal, removed from pendingRunIds", {
+          threadId,
+          runId,
+          status: res.body.status,
+          pendingRunIds: get(pendingRunIds$),
+        });
+        return true;
+      }
+      return false;
+    });
+
+    signal.addEventListener("abort", () => {
+      L.debug("trackRun$ aborted", { threadId, runId });
+    });
+    await set(setAblyLoop$, `runUpdated:${runId}`, checkRun$, signal);
+    L.debug("trackRun$ exited (terminal)", { threadId, runId });
+  });
+}
+
 function createRunTracking(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>,
 ) {
   const pendingRunIds$ = state<string[]>([]);
-
-  const terminalStatuses = new Set([
-    "completed",
-    "failed",
-    "timeout",
-    "cancelled",
-  ]);
-
-  const trackRun$ = command(
-    async ({ get, set }, runId: string, signal: AbortSignal) => {
-      const already = get(pendingRunIds$);
-      if (already.includes(runId)) {
-        L.debug("trackRun$ already tracking", { threadId, runId });
-      } else {
-        const next = [...already, runId];
-        set(pendingRunIds$, next);
-        L.debug("trackRun$ added to pendingRunIds", {
-          threadId,
-          runId,
-          pendingRunIds: next,
-        });
-      }
-
-      const checkRun$ = command(async ({ get, set }, sig: AbortSignal) => {
-        const client = get(zeroClient$)(zeroRunsByIdContract);
-        const res = await accept(
-          client.getById({
-            params: { id: runId },
-            fetchOptions: { signal: sig },
-          }),
-          [200],
-        );
-        L.debug("checkRun$ poll", {
-          threadId,
-          runId,
-          status: res.body.status,
-        });
-        if (terminalStatuses.has(res.body.status)) {
-          set(pendingRunIds$, (ids) => {
-            return ids.filter((id) => {
-              return id !== runId;
-            });
-          });
-          L.debug("checkRun$ terminal, removed from pendingRunIds", {
-            threadId,
-            runId,
-            status: res.body.status,
-            pendingRunIds: get(pendingRunIds$),
-          });
-          return true;
-        }
-        return false;
-      });
-
-      signal.addEventListener("abort", () => {
-        L.debug("trackRun$ aborted", { threadId, runId });
-      });
-      await set(setAblyLoop$, `runUpdated:${runId}`, checkRun$, signal);
-      L.debug("trackRun$ exited (terminal)", { threadId, runId });
-    },
-  );
+  const trackRun$ = createTrackRun(threadId, pendingRunIds$);
 
   const hasActiveRun$ = computed((get) => {
     const pending = get(pendingRunIds$);
