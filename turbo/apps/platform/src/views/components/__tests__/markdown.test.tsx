@@ -12,6 +12,7 @@ const THREAD_BASE = {
   title: null,
   agentId: "c0000000-0000-4000-a000-000000000001",
   latestSessionId: null,
+  activeRunIds: [],
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
 } as const;
@@ -19,6 +20,26 @@ const THREAD_BASE = {
 describe("chat-d-064: markdown content renders from props", () => {
   it("should parse markdown and render as formatted HTML", async () => {
     server.use(
+      http.get(
+        "*/api/zero/chat-threads/thread-markdown/messages",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          return HttpResponse.json({
+            messages: [
+              {
+                id: "msg-1",
+                role: "assistant",
+                content: "**bold text**",
+                createdAt: "2026-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
       http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "thread-markdown",
@@ -50,6 +71,26 @@ describe("chat-d-064: markdown content renders from props", () => {
 describe("chat-d-065: theme signal applied to markdown rendering", () => {
   it("should apply theme from theme$ signal as data-color-mode on the markdown wrapper", async () => {
     server.use(
+      http.get(
+        "*/api/zero/chat-threads/thread-theme/messages",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          return HttpResponse.json({
+            messages: [
+              {
+                id: "msg-1",
+                role: "assistant",
+                content: "hello",
+                createdAt: "2026-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
       http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "thread-theme",
@@ -95,6 +136,26 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
 describe("chat-d-066: markdown links open in new tab", () => {
   it("should render links with target=_blank and rel=noopener noreferrer", async () => {
     server.use(
+      http.get(
+        "*/api/zero/chat-threads/thread-link/messages",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          return HttpResponse.json({
+            messages: [
+              {
+                id: "msg-1",
+                role: "assistant",
+                content: "[example](https://example.com)",
+                createdAt: "2026-01-01T00:00:00Z",
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
       http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "thread-link",

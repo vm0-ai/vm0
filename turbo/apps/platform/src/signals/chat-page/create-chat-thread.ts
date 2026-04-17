@@ -1,9 +1,8 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { delay } from "signal-timers";
-import { onRef, resetSignal, throwIfNotAbort } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
-import { logger } from "../log.ts";
 import {
   createDraftSignals,
   type DraftSignals,
@@ -17,28 +16,18 @@ import {
 import {
   chatMessagesContract,
   chatThreadByIdContract,
+  chatThreadMessagesContract,
+  zeroRunsCancelContract,
   type PersistedAttachment,
-  type AttachFile,
+  type PagedChatMessage,
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
-import {
-  createActiveRunMessage,
-  createPlaceholderAssistantMessage,
-  transformServerMessages,
-  THINKING_MESSAGES,
-  type ChatMessages,
-  type ZeroChatMessage,
-  type UserChatMessage,
-  type AssistantChatMessage,
-} from "./chat-message.ts";
-import {
-  markMessageLoading$,
-  checkAutoRead$,
-} from "../voice-io/voice-io-tts.ts";
+import type { GroupedChatMessageGroup } from "./chat-message.ts";
+import { logger } from "../log.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -51,13 +40,8 @@ const L = logger("ChatThread");
 export interface ChatThreadSignals {
   // ── Data signals ──────────────────────────────────────────────────────────
   threadData$: Computed<Promise<ChatThread | null>>;
-  messages$: Computed<Promise<ZeroChatMessage[]>>;
-  allFinished$: Computed<Promise<boolean>>;
-  thinkingMessage$: Computed<string>;
-  loadMessages$: Command<Promise<void>, [AbortSignal]>;
   sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
-  resetLocalMessages$: Command<void, []>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
   scrollToBottom$: Command<void, []>;
@@ -80,8 +64,14 @@ export interface ChatThreadSignals {
   setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
   // ── Draft sync ────────────────────────────────────────────────────────────
-  /** Schedule a 500ms debounced PATCH to persist the current draft to the server. */
-  scheduleDraftSync$: Command<void, [AbortSignal]>;
+  scheduleDraftSync$: Command<Promise<void>, [AbortSignal]>;
+  // ── Paged messages (sole rendering path) ─────────────────────────────────
+  pagedChatMessages$: Computed<PagedChatMessage[]>;
+  latestChatMessageId$: Computed<string | undefined>;
+  groupedChatMessages$: Computed<GroupedChatMessageGroup[]>;
+  allFinished$: Computed<Promise<boolean>>;
+  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,8 +93,8 @@ function createThreadData(threadId: string) {
       id: threadId,
       title: body.title ?? null,
       agentId: body.agentId,
-      chatMessages: body.chatMessages ?? [],
       latestSessionId: body.latestSessionId ?? null,
+      activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
@@ -118,103 +108,6 @@ function createThreadData(threadId: string) {
   });
 
   return { threadData$, reloadThread$ };
-}
-
-// ---------------------------------------------------------------------------
-// Sub-factory: message state (local messages, merged messages, allFinished)
-// ---------------------------------------------------------------------------
-
-function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
-  const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
-
-  const resetLocalMessages$ = command(({ set }) => {
-    set(internalLocalMessages$, []);
-  });
-
-  const chatMessages$ = computed(async (get): Promise<ChatMessages | null> => {
-    const thread = await get(threadData$);
-    if (!thread) {
-      return null;
-    }
-
-    const { messages, activeRunMessages, lastActiveRunId } =
-      transformServerMessages(thread.chatMessages);
-
-    return {
-      messages,
-      activeRunMessages,
-      agentId: thread.agentId,
-      lastActiveRunId,
-    };
-  });
-
-  const messages$ = computed(async (get) => {
-    const msgs = await get(chatMessages$);
-    const serverMessages = msgs?.messages ?? [];
-    const localMessages = get(internalLocalMessages$);
-
-    const serverRunIds = new Set(
-      serverMessages
-        .filter((m): m is AssistantChatMessage => {
-          return m.role === "assistant" && !!m.legacyRunId;
-        })
-        .map((m) => {
-          return m.legacyRunId;
-        }),
-    );
-
-    const skipIndices = new Set<number>();
-    for (let i = 0; i < localMessages.length; i++) {
-      const m = localMessages[i];
-      if (
-        m.role === "assistant" &&
-        m.legacyRunId &&
-        serverRunIds.has(m.legacyRunId)
-      ) {
-        skipIndices.add(i);
-        if (i > 0 && localMessages[i - 1].role === "user") {
-          skipIndices.add(i - 1);
-        }
-      }
-    }
-
-    const filteredLocal = localMessages.filter((_, i) => {
-      return !skipIndices.has(i);
-    });
-    const merged = [...serverMessages, ...filteredLocal];
-
-    const last = filteredLocal[filteredLocal.length - 1];
-    if (last?.role === "user") {
-      merged.push(createPlaceholderAssistantMessage(last.id));
-    }
-
-    return merged;
-  });
-
-  const allFinished$ = computed(async (get) => {
-    const msgs = await get(messages$);
-    return (
-      await Promise.all(
-        msgs.map(async (message) => {
-          if (message.role !== "assistant") {
-            return true;
-          }
-          if (!message.runLoop) {
-            return true;
-          }
-          return (await get(message.runLoop.finished$)) === true;
-        }),
-      )
-    ).every(Boolean);
-  });
-
-  return {
-    internalLocalMessages$,
-    resetLocalMessages$,
-    chatMessages$,
-    messages$,
-    allFinished$,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -237,34 +130,13 @@ function createComposerFileInput() {
   return { composerFileInput$, setComposerFileInput$ };
 }
 
-// This is an internal scope used to maintain an internal message closure.
-// This scope should only be used within the current file to help decouple specific creator factory command functions.
-// This interface should never be exposed for external use.
-interface MessageCommandsInternalScope {
-  threadId: string;
-  threadData$: Computed<Promise<ChatThread | null>>;
-  reloadThread$: Command<void, []>;
-  internalLocalMessages$: ReturnType<typeof state<ZeroChatMessage[]>>;
-  chatMessages$: Computed<Promise<ChatMessages | null>>;
-  draft: DraftSignals;
-  reloadThinkingMessage$: Command<void, []>;
-  cancelDraftSync$: Command<void, []>;
-  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
-  autoScroll$: Command<void, []>;
-  scrollToBottom$: Command<void, []>;
-}
-
 function createPrepareUserMessage(draft: DraftSignals) {
   return command(
     async (
       { get },
       prompt: string,
       signal: AbortSignal,
-    ): Promise<{
-      fullPrompt: string;
-      attachFiles: AttachFile[] | undefined;
-      userMessage: UserChatMessage;
-    } | null> => {
+    ): Promise<{ fullPrompt: string; hasTextContent: boolean } | null> => {
       const allAttachments = get(draft.attachments$);
       const allInfos = await Promise.all(
         allAttachments.map((a) => {
@@ -292,235 +164,20 @@ function createPrepareUserMessage(draft: DraftSignals) {
         return null;
       }
 
-      // User prompt is clean text only — file download instructions go to systemPrompt.
-      // When the user sends only files with no text, use a placeholder so the
-      // contract's min(1) validation passes.
+      const attachmentLines = ready.map((r) => {
+        return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`;
+      });
+
       const trimmedPrompt = prompt.trim();
-      const fullPrompt =
-        trimmedPrompt || (ready.length > 0 ? "(see attached files)" : "");
+      const fullPrompt = trimmedPrompt
+        ? attachmentLines.length > 0
+          ? `${trimmedPrompt}\n\n${attachmentLines.join("\n")}`
+          : trimmedPrompt
+        : attachmentLines.join("\n");
 
-      const attachFiles: AttachFile[] | undefined =
-        ready.length > 0
-          ? ready.map((r) => {
-              return {
-                id: r.info.id,
-                filename: r.attachment.filename,
-                contentType: r.attachment.contentType,
-                size: r.attachment.size,
-              };
-            })
-          : undefined;
-
-      const userMessage: UserChatMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: fullPrompt,
-        attachments:
-          ready.length > 0
-            ? ready.map((r) => {
-                return {
-                  filename: r.attachment.filename,
-                  contentType: r.attachment.contentType,
-                  size: r.attachment.size,
-                  url: r.info.url,
-                };
-              })
-            : undefined,
-      };
-      return { fullPrompt, attachFiles, userMessage };
+      return { fullPrompt, hasTextContent: trimmedPrompt.length > 0 };
     },
   );
-}
-
-function createSendMessage(
-  deps: MessageCommandsInternalScope,
-  prepareUserMessage$: ReturnType<typeof createPrepareUserMessage>,
-) {
-  return command(async ({ get, set }, prompt: string, signal: AbortSignal) => {
-    const thread = await get(deps.threadData$);
-    signal.throwIfAborted();
-    const agentId = thread?.agentId;
-    if (!agentId) {
-      return;
-    }
-
-    const result = await set(prepareUserMessage$, prompt, signal);
-    if (!result) {
-      return;
-    }
-    signal.throwIfAborted();
-
-    set(deps.internalLocalMessages$, (prev) => {
-      return [...prev, result.userMessage];
-    });
-    set(deps.cancelDraftSync$);
-    set(deps.draft.clear$);
-    await set(deps.flushDraftClear$, signal);
-    signal.throwIfAborted();
-
-    // Yield one microtask tick so React can flush the optimistic user message
-    // into the DOM before we scroll. Without this the scroll fires against the
-    // old layout and is effectively a no-op.
-    await delay(0, { signal });
-    set(deps.scrollToBottom$);
-
-    const client = get(zeroClient$)(chatMessagesContract);
-    const sendResult = await accept(
-      client.send({
-        body: {
-          agentId,
-          prompt: result.fullPrompt,
-          threadId: deps.threadId,
-          hasTextContent: prompt.trim().length > 0,
-          attachFiles: result.attachFiles,
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
-    );
-    signal.throwIfAborted();
-
-    set(reloadChatThreads$);
-    set(deps.reloadThread$);
-
-    const { assistantMessage } = createActiveRunMessage(
-      sendResult.body.runId,
-      prompt,
-    );
-    set(deps.internalLocalMessages$, (prev) => {
-      return [...prev, assistantMessage];
-    });
-
-    set(markMessageLoading$, assistantMessage.legacyRunId!);
-
-    const runLoop = assistantMessage.runLoop;
-    if (!runLoop) {
-      return;
-    }
-
-    const sendLoopBody$ = command(async ({ set }, sig: AbortSignal) => {
-      set(reloadChatThreads$);
-      set(deps.reloadThread$);
-      const finished = await set(runLoop.checkFinished$, sig);
-      set(deps.autoScroll$);
-      return finished;
-    });
-    await set(
-      setAblyLoop$,
-      `thread:${sendResult.body.runId}`,
-      sendLoopBody$,
-      3000,
-      signal,
-    );
-
-    // After the poll loop exits, the last `reloadThread$` ran at the START of
-    // the final iteration — at that point the run's server-side status was
-    // still "queued"/"running", so `transformServerMessages` picked the
-    // assistant row as an active anchor and attached a fresh runLoop whose
-    // `detail$` cached that stale status. Without one more reload, the
-    // anchor's runLoop would stay stuck at the stale status, keeping
-    // `MessageRunActivityLine` mounted — which renders the "Thinking..."
-    // loader indefinitely whenever `summaries$` happens to be empty (notably
-    // if the run only had tool_use events, or every tool_use was followed
-    // by a text block so the final segment is empty).
-    set(reloadChatThreads$);
-    set(deps.reloadThread$);
-
-    const content = await get(assistantMessage.result$);
-    signal.throwIfAborted();
-    if (content) {
-      await set(checkAutoRead$, assistantMessage.legacyRunId!, content, signal);
-    }
-  });
-}
-
-function createLoadMessages(deps: MessageCommandsInternalScope) {
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    L.debug("Loading messages");
-    const msgs = await get(deps.chatMessages$);
-    signal.throwIfAborted();
-
-    // Yield one microtask tick so React can flush the message list render into
-    // the DOM before we trigger scrollToBottom$. Without this yield the scroll
-    // container may still reflect the old layout and scrollToBottom$ would be
-    // a no-op.
-    await delay(0, { signal });
-    set(deps.scrollToBottom$);
-
-    if (!msgs?.activeRunMessages.length) {
-      return;
-    }
-
-    set(deps.internalLocalMessages$, msgs.activeRunMessages);
-
-    const assistantMessages = msgs.activeRunMessages.filter(
-      (m): m is AssistantChatMessage => {
-        return m.role === "assistant";
-      },
-    );
-
-    if (assistantMessages.length === 0) {
-      set(reloadChatThreads$);
-      set(deps.reloadThread$);
-      return;
-    }
-
-    await Promise.all(
-      assistantMessages.map(async (message) => {
-        const runLoop = message.runLoop;
-        if (!runLoop?.checkFinished$) {
-          return;
-        }
-
-        set(markMessageLoading$, message.legacyRunId!);
-
-        const loadLoopBody$ = command(({ set }, sig: AbortSignal) => {
-          set(deps.reloadThinkingMessage$);
-          const finished = set(runLoop.checkFinished$, sig);
-          set(deps.autoScroll$);
-          return finished;
-        });
-        await set(
-          setAblyLoop$,
-          `thread:${message.legacyRunId}`,
-          loadLoopBody$,
-          3000,
-          signal,
-        );
-
-        const content = await get(message.result$);
-        signal.throwIfAborted();
-        if (content) {
-          await set(checkAutoRead$, message.legacyRunId!, content, signal);
-        }
-
-        set(reloadChatThreads$);
-        set(deps.reloadThread$);
-      }),
-    );
-    signal.throwIfAborted();
-  });
-}
-
-function createMessageCommands(deps: MessageCommandsInternalScope) {
-  const prepareUserMessage$ = createPrepareUserMessage(deps.draft);
-  const sendMessage$ = createSendMessage(deps, prepareUserMessage$);
-  const loadMessages$ = createLoadMessages(deps);
-
-  const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const local = get(deps.internalLocalMessages$);
-    const activeMsg = [...local]
-      .reverse()
-      .find((m): m is AssistantChatMessage => {
-        return m.role === "assistant" && !!m.runLoop;
-      });
-    if (!activeMsg?.runLoop) {
-      return;
-    }
-    await set(activeMsg.runLoop.cancel$, signal);
-  });
-
-  return { sendMessage$, loadMessages$, cancelRun$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -621,10 +278,6 @@ function createThreadUIState() {
 }
 
 // ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Sub-factory: draft server sync (debounced PATCH)
 // ---------------------------------------------------------------------------
 
@@ -668,15 +321,8 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
     },
   );
 
-  /**
-   * Debounced sync: waits 500ms, then reads the current draft state and PATCHes
-   * the server. Aborted when `scheduleDraftSync$` is called again (debounce
-   * reset) or when `cancelDraftSync$` fires (on send).
-   */
   const debouncedSyncDraft$ = command(
     async ({ get, set }, signal: AbortSignal) => {
-      // Wait for the debounce window — abort if a newer change comes in.
-      // The delay is configurable via setDraftSyncDebounceMs$ so tests can set it to 0.
       await delay(get(internalDraftSyncDebounceMs$), { signal });
       signal.throwIfAborted();
 
@@ -684,7 +330,6 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
       const content = input.trim() || null;
       const attachments = get(draft.attachments$);
 
-      // Resolve attachment fileInfo to collect only completed uploads
       const infos = await Promise.all(
         attachments.map((a) => {
           return get(a.fileInfo$);
@@ -724,28 +369,17 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
     },
   );
 
-  /**
-   * Schedules a debounced draft sync. Each call aborts any prior in-flight
-   * debounced sync and restarts the 500ms timer. Called from the draft change
-   * watcher in setupChatPage$.
-   */
-  const scheduleDraftSync$ = command(({ set }, signal: AbortSignal) => {
+  const scheduleDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
     const debouncedSignal = set(draftSyncReset$, signal);
-    // Start the debounced async sync. Abort errors are ignored (expected when
-    // the signal is reset on the next draft change). Other errors surface via
-    // accept()'s built-in toast error handling.
-    void set(debouncedSyncDraft$, debouncedSignal).catch(throwIfNotAbort);
+    await set(debouncedSyncDraft$, debouncedSignal);
   });
 
   const cancelDraftSync$ = command(({ set }) => {
-    // Abort the current debounced sync by resetting the signal
     set(draftSyncReset$);
   });
 
   const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
-    // Cancel any pending debounced sync first
     set(draftSyncReset$);
-    // Immediately PATCH null values
     await set(syncWithContent$, null, null, signal);
   });
 
@@ -753,32 +387,145 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
 }
 
 // ---------------------------------------------------------------------------
-// Draft cache
+// Sub-factory: paginated chat messages
 // ---------------------------------------------------------------------------
 
 /**
- * Per-thread draft cache. Drafts survive navigation (thread-1 -> thread-2 ->
- * thread-1) because they are stored here rather than inside the factory's
- * ephemeral signals.
+ * Merge new messages into existing groups.
  *
- * Wrapped in `state` to satisfy the ccstate/no-package-variable lint rule.
- * Updated immutably via `ensureDraft$` command — never mutated inside a
- * computed.
+ * Upsert semantics by `id`: if an incoming message's id already exists in
+ * the groups, its fields are replaced in place — this lets an optimistic
+ * user row reconcile with the server-pushed row without React unmounting
+ * and remounting the message (the React key stays the same).
  */
+function mergeIntoGroups(
+  groups: GroupedChatMessageGroup[],
+  messages: PagedChatMessage[],
+): GroupedChatMessageGroup[] {
+  const result = groups.map((g) => {
+    return { ...g, messages: [...g.messages] };
+  });
+
+  const positionById = new Map<string, { groupIdx: number; msgIdx: number }>();
+  for (let gi = 0; gi < result.length; gi++) {
+    const group = result[gi]!;
+    for (let mi = 0; mi < group.messages.length; mi++) {
+      positionById.set(group.messages[mi]!.id, { groupIdx: gi, msgIdx: mi });
+    }
+  }
+
+  for (const msg of messages) {
+    const existing = positionById.get(msg.id);
+    if (existing) {
+      result[existing.groupIdx]!.messages[existing.msgIdx] = msg;
+      continue;
+    }
+
+    const last = result[result.length - 1];
+    if (last && last.role === msg.role) {
+      last.messages.push(msg);
+      positionById.set(msg.id, {
+        groupIdx: result.length - 1,
+        msgIdx: last.messages.length - 1,
+      });
+    } else {
+      result.push({
+        beginMessageId: msg.id,
+        role: msg.role,
+        messages: [msg],
+      });
+      positionById.set(msg.id, { groupIdx: result.length - 1, msgIdx: 0 });
+    }
+  }
+  return result;
+}
+
+function createPagedMessages(threadId: string) {
+  const internalGroups$ = state<GroupedChatMessageGroup[]>([]);
+
+  const groupedChatMessages$ = computed((get) => {
+    return get(internalGroups$);
+  });
+
+  const pagedChatMessages$ = computed((get) => {
+    const groups = get(internalGroups$);
+    const all: PagedChatMessage[] = [];
+    for (const group of groups) {
+      all.push(...group.messages);
+    }
+    return all;
+  });
+
+  const latestChatMessageId$ = computed((get) => {
+    const groups = get(internalGroups$);
+    const lastGroup = groups[groups.length - 1];
+    if (!lastGroup) {
+      return undefined;
+    }
+    const msgs = lastGroup.messages;
+    return msgs[msgs.length - 1].id;
+  });
+
+  const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const sinceId = get(latestChatMessageId$);
+    signal.throwIfAborted();
+
+    const client = get(zeroClient$)(chatThreadMessagesContract);
+    const result = await accept(
+      client.list({
+        params: { threadId },
+        query: { sinceId, limit: 50 },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    L.debug("fetchNextPage$", {
+      threadId,
+      sinceId,
+      count: result.body.messages.length,
+      runStatuses: result.body.messages
+        .filter((m) => {
+          return m.runId;
+        })
+        .map((m) => {
+          return { id: m.id, runId: m.runId, status: m.status };
+        }),
+    });
+
+    if (result.body.messages.length === 0) {
+      return true; // no new messages
+    }
+
+    set(internalGroups$, (prev) => {
+      return mergeIntoGroups(prev, result.body.messages);
+    });
+
+    return false;
+  });
+
+  const insertOptimisticMessage$ = command(({ set }, msg: PagedChatMessage) => {
+    set(internalGroups$, (prev) => {
+      return mergeIntoGroups(prev, [msg]);
+    });
+  });
+
+  return {
+    pagedChatMessages$,
+    latestChatMessageId$,
+    groupedChatMessages$,
+    fetchNextPage$,
+    insertOptimisticMessage$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Draft cache
+// ---------------------------------------------------------------------------
+
 const draftCache$ = state(new Map<string, DraftSignals>());
 
-/**
- * Ensures a draft exists for the given threadId. If one already exists in the
- * cache, returns it. Otherwise creates a new one and immutably updates the
- * cache state.
- *
- * Returns `{ draft, isNew }` where `isNew` is true when a fresh draft was
- * created (i.e. this is the first visit to the thread in this session).
- * Callers can use `isNew` to decide whether to seed draft from server data.
- *
- * This is a command (not a plain function) so the cache mutation happens
- * outside of any computed derivation.
- */
 export const ensureDraft$ = command(
   ({ get, set }, threadId: string): { draft: DraftSignals; isNew: boolean } => {
     const cache = get(draftCache$);
@@ -794,44 +541,7 @@ export const ensureDraft$ = command(
   },
 );
 
-export function createChatThreadSignals(
-  threadId: string,
-  draft: DraftSignals,
-): ChatThreadSignals {
-  const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const {
-    internalLocalMessages$,
-    resetLocalMessages$,
-    messages$,
-    chatMessages$,
-    allFinished$,
-  } = createMessageState(threadData$);
-  const { setScrollContainer$, autoScroll$, scrollToBottom$ } =
-    createScrollSignals();
-  const { composerFileInput$, setComposerFileInput$ } =
-    createComposerFileInput();
-  const { agentId$, agentDisplayName$, agentPinned$ } =
-    createAgentInfoSignals(threadData$);
-  const {
-    timelineExpandedIds$,
-    toggleTimelineExpanded$,
-    copiedMessageId$,
-    copyMessage$,
-  } = createThreadUIState();
-
-  const internalThinkingMessage$ = state(
-    THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)],
-  );
-  const thinkingMessage$ = computed((get) => {
-    return get(internalThinkingMessage$);
-  });
-  const reloadThinkingMessage$ = command(({ set }) => {
-    set(
-      internalThinkingMessage$,
-      THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)],
-    );
-  });
-
+function createInputRef() {
   const internalInputRef$ = state<HTMLElement | null>(null);
   const setInputRef$ = onRef(
     command(({ set }, el: HTMLElement, signal: AbortSignal) => {
@@ -844,33 +554,213 @@ export function createChatThreadSignals(
   const focusInput$ = command(({ get }) => {
     get(internalInputRef$)?.focus();
   });
+  return { setInputRef$, focusInput$ };
+}
+
+// ---------------------------------------------------------------------------
+// Factory: createRunTracking
+// ---------------------------------------------------------------------------
+
+function createRunTracking(
+  reloadThread$: Command<void, []>,
+  threadData$: Computed<Promise<ChatThread | null>>,
+  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>,
+) {
+  const allFinished$ = computed(async (get) => {
+    const thread = await get(threadData$);
+    if (!thread) {
+      return false;
+    }
+    return thread.activeRunIds.length === 0;
+  });
+
+  const loadPagedMessages$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      if (!thread) {
+        throw new Error("invalid thread");
+      }
+
+      const threadId = thread.id;
+      L.debug("loadPagedMessages$ start", { threadId });
+      await set(fetchNextPage$, signal);
+      signal.throwIfAborted();
+
+      L.debug("loadPagedMessages$ thread loaded", {
+        threadId,
+        activeRunIds: thread.activeRunIds,
+      });
+
+      const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+        await set(fetchNextPage$, sig);
+        return false;
+      });
+
+      const onRunChanged$ = command(({ set }) => {
+        set(reloadThread$);
+        return false;
+      });
+
+      await Promise.all([
+        set(
+          setAblyLoop$,
+          `chatThreadMessageCreated:${threadId}`,
+          onMessageCreated$,
+          signal,
+        ),
+        set(
+          setAblyLoop$,
+          `chatThreadRunCreated:${thread.id}`,
+          onRunChanged$,
+          signal,
+        ),
+        set(
+          setAblyLoop$,
+          `chatThreadRunUpdated:${thread.id}`,
+          onRunChanged$,
+          signal,
+        ),
+      ]);
+
+      signal.throwIfAborted();
+    },
+  );
+
+  const cancelRun$ = command(async ({ get }, signal: AbortSignal) => {
+    const thread = await get(threadData$);
+    signal.throwIfAborted();
+    if (!thread) {
+      return;
+    }
+
+    const client = get(zeroClient$)(zeroRunsCancelContract);
+    const before = thread.activeRunIds;
+    const threadId = thread.id;
+    L.debug("cancelRun$ start", { threadId, pendingRunIds: before });
+
+    await Promise.all(
+      before.map(async (runId) => {
+        await accept(
+          client.cancel({ params: { id: runId }, fetchOptions: { signal } }),
+          [200],
+        );
+        L.debug("cancelRun$ server accepted cancel", { threadId, runId });
+      }),
+    );
+    signal.throwIfAborted();
+  });
+
+  return { allFinished$, loadPagedMessages$, cancelRun$ };
+}
+
+// ---------------------------------------------------------------------------
+// Factory: createChatThreadSignals
+// ---------------------------------------------------------------------------
+
+export function createChatThreadSignals(
+  threadId: string,
+  draft: DraftSignals,
+): ChatThreadSignals {
+  const { threadData$, reloadThread$ } = createThreadData(threadId);
+  const { setScrollContainer$, autoScroll$, scrollToBottom$ } =
+    createScrollSignals();
+  const { composerFileInput$, setComposerFileInput$ } =
+    createComposerFileInput();
+  const { agentId$, agentDisplayName$, agentPinned$ } =
+    createAgentInfoSignals(threadData$);
+  const {
+    timelineExpandedIds$,
+    toggleTimelineExpanded$,
+    copiedMessageId$,
+    copyMessage$,
+  } = createThreadUIState();
+  const {
+    pagedChatMessages$,
+    latestChatMessageId$,
+    groupedChatMessages$,
+    fetchNextPage$,
+    insertOptimisticMessage$,
+  } = createPagedMessages(threadId);
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft);
 
-  const { sendMessage$, loadMessages$, cancelRun$ } = createMessageCommands({
-    threadId,
-    threadData$,
+  const prepareUserMessage$ = createPrepareUserMessage(draft);
+
+  const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking(
     reloadThread$,
-    internalLocalMessages$,
-    chatMessages$,
-    draft,
-    reloadThinkingMessage$,
-    cancelDraftSync$,
-    flushDraftClear$,
-    autoScroll$,
-    scrollToBottom$,
-  });
+    threadData$,
+    fetchNextPage$,
+  );
+
+  const sendMessage$ = command(
+    async ({ get, set }, prompt: string, signal: AbortSignal) => {
+      L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      const agentId = thread?.agentId;
+      if (!agentId) {
+        L.debug("sendMessage$ no agentId, abort", { threadId });
+        return;
+      }
+
+      const result = await set(prepareUserMessage$, prompt, signal);
+      if (!result) {
+        L.debug("sendMessage$ prepare returned null, abort", { threadId });
+        return;
+      }
+      signal.throwIfAborted();
+
+      set(cancelDraftSync$);
+      set(draft.clear$);
+
+      const clientMessageId = crypto.randomUUID();
+      set(insertOptimisticMessage$, {
+        id: clientMessageId,
+        role: "user",
+        content: result.fullPrompt,
+        createdAt: new Date().toISOString(),
+      });
+
+      const client = get(zeroClient$)(chatMessagesContract);
+      const [, sendResult] = await Promise.all([
+        set(flushDraftClear$, signal),
+        accept(
+          client.send({
+            body: {
+              agentId,
+              prompt: result.fullPrompt,
+              threadId: threadId,
+              hasTextContent: result.hasTextContent,
+              clientMessageId,
+            },
+            fetchOptions: { signal },
+          }),
+          [201],
+        ),
+      ]);
+      signal.throwIfAborted();
+
+      L.debug("sendMessage$ POST accepted", {
+        threadId,
+        runId: sendResult.body.runId,
+      });
+
+      set(reloadChatThreads$);
+      L.debug("sendMessage$ done", {
+        threadId,
+        runId: sendResult.body.runId,
+      });
+    },
+  );
+
+  const { setInputRef$, focusInput$ } = createInputRef();
 
   return {
     threadData$,
-    messages$,
-    allFinished$,
-    thinkingMessage$,
-    loadMessages$,
     sendMessage$,
     cancelRun$,
-    resetLocalMessages$,
     setScrollContainer$,
     autoScroll$,
     scrollToBottom$,
@@ -887,6 +777,12 @@ export function createChatThreadSignals(
     setInputRef$,
     focusInput$,
     scheduleDraftSync$,
+    pagedChatMessages$,
+    latestChatMessageId$,
+    groupedChatMessages$,
+    allFinished$,
+    fetchNextPage$,
+    loadPagedMessages$,
   };
 }
 
@@ -894,15 +790,6 @@ export function createChatThreadSignals(
 // Package-scope computed: derives ChatThreadSignals from the current route
 // ---------------------------------------------------------------------------
 
-/**
- * Singleton computed that produces ChatThreadSignals for the current
- * route's thread ID. ccstate memoizes the last result — if
- * `currentChatThreadId$` or `draftCache$` hasn't changed, the same
- * signals object is returned without re-creation.
- *
- * The draft for the current thread must be provisioned via `ensureDraft$`
- * before this computed is read (typically in `setupChatPage$`).
- */
 export const currentChatThreadSignals$ = computed(
   (get): ChatThreadSignals | null => {
     const threadId = get(currentChatThreadId$);

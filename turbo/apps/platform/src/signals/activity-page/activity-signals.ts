@@ -268,7 +268,7 @@ export const setupActivityLogLoop$ = command(
       set(autoScrollActivityDetail$);
       return finished;
     });
-    await set(setAblyLoop$, `thread:${runId}`, loopBody$, 3000, signal);
+    await set(setAblyLoop$, `thread:${runId}`, loopBody$, signal);
   },
 );
 

@@ -10,6 +10,7 @@ import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 import { agentComposes } from "./agent-compose";
 import { zeroAgentSchedules } from "./zero-agent-schedule";
+import { chatThreads } from "./chat-thread";
 
 /**
  * Zero Runs table
@@ -45,6 +46,13 @@ export const zeroRuns = pgTable(
     // Model provider and selected model — zero-layer concerns moved from agent_runs
     modelProvider: varchar("model_provider", { length: 100 }),
     selectedModel: varchar("selected_model", { length: 255 }),
+    // Chat thread this run belongs to (null for non-chat triggers like schedule/telegram)
+    chatThreadId: uuid("chat_thread_id").references(
+      () => {
+        return chatThreads.id;
+      },
+      { onDelete: "set null" },
+    ),
     // Brief AI-generated summary of what the run did (≤50 words)
     summary: text("summary"),
   },

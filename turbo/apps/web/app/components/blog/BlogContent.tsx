@@ -148,7 +148,7 @@ export default function BlogContent({
                         src={post.cover}
                         alt={post.title}
                         fill
-                        style={{ objectFit: "contain" }}
+                        style={{ objectFit: "cover" }}
                       />
                     </div>
                     <div className="blog-card-body">

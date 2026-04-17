@@ -3,7 +3,6 @@ import {
   chatThreadByIdContract,
   chatThreadsContract,
   type PersistedAttachment,
-  type ResolvedAttachFile,
 } from "@vm0/core";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
@@ -46,28 +45,12 @@ export const currentChatThreadId$ = computed((get): string | null => {
   return typeof threadId === "string" ? threadId : null;
 });
 
-const internalReloadCurrentThread$ = state(0);
-
-export const reloadCurrentChatThread$ = command(({ set }) => {
-  set(internalReloadCurrentThread$, (v) => {
-    return v + 1;
-  });
-});
-
 export interface ChatThread {
   id: string;
   agentId?: string;
   title: string | null;
-  chatMessages: {
-    role: "user" | "assistant";
-    content: string | null;
-    runId?: string;
-    error?: string;
-    status?: string;
-    attachFiles?: ResolvedAttachFile[];
-    createdAt: string;
-  }[];
   latestSessionId: string | null;
+  activeRunIds: string[];
   isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
@@ -75,7 +58,6 @@ export interface ChatThread {
 
 export const currentChatThread$ = computed(
   async (get): Promise<ChatThread | null> => {
-    get(internalReloadCurrentThread$);
     const threadId = get(currentChatThreadId$);
     if (!threadId) {
       return null;
@@ -93,8 +75,8 @@ export const currentChatThread$ = computed(
       id: threadId,
       title: body.title ?? null,
       agentId: body.agentId,
-      chatMessages: body.chatMessages ?? [],
       latestSessionId: body.latestSessionId ?? null,
+      activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,

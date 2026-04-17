@@ -10,13 +10,13 @@ import { agentSessions } from "../../db/schema/agent-session";
 import { chatThreads } from "../../db/schema/chat-thread";
 import { conversations } from "../../db/schema/conversation";
 import { zeroAgents } from "../../db/schema/zero-agent";
+import { zeroRuns } from "../../db/schema/zero-run";
 import { composeJobs } from "../../db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
 import {
   insertChatMessage,
   getMessagesByThreadId,
   insertAssistantEventMessages,
-  updateAssistantMessageByRunId,
 } from "../../lib/zero/chat-thread/chat-message-service";
 
 /**
@@ -413,7 +413,8 @@ export async function getTestChatMessagesByThread(
 }
 
 /**
- * Link a run to a chat thread by inserting chat messages (user + assistant placeholder).
+ * Link a run to a chat thread by inserting a user message and setting
+ * zero_runs.chat_thread_id so getChatThreadIdForRun can resolve the thread.
  *
  * @why-db-direct Run-to-thread linking happens inside the chat messages
  * API route during run dispatch. Tests need direct seeding for isolated setup.
@@ -430,12 +431,10 @@ export async function addTestRunToThread(
     content: prompt ?? "test prompt",
     runId: null,
   });
-  await insertChatMessage({
-    chatThreadId: threadId,
-    role: "assistant",
-    content: null,
-    runId,
-  });
+  await globalThis.services.db
+    .update(zeroRuns)
+    .set({ chatThreadId: threadId })
+    .where(eq(zeroRuns.id, runId));
 }
 
 /**
@@ -450,18 +449,4 @@ export async function insertTestAssistantEventMessages(
   items: { sequenceNumber: number; content: string }[],
 ): Promise<number> {
   return insertAssistantEventMessages(runId, threadId, items);
-}
-
-/**
- * Update an assistant placeholder message with content/error from the run callback.
- *
- * @why-db-direct Placeholder updates happen inside the chat callback
- * route handler. Tests need direct seeding for setup.
- */
-export async function updateTestAssistantMessageByRunId(
-  runId: string,
-  content: string | null,
-  error: string | undefined,
-): Promise<void> {
-  return updateAssistantMessageByRunId(runId, content, error);
 }

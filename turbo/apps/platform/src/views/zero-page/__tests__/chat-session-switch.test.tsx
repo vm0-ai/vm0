@@ -11,6 +11,60 @@ const context = testContext();
 describe("chat session switch", () => {
   it("should show running state when switching to a session with an active run", async () => {
     server.use(
+      http.get(
+        "*/api/zero/chat-threads/thread-completed/messages",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          return HttpResponse.json({
+            messages: [
+              {
+                id: "msg-1",
+                role: "user",
+                content: "Done task",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-2",
+                role: "assistant",
+                content: "All done!",
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
+      http.get(
+        "*/api/zero/chat-threads/thread-running/messages",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          return HttpResponse.json({
+            messages: [
+              {
+                id: "msg-1",
+                role: "user",
+                content: "Active task prompt",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-2",
+                role: "assistant",
+                content: null,
+                runId: "run-active",
+                status: "running",
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
       http.get("*/api/zero/chat-threads/:id", ({ params }) => {
         const id = params.id as string;
         if (id === "thread-completed") {
@@ -18,19 +72,9 @@ describe("chat session switch", () => {
             id: "thread-completed",
             title: null,
             agentId: "c0000000-0000-4000-a000-000000000001",
-            chatMessages: [
-              {
-                role: "user",
-                content: "Done task",
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              {
-                role: "assistant",
-                content: "All done!",
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ],
+            chatMessages: [],
             latestSessionId: null,
+            activeRunIds: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });
@@ -40,21 +84,9 @@ describe("chat session switch", () => {
           id: "thread-running",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [
-            {
-              role: "user",
-              content: "Active task prompt",
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-            {
-              role: "assistant",
-              content: null,
-              runId: "run-active",
-              status: "running",
-              createdAt: "2026-03-10T00:00:01Z",
-            },
-          ],
+          chatMessages: [],
           latestSessionId: null,
+          activeRunIds: ["run-active"],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -91,6 +123,17 @@ describe("chat session switch", () => {
           framework: "claude-code",
         });
       }),
+      http.get("*/api/zero/runs/:id", () => {
+        return HttpResponse.json({
+          runId: "run-active",
+          agentComposeVersionId: null,
+          status: "running",
+          prompt: "Active task prompt",
+          appendSystemPrompt: null,
+          result: { agentSessionId: "session-1", output: "" },
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
       http.get("*/api/zero/queue-position", () => {
         return HttpResponse.json({ position: 0 });
       }),
@@ -111,37 +154,50 @@ describe("chat session switch", () => {
       pathParams: { threadId: "thread-running" },
     });
 
-    // The running thread should show the thinking/shimmer state
-    await waitFor(() => {
-      const shimmer = document.querySelector(".zero-shimmer-text");
-      expect(shimmer).toBeInTheDocument();
-    });
-
     // Stop button should appear for the active run
-    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
   });
 
   it("should load different messages when switching between completed sessions", async () => {
     server.use(
+      http.get(
+        "*/api/zero/chat-threads/:id/messages",
+        ({ request, params }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          const id = params.id as string;
+          return HttpResponse.json({
+            messages: [
+              {
+                id: "msg-1",
+                role: "user",
+                content: `Question for ${id}`,
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-2",
+                role: "assistant",
+                content: `Answer for ${id}`,
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
       http.get("*/api/zero/chat-threads/:id", ({ params }) => {
         const id = params.id as string;
         return HttpResponse.json({
           id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [
-            {
-              role: "user",
-              content: `Question for ${id}`,
-              createdAt: "2026-03-10T00:00:00Z",
-            },
-            {
-              role: "assistant",
-              content: `Answer for ${id}`,
-              createdAt: "2026-03-10T00:00:01Z",
-            },
-          ],
+          chatMessages: [],
           latestSessionId: null,
+          activeRunIds: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });

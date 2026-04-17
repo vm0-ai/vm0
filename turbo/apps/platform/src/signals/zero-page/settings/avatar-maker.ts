@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { delay } from "signal-timers";
 import {
   type AvatarSvgConfig,
   randomAvatarSvgConfig,
@@ -105,14 +106,13 @@ export const setAvatarMakerSaving$ = command(({ set }, value: boolean) => {
 // ---------------------------------------------------------------------------
 
 /** Randomize the avatar config with dice animation and sparkles. */
-export const shuffleAvatar$ = command(({ set }) => {
+export const shuffleAvatar$ = command(async ({ set }, signal: AbortSignal) => {
   set(internalConfig$, randomAvatarSvgConfig());
   set(internalShuffling$, true);
   set(internalShowSparkles$, true);
-  window.setTimeout(() => {
-    set(internalShuffling$, false);
-    set(internalShowSparkles$, false);
-  }, 600);
+  await delay(600, { signal });
+  set(internalShuffling$, false);
+  set(internalShowSparkles$, false);
 });
 
 /** Open the dialog with a fresh random avatar. */
@@ -127,22 +127,26 @@ export const openAvatarMaker$ = command(({ set }) => {
 
 /** Select an option for the current step. Auto-advances after a delay. */
 export const selectAvatarOption$ = command(
-  ({ get, set }, field: Step, value: number | string) => {
+  async (
+    { get, set },
+    field: Step,
+    value: number | string,
+    signal: AbortSignal,
+  ) => {
     set(internalJustPicked$, `${field}-${value}`);
     set(internalShowSparkles$, true);
     const prev = get(internalConfig$);
     set(internalConfig$, { ...prev, [field]: value });
 
-    window.setTimeout(() => {
-      set(internalJustPicked$, null);
-      set(internalShowSparkles$, false);
-      const idx = AVATAR_MAKER_STEPS.findIndex((s) => {
-        return s.key === field;
-      });
-      if (idx + 1 < AVATAR_MAKER_STEPS.length) {
-        set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!.key);
-      }
-    }, 350);
+    await delay(350, { signal });
+    set(internalJustPicked$, null);
+    set(internalShowSparkles$, false);
+    const idx = AVATAR_MAKER_STEPS.findIndex((s) => {
+      return s.key === field;
+    });
+    if (idx + 1 < AVATAR_MAKER_STEPS.length) {
+      set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!.key);
+    }
   },
 );
 

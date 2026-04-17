@@ -524,3 +524,90 @@ describe("slack/web integration setup cards render (AGENT-D-061)", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Skip step 2 when connectors arrive via ?connector= deep link
+// ---------------------------------------------------------------------------
+
+describe("connectors via URL skip step 2", () => {
+  it("admin: skips step 2 when connectors arrive via URL", async () => {
+    mockOnboardingNeeded();
+    detachedSetupPage({ context, path: "/onboarding?connector=slack" });
+
+    // Admin step 1 should show (workspace name)
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-workspace-name"),
+      ).toBeInTheDocument();
+    });
+
+    // Fill step 1 and advance — should skip step 2 and land on step 3
+    const user = userEvent.setup();
+    const input = screen.getByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
+    });
+
+    // Step 2 (choose tools) should NOT be shown
+    expect(
+      screen.queryByTestId("onboarding-step-select-connectors"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("member: lands directly on step 3 when connectors arrive via URL", async () => {
+    mockMemberOnboardingNeeded();
+    detachedSetupPage({ context, path: "/onboarding?connector=github" });
+
+    // Member should skip step 2 and land on step 3 (connect)
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
+    });
+  });
+
+  it("admin: back from step 3 returns to step 1 when connectors via URL", async () => {
+    mockOnboardingNeeded();
+    detachedSetupPage({ context, path: "/onboarding?connector=slack" });
+
+    const user = userEvent.setup();
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
+
+    // On step 3
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Back"));
+
+    // Should go back to step 1 (skipping step 2)
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-workspace-name"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("falls back to normal flow when no valid URL connectors", async () => {
+    mockOnboardingNeeded();
+    detachedSetupPage({
+      context,
+      path: "/onboarding?connector=unknown_only",
+    });
+
+    const user = userEvent.setup();
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
+
+    // Should land on step 2 (choose tools) — normal flow
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
+    });
+  });
+});

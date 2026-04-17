@@ -1,5 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { autoReadEnabled$ } from "./voice-io-settings.ts";
 import { fetch$ } from "../fetch.ts";
 import { fetchTtsAudio } from "../../lib/voice-io/tts-fetch.ts";
 import { logger } from "../log.ts";
@@ -12,10 +11,6 @@ const L = logger("AudioIO:TTS");
 
 const internalPlayingRunId$ = state<string | null>(null);
 const internalCleanupFn$ = state<(() => void) | null>(null);
-
-// Auto-read tracking
-const internalSeenLoading$ = state<Set<string>>(new Set());
-const internalAutoReadTriggered$ = state<Set<string>>(new Set());
 
 // ---------------------------------------------------------------------------
 // Public computed
@@ -223,40 +218,5 @@ export const playTts$ = command(
       return;
     }
     await set(fetchAndPlay$, runId, text, signal);
-  },
-);
-
-/**
- * Mark a message as "seen loading" during this session.
- */
-export const markMessageLoading$ = command(({ get, set }, runId: string) => {
-  const seen = get(internalSeenLoading$);
-  if (!seen.has(runId)) {
-    const next = new Set(seen);
-    next.add(runId);
-    set(internalSeenLoading$, next);
-  }
-});
-
-/**
- * Check if a completed message should be auto-read, and trigger playback.
- */
-export const checkAutoRead$ = command(
-  async ({ get, set }, runId: string, content: string, signal: AbortSignal) => {
-    if (!get(autoReadEnabled$)) {
-      return;
-    }
-    if (!get(internalSeenLoading$).has(runId)) {
-      return;
-    }
-    if (get(internalAutoReadTriggered$).has(runId)) {
-      return;
-    }
-
-    const nextTriggered = new Set(get(internalAutoReadTriggered$));
-    nextTriggered.add(runId);
-    set(internalAutoReadTriggered$, nextTriggered);
-
-    await set(fetchAndPlay$, runId, content, signal);
   },
 );

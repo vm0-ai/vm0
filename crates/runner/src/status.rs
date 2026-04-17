@@ -9,11 +9,23 @@ use tracing::warn;
 
 use crate::ids::RunId;
 
+/// Runner lifecycle state.
+///
+/// - `Running`: normal operation — discover and claim new jobs.
+/// - `Draining`: soft drain. No new jobs claimed; in-flight jobs keep
+///   running; idle pool destroyed. **Resumable** via SIGUSR2.
+/// - `Stopping`: irreversible teardown in progress — discovery released,
+///   per-job tokens cancelled, factories/proxy/kmsg/dns shutting down.
+///   Reached via SIGTERM/SIGINT, or automatically from `Draining` once
+///   `jobs.is_empty()`.
+/// - `Stopped`: teardown complete. The process exits immediately after
+///   writing this state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RunnerMode {
     Running,
     Draining,
+    Stopping,
     Stopped,
 }
 

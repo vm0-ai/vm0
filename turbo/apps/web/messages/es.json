@@ -1549,6 +1549,551 @@
           "Mantén cada agente con un único propósito. Un worker que hace review de PRs y también corre tests pierde foco en ambos. System prompts estrechos producen salidas más nítidas y una orquestación más limpia.",
           "Encadena workers con prompts condicionales: 'cuando termine X, lanza Y sobre su salida'. Una flota de agentes enfocados se convierte en un pipeline sin infraestructura adicional."
         ]
+      },
+      "daily-engineering-brief": {
+        "title": "Resumen diario de ingeniería con detección de anomalías",
+        "description": "Pide a @Zero que extraiga datos en tiempo real de GitHub, Linear, Sentry y Plausible cada mañana, calcule promedios móviles de 7 días, marque cualquier anomalía y publique automáticamente un resumen de cuatro secciones en tu canal de Slack.",
+        "timeSaved": "~20 min ahorrados al día",
+        "headings": {
+          "scenario": "Por qué los dashboards dispersos ralentizan tu sincronización matutina",
+          "prompt": "Cómo configurar un resumen diario de ingeniería multi-herramienta con @Zero",
+          "steps": "Cómo @Zero extrae datos en tiempo real, calcula líneas base y marca anomalías",
+          "nextActions": "Profundiza en anomalías, corrige conectores rotos o amplía el resumen",
+          "integrations": "Integraciones requeridas: GitHub y Slack. Opcionales: Linear, Sentry, Plausible",
+          "tips": "Mejores prácticas para reportes de ingeniería programados con múltiples herramientas"
+        },
+        "scenario": "Cada mañana alguien abre cuatro pestañas diferentes: GitHub para la actividad de PRs, Linear para el progreso del sprint, Sentry para los errores nocturnos y Plausible para las tendencias de tráfico. Comparan manualmente los números de hoy con lo que recuerdan de la semana pasada e intentan detectar algo inusual antes del standup. Esa verificación cruzada toma de 15 a 20 minutos y depende de la memoria. @Zero se ejecuta antes del standup, extrae datos en tiempo real de las cuatro fuentes, calcula promedios móviles de 7 días, marca cualquier desviación significativa y publica un resumen limpio de cuatro secciones en Slack antes de que alguien abra su laptop.",
+        "promptVariants": [
+          {
+            "label": "Resumen diario completo",
+            "prompt": "@Zero every weekday at 8:30am, pull live data from Plausible, Sentry, GitHub, and Linear, flag anomalies vs the 7-day rolling average, and post a formatted 4-section daily brief to #engineering."
+          },
+          {
+            "label": "Solo GitHub y Linear",
+            "prompt": "@Zero every morning at 9am, pull today's GitHub PR and issue stats for vm0-ai/vm0 and Linear sprint progress. Flag anything more than 2x above the 7-day average and post to #standup."
+          },
+          {
+            "label": "Bajo demanda",
+            "prompt": "@Zero pull live data from GitHub and Linear right now, compare to the 7-day rolling average, and tell me what looks unusual today."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero every weekday at 8:30am pull live data from Plausible, Sentry, GitHub, and Linear, flag anomalies vs the 7-day rolling average, and post a 4-section brief to #engineering."
+          },
+          {
+            "name": "Zero",
+            "text": "Scheduled. Running weekdays at 08:30.\n\nRun from this morning:\n*GitHub* — 96 PRs merged today vs 14.3 avg 🔴 572% spike (coordinated test refactor). Issues closed: 71 vs 28.6 avg 🟢.\n*Linear* — 0 issues created this week, 3 in backlog.\n*Sentry* — connector not configured.\n*Plausible* — connector not configured."
+          }
+        ],
+        "steps": [
+          {
+            "title": "@Zero extrae datos en tiempo real de cada fuente",
+            "description": "@Zero consulta GitHub para PRs fusionados, issues abiertos y cerrados, y commits. Extrae de Linear los issues creados, el trabajo en progreso y el conteo del backlog. Si están configurados, también consulta Sentry para el conteo de errores y Plausible para métricas de visitantes y páginas vistas."
+          },
+          {
+            "title": "Se calculan los promedios móviles de 7 días",
+            "description": "Para cada métrica, @Zero obtiene los mismos datos de los siete días anteriores y calcula un promedio diario. Esto proporciona una línea base estable que tiene en cuenta fines de semana, despliegues y cambios en el tamaño del equipo."
+          },
+          {
+            "title": "Las anomalías se marcan automáticamente",
+            "description": "@Zero compara los números de hoy con el promedio móvil y marca cualquier desviación significativa. Un pico en PRs fusionados podría indicar un refactoreo coordinado; una caída en el tráfico de Plausible podría señalar un problema de despliegue; un aumento en issues abiertos podría significar que se descubrió una nueva superficie de errores."
+          },
+          {
+            "title": "Se publica el resumen de cuatro secciones en Slack",
+            "description": "@Zero publica un mensaje estructurado con una sección por fuente: Tráfico Web, Errores y Confiabilidad, Actividad de Ingeniería y Seguimiento de Proyecto. Cada sección lista los números de hoy, el promedio de 7 días y una nota de anomalía en lenguaje claro cuando corresponda."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Profundizar en una anomalía",
+            "description": "Pide a @Zero que investigue un pico directamente desde el hilo del resumen",
+            "examplePrompt": "@Zero the 572% PR spike in today's brief — list all those PRs and group them by label or title prefix so I can see what the team was shipping."
+          },
+          {
+            "title": "Corregir un conector roto",
+            "description": "Resuelve un token faltante para que las cuatro secciones tengan datos en tiempo real",
+            "examplePrompt": "@Zero check which connectors are missing or misconfigured for the daily brief and tell me what tokens I need to set."
+          },
+          {
+            "title": "Agregar un umbral personalizado",
+            "description": "Recibe alertas solo cuando una métrica cruza un umbral significativo",
+            "examplePrompt": "@Zero update the daily brief schedule to only flag anomalies that are more than 3x the 7-day average. For smaller deviations, just include the number without a flag."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "@Zero lee PRs fusionados, issues abiertos y cerrados, y conteo de commits. Requerido para la sección de Actividad de Ingeniería."
+          },
+          {
+            "description": "@Zero publica el resumen formateado y agrupa cualquier análisis de seguimiento en el mismo mensaje. Requerido para la entrega."
+          },
+          {
+            "description": "@Zero lee la creación de issues, el trabajo en progreso y el conteo del backlog para la sección de Seguimiento de Proyecto. Opcional."
+          },
+          {
+            "description": "@Zero lee los conteos de errores no resueltos y el volumen de nuevos issues para la sección de Errores y Confiabilidad. Opcional."
+          },
+          {
+            "description": "@Zero lee el conteo de visitantes, páginas vistas y tasa de rebote para la sección de Tráfico Web. Opcional."
+          }
+        ],
+        "tips": [
+          "Programa el resumen de 15 a 20 minutos antes de tu standup para que el equipo pueda verlo antes de que comience la reunión.",
+          "Comienza solo con GitHub y Slack. Una vez que el resumen funcione de manera confiable, agrega Sentry y Plausible uno a la vez para validar cada conector antes de expandir.",
+          "Agrega una nota de umbral personalizado a tu prompt para reducir el ruido. Por ejemplo, marca solo métricas que superen 2x el promedio móvil para que la variación menor del día a día no genere alertas."
+        ]
+      },
+      "competitor-pricing-monitor": {
+        "title": "Monitorea páginas de precios de competidores y marca cambios semanalmente",
+        "description": "Dale a @Zero una lista de URLs de precios de competidores. Extrae el contenido de cada página cada lunes, lo compara con la instantánea de la semana anterior en Notion, escribe un resumen de impacto para cada cambio encontrado, guarda el reporte completo en Notion y publica un resumen en Slack.",
+        "timeSaved": "~2 hrs ahorradas por semana",
+        "headings": {
+          "scenario": "Por qué los cambios de precios toman a los equipos por sorpresa",
+          "prompt": "Cómo configurar el monitoreo semanal de precios de competidores con @Zero",
+          "steps": "Cómo @Zero extrae, compara y reporta cambios de precios",
+          "nextActions": "Profundiza en un cambio específico, ajusta la lista de seguimiento o comparte con liderazgo",
+          "integrations": "Integraciones requeridas: Notion y Slack",
+          "tips": "Mejores prácticas para inteligencia de precios automatizada"
+        },
+        "scenario": "Un competidor elimina silenciosamente su plan gratuito. Otro agrega un nuevo plan empresarial. Te enteras tres semanas después por un prospecto que ya los eligió. @Zero revisa las páginas de precios de tus competidores cada lunes, compara qué cambió desde la semana pasada, escribe un resumen de impacto claro para cada cambio encontrado y publica un resumen en Slack antes de que la semana de tu equipo comience.",
+        "promptVariants": [
+          {
+            "label": "Configurar monitoreo semanal",
+            "prompt": "@Zero every Monday at 9am, scrape the pricing pages of e2b.dev, daytona.io, cursor.com, and replit.com. Compare against last week's Notion snapshot. Flag any changes to tiers, prices, or CTAs, write a 2–3 sentence impact summary for each, save the full report to Notion under Competitor Pricing Log, and post a digest to #competitive."
+          },
+          {
+            "label": "Ejecutar una verificación puntual",
+            "prompt": "@Zero scrape the pricing pages of e2b.dev and daytona.io right now. Compare against the last saved Notion snapshot and tell me what changed."
+          },
+          {
+            "label": "Análisis profundo de un competidor",
+            "prompt": "@Zero pull the full pricing history for cursor.com from the Competitor Pricing Log in Notion. Summarize how their tiers and CTAs have evolved over time."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero every Monday at 9am, scrape competitor pricing pages and compare against last week's Notion snapshot. Post a digest to #competitive."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Pricing Digest — Apr 14\n\nCursor: Added new Ultra tier at $200/month. Signals growing confidence in a high-willingness-to-pay power-user segment.\nDaytona: Increased startup credit offer from $25K to $50K. Signals aggressive developer acquisition push.\n\nNo changes detected: E2B, Replit\n\nFull report saved to Notion."
+          }
+        ],
+        "steps": [
+          {
+            "title": "@Zero extrae cada página de precios",
+            "description": "@Zero obtiene el contenido actual de cada URL de precios que especificaste, extrayendo nombres de planes, precios, listas de funcionalidades, ofertas de prueba y CTAs."
+          },
+          {
+            "title": "@Zero compara contra la instantánea de la semana anterior en Notion",
+            "description": "@Zero compara el contenido de hoy contra la versión guardada en Notion la semana pasada. Marca cualquier cambio en planes de precios, nombres de planes, funcionalidades incluidas, términos de prueba o llamadas a la acción."
+          },
+          {
+            "title": "Se guardan los resúmenes de impacto y se publica el resumen",
+            "description": "Para cada cambio encontrado, @Zero escribe un resumen de impacto de 2 a 3 oraciones que cubre qué cambió, qué señala y qué considerar. El reporte completo se guarda en Notion y un resumen conciso se publica en Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Profundizar en un cambio específico",
+            "description": "Obtén más contexto sobre un movimiento de un competidor",
+            "examplePrompt": "@Zero pull up everything we have on Cursor's pricing history in Notion. Summarize how they've repositioned their tiers since Q1."
+          },
+          {
+            "title": "Agregar un nuevo competidor a la lista de seguimiento",
+            "description": "Amplía las páginas que se están monitoreando",
+            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the baseline."
+          },
+          {
+            "title": "Compartir un resumen acumulado con liderazgo",
+            "description": "Envía un resumen trimestral de cambios de precios",
+            "examplePrompt": "@Zero summarize all competitor pricing changes logged in Notion this quarter and post a report to #leadership."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "@Zero guarda instantáneas semanales de precios y reportes de cambios en tu espacio de trabajo de Notion para seguimiento a largo plazo y comparaciones."
+          },
+          {
+            "description": "@Zero publica un resumen semanal conciso en el canal de Slack que especifiques."
+          }
+        ],
+        "tips": [
+          "Ejecuta una extracción inicial primero para establecer la instantánea base en Notion. Sin ella, @Zero no tiene nada contra qué comparar y tratará todo como un cambio.",
+          "Sé específico sobre qué marcar. 'Vigila cambios en planes de precios, nombres de planes, ofertas de prueba y CTAs' da resultados más precisos que un escaneo general.",
+          "Estructura tu registro en Notion con propiedades como Competidor, Tipo de Cambio y Fecha para que puedas filtrar por qué cambió y cuándo a lo largo de todo el historial."
+        ]
+      },
+      "cross-tool-context-query": {
+        "title": "Obtén un resumen de estado unificado sobre cualquier tema sin revisar cinco herramientas",
+        "description": "Pregúntale a @Zero sobre un proyecto, funcionalidad o tema. Busca en Slack, Notion, Linear y GitHub simultáneamente, luego devuelve un resumen estructurado: estado actual, responsable, bloqueantes y última actividad — todo desde un solo mensaje.",
+        "timeSaved": "~15 min ahorrados por consulta de estado",
+        "headings": {
+          "scenario": "Por qué las actualizaciones de estado toman más tiempo del que deberían",
+          "prompt": "Cómo pedirle a @Zero un resumen de estado multi-herramienta",
+          "steps": "Cómo @Zero busca, sintetiza y marca señales contradictorias",
+          "nextActions": "Profundiza más, programa resúmenes recurrentes o documenta el estado",
+          "integrations": "Integraciones requeridas: Slack, Linear, Notion y GitHub",
+          "tips": "Mejores prácticas para consultas de contexto multi-herramienta"
+        },
+        "scenario": "Necesitas saber el estado del nuevo flujo de onboarding. Abres Slack para verificar si hubo una decisión reciente. Abres Linear para ver qué está en progreso. Abres Notion para encontrar la especificación. Abres GitHub para revisar el PR. Cuatro pestañas, cuatro contextos, y aún no estás seguro de si la especificación está actualizada o si el ticket de Linear refleja la última decisión. @Zero hace las cuatro búsquedas a la vez, marca cualquier conflicto y te da el panorama completo en una sola respuesta.",
+        "promptVariants": [
+          {
+            "label": "Básico",
+            "prompt": "@Zero what's the current status of [X]?\nSearch Slack (last 14 days), Notion, Linear, and GitHub. Return: current state in one sentence, owner, blockers, and the last meaningful update with source."
+          },
+          {
+            "label": "Análisis profundo",
+            "prompt": "@Zero pull everything on [X] from the last 30 days across Slack, Notion, Linear, and GitHub. Write a full status doc with owner, decision history, and what's next."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero every Monday morning, DM me a status brief on [X] — current state, owner, blockers, last update."
+          },
+          {
+            "label": "Con detección de conflictos",
+            "prompt": "@Zero check Slack and Linear for the latest on [X] and flag if the two sources disagree on status or ownership."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero what's the current status of the onboarding redesign? Search Slack, Notion, Linear, and GitHub."
+          },
+          {
+            "name": "Zero",
+            "text": "Status — Onboarding Redesign\n\nCurrent state: In development, mobile flow in review\nOwner: Lancy (Linear)\nBlockers: Figma handoff incomplete (Slack, Apr 11)\nLast activity: PR #9241 opened Apr 12 — \"feat: new onboarding step 3\""
+          }
+        ],
+        "steps": [
+          {
+            "title": "@Zero busca en las cuatro fuentes en paralelo",
+            "description": "@Zero consulta mensajes de Slack, páginas de Notion, issues de Linear y PRs y commits de GitHub simultáneamente, acotado al tema y la ventana de tiempo que especificaste."
+          },
+          {
+            "title": "Los hallazgos se sintetizan en un resumen estructurado",
+            "description": "@Zero extrae estado, responsable, bloqueantes y última actualización de cada fuente. Si dos fuentes no coinciden — por ejemplo, Slack dice bloqueado pero Linear muestra en progreso — @Zero marca el conflicto y cita ambas fuentes."
+          },
+          {
+            "title": "El resumen se devuelve en el mismo hilo",
+            "description": "@Zero responde con un resumen de 4 partes: estado actual en una línea, responsable o DRI, bloqueantes y la última actualización significativa con su fuente y fecha."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Profundizar en una fuente",
+            "description": "Obtén el hilo completo del issue de Linear o el PR de GitHub",
+            "examplePrompt": "@Zero show me all comments and activity on the Linear issue for [X] from the last 7 days."
+          },
+          {
+            "title": "Programar resúmenes recurrentes",
+            "description": "Recibe un DM semanal de estado sin tener que preguntar cada vez",
+            "examplePrompt": "@Zero every Monday morning, DM me a status brief on [X] — current state, owner, blockers, last update."
+          },
+          {
+            "title": "Documentar el estado",
+            "description": "Registra el resumen en Notion para el equipo",
+            "examplePrompt": "@Zero search for the latest on [X] across Slack, Linear, and GitHub, then save a status summary to our Decision Log in Notion."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "@Zero lee mensajes en todos los canales para identificar decisiones recientes, bloqueantes y discusiones sobre el tema."
+          },
+          {
+            "description": "@Zero extrae issues abiertos y en progreso para identificar responsables, prioridad y estado actual."
+          },
+          {
+            "description": "@Zero busca en páginas y bases de datos especificaciones, decisiones y documentos de contexto. Opcional pero recomendado."
+          },
+          {
+            "description": "@Zero revisa PRs abiertos, commits recientes y comentarios de issues para la actividad técnica más reciente. Opcional pero recomendado para temas de ingeniería."
+          }
+        ],
+        "tips": [
+          "Sé específico — \"la integración con Stripe\" funciona mejor que \"la funcionalidad de pagos\". @Zero necesita suficiente contexto para filtrar resultados en cuatro fuentes.",
+          "Agrega una ventana de tiempo si el tema es de larga duración. \"Enfócate en los últimos 14 días\" evita que resultados desactualizados oculten los recientes.",
+          "Combínalo con Documentar Decisiones para registrar automáticamente el resumen en Notion después de que @Zero lo devuelva."
+        ]
+      },
+      "customer-360": {
+        "title": "Construye un panorama completo del cliente antes de cualquier reunión o llamada de renovación",
+        "description": "Dale a @Zero un nombre de cliente o empresa. Busca en Gmail, Calendar, Slack, Linear y GitHub simultáneamente, luego devuelve un resumen estructurado: etapa de la relación, actividad reciente, temas pendientes y un resumen ejecutivo con la acción recomendada.",
+        "timeSaved": "~30 min ahorrados por revisión de cliente",
+        "headings": {
+          "scenario": "Por qué el contexto del cliente se pierde entre herramientas",
+          "prompt": "Cómo pedirle a @Zero un resumen Customer 360",
+          "steps": "Cómo @Zero busca y sintetiza el contexto del cliente en cinco fuentes",
+          "nextActions": "Prepárate para una reunión específica, ejecuta en lote para un ciclo de revisión o identifica solo los riesgos",
+          "integrations": "Integraciones requeridas: Gmail, Calendar y Slack",
+          "tips": "Mejores prácticas para consultas de contexto de clientes"
+        },
+        "scenario": "Tu QBR es en una hora. Recuerdas que hubo un problema de soporte el mes pasado, algunos hilos de correo que se estancaron y una solicitud de funcionalidad registrada en algún lugar. Tienes 12 minutos y cuatro herramientas que revisar. @Zero busca en todas a la vez — correo, calendario, Slack, tickets — y regresa con un solo resumen: quiénes son, qué ha pasado recientemente, qué está sin resolver y exactamente qué deberías mencionar en la llamada.",
+        "promptVariants": [
+          {
+            "label": "360 completo",
+            "prompt": "@Zero build a Customer 360 for [company].\nSearch Gmail (last 90 days), Google Calendar (last 30 days + next 14 days), Slack (last 30 days), Linear, and GitHub. Return: who they are and relationship stage, recent activity, open items, and a 3-bullet executive summary — relationship health, biggest risk, recommended next action."
+          },
+          {
+            "label": "Resumen pre-reunión",
+            "prompt": "@Zero quick 360 on [contact name] at [company] before my call tomorrow.\nCheck Gmail, Calendar, and Slack. Tell me: what's been discussed, what's unresolved, and one thing I should bring up."
+          },
+          {
+            "label": "Preparación en lote",
+            "prompt": "@Zero for each company in my 'Q2 Reviews' Notion list, run a Customer 360 and save each as a new Notion page under 'Customer Intelligence'."
+          },
+          {
+            "label": "Solo resumen ejecutivo",
+            "prompt": "@Zero snapshot on [company] — relationship health, biggest open item, recommended next move. Gmail and Slack, last 30 days only."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero build a Customer 360 for Acme Corp. Gmail (90 days), Calendar, Slack, Linear, GitHub."
+          },
+          {
+            "name": "Zero",
+            "text": "Customer 360 — Acme Corp\n\nOverview: Enterprise, 6 months in, primary contact: James Chen (CTO)\nRecent Activity: 3 email threads Apr 1–10, last meeting Apr 8, 2 open Linear issues\nOpen Items: Unanswered email Apr 9 re: API limits, feature request #812 unassigned\n\nSummary:\n• Health: Engaged but technical blockers slowing adoption\n• Risk: No response to Apr 9 email for 5 days\n• Next: Follow up on API limits today, share #812 resolution timeline"
+          }
+        ],
+        "steps": [
+          {
+            "title": "@Zero busca en todas las fuentes en paralelo",
+            "description": "@Zero consulta Gmail para hilos de correo, Google Calendar para reuniones pasadas y próximos puntos de contacto, Slack para discusiones internas, Linear para issues vinculados y GitHub para PRs conectados — todo acotado al cliente especificado."
+          },
+          {
+            "title": "Los hallazgos se organizan por categoría",
+            "description": "@Zero clasifica los resultados en etapa de la relación y panorama general, actividad reciente en los últimos 30 días y temas pendientes — definidos como issues sin resolver, decisiones pendientes y correos sin responder. Si una fuente no devuelve nada, se omite."
+          },
+          {
+            "title": "Se escribe y devuelve el resumen ejecutivo",
+            "description": "@Zero escribe un resumen ejecutivo de 3 puntos que cubre la salud de la relación, el mayor riesgo abierto y una única acción recomendada."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Prepararse para una reunión específica",
+            "description": "Obtén un resumen enfocado para una próxima llamada",
+            "examplePrompt": "@Zero I have a call with [contact] at [company] tomorrow. What are the 3 things I need to know going in? Use Gmail and Slack from the last 30 days."
+          },
+          {
+            "title": "Ejecutar en lote para todas las cuentas",
+            "description": "Ejecuta un 360 en toda tu lista de revisión a la vez",
+            "examplePrompt": "@Zero for each company in my 'Q2 Reviews' Notion list, run a Customer 360 and save each as a new page under 'Customer Intelligence'."
+          },
+          {
+            "title": "Identificar solo los riesgos abiertos",
+            "description": "Encuentra temas sin resolver sin el resumen completo",
+            "examplePrompt": "@Zero what is unresolved with [company] right now? Check Gmail, Slack, and Linear for anything open or unanswered in the last 30 days."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "@Zero lee hilos de correo para identificar historial de comunicación, mensajes sin responder y contexto de discusiones clave."
+          },
+          {
+            "description": "@Zero verifica reuniones pasadas y próximos puntos de contacto para completar la línea de tiempo de la relación."
+          },
+          {
+            "description": "@Zero escanea discusiones internas sobre el cliente, incluyendo hilos en los que el cliente no participa."
+          },
+          {
+            "description": "@Zero identifica bugs y solicitudes de funcionalidades vinculadas al cliente. Opcional pero útil para cuentas técnicas."
+          },
+          {
+            "description": "@Zero revisa issues o pull requests vinculados a la cuenta o repositorio del cliente. Opcional."
+          }
+        ],
+        "tips": [
+          "Especifica si el objetivo es una persona o una empresa — @Zero los aborda de manera diferente. Una búsqueda de persona se enfoca en comunicación directa; una búsqueda de empresa abarca más ampliamente todos los contactos de esa organización.",
+          "Agrega 'no inferir información que no se encuentre en los resultados de búsqueda' a tu prompt para evitar que @Zero llene vacíos con suposiciones.",
+          "Ejecútalo antes de QBRs, llamadas de renovación o primeros seguimientos. Una lectura de 30 segundos antes de una llamada vale más que 20 minutos de preparación después."
+        ]
+      },
+      "trending-topic-radar": {
+        "title": "Detecta tendencias emergentes antes de que se vuelvan obvias",
+        "description": "Configura un escaneo diario en cuentas de X y canales de Slack. @Zero marca solo temas en auge — aquellos que aparecen en 2 o más fuentes o que muestran un pico repentino de velocidad — y publica un resumen clasificado en tu canal. Si nada califica, no se envía ninguna publicación.",
+        "timeSaved": "~1 hr ahorrada al día",
+        "headings": {
+          "scenario": "Por qué el monitoreo de tendencias falla sin un umbral de señal",
+          "prompt": "Cómo configurar un radar diario de temas con @Zero",
+          "steps": "Cómo @Zero consulta fuentes, detecta señales y entrega el resumen",
+          "nextActions": "Amplía tu lista de fuentes, profundiza en un tema o ejecútalo bajo demanda",
+          "integrations": "Integraciones requeridas: X (Twitter) y Slack",
+          "tips": "Mejores prácticas para el monitoreo diario de tendencias"
+        },
+        "scenario": "Tu equipo quiere responder a las tendencias más rápido. El proceso actual: alguien comparte un enlace en Slack, recibe tres reacciones, y tres días después no pasó nada. El problema no es la atención — es la calidad de la señal. Cada fuente produce ruido. Sin un umbral, estás leyendo todo y no actuando sobre nada. @Zero vigila tus fuentes, aplica un filtro de velocidad y solo publica cuando algo realmente está despegando.",
+        "promptVariants": [
+          {
+            "label": "Configurar escaneo diario",
+            "prompt": "@Zero every day at 8am, scan [@mlejva, @daytonaio, @amasad] on X and [#marketing, #competitive] in Slack for emerging trends related to AI developer tools. Flag any topic appearing across 2+ sources or spiking vs. the prior 7-day average. For each, write: what it is and why it's gaining traction. Post a digest to #marketing. Cap at 5 topics, ranked by breadth then velocity. Skip the post entirely if nothing qualifies."
+          },
+          {
+            "label": "Agregar una fuente",
+            "prompt": "@Zero add @n8n_io to the daily trend scan."
+          },
+          {
+            "label": "Análisis profundo de un tema",
+            "prompt": "@Zero pull everything logged on [topic] across the last 7 days of trend scans and write a 1-page brief on why it's gaining momentum."
+          },
+          {
+            "label": "Ejecutar ahora",
+            "prompt": "@Zero run the trend scan right now and DM me the findings."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Trend Digest — Apr 14\n\n1. AI sandbox pricing\nX (×3 sources), Slack (#competitive)\nMultiple founder accounts debating usage-based vs. flat pricing for AI sandboxes. E2B CEO post drove most of the signal.\n\n2. Agentic workflows + compliance\nX (@mlejva, @amasad), Slack (#marketing)\nEmergent concern: enterprises asking whether agentic systems generate audit trails. 4 posts across 2 days."
+          },
+          {
+            "name": "Zero",
+            "text": "No digest sent Apr 13 — no topics met the 2-source threshold."
+          }
+        ],
+        "steps": [
+          {
+            "title": "@Zero consulta todas las fuentes especificadas",
+            "description": "@Zero escanea las cuentas de X y los canales de Slack que indicaste, recopilando publicaciones y mensajes publicados en las últimas 24 horas. Construye un mapa de temas a través de todas las fuentes."
+          },
+          {
+            "title": "Se aplica la detección de señales",
+            "description": "@Zero marca cualquier tema que aparezca en 2 o más fuentes dentro de la ventana de 24 horas, o que muestre un pico de 3x o más en menciones comparado con el promedio de los 7 días anteriores. Los temas que no cumplen ningún umbral se descartan."
+          },
+          {
+            "title": "El resumen se publica o se omite silenciosamente",
+            "description": "Si se encuentran temas que califican, @Zero publica un resumen clasificado en tu canal de Slack — limitado a 5 temas, ordenados por alcance entre fuentes y luego por velocidad. Si nada cumple el umbral, @Zero no envía nada."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Agregar una nueva fuente",
+            "description": "Amplía la cobertura a una nueva cuenta de X o canal de Slack",
+            "examplePrompt": "@Zero add @karrisaarinen to the daily trend scan."
+          },
+          {
+            "title": "Profundizar en un tema marcado",
+            "description": "Obtén un informe completo sobre una tendencia que surgió",
+            "examplePrompt": "@Zero pull everything logged on AI compliance and audit trails across the last 7 days of trend scans and write a 1-page brief."
+          },
+          {
+            "title": "Archivar en Notion",
+            "description": "Guarda el resumen para seguimiento histórico",
+            "examplePrompt": "@Zero save today's trend digest to Notion under 'Trend Intelligence > Week of Apr 14'."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "@Zero lee publicaciones de cuentas de competidores y comunidad especificadas para detectar señales de temas y cambios de velocidad."
+          },
+          {
+            "description": "@Zero escanea canales internos en busca de señales de discusión y entrega el resumen diario en el canal que especifiques."
+          },
+          {
+            "description": "@Zero archiva los resúmenes de tendencias en Notion para análisis histórico y seguimiento de meta-tendencias. Opcional pero recomendado."
+          }
+        ],
+        "tips": [
+          "Llena tu lista de fuentes de X con una combinación de CEOs de competidores, cuentas de comunidad y líderes de opinión de la industria — monitorear una sola cuenta produce señales falsas.",
+          "Calibra el umbral después de la primera semana. Si surgen demasiados temas, súbelo a 3+ fuentes. Si no surge nada, bájalo o agrega más cuentas.",
+          "Archiva los resúmenes en Notion semanalmente para detectar meta-tendencias — los temas que reaparecen en múltiples días a menudo señalan un cambio real."
+        ]
+      },
+      "content-performance-report": {
+        "title": "Obtén un reporte semanal de rendimiento de contenido sin extraer los datos tú mismo",
+        "description": "Cada lunes, @Zero extrae las métricas de publicaciones de los últimos 7 días de X, puntúa cada publicación por engagement y escribe un breve reporte narrativo: mejor publicación, mayor bajo rendimiento, cambio semana a semana y una recomendación concreta. La narrativa se publica en Slack; los datos completos se archivan en Notion.",
+        "timeSaved": "~2 hrs ahorradas semanalmente",
+        "headings": {
+          "scenario": "Por qué las revisiones semanales de contenido no ocurren de manera consistente",
+          "prompt": "Cómo configurar un reporte recurrente de rendimiento de contenido con @Zero",
+          "steps": "Cómo @Zero extrae métricas, puntúa publicaciones y escribe la narrativa",
+          "nextActions": "Extrae bajo demanda, compara formatos de contenido o crea un resumen ejecutivo",
+          "integrations": "Integraciones requeridas: X (Twitter), Slack y Notion — más Plausible para correlación de tráfico",
+          "tips": "Mejores prácticas para reportes automatizados de rendimiento de contenido"
+        },
+        "scenario": "Sabes que deberías revisar el rendimiento del contenido semanalmente. No lo has hecho en tres semanas porque extraer los números de X, formatearlos y escribir una narrativa toma 90 minutos que no tienes un lunes por la mañana. @Zero hace todo con un programa. Extrae los números, ejecuta la fórmula de puntuación, escribe la narrativa, la publica en Slack y archiva los datos crudos en Notion — todo antes de tu primera reunión.",
+        "promptVariants": [
+          {
+            "label": "Semanal programado",
+            "prompt": "@Zero every Monday at 9am PST, pull the past 7 days of post performance from @vm0_ai on X. Score each post: (likes×1) + (retweets×3) + (replies×2). Write a short report: top performer and why, biggest underperformer and likely cause, week-over-week total engagement change, and one concrete recommendation for the week. Post the narrative to #marketing-and-community. Archive the full report with raw metrics to Notion under 'Content Performance Reports > Week of [Mon Date]'."
+          },
+          {
+            "label": "Bajo demanda",
+            "prompt": "@Zero pull last week's X performance for @vm0_ai and give me the top 3 posts by engagement score with one sentence on each."
+          },
+          {
+            "label": "Evaluación de experimento de formato",
+            "prompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) — which format is driving higher engagement and why?"
+          },
+          {
+            "label": "Resumen ejecutivo",
+            "prompt": "@Zero one paragraph on last week's X performance — suitable for the Monday leadership brief."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Content Performance Report — Week of Apr 7\n\nTop performer: 'AI sandbox in 30 seconds' demo post — score 142. Short-form video outperforms text by 3×.\nUnderperformer: 'Feature Drop: new connector library' — score 18. Feature-first framing rarely lands without a use case hook.\nWeek-over-week: +23% total engagement vs. prior week.\nRecommendation: Lead next week's feature drop with a before/after scenario rather than the feature name.\n\nFull report archived to Notion."
+          },
+          {
+            "name": "Alex",
+            "text": "@Zero give me the top 3 posts from last week by score, one sentence each."
+          }
+        ],
+        "steps": [
+          {
+            "title": "@Zero extrae métricas de publicaciones de X",
+            "description": "@Zero obtiene impresiones, likes, retweets y respuestas de todas las publicaciones de los últimos 7 días de la cuenta de X especificada. Captura los números crudos de cada publicación en la ventana."
+          },
+          {
+            "title": "Las publicaciones se puntúan y clasifican",
+            "description": "@Zero calcula una puntuación de engagement para cada publicación usando (likes × 1) + (retweets × 3) + (respuestas × 2). Identifica la de mejor rendimiento, la de menor puntuación con 3 o más días de datos, y calcula el cambio semana a semana en el engagement total."
+          },
+          {
+            "title": "Se publica la narrativa y se archivan los datos",
+            "description": "@Zero escribe una narrativa breve que cubre la mejor publicación, la de menor rendimiento, el cambio semana a semana y una recomendación concreta. Publica la narrativa en tu canal de Slack y guarda una tabla completa de métricas en la página de Notion que especificaste."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Extraer bajo demanda",
+            "description": "Obtén el reporte de la semana pasada sin esperar al lunes",
+            "examplePrompt": "@Zero pull last week's X performance for @vm0_ai and give me the top 3 posts by engagement score with one sentence on each."
+          },
+          {
+            "title": "Comparar formatos de contenido",
+            "description": "Evalúa qué plantillas están funcionando al final del sprint",
+            "examplePrompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) — which format is driving higher engagement and why?"
+          },
+          {
+            "title": "Informar a liderazgo",
+            "description": "Un párrafo adecuado para la reunión del lunes",
+            "examplePrompt": "@Zero one paragraph on last week's X performance — suitable for the Monday leadership brief."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "@Zero extrae impresiones, likes, retweets y respuestas de todas las publicaciones en la ventana especificada."
+          },
+          {
+            "description": "@Zero publica el reporte narrativo en tu canal de Slack según el programa."
+          },
+          {
+            "description": "@Zero archiva el reporte completo con una tabla de métricas crudas en la página de Notion especificada."
+          },
+          {
+            "description": "@Zero correlaciona el engagement de publicaciones con visitas reales al sitio, revelando qué publicaciones generaron tráfico real y no solo actividad social. Opcional pero recomendado."
+          }
+        ],
+        "tips": [
+          "Ejecútalo el lunes, no el domingo — las métricas de X para publicaciones de las últimas 48 horas aún no son estables y cambiarán para la mañana.",
+          "Agrega Plausible para ver qué publicaciones generaron visitas reales al sitio — una publicación con alto puntaje de engagement pero cero clics de tráfico es una victoria de vanidad, no de crecimiento.",
+          "Usa la evaluación de experimento de formato al final de cada sprint de 2 semanas para decidir qué formatos de contenido escalar, iterar o retirar."
+        ]
       }
     }
   },

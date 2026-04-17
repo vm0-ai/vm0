@@ -3,6 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { hasSubscription } from "../../../mocks/ably.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import {
@@ -34,6 +35,13 @@ describe("zero chat thread page - sending state affects composer button display"
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
+    });
+
+    // Wait for loadPagedMessages$ to subscribe before completing
+    await waitFor(() => {
+      expect(
+        hasSubscription(`chatThreadMessageCreated:${THREAD_ID}`),
+      ).toBeTruthy();
     });
 
     ctrl.completeRun("Done");

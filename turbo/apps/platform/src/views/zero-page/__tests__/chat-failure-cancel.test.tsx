@@ -69,33 +69,6 @@ describe("chat failure and cancel", () => {
     });
   });
 
-  it("should show cancelled state after polling discovers cancellation", async () => {
-    const user = userEvent.setup();
-    const ctrl = mockChatLifecycle();
-
-    detachedSetupPage({
-      context,
-      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
-    });
-
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
-
-    await sendMessageInUI(user, textarea, "Hello");
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-    });
-
-    ctrl.cancelRun();
-
-    await waitFor(() => {
-      // After polling discovers cancellation, the run error is set
-      expect(screen.getByText(/cancelled/i)).toBeInTheDocument();
-    });
-  });
-
   it("should restore input after cancel", async () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();

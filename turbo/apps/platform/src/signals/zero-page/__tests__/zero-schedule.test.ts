@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import {
   fetchZeroSchedules$,
   zeroScheduleEntries$,
@@ -239,7 +242,13 @@ describe("zero-schedule signals", () => {
         }),
       );
 
-      await setup();
+      // Await bootstrap so the first schedule fetch (from route setup)
+      // completes deterministically before the test's explicit call.
+      await setupPage({
+        context,
+        path: "/schedules",
+        withoutRender: true,
+      });
 
       await expect(
         context.store.set(fetchZeroSchedules$, context.signal),

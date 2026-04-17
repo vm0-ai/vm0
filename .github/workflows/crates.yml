@@ -857,6 +857,198 @@ jobs:
           echo "=== Cancel test passed ==="
           REMOTE_SCRIPT
 
+  runner-drain-resume:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test runner service drain + resume
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --name ${JOB_REF}-drain \
+            --group vm0/drain-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-drain \
+            --max-concurrent 2 \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running drain + resume test ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-drain"
+          SVC="${JOB_REF}-drain"
+          UNIT="vm0-runner-${SVC}.service"
+          GROUP="vm0/drain-${JOB_REF}"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+          status_mode() {
+            sudo jq -r '.mode // empty' "$RUNNER_DIR/status.json" 2>/dev/null
+          }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+          }
+          trap cleanup EXIT
+
+          # Clean up any residual transient unit from a previous CI run.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+
+          # Start transient runner service.
+          echo "--- Starting runner ---"
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # Submit a long-running job in background so we can drain mid-flight.
+          # Duration must exceed the drain+verify+resume+verify window below
+          # so the job survives the round trip — otherwise jobs.is_empty()
+          # would auto-Stop the runner before resume can take effect.
+          echo "--- Submitting long-running job ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 45 && echo done' &
+          SUBMIT_A_PID=$!
+
+          # Wait for sandbox to appear in status.json.
+          echo "--- Waiting for sandbox ---"
+          for i in $(seq 1 60); do
+            RUN_ID=$(sudo jq -r '.active_runs[0].run_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$RUN_ID" ] && break
+            sleep 1
+          done
+          [ -z "$RUN_ID" ] && fail "sandbox not found after 60s"
+          echo "Found run $RUN_ID"
+
+          # Test 1: drain while the job is in-flight → mode=draining.
+          echo "--- Test: service drain (mid-flight) ---"
+          sudo "$BIN_DIR/runner" service drain --name "$SVC" || fail "drain command failed"
+
+          for i in $(seq 1 10); do
+            [ "$(status_mode)" = "draining" ] && break
+            sleep 1
+          done
+          [ "$(status_mode)" = "draining" ] \
+            || fail "expected mode=draining, got '$(status_mode)'"
+          echo "PASS: mode=draining"
+
+          # Unit must still be active — the in-flight job keeps it alive.
+          sudo systemctl is-active --quiet "$UNIT" \
+            || fail "unit should still be active during Draining"
+
+          # Test 2: a job submitted *during* Draining must stay pending —
+          # the Draining arm does not poll discover, so the queued file
+          # should not be claimed until Running resumes.
+          echo "--- Test: submit during drain stays pending ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo B done' &
+          SUBMIT_B_PID=$!
+
+          # Continuously monitor for 10s that B stays pending (submit PID
+          # alive) and active_runs stays at 1 (A only). Sampling once after
+          # a fixed sleep can miss a transient claim-then-release bug; a
+          # continuous poll catches it at the iteration where the invariant
+          # breaks.
+          for i in $(seq 1 10); do
+            if ! kill -0 "$SUBMIT_B_PID" 2>/dev/null; then
+              fail "B submit completed at t=${i}s during Draining — runner should not claim new jobs"
+            fi
+            ACTIVE_COUNT=$(sudo jq -r '.active_runs | length' "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ "$ACTIVE_COUNT" = "1" ] \
+              || fail "active_runs changed to '$ACTIVE_COUNT' at t=${i}s — runner claimed B during Draining"
+            sleep 1
+          done
+          echo "PASS: B is pending, only A is active throughout 10s of Draining"
+
+          # Test 3: resume → mode=running.
+          echo "--- Test: service resume ---"
+          sudo "$BIN_DIR/runner" service resume --name "$SVC" || fail "resume command failed"
+
+          for i in $(seq 1 10); do
+            [ "$(status_mode)" = "running" ] && break
+            sleep 1
+          done
+          [ "$(status_mode)" = "running" ] \
+            || fail "expected mode=running after resume, got '$(status_mode)'"
+          echo "PASS: mode=running after resume"
+
+          # Test 4: the pending B is picked up after resume and completes.
+          echo "--- Test: drain-era submit executes after resume ---"
+          SECONDS=0
+          wait "$SUBMIT_B_PID"
+          SUBMIT_B_EXIT=$?
+          B_ELAPSED=$SECONDS
+          echo "B exited with code $SUBMIT_B_EXIT in ${B_ELAPSED}s"
+          [ "$SUBMIT_B_EXIT" -eq 0 ] \
+            || fail "B expected exit 0, got $SUBMIT_B_EXIT"
+          [ "$B_ELAPSED" -lt 60 ] \
+            || fail "B took ${B_ELAPSED}s — discover did not resume properly"
+          echo "PASS: B completed after resume"
+
+          # Test 5: a fresh submit after resume also executes — confirms the
+          # runner is back to full operation, not just flushing the backlog.
+          echo "--- Test: fresh submit after resume executes ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo C done' \
+            || fail "C submit failed after resume"
+          echo "PASS: fresh submit after resume completed"
+
+          # Test 6: the long-running A that straddled drain+resume finishes
+          # normally (exit 0) — drain must not cancel in-flight jobs.
+          echo "--- Test: A completes normally through drain+resume ---"
+          wait "$SUBMIT_A_PID"
+          SUBMIT_A_EXIT=$?
+          [ "$SUBMIT_A_EXIT" -eq 0 ] \
+            || fail "A expected exit 0, got $SUBMIT_A_EXIT — job was killed"
+          echo "PASS: A completed normally through drain+resume"
+
+          # Test 7: drain on an idle runner → auto-Stop path. With no active
+          # jobs the Draining arm immediately commits to Stopping and the
+          # unit transitions to inactive.
+          echo "--- Test: drain with no jobs → auto-Stop ---"
+          sudo "$BIN_DIR/runner" service drain --name "$SVC" || fail "second drain failed"
+
+          for i in $(seq 1 30); do
+            sudo systemctl is-active --quiet "$UNIT" || break
+            sleep 1
+          done
+          if sudo systemctl is-active --quiet "$UNIT"; then
+            fail "unit still active 30s after drain on idle runner"
+          fi
+          echo "PASS: unit stopped via auto-Stop"
+
+          # Test 8: resume refused on an inactive unit (is_unit_active guard).
+          echo "--- Test: resume refused after stop ---"
+          if sudo "$BIN_DIR/runner" service resume --name "$SVC" 2>&1; then
+            fail "resume on inactive unit should have failed"
+          fi
+          echo "PASS: resume correctly refused on inactive unit"
+
+          trap - EXIT
+          echo "=== Drain + resume test passed ==="
+          REMOTE_SCRIPT
+
   runner-balloon:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -1310,6 +1502,7 @@ jobs:
       - runner-build
       - runner-benchmark
       - runner-exec
+      - runner-drain-resume
       - runner-balloon
       - runner-upgrade-local
       - runner-keep-alive
@@ -1356,6 +1549,7 @@ jobs:
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
+          check_result "runner-drain-resume" "${{ needs.runner-drain-resume.result }}" "true"
           check_result "runner-balloon" "${{ needs.runner-balloon.result }}" "true"
           check_result "runner-upgrade-local" "${{ needs.runner-upgrade-local.result }}" "true"
           check_result "runner-keep-alive" "${{ needs.runner-keep-alive.result }}" "true"
@@ -1367,7 +1561,7 @@ jobs:
   runner-cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [runner-build, runner-benchmark, runner-exec, runner-cancel, runner-balloon, runner-upgrade-local, runner-keep-alive]
+    needs: [runner-build, runner-benchmark, runner-exec, runner-cancel, runner-drain-resume, runner-balloon, runner-upgrade-local, runner-keep-alive]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v6

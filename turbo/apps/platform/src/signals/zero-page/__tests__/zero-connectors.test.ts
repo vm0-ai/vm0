@@ -4,6 +4,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
+  setupPage,
   updateTestPathname$,
 } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
@@ -135,7 +136,7 @@ describe("zero connectors — agent switch", () => {
       }),
     );
 
-    detachedSetupPage({
+    await setupPage({
       context,
       path: "/agents/agent-a",
       withoutRender: true,

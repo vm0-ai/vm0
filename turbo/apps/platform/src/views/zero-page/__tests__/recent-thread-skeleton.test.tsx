@@ -57,6 +57,7 @@ function mockAgentsWithThreads() {
         agentId: "agent-alpha",
         chatMessages: [],
         latestSessionId: null,
+        activeRunIds: [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });

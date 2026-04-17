@@ -230,7 +230,7 @@ export const heartbeatBodySchema = z.object({
   allocatedMemoryMb: z.number().int().nonnegative(),
   runningCount: z.number().int().nonnegative(),
   heldSessions: z.array(z.string()),
-  mode: z.enum(["running", "draining"]),
+  mode: z.enum(["running", "draining", "stopping"]),
 });
 
 /**

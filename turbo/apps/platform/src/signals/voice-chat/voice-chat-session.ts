@@ -63,7 +63,6 @@ function upsertUserTranscript(
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
-const POLL_INTERVAL_MS = 2000;
 const PREP_TIMEOUT_CHAT_MS = 60_000;
 const PREP_TIMEOUT_MEETING_MS = 300_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -745,7 +744,7 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
     return false;
   });
 
-  await set(setAblyLoop$, `voice:${sid}`, pollBody$, POLL_INTERVAL_MS, signal);
+  await set(setAblyLoop$, `voice:${sid}`, pollBody$, signal);
 });
 
 // --- WebRTC cleanup (preserves session state) ---
@@ -1122,13 +1121,7 @@ const prepareActivateConnect$ = command(
         return false;
       },
     );
-    await set(
-      setAblyLoop$,
-      `voice:${sessionId}`,
-      prepPollBody$,
-      POLL_INTERVAL_MS,
-      sessionSignal,
-    );
+    await set(setAblyLoop$, `voice:${sessionId}`, prepPollBody$, sessionSignal);
     signal.throwIfAborted();
 
     if (!preparationReady) {
@@ -1224,13 +1217,7 @@ const awaitChatPreparation$ = command(
       const status = pollRes.body.preparation.status;
       return status === "ready" || status === "failed";
     });
-    await set(
-      setAblyLoop$,
-      `voice:prep:${prepUserId}`,
-      chatPollBody$,
-      POLL_INTERVAL_MS,
-      signal,
-    );
+    await set(setAblyLoop$, `voice:prep:${prepUserId}`, chatPollBody$, signal);
   },
 );
 

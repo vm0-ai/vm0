@@ -166,7 +166,7 @@ export async function bestEffort(p: Promise<unknown>): Promise<void> {
 // ---------------------------------------------------------------------------
 // Polling loop with fibonacci backoff
 // ---------------------------------------------------------------------------
-export const FIB_DELAYS_MS = [
+const FIB_DELAYS_MS = [
   1000, 1000, 2000, 3000, 5000, 8000, 13_000, 21_000, 34_000, 55_000, 60_000,
 ] as const;
 

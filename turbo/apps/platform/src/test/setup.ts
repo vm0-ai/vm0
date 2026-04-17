@@ -44,7 +44,7 @@ beforeEach(() => {
       return;
     }
     const err = message[0];
-    throw err instanceof Error ? err : new Error(String(err));
+    throw err instanceof Error ? err : new Error(err as unknown as string);
   });
 });
 

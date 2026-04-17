@@ -10,6 +10,7 @@ import { notFound, badRequest } from "../shared/errors";
 export interface CancelRunResult {
   runId: string;
   previousStatus: string;
+  userId: string;
   orgId: string;
   sandboxId: string | null;
   runnerGroup: string | null;
@@ -69,6 +70,7 @@ export async function cancelRun(
   return {
     runId,
     previousStatus: run.status,
+    userId: run.userId,
     orgId: run.orgId,
     sandboxId: run.sandboxId,
     runnerGroup: run.runnerGroup,

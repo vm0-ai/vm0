@@ -4,10 +4,8 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
-  updateAssistantMessageByRunId,
+  insertChatMessage,
   insertAssistantEventMessages,
-  getChatThreadIdForRun,
-  cleanupAssistantPlaceholderIfEventsExist,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import {
   generateChatTitle,
@@ -89,7 +87,7 @@ async function queryAssistantEvents(
 
 /**
  * Handle completed run: final sweep for any events the consumer missed,
- * drop the placeholder, then generate title and push notification.
+ * then generate title and push notification.
  */
 async function handleCompleted(
   runId: string,
@@ -103,14 +101,8 @@ async function handleCompleted(
   // cannot produce duplicates.
   const items = await queryAssistantEvents(runId);
   if (items.length > 0) {
-    const resolved = await getChatThreadIdForRun(runId);
-    const chatThreadId = resolved?.chatThreadId ?? threadId;
-    await insertAssistantEventMessages(runId, chatThreadId, items);
+    await insertAssistantEventMessages(runId, threadId, items);
   }
-
-  // If any event-backed rows landed, retire the placeholder so the UI
-  // doesn't render an empty assistant bubble alongside the real ones.
-  await cleanupAssistantPlaceholderIfEventsExist(runId);
 
   // Use last assistant text for downstream (title, summary, notification)
   const lastResultText =
@@ -152,7 +144,7 @@ async function handleCompleted(
 }
 
 /**
- * Handle failed run: update assistant placeholder with the error message.
+ * Handle failed run: insert an error message row for the assistant.
  */
 async function handleFailed(
   runId: string,
@@ -161,8 +153,13 @@ async function handleFailed(
   userId: string,
   errorMessage: string,
 ): Promise<void> {
-  // Update the assistant placeholder (sequence_number IS NULL) with error.
-  await updateAssistantMessageByRunId(runId, errorMessage, errorMessage);
+  await insertChatMessage({
+    chatThreadId: threadId,
+    role: "assistant",
+    content: errorMessage,
+    runId,
+    error: errorMessage,
+  });
 
   // Send push notification (best-effort)
   await sendUserPushNotifications(userId, {
@@ -177,8 +174,8 @@ async function handleFailed(
  *
  * Chat callback handler for agent run completion.
  * Final sweep: inserts any assistant events not yet written by the
- * chat-assistant consumer (via `ON CONFLICT DO NOTHING`), cleans up the
- * placeholder, then generates title and sends push notification.
+ * chat-assistant consumer (via `ON CONFLICT DO NOTHING`), then generates
+ * title and sends push notification.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();

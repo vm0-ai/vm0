@@ -203,7 +203,7 @@ function createPanelSignals(
         set(internalOpenedAt$, Date.now());
         set(internalOpen$, true);
         set(setActivePanelId$, taskId);
-        await set(signals.loadMessages$, signal);
+        await set(signals.loadPagedMessages$, signal);
         return;
       }
       if (task.type === "voice_chat" && task.voiceChatSessionId) {
@@ -442,7 +442,7 @@ export const setupTasksLoop$ = command(
       },
     );
 
-    await set(setAblyLoop$, `tasks:${orgId}`, tasksLoopBody$, 10_000, signal);
+    await set(setAblyLoop$, `tasks:${orgId}`, tasksLoopBody$, signal);
   },
 );
 

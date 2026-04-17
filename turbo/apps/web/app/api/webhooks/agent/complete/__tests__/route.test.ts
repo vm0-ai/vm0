@@ -20,7 +20,6 @@ import {
   getTestAgentSessionWithConversation,
   addTestRunToThread,
   insertTestChatThread,
-  getTestChatMessagesByThread,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../../../src/__tests__/db-test-seeders/email";
 import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
@@ -37,7 +36,6 @@ import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
-import { updateTestAssistantMessageByRunId } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
@@ -870,12 +868,11 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   // Race between cleanup-sandboxes cron and webhook/complete: the cron stamps
   // `timeout` first with a generic heartbeat message, then the sandbox's own
-  // completion webhook arrives. The webhook must upgrade the run state AND
-  // refresh the chat placeholder so the user doesn't keep seeing "Run timed
-  // out (no heartbeat)" after the sandbox reports what actually happened.
+  // completion webhook arrives. The webhook must upgrade the run state. Error
+  // messages are handled by the chat callback (dispatched as a terminal side
+  // effect), not by the webhook directly.
   describe("Timeout upgrade", () => {
-    it("should upgrade timed-out run to failed and replace chat placeholder error with report-error link", async () => {
-      // Thread + run + assistant placeholder (how chat runs normally dispatch)
+    it("should upgrade timed-out run to failed with report-error link", async () => {
       const threadId = await insertTestChatThread(
         user.userId,
         testComposeId,
@@ -886,8 +883,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       });
       await addTestRunToThread(threadId, runId, user.userId);
 
-      // Simulate the cleanup cron stamping timeout on the run and the chat
-      // callback writing the timeout message onto the assistant placeholder.
+      // Simulate the cleanup cron stamping timeout on the run.
       const cronMessage = "Run timed out (no heartbeat)";
       await transitionRunStatus(
         runId,
@@ -898,7 +894,6 @@ describe("POST /api/webhooks/agent/complete", () => {
         },
         ["pending", "running"],
       );
-      await updateTestAssistantMessageByRunId(runId, cronMessage, cronMessage);
 
       // Sandbox finally reports a failure → webhook should override the
       // timeout state with the report-error link, not bail.
@@ -925,19 +920,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(run!.status).toBe("failed");
       expect(run!.error).toContain(`/runs/${runId}/report-error`);
       expect(run!.error).not.toContain("Run timed out");
-
-      // chat_messages placeholder refreshed with the same report link
-      const messages = await getTestChatMessagesByThread(threadId);
-      const placeholder = messages.find((m) => {
-        return m.role === "assistant" && m.sequenceNumber === null;
-      });
-      expect(placeholder).toBeDefined();
-      expect(placeholder!.content).toContain(`/runs/${runId}/report-error`);
-      expect(placeholder!.error).toContain(`/runs/${runId}/report-error`);
-      expect(placeholder!.error).not.toContain("Run timed out");
     });
 
-    it("should upgrade timed-out run to completed and clear the stale chat placeholder", async () => {
+    it("should upgrade timed-out run to completed", async () => {
       const threadId = await insertTestChatThread(
         user.userId,
         testComposeId,
@@ -958,7 +943,6 @@ describe("POST /api/webhooks/agent/complete", () => {
         },
         ["pending", "running"],
       );
-      await updateTestAssistantMessageByRunId(runId, cronMessage, cronMessage);
 
       // Checkpoint is required for exitCode=0 completion.
       const token = await createTestSandboxToken(user.userId, runId);
@@ -1006,16 +990,6 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       const run = await findTestRunRecord(runId);
       expect(run!.status).toBe("completed");
-
-      // Placeholder cleared — UI falls back to event-backed assistant rows
-      // (if any) instead of rendering the stale timeout message.
-      const messages = await getTestChatMessagesByThread(threadId);
-      const placeholder = messages.find((m) => {
-        return m.role === "assistant" && m.sequenceNumber === null;
-      });
-      expect(placeholder).toBeDefined();
-      expect(placeholder!.content).toBeNull();
-      expect(placeholder!.error).toBeNull();
     });
   });
 
