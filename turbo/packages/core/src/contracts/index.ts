@@ -516,11 +516,7 @@ export {
   type OnboardingSetupContract,
   type OnboardingStatusResponse,
 } from "./onboarding";
-export {
-  skillsResolveContract,
-  skillFrontmatterSchema,
-  type SkillsResolveContract,
-} from "./skills";
+export { skillFrontmatterSchema } from "./skills";
 export {
   zeroAgentsMainContract,
   zeroAgentsByIdContract,
