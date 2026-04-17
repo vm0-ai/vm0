@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.248.0](https://github.com/vm0-ai/vm0/compare/app-v0.247.0...app-v0.248.0) (2026-04-17)
+
+
+### Features
+
+* add db9 connector ([#9849](https://github.com/vm0-ai/vm0/issues/9849)) ([ee2c5de](https://github.com/vm0-ai/vm0/commit/ee2c5dea3b5adcdb8641d26eb154fb18e6b72f32))
+* add drive9 connector ([#9850](https://github.com/vm0-ai/vm0/issues/9850)) ([ea5bddb](https://github.com/vm0-ai/vm0/commit/ea5bddbec99a0e6845c773fedea613877d6d603d))
+
+
+### Refactoring
+
+* **platform:** drive chat messages from async computed, remove paged flat list ([#9872](https://github.com/vm0-ai/vm0/issues/9872)) ([5e72e26](https://github.com/vm0-ai/vm0/commit/5e72e26419f9beed10716df7034302ad9adb816d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.197.0
+
 ## [0.247.0](https://github.com/vm0-ai/vm0/compare/app-v0.246.2...app-v0.247.0) (2026-04-17)
 
 

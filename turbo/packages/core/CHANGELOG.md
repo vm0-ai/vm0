@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.197.0](https://github.com/vm0-ai/vm0/compare/core-v8.196.0...core-v8.197.0) (2026-04-17)
+
+
+### Features
+
+* add db9 connector ([#9849](https://github.com/vm0-ai/vm0/issues/9849)) ([ee2c5de](https://github.com/vm0-ai/vm0/commit/ee2c5dea3b5adcdb8641d26eb154fb18e6b72f32))
+* add drive9 connector ([#9850](https://github.com/vm0-ai/vm0/issues/9850)) ([ea5bddb](https://github.com/vm0-ai/vm0/commit/ea5bddbec99a0e6845c773fedea613877d6d603d))
+
 ## [8.196.0](https://github.com/vm0-ai/vm0/compare/core-v8.195.1...core-v8.196.0) (2026-04-17)
 
 

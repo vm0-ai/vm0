@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.254.0](https://github.com/vm0-ai/vm0/compare/web-v12.253.0...web-v12.254.0) (2026-04-17)
+
+
+### Features
+
+* add db9 connector ([#9849](https://github.com/vm0-ai/vm0/issues/9849)) ([ee2c5de](https://github.com/vm0-ai/vm0/commit/ee2c5dea3b5adcdb8641d26eb154fb18e6b72f32))
+* add drive9 connector ([#9850](https://github.com/vm0-ai/vm0/issues/9850)) ([ea5bddb](https://github.com/vm0-ai/vm0/commit/ea5bddbec99a0e6845c773fedea613877d6d603d))
+* **use-cases:** add auto-merge-releases ([#9856](https://github.com/vm0-ai/vm0/issues/9856)) ([3824819](https://github.com/vm0-ai/vm0/commit/3824819c50f31b35967fa19028d2fe4219224940))
+* **web:** add 14 new use cases to use-cases page ([#9706](https://github.com/vm0-ai/vm0/issues/9706)) ([fecbaa5](https://github.com/vm0-ai/vm0/commit/fecbaa57571f223c3c71f4997bedd765d495f5cc))
+
+
+### Bug Fixes
+
+* **runner:** forward secretconnectormap in claim response ([#9869](https://github.com/vm0-ai/vm0/issues/9869)) ([1597ff8](https://github.com/vm0-ai/vm0/commit/1597ff851f0d660852f1dffd3dc568b218489fab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.197.0
+
 ## [12.253.0](https://github.com/vm0-ai/vm0/compare/web-v12.252.0...web-v12.253.0) (2026-04-17)
 
 
