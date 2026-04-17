@@ -305,6 +305,88 @@
       "submitYourCase": "Ihren Fall einreichen →"
     },
     "content": {
+      "auto-merge-releases": {
+        "title": "Release-PRs automatisch im Teamrhythmus mergen — ohne hinterherrennen zu müssen",
+        "description": "Sag Zero einmal, wann Release-PRs rausgehen sollen und welche übersprungen werden. Zero läuft in eurem Takt, überspringt riskante Änderungen und mergt den Rest — damit ihr nicht länger als Cronjob für Menschen herhalten müsst.",
+        "timeSaved": "~15 Min pro Release gespart",
+        "headings": {
+          "scenario": "Warum das Jagen von Release-PRs den Bereitschaftsdienst auffrisst",
+          "prompt": "Wie du Zero bittest, Release-PRs auszuliefern",
+          "steps": "So mergt Zero eure Release-PRs",
+          "nextActions": "Regeln verschärfen, Riskantes eskalieren oder die Taktung erhöhen",
+          "integrations": "Erforderliche Integrationen: GitHub und Slack",
+          "tips": "Best Practices für autonomes Release-Merging"
+        },
+        "scenario": "Ein neuer Release-PR öffnet sich, sobald auf main genug Commits angesammelt sind — in den meisten Teams ein- oder zweimal am Tag. Irgendjemand muss den Diff überfliegen, prüfen ob CI grün ist, einschätzen ob im Changelog etwas Heikles steht, auf Merge klicken und danach den Deploy im Auge behalten. Ist diese Person in einem Meeting, schläft oder sitzt auf einem anderen Kontinent, bleibt der Release liegen. Neue Commits stapeln sich, der Changelog wird länger, der Merge riskanter. Du sagst es Zero einmal — einmal pro Arbeitstag prüfen, riskante Fälle überspringen, während der Arbeitszeit mergen, im Release-Channel posten — und ab dann läuft das Ausliefern von selbst, im Takt deines Teams.",
+        "promptVariants": [
+          {
+            "label": "Ausführlich",
+            "prompt": "@Zero jeden Werktag um 15:00 Uhr, prüfe unser Repo auf einen offenen Release-PR. Wenn er keine DB-Migrationsdateien enthält, aktiviere Auto-Merge mit Squash, damit der PR rausgeht sobald CI durchläuft — und poste dann ein Update in #release-notify."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero merge den offenen Release-PR jetzt."
+          },
+          {
+            "label": "High-Velocity",
+            "prompt": "@Zero jede Stunde während der Arbeitszeit (Mo–Fr, tagsüber), führe die Release-Auto-Merge-Prüfung aus. Migrations überspringen, Ergebnisse in #release-notify posten."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero merge release pr"
+          },
+          {
+            "name": "Zero",
+            "text": "Release-PR #9565 — alle 14 CI-Checks grün, keine Migrationsdateien angefasst. Auto-Merge mit Squash aktiviert. Geht raus, sobald Branch Protection das Ok gibt. Ich melde mich in #release-notify, sobald er drin ist."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero prüft Release-PRs in eurem Takt",
+            "description": "Zero läuft in dem Takt, den ihr festlegt — einmal pro Arbeitstag für die meisten Teams, stündlich für High-Velocity-Teams — und fragt GitHub nach offenen Release-PRs auf dem Default-Branch ab. Außerhalb dieses Fensters passiert nichts. Keine Merges nach Feierabend, keine Wochenend-Überraschungen."
+          },
+          {
+            "title": "Zero prüft jeden PR gegen eure Sicherheitsregeln",
+            "description": "Zero liest die Dateiliste des PRs. Wenn eine Datei in einem sensiblen Pfad liegt, den ihr markiert habt (Migrations, Infra, Billing), wird der Merge übersprungen und der Channel gepingt, damit ein Mensch entscheidet. Andernfalls bestätigt Zero, dass die Required-Checks grün sind."
+          },
+          {
+            "title": "Zero aktiviert Auto-Merge und meldet das Ergebnis",
+            "description": "Für PRs, die die Regeln bestehen, führt Zero `gh pr merge --auto --squash` aus, damit der PR rausgeht sobald CI grün wird. Sobald der Merge durch ist, postet Zero eine kurze Statuszeile zurück in euren Release-Channel."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Regeln im Live-Betrieb verschärfen",
+            "description": "Neue Regeln ergänzen, ohne Code anzufassen.",
+            "examplePrompt": "@Zero ab jetzt überspringe jeden Release-PR, dessen Changelog `infra` oder `billing` erwähnt."
+          },
+          {
+            "title": "Heikle Fälle eskalieren",
+            "description": "Lass Zero solche PRs flaggen statt mergen.",
+            "examplePrompt": "@Zero wenn du einen Release-PR mit Migrationsdatei findest, öffne einen Thread in #dev mit @oncall und Link zum Diff."
+          },
+          {
+            "title": "Taktung erhöhen, wenn ihr bereit seid",
+            "description": "Von täglich auf mehrmals täglich umstellen, sobald sich die Regeln bewährt haben.",
+            "examplePrompt": "@Zero ab nächster Woche, führe die Release-Auto-Merge-Prüfung zweimal täglich aus — einmal vormittags, einmal nach der Mittagspause — statt nur um 15 Uhr."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub — Zero listet Release-PRs, inspiziert Dateiänderungen, prüft CI-Status und aktiviert Auto-Merge. Schreibzugriff auf das Repo ist nötig, damit Zero den Merge auslösen kann."
+          },
+          {
+            "description": "Slack — Zero nutzt eure Slack-Verbindung, um Merges anzukündigen, übersprungene PRs zu flaggen und heikle Fälle zu eskalieren. Ohne Slack kann Zero zwar mergen, aber niemandem berichten."
+          }
+        ],
+        "tips": [
+          "Fangt mit einer Prüfung pro Tag an und erhöht die Taktung erst, wenn die Regeln Vertrauen aufgebaut haben. Täglich gibt dem Team einen planbaren Lieferrhythmus, ohne sich überwacht zu fühlen.",
+          "Verschlüssele eure ungeschriebenen Release-Regeln im Prompt. 'Migrations überspringen' ist offensichtlich; 'Merges während Demo-Fenstern pausieren' oder 'niemals freitagnachmittags ausliefern' sind die leisen Regeln, die Zero kennen sollte.",
+          "Verkette es mit einem täglichen Engineering Brief, damit euer Morgen-Report mit 'Gestern wurde ein Release ausgeliefert, N Commits drin, M PRs noch in der Pipeline' öffnet. Autonomes Ausliefern + sichtbares Reporting = saubere Kombi."
+        ]
+      },
       "sentry-triage": {
         "title": "Sentry-Rauschen in eine priorisierte Aufgabenliste verwandeln",
         "description": "Bitten Sie Zero, Ihre wichtigsten ungelösten Sentry-Fehler nach Häufigkeit geordnet abzurufen. Zero liest die Stack Traces, erklärt die Ursache in verständlicher Sprache und sagt Ihnen, welche Datei Sie zuerst beheben sollten.",

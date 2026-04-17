@@ -305,6 +305,88 @@
       "submitYourCase": "Envía tu caso →"
     },
     "content": {
+      "auto-merge-releases": {
+        "title": "Fusiona PRs de release al ritmo de tu equipo — sin tener que perseguirlos",
+        "description": "Dile a Zero una vez cuándo publicar los PRs de release y cuáles saltar. Corre la revisión en tu ritmo, salta los cambios arriesgados y fusiona el resto — deja de ser el cron humano del equipo.",
+        "timeSaved": "~15 min ahorrados por release",
+        "headings": {
+          "scenario": "Por qué perseguir PRs de release agota al ingeniero de guardia",
+          "prompt": "Cómo pedirle a Zero que fusione PRs de release",
+          "steps": "Cómo Zero fusiona tus PRs de release",
+          "nextActions": "Endurece la política, escala los casos arriesgados o sube la frecuencia",
+          "integrations": "Integraciones requeridas: GitHub y Slack",
+          "tips": "Buenas prácticas para la fusión autónoma de releases"
+        },
+        "scenario": "Cada vez que main acumula suficientes commits se abre un nuevo PR de release — en la mayoría de los equipos, una o dos veces al día. Alguien tiene que mirar el diff, confirmar que CI está en verde, decidir si el changelog trae algo inquietante, darle a Merge y luego vigilar el despliegue. Si esa persona está en una reunión, dormida o en otro continente, el release se queda parado. Los commits se apilan, el changelog crece, la fusión se vuelve más arriesgada. Le dices a Zero una sola vez — corre la revisión una vez al día laboral, salta los arriesgados, fusiona en horario laboral, publica en el canal de releases — y desde ese momento, publicar pasa solo, al ritmo de tu equipo.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero cada día laboral a las 3 de la tarde, revisa si hay un PR de release abierto en nuestro repo. Si no contiene archivos de migración de BD, activa auto-merge con squash para que salga en cuanto CI pase — y publica un aviso en #release-notify."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero fusiona ahora el PR de release abierto."
+          },
+          {
+            "label": "Alta frecuencia",
+            "prompt": "@Zero cada hora en horario laboral (lun–vie, durante el día), ejecuta la revisión de auto-merge de release. Salta migraciones, publica resultados en #release-notify."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero merge release pr"
+          },
+          {
+            "name": "Zero",
+            "text": "PR de release #9565 — los 14 checks de CI en verde, ningún archivo de migración tocado. Activé auto-merge con squash. Saldrá en cuanto branch protection dé paso. Vuelvo a avisar en #release-notify cuando esté dentro."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero revisa los PRs de release al ritmo que definas",
+            "description": "Zero corre con la frecuencia que configures — una vez al día laboral para la mayoría de los equipos, cada hora para los de alta velocidad — y consulta GitHub por los PRs de release abiertos sobre tu rama por defecto. Fuera de esa ventana no hace nada. Sin merges fuera de horario, sin sorpresas de fin de semana."
+          },
+          {
+            "title": "Zero valida cada PR contra tus reglas de seguridad",
+            "description": "Zero lee la lista de archivos del PR. Si algún archivo coincide con una ruta sensible que marcaste (migraciones, infra, billing), salta la fusión y notifica al canal para que un humano decida. En caso contrario, confirma que los checks de CI requeridos están pasando."
+          },
+          {
+            "title": "Zero activa auto-merge y reporta el resultado",
+            "description": "Para los PRs que pasan la política, Zero ejecuta `gh pr merge --auto --squash` para que el PR entre en el instante en que CI se ponga en verde. Cuando el merge aterriza, Zero publica una línea de estado compacta en tu canal de releases."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Endurece la política sobre la marcha",
+            "description": "Suma reglas nuevas sin tocar código.",
+            "examplePrompt": "@Zero a partir de ahora, salta cualquier PR de release cuyo changelog mencione `infra` o `billing`."
+          },
+          {
+            "title": "Escala los casos arriesgados",
+            "description": "Haz que Zero marque — no fusione — los PRs que normalmente saltaría.",
+            "examplePrompt": "@Zero cuando encuentres un PR de release con archivo de migración, abre un hilo en #dev mencionando a @oncall con el enlace al diff."
+          },
+          {
+            "title": "Sube la frecuencia cuando estés listo",
+            "description": "Pasa de diaria a varias veces al día una vez que la política haya demostrado su valor.",
+            "examplePrompt": "@Zero a partir de la próxima semana, ejecuta la revisión de auto-merge de release dos veces al día — una por la mañana y otra después del almuerzo — en lugar de solo a las 3 de la tarde."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub — Zero lista los PRs de release, inspecciona los cambios de archivos, confirma el estado de CI y activa auto-merge. Se requiere acceso de escritura al repositorio para que Zero pueda disparar la fusión."
+          },
+          {
+            "description": "Slack — Zero usa tu conexión de Slack para anunciar fusiones, marcar PRs saltados y escalar los arriesgados. Sin Slack, Zero todavía puede fusionar, pero se queda sin dónde reportar."
+          }
+        ],
+        "tips": [
+          "Empieza con una revisión al día y sube la frecuencia solo cuando la política se haya ganado la confianza. Diaria da un ritmo de publicación predecible, sin que el equipo se sienta vigilado.",
+          "Codifica en el prompt las reglas no escritas de tu release. 'Saltar migraciones' es lo obvio; 'pausar fusiones durante ventanas de demo' o 'nunca publicar un viernes por la tarde' son las reglas silenciosas que Zero debe conocer.",
+          "Encadénalo con el resumen diario de ingeniería para que tu reporte matutino abra con 'release de ayer publicado, N commits dentro, M PRs aún en cola'. Publicación autónoma + reporte visible = la combinación limpia."
+        ]
+      },
       "sentry-triage": {
         "title": "Convierte el ruido de Sentry en una lista de acciones priorizada",
         "description": "Pide a Zero que obtenga los errores no resueltos de Sentry, ordenados por frecuencia. Zero lee los stack traces, explica la causa raíz en lenguaje sencillo y te dice qué archivo corregir primero.",

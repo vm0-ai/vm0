@@ -305,6 +305,88 @@
       "submitYourCase": "Submit your case →"
     },
     "content": {
+      "auto-merge-releases": {
+        "title": "Ship release PRs on your team's schedule — without chasing them",
+        "description": "Tell Zero once when to ship release PRs and which ones to skip. It runs the check on your cadence, skips risky changes, and merges the rest — so you stop being a human cron job.",
+        "timeSaved": "~15 min saved per release",
+        "headings": {
+          "scenario": "Why chasing release PRs drains the on-call engineer",
+          "prompt": "How to ask Zero to ship release PRs",
+          "steps": "How Zero merges your release PRs",
+          "nextActions": "Tighten the policy, escalate the risky ones, or crank up the cadence",
+          "integrations": "Required integrations: GitHub and Slack",
+          "tips": "Best practices for autonomous release merging"
+        },
+        "scenario": "A new release PR opens whenever your main branch picks up enough commits — on most teams that's once or twice a day. Someone has to glance at the diff, confirm CI is green, decide whether the changelog contains anything scary, click Merge, and then babysit the deploy. If they are in a meeting, asleep, or on another continent, the release sits. Commits keep stacking on top, the changelog grows, and the merge gets riskier. You tell Zero once — run the release check once a workday, skip the risky ones, merge during work hours, post to the release channel — and from then on, shipping happens on its own, on your team's clock.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero every weekday at 3pm, check our repo for an open release PR. If it has no DB migration files, enable auto-merge with squash so it ships the moment CI passes — then post an update in #release-notify."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero merge the open release PR now."
+          },
+          {
+            "label": "High-velocity",
+            "prompt": "@Zero every hour during work hours (Mon–Fri, daytime), run the release auto-merge check. Skip migrations, post results in #release-notify."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero merge release pr"
+          },
+          {
+            "name": "Zero",
+            "text": "Release PR #9565 — all 14 CI checks green, no migration files touched. Enabled auto-merge with squash. It will ship the moment branch protection clears. I'll post back in #release-notify when it's in."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero checks for release PRs on your cadence",
+            "description": "Zero runs on whatever schedule you set — once a workday for most teams, hourly for high-velocity ones — and queries GitHub for open release PRs on your default branch. Outside that window, it does nothing. No after-hours merges, no weekend surprises."
+          },
+          {
+            "title": "Zero vets each PR against your safety rules",
+            "description": "Zero reads the file list on the PR. If any file matches a sensitive path you flagged (migrations, infra, billing), it skips the merge and pings the channel so a human decides. Otherwise it confirms the required CI checks are passing."
+          },
+          {
+            "title": "Zero enables auto-merge and reports the outcome",
+            "description": "For PRs that pass the policy, Zero runs `gh pr merge --auto --squash` so the PR lands the moment CI turns green. When the merge lands, Zero posts a compact status line back to your release channel."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Tighten the policy on the fly",
+            "description": "Layer in new rules without touching code.",
+            "examplePrompt": "@Zero from now on, skip any release PR whose changelog mentions `infra` or `billing`."
+          },
+          {
+            "title": "Escalate the risky ones",
+            "description": "Have Zero flag — not merge — PRs it would otherwise skip.",
+            "examplePrompt": "@Zero when you find a release PR with a migration file, open a thread in #dev tagging @oncall with the diff link."
+          },
+          {
+            "title": "Crank up the cadence when you're ready",
+            "description": "Move from daily to multiple times a day once the policy has proven itself.",
+            "examplePrompt": "@Zero starting next week, run the release auto-merge check twice a day — once in the morning, once after lunch — instead of just at 3pm."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub — Zero lists release PRs, inspects file changes, confirms CI status, and enables auto-merge. Repository write access is required so Zero can trigger the merge."
+          },
+          {
+            "description": "Slack — Zero uses your Slack connection to announce merges, flag skipped PRs, and escalate risky ones. Without Slack, Zero can still merge but has nowhere to report."
+          }
+        ],
+        "tips": [
+          "Start with one check a day and increase the cadence only after the policy has earned trust. Daily gives the team a predictable shipping rhythm without feeling surveilled.",
+          "Encode your unwritten release rules in the prompt. 'Skip migrations' is obvious; 'pause merges during demo windows' or 'never ship on Friday afternoons' are the quiet rules Zero should know about.",
+          "Chain it with a daily engineering brief so your morning report opens with 'yesterday's release shipped, N commits in it, M PRs still queued'. Pair autonomous shipping with visible reporting."
+        ]
+      },
       "sentry-triage": {
         "title": "Turn Sentry noise into a prioritized action list",
         "description": "Ask Zero to pull your top unresolved Sentry errors, ranked by frequency. Zero reads the stack traces, explains the root cause in plain language, and tells you which file to fix first.",

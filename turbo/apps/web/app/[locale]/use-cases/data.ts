@@ -202,6 +202,38 @@ const REDDIT: ConnectorRef = {
 
 export const USE_CASES: UseCase[] = [
   {
+    slug: "auto-merge-releases",
+    color: "#4fa68b",
+    avatar: {
+      rotation: 4,
+      skin: 3,
+      hairStyle: 2,
+      hairColor: 1,
+      expression: 1,
+      intensity: "d",
+    },
+    roles: ["engineering", "ops"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [GITHUB, SLACK],
+    integrations: [
+      { connector: GITHUB, required: true },
+      { connector: SLACK, required: true },
+    ],
+    relatedSlugs: [
+      "daily-engineering-brief",
+      "error-triage-daily",
+      "tech-debt-scan",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
     slug: "sentry-triage",
     color: "#d4a96a",
     videoId: "iTYhvVp5z5k",

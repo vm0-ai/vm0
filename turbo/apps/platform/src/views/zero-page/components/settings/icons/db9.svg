@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#0a0a0a"/>
+  <text x="16" y="22.5" text-anchor="middle" font-family="'JetBrains Mono','SF Mono','Menlo',monospace" font-weight="800" font-size="14" letter-spacing="-0.3">
+    <tspan fill="#ebebeb">DB</tspan><tspan fill="#8c8c8c">9</tspan>
+  </text>
+</svg>
