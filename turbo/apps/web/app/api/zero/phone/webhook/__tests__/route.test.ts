@@ -24,23 +24,6 @@ vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 
-// Mock next/server after() to capture callbacks for flushing
-const afterPromises: Promise<unknown>[] = [];
-vi.mock("next/server", async (importOriginal) => {
-  const original = await importOriginal<typeof import("next/server")>();
-  return {
-    ...original,
-    after: (promise: Promise<unknown>) => {
-      afterPromises.push(promise);
-    },
-  };
-});
-
-async function flushAfterCallbacks() {
-  await Promise.allSettled(afterPromises);
-  afterPromises.length = 0;
-}
-
 const context = testContext();
 
 // MSW handler for AgentPhone send-message endpoint (used when sending connect links or replies)
@@ -61,7 +44,6 @@ function createWebhookRequest(body: Record<string, unknown>): Request {
 
 describe("POST /api/zero/phone/webhook", () => {
   beforeEach(async () => {
-    afterPromises.length = 0;
     context.setupMocks();
     server.use(agentphoneSendMessage);
   });
@@ -133,9 +115,9 @@ describe("POST /api/zero/phone/webhook", () => {
 
     expect(response.status).toBe(200);
     // after() callback was registered
-    expect(afterPromises.length).toBe(1);
+    expect(globalThis.nextAfterCallbacks.length).toBe(1);
     // Handler runs without throwing (org not found — returns early gracefully)
-    await flushAfterCallbacks();
+    await context.mocks.flushAfter();
   });
 
   it("should handle agent.call_ended event type", async () => {
@@ -154,8 +136,8 @@ describe("POST /api/zero/phone/webhook", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
-    expect(afterPromises.length).toBe(1);
-    await flushAfterCallbacks();
+    expect(globalThis.nextAfterCallbacks.length).toBe(1);
+    await context.mocks.flushAfter();
   });
 
   it("should dispatch run when org and linked user are found", async () => {
@@ -188,8 +170,8 @@ describe("POST /api/zero/phone/webhook", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
-    expect(afterPromises.length).toBe(1);
-    await flushAfterCallbacks();
+    expect(globalThis.nextAfterCallbacks.length).toBe(1);
+    await context.mocks.flushAfter();
 
     // Verify an agent_runs record was created for the user/org — this confirms
     // handleCallEnded resolved the org, found the linked user, and dispatched a run
@@ -238,8 +220,8 @@ describe("POST /api/zero/phone/webhook", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
-    expect(afterPromises.length).toBe(1);
-    await flushAfterCallbacks();
+    expect(globalThis.nextAfterCallbacks.length).toBe(1);
+    await context.mocks.flushAfter();
 
     // Verify the pending row was consumed (deleted)
     const remaining = await findPendingOutboundCall(CALL_ID);
@@ -267,7 +249,7 @@ describe("POST /api/zero/phone/webhook", () => {
     const text = await response.text();
     expect(text).toBe("OK");
     // No after() callback should have been registered for an incomplete event
-    expect(afterPromises.length).toBe(0);
+    expect(globalThis.nextAfterCallbacks.length).toBe(0);
   });
 
   it("should dispatch after() for agent.message with valid fields", async () => {
@@ -286,9 +268,9 @@ describe("POST /api/zero/phone/webhook", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
-    expect(afterPromises.length).toBe(1);
+    expect(globalThis.nextAfterCallbacks.length).toBe(1);
     // Flush — org not found for unknown agentId, handler returns early gracefully
-    await flushAfterCallbacks();
+    await context.mocks.flushAfter();
   });
 
   it("should send connect link for agent.message from an unbound iMessage handle", async () => {
@@ -311,8 +293,8 @@ describe("POST /api/zero/phone/webhook", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
-    expect(afterPromises.length).toBe(1);
-    await flushAfterCallbacks();
+    expect(globalThis.nextAfterCallbacks.length).toBe(1);
+    await context.mocks.flushAfter();
   });
 
   it("should dispatch run for agent.message from a bound iMessage handle", async () => {
@@ -321,7 +303,7 @@ describe("POST /api/zero/phone/webhook", () => {
     const { agentphoneAgentId } = await createPhoneOrg(user.orgId);
     await linkIMessageHandle(TEST_FROM_NUMBER, user.orgId);
     // linkIMessageHandle sends a success iMessage via after(); flush it before testing the webhook
-    await flushAfterCallbacks();
+    await context.mocks.flushAfter();
     await insertOrgDefaultModelProvider(user.orgId, "anthropic");
 
     const request = createWebhookRequest({
@@ -339,13 +321,74 @@ describe("POST /api/zero/phone/webhook", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
-    expect(afterPromises.length).toBe(1);
-    await flushAfterCallbacks();
+    expect(globalThis.nextAfterCallbacks.length).toBe(1);
+    await context.mocks.flushAfter();
 
     // Verify an agent run was created for the bound user
     const run = await findMostRecentRunForUser(user.userId, user.orgId);
     expect(run).toBeDefined();
     expect(run!.userId).toBe(user.userId);
     expect(run!.orgId).toBe(user.orgId);
+  });
+
+  // Regression: createZeroRun schedules its Phase 2 dispatch via a nested
+  // after() inside handleMessageReceived/handleCallEnded. If the route
+  // registers the outer after() with an already-started promise, the nested
+  // after() is scheduled after the Next.js request context has been finalized
+  // and Phase 2 dispatch never runs — runs remain Pending forever.
+  describe("after() callback form (nested-after propagation)", () => {
+    it("registers agent.message handler via callback form", async () => {
+      const request = createWebhookRequest({
+        event: "agent.message",
+        channel: "imessage",
+        agentId: "agent_test",
+        data: {
+          messageId: "msg_test",
+          from: "+14155551234",
+          to: "+18001234567",
+          message: "Hello",
+        },
+      });
+
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers call_ended handler via callback form", async () => {
+      const request = createWebhookRequest({
+        event: "call_ended",
+        channel: "voice",
+        agentId: "agent_test",
+        data: {
+          callId: "call_test",
+          from: "+14155551234",
+          to: "+18001234567",
+          direction: "inbound",
+        },
+      });
+
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers agent.call_ended handler via callback form", async () => {
+      const request = createWebhookRequest({
+        event: "agent.call_ended",
+        channel: "voice",
+        agentId: "agent_test",
+        data: {
+          conversationId: "conv_test",
+          from: "+14155551234",
+          to: "+18001234567",
+          direction: "inbound",
+        },
+      });
+
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
   });
 });

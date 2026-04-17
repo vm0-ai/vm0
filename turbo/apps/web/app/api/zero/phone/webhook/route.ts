@@ -160,7 +160,9 @@ export async function POST(request: Request): Promise<Response> {
       channel: messageData.channel,
     });
 
-    after(handleMessageReceived(messageData));
+    after(() => {
+      return handleMessageReceived(messageData);
+    });
     return new Response("OK", { status: 200 });
   }
 
@@ -200,8 +202,8 @@ export async function POST(request: Request): Promise<Response> {
     channel,
   });
 
-  after(
-    handleCallEnded({
+  after(() => {
+    return handleCallEnded({
       callId,
       agentId,
       fromNumber,
@@ -211,8 +213,8 @@ export async function POST(request: Request): Promise<Response> {
       durationSeconds,
       transcript,
       summary,
-    }),
-  );
+    });
+  });
 
   return new Response("OK", { status: 200 });
 }
