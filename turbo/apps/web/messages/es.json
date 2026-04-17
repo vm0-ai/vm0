@@ -213,7 +213,10 @@
     "termsOfUse": "Términos de Uso",
     "privacyPolicy": "Política de Privacidad",
     "consentPreferences": "Preferencias de Consentimiento",
-    "support": "Soporte"
+    "support": "Soporte",
+    "aiDisclaimerHeading": "Aviso importante",
+    "aiDisclaimerInaccuracy": "Zero funciona con modelos de lenguaje de gran tamaño. Las respuestas, resúmenes y otros resultados pueden ser inexactos, incompletos o estar desactualizados — verifica la información importante antes de actuar sobre ella.",
+    "aiDisclaimerPaidPlan": "El uso del agente de IA dentro del contenedor de la aplicación de Slack requiere un plan de Slack de pago. Las @menciones y los mensajes directos a Zero están disponibles en todos los planes de Slack."
   },
   "skills": {
     "hero": {
