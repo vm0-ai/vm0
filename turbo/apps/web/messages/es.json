@@ -1375,6 +1375,94 @@
           "Usa las etiquetas de proyecto o ambientes de Sentry para limitar la consulta de Zero solo a producción, no a staging.",
           "Encadena esto con el informe de salud del producto: ejecuta la clasificación a las 8:45, incluye la salida en el informe de las 9:00 para que el equipo vea todo en un solo lugar."
         ]
+      },
+      "marketing-emails": {
+        "title": "Envía emails de marketing impecables desde Slack",
+        "description": "Pide a Zero que redacte tu próximo email de marketing, extraiga contexto de Notion y Linear, lo muestre en Slack y lo envíe vía Resend cuando lo apruebes. Sin cambiar de ventana.",
+        "timeSaved": "~45 min ahorrados",
+        "headings": {
+          "scenario": "Por qué la operación de emails de marketing se come tu tarde",
+          "prompt": "Cómo pedir a Zero que redacte y envíe una campaña",
+          "steps": "Cómo Zero convierte contexto en un email enviado",
+          "nextActions": "Itera, segmenta y programa campañas recurrentes",
+          "integrations": "Integraciones requeridas: Resend y Slack",
+          "tips": "Buenas prácticas para emails de marketing redactados por Zero"
+        },
+        "scenario": "Jueves por la tarde. Debes a tus suscriptores una actualización de producto. Tienes tres funciones enviadas esta semana en Linear, un teaser de lanzamiento en Notion y quince minutos antes de tu siguiente reunión. No quieres abrir un documento en blanco, copiar y pegar entradas de changelog, escribir copy nuevo, iniciar sesión en Resend, subir el HTML, redactar el asunto y verificar por tercera vez el tag de la audiencia. Solo quieres que salga un email limpio — con la voz de marca, a la audiencia correcta — sin perder el resto del día.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero redacta el email semanal de actualización de producto. Saca los elementos lanzados esta semana en Linear y la nota del teaser de lanzamiento en Notion. El asunto debe empezar con nuestra función más importante. Muestra el borrador en #marketing y envíalo vía Resend a la audiencia 'subscribers' cuando yo lo apruebe."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero redacta una actualización de producto con los lanzamientos de Linear de esta semana y envíala vía Resend a subscribers."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada viernes a las 10am, redacta una actualización de producto con los lanzamientos de Linear de esta semana, muéstrala en #marketing y envíala vía Resend a la audiencia 'subscribers' después de que yo apruebe."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero redacta la actualización de producto de esta semana. Saca los elementos lanzados de Linear, muéstralo en Slack y luego envíalo vía Resend a subscribers."
+          },
+          {
+            "name": "Zero",
+            "text": "Borrador listo. Vista previa:\n\nAsunto: Tres nuevas formas de avanzar más rápido esta semana\nPreheader: Enrutamiento inteligente, sincronización más rápida y la nueva vista previa.\nEl cuerpo abre con: «Esta semana enviamos tres actualizaciones que importan...»\n\nAudiencia: subscribers (1.247 contactos). Responde 'enviar' para disparar, o dime qué ajustar."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero se conecta a Linear y Notion",
+            "description": "Zero extrae los elementos lanzados y las notas de contexto de las fuentes que especifiques y arma el material base para el email."
+          },
+          {
+            "title": "Redacta y previsualiza en Slack",
+            "description": "Zero escribe el asunto, preheader y cuerpo con la voz de marca, y renderiza una vista previa limpia en el mismo hilo para que la revises en 10 segundos antes de que salga."
+          },
+          {
+            "title": "Envía vía Resend y reporta resultados",
+            "description": "Tras tu aprobación, Zero dispara la campaña a la audiencia indicada y devuelve estadísticas de entrega: cantidad aceptada, tamaño de la audiencia y un enlace directo al panel de Resend."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Ajustar y reenviar",
+            "description": "Pide a Zero que revise cualquier sección y regenere la vista previa",
+            "examplePrompt": "@Zero reescribe el párrafo inicial — hazlo más directo y quita el tono corporativo."
+          },
+          {
+            "title": "Segmentar tu audiencia",
+            "description": "Acota el envío a un tag o filtro específico antes de disparar",
+            "examplePrompt": "@Zero envía este borrador solo a subscribers con el tag 'trial-active' — omite la lista de bajas."
+          },
+          {
+            "title": "Hazlo rutina",
+            "description": "Programa un borrador-y-vista-previa recurrente en la cadencia que controles",
+            "examplePrompt": "@Zero cada viernes a las 10am, redacta una actualización de producto con los lanzamientos de Linear de esta semana y publica la vista previa en #marketing para aprobación."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Conexión OAuth a tu workspace de Resend. Zero necesita permiso de envío y acceso de lectura a audiencias."
+          },
+          {
+            "description": "Instalación en workspace. Zero lee del canal donde lo invocas y publica la vista previa allí."
+          },
+          {
+            "description": "Opcional. Útil cuando quieras que Zero extraiga notas de lanzamiento, borradores de teaser o briefs de campaña como material base."
+          },
+          {
+            "description": "Opcional. Útil cuando quieras que Zero resuma automáticamente los elementos lanzados como columna vertebral del contenido."
+          }
+        ],
+        "tips": [
+          "Nombra tu audiencia explícitamente — 'subscribers', 'trial users' o un tag específico — para que Zero no caiga en una lista más amplia por defecto.",
+          "Siempre previsualiza antes de enviar. Indica a Zero que publique el borrador en un canal para aprobación, así un humano lo lee antes de que llegue a tu lista.",
+          "Encadena con el caso de uso de standup — ejecuta primero el resumen semanal de elementos lanzados y luego aliméntalo a esta campaña para un pipeline de newsletter sin copiar-pegar."
+        ]
       }
     }
   },

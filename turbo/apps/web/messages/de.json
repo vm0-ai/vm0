@@ -1375,6 +1375,94 @@
           "Nutzen Sie Sentrys Projekt-Tags oder Umgebungen, um Zeros Abfrage nur auf Produktion einzuschränken, nicht auf Staging.",
           "Verketten Sie dies mit dem Produkt-Health-Briefing: Triage um 8:45 Uhr ausführen, Ausgabe in das 9:00-Uhr-Briefing einbeziehen, damit das Team alles an einem Ort sieht."
         ]
+      },
+      "marketing-emails": {
+        "title": "Ansprechende Marketing-E-Mails direkt aus Slack versenden",
+        "description": "Bitten Sie Zero, Ihre nächste Marketing-E-Mail zu entwerfen — Kontext aus Notion und Linear, Vorschau in Slack, Versand über Resend nach Ihrer Freigabe. Kein Dashboard-Wechsel mehr.",
+        "timeSaved": "~45 Min. gespart",
+        "headings": {
+          "scenario": "Warum Marketing-E-Mail-Ops Ihren Nachmittag auffressen",
+          "prompt": "So bitten Sie Zero, eine Kampagne zu entwerfen und zu versenden",
+          "steps": "Wie Zero aus Kontext eine versandte E-Mail macht",
+          "nextActions": "Iterieren, zielgerichtet senden und regelmäßig planen",
+          "integrations": "Erforderliche Integrationen: Resend und Slack",
+          "tips": "Best Practices für von Zero entworfene Marketing-E-Mails"
+        },
+        "scenario": "Donnerstagnachmittag. Sie schulden Ihren Abonnenten noch ein Produkt-Update. Drei ausgelieferte Features in Linear, ein Launch-Teaser in Notion, und fünfzehn Minuten bis zum nächsten Meeting. Kein leeres Dokument öffnen, keine Changelog-Einträge kopieren, keine neue Copy tippen, nicht in Resend einloggen, kein HTML hochladen, keine Betreffzeile formulieren, keine Zielgruppen-Tags dreifach prüfen. Sie wollen einfach, dass eine saubere E-Mail rausgeht — markengerecht, an die richtige Zielgruppe — ohne dass Ihnen der Rest des Tages zerrinnt.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero entwirf unsere wöchentliche Produkt-Update-E-Mail. Hol dir die diese Woche ausgelieferten Items aus Linear und den Launch-Teaser aus Notion. Setze unser wichtigstes Feature an den Anfang der Betreffzeile. Zeige den Entwurf in #marketing zur Vorschau und sende ihn dann über Resend an die Zielgruppe 'subscribers', sobald ich freigebe."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero entwirf ein Produkt-Update aus den diese Woche gelieferten Linear-Items und sende es über Resend an die Subscribers."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Freitag um 10 Uhr: entwirf ein Produkt-Update aus den diese Woche gelieferten Linear-Items, zeige die Vorschau in #marketing und sende nach meiner Freigabe über Resend an die Zielgruppe 'subscribers'."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero entwirf das Produkt-Update dieser Woche. Hol dir die gelieferten Items aus Linear, zeige die Vorschau in Slack und sende dann über Resend an die Subscribers."
+          },
+          {
+            "name": "Zero",
+            "text": "Entwurf fertig. Vorschau:\n\nBetreff: Drei neue Wege, diese Woche schneller zu arbeiten\nPreheader: Smart Routing, schnellere Synchronisation und die neue Preview.\nKörper beginnt: „Wir haben diese Woche drei Updates ausgeliefert, die zählen...\"\n\nZielgruppe: subscribers (1.247 Kontakte). Antworte mit 'senden', um zu versenden, oder sag mir, was ich anpassen soll."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero verbindet sich mit Linear und Notion",
+            "description": "Zero holt ausgelieferte Items und Kontextnotizen aus den von Ihnen angegebenen Quellen und stellt daraus das Rohmaterial für die E-Mail zusammen."
+          },
+          {
+            "title": "Entwurf und Vorschau in Slack",
+            "description": "Zero schreibt Betreffzeile, Preheader und Body-Text markengerecht und rendert eine saubere Vorschau im selben Thread, damit Sie sie in 10 Sekunden überfliegen können, bevor sie rausgeht."
+          },
+          {
+            "title": "Über Resend senden und Bericht erhalten",
+            "description": "Sobald Sie freigeben, verschickt Zero die Kampagne an die genannte Zielgruppe und liefert Versandstatistiken: akzeptierte Anzahl, Zielgruppengröße und einen direkten Link zum Resend-Dashboard."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Anpassen und erneut senden",
+            "description": "Zero bitten, einen Abschnitt zu überarbeiten und die Vorschau neu zu generieren",
+            "examplePrompt": "@Zero schreibe den einleitenden Absatz um — pointierter und raus mit dem Corporate-Ton."
+          },
+          {
+            "title": "Zielgruppe segmentieren",
+            "description": "Versand auf ein bestimmtes Tag oder Filter eingrenzen",
+            "examplePrompt": "@Zero sende diesen Entwurf nur an Abonnenten mit Tag 'trial-active' — die abgewanderte Liste auslassen."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Eine wiederkehrende Entwurf-und-Vorschau auf Ihrem Takt planen",
+            "examplePrompt": "@Zero jeden Freitag um 10 Uhr: entwirf ein Produkt-Update aus den diese Woche gelieferten Linear-Items und poste die Vorschau in #marketing zur Freigabe."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "OAuth-Verbindung zu Ihrem Resend-Workspace. Zero benötigt Sendeberechtigung und Lesezugriff auf Zielgruppen."
+          },
+          {
+            "description": "Workspace-Installation. Zero liest aus dem Kanal, in dem Sie es ansprechen, und postet die Vorschau dorthin zurück."
+          },
+          {
+            "description": "Optional. Nützlich, wenn Zero Release-Notes, Teaser-Entwürfe oder Kampagnen-Briefings als Quellmaterial ziehen soll."
+          },
+          {
+            "description": "Optional. Nützlich, wenn Zero ausgelieferte Items automatisch als inhaltliches Rückgrat der E-Mail zusammenfassen soll."
+          }
+        ],
+        "tips": [
+          "Benennen Sie Ihre Zielgruppe explizit — 'subscribers', 'trial users' oder ein konkretes Tag — damit Zero nicht auf eine breitere Liste zurückfällt.",
+          "Immer vor dem Versand eine Vorschau. Lassen Sie Zero den Entwurf in einem Kanal zur Freigabe posten, damit ein Mensch drüberliest, bevor er Ihre Liste erreicht.",
+          "Mit dem Standup-Use-Case verketten — erst Ihre wöchentliche Shipped-Items-Zusammenfassung laufen lassen, dann in diese Kampagne einspeisen für eine Newsletter-Pipeline ohne Copy-Paste."
+        ]
       }
     }
   },

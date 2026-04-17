@@ -1375,6 +1375,94 @@
           "Use Sentry's project tags or environments to narrow Zero's query to production only, not staging.",
           "Chain this with the product health briefing: run triage at 8:45, include output in the 9:00 brief so the team sees everything in one place."
         ]
+      },
+      "marketing-emails": {
+        "title": "Ship polished marketing emails from Slack",
+        "description": "Ask Zero to draft your next marketing email, pull context from Notion and Linear, preview it in Slack, and send via Resend once you approve. No dashboard context-switching.",
+        "timeSaved": "~45 min saved",
+        "headings": {
+          "scenario": "Why marketing email ops eat your afternoon",
+          "prompt": "How to ask Zero to draft and send a campaign",
+          "steps": "How Zero turns context into a sent email",
+          "nextActions": "Iterate, target, and schedule recurring campaigns",
+          "integrations": "Required integrations: Resend and Slack",
+          "tips": "Best practices for Zero-drafted marketing emails"
+        },
+        "scenario": "Thursday afternoon. You owe subscribers a product update. You have three shipped features in Linear, a launch teaser in Notion, and fifteen minutes before your next meeting. You don't want to open a blank doc, copy-paste changelog items, hand-write new copy, log into Resend, upload the HTML, write the subject line, and triple-check the audience tag. You just want a clean email to go out — on-brand, with the right audience — without losing the rest of your day.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero draft our weekly product update email. Pull shipped items from Linear this week and the launch teaser note from Notion. Lead the subject line with our biggest feature. Preview the draft in #marketing, then send via Resend to the 'subscribers' audience after I approve."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero draft a product update from this week's Linear ships and send via Resend to subscribers."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Friday at 10am, draft a product update from this week's Linear ships, preview in #marketing, and send via Resend to the 'subscribers' audience after I approve."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero draft this week's product update. Pull shipped items from Linear, preview in Slack, then send via Resend to subscribers."
+          },
+          {
+            "name": "Zero",
+            "text": "Draft ready. Preview:\n\nSubject: Three new ways to move faster this week\nPreheader: Smart routing, faster sync, and the new preview.\nBody opens: \"We shipped three updates this week that matter...\"\n\nAudience: subscribers (1,247 contacts). Reply 'send' to fire, or tell me what to tweak."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero connects to Linear and Notion",
+            "description": "Zero pulls shipped items and context notes from the sources you specify, then assembles the raw material for the email."
+          },
+          {
+            "title": "Draft and preview in Slack",
+            "description": "Zero writes the subject line, preheader, and body copy on-brand, then renders a clean preview in the same thread so you can scan it in 10 seconds before it goes out."
+          },
+          {
+            "title": "Send via Resend and report back",
+            "description": "Once you approve, Zero fires the campaign to the audience you named and returns delivery stats: accepted count, audience size, and a direct link to the Resend dashboard."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Tweak and re-send",
+            "description": "Ask Zero to revise any section and regenerate the preview",
+            "examplePrompt": "@Zero rewrite the opening paragraph — make it punchier and cut the corporate tone."
+          },
+          {
+            "title": "Segment your audience",
+            "description": "Narrow the send to a specific tag or filter before firing",
+            "examplePrompt": "@Zero send this draft only to subscribers tagged 'trial-active' — skip the churned list."
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule a recurring draft-and-preview on a cadence you control",
+            "examplePrompt": "@Zero every Friday at 10am, draft a product update from this week's Linear ships and post the preview to #marketing for approval."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "OAuth connection to your Resend workspace. Zero needs send permission and audience read access."
+          },
+          {
+            "description": "Workspace install. Zero reads from the channel you prompt it in and posts previews back."
+          },
+          {
+            "description": "Optional. Used when you want Zero to pull release notes, teaser drafts, or campaign briefs as source material."
+          },
+          {
+            "description": "Optional. Used when you want Zero to auto-summarize shipped items as the email's content spine."
+          }
+        ],
+        "tips": [
+          "Name your audience explicitly — 'subscribers', 'trial users', or a specific tag — so Zero doesn't default to a broader list.",
+          "Always preview before sending. Tell Zero to post the draft in a channel for approval so a human reads it before it reaches your list.",
+          "Chain with the standup use case — run your weekly shipped-items summary first, then feed it into this campaign for a zero-copy newsletter pipeline."
+        ]
       }
     }
   },
