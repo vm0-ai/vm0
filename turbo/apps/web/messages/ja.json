@@ -213,7 +213,10 @@
     "termsOfUse": "利用規約",
     "privacyPolicy": "プライバシーポリシー",
     "consentPreferences": "同意設定",
-    "support": "サポート"
+    "support": "サポート",
+    "aiDisclaimerHeading": "ご注意ください",
+    "aiDisclaimerInaccuracy": "Zeroは大規模言語モデルを利用しています。回答、要約、その他の出力は不正確、不完全、または古い情報を含む可能性があります — 重要な情報に基づいて行動する前に必ず内容をご確認ください。",
+    "aiDisclaimerPaidPlan": "Slackアプリコンテナ内のAIエージェントの利用には、有料のSlackプランが必要です。Zeroへの@メンションおよびダイレクトメッセージは、すべてのSlackプランでご利用いただけます。"
   },
   "skills": {
     "hero": {
