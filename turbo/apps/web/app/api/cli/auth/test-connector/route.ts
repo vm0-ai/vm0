@@ -4,6 +4,7 @@ import { eq, desc } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOAuthConnector } from "../../../../../src/lib/zero/connector/connector-service";
+import { PROVIDER_HANDLERS } from "../../../../../src/lib/zero/connector/provider-registry";
 import {
   resolveTestUserId,
   DEFAULT_TEST_EMAIL,
@@ -16,6 +17,14 @@ import { env } from "../../../../../src/env";
 const bodySchema = z.object({
   connectorName: z.string(),
   accessToken: z.string(),
+  /** Optional refresh token. Stored under handler's getRefreshSecretName(). */
+  refreshToken: z.string().min(1).optional(),
+  /**
+   * Seconds until the access token is considered expired. May be negative
+   * (already-expired) to drive the mid-run refresh path in E2E tests.
+   * Default: upsertOAuthConnector's own default (1h for refreshable types).
+   */
+  expiresIn: z.number().int().optional(),
 });
 
 /**
@@ -109,6 +118,13 @@ export async function POST(request: Request) {
     );
   }
 
+  const handler =
+    connectorType === "computer" ? null : PROVIDER_HANDLERS[connectorType];
+  const refreshSecretName = handler?.getRefreshSecretName?.();
+
+  const hasOptionalFields =
+    body.refreshToken !== undefined || body.expiresIn !== undefined;
+
   await upsertOAuthConnector(
     org.orgId,
     userId,
@@ -120,6 +136,13 @@ export async function POST(request: Request) {
       email: `e2e-${connectorType}@test.vm0.ai`,
     },
     [],
+    hasOptionalFields
+      ? {
+          refreshToken: body.refreshToken,
+          refreshSecretName,
+          expiresIn: body.expiresIn,
+        }
+      : undefined,
   );
 
   return NextResponse.json({

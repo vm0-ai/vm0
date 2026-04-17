@@ -147,6 +147,7 @@ import { stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
 import { supadataFirewall } from "./supadata.generated";
 import { tavilyFirewall } from "./tavily.generated";
+import { testOauthFirewall } from "./test-oauth.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { twentyFirewall } from "./twenty.generated";
@@ -300,6 +301,7 @@ const CONNECTOR_FIREWALLS = {
   supabase: supabaseFirewall,
   supadata: supadataFirewall,
   tavily: tavilyFirewall,
+  "test-oauth": testOauthFirewall,
   tldv: tldvFirewall,
   todoist: todoistFirewall,
   twenty: twentyFirewall,

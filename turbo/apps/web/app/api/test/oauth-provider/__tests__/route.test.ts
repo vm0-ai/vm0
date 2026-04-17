@@ -1,0 +1,364 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { GET as authorizeGet } from "../authorize/route";
+import { POST as tokenPost } from "../token/route";
+import { GET as userinfoGet } from "../userinfo/route";
+import { GET as echoGet } from "../echo/route";
+import { reloadEnv } from "../../../../../src/env";
+import { mintAccessToken } from "../_lib/token-helpers";
+
+const APP_URL = "http://localhost:3000";
+
+function makeAuthorizeRequest(params: Record<string, string>): Request {
+  const url = new URL(`${APP_URL}/api/test/oauth-provider/authorize`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return new Request(url);
+}
+
+function makeTokenRequest(body: Record<string, string>): Request {
+  return new Request(`${APP_URL}/api/test/oauth-provider/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(body).toString(),
+  });
+}
+
+async function authorizeAndGetCode(
+  scenario?: string,
+): Promise<{ code: string; state: string }> {
+  const params: Record<string, string> = {
+    client_id: "test-oauth-client",
+    redirect_uri: "http://localhost:3000/api/connectors/test-oauth/callback",
+    state: "state-" + Math.random().toString(36).slice(2),
+    response_type: "code",
+  };
+  if (scenario) params.scenario = scenario;
+
+  const response = await authorizeGet(makeAuthorizeRequest(params));
+  expect(response.status).toBe(302);
+  const location = response.headers.get("location");
+  if (!location) throw new Error("no location header");
+  const url = new URL(location);
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  if (!code || !state) throw new Error("missing code or state");
+  return { code, state };
+}
+
+describe("/api/test/oauth-provider", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("VERCEL_ENV", "");
+    reloadEnv();
+  });
+
+  describe("production guard", () => {
+    it("authorize returns 404 in production", async () => {
+      vi.stubEnv("VERCEL_ENV", "production");
+      reloadEnv();
+      const response = await authorizeGet(
+        makeAuthorizeRequest({
+          client_id: "test-oauth-client",
+          redirect_uri: "http://localhost:3000/cb",
+          state: "s",
+        }),
+      );
+      expect(response.status).toBe(404);
+    });
+
+    it("token returns 404 in production", async () => {
+      vi.stubEnv("VERCEL_ENV", "production");
+      reloadEnv();
+      const response = await tokenPost(
+        makeTokenRequest({ grant_type: "authorization_code" }),
+      );
+      expect(response.status).toBe(404);
+    });
+
+    it("userinfo returns 404 in production", async () => {
+      vi.stubEnv("VERCEL_ENV", "production");
+      reloadEnv();
+      const response = await userinfoGet(
+        new Request(`${APP_URL}/api/test/oauth-provider/userinfo`),
+      );
+      expect(response.status).toBe(404);
+    });
+
+    it("echo returns 404 in production", async () => {
+      vi.stubEnv("VERCEL_ENV", "production");
+      reloadEnv();
+      const response = await echoGet(
+        new Request(`${APP_URL}/api/test/oauth-provider/echo`),
+      );
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe("authorize", () => {
+    it("returns 302 with code + state appended to redirect_uri", async () => {
+      const { code, state } = await authorizeAndGetCode();
+      expect(code).toMatch(/^testoauth_code_/);
+      expect(state).toBeTruthy();
+    });
+
+    it("rejects invalid client_id", async () => {
+      const response = await authorizeGet(
+        makeAuthorizeRequest({
+          client_id: "wrong",
+          redirect_uri: "http://localhost:3000/cb",
+          state: "s",
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_client" });
+    });
+
+    it("rejects missing params", async () => {
+      const response = await authorizeGet(
+        makeAuthorizeRequest({ client_id: "test-oauth-client" }),
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects invalid scenario value", async () => {
+      const response = await authorizeGet(
+        makeAuthorizeRequest({
+          client_id: "test-oauth-client",
+          redirect_uri: "http://localhost:3000/cb",
+          state: "s",
+          scenario: "not-a-real-scenario",
+        }),
+      );
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe("token — authorization_code", () => {
+    it("exchanges code for tokens", async () => {
+      const { code } = await authorizeAndGetCode();
+
+      const response = await tokenPost(
+        makeTokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code,
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.access_token).toMatch(/^testoauth_at_/);
+      expect(body.refresh_token).toMatch(/^testoauth_rt_/);
+      expect(body.expires_in).toBe(3600);
+      expect(body.token_type).toBe("Bearer");
+      expect(body.scope).toBe("read");
+    });
+
+    it("rejects an invalid code", async () => {
+      const response = await tokenPost(
+        makeTokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code: "testoauth_code_nope",
+        }),
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it("revoked scenario returns 401", async () => {
+      const { code } = await authorizeAndGetCode("revoked");
+      const response = await tokenPost(
+        makeTokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code,
+        }),
+      );
+      expect(response.status).toBe(401);
+    });
+
+    it("expired-access scenario returns expires_in=0", async () => {
+      const { code } = await authorizeAndGetCode("expired-access");
+      const response = await tokenPost(
+        makeTokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code,
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.expires_in).toBe(0);
+    });
+
+    it("rejects invalid client credentials", async () => {
+      const response = await tokenPost(
+        makeTokenRequest({
+          grant_type: "authorization_code",
+          client_id: "wrong",
+          client_secret: "wrong",
+          code: "testoauth_code_doesnt-matter",
+        }),
+      );
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "invalid_client" });
+    });
+  });
+
+  describe("token — refresh_token", () => {
+    it("mints a fresh access token for a valid refresh token", async () => {
+      const { code } = await authorizeAndGetCode();
+      const firstResponse = await tokenPost(
+        makeTokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code,
+        }),
+      );
+      const first = await firstResponse.json();
+
+      const refreshResponse = await tokenPost(
+        makeTokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: first.refresh_token,
+        }),
+      );
+      expect(refreshResponse.status).toBe(200);
+      const refreshed = await refreshResponse.json();
+      expect(refreshed.access_token).toMatch(/^testoauth_at_/);
+      expect(refreshed.access_token).not.toBe(first.access_token);
+    });
+
+    it("invalid-refresh scenario returns 400 invalid_grant", async () => {
+      const { code } = await authorizeAndGetCode("invalid-refresh");
+      const firstResponse = await tokenPost(
+        makeTokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code,
+        }),
+      );
+      const first = await firstResponse.json();
+
+      const refreshResponse = await tokenPost(
+        makeTokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: first.refresh_token,
+        }),
+      );
+      expect(refreshResponse.status).toBe(400);
+      const body = await refreshResponse.json();
+      expect(body.error).toBe("invalid_grant");
+    });
+
+    it("unknown refresh token succeeds with default scenario", async () => {
+      // A fresh refresh token the server hasn't seen is treated as success —
+      // matches real OAuth 2 providers that don't track every refresh token.
+      const response = await tokenPost(
+        makeTokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: "testoauth_rt_unknown",
+        }),
+      );
+      expect(response.status).toBe(200);
+    });
+
+    it("rejects unsupported grant_type", async () => {
+      const response = await tokenPost(
+        makeTokenRequest({
+          grant_type: "password",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "unsupported_grant_type",
+      });
+    });
+  });
+
+  describe("userinfo", () => {
+    it("returns user payload with valid Bearer token", async () => {
+      const token = mintAccessToken(3600);
+      const response = await userinfoGet(
+        new Request(`${APP_URL}/api/test/oauth-provider/userinfo`, {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.id).toBe("testoauth-user-1");
+    });
+
+    it("returns 401 without Bearer token", async () => {
+      const response = await userinfoGet(
+        new Request(`${APP_URL}/api/test/oauth-provider/userinfo`),
+      );
+      expect(response.status).toBe(401);
+    });
+
+    it("returns 401 with non-test token", async () => {
+      const response = await userinfoGet(
+        new Request(`${APP_URL}/api/test/oauth-provider/userinfo`, {
+          headers: { authorization: "Bearer ya29.real-looking-token" },
+        }),
+      );
+      expect(response.status).toBe(401);
+    });
+
+    it("returns 401 for expired access token", async () => {
+      const token = mintAccessToken(0);
+      // Move Date.now forward so the token has demonstrably expired.
+      const response = await userinfoGet(
+        new Request(`${APP_URL}/api/test/oauth-provider/userinfo`, {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      );
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "expired_token" });
+    });
+  });
+
+  describe("echo", () => {
+    it("echoes back a valid Bearer token", async () => {
+      const token = mintAccessToken(3600);
+      const response = await echoGet(
+        new Request(`${APP_URL}/api/test/oauth-provider/echo`, {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.authorization).toBe(`Bearer ${token}`);
+      expect(body.receivedAt).toBeTruthy();
+    });
+
+    it("returns 401 without Bearer token", async () => {
+      const response = await echoGet(
+        new Request(`${APP_URL}/api/test/oauth-provider/echo`),
+      );
+      expect(response.status).toBe(401);
+    });
+
+    it("returns 401 for expired access token", async () => {
+      const token = mintAccessToken(0);
+      const response = await echoGet(
+        new Request(`${APP_URL}/api/test/oauth-provider/echo`, {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      );
+      expect(response.status).toBe(401);
+    });
+  });
+});

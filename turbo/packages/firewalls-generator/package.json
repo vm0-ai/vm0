@@ -142,6 +142,7 @@
     "generate:supabase": "tsx src/index.ts supabase",
     "generate:supadata": "tsx src/index.ts supadata",
     "generate:tavily": "tsx src/index.ts tavily",
+    "generate:test-oauth": "tsx src/index.ts test-oauth",
     "generate:tldv": "tsx src/index.ts tldv",
     "generate:todoist": "tsx src/index.ts todoist",
     "generate:twenty": "tsx src/index.ts twenty",

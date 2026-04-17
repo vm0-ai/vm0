@@ -45,4 +45,5 @@ export enum FeatureSwitchKey {
   SandboxReuse = "sandboxReuse",
   ScheduleRunHistory = "scheduleRunHistory",
   SlackAgentSwitch = "slackAgentSwitch",
+  TestOauthConnector = "testOauthConnector",
 }

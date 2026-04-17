@@ -67,12 +67,6 @@ enable_test_connector() {
 }
 
 @test "firewall: enabled connector without secrets returns connector_not_configured" {
-    # Skip: zero run requires org context which the e2e zero CLI doesn't have.
-    # The CLI run path (vm0 run) doesn't read user_connectors, so it can't test
-    # the new allowedConnectorTypes behavior. This test will be enabled when the
-    # CLI run path also supports allowedConnectorTypes, or when e2e zero CLI
-    # auth is configured with org context.
-    skip "zero run org context not available in e2e environment"
     # Step 1: Compose an agent
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
