@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.0...vsock-proto-v0.9.1) (2026-04-17)
+
+
+### Bug Fixes
+
+* **vsock-proto:** avoid unbounded allocation from untrusted env_count ([#9764](https://github.com/vm0-ai/vm0/issues/9764)) ([b6a16fe](https://github.com/vm0-ai/vm0/commit/b6a16fe877217b74b5f361c6e27a6445cd814519))
+
 ## [0.9.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.8.0...vsock-proto-v0.9.0) (2026-04-14)
 
 

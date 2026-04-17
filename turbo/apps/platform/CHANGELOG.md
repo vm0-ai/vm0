@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.245.2](https://github.com/vm0-ai/vm0/compare/app-v0.245.1...app-v0.245.2) (2026-04-17)
+
+
+### Bug Fixes
+
+* add display name for claude-opus-4-7 ([#9770](https://github.com/vm0-ai/vm0/issues/9770)) ([05f51e2](https://github.com/vm0-ai/vm0/commit/05f51e222c8ae30fbc30536892950ff3835be9b5))
+* **slack:** use official Slack Mark SVG per brand guidelines ([#9780](https://github.com/vm0-ai/vm0/issues/9780)) ([c1bb52b](https://github.com/vm0-ai/vm0/commit/c1bb52ba4677dc159667a105ea16b7b30bfca1be))
+
+
+### Refactoring
+
+* **voice-chat:** migrate panel signals to typed zero client ([#9786](https://github.com/vm0-ai/vm0/issues/9786)) ([c1b68b1](https://github.com/vm0-ai/vm0/commit/c1b68b1d507fb90b79a3c504e30e2a2dd238da52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.194.0
+
 ## [0.245.1](https://github.com/vm0-ai/vm0/compare/app-v0.245.0...app-v0.245.1) (2026-04-17)
 
 

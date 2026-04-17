@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.82.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.82.1...runner-rs-v0.82.2) (2026-04-17)
+
+
+### Bug Fixes
+
+* **runner:** stop poison job loop and unblock submitter on invalid job json ([#9748](https://github.com/vm0-ai/vm0/issues/9748)) ([4d4de58](https://github.com/vm0-ai/vm0/commit/4d4de5897dfc715b0b555c2c4e49a5f6c999b1d1))
+
 ## [0.82.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.82.0...runner-rs-v0.82.1) (2026-04-17)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.248.2](https://github.com/vm0-ai/vm0/compare/web-v12.248.1...web-v12.248.2) (2026-04-17)
+
+
+### Bug Fixes
+
+* **slack:** use official Slack Mark SVG per brand guidelines ([#9780](https://github.com/vm0-ai/vm0/issues/9780)) ([c1bb52b](https://github.com/vm0-ai/vm0/commit/c1bb52ba4677dc159667a105ea16b7b30bfca1be))
+
+
+### Refactoring
+
+* **api:** delete /api/skills/resolve and deprecate skills in contracts ([#9765](https://github.com/vm0-ai/vm0/issues/9765)) ([4883702](https://github.com/vm0-ai/vm0/commit/48837029f50864910896f2f5670eae903f845a07))
+* extract pure adapter for schedule cron trigger ([#9784](https://github.com/vm0-ai/vm0/issues/9784)) ([9ca254c](https://github.com/vm0-ai/vm0/commit/9ca254c740531b8db0e1b0f43fc1a8e16742f91f))
+* extract voice chat trigger adapters as pure functions ([#9781](https://github.com/vm0-ai/vm0/issues/9781)) ([e0bdab8](https://github.com/vm0-ai/vm0/commit/e0bdab886776a11e37110de738281e8e888f94e5))
+* **infra:** replace agent-skills prefix check with explicit system flag ([#9768](https://github.com/vm0-ai/vm0/issues/9768)) ([4f6f675](https://github.com/vm0-ai/vm0/commit/4f6f675ca42b478303882d5758066cb58bf8061a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.194.0
+
 ## [12.248.1](https://github.com/vm0-ai/vm0/compare/web-v12.248.0...web-v12.248.1) (2026-04-17)
 
 
