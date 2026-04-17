@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -156,7 +156,13 @@ async fn run_loop(
                         map.get(&entry.source_ip).cloned()
                     };
                     if let Some(path) = log_path {
-                        write_jsonl(&path, &entry);
+                        // Move the blocking file I/O off the tokio worker thread.
+                        // Capture the timestamp *before* the spawn so it reflects
+                        // observation time, not write time (which may lag under load).
+                        let timestamp = Utc::now();
+                        tokio::task::spawn_blocking(move || {
+                            write_jsonl(&path, &entry, timestamp);
+                        });
                     }
                 }
             }
@@ -237,13 +243,17 @@ fn extract_field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
 }
 
 /// Append a JSON line to the network log file.
-fn write_jsonl(path: &Path, entry: &LogEntry) {
+///
+/// `timestamp` is captured by the caller (on the tokio worker) so the recorded
+/// time reflects when the packet was observed, not when this function — which
+/// runs on a tokio blocking thread — finally executes.
+fn write_jsonl(path: &Path, entry: &LogEntry, timestamp: DateTime<Utc>) {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
 
     // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     let json = serde_json::json!({
-        "timestamp": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        "timestamp": timestamp.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "type": entry.protocol,
         "host": entry.dst_ip,
         "port": entry.dst_port,
@@ -360,6 +370,30 @@ mod tests {
     }
 
     #[test]
+    fn write_jsonl_serializes_provided_timestamp() {
+        // Locks the contract that `write_jsonl` must use the `timestamp`
+        // parameter rather than calling `Utc::now()` internally — the whole
+        // point of the parameter is to record observation time, not the
+        // delayed write time after spawn_blocking.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jsonl");
+        let entry = LogEntry {
+            source_ip: "10.200.0.2".to_string(),
+            dst_ip: "8.8.8.8".to_string(),
+            dst_port: 53,
+            protocol: "udp".to_string(),
+            packet_size: 64,
+        };
+        let ts = DateTime::parse_from_rfc3339("2024-01-15T10:30:45.123Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        write_jsonl(&path, &entry, ts);
+        let content = std::fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(parsed["timestamp"], "2024-01-15T10:30:45.123Z");
+    }
+
+    #[test]
     fn write_jsonl_creates_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.jsonl");
@@ -370,7 +404,7 @@ mod tests {
             protocol: "udp".to_string(),
             packet_size: 64,
         };
-        write_jsonl(&path, &entry);
+        write_jsonl(&path, &entry, Utc::now());
         let content = std::fs::read_to_string(&path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
         assert_eq!(parsed["host"], "8.8.8.8");
@@ -392,7 +426,7 @@ mod tests {
             protocol: "icmp".to_string(),
             packet_size: 84,
         };
-        write_jsonl(&path, &entry);
+        write_jsonl(&path, &entry, Utc::now());
         let content = std::fs::read_to_string(&path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
         assert_eq!(parsed["type"], "icmp");
@@ -414,6 +448,7 @@ mod tests {
                     protocol: "udp".to_string(),
                     packet_size: 64,
                 },
+                Utc::now(),
             );
         }
         let content = std::fs::read_to_string(&path).unwrap();
