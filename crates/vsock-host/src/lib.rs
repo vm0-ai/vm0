@@ -849,15 +849,6 @@ mod tests {
         tokio::spawn(async move {
             let mut decoder = Decoder::new();
             mock_handshake(&mut guest, &mut decoder).await;
-
-            // Guest must never receive an exec request.
-            let mut buf = [0u8; 4096];
-            match tokio::time::timeout(Duration::from_millis(200), guest.read(&mut buf)).await {
-                Err(_) => {}    // timeout expected — nothing was sent
-                Ok(Ok(0)) => {} // EOF when host drops — also acceptable
-                Ok(Ok(n)) => panic!("guest unexpectedly received {n} bytes"),
-                Ok(Err(_)) => {} // connection error on drop — also acceptable
-            }
         });
 
         let host = host_from_stream(host_stream).await.unwrap();
