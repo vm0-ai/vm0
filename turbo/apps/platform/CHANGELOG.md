@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.245.0](https://github.com/vm0-ai/vm0/compare/app-v0.244.1...app-v0.245.0) (2026-04-17)
+
+
+### Features
+
+* add human-readable display names for model IDs in provider selector ([#9711](https://github.com/vm0-ai/vm0/issues/9711)) ([41a6a64](https://github.com/vm0-ai/vm0/commit/41a6a64f10cb778c369a2fba3b1dcd254949b83a))
+
 ## [0.244.1](https://github.com/vm0-ai/vm0/compare/app-v0.244.0...app-v0.244.1) (2026-04-17)
 
 
