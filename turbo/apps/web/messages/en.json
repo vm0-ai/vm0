@@ -305,6 +305,88 @@
       "submitYourCase": "Submit your case →"
     },
     "content": {
+      "auto-merge-releases": {
+        "title": "Ship release PRs on your team's schedule — without chasing them",
+        "description": "Tell Zero once which release PRs to merge and when. It checks every hour during work hours, skips risky changes, and merges the rest — so you stop being a human cron job.",
+        "timeSaved": "~15 min saved per release",
+        "headings": {
+          "scenario": "Why chasing release PRs drains the on-call engineer",
+          "prompt": "How to ask Zero to ship release PRs",
+          "steps": "How Zero merges your release PRs",
+          "nextActions": "Tighten the policy, escalate the risky ones, or chain into the next pipeline",
+          "integrations": "Required integrations: GitHub and Slack",
+          "tips": "Best practices for autonomous release merging"
+        },
+        "scenario": "Release-please opens a new `chore: release main` PR every time main accumulates enough commits — on a shipping team that is several times a day. Someone has to glance at the diff, confirm CI is green, decide whether the changelog contains anything scary, click Merge, and then babysit the deploy. If they are in a meeting, asleep, or on another continent, the release sits. Commits keep stacking on top, the changelog grows, and the merge gets riskier. You tell Zero once — watch for release PRs, skip migrations, merge during work hours, post to the release channel — and from then on, shipping happens on its own, on your team's clock.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero every hour, check our repo for an open release PR. If it is Mon–Fri 10:00–19:00 in our timezone and the PR has no DB migration files, enable auto-merge with squash so it ships the moment CI passes — then post an update in #release-notify."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero merge the open release PR now."
+          },
+          {
+            "label": "Adjust policy",
+            "prompt": "@Zero starting Monday, widen the release window to 09:00–20:00 weekdays, and pause merges entirely on Fridays after 17:00."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero merge release pr"
+          },
+          {
+            "name": "Zero",
+            "text": "Release PR #9565 (`chore: release main`) — all 14 CI checks green, no migration files touched. Enabled auto-merge with squash. It will ship the moment branch protection clears. I'll post back in #release-notify when it's in."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero watches for release PRs on schedule",
+            "description": "Zero polls GitHub every hour and filters for open PRs titled with `release` on your default branch. Outside the work window you defined, it logs the check and stops — no after-hours merges, no weekend surprises."
+          },
+          {
+            "title": "Zero vets each PR against your safety rules",
+            "description": "Zero reads the file list on the PR. If any file matches a sensitive path you flagged (migrations, infra, billing), it skips the merge and pings the channel so a human decides. Otherwise it confirms the required CI checks are passing."
+          },
+          {
+            "title": "Zero enables auto-merge and reports the outcome",
+            "description": "For PRs that pass the policy, Zero runs `gh pr merge --auto --squash` so the PR lands the moment CI turns green. When the merge lands, Zero posts a compact status line back to your release channel."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Tighten the policy on the fly",
+            "description": "Layer in new rules without touching code.",
+            "examplePrompt": "@Zero from now on, skip any release PR whose changelog mentions `infra` or `billing`."
+          },
+          {
+            "title": "Escalate the risky ones",
+            "description": "Have Zero flag — not merge — PRs it would otherwise skip.",
+            "examplePrompt": "@Zero when you find a release PR with a migration file, open a thread in #dev tagging @oncall with the diff link."
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule the check so shipping happens without you thinking about it.",
+            "examplePrompt": "@Zero every hour Mon–Fri 10:00–19:00, run the release auto-merge check and log results to #release-notify."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub — Zero lists release PRs, inspects file changes, confirms CI status, and enables auto-merge. Repository write access is required so Zero can trigger the merge."
+          },
+          {
+            "description": "Slack — Zero uses your Slack connection to announce merges, flag skipped PRs, and escalate risky ones. Without Slack, Zero can still merge but has nowhere to report."
+          }
+        ],
+        "tips": [
+          "Encode your unwritten release rules in the prompt. 'Skip migrations' is obvious; 'pause merges during demo windows' or 'never ship on Friday afternoons' are the quiet rules Zero should know about.",
+          "Keep the work-hour window honest — only merge when the team is awake to roll back. Autonomous shipping is safer when humans can respond if a release breaks.",
+          "Chain it with a daily engineering brief so your morning report opens with 'N releases shipped overnight, M skipped because of migrations'. Pair autonomous shipping with visible reporting."
+        ]
+      },
       "sentry-triage": {
         "title": "Turn Sentry noise into a prioritized action list",
         "description": "Ask Zero to pull your top unresolved Sentry errors, ranked by frequency. Zero reads the stack traces, explains the root cause in plain language, and tells you which file to fix first.",
