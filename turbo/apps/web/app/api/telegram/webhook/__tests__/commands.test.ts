@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { HttpResponse } from "msw";
 import {
   testContext,
@@ -19,23 +19,6 @@ import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
-
-// Mock Next.js after() to execute synchronously
-const afterPromises: Promise<unknown>[] = [];
-vi.mock("next/server", async (importOriginal) => {
-  const original = await importOriginal<typeof import("next/server")>();
-  return {
-    ...original,
-    after: (promise: Promise<unknown>) => {
-      afterPromises.push(promise);
-    },
-  };
-});
-
-async function flushAfterCallbacks() {
-  await Promise.all(afterPromises);
-  afterPromises.length = 0;
-}
 
 const context = testContext();
 
@@ -107,7 +90,6 @@ describe("Telegram bot commands", () => {
   let userId: string;
 
   beforeEach(async () => {
-    afterPromises.length = 0;
     context.setupMocks();
     const user = await context.setupUser();
     userId = user.userId;
@@ -145,7 +127,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("/help");
@@ -169,7 +151,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // No message sent — command was for a different bot
       expect(sendMsg.mocked).not.toHaveBeenCalled();
@@ -193,7 +175,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("/help");
@@ -217,7 +199,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("/help");
@@ -244,7 +226,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       const text = sendMsg.calls[0]?.text ?? "";
@@ -275,7 +257,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("already connected");
@@ -299,7 +281,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("/telegram/connect?bot=");
@@ -325,7 +307,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("disconnected");
@@ -356,7 +338,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("not connected");
@@ -382,7 +364,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       const text = sendMsg.calls[0]?.text ?? "";
@@ -410,7 +392,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("admin");
@@ -446,7 +428,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // Verify confirmation message
       expect(sendMsg.mocked).toHaveBeenCalled();
@@ -479,7 +461,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("Connect your account");
@@ -503,7 +485,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // No message sent in group chat
       expect(sendMsg.mocked).not.toHaveBeenCalled();
@@ -543,7 +525,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // Queued notification edits the thinking message (not a new sendMessage)
       const queuedMsg = editMsg.calls.find((c) => {
@@ -573,7 +555,7 @@ describe("Telegram bot commands", () => {
         params: Promise.resolve({ installationId }),
       });
       expect(response.status).toBe(200);
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // Queued notification edits the thinking message (not a new sendMessage)
       const queuedMsg = editMsg.calls.find((c) => {
