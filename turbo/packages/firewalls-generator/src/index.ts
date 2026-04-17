@@ -39,7 +39,7 @@ import { generate as generateDoppler } from "./doppler";
 import { generate as generateDiscord } from "./discord";
 import { generate as generateDiscordWebhook } from "./discord-webhook";
 import { generate as generateDocusign } from "./docusign";
-import { generate as generateDrive9 } from "./drive9";
+import { generate as generateDb9 } from "./db9";
 import { generate as generateDropbox } from "./dropbox";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateExplorium } from "./explorium";
@@ -171,7 +171,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   discord: generateDiscord,
   "discord-webhook": generateDiscordWebhook,
   docusign: generateDocusign,
-  drive9: generateDrive9,
+  db9: generateDb9,
   dropbox: generateDropbox,
   elevenlabs: generateElevenlabs,
   explorium: generateExplorium,
