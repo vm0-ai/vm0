@@ -397,7 +397,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const hasActiveRun = useLastResolved(thread.hasActiveRun$) ?? false;
   const groups = useGet(thread.groupedChatMessages$);
   const lastGroup = groups[groups.length - 1];
-  const show = hasActiveRun && lastGroup?.role === "user";
+  const show = lastGroup?.role !== "assistant" || hasActiveRun;
 
   if (!show) {
     return null;
