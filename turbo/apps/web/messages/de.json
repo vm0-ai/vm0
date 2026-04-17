@@ -213,7 +213,10 @@
     "termsOfUse": "Nutzungsbedingungen",
     "privacyPolicy": "Datenschutzrichtlinie",
     "consentPreferences": "Einwilligungseinstellungen",
-    "support": "Support"
+    "support": "Support",
+    "aiDisclaimerHeading": "Bitte beachten",
+    "aiDisclaimerInaccuracy": "Zero basiert auf großen Sprachmodellen. Antworten, Zusammenfassungen und andere Ausgaben können ungenau, unvollständig oder veraltet sein — bitte überprüfen Sie wichtige Informationen, bevor Sie darauf reagieren.",
+    "aiDisclaimerPaidPlan": "Die Nutzung des KI-Agenten im Slack-App-Container erfordert einen kostenpflichtigen Slack-Tarif. @Erwähnungen und Direktnachrichten an Zero sind in allen Slack-Tarifen verfügbar."
   },
   "skills": {
     "hero": {
