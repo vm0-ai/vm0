@@ -159,9 +159,6 @@ APP_URL=https://app.vm7.ai:8443
 BLOG_BASE_URL=
 BLOG_DATA_SOURCE=strapi
 STRAPI_URL=
-# Shared secret used by /api/preview to enable Draft Mode for unpublished articles.
-# Generate with: openssl rand -hex 32
-STRAPI_PREVIEW_SECRET=
 
 # Optional: Error Tracking (Sentry)
 # Sentry DSN (used by both server and client)

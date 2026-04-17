@@ -7,7 +7,6 @@
       {
         "paths": [
           {
-            "allowImportNames": ["draftMode"],
             "name": "next/headers",
             "message": "Use authHeader parameter instead of headers() from next/headers. See issue #1591."
           }
