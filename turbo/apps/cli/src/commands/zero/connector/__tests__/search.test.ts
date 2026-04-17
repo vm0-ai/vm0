@@ -134,6 +134,28 @@ describe("zero connector search command", () => {
       expect(types).toContain("gitlab");
     });
 
+    it("ranks tag-exact above type-substring above tag-substring", async () => {
+      // Keyword "chat" exercises three scoring tiers against the real catalog
+      // and pins the priority ordering contract so future refactors of
+      // scoreConnector cannot silently reorder them:
+      //   - slack:    tag-exact "chat"             => 70
+      //   - chatwoot: type-substring "chatwoot"    => 50
+      //   - openai:   tag-substring "chatgpt"      => 25
+      await searchCommand.parseAsync(["node", "cli", "chat", "--limit", "10"]);
+
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const dataRows = findDataRows(lines);
+      const types = dataRows.map((row) => {
+        return row.split(/\s+/)[0];
+      });
+      const slackIdx = types.indexOf("slack");
+      const chatwootIdx = types.indexOf("chatwoot");
+      const openaiIdx = types.indexOf("openai");
+      expect(slackIdx).toBe(0);
+      expect(chatwootIdx).toBeGreaterThan(slackIdx);
+      expect(openaiIdx).toBeGreaterThan(chatwootIdx);
+    });
+
     it("prints No matches found for an unknown keyword", async () => {
       await searchCommand.parseAsync(["node", "cli", "xyz123abc"]);
 
