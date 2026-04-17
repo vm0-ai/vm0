@@ -73,6 +73,15 @@ vi.mock("@clerk/nextjs", () => {
   };
 });
 
+// External: next/headers (used by page.tsx for draftMode)
+vi.mock("next/headers", () => {
+  return {
+    draftMode: vi.fn(async () => {
+      return { isEnabled: false };
+    }),
+  };
+});
+
 // External: next/navigation (used by BlogContent, notFound)
 vi.mock("next/navigation", () => {
   return {
