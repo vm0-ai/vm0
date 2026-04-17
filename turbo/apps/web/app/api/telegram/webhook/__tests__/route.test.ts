@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { HttpResponse } from "msw";
 import {
   testContext,
@@ -15,21 +15,15 @@ import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
 
-// Mock Next.js after() to execute synchronously
-const afterPromises: Promise<unknown>[] = [];
-vi.mock("next/server", async (importOriginal) => {
-  const original = await importOriginal<typeof import("next/server")>();
-  return {
-    ...original,
-    after: (promise: Promise<unknown>) => {
-      afterPromises.push(promise);
-    },
-  };
-});
-
+// Uses the shared `next/server` mock from src/__tests__/setup.ts, which records
+// both the argument form (globalThis.nextAfterArgForms) and the callback queue
+// (globalThis.nextAfterCallbacks). Tests draining the queue use the helper
+// below; regression tests that only care about the argument form assert on
+// globalThis.nextAfterArgForms directly.
 async function flushAfterCallbacks() {
-  await Promise.all(afterPromises);
-  afterPromises.length = 0;
+  const callbacks = [...globalThis.nextAfterCallbacks];
+  globalThis.nextAfterCallbacks = [];
+  await Promise.all(callbacks.map((cb) => cb()));
 }
 
 const context = testContext();
@@ -55,7 +49,6 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
   let installationId: string;
 
   beforeEach(async () => {
-    afterPromises.length = 0;
     installationId = await createTelegramInstallation();
   });
 
@@ -155,7 +148,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
     expect(response.status).toBe(200);
 
     // after() was called (handler was dispatched)
-    expect(afterPromises.length).toBe(1);
+    expect(globalThis.nextAfterCallbacks.length).toBe(1);
 
     // Handler errors are caught gracefully (no unhandled rejections)
     await flushAfterCallbacks();
@@ -177,7 +170,7 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(afterPromises.length).toBe(1);
+    expect(globalThis.nextAfterCallbacks.length).toBe(1);
     await flushAfterCallbacks();
   });
 
@@ -263,6 +256,91 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       const afterData = await afterResponse.json();
       expect(afterData.linked).toBe(true);
       expect(afterData.telegramUserId).toBe(String(telegramUserId));
+    });
+  });
+
+  // Regression: createZeroRun schedules its Phase 2 dispatch via a nested
+  // after() inside handleTelegramDirectMessage / handleTelegramMention. If the
+  // route registers the outer after() with an already-started promise, the
+  // nested after() is scheduled after the Next.js request context has been
+  // finalized and Phase 2 dispatch never runs — runs remain Pending forever.
+  describe("after() callback form (nested-after propagation)", () => {
+    it("registers DM handler via callback form", async () => {
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 123, type: "private" },
+          from: { id: 456, username: "testuser" },
+          text: "hello",
+        },
+      });
+
+      await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers @mention handler via callback form", async () => {
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 123, type: "group" },
+          from: { id: 456, username: "testuser" },
+          text: "@test_bot hi",
+          entities: [{ type: "mention", offset: 0, length: 9 }],
+        },
+      });
+
+      await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers reply-to-bot handler via callback form", async () => {
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 123, type: "group" },
+          from: { id: 456, username: "testuser" },
+          text: "thanks",
+          reply_to_message: {
+            message_id: 99,
+            chat: { id: 123, type: "group" },
+            from: { id: 1, is_bot: true, username: "test_bot" },
+          },
+        },
+      });
+
+      await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers /start command handler via callback form", async () => {
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 123, type: "private" },
+          from: { id: 456, username: "testuser" },
+          text: "/start sometoken",
+        },
+      });
+
+      await POST(request, {
+        params: Promise.resolve({ installationId }),
+      });
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
     });
   });
 });
