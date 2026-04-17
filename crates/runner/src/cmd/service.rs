@@ -693,10 +693,17 @@ async fn drain(args: ServiceDrainArgs) -> RunnerResult<()> {
     .map_err(|e| RunnerError::Internal(format!("SIGUSR1 to PID {pid}: {e}")))?;
     info!(unit = %unit, pid, "sent SIGUSR1 (drain)");
 
-    // Disable so it won't restart on reboot
+    // Disable so it won't restart on reboot. The SIGUSR1 has already been
+    // delivered, so a disable failure is a partial-success condition — the
+    // operator can re-run the command manually. Surface the hint on stderr
+    // in addition to the structured log so CLI users don't miss it.
     let svc = format!("{unit}.service");
     if let Err(e) = run_systemctl(&["disable", &svc]).await {
         warn!(unit = %unit, error = %e, "failed to disable unit");
+        eprintln!(
+            "WARNING: drain signal was sent but `systemctl disable {svc}` failed: {e}. \
+             Run it manually to prevent the unit from restarting on reboot."
+        );
     } else {
         info!(unit = %unit, "disabled (won't restart on reboot)");
     }
@@ -746,10 +753,17 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
     info!(unit = %unit, pid, "sent SIGUSR2 (resume)");
 
     // Re-enable so the unit restarts on reboot (undoes the disable from drain).
-    // Use `enable` (not `--now`) — the service is already running.
+    // Use `enable` (not `--now`) — the service is already running. SIGUSR2
+    // has already been delivered so the runner IS resumed; a re-enable
+    // failure is partial success. Surface the hint on stderr so CLI users
+    // don't miss it.
     let svc = format!("{unit}.service");
     if let Err(e) = run_systemctl(&["enable", &svc]).await {
         warn!(unit = %unit, error = %e, "failed to re-enable unit");
+        eprintln!(
+            "WARNING: runner resumed but `systemctl enable {svc}` failed: {e}. \
+             Run it manually to restore the restart-on-reboot behavior."
+        );
     } else {
         info!(unit = %unit, "re-enabled (will restart on reboot)");
     }

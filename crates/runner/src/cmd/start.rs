@@ -538,7 +538,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         // check lets SIGUSR2 win the race — resume should
                         // never lose to an auto-transition.
                         info!("draining: jobs drained, transitioning to Stopping");
-                        mode_tx.send_if_modified(|v| {
+                        let transitioned = mode_tx.send_if_modified(|v| {
                             if *v == RunnerMode::Draining {
                                 *v = RunnerMode::Stopping;
                                 true
@@ -547,6 +547,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                                 false
                             }
                         });
+                        if transitioned {
+                            // Live observability: fire an immediate "stopping"
+                            // heartbeat so operator dashboards see the
+                            // transition before teardown completes and the
+                            // runner disappears. Otherwise the last live tick
+                            // is the previous "draining" heartbeat (up to 10s
+                            // stale) and the only "stopping" signal would be
+                            // the terminal heartbeat during teardown.
+                            send_heartbeat(&hb_ctx, RunnerMode::Stopping).await;
+                        }
                         break 'draining;
                     }
 
