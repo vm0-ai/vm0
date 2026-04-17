@@ -1375,6 +1375,88 @@
           "Use Sentry's project tags or environments to narrow Zero's query to production only, not staging.",
           "Chain this with the product health briefing: run triage at 8:45, include output in the 9:00 brief so the team sees everything in one place."
         ]
+      },
+      "agent-run-triage": {
+        "title": "Triage failed agent runs before the morning standup",
+        "description": "Schedule Zero to run daily. It pulls agent run failures from vm0 and Axiom, clusters by root cause (tool schema, context overflow, timeout, hallucinated call), ranks by impact, and posts the top problems to Slack with example run IDs and a suggested next step.",
+        "timeSaved": "~30 min saved daily",
+        "headings": {
+          "scenario": "Why debugging overnight agent failures stalls every morning",
+          "prompt": "How to ask Zero to cluster agent run failures for you",
+          "steps": "How Zero groups, ranks, and explains agent failures",
+          "nextActions": "Turn a triage list into fixes, evals, or a backlog",
+          "integrations": "Required integrations: vm0 and Axiom",
+          "tips": "Best practices for daily agent run triage"
+        },
+        "scenario": "You ship a new tool on Friday, go to bed, and wake up to 142 failed agent runs in the queue. Half of them are the same timeout wearing different hats. Some are context-overflow nightmares masquerading as model hallucinations. A few are actual regressions. Before you can build anything today, you have to sort them — and by the time you do, standup has started. Zero runs at 8:30am, pulls every failed run from vm0 and Axiom over the last 24 hours, clusters them by root cause, and hands you a ranked list of the problems actually worth fixing today.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero every weekday at 8:30am, pull failed agent runs from vm0 and Axiom for the last 24 hours. Cluster by root cause (tool schema error, context overflow, model timeout, tool-call hallucination, auth failure). Rank by frequency and business impact. Post the top 5 clusters to #harness with example run IDs and a suggested next step for each."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero show me failed agent runs from the last 12 hours, grouped by root cause. Top 5 clusters only."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday at 9am, post a weekly summary of agent failure trends — which clusters are growing, which are shrinking, which tools account for the most errors."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Xiao",
+            "text": "@Zero set up daily agent run triage at 8:30am. Pull from vm0 + Axiom, cluster by root cause, post top 5 to #harness."
+          },
+          {
+            "name": "Zero",
+            "text": "Scheduled. Running weekdays at 08:30.\n\nRun from this morning — 142 failed agent runs, 5 clusters:\n1. Context overflow on research agent (48 runs) — started after yesterday's 8k→12k context change\n2. Tool schema ambiguity: `search_docs` (31 runs) — model picking wrong params\n3. Timeout on `fetch_pdf` tool (28 runs) — 95p latency up 3x since Tuesday\n4. Auth failure on Notion connector (19 runs) — token rotation at 02:00 UTC\n5. Hallucinated tool name `summarize_v2` (16 runs) — likely stale prompt\n\nTop candidate for today: #1. Suggested fix in thread."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero connects to vm0 and Axiom",
+            "description": "Zero queries vm0 for failed agent run records and pulls matching traces from Axiom. Both sources are stitched together by run ID so every failure carries its full context — model messages, tool calls, and the exact point where it broke."
+          },
+          {
+            "title": "Failures clustered by root cause",
+            "description": "Zero reads each failure's trace — which tool was called, what the model saw, how the error surfaced — and groups runs by the underlying cause. Timeouts, context overflows, tool-schema mismatches, and hallucinated calls each become their own cluster."
+          },
+          {
+            "title": "Ranked list delivered to Slack",
+            "description": "Zero ranks clusters by frequency, recency, and the importance of the agents involved. You get the top clusters with example run IDs, trend deltas, and a suggested next step for each."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Pull an example trace",
+            "description": "Get the full trace for any run in a cluster",
+            "examplePrompt": "@Zero give me the full trace for run ID xyz — tool calls, model messages, and where it failed."
+          },
+          {
+            "title": "File an eval for the top cluster",
+            "description": "Turn a recurring failure into a regression eval",
+            "examplePrompt": "@Zero for cluster #1 (context overflow on research agent), generate a minimal eval that reproduces the failure and open a PR against vm0-ai/evals."
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule this as a recurring task",
+            "examplePrompt": "@Zero every Monday at 9am, post a weekly summary of agent failure trends to #harness."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "vm0 — Zero reads agent run records, statuses, and trace metadata from the vm0 runtime."
+          },
+          {
+            "description": "Axiom — Zero queries detailed run traces and tool-call logs. Required for root-cause clustering."
+          }
+        ],
+        "tips": [
+          "Tag your agents with a `team` label so Zero can filter the triage to only the agents your team owns — especially useful at scale.",
+          "Include a `deploy_sha` field in your traces. Zero uses it to spot regressions that start right after a deploy.",
+          "Chain this with the error-triage-daily use case — agent failures and application errors often share root causes, and seeing them side by side shortens debugging."
+        ]
       }
     }
   },

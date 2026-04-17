@@ -564,6 +564,39 @@ export const USE_CASES: UseCase[] = [
     promptVariantCount: 3,
     slackPreviewCount: 2,
   },
+
+  {
+    slug: "agent-run-triage",
+    color: "#a07cbe",
+    avatar: {
+      rotation: 3,
+      skin: 2,
+      hairStyle: 4,
+      hairColor: 4,
+      expression: 2,
+      intensity: "m",
+    },
+    roles: ["engineering"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, VM0, AXIOM, SENTRY],
+    integrations: [
+      { connector: VM0, required: true },
+      { connector: AXIOM, required: true },
+      { connector: SENTRY, required: false },
+    ],
+    relatedSlugs: [
+      "error-triage-daily",
+      "sentry-triage",
+      "upgrade-agent",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
 ];
 
 // ---------------------------------------------------------------------------

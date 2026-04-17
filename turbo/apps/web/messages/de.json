@@ -1375,6 +1375,88 @@
           "Nutzen Sie Sentrys Projekt-Tags oder Umgebungen, um Zeros Abfrage nur auf Produktion einzuschränken, nicht auf Staging.",
           "Verketten Sie dies mit dem Produkt-Health-Briefing: Triage um 8:45 Uhr ausführen, Ausgabe in das 9:00-Uhr-Briefing einbeziehen, damit das Team alles an einem Ort sieht."
         ]
+      },
+      "agent-run-triage": {
+        "title": "Fehlgeschlagene Agent-Runs vor dem Morgen-Standup triagieren",
+        "description": "Planen Sie Zero für den täglichen Lauf. Es zieht fehlgeschlagene Agent-Runs aus vm0 und Axiom, clustert nach Root Cause (Tool-Schema, Kontext-Overflow, Timeout, halluzinierter Call), sortiert nach Impact und postet die wichtigsten Probleme in Slack — mit Beispiel-Run-IDs und einem Vorschlag für den nächsten Schritt.",
+        "timeSaved": "~30 Min. täglich gespart",
+        "headings": {
+          "scenario": "Warum das Debuggen nächtlicher Agent-Fehler jeden Morgen ausbremst",
+          "prompt": "So lassen Sie Zero Ihre Agent-Failures clustern",
+          "steps": "Wie Zero Agent-Fehler gruppiert, priorisiert und erklärt",
+          "nextActions": "Aus der Triage-Liste Fixes, Evals oder ein Backlog machen",
+          "integrations": "Erforderliche Integrationen: vm0 und Axiom",
+          "tips": "Best Practices für die tägliche Triage von Agent-Runs"
+        },
+        "scenario": "Sie deployen am Freitag ein neues Tool, gehen schlafen und wachen mit 142 fehlgeschlagenen Agent-Runs in der Warteschlange auf. Die Hälfte davon ist derselbe Timeout in verschiedenen Gewändern. Manche sind Kontext-Overflow-Albträume, die als Modell-Halluzinationen auftreten. Einige sind echte Regressionen. Bevor Sie heute irgendetwas bauen können, müssen Sie sie sortieren — und wenn Sie fertig sind, hat das Standup längst begonnen. Zero läuft um 8:30 Uhr, zieht jeden fehlgeschlagenen Run der letzten 24 Stunden aus vm0 und Axiom, clustert nach Root Cause und liefert Ihnen eine priorisierte Liste der Probleme, die heute wirklich einen Fix wert sind.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero jeden Werktag um 8:30 Uhr, zieh fehlgeschlagene Agent-Runs aus vm0 und Axiom der letzten 24 Stunden. Clustere nach Root Cause (Tool-Schema-Fehler, Kontext-Overflow, Modell-Timeout, Tool-Call-Halluzination, Auth-Fehler). Sortiere nach Häufigkeit und Business-Impact. Poste die Top-5-Cluster in #harness mit Beispiel-Run-IDs und einem Vorschlag pro Cluster."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero zeig mir fehlgeschlagene Agent-Runs der letzten 12 Stunden, gruppiert nach Root Cause. Nur die Top-5-Cluster."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Montag um 9 Uhr, poste eine Wochenübersicht der Agent-Failure-Trends — welche Cluster wachsen, welche schrumpfen, welche Tools verursachen die meisten Fehler."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Xiao",
+            "text": "@Zero richte tägliche Agent-Run-Triage um 8:30 Uhr ein. Aus vm0 + Axiom ziehen, nach Root Cause clustern, Top 5 in #harness posten."
+          },
+          {
+            "name": "Zero",
+            "text": "Geplant. Läuft werktags um 08:30.\n\nLauf von heute Morgen — 142 fehlgeschlagene Agent-Runs, 5 Cluster:\n1. Kontext-Overflow beim Research-Agent (48 Runs) — seit gestrigem 8k→12k-Kontext-Wechsel\n2. Tool-Schema-Uneindeutigkeit: `search_docs` (31 Runs) — Modell wählt falsche Params\n3. Timeout bei `fetch_pdf`-Tool (28 Runs) — 95p-Latenz seit Dienstag um das 3-Fache gestiegen\n4. Auth-Fehler im Notion-Connector (19 Runs) — Token-Rotation um 02:00 UTC\n5. Halluzinierter Tool-Name `summarize_v2` (16 Runs) — vermutlich veralteter Prompt\n\nTop-Kandidat für heute: #1. Fix-Vorschlag im Thread."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero verbindet sich mit vm0 und Axiom",
+            "description": "Zero fragt vm0 nach fehlgeschlagenen Agent-Run-Datensätzen ab und holt die passenden Traces aus Axiom. Beide Quellen werden über die Run-ID zusammengeführt, sodass jeder Fehler seinen vollständigen Kontext mitbringt — Modell-Messages, Tool-Calls und den genauen Bruchpunkt."
+          },
+          {
+            "title": "Fehler nach Root Cause geclustert",
+            "description": "Zero liest den Trace jedes Fehlers — welches Tool aufgerufen wurde, was das Modell gesehen hat, wie der Fehler zutage trat — und gruppiert Runs nach der zugrundeliegenden Ursache. Timeouts, Kontext-Overflows, Tool-Schema-Mismatches und halluzinierte Calls werden jeweils zu eigenen Clustern."
+          },
+          {
+            "title": "Priorisierte Liste in Slack geliefert",
+            "description": "Zero sortiert Cluster nach Häufigkeit, Aktualität und Wichtigkeit der betroffenen Agents. Sie erhalten die Top-Cluster mit Beispiel-Run-IDs, Trend-Deltas und einem konkreten Vorschlag für den nächsten Schritt."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einen Beispiel-Trace ziehen",
+            "description": "Den vollständigen Trace für einen beliebigen Run im Cluster abrufen",
+            "examplePrompt": "@Zero gib mir den vollständigen Trace für Run-ID xyz — Tool-Calls, Modell-Messages und Bruchstelle."
+          },
+          {
+            "title": "Einen Eval für den Top-Cluster erstellen",
+            "description": "Einen wiederkehrenden Fehler in eine Regressions-Eval verwandeln",
+            "examplePrompt": "@Zero für Cluster #1 (Kontext-Overflow beim Research-Agent), generiere eine minimale Eval, die den Fehler reproduziert, und öffne einen PR gegen vm0-ai/evals."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Dies als wiederkehrende Aufgabe einplanen",
+            "examplePrompt": "@Zero jeden Montag um 9 Uhr, poste eine Wochenübersicht der Agent-Failure-Trends in #harness."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "vm0 — Zero liest Agent-Run-Datensätze, Statuswerte und Trace-Metadaten aus der vm0-Runtime."
+          },
+          {
+            "description": "Axiom — Zero fragt detaillierte Run-Traces und Tool-Call-Logs ab. Für Root-Cause-Clustering erforderlich."
+          }
+        ],
+        "tips": [
+          "Versehen Sie Ihre Agents mit einem `team`-Label, damit Zero die Triage auf die Agents Ihres Teams einschränken kann — besonders wertvoll im großen Maßstab.",
+          "Nehmen Sie ein `deploy_sha`-Feld in Ihre Traces auf. Zero nutzt es, um Regressionen zu erkennen, die direkt nach einem Deploy beginnen.",
+          "Verketten Sie dies mit dem error-triage-daily-Anwendungsfall — Agent-Failures und Application-Errors teilen oft Ursachen, und beide nebeneinander zu sehen verkürzt das Debugging."
+        ]
       }
     }
   },

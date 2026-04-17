@@ -1375,6 +1375,88 @@
           "Usa las etiquetas de proyecto o ambientes de Sentry para limitar la consulta de Zero solo a producción, no a staging.",
           "Encadena esto con el informe de salud del producto: ejecuta la clasificación a las 8:45, incluye la salida en el informe de las 9:00 para que el equipo vea todo en un solo lugar."
         ]
+      },
+      "agent-run-triage": {
+        "title": "Clasifica ejecuciones de agente fallidas antes de la reunión diaria",
+        "description": "Programa Zero para que corra cada día. Saca las ejecuciones fallidas de vm0 y Axiom, las agrupa por causa raíz (esquema de tool, desbordamiento de contexto, timeout, llamada alucinada), las ordena por impacto y publica los problemas principales en Slack con IDs de ejecución de ejemplo y un siguiente paso sugerido.",
+        "timeSaved": "~30 min ahorrados al día",
+        "headings": {
+          "scenario": "Por qué depurar fallos nocturnos de agente atasca cada mañana",
+          "prompt": "Cómo pedirle a Zero que agrupe tus ejecuciones fallidas",
+          "steps": "Cómo Zero agrupa, prioriza y explica los fallos de agente",
+          "nextActions": "Convierte la lista de triaje en fixes, evals o un backlog",
+          "integrations": "Integraciones requeridas: vm0 y Axiom",
+          "tips": "Mejores prácticas para el triaje diario de ejecuciones de agente"
+        },
+        "scenario": "Despliegas una tool nueva el viernes, te vas a dormir y te despiertas con 142 ejecuciones de agente fallidas en la cola. La mitad son el mismo timeout con disfraz distinto. Algunas son pesadillas de desbordamiento de contexto haciéndose pasar por alucinaciones del modelo. Unas pocas son regresiones reales. Antes de poder construir nada hoy, tienes que ordenarlas — y cuando terminas, la reunión diaria ya empezó. Zero se ejecuta a las 8:30, saca cada ejecución fallida de vm0 y Axiom de las últimas 24 horas, las agrupa por causa raíz y te entrega una lista priorizada de los problemas que de verdad vale la pena arreglar hoy.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero cada día laborable a las 8:30, saca las ejecuciones de agente fallidas de vm0 y Axiom de las últimas 24 horas. Agrúpalas por causa raíz (error de esquema de tool, desbordamiento de contexto, timeout del modelo, alucinación de tool call, fallo de autenticación). Ordena por frecuencia e impacto de negocio. Publica los 5 grupos principales en #harness con IDs de ejecución de ejemplo y un siguiente paso sugerido para cada uno."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero muéstrame las ejecuciones de agente fallidas de las últimas 12 horas, agrupadas por causa raíz. Solo los 5 grupos principales."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada lunes a las 9, publica un resumen semanal de tendencias de fallos de agente — qué grupos crecen, cuáles disminuyen, qué tools acumulan más errores."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Xiao",
+            "text": "@Zero configura el triaje diario de ejecuciones de agente a las 8:30. Saca de vm0 + Axiom, agrupa por causa raíz, publica los 5 principales en #harness."
+          },
+          {
+            "name": "Zero",
+            "text": "Programado. Corriendo los días laborables a las 08:30.\n\nEjecución de esta mañana — 142 ejecuciones fallidas, 5 grupos:\n1. Desbordamiento de contexto en agente de research (48 ejecuciones) — desde el cambio de contexto 8k→12k de ayer\n2. Ambigüedad en esquema de tool: `search_docs` (31 ejecuciones) — el modelo elige los params equivocados\n3. Timeout en la tool `fetch_pdf` (28 ejecuciones) — latencia p95 3x más alta desde el martes\n4. Fallo de autenticación en el conector de Notion (19 ejecuciones) — rotación de token a las 02:00 UTC\n5. Nombre de tool alucinado `summarize_v2` (16 ejecuciones) — prompt probablemente desactualizado\n\nCandidato principal para hoy: #1. Fix sugerido en el hilo."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero se conecta a vm0 y Axiom",
+            "description": "Zero consulta vm0 para obtener los registros de ejecuciones fallidas y trae las trazas coincidentes de Axiom. Las dos fuentes se unen por run ID para que cada fallo lleve su contexto completo — mensajes del modelo, tool calls y el punto exacto donde se rompió."
+          },
+          {
+            "title": "Fallos agrupados por causa raíz",
+            "description": "Zero lee la traza de cada fallo — qué tool se llamó, qué vio el modelo, cómo apareció el error — y agrupa las ejecuciones por la causa subyacente. Timeouts, desbordamientos de contexto, desajustes de esquema de tool y llamadas alucinadas forman cada uno su propio grupo."
+          },
+          {
+            "title": "Lista priorizada entregada en Slack",
+            "description": "Zero ordena los grupos por frecuencia, recencia e importancia de los agentes involucrados. Recibes los grupos principales con IDs de ejecución de ejemplo, deltas de tendencia y un siguiente paso sugerido por cada uno."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Traer una traza de ejemplo",
+            "description": "Obtén la traza completa de cualquier ejecución del grupo",
+            "examplePrompt": "@Zero dame la traza completa de la run ID xyz — tool calls, mensajes del modelo y dónde falló."
+          },
+          {
+            "title": "Crear un eval para el grupo principal",
+            "description": "Convierte un fallo recurrente en un eval de regresión",
+            "examplePrompt": "@Zero para el grupo #1 (desbordamiento de contexto en el agente de research), genera un eval mínimo que reproduzca el fallo y abre un PR contra vm0-ai/evals."
+          },
+          {
+            "title": "Vuélvelo rutina",
+            "description": "Programa esto como tarea recurrente",
+            "examplePrompt": "@Zero cada lunes a las 9, publica un resumen semanal de tendencias de fallos de agente en #harness."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "vm0 — Zero lee los registros de ejecuciones de agente, estados y metadatos de traza desde el runtime de vm0."
+          },
+          {
+            "description": "Axiom — Zero consulta trazas detalladas de ejecución y logs de tool calls. Necesario para agrupar por causa raíz."
+          }
+        ],
+        "tips": [
+          "Etiqueta tus agentes con un label `team` para que Zero pueda filtrar el triaje solo a los agentes que tu equipo posee — especialmente útil a escala.",
+          "Incluye un campo `deploy_sha` en tus trazas. Zero lo usa para detectar regresiones que empiezan justo después de un despliegue.",
+          "Encadena esto con el caso error-triage-daily — los fallos de agente y los errores de aplicación suelen compartir causa raíz, y verlos juntos acorta el debugging."
+        ]
       }
     }
   },
