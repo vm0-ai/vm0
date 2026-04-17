@@ -7,9 +7,12 @@ import { useTranslations } from "next-intl";
 import { Link } from "../../../../navigation";
 import Footer from "../../../components/Footer";
 import Particles from "../../../components/Particles";
-import { getAppUrl } from "../../../../src/lib/zero/url";
 import { buildPromptHref } from "../data";
 import type { UseCase, ConnectorRef } from "../data";
+
+// Marketing "Try it" deep-links always funnel to the production app
+// so preview and production builds land visitors somewhere they can sign in.
+const PLATFORM_URL = "https://app.vm0.ai";
 
 interface PromptVariant {
   label: string;
@@ -112,7 +115,7 @@ function PromptVariants({
 export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
   const t = useTranslations("useCases");
   const slug = useCase.slug;
-  const platformUrl = getAppUrl();
+  const platformUrl = PLATFORM_URL;
 
   const promptVariants = t.raw(
     `content.${slug}.promptVariants`,

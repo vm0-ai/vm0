@@ -1535,23 +1535,21 @@ export function getUseCaseBySlug(slug: string): UseCase | undefined {
 }
 
 /**
- * Build a platform deep-link from an arbitrary prompt string and connector list.
+ * Build a platform deep-link from an arbitrary prompt string.
  * Strips a leading `@Zero ` prefix from the prompt if present.
+ * Produces `https://app.vm0.ai?prompt=<encoded>` so the platform can
+ * pre-fill the composer with the use case's prompt.
+ * `_connectors` is accepted for API compatibility but unused.
  */
 export function buildPromptHref(
   prompt: string,
-  connectors: ConnectorRef[],
+  _connectors: ConnectorRef[],
   platformUrl: string,
 ): string {
   const cleaned = prompt.replace(/^@Zero\s+/i, "");
-  const connector = connectors
-    .map((c) => {
-      return c.id;
-    })
-    .join(",");
+  const trimmedBase = platformUrl.replace(/\/+$/, "");
+  if (!cleaned) return trimmedBase;
   const qs = new URLSearchParams();
-  if (cleaned) qs.set("prompt", cleaned);
-  if (connector) qs.set("connector", connector);
-  const query = qs.toString();
-  return query ? `${platformUrl}/?${query}` : platformUrl;
+  qs.set("prompt", cleaned);
+  return `${trimmedBase}?${qs.toString()}`;
 }
