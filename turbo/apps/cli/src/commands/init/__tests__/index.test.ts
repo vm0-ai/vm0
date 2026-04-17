@@ -179,7 +179,7 @@ describe("init command", () => {
       expect(content).toContain(
         "# Build agentic workflow using natural language",
       );
-      expect(content).toContain("# Agent skills");
+      expect(content).not.toContain("skills");
     });
 
     it("should display next steps after creation", async () => {
