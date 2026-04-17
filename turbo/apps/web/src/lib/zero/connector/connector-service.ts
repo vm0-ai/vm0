@@ -301,7 +301,7 @@ export async function upsertOAuthConnector(
   // exchange response lacks `expires_in` so firewall auth can always judge
   // freshness and never hit the null-skip bug from #9836.
   const isRefreshable =
-    type !== "computer" && !!PROVIDER_HANDLERS[type]?.refreshToken;
+    type !== "computer" && !!PROVIDER_HANDLERS[type].refreshToken;
   const fallbackSecs = isRefreshable
     ? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS
     : null;
