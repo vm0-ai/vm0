@@ -118,6 +118,25 @@ function CtaButton({
   );
 }
 
+function AddToSlackButton({ className }: { className?: string }) {
+  return (
+    <a
+      href="/api/zero/slack/oauth/install"
+      aria-label="Add to Slack"
+      className={`inline-flex items-center justify-center ${className ?? ""}`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        alt="Add to Slack"
+        height="40"
+        width="139"
+        src="https://platform.slack-edge.com/img/add_to_slack.png"
+        srcSet="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"
+      />
+    </a>
+  );
+}
+
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <h2 className="landing-heading text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
@@ -1238,6 +1257,7 @@ export default function LandingPage({
                 ctaText={ctaText}
                 ctaHref={ctaHref}
               />
+              <AddToSlackButton />
               <NextLink
                 href="/use-cases"
                 className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-[hsl(var(--gray-300))] px-6 py-3.5 text-base font-medium text-[hsl(var(--foreground))] transition-all hover:bg-[hsl(var(--gray-100))] sm:px-8"
@@ -1612,12 +1632,15 @@ export default function LandingPage({
                   {t("cta.subtitle")}
                 </p>
               </div>
-              <CtaButton
-                isSignedIn={isSignedIn ?? false}
-                ctaText={ctaText}
-                ctaHref={ctaHref}
-                className="shrink-0"
-              />
+              <div className="flex shrink-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
+                <CtaButton
+                  isSignedIn={isSignedIn ?? false}
+                  ctaText={ctaText}
+                  ctaHref={ctaHref}
+                  className="shrink-0"
+                />
+                <AddToSlackButton />
+              </div>
             </div>
           </div>
         </section>
