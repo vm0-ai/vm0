@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.246.2](https://github.com/vm0-ai/vm0/compare/app-v0.246.1...app-v0.246.2) (2026-04-17)
+
+
+### Refactoring
+
+* **platform:** switch chat to paged messages and remove RunLoop ([#9618](https://github.com/vm0-ai/vm0/issues/9618)) ([484e020](https://github.com/vm0-ai/vm0/commit/484e0208633127538570823d84aa2d5b7209c515))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.195.1
+
 ## [0.246.1](https://github.com/vm0-ai/vm0/compare/app-v0.246.0...app-v0.246.1) (2026-04-17)
 
 

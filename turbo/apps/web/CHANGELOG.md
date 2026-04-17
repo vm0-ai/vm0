@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.252.0](https://github.com/vm0-ai/vm0/compare/web-v12.251.1...web-v12.252.0) (2026-04-17)
+
+
+### Features
+
+* **web:** add daily-engineering-brief use case ([#9384](https://github.com/vm0-ai/vm0/issues/9384)) ([c58dc87](https://github.com/vm0-ai/vm0/commit/c58dc8718eb857417b17eafa8fd9bc6ebf7cdd18))
+
+
+### Bug Fixes
+
+* **web:** allow 'Why Zero' heading to wrap on mobile ([#9855](https://github.com/vm0-ai/vm0/issues/9855)) ([0a8c268](https://github.com/vm0-ai/vm0/commit/0a8c2681a6e3032a9397860ba8abe5ca6f1df3af))
+
+
+### Refactoring
+
+* **platform:** switch chat to paged messages and remove RunLoop ([#9618](https://github.com/vm0-ai/vm0/issues/9618)) ([484e020](https://github.com/vm0-ai/vm0/commit/484e0208633127538570823d84aa2d5b7209c515))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.195.1
+
 ## [12.251.1](https://github.com/vm0-ai/vm0/compare/web-v12.251.0...web-v12.251.1) (2026-04-17)
 
 

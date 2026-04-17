@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.26.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.8...sandbox-fc-v0.26.0) (2026-04-17)
+
+
+### Features
+
+* **runner:** inflate sandbox balloon when parked in idle pool ([#9118](https://github.com/vm0-ai/vm0/issues/9118)) ([628032d](https://github.com/vm0-ai/vm0/commit/628032dbf3543d3387b6559263c31ee273f24986))
+* **sandbox-fc:** pause vcpus while sandbox is parked in idle pool ([#9306](https://github.com/vm0-ai/vm0/issues/9306)) ([b7f322e](https://github.com/vm0-ai/vm0/commit/b7f322e247cddb12a061c8639f64efa0fb81f619))
+
+
+### Bug Fixes
+
+* **sandbox-fc:** add drop impl to firecracker factory ([#8962](https://github.com/vm0-ai/vm0/issues/8962)) ([c641d97](https://github.com/vm0-ai/vm0/commit/c641d97b49d70427b977a2228a053d862efd78e3))
+* **sandbox-fc:** fsync output directory after snapshot finalization ([#9839](https://github.com/vm0-ai/vm0/issues/9839)) ([3197baf](https://github.com/vm0-ai/vm0/commit/3197baf1de15f08b8c21d4ab79a47d96d7527542)), closes [#9825](https://github.com/vm0-ai/vm0/issues/9825)
+
+
+### Documentation
+
+* **sandbox-fc:** note firecracker v1.14.1 fsyncs snapshot files ([#9844](https://github.com/vm0-ai/vm0/issues/9844)) ([855e02d](https://github.com/vm0-ai/vm0/commit/855e02d1570d1f73a15909b0ccb115b62c7ea568))
+
+
+### Refactoring
+
+* **runner:** make sandbox_id a first-class identity distinct from run_id ([#9555](https://github.com/vm0-ai/vm0/issues/9555)) ([9cfd2a8](https://github.com/vm0-ai/vm0/commit/9cfd2a8d239f1c54c3c8e25c9adb2759d9b12efa))
+* **runner:** split image hash into rootfs_hash and snapshot_hash ([#9622](https://github.com/vm0-ai/vm0/issues/9622)) ([bbeaa44](https://github.com/vm0-ai/vm0/commit/bbeaa44f59d3066caa78348c45f98617fda18b02))
+* **sandbox-fc:** spawn snapshot-creation firecracker in unshare --mount ([#9506](https://github.com/vm0-ai/vm0/issues/9506)) ([9b40cec](https://github.com/vm0-ai/vm0/commit/9b40cec89aa5a987f0f9bc7b5f9ab1fde148bc21)), closes [#9494](https://github.com/vm0-ai/vm0/issues/9494)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** skip plain namespace pre-warm when proxy is configured ([#9098](https://github.com/vm0-ai/vm0/issues/9098)) ([9e06657](https://github.com/vm0-ai/vm0/commit/9e066579779edf8af5242b3bfd0d83b5d2294584)), closes [#9065](https://github.com/vm0-ai/vm0/issues/9065)
+
 ## [0.25.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.7...sandbox-fc-v0.25.8) (2026-04-17)
 
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.4](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.3...nbd-cow-v0.4.4) (2026-04-17)
+
+
+### Bug Fixes
+
+* **nbd-cow:** fsync parent directory after bitmap rename ([#9827](https://github.com/vm0-ai/vm0/issues/9827)) ([b04f40b](https://github.com/vm0-ai/vm0/commit/b04f40bd39b0a92a776f79205b86e8ef78aca857))
+* **nbd-cow:** track in-flight device indices to prevent duplicate allocation ([#9033](https://github.com/vm0-ai/vm0/issues/9033)) ([4f43ab5](https://github.com/vm0-ai/vm0/commit/4f43ab5b5647d1c1ad61a37c3517b9419270259c)), closes [#9016](https://github.com/vm0-ai/vm0/issues/9016)
+
+
+### Performance Improvements
+
+* **nbd-cow:** drop lock guard before sending error replies ([#9742](https://github.com/vm0-ai/vm0/issues/9742)) ([ea3568c](https://github.com/vm0-ai/vm0/commit/ea3568c567db437b37b3bd9a7b6251f37d5205b2))
+
 ## [0.4.3](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.2...nbd-cow-v0.4.3) (2026-04-17)
 
 

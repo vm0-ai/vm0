@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.83.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.82.4...runner-rs-v0.83.0) (2026-04-17)
+
+
+### Features
+
+* add auth.query support to firewall schema for query-parameter authentication ([#9583](https://github.com/vm0-ai/vm0/issues/9583)) ([c39727a](https://github.com/vm0-ai/vm0/commit/c39727abd12ddd86271294324cf352fe86f96658))
+* add feature flag to control sandbox reuse logic ([#8987](https://github.com/vm0-ai/vm0/issues/8987)) ([e77a8a0](https://github.com/vm0-ai/vm0/commit/e77a8a0c2974d91786f11d7119d87ba8fe07a6dd))
+* **runner:** inflate sandbox balloon when parked in idle pool ([#9118](https://github.com/vm0-ai/vm0/issues/9118)) ([628032d](https://github.com/vm0-ai/vm0/commit/628032dbf3543d3387b6559263c31ee273f24986))
+* **runner:** observe per-call x api connector usage in mitmproxy addon ([#9511](https://github.com/vm0-ai/vm0/issues/9511)) ([1cf4a59](https://github.com/vm0-ai/vm0/commit/1cf4a595a8789b86d9ed5c2f29cba433a99f7dde))
+* **runner:** parse x ndjson streams incrementally and bound buffer ([#9551](https://github.com/vm0-ai/vm0/issues/9551)) ([f82b20d](https://github.com/vm0-ai/vm0/commit/f82b20d50575ba3ea45651fcdde5732348a8bada))
+* **runner:** per-job mitmproxy proxy log files ([#9239](https://github.com/vm0-ai/vm0/issues/9239)) ([1ea7fa4](https://github.com/vm0-ai/vm0/commit/1ea7fa4d2efc1418dc3ac3e6364793f35b8d0ff6)), closes [#9227](https://github.com/vm0-ai/vm0/issues/9227)
+* **runner:** require --force for service stop/uninstall with active jobs ([#9093](https://github.com/vm0-ai/vm0/issues/9093)) ([399164e](https://github.com/vm0-ai/vm0/commit/399164e015d366fec791f1df7542387bb4c7c703))
+* store connector billing in database via webhook ([#9678](https://github.com/vm0-ai/vm0/issues/9678)) ([105724f](https://github.com/vm0-ai/vm0/commit/105724f670637fdc16022907a97d0ab57b0b607c))
+
+
+### Bug Fixes
+
+* **billing:** trust parsed response counts for x connector billing ([#9644](https://github.com/vm0-ai/vm0/issues/9644)) ([321cbf0](https://github.com/vm0-ai/vm0/commit/321cbf0adeb46fa0943be991a0b4652fcf399e77)), closes [#9620](https://github.com/vm0-ai/vm0/issues/9620)
+* **chat:** regenerate chat_messages migration and add eslint exceptions ([a5ee0da](https://github.com/vm0-ai/vm0/commit/a5ee0da96c7588faa573bbe7466b1d5ec516f4af))
+* inject firewall for enabled connectors regardless of secret availability ([#9656](https://github.com/vm0-ai/vm0/issues/9656)) ([3f10868](https://github.com/vm0-ai/vm0/commit/3f108689ff2a595498d27c388726253085270bc6))
+* kill child process on error paths to prevent orphans ([#9267](https://github.com/vm0-ai/vm0/issues/9267)) ([16b1686](https://github.com/vm0-ai/vm0/commit/16b1686449c1913184dba9c93195baff74d107b8))
+* log directory iteration errors in gc instead of silently swallowing ([#9036](https://github.com/vm0-ai/vm0/issues/9036)) ([da6af3c](https://github.com/vm0-ai/vm0/commit/da6af3c67e7beaf4e9fdef5d28958f09cba62e56))
+* log directory iteration errors instead of silently swallowing ([#9333](https://github.com/vm0-ai/vm0/issues/9333)) ([a48fdde](https://github.com/vm0-ai/vm0/commit/a48fdde6bfd523dd1593e23870eb8ea82f40d6b0)), closes [#9037](https://github.com/vm0-ai/vm0/issues/9037)
+* **proxy:** add structured logging for model provider usage report lifecycle ([#9666](https://github.com/vm0-ai/vm0/issues/9666)) ([196d85a](https://github.com/vm0-ai/vm0/commit/196d85a0f1a31f0324ccded23593c8e2b66293ac))
+* rely on keytool rpath for libjli.so in chroot invocations ([#9533](https://github.com/vm0-ai/vm0/issues/9533)) ([3b950af](https://github.com/vm0-ai/vm0/commit/3b950af12bd9dfd98d22123d57a4dc0affef9289)), closes [#9483](https://github.com/vm0-ai/vm0/issues/9483)
+* **runner:** abort stdout drain task on wait_exit timeout or crash ([#9021](https://github.com/vm0-ai/vm0/issues/9021)) ([d6b021e](https://github.com/vm0-ai/vm0/commit/d6b021e5f97b432006e969efd45f3b29debb4909)), closes [#8970](https://github.com/vm0-ai/vm0/issues/8970)
+* **runner:** add --protect-version flag to prevent gc from deleting deployed version ([#9260](https://github.com/vm0-ai/vm0/issues/9260)) ([40de60a](https://github.com/vm0-ai/vm0/commit/40de60afd78b0806d08650f80a5b2269b86df661))
+* **runner:** add cached field to storage manifest for correct cleanup preservation ([#8993](https://github.com/vm0-ai/vm0/issues/8993)) ([d9db456](https://github.com/vm0-ai/vm0/commit/d9db4569ef6f86fdf46063d65a9aad34ca7a6b2a)), closes [#8982](https://github.com/vm0-ai/vm0/issues/8982)
+* **runner:** add drop impl to kmsg handle to prevent task leak on early return ([#8958](https://github.com/vm0-ai/vm0/issues/8958)) ([64c26e6](https://github.com/vm0-ai/vm0/commit/64c26e6adf0785f74ff9217bfde1267a721d3b83))
+* **runner:** add missing doc comment on init_tracing_stderr ([#9553](https://github.com/vm0-ai/vm0/issues/9553)) ([ba44fd4](https://github.com/vm0-ai/vm0/commit/ba44fd497e8d2bb51f721ea7fdbd69a6863e874a))
+* **runner:** add upper-bound validation for profile resource limits ([#9015](https://github.com/vm0-ai/vm0/issues/9015)) ([d774aca](https://github.com/vm0-ai/vm0/commit/d774aca8bb1fa71635fdb15692378e634edc2d10)), closes [#9009](https://github.com/vm0-ai/vm0/issues/9009)
+* **runner:** escape % in systemd values to prevent specifier expansion ([#9499](https://github.com/vm0-ai/vm0/issues/9499)) ([5eb4e12](https://github.com/vm0-ai/vm0/commit/5eb4e12fbe3fb652a0969c163357875ac1c25766))
+* **runner:** escape quotes and backslashes in systemd env values ([#9467](https://github.com/vm0-ai/vm0/issues/9467)) ([b7b5f51](https://github.com/vm0-ai/vm0/commit/b7b5f5155e0e4dfadb16dfc74358d94c4dac9ff1))
+* **runner:** handle quoted paths with spaces in parse_unit_config_path ([#9242](https://github.com/vm0-ai/vm0/issues/9242)) ([53cd507](https://github.com/vm0-ai/vm0/commit/53cd5070285654944ccb661f5f2d916a0cb6cf5e))
+* **runner:** harden mitmproxy usage report flush during shutdown ([#9234](https://github.com/vm0-ai/vm0/issues/9234)) ([08e65c7](https://github.com/vm0-ai/vm0/commit/08e65c76b45358b387a48078320ceb5f19c19e32)), closes [#9228](https://github.com/vm0-ai/vm0/issues/9228)
+* **runner:** include host kernel version in image hash ([#9305](https://github.com/vm0-ai/vm0/issues/9305)) ([b30bc7d](https://github.com/vm0-ai/vm0/commit/b30bc7d447bc88c5753f9d8c30b90c873ccb993d))
+* **runner:** invalidate image cache and skip remote cache on deploy ([#9300](https://github.com/vm0-ai/vm0/issues/9300)) ([67ce548](https://github.com/vm0-ai/vm0/commit/67ce548f3f7a5feff97ba7f882562f5bfef200c6))
+* **runner:** make build-rootfs.sh cleanup safe against umount failure ([#9528](https://github.com/vm0-ai/vm0/issues/9528)) ([7bf8952](https://github.com/vm0-ai/vm0/commit/7bf89529febd1cded732e7c388af1cfd5af17f66))
+* **runner:** narrow is_lock_free error handling to avoid false-positive orphan warnings ([#9268](https://github.com/vm0-ai/vm0/issues/9268)) ([6806c8b](https://github.com/vm0-ai/vm0/commit/6806c8b30d83662636d695b51b259a28626120b6))
+* **runner:** only count successfully removed locks in gc_orphaned_locks ([#9645](https://github.com/vm0-ai/vm0/issues/9645)) ([e364fa0](https://github.com/vm0-ai/vm0/commit/e364fa0150e38926c7a63d2f227f529c3fae1e99)), closes [#9585](https://github.com/vm0-ai/vm0/issues/9585)
+* **runner:** remove claim file when job read or parse fails ([#9740](https://github.com/vm0-ai/vm0/issues/9740)) ([c5df0f6](https://github.com/vm0-ai/vm0/commit/c5df0f6c36b168f823b2fb2af4c708695731dabc)), closes [#9689](https://github.com/vm0-ai/vm0/issues/9689)
+* **runner:** retry dnsmasq startup on port conflict ([#9257](https://github.com/vm0-ai/vm0/issues/9257)) ([3db33df](https://github.com/vm0-ai/vm0/commit/3db33df21828764734f5f0b2b30dbc6ee5303745)), closes [#9250](https://github.com/vm0-ai/vm0/issues/9250)
+* **runner:** shell-quote exec arguments before joining ([#9052](https://github.com/vm0-ai/vm0/issues/9052)) ([44e0d4d](https://github.com/vm0-ai/vm0/commit/44e0d4d0c29146259acce856c3d6642a90441f6c))
+* **runner:** stop poison job loop and unblock submitter on invalid job json ([#9748](https://github.com/vm0-ai/vm0/issues/9748)) ([4d4de58](https://github.com/vm0-ai/vm0/commit/4d4de5897dfc715b0b555c2c4e49a5f6c999b1d1))
+* **runner:** switch log timestamps from elapsed-since-startup to wall-clock utc ([#9232](https://github.com/vm0-ai/vm0/issues/9232)) ([216f251](https://github.com/vm0-ai/vm0/commit/216f251989445c06e0b0b9e3335370bd2622cbd5))
+* **runner:** use continue instead of break on /proc entry read error ([#9661](https://github.com/vm0-ai/vm0/issues/9661)) ([96fa8b5](https://github.com/vm0-ai/vm0/commit/96fa8b53199fa50ecc962cf9cbd8ac7d8574d1dd)), closes [#9657](https://github.com/vm0-ai/vm0/issues/9657)
+* **runner:** use proper url parsing for .test tld check in doctor ([#9237](https://github.com/vm0-ai/vm0/issues/9237)) ([6f5dd87](https://github.com/vm0-ai/vm0/commit/6f5dd8707f850a4d1b0766ce3bd9b0ab83b0ca78))
+* **runner:** validate --concurrency-factor in run_config before writing config ([#9653](https://github.com/vm0-ai/vm0/issues/9653)) ([4b5d0bb](https://github.com/vm0-ai/vm0/commit/4b5d0bbaf78219feceb2d55b492611825af76769)), closes [#9650](https://github.com/vm0-ai/vm0/issues/9650)
+* **runner:** validate --group name to prevent path traversal ([#9104](https://github.com/vm0-ai/vm0/issues/9104)) ([b7e75dc](https://github.com/vm0-ai/vm0/commit/b7e75dc2f74419c441c6e62eda3db1bd3cf93f87)), closes [#9099](https://github.com/vm0-ai/vm0/issues/9099)
+* **runner:** validate --runner-dirname to prevent path traversal ([#9134](https://github.com/vm0-ai/vm0/issues/9134)) ([b511508](https://github.com/vm0-ai/vm0/commit/b51150884503ecc81e3180737ea11ca12b46f127))
+* **runner:** validate image_hash to prevent path traversal ([#9178](https://github.com/vm0-ai/vm0/issues/9178)) ([2e4d3e2](https://github.com/vm0-ai/vm0/commit/2e4d3e2adce1076161346f244ad00b8f8d308353))
+* **runner:** verify ca landed in system bundle after inject-ca ([#9530](https://github.com/vm0-ai/vm0/issues/9530)) ([951aa87](https://github.com/vm0-ai/vm0/commit/951aa87ff5862db4e8df710677b6d61e9257bcec))
+* **runner:** wait for proxy usage reports to flush before stopping mitmdump ([#9687](https://github.com/vm0-ai/vm0/issues/9687)) ([3518dcd](https://github.com/vm0-ai/vm0/commit/3518dcdfaf3f69fe16a618fa2b9069f9dfeabcab))
+* **runner:** write systemd unit file atomically via tmp + rename ([#9503](https://github.com/vm0-ai/vm0/issues/9503)) ([c113be1](https://github.com/vm0-ai/vm0/commit/c113be117bce16402574be59a5073f3d2c650f50)), closes [#9471](https://github.com/vm0-ai/vm0/issues/9471)
+* **security:** scope anthropic firewall to /v1/messages path prefix ([#9566](https://github.com/vm0-ai/vm0/issues/9566)) ([8e94112](https://github.com/vm0-ai/vm0/commit/8e9411224f069fa690edf6fb899e0679359d907a)), closes [#9560](https://github.com/vm0-ai/vm0/issues/9560)
+* split r2 image cache to rootfs only with local snapshot creation ([#9461](https://github.com/vm0-ai/vm0/issues/9461)) ([417b864](https://github.com/vm0-ai/vm0/commit/417b864287b05d84295c5f6e28ce3f75e6289469))
+* upgrade debug-level log to warn in gc read_to_string failure ([#9345](https://github.com/vm0-ai/vm0/issues/9345)) ([8a0813e](https://github.com/vm0-ai/vm0/commit/8a0813eb79ec673c22c0881bfec66e75986869c3)), closes [#9334](https://github.com/vm0-ai/vm0/issues/9334)
+
+
+### Refactoring
+
+* **chat:** decouple chat threads from runs with dedicated chat_messages table ([#9296](https://github.com/vm0-ai/vm0/issues/9296)) ([a5ee0da](https://github.com/vm0-ai/vm0/commit/a5ee0da96c7588faa573bbe7466b1d5ec516f4af))
+* **firewalls:** make auth.headers optional in firewall schema ([#9617](https://github.com/vm0-ai/vm0/issues/9617)) ([657b74f](https://github.com/vm0-ai/vm0/commit/657b74fcb19080e58a61ec7d1005eec89a617627))
+* **proxy:** return connector types instead of missing secret names in 424 response ([#9676](https://github.com/vm0-ai/vm0/issues/9676)) ([1de69bb](https://github.com/vm0-ai/vm0/commit/1de69bbc9648daf8447bb99027ffbf4b264b720f))
+* **runner:** deduplicate guest state restore in executor ([#9289](https://github.com/vm0-ai/vm0/issues/9289)) ([fea8ef2](https://github.com/vm0-ai/vm0/commit/fea8ef2055cec702bd72bf488f711c4bafc20754))
+* **runner:** make sandbox_id a first-class identity distinct from run_id ([#9555](https://github.com/vm0-ai/vm0/issues/9555)) ([9cfd2a8](https://github.com/vm0-ai/vm0/commit/9cfd2a8d239f1c54c3c8e25c9adb2759d9b12efa))
+* **runner:** split image hash into rootfs_hash and snapshot_hash ([#9622](https://github.com/vm0-ai/vm0/issues/9622)) ([bbeaa44](https://github.com/vm0-ai/vm0/commit/bbeaa44f59d3066caa78348c45f98617fda18b02))
+* **runner:** split mitm_addon.py into usage.py and body_utils.py ([#9478](https://github.com/vm0-ai/vm0/issues/9478)) ([7be4518](https://github.com/vm0-ai/vm0/commit/7be4518db26eeccad810c4d18b13f1b81c109975))
+* **runner:** surface r2 gc pagination invariant violations as errors ([#9200](https://github.com/vm0-ai/vm0/issues/9200)) ([186405a](https://github.com/vm0-ai/vm0/commit/186405af8df8ceeba22cee0295e7cc6657d7d652))
+* **runner:** unify runner-dirname and service-name validators ([#9319](https://github.com/vm0-ai/vm0/issues/9319)) ([4ffa81f](https://github.com/vm0-ai/vm0/commit/4ffa81f15546b49735cb58fd1aa55c9a862351a2)), closes [#9145](https://github.com/vm0-ai/vm0/issues/9145)
+* use proxy-reported usage as billing source of truth ([#9064](https://github.com/vm0-ai/vm0/issues/9064)) ([b655964](https://github.com/vm0-ai/vm0/commit/b65596423f8655117ebd67c38731eb5f35c332b7))
+
+
+### Performance Improvements
+
+* **runner:** cache built images on r2 ([#9120](https://github.com/vm0-ai/vm0/issues/9120)) ([bf2f2cd](https://github.com/vm0-ai/vm0/commit/bf2f2cdeb2956cee5fc5f7466e147d1c4351d3d0))
+* **runner:** offload dns and kmsg_log file i/o to blocking pool ([#9741](https://github.com/vm0-ai/vm0/issues/9741)) ([4858807](https://github.com/vm0-ai/vm0/commit/48588070b96a00256857abb90d790c5f43fdaa75))
+
 ## [0.82.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.82.3...runner-rs-v0.82.4) (2026-04-17)
 
 ## [0.82.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.82.2...runner-rs-v0.82.3) (2026-04-17)
