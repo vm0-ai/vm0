@@ -1,4 +1,5 @@
 import { eq, and } from "drizzle-orm";
+import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { slackOrgInstallations } from "../../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../../db/schema/slack-org-thread-session";
@@ -137,23 +138,39 @@ export async function setUserAgentPreference(opts: {
 /**
  * Resolve the compose that should respond for this user.
  *
- * Prefers the user's override from `slack_user_agent_preferences`, falling
- * back to the org default when no override is set or the overridden agent is
- * no longer accessible in the org.
+ * Resolution order:
+ *   1. If the `SlackAgentSwitch` feature is gated off for the org, skip the
+ *      override path entirely — every user falls back to the org default.
+ *      This makes the feature switch authoritative: turning it off for an org
+ *      immediately stops honoring any persisted overrides, even ones set
+ *      while the feature was previously enabled.
+ *   2. If a row exists in `slack_user_agent_preferences` and its
+ *      `selectedComposeId` still points to an agent that (a) exists and
+ *      (b) belongs to the given org, use it. The org check is a stale-pointer
+ *      guard: an override can linger after the target compose is deleted,
+ *      archived, or moved to a different org, and silently falling back to
+ *      the default is preferable to returning a stale/unauthorized agent.
+ *   3. Otherwise return the org default compose id (may be null if the org
+ *      has no default configured — callers must handle that).
+ *
+ * This function is called by the mention / DM / App Home handlers; it must
+ * stay cheap (single indexed read + optional zero_agents lookup).
  */
 export async function resolveEffectiveComposeId(
   vm0UserId: string,
   orgId: string,
 ): Promise<string | null> {
-  const override = await getUserAgentPreference(vm0UserId, orgId);
-  if (override) {
-    const [row] = await globalThis.services.db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
-      .limit(1);
-    if (row?.id) {
-      return override;
+  if (isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, { orgId })) {
+    const override = await getUserAgentPreference(vm0UserId, orgId);
+    if (override) {
+      const [row] = await globalThis.services.db
+        .select({ id: zeroAgents.id })
+        .from(zeroAgents)
+        .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
+        .limit(1);
+      if (row?.id) {
+        return override;
+      }
     }
   }
   return resolveDefaultComposeId(orgId);

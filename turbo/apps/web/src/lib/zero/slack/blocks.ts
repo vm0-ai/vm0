@@ -330,9 +330,19 @@ export function buildWelcomeMessage(
 /**
  * Build a help message
  *
+ * @param opts.canSwitch - Whether `/zero switch` is available for the caller.
+ *   When `false`, the switch line is omitted so users aren't shown a command
+ *   they cannot use. Defaults to `false` (the safe choice when the caller has
+ *   no user/org context yet, e.g. pre-installation help).
  * @returns Block Kit blocks
  */
-export function buildHelpMessage(): (Block | KnownBlock)[] {
+export function buildHelpMessage(opts?: {
+  canSwitch?: boolean;
+}): (Block | KnownBlock)[] {
+  const canSwitch = opts?.canSwitch ?? false;
+  const switchLine = canSwitch
+    ? "\n\u2022 `/zero switch` - Choose which agent responds to your messages"
+    : "";
   return [
     {
       type: "section",
@@ -348,7 +358,7 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero\n\u2022 \`/zero switch\` - Choose which agent responds to your messages\n\u2022 \`/zero disconnect\` - Disconnect from Zero`,
+        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero${switchLine}\n\u2022 \`/zero disconnect\` - Disconnect from Zero`,
       },
     },
     {
