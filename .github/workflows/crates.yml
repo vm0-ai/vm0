@@ -902,6 +902,7 @@ jobs:
           BIN_DIR=$1; JOB_REF=$2
           RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-drain"
           SVC="${JOB_REF}-drain"
+          UNIT="vm0-runner-${SVC}.service"
           GROUP="vm0/drain-${JOB_REF}"
 
           fail() { echo "FAIL: $1"; exit 1; }
@@ -955,7 +956,7 @@ jobs:
           echo "PASS: mode=draining"
 
           # Unit must still be active — the in-flight job keeps it alive.
-          sudo systemctl is-active --quiet "$SVC.service" \
+          sudo systemctl is-active --quiet "$UNIT" \
             || fail "unit should still be active during Draining"
 
           # Test 2: a job submitted *during* Draining must stay pending —
@@ -1026,10 +1027,10 @@ jobs:
           sudo "$BIN_DIR/runner" service drain --name "$SVC" || fail "second drain failed"
 
           for i in $(seq 1 30); do
-            sudo systemctl is-active --quiet "$SVC.service" || break
+            sudo systemctl is-active --quiet "$UNIT" || break
             sleep 1
           done
-          if sudo systemctl is-active --quiet "$SVC.service"; then
+          if sudo systemctl is-active --quiet "$UNIT"; then
             fail "unit still active 30s after drain on idle runner"
           fi
           echo "PASS: unit stopped via auto-Stop"
