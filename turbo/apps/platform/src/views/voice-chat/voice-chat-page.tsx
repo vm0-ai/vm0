@@ -109,35 +109,44 @@ function StatusBadge({
   );
 }
 
+function VoiceChatStatusHeader({
+  status,
+  reconnectAttempt,
+  elapsedSeconds,
+}: {
+  status: ConnectionStatus;
+  reconnectAttempt?: number;
+  elapsedSeconds: number;
+}) {
+  return (
+    <div className="shrink-0 border-b px-4 py-2 flex items-center justify-center gap-2">
+      <StatusBadge status={status} reconnectAttempt={reconnectAttempt} />
+      {status === "preparing" && elapsedSeconds > 0 && (
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {Math.floor(elapsedSeconds / 60)}:
+          {String(elapsedSeconds % 60).padStart(2, "0")}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function VoiceChatFooter({
   status,
   muted,
   toggleMute,
   onEnd,
   onRetry,
-  reconnectAttempt,
-  elapsedSeconds,
 }: {
   status: ConnectionStatus;
   muted: boolean;
   toggleMute: () => void;
   onEnd: () => void;
   onRetry: () => void;
-  reconnectAttempt?: number;
-  elapsedSeconds: number;
 }) {
   return (
-    <div className="border-t">
-      <div className="px-4 pt-2 flex items-center justify-center gap-2">
-        <StatusBadge status={status} reconnectAttempt={reconnectAttempt} />
-        {status === "preparing" && elapsedSeconds > 0 && (
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {Math.floor(elapsedSeconds / 60)}:
-            {String(elapsedSeconds % 60).padStart(2, "0")}
-          </span>
-        )}
-      </div>
-      <div className="px-4 pt-2 pb-3 flex items-center justify-center gap-3">
+    <div className="shrink-0 border-t">
+      <div className="px-4 pt-3 pb-3 flex items-center justify-center gap-3">
         {status === "preparing" ? (
           <Button
             variant="destructive"
@@ -367,7 +376,7 @@ export function VoiceChatPage() {
 
   if (enabled === false) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
+      <div className="flex flex-1 flex-col items-center justify-center min-h-0 gap-4 p-8">
         <h1 className="text-2xl font-bold">Voice Chat</h1>
         <p className="text-muted-foreground">
           Voice chat is not available for your account.
@@ -378,7 +387,7 @@ export function VoiceChatPage() {
 
   if (status === "idle") {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
+      <div className="flex flex-1 flex-col items-center justify-center min-h-0 gap-6 p-8">
         <h1 className="text-2xl font-bold">Voice Chat</h1>
         {error && (
           <p className="text-sm text-destructive max-w-md text-center">
@@ -429,10 +438,16 @@ export function VoiceChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-1 flex-col min-h-0">
+      <VoiceChatStatusHeader
+        status={status}
+        reconnectAttempt={reconnectAttempt}
+        elapsedSeconds={elapsedSeconds}
+      />
+
       {/* Prompt banner */}
       {prompt && (
-        <div className="border-b px-4 py-3">
+        <div className="shrink-0 border-b px-4 py-3">
           <p className="text-sm text-muted-foreground">Your prompt:</p>
           <p className="text-sm mt-1">{prompt}</p>
         </div>
@@ -440,13 +455,13 @@ export function VoiceChatPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="bg-destructive/10 text-destructive px-4 py-2 text-sm">
+        <div className="shrink-0 bg-destructive/10 text-destructive px-4 py-2 text-sm">
           {error}
         </div>
       )}
 
       {/* Main content: unified conversation view */}
-      <div ref={setScrollContainer} className="flex-1 overflow-y-auto">
+      <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto">
         <div className="mx-auto w-full max-w-[900px] px-4 pt-4 pb-8">
           <div className="flex flex-col gap-4">
             {conversationItems.length === 0 && (
@@ -491,8 +506,6 @@ export function VoiceChatPage() {
         onRetry={() => {
           detach(retrySession(pageSignal), Reason.DomCallback);
         }}
-        reconnectAttempt={reconnectAttempt}
-        elapsedSeconds={elapsedSeconds}
       />
     </div>
   );
