@@ -93,11 +93,11 @@ export async function POST(request: Request) {
 
     initServices();
 
-    after(
-      handleIssuesEvent(parsed.data, GITHUB_APP_SLUG).catch((error) => {
+    after(() => {
+      return handleIssuesEvent(parsed.data, GITHUB_APP_SLUG).catch((error) => {
         log.error("Error handling issues event", { error });
-      }),
-    );
+      });
+    });
 
     return new Response("OK", { status: 200 });
   }
@@ -116,11 +116,13 @@ export async function POST(request: Request) {
 
     initServices();
 
-    after(
-      handleIssueCommentEvent(parsed.data, GITHUB_APP_SLUG).catch((error) => {
-        log.error("Error handling issue_comment event", { error });
-      }),
-    );
+    after(() => {
+      return handleIssueCommentEvent(parsed.data, GITHUB_APP_SLUG).catch(
+        (error) => {
+          log.error("Error handling issue_comment event", { error });
+        },
+      );
+    });
 
     return new Response("OK", { status: 200 });
   }
@@ -137,11 +139,11 @@ export async function POST(request: Request) {
 
     initServices();
 
-    after(
-      handleInstallationCreatedEvent(parsed.data).catch((error) => {
+    after(() => {
+      return handleInstallationCreatedEvent(parsed.data).catch((error) => {
         log.error("Error handling installation event", { error });
-      }),
-    );
+      });
+    });
 
     return new Response("OK", { status: 200 });
   }

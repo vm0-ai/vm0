@@ -20,39 +20,10 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { POST } from "../route";
 import { reloadEnv } from "../../../../../src/env";
 
-// Mock Next.js after() to capture callbacks for controlled execution.
-// Supports both function and promise arguments to match Next.js behavior.
-const afterPromises: Promise<unknown>[] = [];
-vi.mock("next/server", async (importOriginal) => {
-  const original = await importOriginal<typeof import("next/server")>();
-  return {
-    ...original,
-    after: (fnOrPromise: (() => Promise<unknown>) | Promise<unknown>) => {
-      if (typeof fnOrPromise === "function") {
-        afterPromises.push(
-          Promise.resolve().then(() => {
-            return fnOrPromise();
-          }),
-        );
-      } else {
-        afterPromises.push(fnOrPromise);
-      }
-    },
-  };
-});
-
 const context = testContext();
 
 const TEST_WEBHOOK_SECRET = "test-github-webhook-secret";
 const TEST_APP_SLUG = "vm0-bot";
-
-/** Wait for all after() callbacks to complete, including nested ones. */
-async function flushAfterCallbacks() {
-  while (afterPromises.length > 0) {
-    const pending = afterPromises.splice(0, afterPromises.length);
-    await Promise.all(pending);
-  }
-}
 
 /** Sign a payload with HMAC-SHA256 matching GitHub's format */
 function signPayload(body: string, secret: string): string {
@@ -161,7 +132,6 @@ function buildIssueCommentPayload(overrides?: CommentPayloadOverrides) {
 
 describe("POST /api/webhooks/github", () => {
   beforeEach(() => {
-    afterPromises.length = 0;
     context.setupMocks();
 
     // Stub GitHub App env vars
@@ -258,7 +228,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // Then a run should have been created
       const run = await findMostRecentRunForUser(userId, orgId);
@@ -291,7 +261,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       const run = await findMostRecentRunForUser(userId, orgId);
       expect(run).toBeDefined();
@@ -313,7 +283,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       const run = await findMostRecentRunForUser(userId, orgId);
       expect(run).toBeUndefined();
@@ -339,7 +309,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       const run = await findMostRecentRunForUser(userId, orgId);
       expect(run).toBeUndefined();
@@ -362,7 +332,7 @@ describe("POST /api/webhooks/github", () => {
         const response = await POST(request);
         expect(response.status).toBe(200);
 
-        await flushAfterCallbacks();
+        await context.mocks.flushAfter();
       }
 
       const run = await findMostRecentRunForUser(userId, orgId);
@@ -386,7 +356,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // When body is null, falls back to issue title in appendSystemPrompt
       const run = await findMostRecentRunForUser(userId, orgId);
@@ -415,7 +385,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // Label alone should NOT trigger — bot mention is required
       const run = await findMostRecentRunForUser(userId, orgId);
@@ -438,7 +408,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       const run = await findMostRecentRunForUser(userId, orgId);
       expect(run).toBeDefined();
@@ -460,7 +430,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       const run = await findMostRecentRunForUser(userId, orgId);
       expect(run).toBeUndefined();
@@ -484,7 +454,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       const run = await findMostRecentRunForUser(userId, orgId);
       expect(run).toBeUndefined();
@@ -507,7 +477,7 @@ describe("POST /api/webhooks/github", () => {
         const response = await POST(request);
         expect(response.status).toBe(200);
 
-        await flushAfterCallbacks();
+        await context.mocks.flushAfter();
       }
 
       const run = await findMostRecentRunForUser(userId, orgId);
@@ -529,7 +499,7 @@ describe("POST /api/webhooks/github", () => {
       expect(response.status).toBe(200);
 
       // The error thrown in dispatchAgentRun is caught by the .catch() in route.ts
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // No run should be created since the installation doesn't exist
       // (no userId/orgId available to query, so we just verify 200 response above)
@@ -613,7 +583,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // Verify the pending installation was activated
       const installations =
@@ -638,7 +608,7 @@ describe("POST /api/webhooks/github", () => {
       expect(response.status).toBe(200);
 
       // Should complete without error (no pending record to activate)
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
     });
 
     it("should ignore non-created installation actions", async () => {
@@ -652,7 +622,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
     });
   });
 
@@ -691,7 +661,7 @@ describe("POST /api/webhooks/github", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      await flushAfterCallbacks();
+      await context.mocks.flushAfter();
 
       // Verify a run was created
       const run = await findMostRecentRunForUser(userId, orgId);
@@ -707,6 +677,64 @@ describe("POST /api/webhooks/github", () => {
       };
       expect(payload.repo).toBe("owner/repo");
       expect(payload.issueNumber).toBe(42);
+    });
+  });
+
+  // Regression: handleIssuesEvent / handleIssueCommentEvent route through
+  // createZeroRun, which registers a nested after() for Phase 2 dispatch.
+  // If the route registers the outer after() with an already-started promise,
+  // the nested after() is scheduled after the Next.js request context has
+  // been finalized and Phase 2 dispatch never runs — runs remain Pending
+  // forever. Asserting callback form ("fn") here guards that contract.
+  describe("after() callback form (nested-after propagation)", () => {
+    it("registers issues handler via callback form", async () => {
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
+
+      const request = createGitHubWebhookRequest(
+        "issues",
+        buildIssuesPayload({
+          action: "opened",
+          labels: [{ id: 1, name: TEST_APP_SLUG }],
+          installationId: ghInstallationId,
+          senderId: Number(githubUserId),
+        }),
+      );
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers issue_comment handler via callback form", async () => {
+      const { ghInstallationId, githubUserId } =
+        await givenGitHubInstallation();
+
+      const request = createGitHubWebhookRequest(
+        "issue_comment",
+        buildIssueCommentPayload({
+          labels: [],
+          commentBody: `@${TEST_APP_SLUG}[bot] please review`,
+          installationId: ghInstallationId,
+          senderId: Number(githubUserId),
+        }),
+      );
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers installation handler via callback form", async () => {
+      const request = createGitHubWebhookRequest("installation", {
+        action: "created",
+        installation: {
+          id: 88888,
+          account: { id: 77777, login: "test-org", type: "Organization" },
+        },
+        sender: { id: 12345, login: "installer-user" },
+      });
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
     });
   });
 });
