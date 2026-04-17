@@ -18,6 +18,7 @@ import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { reloadEnv } from "../../../../../src/env";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
+import * as activityLogService from "../../../../../src/lib/infra/run/activity-log-service";
 
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
@@ -546,6 +547,71 @@ describe("POST /api/zero/report-error", () => {
     const response = await postReportError({ runId, title: "Bug" });
     expect(response.status).toBe(200);
     expect((await response.json()).reference).toBeDefined();
+  });
+
+  it("should still submit bundle when one run's activity log assembly throws", async () => {
+    const sessionId = randomUUID();
+
+    const compose1 = await createTestCompose(`agent-${uniqueId("rpt")}`);
+    const { runId: firstRunId } = await seedTestRun(
+      userId,
+      compose1.composeId,
+      {
+        status: "completed",
+        prompt: "First prompt",
+        createdAt: new Date("2024-01-01T00:00:00Z"),
+        result: { agentSessionId: sessionId },
+      },
+    );
+
+    const compose2 = await createTestCompose(`agent-${uniqueId("rpt")}`);
+    const { runId: failedRunId } = await seedTestRun(
+      userId,
+      compose2.composeId,
+      {
+        status: "failed",
+        prompt: "Second prompt",
+        createdAt: new Date("2024-01-01T01:00:00Z"),
+        continuedFromSessionId: sessionId,
+      },
+    );
+
+    const originalAssemble = activityLogService.assembleActivityLog;
+    const spy = vi
+      .spyOn(activityLogService, "assembleActivityLog")
+      .mockImplementation((runId, run, agent) => {
+        if (runId === firstRunId) {
+          return Promise.reject(new Error("simulated assembly failure"));
+        }
+        return originalAssemble(runId, run, agent);
+      });
+
+    try {
+      const response = await postReportError({
+        runId: failedRunId,
+        title: "Resilience test",
+      });
+      expect(response.status).toBe(200);
+
+      const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
+        .calls[0]![2] as Buffer;
+      const zip = new AdmZip(zipBuffer);
+      const activityLogEntries = zip.getEntries().filter((e) => {
+        return e.entryName.startsWith("activity-log-");
+      });
+      expect(activityLogEntries).toHaveLength(2);
+
+      const contents = activityLogEntries.map((e) => {
+        return JSON.parse(e.getData().toString("utf-8"));
+      });
+      const erroredEntry = contents.find((c) => {
+        return typeof c.error === "string" && c.error.includes("simulated");
+      });
+      expect(erroredEntry).toBeDefined();
+      expect(erroredEntry.runId).toBe(firstRunId);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   // -------------------------------------------------------------------------

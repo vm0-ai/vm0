@@ -143,10 +143,18 @@ export async function submitDiagnosticBundle(
     promptCount: promptEvents.length,
   });
 
-  // Assemble activity logs for all session runs
+  // Assemble activity logs for all session runs. Isolate per-run failures so
+  // one bad run (e.g. missing axiom events, stale schema) does not block the
+  // entire diagnostic bundle submit.
   const activityLogs = await Promise.all(
     sessionRuns.map((r) => {
-      return assembleActivityLog(r.id, r, agentConfig);
+      return assembleActivityLog(r.id, r, agentConfig).catch((err) => {
+        log.warn("Failed to assemble activity log for run", {
+          runId: r.id,
+          error: String(err),
+        });
+        return { error: String(err), runId: r.id };
+      });
     }),
   );
 
