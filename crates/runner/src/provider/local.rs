@@ -225,6 +225,13 @@ impl JobProvider for LocalProvider {
                 //   2. write .result via complete() — notifies the submitter;
                 //   3. remove .job — only after the submitter has a result, so
                 //      a complete() failure keeps .job around for retry.
+                //
+                // Retry is safe: complete() uses tmp + rename, so a partial
+                // first attempt leaves no observable .result, and a later
+                // attempt atomically replaces whatever is there. Multi-runner
+                // race (A and B both handle the same poison) is benign for the
+                // same reason — both write the same parse error, last rename
+                // wins, submitter sees one consistent result.
                 let _ = std::fs::remove_file(&claim_file);
                 self.complete(run_id, 1, Some(&format!("invalid job JSON: {e}")))
                     .await;
