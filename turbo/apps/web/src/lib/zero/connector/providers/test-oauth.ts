@@ -11,6 +11,8 @@
 
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { POST as tokenRouteHandler } from "../../../../../app/api/test/oauth-provider/token/route";
+import { GET as userinfoRouteHandler } from "../../../../../app/api/test/oauth-provider/userinfo/route";
 import { env } from "../../../../env";
 import { throwOAuthError } from "./oauth-error";
 
@@ -72,29 +74,36 @@ const tokenResponseSchema = z.object({
 });
 
 /**
- * When running on a Vercel preview deployment, our own server-to-self
- * fetches to /api/test/oauth-provider/* still transit the Vercel edge and
- * hit preview-deployment protection unless we carry the bypass secret.
- * Production/local-dev don't set this, so the header is only added when
- * the secret is present.
+ * Invoke the fake token route handler in-process.
+ *
+ * We intentionally do NOT round-trip through fetch(url): on Vercel preview
+ * deployments, server-to-self fetches still transit the edge and hit
+ * preview-deployment protection, which we'd need to carry an env-scoped
+ * bypass secret past. Since this whole provider is a test fixture in the
+ * same Next.js app, calling the handler directly is both simpler and
+ * edge-independent. (The handler itself is env-guarded by
+ * isTestEndpointAllowed so there's no new attack surface.)
  */
-function testEndpointFetchHeaders(): Record<string, string> {
-  const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
-  return bypass ? { "x-vercel-protection-bypass": bypass } : {};
-}
-
 async function postToken(
   body: URLSearchParams,
   operation: "exchange" | "refresh",
 ): Promise<TokenResponse> {
-  const response = await fetch(getTokenUrl(), {
+  const request = new Request(getTokenUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      ...testEndpointFetchHeaders(),
+      // Route handler gates on isTestEndpointAllowed; mimic the preview
+      // bypass header the same way the bats-side helpers do.
+      ...(env().VERCEL_AUTOMATION_BYPASS_SECRET
+        ? {
+            "x-vercel-protection-bypass":
+              env().VERCEL_AUTOMATION_BYPASS_SECRET ?? "",
+          }
+        : {}),
     },
     body,
   });
+  const response = await tokenRouteHandler(request);
 
   if (!response.ok) {
     await throwOAuthError("TestOAuth", operation, response);
@@ -150,12 +159,18 @@ export async function fetchTestOAuthUserInfo(
   // userinfo is not part of the OAuth 2 spec's tokenUrl/authorizationUrl
   // pair so ConnectorOAuthConfig doesn't carry it. Derive from the same app.
   const base = env().NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
-  const response = await fetch(`${base}/api/test/oauth-provider/userinfo`, {
+  const request = new Request(`${base}/api/test/oauth-provider/userinfo`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      ...testEndpointFetchHeaders(),
+      ...(env().VERCEL_AUTOMATION_BYPASS_SECRET
+        ? {
+            "x-vercel-protection-bypass":
+              env().VERCEL_AUTOMATION_BYPASS_SECRET ?? "",
+          }
+        : {}),
     },
   });
+  const response = userinfoRouteHandler(request);
 
   if (!response.ok) {
     throw new Error(`Test OAuth userinfo failed: ${response.status}`);
