@@ -164,19 +164,17 @@ jobs:
                   type: mrkdwn
                   text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Deploy web app to production
-  deploy-web-production:
-    needs: [release-please, migrate-production]
+  # Build web app production deployment (Staged - prod-eligible, not serving traffic)
+  build-web-production:
+    needs: release-please
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260416
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
-      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
     permissions:
       contents: read
-      deployments: write
     environment: production
     steps:
       - uses: actions/checkout@v6
@@ -194,12 +192,12 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Web App* deploying to production..."
+            text: "*Web App* building staged production deployment..."
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Web App* deploying to production...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+                  text: "*Web App* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
       - name: Record start time
         id: timer
@@ -214,7 +212,7 @@ jobs:
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
-      - name: Deploy Web to Vercel Production
+      - name: Build Web Staged Production Deployment
         id: deploy
         uses: ./.github/actions/vercel-deploy
         with:
@@ -223,6 +221,10 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
           environment: production
           deployment-env: web
+          prebuilt: "true"
+          skip-domain: "true"
+          skip-start: "true"
+          skip-finish: "true"
           environment-variables: |
             DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
             VM0_API_URL=${{ vars.VM0_API_URL }}
@@ -344,13 +346,123 @@ jobs:
             GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
             GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
 
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Web App* ✅ Staged build ready (not yet serving)"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Web App* ❌ Staged build failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Promote web staged deployment to production (traffic switch)
+  promote-web-production:
+    needs: [release-please, migrate-production, build-web-production]
+    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+    outputs:
+      deployment_url: ${{ needs.build-web-production.outputs.deployment_url }}
+      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: web/production
+          ref: ${{ github.ref }}
+          desc: Promoting web staged deployment to production
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Web App* promoting staged deployment to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Promote Web Deployment
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
+          deployment-url: ${{ needs.build-web-production.outputs.deployment_url }}
+
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
-        if: ${{ steps.deploy.outputs.url != '' }}
+        if: ${{ needs.build-web-production.outputs.deployment_url != '' }}
         uses: ./.github/actions/vercel-dashboard-url
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          deployment-url: ${{ steps.deploy.outputs.url }}
+          deployment-url: ${{ needs.build-web-production.outputs.deployment_url }}
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.vercel-dashboard.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
       - name: Calculate duration
         id: duration
@@ -372,12 +484,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Web App* ✅ Deployed successfully"
+            text: "*Web App* ✅ Promoted to production"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Web App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+                  text: "*Web App* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -388,28 +500,24 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Web App* ❌ Deploy failed"
+            text: "*Web App* ❌ Promote failed — DB at new schema, traffic on old code"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Web App* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Web App* ❌ Promote failed — DB at new schema, traffic on old code\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Deploy app (Vite SPA) to production
-  deploy-app-production:
-    needs: [release-please, migrate-production, deploy-web-production]
-    if: >-
-      !failure() && !cancelled() &&
-      needs.release-please.outputs.app_release_created == 'true'
+  # Build app (Vite SPA) production deployment (Staged)
+  build-app-production:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.app_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260416
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
-      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
     permissions:
       contents: read
-      deployments: write
     environment: production
     steps:
       - uses: actions/checkout@v6
@@ -424,18 +532,18 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*App* deploying to production..."
+            text: "*App* building staged production deployment..."
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* deploying to production...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
+                  text: "*App* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
 
       - name: Record start time
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy App to Vercel Production
+      - name: Build App Staged Production Deployment
         id: deploy
         uses: ./.github/actions/vercel-deploy
         with:
@@ -444,6 +552,10 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
           environment: production
           deployment-env: app
+          prebuilt: "true"
+          skip-domain: "true"
+          skip-start: "true"
+          skip-finish: "true"
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=https://www.vm0.ai
@@ -453,14 +565,6 @@ jobs:
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
-
-      - name: Resolve Vercel dashboard URL
-        id: vercel-dashboard
-        if: ${{ steps.deploy.outputs.url != '' }}
-        uses: ./.github/actions/vercel-dashboard-url
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          deployment-url: ${{ steps.deploy.outputs.url }}
 
       - name: Calculate duration
         id: duration
@@ -482,12 +586,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ✅ Deployed successfully"
+            text: "*App* ✅ Staged build ready (not yet serving)"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+                  text: "*App* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -498,19 +602,139 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ❌ Deploy failed"
+            text: "*App* ❌ Staged build failed"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Promote app staged deployment to production (traffic switch)
+  promote-app-production:
+    needs: [release-please, migrate-production, build-app-production, promote-web-production]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.app_release_created == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+    outputs:
+      deployment_url: ${{ needs.build-app-production.outputs.deployment_url }}
+      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: app/production
+          ref: ${{ github.ref }}
+          desc: Promoting app staged deployment to production
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*App* promoting staged deployment to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Promote App Deployment
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
+          deployment-url: ${{ needs.build-app-production.outputs.deployment_url }}
+
+      - name: Resolve Vercel dashboard URL
+        id: vercel-dashboard
+        if: ${{ needs.build-app-production.outputs.deployment_url != '' }}
+        uses: ./.github/actions/vercel-dashboard-url
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          deployment-url: ${{ needs.build-app-production.outputs.deployment_url }}
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.vercel-dashboard.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ✅ Promoted to production"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ❌ Promote failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Update rollback dashboard issue after deployments
   update-rollback-dashboard:
-    needs: [release-please, deploy-web-production, deploy-app-production]
+    needs: [release-please, promote-web-production, promote-app-production]
     if: >-
       always() &&
-      (needs.deploy-web-production.result == 'success' || needs.deploy-app-production.result == 'success')
+      (needs.promote-web-production.result == 'success' || needs.promote-app-production.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -582,10 +806,10 @@ jobs:
         env:
           WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
           APP_VERSION: ${{ needs.release-please.outputs.app_version }}
-          WEB_RESULT: ${{ needs.deploy-web-production.result }}
-          APP_RESULT: ${{ needs.deploy-app-production.result }}
-          WEB_DASHBOARD_URL: ${{ needs.deploy-web-production.outputs.vercel_dashboard_url }}
-          APP_DASHBOARD_URL: ${{ needs.deploy-app-production.outputs.vercel_dashboard_url }}
+          WEB_RESULT: ${{ needs.promote-web-production.result }}
+          APP_RESULT: ${{ needs.promote-app-production.result }}
+          WEB_DASHBOARD_URL: ${{ needs.promote-web-production.outputs.vercel_dashboard_url }}
+          APP_DASHBOARD_URL: ${{ needs.promote-app-production.outputs.vercel_dashboard_url }}
           SAFETY: ${{ steps.migration-safety.outputs.indicator }}
           MIGRATION_FILES: ${{ steps.migration-safety.outputs.details }}
         run: |
@@ -841,7 +1065,7 @@ jobs:
 
   # Deploy runner to production metal instances
   deploy-runner-production:
-    needs: [release-please, migrate-production, deploy-web-production, resolve-image-cache]
+    needs: [release-please, migrate-production, promote-web-production, resolve-image-cache]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.runner_rs_release_created == 'true'

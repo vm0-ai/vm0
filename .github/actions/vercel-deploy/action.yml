@@ -41,6 +41,10 @@ inputs:
   deployment-env:
     description: "Deployment environment name (e.g., web, platform)"
     required: true
+  skip-start:
+    description: "Skip creating the GitHub Deployment record (use when the downstream promote job will own its own record)"
+    required: false
+    default: "false"
   skip-finish:
     description: "Skip finishing the deployment (use when you need to set a custom env_url later)"
     required: false
@@ -59,6 +63,7 @@ runs:
   steps:
     - name: Start deployment
       id: deployment
+      if: inputs.skip-start != 'true'
       uses: bobheadxi/deployments@v1
       with:
         step: start
@@ -185,7 +190,7 @@ runs:
 
     - name: Finish deployment
       uses: bobheadxi/deployments@v1
-      if: always() && inputs.skip-finish != 'true'
+      if: always() && inputs.skip-start != 'true' && inputs.skip-finish != 'true'
       with:
         step: finish
         token: ${{ github.token }}
