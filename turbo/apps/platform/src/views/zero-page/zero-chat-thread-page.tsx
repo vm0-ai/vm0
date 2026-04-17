@@ -296,9 +296,9 @@ function ChatThreadComposer({
   const groups = useGet(thread.groupedChatMessages$);
   const hasMessages = groups.length > 0;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  const hasActiveRun = useLastResolved(thread.hasActiveRun$) ?? false;
+  const allFinished = useLastResolved(thread.allFinished$) ?? false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const sending = hasActiveRun || sendLoadable.state === "loading";
+  const sending = !allFinished || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
@@ -323,7 +323,7 @@ function ChatThreadComposer({
   return (
     <footer
       data-chat-composer
-      className="relative shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]"
+      className="relative shrink-0 px-4 sm:px-6 pt-3 pb-2 bg-[hsl(var(--background))]"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="mx-auto max-w-[900px]">
@@ -348,17 +348,21 @@ function ChatThreadComposer({
           setComposerFileInput$={thread.setComposerFileInput$}
           setInputRef={setInputRef}
         />
-        {sending && (
-          <div className="flex items-center justify-end gap-1.5 mt-2 pr-1">
-            <IconLoader2
-              size={12}
-              className="animate-spin text-foreground/50 shrink-0"
-            />
-            <span className="zero-shimmer-text text-xs">
-              {displayName} is working...
-            </span>
-          </div>
-        )}
+        <div
+          aria-hidden={allFinished}
+          className={cn(
+            "flex items-center justify-end gap-1.5 mt-2 pr-1 transition-opacity",
+            allFinished && "opacity-0",
+          )}
+        >
+          <IconLoader2
+            size={12}
+            className="animate-spin text-foreground/50 shrink-0"
+          />
+          <span className="zero-shimmer-text text-xs">
+            {displayName} is working...
+          </span>
+        </div>
       </div>
     </footer>
   );
@@ -405,10 +409,9 @@ function ChatSkeleton() {
 // ---------------------------------------------------------------------------
 
 function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
-  const hasActiveRun = useLastResolved(thread.hasActiveRun$) ?? false;
   const groups = useGet(thread.groupedChatMessages$);
   const lastGroup = groups[groups.length - 1];
-  const show = lastGroup?.role !== "assistant" || hasActiveRun;
+  const show = lastGroup && lastGroup.role !== "assistant";
 
   if (!show) {
     return null;
@@ -430,6 +433,13 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
             <p className="zero-shimmer-text text-xs truncate">Thinking...</p>
           </div>
         </div>
+      </div>
+      <div
+        aria-hidden
+        className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+      >
+        <div className="hidden @[900px]:block" />
+        <div className="flex items-center py-2 gap-1 -ml-1" />
       </div>
     </div>
   );
@@ -733,14 +743,7 @@ function PagedGroupActions({
   const playTts = useSet(playTts$);
   const stopTts = useSet(stopTts$);
 
-  // Hide actions for user groups or while a run is still active.
-  const hasActiveRun = group.messages.some((m) => {
-    return (
-      m.status === "queued" || m.status === "pending" || m.status === "running"
-    );
-  });
-
-  if (group.role === "user" || hasActiveRun) {
+  if (group.role === "user") {
     return null;
   }
 

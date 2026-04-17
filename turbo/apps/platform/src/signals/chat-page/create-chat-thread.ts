@@ -69,7 +69,7 @@ export interface ChatThreadSignals {
   pagedChatMessages$: Computed<PagedChatMessage[]>;
   latestChatMessageId$: Computed<string | undefined>;
   groupedChatMessages$: Computed<GroupedChatMessageGroup[]>;
-  hasActiveRun$: Computed<Promise<boolean>>;
+  allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
 }
@@ -566,12 +566,12 @@ function createRunTracking(
   threadData$: Computed<Promise<ChatThread | null>>,
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>,
 ) {
-  const hasActiveRun$ = computed(async (get) => {
+  const allFinished$ = computed(async (get) => {
     const thread = await get(threadData$);
     if (!thread) {
       return false;
     }
-    return thread.activeRunIds.length > 0;
+    return thread.activeRunIds.length === 0;
   });
 
   const loadPagedMessages$ = command(
@@ -651,7 +651,7 @@ function createRunTracking(
     signal.throwIfAborted();
   });
 
-  return { hasActiveRun$, loadPagedMessages$, cancelRun$ };
+  return { allFinished$, loadPagedMessages$, cancelRun$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -688,7 +688,7 @@ export function createChatThreadSignals(
 
   const prepareUserMessage$ = createPrepareUserMessage(draft);
 
-  const { hasActiveRun$, loadPagedMessages$, cancelRun$ } = createRunTracking(
+  const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking(
     reloadThread$,
     threadData$,
     fetchNextPage$,
@@ -780,7 +780,7 @@ export function createChatThreadSignals(
     pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
-    hasActiveRun$,
+    allFinished$,
     fetchNextPage$,
     loadPagedMessages$,
   };
