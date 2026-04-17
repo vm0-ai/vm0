@@ -79,6 +79,27 @@ class TestRequestHandler:
 
         assert flow.metadata["firewall_action"] == "ALLOW"
 
+    async def test_vm0_api_test_paths_skip_auto_allow(self, registry_file):
+        """`/api/test/*` routes exist to exercise the firewall pipeline itself.
+
+        If they fell into the auto-allow fast path, the test-oauth E2E test
+        would never get proxy-injected Authorization headers and the
+        pipeline it's supposed to exercise would be silently bypassed.
+        """
+        flow = _make_http_flow(host="api.vm0.ai", path="/api/test/oauth-provider/echo")
+
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+        ):
+            await mitm_addon.request(flow)
+
+        # Must NOT short-circuit to ALLOW. No firewalls are registered for
+        # this VM so it won't reach Step 2's FirewallAllow either — the
+        # point is that action stays unset here, proving the carve-out ran.
+        assert "firewall_action" not in flow.metadata
+
     async def test_tracks_start_time(self, registry_file):
         flow = _make_http_flow(host="api.anthropic.com")
 

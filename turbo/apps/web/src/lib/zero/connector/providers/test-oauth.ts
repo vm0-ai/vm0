@@ -71,13 +71,28 @@ const tokenResponseSchema = z.object({
   scope: z.string().optional(),
 });
 
+/**
+ * When running on a Vercel preview deployment, our own server-to-self
+ * fetches to /api/test/oauth-provider/* still transit the Vercel edge and
+ * hit preview-deployment protection unless we carry the bypass secret.
+ * Production/local-dev don't set this, so the header is only added when
+ * the secret is present.
+ */
+function testEndpointFetchHeaders(): Record<string, string> {
+  const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
+  return bypass ? { "x-vercel-protection-bypass": bypass } : {};
+}
+
 async function postToken(
   body: URLSearchParams,
   operation: "exchange" | "refresh",
 ): Promise<TokenResponse> {
   const response = await fetch(getTokenUrl(), {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...testEndpointFetchHeaders(),
+    },
     body,
   });
 
@@ -136,7 +151,10 @@ export async function fetchTestOAuthUserInfo(
   // pair so ConnectorOAuthConfig doesn't carry it. Derive from the same app.
   const base = env().NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   const response = await fetch(`${base}/api/test/oauth-provider/userinfo`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      ...testEndpointFetchHeaders(),
+    },
   });
 
   if (!response.ok) {
