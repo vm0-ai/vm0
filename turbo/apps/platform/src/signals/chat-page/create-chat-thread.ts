@@ -435,29 +435,6 @@ function createPagedMessages(threadId: string) {
     return msgs[msgs.length - 1].id;
   });
 
-  // Use the LAST status per runId. When the server inserts new event-backed
-  // rows after run completion, the latest row carries the terminal status
-  // while earlier cached rows may still show "running". Checking only the
-  // last occurrence prevents stale statuses from keeping the UI in "sending"
-  // mode after a run finishes.
-  const hasActiveRun$ = computed((get) => {
-    const groups = get(internalGroups$);
-    const latestStatusByRun = new Map<string, string>();
-    for (const group of groups) {
-      for (const m of group.messages) {
-        if (m.runId && m.status) {
-          latestStatusByRun.set(m.runId, m.status);
-        }
-      }
-    }
-    for (const status of latestStatusByRun.values()) {
-      if (status === "queued" || status === "pending" || status === "running") {
-        return true;
-      }
-    }
-    return false;
-  });
-
   const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
     const sinceId = get(latestChatMessageId$);
     signal.throwIfAborted();
@@ -488,7 +465,6 @@ function createPagedMessages(threadId: string) {
     pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
-    hasActiveRun$,
     fetchNextPage$,
   };
 }
@@ -538,7 +514,6 @@ function createRunTracking(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>,
-  messageBasedActiveRun$: Computed<boolean>,
 ) {
   const pendingRunIds$ = state<string[]>([]);
 
@@ -581,10 +556,7 @@ function createRunTracking(
   );
 
   const hasActiveRun$ = computed((get) => {
-    if (get(pendingRunIds$).length > 0) {
-      return true;
-    }
-    return get(messageBasedActiveRun$);
+    return get(pendingRunIds$).length > 0;
   });
 
   const loadPagedMessages$ = command(
@@ -674,7 +646,6 @@ export function createChatThreadSignals(
     pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
-    hasActiveRun$: messageBasedActiveRun$,
     fetchNextPage$,
   } = createPagedMessages(threadId);
 
@@ -684,12 +655,7 @@ export function createChatThreadSignals(
   const prepareUserMessage$ = createPrepareUserMessage(draft);
 
   const { trackRun$, hasActiveRun$, loadPagedMessages$, cancelRun$ } =
-    createRunTracking(
-      threadId,
-      threadData$,
-      fetchNextPage$,
-      messageBasedActiveRun$,
-    );
+    createRunTracking(threadId, threadData$, fetchNextPage$);
 
   const sendMessage$ = command(
     async ({ get, set }, prompt: string, signal: AbortSignal) => {

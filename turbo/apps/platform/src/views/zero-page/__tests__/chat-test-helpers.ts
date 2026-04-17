@@ -216,13 +216,16 @@ export function mockChatLifecycle(options?: {
       return HttpResponse.json({ messages: pagedMessages, hasMore: false });
     }),
     http.get("*/api/zero/chat-threads/:id", () => {
+      const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
+      const activeRunIds =
+        runAssociated && !terminal.has(runStatus) ? ["run-test-1"] : [];
       return HttpResponse.json({
         id: threadId,
         title: threadTitle,
         agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
         latestSessionId: null,
-        activeRunIds: [],
+        activeRunIds,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });

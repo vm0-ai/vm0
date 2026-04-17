@@ -86,7 +86,7 @@ describe("chat session switch", () => {
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
-          activeRunIds: [],
+          activeRunIds: ["run-active"],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -121,6 +121,17 @@ describe("chat session switch", () => {
           events: [],
           hasMore: false,
           framework: "claude-code",
+        });
+      }),
+      http.get("*/api/zero/runs/:id", () => {
+        return HttpResponse.json({
+          runId: "run-active",
+          agentComposeVersionId: null,
+          status: "running",
+          prompt: "Active task prompt",
+          appendSystemPrompt: null,
+          result: { agentSessionId: "session-1", output: "" },
+          createdAt: "2026-03-10T00:00:00Z",
         });
       }),
       http.get("*/api/zero/queue-position", () => {
