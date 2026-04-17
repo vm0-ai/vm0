@@ -91,16 +91,32 @@ export const statusCommand = new Command()
 
       if (agentCtx) {
         const authorized = agentCtx.authorizedTypes.has(parseResult.data);
-        const glyph = authorized ? chalk.green("✓") : chalk.dim("-");
+        const isConnected = connector !== null;
+        const agentLabel =
+          agentCtx.displayName === agentCtx.agentId
+            ? agentCtx.agentId
+            : `${agentCtx.displayName} (${agentCtx.agentId})`;
+
         console.log();
-        console.log(
-          `${"Authorized:".padEnd(LABEL_WIDTH)}${glyph} for agent ${agentCtx.displayName}`,
-        );
-        if (!authorized) {
+        if (authorized) {
+          console.log(
+            `The ${parseResult.data} connector is authorized for agent ${agentLabel}.`,
+          );
+        } else if (!isConnected) {
+          const origin = await getPlatformOrigin();
+          const url = `${origin}/connectors/${parseResult.data}/connect?agentId=${agentCtx.agentId}`;
+          console.log(
+            `The ${parseResult.data} connector is not connected. Once connected, it will be authorized for agent ${agentLabel}.`,
+          );
+          console.log(`Connect it at: [Connect ${parseResult.data}](${url})`);
+        } else {
           const origin = await getPlatformOrigin();
           const url = `${origin}/connectors/${parseResult.data}/authorize?agentId=${agentCtx.agentId}`;
           console.log(
-            `${"".padEnd(LABEL_WIDTH)}${chalk.dim("Authorize:")} ${url}`,
+            `The ${parseResult.data} connector is not authorized for agent ${agentLabel}.`,
+          );
+          console.log(
+            `Authorize it at: [Authorize ${parseResult.data}](${url})`,
           );
         }
       }

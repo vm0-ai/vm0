@@ -73,6 +73,19 @@ Examples:
         if (agent.displayName) {
           console.log(`  Display Name: ${agent.displayName}`);
         }
+
+        console.log();
+        console.log("Next steps to authorize connectors for this agent:");
+        console.log("  - Search connectors this agent needs:");
+        console.log(
+          `      zero connector search <keyword> --agent ${agent.agentId}`,
+        );
+        console.log(
+          "  - Check authorization status (prints an authorize URL if not authorized):",
+        );
+        console.log(
+          `      zero connector status <type> --agent ${agent.agentId}`,
+        );
       },
     ),
   );

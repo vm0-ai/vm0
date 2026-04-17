@@ -62,6 +62,15 @@ describe("zero agent create command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("comp_xyz789");
       expect(logCalls).toContain("created");
+      expect(logCalls).toContain(
+        "Next steps to authorize connectors for this agent:",
+      );
+      expect(logCalls).toContain(
+        "zero connector search <keyword> --agent comp_xyz789",
+      );
+      expect(logCalls).toContain(
+        "zero connector status <type> --agent comp_xyz789",
+      );
     });
 
     it("should create agent with custom skills and include them in request body", async () => {

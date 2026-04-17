@@ -112,7 +112,7 @@ describe("zero connector status command", () => {
   });
 
   describe("with agent context", () => {
-    it("shows Authorized: ✓ when agent is authorized", async () => {
+    it("shows authorized prose when agent is authorized", async () => {
       server.use(
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, "maya"),
@@ -128,12 +128,16 @@ describe("zero connector status command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Authorized:");
-      expect(logCalls).toContain("✓ for agent maya");
-      expect(logCalls).not.toContain("Authorize:");
+      expect(logCalls).toContain(
+        `The github connector is authorized for agent maya (${AGENT_UUID}).`,
+      );
+      expect(logCalls).not.toContain("is not authorized");
+      expect(logCalls).not.toContain("is not connected");
+      expect(logCalls).not.toContain("[Authorize github]");
+      expect(logCalls).not.toContain("[Connect github]");
     });
 
-    it("shows Authorized: - and authorize URL when connected but not authorized", async () => {
+    it("shows authorize link when connected but agent is not authorized", async () => {
       server.use(
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, "maya"),
@@ -149,14 +153,18 @@ describe("zero connector status command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("- for agent maya");
-      expect(logCalls).toContain("Authorize:");
+      expect(logCalls).toContain(
+        `The github connector is not authorized for agent maya (${AGENT_UUID}).`,
+      );
+      expect(logCalls).toContain("[Authorize github](");
       expect(logCalls).toContain(
         `/connectors/github/authorize?agentId=${AGENT_UUID}`,
       );
+      expect(logCalls).not.toContain("is not connected");
+      expect(logCalls).not.toContain("[Connect github]");
     });
 
-    it("shows Authorized: - and authorize URL when connector not connected", async () => {
+    it("shows connect link when connector is not connected", async () => {
       server.use(
         stubConnector(
           { error: { message: "Not found", code: "NOT_FOUND" } },
@@ -175,11 +183,14 @@ describe("zero connector status command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("not connected");
-      expect(logCalls).toContain("- for agent maya");
       expect(logCalls).toContain(
-        `/connectors/github/authorize?agentId=${AGENT_UUID}`,
+        `The github connector is not connected. Once connected, it will be authorized for agent maya (${AGENT_UUID}).`,
       );
+      expect(logCalls).toContain("[Connect github](");
+      expect(logCalls).toContain(
+        `/connectors/github/connect?agentId=${AGENT_UUID}`,
+      );
+      expect(logCalls).not.toContain("[Authorize github]");
     });
 
     it("uses $ZERO_AGENT_ID when --agent flag is not provided", async () => {
@@ -193,7 +204,9 @@ describe("zero connector status command", () => {
       await statusCommand.parseAsync(["node", "cli", "github"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("✓ for agent maya");
+      expect(logCalls).toContain(
+        `The github connector is authorized for agent maya (${AGENT_UUID}).`,
+      );
     });
 
     it("--agent overrides $ZERO_AGENT_ID", async () => {
@@ -222,10 +235,12 @@ describe("zero connector status command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("✓ for agent maya");
+      expect(logCalls).toContain(
+        `The github connector is authorized for agent maya (${AGENT_UUID}).`,
+      );
     });
 
-    it("falls back to UUID when displayName is null", async () => {
+    it("falls back to UUID-only label when displayName is null", async () => {
       server.use(
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, null),
@@ -241,7 +256,10 @@ describe("zero connector status command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(`✓ for agent ${AGENT_UUID}`);
+      expect(logCalls).toContain(
+        `The github connector is authorized for agent ${AGENT_UUID}.`,
+      );
+      expect(logCalls).not.toContain(`${AGENT_UUID} (${AGENT_UUID})`);
     });
   });
 
