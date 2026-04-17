@@ -931,7 +931,10 @@ mod tests {
         // attempting to allocate a vector sized by env_count.
         let mut p = encode_exec(1000, "", &[], false);
         p.extend_from_slice(&u32::MAX.to_be_bytes());
-        assert!(decode_exec(&p).is_err());
+        assert!(matches!(
+            decode_exec(&p),
+            Err(ProtocolError::InvalidPayload(_))
+        ));
     }
 
     #[test]
