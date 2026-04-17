@@ -798,7 +798,11 @@ mod tests {
         let mut reply_buf = [0u8; 16];
         reader.read_exact(&mut reply_buf).await.unwrap();
         let error = u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]]);
-        assert_ne!(error, 0, "flush failure should return error reply");
+        assert_eq!(
+            error,
+            libc::EIO as u32,
+            "flush failure should return EIO reply"
+        );
 
         // Drop client halves so the server sees EOF and exits cleanly.
         drop(writer);
@@ -853,7 +857,11 @@ mod tests {
             length: 0,
         };
         let error = send_and_recv_reply(&mut reader, &mut writer, &flush_req).await;
-        assert_ne!(error, 0, "sync failure should return error reply");
+        assert_eq!(
+            error,
+            libc::EIO as u32,
+            "sync failure should return EIO reply"
+        );
 
         drop(writer);
         drop(reader);
