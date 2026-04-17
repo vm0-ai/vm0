@@ -146,11 +146,15 @@ describe("VM0 managed model provider", () => {
     });
 
     it("should have all VM0 provider models mapped", () => {
-      const vm0Models = ["claude-sonnet-4-6", "claude-opus-4-6"];
+      const vm0Models = [
+        "claude-sonnet-4-6",
+        "claude-opus-4-6",
+        "claude-opus-4-7",
+      ];
       for (const model of vm0Models) {
         expect(VM0_MODEL_TO_PROVIDER[model]).toBeDefined();
       }
-      expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toHaveLength(2);
+      expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toHaveLength(3);
     });
   });
 });

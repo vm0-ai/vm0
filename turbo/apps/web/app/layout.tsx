@@ -229,7 +229,7 @@ export default async function RootLayout({
                 "@context": "https://schema.org",
                 "@type": "SoftwareApplication",
                 name: "VM0",
-                applicationCategory: "DeveloperApplication",
+                applicationCategory: "BusinessApplication",
                 operatingSystem: "Web, Linux, macOS, Windows",
                 offers: {
                   "@type": "Offer",

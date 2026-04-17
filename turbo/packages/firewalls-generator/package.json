@@ -97,6 +97,7 @@
     "generate:mailchimp": "tsx src/index.ts mailchimp",
     "generate:make": "tsx src/index.ts make",
     "generate:mailsac": "tsx src/index.ts mailsac",
+    "generate:manus": "tsx src/index.ts manus",
     "generate:mercury": "tsx src/index.ts mercury",
     "generate:metabase": "tsx src/index.ts metabase",
     "generate:meta-ads": "tsx src/index.ts meta-ads",
