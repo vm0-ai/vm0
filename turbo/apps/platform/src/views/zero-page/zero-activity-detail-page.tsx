@@ -571,7 +571,7 @@ function ActivityDetailContent({
     } else {
       next.set("tab", tab);
     }
-    void updateParams(next);
+    detach(updateParams(next), Reason.DomCallback);
   };
   const fetchExtra = useSet(fetchDownloadExtra$);
   const startChatFromScheduleRun = useSet(startChatFromScheduleRun$);
@@ -627,11 +627,11 @@ function ActivityDetailContent({
             events={events}
             showModelDetail={showModelDetail}
             onDownload={() => {
-              void fetchExtra(detail.id, pageSignal).then(
-                (extra) => {
+              detach(
+                fetchExtra(detail.id, pageSignal).then((extra) => {
                   downloadJson(events, detail.id, detail, extra);
-                },
-                () => {},
+                }),
+                Reason.DomCallback,
               );
             }}
             onChatFromSchedule={

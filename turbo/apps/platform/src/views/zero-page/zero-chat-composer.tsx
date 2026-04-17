@@ -747,7 +747,7 @@ export function ZeroChatComposer({
       return;
     }
     // Fire-and-forget: request push permission on first send, never blocks
-    ensurePushSubscription();
+    detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
     onSend(input.trim());
   };
 

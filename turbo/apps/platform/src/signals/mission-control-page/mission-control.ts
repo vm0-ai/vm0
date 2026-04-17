@@ -13,7 +13,7 @@ import {
   setupTasksLoop$,
 } from "./mission-control-tasks.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
-import { onDomEventFn, onRef, throwIfNotAbort } from "../utils.ts";
+import { onDomEventFn, onRef } from "../utils.ts";
 import { agents$ } from "../agent.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { createNewChatThread$ } from "../chat-page/chat-message.ts";
@@ -139,7 +139,7 @@ export const setupMissionControlKeyboard$ = command(
         "shift+?": () => {
           set(setShortcutHelpOpen$, true);
         },
-        y: () => {
+        y: async () => {
           const container = get(internalTaskListRef$);
           if (!container) {
             return;
@@ -150,9 +150,7 @@ export const setupMissionControlKeyboard$ = command(
           }
           const taskId = active.dataset.taskId;
           if (taskId) {
-            void set(archiveAndFocusNext$, taskId, signal).catch(
-              throwIfNotAbort,
-            );
+            await set(archiveAndFocusNext$, taskId, signal);
           }
         },
       },

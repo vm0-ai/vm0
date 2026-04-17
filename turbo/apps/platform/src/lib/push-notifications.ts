@@ -44,28 +44,31 @@ export const registerServiceWorker$ = command(
  *
  * If permission is "default", requests it. If granted, subscribes and
  * sends the subscription to the backend. Silently no-ops on denial or
- * when push is unsupported.
- *
- * This is fire-and-forget — the async work runs detached.
+ * when push is unsupported. Callers are responsible for detaching the
+ * returned promise (e.g. `detach(ensurePushSubscription(pageSignal),
+ * Reason.DomCallback)` from a DOM handler).
  */
-export const ensurePushSubscription$ = command(({ get, set }) => {
-  if (get(subscribing$)) {
-    return;
-  }
-  const registration = get(swRegistration$);
-  if (!registration) {
-    return;
-  }
-  set(subscribing$, true);
-  const clerkPromise = get(clerk$);
-  const apiBase = get(apiBase$);
-  function resetFlag() {
-    set(subscribing$, false);
-  }
-  void doSubscribe(registration, clerkPromise, apiBase)
-    .then(resetFlag)
-    .catch(resetFlag);
-});
+export const ensurePushSubscription$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    if (get(subscribing$)) {
+      return;
+    }
+    const registration = get(swRegistration$);
+    if (!registration) {
+      return;
+    }
+    set(subscribing$, true);
+    const clerkPromise = get(clerk$);
+    const apiBase = get(apiBase$);
+    // eslint-disable-next-line no-restricted-syntax -- finally needed to reset `subscribing$` on success, failure, or abort so the next call can proceed
+    try {
+      await doSubscribe(registration, clerkPromise, apiBase);
+      signal.throwIfAborted();
+    } finally {
+      set(subscribing$, false);
+    }
+  },
+);
 
 async function doSubscribe(
   registration: ServiceWorkerRegistration,

@@ -196,7 +196,7 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
     } else {
       next.set("tab", tab);
     }
-    void updateParams(next);
+    detach(updateParams(next), Reason.DomCallback);
   };
 
   const prepared = prepareInspectData(data);

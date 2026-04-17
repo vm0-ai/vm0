@@ -17,7 +17,7 @@ import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
 import { reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
-import { showAppSkeleton$ } from "../app-skeleton.ts";
+import { showAppSkeleton$, startSkeletonCycling$ } from "../app-skeleton.ts";
 import { logger } from "../log.ts";
 
 const L = logger("OnboardingAddToSlack");
@@ -242,42 +242,47 @@ export const onboardingAddToSlack$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(showAppSkeleton$);
 
-    const result = await set(completeOnboarding$, signal);
-    if (!result) {
-      return;
-    }
+    await Promise.all([
+      set(startSkeletonCycling$, signal),
+      (async () => {
+        const result = await set(completeOnboarding$, signal);
+        if (!result) {
+          return;
+        }
 
-    const slackData = await get(slackOrgData$);
-    signal.throwIfAborted();
+        const slackData = await get(slackOrgData$);
+        signal.throwIfAborted();
 
-    // The backend returns installUrl for admins on a brand-new workspace and
-    // connectUrl for everyone else (members, or admins where the workspace
-    // app is already installed). Either one continues the onboarding flow in
-    // Slack — open whichever the backend offered.
-    const targetUrl = slackData.installUrl ?? slackData.connectUrl;
-    const prompt = get(searchParams$).get("prompt");
+        // The backend returns installUrl for admins on a brand-new workspace
+        // and connectUrl for everyone else (members, or admins where the
+        // workspace app is already installed). Either one continues the
+        // onboarding flow in Slack — open whichever the backend offered.
+        const targetUrl = slackData.installUrl ?? slackData.connectUrl;
+        const prompt = get(searchParams$).get("prompt");
 
-    if (targetUrl) {
-      const url = new URL(targetUrl, window.location.origin);
-      // Carry ?prompt= through the OAuth state so the DM greeting can
-      // reference it once install/connect completes.
-      if (prompt) {
-        url.searchParams.set("prompt", prompt);
-      }
-      url.searchParams.set("_t", String(Date.now()));
-      window.open(url.toString(), "_blank");
-    } else {
-      L.warn("no slack install or connect URL returned, skipping popup", {
-        isInstalled: slackData.isInstalled,
-        isAdmin: slackData.isAdmin,
-      });
-    }
+        if (targetUrl) {
+          const url = new URL(targetUrl, window.location.origin);
+          // Carry ?prompt= through the OAuth state so the DM greeting can
+          // reference it once install/connect completes.
+          if (prompt) {
+            url.searchParams.set("prompt", prompt);
+          }
+          url.searchParams.set("_t", String(Date.now()));
+          window.open(url.toString(), "_blank");
+        } else {
+          L.warn("no slack install or connect URL returned, skipping popup", {
+            isInstalled: slackData.isInstalled,
+            isAdmin: slackData.isAdmin,
+          });
+        }
 
-    // Forward ?prompt= to /works so the page can keep the same context (e.g.
-    // re-opening the DM) once the OAuth tab returns.
-    set(detachedNavigateTo$, "/works", {
-      searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
-    });
+        // Forward ?prompt= to /works so the page can keep the same context
+        // (e.g. re-opening the DM) once the OAuth tab returns.
+        set(detachedNavigateTo$, "/works", {
+          searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
+        });
+      })(),
+    ]);
   },
 );
 
@@ -285,19 +290,24 @@ export const onboardingContinueWeb$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(showAppSkeleton$);
 
-    const agentId = await set(completeOnboarding$, signal);
+    await Promise.all([
+      set(startSkeletonCycling$, signal),
+      (async () => {
+        const agentId = await set(completeOnboarding$, signal);
 
-    if (!agentId) {
-      return;
-    }
+        if (!agentId) {
+          return;
+        }
 
-    // Forward ?prompt= to the chat page so the composer gets pre-filled with
-    // the prompt the user arrived with.
-    const prompt = get(searchParams$).get("prompt");
+        // Forward ?prompt= to the chat page so the composer gets pre-filled
+        // with the prompt the user arrived with.
+        const prompt = get(searchParams$).get("prompt");
 
-    set(detachedNavigateTo$, "/agents/:agentId/chat", {
-      pathParams: { agentId: agentId },
-      searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
-    });
+        set(detachedNavigateTo$, "/agents/:agentId/chat", {
+          pathParams: { agentId: agentId },
+          searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
+        });
+      })(),
+    ]);
   },
 );

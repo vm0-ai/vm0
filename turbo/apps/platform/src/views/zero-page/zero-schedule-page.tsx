@@ -555,17 +555,12 @@ export function ZeroSchedulePage() {
             : {}),
         },
         pageSignal,
-      ).then(
-        (scheduleId) => {
-          setCreateOpen(false);
-          navigate("/schedules/:scheduleId", {
-            pathParams: { scheduleId: scheduleId },
-          });
-        },
-        (_error: unknown) => {
-          // error is already captured by useLoadableSet and displayed in the dialog via saveError
-        },
-      ),
+      ).then((scheduleId) => {
+        setCreateOpen(false);
+        navigate("/schedules/:scheduleId", {
+          pathParams: { scheduleId: scheduleId },
+        });
+      }),
       Reason.DomCallback,
     );
   };

@@ -2,7 +2,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { tasksContract, type TaskItem } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
-import { jsonParseOr, onRef, resetSignal, throwIfNotAbort } from "../utils.ts";
+import { detach, jsonParseOr, onRef, Reason, resetSignal } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { clerk$ } from "../auth.ts";
 import {
@@ -184,9 +184,11 @@ function createPanelSignals(
     const panelSignal = set(resetPanelPolling$, signal);
     const signals = createActivitySignals(task.latestRunId);
     set(internalPanelEntry$, { kind: "activity", signals });
-    // Polling lifecycle is managed by resetPanelPolling$ — aborted on next
-    // refresh or panel close. throwIfNotAbort swallows the expected AbortError.
-    set(signals.startPolling$, panelSignal).catch(throwIfNotAbort);
+    // Polling is a daemon whose lifetime is owned by panelSignal
+    // (resetPanelPolling$ aborts it on the next refresh or panel close).
+    // Awaiting it here would block the tasks-loop iteration, so we detach.
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- daemon lifetime owned by panelSignal; awaiting would block the enclosing tasks loop
+    detach(set(signals.startPolling$, panelSignal), Reason.Daemon);
   });
 
   const openTask$ = command(
