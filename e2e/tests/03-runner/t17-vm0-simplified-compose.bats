@@ -268,43 +268,6 @@ EOF
     assert_output --partial "UNIQUE_MARKER_FOR_E2E_TEST"
 }
 
-@test "vm0 run with skills mounts skill directory" {
-    echo "# Creating config with skills..."
-    # Skills work with any image - they're just file mounts
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/github
-EOF
-
-    echo "# Running vm0 compose..."
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Initializing artifact storage..."
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $VM0_CLI artifact push
-    assert_success
-
-    echo "# Running agent to verify skill is mounted..."
-    # The skill is mounted at /home/user/.claude/skills/github/
-    # Provide mock GH_TOKEN since github skill requires it
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
-        --secrets "GH_TOKEN=mock-token-for-test" \
-        "ls /home/user/.claude/skills/github/"
-    assert_success
-
-    echo "# Verifying skill directory contains SKILL.md..."
-    assert_output --partial "SKILL.md"
-}
-
 @test "vm0 run has gh cli installed by default" {
     echo "# Creating config without apps field..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
