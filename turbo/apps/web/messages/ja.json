@@ -316,7 +316,7 @@
     },
     "content": {
       "auto-merge-releases": {
-        "title": "リリースPRの自動マージ",
+        "title": "リリースPRを自動マージ — チームの都合に合わせたタイミングで",
         "description": "いつリリースPRを出すか、どのPRはスキップするか。Zeroに一度伝えておくだけ。チームのペースに合わせてチェックを走らせ、リスクのあるPRはスキップ、残りは自動でマージします — チームが「人力cron」から解放されます。",
         "timeSaved": "1リリースあたり約15分短縮",
         "headings": {
@@ -398,7 +398,7 @@
         ]
       },
       "sentry-triage": {
-        "title": "エラーのトリアージ",
+        "title": "Sentryのトップエラーを優先順位付けし、修正箇所まで示す",
         "description": "Zeroに未解決のSentryエラーを頻度順に取得するよう依頼します。Zeroがスタックトレースを読み、根本原因を分かりやすく説明し、最初に修正すべきファイルを教えてくれます。",
         "timeSaved": "約25分の節約",
         "headings": {
@@ -480,7 +480,7 @@
         ]
       },
       "standup-summary": {
-        "title": "スタンドアップ要約",
+        "title": "昨日のカレンダーとLinearから今日のスタンドアップを書く",
         "description": "Zeroがカレンダー、メール、Linearからデータを取得し、チームスレッドにそのまま貼り付けられる共有可能なサマリーを作成します。",
         "timeSaved": "約20分の節約",
         "headings": {
@@ -565,7 +565,7 @@
         ]
       },
       "kol-cold-outreach": {
-        "title": "コールドアウトリーチ下書き",
+        "title": "相手の直近30投稿からコールドメールを起草",
         "description": "ZeroにXのハンドルを伝えます。直近30件の投稿を読み、スタイルと関心を理解し、150語以下のパーソナライズされたアウトリーチメールを作成してGmailの下書きに保存します。",
         "timeSaved": "約20分の節約",
         "headings": {
@@ -645,7 +645,7 @@
         ]
       },
       "file-bugs-from-slack": {
-        "title": "チャットからバグ起票",
+        "title": "Slackの愚痴をラベル付きGitHub Issueに変える",
         "description": "自然言語で問題を説明するだけ。Zeroがフォーマット済みのGitHub Issueを作成し、ラベルを付け、適切な人に割り当てます。",
         "timeSaved": "即座",
         "headings": {
@@ -727,7 +727,7 @@
         ]
       },
       "slack-triage": {
-        "title": "チャットのトリアージ",
+        "title": "Slackの未読を、本当に返信が必要なものだけに絞り込む",
         "description": "Zeroが未読のSlackメッセージをスキャンし、ボットとノイズをフィルタリングして、今日実際にアクションが必要なメッセージだけを緊急度順に表示します。",
         "timeSaved": "約10分の節約",
         "headings": {
@@ -807,7 +807,7 @@
         ]
       },
       "employee-onboarding": {
-        "title": "従業員オンボーディング",
+        "title": "一通のSlackメッセージで新メンバーをフルオンボーディング",
         "description": "Zeroに誰がいつ入社するか伝えます。Notionのオンボーディングページを作成し、Google Calendarでウェルカムミーティングをスケジュールし、Slackで紹介を投稿し、初週のアジェンダをDMで送ります。",
         "timeSaved": "約45分の節約",
         "headings": {
@@ -890,7 +890,7 @@
         ]
       },
       "build-with-v0": {
-        "title": "アイデアをプロトタイプに",
+        "title": "会議中のアイデアを即座にクリック可能なReactプロトタイプに",
         "description": "会話の途中でアイデアが浮かんだら、Zeroに説明します。v0を使ってクリック可能なReactプロトタイプを生成し、ライブプレビューリンクをスレッドに投稿します — ディスカッションが先に進む前に。",
         "timeSaved": "数時間 → 数秒",
         "headings": {
@@ -972,7 +972,7 @@
         ]
       },
       "document-decisions": {
-        "title": "意思決定ログ",
+        "title": "Slackで決まったことを自動で検索可能な議事録に残す",
         "description": "ZeroがSlackチャンネルを監視し、決定が行われた瞬間にキャプチャします。スレッドをスキャンし、何が決定されたかを特定し、コンテキスト、リンク、カテゴリと共にNotionに記録するので、ノイズに埋もれることがありません。",
         "timeSaved": "週あたり約30分節約",
         "headings": {
@@ -1054,7 +1054,7 @@
         ]
       },
       "product-health-briefing": {
-        "title": "プロダクト健康診断",
+        "title": "朝一番、全ツール横断のプロダクトヘルスブリーフィング",
         "description": "Zeroに何を監視するか伝えてください。毎朝、システムステータス、エンジニアリングの進捗、主要なアップデートを取得し、Slackに簡潔なブリーフィングを投稿し、誰もがラップトップを開く前に共有可能なスタンドアップ資料を生成します。",
         "timeSaved": "毎日約40分節約",
         "headings": {
@@ -1142,7 +1142,7 @@
         ]
       },
       "upgrade-agent": {
-        "title": "エージェントの自己アップグレード",
+        "title": "Zeroがドキュメントを読み、別のエージェントの設定を自動更新",
         "description": "Zeroにテクノロジーを調査し、チームメイトエージェントの設定を更新するよう伝えてください。ドキュメントを読み、設定を書き換え、手動ステップなしで新しいバージョンをデプロイします。",
         "timeSaved": "アップデートごとに約1時間節約",
         "headings": {
@@ -1224,7 +1224,7 @@
         ]
       },
       "tech-debt-scan": {
-        "title": "技術的負債スキャン",
+        "title": "リポジトリの技術的負債をスキャンし、発見ごとにIssue化",
         "description": "Zeroにリポジトリを渡してください。クローンし、完全な技術的負債スキャンを実行し、すべての発見を重要度別に分類し、完全な内訳を含む構造化されたGitHub issueを作成します — すべて1つのメッセージから。",
         "timeSaved": "監査ごとに約2時間節約",
         "headings": {
@@ -1303,7 +1303,7 @@
         ]
       },
       "competitor-audit": {
-        "title": "競合監査",
+        "title": "競合のXとウェブサイトを追跡し、一つのログに集約",
         "description": "Zeroに競合リストを渡してください。Xアカウントを監視し、ウェブサイトの更新をスクレイピングし、すべての発見をNotionに保存し、スケジュールに従って毎週Slackにダイジェストを投稿します。",
         "timeSaved": "週あたり約3時間節約",
         "headings": {
@@ -1388,7 +1388,7 @@
         ]
       },
       "error-triage-daily": {
-        "title": "日次エラートリアージ",
+        "title": "SentryとAxiomの毎日のエラートリアージ、重複排除込み",
         "description": "Zeroを毎日実行するようスケジュールします。SentryとAxiomから未解決のエラーを取得し、ソース間で重複排除し、完全なスタックトレース付きのGitHub issueを開き、自動的に適切なエンジニアにアサインします。",
         "timeSaved": "毎日約25分節約",
         "headings": {
@@ -1473,7 +1473,7 @@
         ]
       },
       "marketing-emails": {
-        "title": "マーケティング・メール",
+        "title": "次のマーケティングメールをSlackから直接起草・配信",
         "description": "ZeroにマーケティングメールのドラフトをNotionとLinearの文脈から作成してもらい、Slackでプレビュー、承認後にResendから配信。ダッシュボード切り替え不要。",
         "timeSaved": "約45分の節約",
         "headings": {
@@ -1561,7 +1561,7 @@
         ]
       },
       "managed-agent-workers": {
-        "title": "マネージド・エージェント・ワーカー",
+        "title": "コーディング用サブエージェントの群れを、一つのSlackスレッドから指揮",
         "description": "コードレビュー、テスト、技術的負債、ビルド用に専用の Managed Agent を作り込んであるはず。Zero がそのフリートの管理役になり、起動・ステータス確認・結果の取得まで、すべて Slack から実行できます。",
         "timeSaved": "ワーカー作業あたり約 20 分の削減",
         "headings": {
@@ -1643,7 +1643,7 @@
         ]
       },
       "multilingual-cms-publishing": {
-        "title": "多言語パブリッシング",
+        "title": "EN・中国語・日本語の読者向けにローカライズした記事を公開",
         "description": "書きたい内容をZeroに伝えるだけ。英語・中国語・日本語で各市場向けに適応（単純翻訳ではなく）したコンテンツを生成し、3言語すべてをStrapiにドラフトとして一括投稿します。",
         "timeSaved": "約60分の節約",
         "headings": {
@@ -1725,7 +1725,7 @@
         ]
       },
       "daily-engineering-brief": {
-        "title": "日次エンジニアリング・ブリーフ",
+        "title": "毎朝、7日間のエンジニアリングブリーフィングを全ツール横断で",
         "description": "@Zeroに毎朝GitHub、Linear、Sentry、Plausibleからリアルタイムデータを取得させ、7日間の移動平均を算出し、異常値をフラグ付けして、フォーマットされた4セクションのブリーフをSlackチャンネルに自動投稿します。",
         "timeSaved": "毎日約20分の時間削減",
         "headings": {
@@ -1820,7 +1820,7 @@
         ]
       },
       "competitor-pricing-monitor": {
-        "title": "価格ウォッチ",
+        "title": "競合の価格変更を公開した瞬間にキャッチ",
         "description": "@Zeroに競合の料金ページURLリストを渡します。毎週月曜日に各ページをスクレイピングし、先週のNotionスナップショットと差分を比較し、検出された各変更のインパクトサマリーを作成し、完全なレポートをNotionに保存し、ダイジェストをSlackに投稿します。",
         "timeSaved": "週あたり約2時間の時間削減",
         "headings": {
@@ -1902,7 +1902,7 @@
         ]
       },
       "cross-tool-context-query": {
-        "title": "ツール横断ステータス",
+        "title": "Slack・Notion・Linear・GitHubを一問で横断検索",
         "description": "プロジェクト、機能、またはトピックについて@Zeroに質問します。Slack、Notion、Linear、GitHubを同時に検索し、構造化されたブリーフを返します：現在の状態、担当者、ブロッカー、最終アクティビティ — すべてが1つのメッセージで完結します。",
         "timeSaved": "ステータス確認ごとに約15分の時間削減",
         "headings": {
@@ -1994,7 +1994,7 @@
         ]
       },
       "customer-360": {
-        "title": "カスタマー360",
+        "title": "どの顧客でも、全ツールから360°ビューを一発で",
         "description": "@Zeroに顧客名または企業名を渡します。Gmail、Calendar、Slack、Linear、GitHubを同時に検索し、構造化されたブリーフを返します：関係ステージ、直近のアクティビティ、未解決事項、推奨アクション付きのエグゼクティブサマリー。",
         "timeSaved": "顧客レビューごとに約30分の時間削減",
         "headings": {
@@ -2089,7 +2089,7 @@
         ]
       },
       "trending-topic-radar": {
-        "title": "トレンドレーダー",
+        "title": "XとSlackで広がりつつあるトレンドを自動で発掘",
         "description": "Xアカウントとslackチャンネルを対象に日次スキャンを設定します。@Zeroはブレイクアウトトピック — 2つ以上のソースに出現するか、急激な速度スパイクを示すもの — のみをフラグ付けし、ランク付けされたダイジェストをチャンネルに投稿します。該当するものがなければ投稿は送信されません。",
         "timeSaved": "毎日約1時間の時間削減",
         "headings": {
@@ -2178,7 +2178,7 @@
         ]
       },
       "content-performance-report": {
-        "title": "コンテンツ・パフォーマンス",
+        "title": "月曜ごとに投稿パフォーマンスを採点、数字を物語に",
         "description": "毎週月曜日に@Zeroが過去7日間の投稿指標をXから取得し、各投稿をエンゲージメントでスコアリングし、短いナラティブレポートを作成します：トップパフォーマー、最大のアンダーパフォーマー、前週比の変化、1つの具体的な推奨事項。ナラティブはSlackに投稿され、完全なデータはNotionにアーカイブされます。",
         "timeSaved": "毎週約2時間の時間削減",
         "headings": {
@@ -2270,7 +2270,7 @@
         ]
       },
       "kb-ingest": {
-        "title": "ナレッジ取り込み",
+        "title": "Slackにリンクを投げるだけでチームのナレッジベースが育つ",
         "description": "Drop a link in Slack and ask Zero to ingest it. Zero fetches the content, summarizes it, and stores it in your team knowledge base — no context switch required.",
         "timeSaved": "~15 min saved",
         "headings": {
@@ -2352,7 +2352,7 @@
         ]
       },
       "pr-review": {
-        "title": "PRレビュー",
+        "title": "どのPRもP0/P1/P2コメント付きでレビュー",
         "description": "Ask Zero to review any pull request. Zero reads the diff, flags critical issues as P0, improvement opportunities as P1, and surfaces them in Slack so the team can act before merging.",
         "timeSaved": "~30 min saved per PR",
         "headings": {
@@ -2434,7 +2434,7 @@
         ]
       },
       "api-performance": {
-        "title": "APIパフォーマンス点検",
+        "title": "エンドポイントのTP95をSlackの一言で調査",
         "description": "Ask Zero to pull TP95 data from Axiom for any API endpoint. Zero surfaces the slowest events, identifies patterns, and creates a GitHub issue with findings — all from one Slack message.",
         "timeSaved": "~45 min saved",
         "headings": {
@@ -2516,7 +2516,7 @@
         ]
       },
       "marketing-analytics": {
-        "title": "グロース分析",
+        "title": "Plausibleのトラフィックを平易な言葉のグロースレポートに",
         "description": "Ask Zero to pull your Plausible traffic data and tell you what's working. Zero breaks down sources, channels, and trends — then surfaces the insight you actually need to act on.",
         "timeSaved": "~20 min saved",
         "headings": {
@@ -2598,7 +2598,7 @@
         ]
       },
       "production-db-query": {
-        "title": "本番データ問い合わせ",
+        "title": "本番DBに自然言語で質問する",
         "description": "Ask Zero a question about your production data. Zero writes the SQL, runs it read-only against your live database, and returns the answer in Slack — no credentials, no client, no risk of a mutating query.",
         "timeSaved": "~20 min saved",
         "headings": {
@@ -2680,7 +2680,7 @@
         ]
       },
       "office-ac-control": {
-        "title": "オフィスのエアコン操作",
+        "title": "オフィスのエアコンをSlackから操作 — アプリもリモコンも不要",
         "description": "Ask Zero to turn the office AC on or off, adjust the temperature, or schedule it for a specific time — all from Slack. Physical office operations, zero friction.",
         "timeSaved": "~5 min saved",
         "headings": {
@@ -2757,7 +2757,7 @@
         ]
       },
       "phone-call-automation": {
-        "title": "自動電話発信",
+        "title": "Slackの一言でスクリプト付きの電話を発信",
         "description": "Ask Zero to call a number, deliver a message, navigate an IVR, or dial into a meeting. Zero places the call with a specified voice, handles prompts automatically, and reports back when done.",
         "timeSaved": "~10 min saved",
         "headings": {
@@ -2839,7 +2839,7 @@
         ]
       },
       "marketing-content-automation": {
-        "title": "コンテンツ・パイプライン",
+        "title": "リサーチからスコアリング済み投稿まで、毎日のコンテンツパイプライン",
         "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
         "timeSaved": "~5 hrs saved per week",
         "headings": {
@@ -2924,7 +2924,7 @@
         ]
       },
       "engineering-brief": {
-        "title": "夕方のエンジニアリング・ブリーフ",
+        "title": "毎晩、当日のリリース・PR・MVPコミッターを総括",
         "description": "Every evening, Zero pulls GitHub activity, counts PRs merged per engineer, surfaces commit highlights, and picks an MVP of the day — posted to Slack with no manual work.",
         "timeSaved": "~30 min saved per day",
         "headings": {
@@ -3005,7 +3005,7 @@
         ]
       },
       "security-compliance": {
-        "title": "コンプライアンス点検",
+        "title": "インフラを任意のコンプライアンス基準に照らして監査",
         "description": "Ask Zero to audit your infrastructure setup against a compliance requirement. Zero checks your config across GitHub, cloud providers, and documentation — and posts a structured findings brief.",
         "timeSaved": "~2 hrs saved",
         "headings": {
@@ -3087,7 +3087,7 @@
         ]
       },
       "cross-tool-context": {
-        "title": "プロジェクト状況ブリーフ",
+        "title": "どのプロジェクトでも、秒単位で統合ステータスを返答",
         "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief — state, owner, blockers, last update — and flags if sources disagree.",
         "timeSaved": "~25 min saved",
         "headings": {
@@ -3179,7 +3179,7 @@
         ]
       },
       "voice-managed-agent": {
-        "title": "声でコーディング",
+        "title": "車の中から口頭でコーディングタスクを指示、PRまで送信",
         "description": "スマホや車の中からZeroにタスクを口頭で伝えるだけ。Anthropic Managed Agentを立ち上げ、リポジトリをクローンし、依存関係をインストールし、テストを実行して結果を返します。キーボード不要。",
         "timeSaved": "約20分の短縮",
         "headings": {
@@ -3261,7 +3261,7 @@
         ]
       },
       "draft-url-preview": {
-        "title": "ブログ下書き、ライブプレビュー",
+        "title": "Slackの会話をレビュー可能なCMSプレビューURLに",
         "description": "Zeroに欲しい記事を伝えるだけ。Zeroが本文を書き、CMSのドラフトとして保存し、共有可能なプレビューURLを返します。レビューはドキュメントではなく、実際のページ上で行えます。",
         "timeSaved": "約45分の短縮",
         "headings": {
@@ -3343,7 +3343,7 @@
         ]
       },
       "blog-cover-art": {
-        "title": "ブランドに合うブログカバー",
+        "title": "ブランド統一のブログカバーを数秒で生成",
         "description": "Zeroにカバー画像を依頼するだけ。落ち着いたニュートラルな背景、手描きのスポットイラスト、クリーンなサンセリフのタイトル — ブランドに合ったカバーを生成し、Dropboxに保存します。",
         "timeSaved": "約30分の短縮",
         "headings": {
@@ -3425,7 +3425,7 @@
         ]
       },
       "ai-video-director": {
-        "title": "短尺動画を監督する",
+        "title": "専門サブエージェントのチームで短い動画を演出",
         "description": "Zeroにストーリーを伝えるだけ。Zeroがストーリーボードを書き、専門サブエージェント（リサーチ、コピー、ビジュアル、ボイス）を起動し、デッキを作り、AIアバター生成を駆動して完成版まで仕上げます。",
         "timeSaved": "約3時間の短縮",
         "headings": {

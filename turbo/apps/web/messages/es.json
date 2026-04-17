@@ -316,7 +316,7 @@
     },
     "content": {
       "auto-merge-releases": {
-        "title": "Auto-merge de releases",
+        "title": "Fusiona PRs de release al ritmo que marque tu equipo, no tú",
         "description": "Dile a Zero una vez cuándo publicar los PRs de release y cuáles saltar. Corre la revisión en tu ritmo, salta los cambios arriesgados y fusiona el resto — deja de ser el cron humano del equipo.",
         "timeSaved": "~15 min ahorrados por release",
         "headings": {
@@ -398,7 +398,7 @@
         ]
       },
       "sentry-triage": {
-        "title": "Triaje de errores",
+        "title": "Prioriza tus errores top de Sentry y apunta al archivo que hay que arreglar",
         "description": "Pide a Zero que obtenga los errores no resueltos de Sentry, ordenados por frecuencia. Zero lee los stack traces, explica la causa raíz en lenguaje sencillo y te dice qué archivo corregir primero.",
         "timeSaved": "~25 min ahorrados",
         "headings": {
@@ -480,7 +480,7 @@
         ]
       },
       "standup-summary": {
-        "title": "Resumen de standup",
+        "title": "Redacta el standup de hoy con el calendario y Linear de ayer",
         "description": "Zero obtiene datos del calendario, correo electrónico y Linear, luego escribe un resumen compartible que puedes pegar directamente en el hilo del equipo.",
         "timeSaved": "~20 min ahorrados",
         "headings": {
@@ -565,7 +565,7 @@
         ]
       },
       "kol-cold-outreach": {
-        "title": "Outreach en frío",
+        "title": "Redacta un cold email a partir de los últimos 30 posts de alguien en X",
         "description": "Dale a Zero un handle de X. Lee sus últimos 30 posts, entiende su estilo e intereses, redacta un correo de contacto personalizado de menos de 150 palabras y lo guarda como borrador en Gmail.",
         "timeSaved": "~20 min ahorrados",
         "headings": {
@@ -645,7 +645,7 @@
         ]
       },
       "file-bugs-from-slack": {
-        "title": "Bugs desde el chat",
+        "title": "Convierte una queja de Slack en un issue de GitHub ya asignado",
         "description": "Describe el problema en lenguaje natural. Zero crea un issue de GitHub formateado, le pone etiquetas y asigna a la persona correcta.",
         "timeSaved": "Instantáneo",
         "headings": {
@@ -727,7 +727,7 @@
         ]
       },
       "slack-triage": {
-        "title": "Triaje de chat",
+        "title": "Reduce tu bandeja de Slack a los mensajes que realmente piden respuesta",
         "description": "Zero escanea tus mensajes no leídos de Slack, filtra bots y ruido, y te muestra solo los mensajes que realmente necesitan tu acción hoy, ordenados por urgencia.",
         "timeSaved": "~10 min ahorrados",
         "headings": {
@@ -807,7 +807,7 @@
         ]
       },
       "employee-onboarding": {
-        "title": "Onboarding de empleados",
+        "title": "Onboarding completo de un nuevo empleado desde un solo mensaje de Slack",
         "description": "Dile a Zero quién se une y cuándo. Crea su página de onboarding en Notion, programa reuniones de bienvenida en Google Calendar, publica una presentación en Slack y les envía por DM su agenda de la primera semana.",
         "timeSaved": "~45 min ahorrados",
         "headings": {
@@ -890,7 +890,7 @@
         ]
       },
       "build-with-v0": {
-        "title": "Prototipa una idea",
+        "title": "Convierte una idea de reunión en un prototipo React clicable",
         "description": "Cuando surge una idea en medio de una conversación, descríbela a Zero. Usa v0 para generar un prototipo React interactivo y publica el enlace de vista previa en el hilo, antes de que la discusión avance.",
         "timeSaved": "Horas → segundos",
         "headings": {
@@ -972,7 +972,7 @@
         ]
       },
       "document-decisions": {
-        "title": "Registro de decisiones",
+        "title": "Captura cada decisión tomada en Slack en un registro consultable",
         "description": "Zero monitorea tus canales de Slack y captura las decisiones a medida que ocurren. Escanea los hilos, identifica qué se decidió y registra cada una en Notion con contexto, enlaces y categoría para que nada se pierda en el ruido.",
         "timeSaved": "~30 min ahorrados por semana",
         "headings": {
@@ -1054,7 +1054,7 @@
         ]
       },
       "product-health-briefing": {
-        "title": "Briefing de producto",
+        "title": "Empieza la mañana con un briefing de salud de producto multi-herramienta",
         "description": "Dile a Zero qué monitorear. Cada mañana obtiene el estado del sistema, el progreso de ingeniería y las actualizaciones clave, luego publica un informe conciso en Slack y genera una presentación lista para compartir antes de que alguien abra su laptop.",
         "timeSaved": "~40 min ahorrados diarios",
         "headings": {
@@ -1142,7 +1142,7 @@
         ]
       },
       "upgrade-agent": {
-        "title": "Auto-upgrade del agente",
+        "title": "Deja que Zero lea la documentación y actualice la config de otro agente",
         "description": "Dile a Zero que investigue una tecnología y actualice la configuración de un agente compañero. Lee la documentación, reescribe la configuración y despliega la nueva versión sin pasos manuales.",
         "timeSaved": "~1 hora ahorrada por actualización",
         "headings": {
@@ -1224,7 +1224,7 @@
         ]
       },
       "tech-debt-scan": {
-        "title": "Escaneo de deuda técnica",
+        "title": "Escanea un repo por deuda técnica con un issue por cada hallazgo",
         "description": "Dale a Zero un repositorio. Lo clona, ejecuta un escaneo completo de deuda técnica, clasifica cada hallazgo por severidad y crea un issue estructurado en GitHub con el desglose completo — todo desde un solo mensaje.",
         "timeSaved": "~2 horas ahorradas por auditoría",
         "headings": {
@@ -1303,7 +1303,7 @@
         ]
       },
       "competitor-audit": {
-        "title": "Auditoría de competencia",
+        "title": "Monitoriza X y la web de cada competidor en un registro continuo",
         "description": "Dale a Zero una lista de competidores. Monitorea sus cuentas de X, escanea sus sitios web en busca de actualizaciones, guarda todos los hallazgos en Notion y publica un resumen en Slack cada semana de forma programada.",
         "timeSaved": "~3 horas ahorradas por semana",
         "headings": {
@@ -1388,7 +1388,7 @@
         ]
       },
       "error-triage-daily": {
-        "title": "Triaje diario de errores",
+        "title": "Triaje diario de errores entre Sentry y Axiom, con deduplicación incluida",
         "description": "Programa a Zero para que se ejecute diariamente. Obtiene errores no resueltos de Sentry y Axiom, los deduplica entre fuentes, abre un issue en GitHub con el stack trace completo y lo asigna al ingeniero adecuado automáticamente.",
         "timeSaved": "~25 min ahorrados diarios",
         "headings": {
@@ -1473,7 +1473,7 @@
         ]
       },
       "marketing-emails": {
-        "title": "Emails de marketing",
+        "title": "Redacta y envía tu próximo email de marketing desde Slack",
         "description": "Pide a Zero que redacte tu próximo email de marketing, extraiga contexto de Notion y Linear, lo muestre en Slack y lo envíe vía Resend cuando lo apruebes. Sin cambiar de ventana.",
         "timeSaved": "~45 min ahorrados",
         "headings": {
@@ -1561,7 +1561,7 @@
         ]
       },
       "managed-agent-workers": {
-        "title": "Workers de agentes gestionados",
+        "title": "Gestiona una flota de subagentes de código desde un solo hilo de Slack",
         "description": "Tienes Managed Agents especializados para revisión de código, tests, deuda técnica y builds. Zero se convierte en el mánager de tu flota — los lanza, consulta su estado y trae sus resultados, todo desde Slack.",
         "timeSaved": "~20 min ahorrados por tarea",
         "headings": {
@@ -1643,7 +1643,7 @@
         ]
       },
       "daily-engineering-brief": {
-        "title": "Briefing diario de ingeniería",
+        "title": "Briefing de ingeniería de 7 días entre todas tus herramientas cada mañana",
         "description": "Pide a @Zero que extraiga datos en tiempo real de GitHub, Linear, Sentry y Plausible cada mañana, calcule promedios móviles de 7 días, marque cualquier anomalía y publique automáticamente un resumen de cuatro secciones en tu canal de Slack.",
         "timeSaved": "~20 min ahorrados al día",
         "headings": {
@@ -1738,7 +1738,7 @@
         ]
       },
       "competitor-pricing-monitor": {
-        "title": "Vigilancia de precios",
+        "title": "Detecta cada cambio de precio de la competencia en el momento en que se publica",
         "description": "Dale a @Zero una lista de URLs de precios de competidores. Extrae el contenido de cada página cada lunes, lo compara con la instantánea de la semana anterior en Notion, escribe un resumen de impacto para cada cambio encontrado, guarda el reporte completo en Notion y publica un resumen en Slack.",
         "timeSaved": "~2 hrs ahorradas por semana",
         "headings": {
@@ -1820,7 +1820,7 @@
         ]
       },
       "cross-tool-context-query": {
-        "title": "Estado multi-herramienta",
+        "title": "Busca en Slack, Notion, Linear y GitHub con una sola pregunta",
         "description": "Pregúntale a @Zero sobre un proyecto, funcionalidad o tema. Busca en Slack, Notion, Linear y GitHub simultáneamente, luego devuelve un resumen estructurado: estado actual, responsable, bloqueantes y última actividad — todo desde un solo mensaje.",
         "timeSaved": "~15 min ahorrados por consulta de estado",
         "headings": {
@@ -1912,7 +1912,7 @@
         ]
       },
       "customer-360": {
-        "title": "Cliente 360",
+        "title": "Obtén una vista 360° de cualquier cliente desde todas tus herramientas",
         "description": "Dale a @Zero un nombre de cliente o empresa. Busca en Gmail, Calendar, Slack, Linear y GitHub simultáneamente, luego devuelve un resumen estructurado: etapa de la relación, actividad reciente, temas pendientes y un resumen ejecutivo con la acción recomendada.",
         "timeSaved": "~30 min ahorrados por revisión de cliente",
         "headings": {
@@ -2007,7 +2007,7 @@
         ]
       },
       "trending-topic-radar": {
-        "title": "Radar de tendencias",
+        "title": "Detecta los temas que empiezan a despegar en X y tu Slack",
         "description": "Configura un escaneo diario en cuentas de X y canales de Slack. @Zero marca solo temas en auge — aquellos que aparecen en 2 o más fuentes o que muestran un pico repentino de velocidad — y publica un resumen clasificado en tu canal. Si nada califica, no se envía ninguna publicación.",
         "timeSaved": "~1 hr ahorrada al día",
         "headings": {
@@ -2096,7 +2096,7 @@
         ]
       },
       "content-performance-report": {
-        "title": "Rendimiento de contenido",
+        "title": "Puntúa los posts del lunes y convierte las métricas en una historia",
         "description": "Cada lunes, @Zero extrae las métricas de publicaciones de los últimos 7 días de X, puntúa cada publicación por engagement y escribe un breve reporte narrativo: mejor publicación, mayor bajo rendimiento, cambio semana a semana y una recomendación concreta. La narrativa se publica en Slack; los datos completos se archivan en Notion.",
         "timeSaved": "~2 hrs ahorradas semanalmente",
         "headings": {
@@ -2188,7 +2188,7 @@
         ]
       },
       "kb-ingest": {
-        "title": "Capturar conocimiento",
+        "title": "Pega un enlace en Slack para ampliar la base de conocimiento del equipo",
         "description": "Drop a link in Slack and ask Zero to ingest it. Zero fetches the content, summarizes it, and stores it in your team knowledge base — no context switch required.",
         "timeSaved": "~15 min saved",
         "headings": {
@@ -2270,7 +2270,7 @@
         ]
       },
       "pr-review": {
-        "title": "Revisión de PR",
+        "title": "Revisa cualquier PR con comentarios P0/P1/P2 publicados en línea",
         "description": "Ask Zero to review any pull request. Zero reads the diff, flags critical issues as P0, improvement opportunities as P1, and surfaces them in Slack so the team can act before merging.",
         "timeSaved": "~30 min saved per PR",
         "headings": {
@@ -2352,7 +2352,7 @@
         ]
       },
       "api-performance": {
-        "title": "Chequeo de API",
+        "title": "Investiga el TP95 de cualquier endpoint desde un mensaje de Slack",
         "description": "Ask Zero to pull TP95 data from Axiom for any API endpoint. Zero surfaces the slowest events, identifies patterns, and creates a GitHub issue with findings — all from one Slack message.",
         "timeSaved": "~45 min saved",
         "headings": {
@@ -2434,7 +2434,7 @@
         ]
       },
       "marketing-analytics": {
-        "title": "Analítica de crecimiento",
+        "title": "Convierte tu tráfico de Plausible en un informe de growth en lenguaje natural",
         "description": "Ask Zero to pull your Plausible traffic data and tell you what's working. Zero breaks down sources, channels, and trends — then surfaces the insight you actually need to act on.",
         "timeSaved": "~20 min saved",
         "headings": {
@@ -2516,7 +2516,7 @@
         ]
       },
       "production-db-query": {
-        "title": "Consulta a producción",
+        "title": "Pregúntale a tu base de datos de producción en lenguaje natural",
         "description": "Ask Zero a question about your production data. Zero writes the SQL, runs it read-only against your live database, and returns the answer in Slack — no credentials, no client, no risk of a mutating query.",
         "timeSaved": "~20 min saved",
         "headings": {
@@ -2598,7 +2598,7 @@
         ]
       },
       "office-ac-control": {
-        "title": "Aire acondicionado de oficina",
+        "title": "Maneja el aire de la oficina desde Slack — sin app, sin mando",
         "description": "Ask Zero to turn the office AC on or off, adjust the temperature, or schedule it for a specific time — all from Slack. Physical office operations, zero friction.",
         "timeSaved": "~5 min saved",
         "headings": {
@@ -2675,7 +2675,7 @@
         ]
       },
       "phone-call-automation": {
-        "title": "Llamadas automáticas",
+        "title": "Lanza una llamada saliente con guion desde un solo mensaje de Slack",
         "description": "Ask Zero to call a number, deliver a message, navigate an IVR, or dial into a meeting. Zero places the call with a specified voice, handles prompts automatically, and reports back when done.",
         "timeSaved": "~10 min saved",
         "headings": {
@@ -2757,7 +2757,7 @@
         ]
       },
       "marketing-content-automation": {
-        "title": "Pipeline de contenido",
+        "title": "Pipeline diario de contenido: de la investigación al post puntuado",
         "description": "Set up a multi-agent loop: one agent drafts posts daily from competitor and trend research, Zero saves your best inspirations on command, and a monitor agent scores performance every week. The whole pipeline runs in Slack.",
         "timeSaved": "~5 hrs saved per week",
         "headings": {
@@ -2842,7 +2842,7 @@
         ]
       },
       "engineering-brief": {
-        "title": "Briefing vespertino de ingeniería",
+        "title": "Cada tarde, resume releases, PRs y el MVP de commits del día",
         "description": "Every evening, Zero pulls GitHub activity, counts PRs merged per engineer, surfaces commit highlights, and picks an MVP of the day — posted to Slack with no manual work.",
         "timeSaved": "~30 min saved per day",
         "headings": {
@@ -2923,7 +2923,7 @@
         ]
       },
       "security-compliance": {
-        "title": "Chequeo de compliance",
+        "title": "Audita tu infraestructura frente a cualquier estándar de compliance",
         "description": "Ask Zero to audit your infrastructure setup against a compliance requirement. Zero checks your config across GitHub, cloud providers, and documentation — and posts a structured findings brief.",
         "timeSaved": "~2 hrs saved",
         "headings": {
@@ -3005,7 +3005,7 @@
         ]
       },
       "cross-tool-context": {
-        "title": "Estado de proyecto",
+        "title": "Pregunta por cualquier proyecto y recibe un estado sintetizado en segundos",
         "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief — state, owner, blockers, last update — and flags if sources disagree.",
         "timeSaved": "~25 min saved",
         "headings": {
@@ -3097,7 +3097,7 @@
         ]
       },
       "voice-managed-agent": {
-        "title": "Código por voz",
+        "title": "Dicta una tarea de código desde el coche y envía un PR",
         "description": "Dicta una tarea a Zero desde el móvil o el coche. Zero arranca un Anthropic Managed Agent que clona el repo, instala dependencias, corre los tests y te devuelve el resultado — manos libres.",
         "timeSaved": "~20 min ahorrados",
         "headings": {
@@ -3179,7 +3179,7 @@
         ]
       },
       "draft-url-preview": {
-        "title": "Borrador con preview en vivo",
+        "title": "Convierte una conversación de Slack en una URL de preview del CMS",
         "description": "Describe a Zero el post que necesitas en Slack. Zero lo escribe, lo guarda como borrador en el CMS y devuelve una URL de vista previa compartible — así revisas sobre la página real, no sobre un documento.",
         "timeSaved": "~45 min ahorrados",
         "headings": {
@@ -3261,7 +3261,7 @@
         ]
       },
       "blog-cover-art": {
-        "title": "Portadas de blog con marca",
+        "title": "Genera portadas de blog on-brand en segundos, no horas",
         "description": "Pide a Zero una imagen de portada y recibe una ilustración de marca — fondo neutro suave, ilustración dibujada a mano, título en una sans-serif limpia — guardada en Dropbox y lista para el post.",
         "timeSaved": "~30 min ahorrados",
         "headings": {
@@ -3343,7 +3343,7 @@
         ]
       },
       "ai-video-director": {
-        "title": "Dirige un vídeo corto",
+        "title": "Dirige un corto con un equipo de subagentes especialistas",
         "description": "Describe la historia a Zero. Zero escribe el storyboard, levanta una flota de subagentes especializados (research, copy, visuales, voz), arma una deck y maneja un generador de avatar — de punta a punta, sin traspasos.",
         "timeSaved": "~3 horas ahorradas",
         "headings": {
