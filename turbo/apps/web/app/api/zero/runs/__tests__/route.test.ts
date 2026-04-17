@@ -287,6 +287,7 @@ describe("POST /api/zero/runs", () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
+      await context.mocks.flushAfter();
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
@@ -297,6 +298,7 @@ describe("POST /api/zero/runs", () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
+      await context.mocks.flushAfter();
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
@@ -307,6 +309,7 @@ describe("POST /api/zero/runs", () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
+      await context.mocks.flushAfter();
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
@@ -352,6 +355,7 @@ describe("POST /api/zero/runs", () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
+      await context.mocks.flushAfter();
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
@@ -379,6 +383,7 @@ describe("POST /api/zero/runs", () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
+      await context.mocks.flushAfter();
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
@@ -396,6 +401,7 @@ describe("POST /api/zero/runs", () => {
         const response = await postRun({ agentId, prompt: "Hello" });
         expect(response.status).toBe(201);
         const data = await response.json();
+        await context.mocks.flushAfter();
 
         const job = await findTestRunnerJobEntry(data.runId);
         expect(job).toBeDefined();
@@ -429,6 +435,7 @@ describe("POST /api/zero/runs", () => {
         });
         const data = await response.json();
         expect(response.status).toBe(201);
+        await context.mocks.flushAfter();
 
         const job = await findTestRunnerJobEntry(data.runId);
         expect(job).toBeDefined();
@@ -652,6 +659,7 @@ describe("POST /api/zero/runs", () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
+      await context.mocks.flushAfter();
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
@@ -690,6 +698,7 @@ describe("POST /api/zero/runs", () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
+      await context.mocks.flushAfter();
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
@@ -725,6 +734,7 @@ describe("POST /api/zero/runs", () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
+      await context.mocks.flushAfter();
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
@@ -755,6 +765,7 @@ describe("POST /api/zero/runs", () => {
       const response = await postRun({ agentId, prompt: "Hello" });
       expect(response.status).toBe(201);
       const data = await response.json();
+      await context.mocks.flushAfter();
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();

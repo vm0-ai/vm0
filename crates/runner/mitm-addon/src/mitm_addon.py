@@ -9,6 +9,7 @@ This addon runs on the runner HOST (not inside VMs) and:
 4. Logs network activity per-run to JSONL files
 """
 
+import functools
 import json
 import os
 import time
@@ -55,6 +56,13 @@ def load(loader: Loader) -> None:
         typespec=str,
         default="/tmp/proxy-registry.json",
         help="Path to proxy registry file",
+    )
+
+    # Initialize the usage pending-count file so the runner can poll it
+    # before sending SIGTERM.  The file lives next to the addon script,
+    # which is written to addon_dir by the runner.
+    usage.set_pending_path(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "usage-pending")
     )
 
 
@@ -295,6 +303,12 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
         is_x_stream = usage.is_x_stream_path(stream_path)
 
+    # Track flows that will generate webhook POSTs (usage or connector billing)
+    # so the runner can wait for them to reach response()/error() before stopping.
+    if is_model_provider or is_billable_connector:
+        usage.increment_flows()
+        flow.metadata["_usage_flow_tracked"] = True
+
     if is_model_provider:
         content_type = flow.response.headers.get("content-type", "")
         if "text/event-stream" in content_type:
@@ -346,6 +360,27 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     flow.metadata["stream_buffer_state"] = state
 
 
+def _track_usage_flow(fn):
+    """Decorator ensuring decrement_flows runs after response/error handlers.
+
+    Pairs with ``increment_flows()`` in ``responseheaders()``.  Uses
+    ``pop`` so that even if both ``response()`` and ``error()`` fire for
+    the same flow, the decrement only happens once.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(flow: http.HTTPFlow, *args, **kwargs):
+        tracked = flow.metadata.pop("_usage_flow_tracked", False)
+        try:
+            return fn(flow, *args, **kwargs)
+        finally:
+            if tracked:
+                usage.decrement_flows()
+
+    return wrapper
+
+
+@_track_usage_flow
 def response(flow: http.HTTPFlow) -> None:
     """
     Handle response and log network activity.
@@ -446,6 +481,7 @@ def response(flow: http.HTTPFlow) -> None:
         )
 
 
+@_track_usage_flow
 def error(flow: http.HTTPFlow) -> None:
     """
     Log connection-level errors (timeout, RST, TLS failure) to the

@@ -853,7 +853,12 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/toolchain-init
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: aarch64-musl-release
+          save-if: false
 
       - name: Install Python3 and Ansible
         run: |

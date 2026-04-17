@@ -841,6 +841,18 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     info!("shutting down factories");
     shutdown_factories(&mut factories, runtime.as_mut()).await;
 
+    // Wait for pending usage reports to flush before stopping the proxy.
+    // The addon writes in-flight flow and pending report counts to a file;
+    // we poll until both reach zero so no usage data is lost on shutdown.
+    info!("waiting for proxy usage reports to flush");
+    let flushed =
+        proxy::wait_usage_flush(&base_dir.join("mitm-addon"), proxy::USAGE_FLUSH_TIMEOUT).await;
+    if flushed {
+        info!("all usage reports flushed");
+    } else {
+        warn!("usage flush timed out, some reports may be lost");
+    }
+
     // Stop proxy after all jobs have drained and factory is shut down.
     if let Err(e) = mitm.stop().await {
         warn!(error = %e, "proxy stop failed");

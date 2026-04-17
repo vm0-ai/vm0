@@ -65,6 +65,12 @@ RUN ARCH=$(dpkg --print-architecture) \
     && ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold \
     && mold --version
 
+# Install Python3 and Ansible for runner deployments via SSH.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    && pip3 install --no-cache-dir ansible-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # Stage 3: Development environment with additional tools
 FROM toolchain-rust AS development
 
@@ -180,11 +186,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i "s/UI.initSetting('resize', 'off')/UI.initSetting('resize', 'remote')/" /usr/share/novnc/app/ui.js \
     && sed -i "s/UI.initSetting('reconnect', false)/UI.initSetting('reconnect', true)/" /usr/share/novnc/app/ui.js
-
-# Install pip for Python testing
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-pip \
-    && rm -rf /var/lib/apt/lists/*
 
 # Install cargo-llvm-cov for Rust test coverage
 RUN cargo install cargo-llvm-cov --locked \

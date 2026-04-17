@@ -5,8 +5,8 @@ import { logger } from "../shared/logger";
 
 const log = logger("service:user-cache");
 
-/** Cache TTL aligned with Clerk JWT TTL */
-const CACHE_TTL_MS = 60_000; // 1 minute
+/** Cache TTL for user data (15 minutes) */
+const CACHE_TTL_MS = 900_000;
 
 interface CachedUser {
   userId: string;
@@ -18,7 +18,7 @@ interface CachedUser {
  * Get user data from cache or Clerk API.
  *
  * 1. Check user_cache by userId
- * 2. If fresh (< 1 min): return cached data
+ * 2. If fresh (< 15 min): return cached data
  * 3. If miss or stale: call Clerk API, upsert cache, return
  */
 export async function getCachedUser(userId: string): Promise<CachedUser> {

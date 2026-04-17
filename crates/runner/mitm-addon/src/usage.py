@@ -12,6 +12,8 @@ Two paths:
 """
 
 import json
+import os
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -25,6 +27,70 @@ import body_utils
 from auth import _opener, get_api_url, make_api_request
 from body_utils import decompress_body
 from logging_utils import log_proxy_entry
+
+# ---------------------------------------------------------------------------
+# Dual pending counter: in-flight flows + pending reports
+#
+# The runner reads this file before sending SIGTERM so it can wait until
+# both counters reach zero (all flows processed, all reports delivered).
+# File format: "<flows>:<reports>" written atomically (tmp + os.replace).
+# ---------------------------------------------------------------------------
+
+_counter_lock = threading.Lock()
+_in_flight_flows = 0
+_pending_reports = 0
+_pending_path = ""
+
+
+def set_pending_path(path: str) -> None:
+    """Set the path for the pending-count file.  Called once at addon init."""
+    global _pending_path
+    _pending_path = path
+    _write_pending()
+
+
+def _write_pending() -> None:
+    """Atomically write current counters to file."""
+    if not _pending_path:
+        return
+    tmp = _pending_path + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            f.write(f"{_in_flight_flows}:{_pending_reports}")
+        os.replace(tmp, _pending_path)
+    except OSError:
+        pass  # best-effort; runner will timeout if file is stale
+
+
+def increment_flows() -> None:
+    """Track a new in-flight model-provider flow (call from responseheaders)."""
+    global _in_flight_flows
+    with _counter_lock:
+        _in_flight_flows += 1
+        _write_pending()
+
+
+def decrement_flows() -> None:
+    """Mark a model-provider flow as complete (call from response/error)."""
+    global _in_flight_flows
+    with _counter_lock:
+        _in_flight_flows = max(0, _in_flight_flows - 1)
+        _write_pending()
+
+
+def _increment_reports() -> None:
+    global _pending_reports
+    with _counter_lock:
+        _pending_reports += 1
+        _write_pending()
+
+
+def _decrement_reports() -> None:
+    global _pending_reports
+    with _counter_lock:
+        _pending_reports = max(0, _pending_reports - 1)
+        _write_pending()
+
 
 # ---------------------------------------------------------------------------
 # Anthropic usage parsing primitives
@@ -224,6 +290,22 @@ def _post_webhook_with_retry(
     max_retries: int = 1,
 ) -> None:
     """POST with retry.  Swallows all exceptions after final attempt."""
+    try:
+        _do_post_webhook_attempts(
+            url, sandbox_token, payload, proxy_log_path, log_type, max_retries
+        )
+    finally:
+        _decrement_reports()
+
+
+def _do_post_webhook_attempts(
+    url: str,
+    sandbox_token: str,
+    payload: dict,
+    proxy_log_path: str,
+    log_type: str,
+    max_retries: int,
+) -> None:
     for attempt in range(max_retries + 1):
         try:
             _post_webhook(url, sandbox_token, payload)
@@ -287,6 +369,7 @@ def _enqueue_webhook(
         url=url,
         **copied,
     )
+    _increment_reports()
     try:
         usage_executor.submit(
             _post_webhook_with_retry, url, sandbox_token, copied, proxy_log_path, log_type

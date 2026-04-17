@@ -101,6 +101,8 @@ interface BuildZeroContextParams {
   // Connector types the user has permitted for this agent run. When set, only
   // these connector types will have their secrets injected at runtime.
   allowedConnectorTypes?: ConnectorType[];
+  // Pre-fetched user timezone from Phase 1 — skips getUserPreferences() when provided
+  preloadedUserTimezone?: string;
 }
 
 /**
@@ -583,6 +585,8 @@ export async function buildZeroExecutionContext(
     : undefined;
 
   // Step 4: Resolve secrets, user preferences in parallel.
+  // When preloadedUserTimezone is provided (from Phase 1), skip getUserPreferences
+  // to avoid the duplicate DB query.
   const resolveSecretsStart = Date.now();
   const [secretsResult, userPrefs, originalModelProvider] = await Promise.all([
     resolveSecretsAndEnvironment(
@@ -595,9 +599,11 @@ export async function buildZeroExecutionContext(
       params.userId,
       params.allowedConnectorTypes,
     ),
-    params.userId
-      ? getUserPreferences(params.orgId, params.userId)
-      : Promise.resolve(null),
+    params.preloadedUserTimezone !== undefined
+      ? Promise.resolve(null)
+      : params.userId
+        ? getUserPreferences(params.orgId, params.userId)
+        : Promise.resolve(null),
     // Zero-layer concern: fetch previous run's model provider for compatibility check
     resolution?.previousRunId
       ? globalThis.services.db
@@ -622,7 +628,8 @@ export async function buildZeroExecutionContext(
     connectorPermissionConfigs,
     mergedVars,
   } = secretsResult;
-  const userTimezone = userPrefs?.timezone ?? undefined;
+  const userTimezone =
+    params.preloadedUserTimezone ?? userPrefs?.timezone ?? undefined;
 
   // Step 5: Provider compatibility check for session continues.
   // When resuming a session, verify the new provider is compatible with the

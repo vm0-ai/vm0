@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -63,6 +63,17 @@ const READY_TIMEOUT: Duration = Duration::from_secs(10);
 /// Must be long enough for `done()` in the mitmproxy addon to flush
 /// all in-flight usage reports (each POST has a 10 s HTTP timeout).
 const STOP_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Maximum time to wait for pending usage reports to flush before stopping.
+///
+/// The runner polls `{addon_dir}/usage-pending` (written by the Python
+/// addon) and waits until both counters reach zero or this timeout expires.
+/// 30 s is generous for worst-case webhook delivery (10 s timeout × 2
+/// retries = 20.5 s) with headroom for mitmproxy event-loop drain.
+pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Poll interval when waiting for usage flush.
+const USAGE_FLUSH_POLL: Duration = Duration::from_millis(200);
 
 /// Configuration for starting the proxy.
 #[derive(Clone)]
@@ -222,6 +233,55 @@ impl MitmProxy {
         }
         self.child = None;
         Ok(())
+    }
+}
+
+/// Wait for all pending proxy usage reports to be delivered.
+///
+/// The Python addon writes `<flows>:<reports>` to `{addon_dir}/usage-pending`
+/// where `flows` is the number of in-flight model-provider HTTP flows and
+/// `reports` is the number of usage webhook POSTs in the thread pool.
+///
+/// Returns `true` if both counters reached zero, `false` on timeout.
+/// Missing or unreadable file is treated as zero (old addon version or
+/// no reports were ever submitted).
+pub async fn wait_usage_flush(addon_dir: &Path, timeout: Duration) -> bool {
+    let path = addon_dir.join("usage-pending");
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        match tokio::fs::read_to_string(&path).await {
+            Ok(s) => {
+                let trimmed = s.trim();
+                if trimmed == "0:0" || trimmed == "0" {
+                    return true;
+                }
+                // Verify the file contains a valid "<flows>:<reports>" pair.
+                // If unparseable (corrupt file, future format change), treat
+                // as zero to avoid blocking shutdown for 30 s on stale data.
+                let parseable = if let Some((flows, reports)) = trimmed.split_once(':') {
+                    flows.parse::<u32>().is_ok() && reports.parse::<u32>().is_ok()
+                } else {
+                    trimmed.parse::<u32>().is_ok()
+                };
+                if !parseable {
+                    warn!(
+                        content = trimmed,
+                        "usage-pending file has unparseable content, treating as flushed"
+                    );
+                    return true;
+                }
+            }
+            // File missing = no reports were ever submitted (or old addon).
+            Err(_) => return true,
+        }
+        if tokio::time::Instant::now() >= deadline {
+            warn!(
+                timeout_secs = timeout.as_secs(),
+                "usage flush timed out, proceeding with proxy stop"
+            );
+            return false;
+        }
+        tokio::time::sleep(USAGE_FLUSH_POLL).await;
     }
 }
 
@@ -1070,5 +1130,66 @@ mod tests {
         let port = find_available_port().unwrap();
         let result = wait_for_ready(&mut child, port, Duration::from_secs(5)).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn wait_usage_flush_returns_true_when_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("usage-pending"), "0:0").unwrap();
+        assert!(wait_usage_flush(dir.path(), Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn wait_usage_flush_returns_true_when_file_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        // No file written — should return true immediately.
+        assert!(wait_usage_flush(dir.path(), Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn wait_usage_flush_waits_until_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("usage-pending");
+        std::fs::write(&path, "2:1").unwrap();
+
+        let p = path.clone();
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            std::fs::write(&p, "0:0").unwrap();
+        });
+
+        let d = dir.path().to_path_buf();
+        assert!(wait_usage_flush(&d, Duration::from_secs(5)).await);
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_usage_flush_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("usage-pending"), "1:3").unwrap();
+        // Very short timeout — should return false.
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(300)).await);
+    }
+
+    #[tokio::test]
+    async fn wait_usage_flush_returns_true_on_corrupt_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // Corrupt / unparseable content should not block shutdown.
+        std::fs::write(dir.path().join("usage-pending"), "garbage").unwrap();
+        assert!(wait_usage_flush(dir.path(), Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn wait_usage_flush_returns_true_on_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("usage-pending"), "").unwrap();
+        assert!(wait_usage_flush(dir.path(), Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn wait_usage_flush_accepts_plain_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("usage-pending"), "0").unwrap();
+        assert!(wait_usage_flush(dir.path(), Duration::from_secs(1)).await);
     }
 }
