@@ -1511,22 +1511,40 @@ describe("POST /api/zero/slack/events", () => {
       expect(serialized).not.toContain("Sent via");
     });
 
-    it("falls back to the org default when the override points to an agent outside the org (stale override guard)", async () => {
-      // Scenario: a user's override refers to a compose id that is not in
-      // their org (e.g. the agent was deleted or moved). The guard in
-      // `resolveEffectiveComposeId` must reject the stale pointer and fall
-      // back to the default. We assert the same way as the "no override"
-      // case — default agent is exercised → no footer on the error reply.
-      await seedSlackUserAgentPreference({
-        vm0UserId: user.userId,
+    it("falls back to the org default when the override points to a compose without a zero_agents row (stale override guard)", async () => {
+      // Scenario: the user's persisted override points to a compose that no
+      // longer has a corresponding `zero_agents` row (e.g. the agent was
+      // deleted or its zero_agents row was cleaned up out-of-band). The FK
+      // from `slack_user_agent_preferences.selected_compose_id` to
+      // `agent_composes.id` still holds, so the override row is present in
+      // the DB, but the guard in `resolveEffectiveComposeId` —
+      //   SELECT ... FROM zero_agents
+      //   WHERE id = override AND org_id = user.org_id
+      // — returns no row and the function must fall back to the org default.
+      // This is the exact semantic the guard protects against.
+      //
+      // We use `seedOrphanCompose` to create a compose row without a
+      // zero_agents row, then seed the preference pointing at that id. The
+      // default agent's head version is cleared so the mention lands on the
+      // pre-dispatch error branch we can assert against; the absence of a
+      // "Sent via" footer proves the default (not the stale override) was
+      // used.
+      const orphan = await seedOrphanCompose({
+        userId: user.userId,
+        name: uniqueId("stale-override"),
         orgId: user.orgId,
-        composeId: "00000000-0000-0000-0000-000000000000",
       });
 
       const { workspaceId, slackUserId } = await setupOrgWithOverride({
         overrideToAlternate: false,
         clearAlternate: false,
         clearDefault: true,
+      });
+
+      await seedSlackUserAgentPreference({
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+        composeId: orphan.composeId,
       });
 
       const request = createSlackEventRequest({
