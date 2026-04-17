@@ -542,7 +542,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       );
 
       const encryptedSecrets = encryptSecretsMap(
-        { GMAIL_ACCESS_TOKEN: "ya29.real-token" },
+        { GMAIL_ACCESS_TOKEN: "fake-access-token" },
         globalThis.services.env.SECRETS_ENCRYPTION_KEY,
       );
       const secretConnectorMap = {
