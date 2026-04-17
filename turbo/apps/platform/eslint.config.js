@@ -39,6 +39,8 @@ export default [
       "ccstate/no-detach-in-signals": "error",
       "ccstate/no-direct-fetch": "error",
       "ccstate/no-empty-promise-catch": "error",
+      "ccstate/no-void-statement": "error",
+      "ccstate/no-abort-swallower": "error",
       "ccstate/require-accept": "error",
     },
   },

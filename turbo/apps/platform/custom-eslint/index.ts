@@ -47,6 +47,8 @@ import noDirectLocalStorage from "./rules/no-direct-local-storage.ts";
 import noDetachInSignals from "./rules/no-detach-in-signals.ts";
 import noDirectFetch from "./rules/no-direct-fetch.ts";
 import noEmptyPromiseCatch from "./rules/no-empty-promise-catch.ts";
+import noVoidStatement from "./rules/no-void-statement.ts";
+import noAbortSwallower from "./rules/no-abort-swallower.ts";
 import noTestDelay from "./rules/no-test-delay.ts";
 import requireAccept from "./rules/require-accept.ts";
 import noGetByRoleName from "./rules/no-get-by-role-name.ts";
@@ -80,6 +82,8 @@ const plugin = {
     "no-detach-in-signals": noDetachInSignals,
     "no-direct-fetch": noDirectFetch,
     "no-empty-promise-catch": noEmptyPromiseCatch,
+    "no-void-statement": noVoidStatement,
+    "no-abort-swallower": noAbortSwallower,
     "no-test-delay": noTestDelay,
     "require-accept": requireAccept,
     "no-get-by-role-name": noGetByRoleName,

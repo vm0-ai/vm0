@@ -134,3 +134,156 @@ const loadPagedMessages$ = command(
 | `await Promise.all([set(...), ...])` | Yes         | Yes           | Yes               |
 
 Always use `await Promise.all([...])` for starting multiple long-running async operations.
+
+## Fix Recipes
+
+When `ccstate/no-void-statement` fires, pick the recipe that matches the call
+site. The recipes below cover every case we have ever encountered.
+
+### View — DOM callback firing an async command
+
+```ts
+// ❌ void silences lint, promise is untracked
+const handleClick = () => {
+  void updateParams(next);
+};
+
+// ❌ .catch(throwIfNotAbort) hides non-abort rejections from detach tracker
+const handleClick = () => {
+  updateParams(next).catch(throwIfNotAbort);
+};
+
+// ✅ detach() registers the promise for clearAllDetached() cleanup and logs
+//    non-abort rejections
+const handleClick = () => {
+  detach(updateParams(next), Reason.DomCallback);
+};
+```
+
+Chained `.then()` works the same — detach the whole chain and drop any
+empty rejection handler:
+
+```ts
+// ❌
+onDownload={() => {
+  void fetchExtra(id, pageSignal).then(
+    (extra) => { downloadJson(extra); },
+    () => {},
+  );
+}}
+
+// ✅
+onDownload={() => {
+  detach(
+    fetchExtra(id, pageSignal).then((extra) => {
+      downloadJson(extra);
+    }),
+    Reason.DomCallback,
+  );
+}}
+```
+
+### Signals — command that kicks off external async work
+
+Inside `signals/` you cannot use `detach()` (`ccstate/no-detach-in-signals`).
+Instead, make the command `async`, accept a signal, and let the view caller
+do the detach:
+
+```ts
+// ❌ command fires and returns — promise is untracked, `subscribing$` state
+//    may never reset on abort
+export const ensurePushSubscription$ = command(({ get, set }) => {
+  set(subscribing$, true);
+  void doSubscribe(...)
+    .then(() => set(subscribing$, false))
+    .catch(() => set(subscribing$, false));
+});
+
+// ✅ async command with try/finally; view detaches at the call site
+export const ensurePushSubscription$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    set(subscribing$, true);
+    // eslint-disable-next-line no-restricted-syntax -- finally needed to reset `subscribing$` on success, failure, or abort
+    try {
+      await doSubscribe(...);
+      signal.throwIfAborted();
+    } finally {
+      set(subscribing$, false);
+    }
+  },
+);
+
+// view
+const ensurePushSubscription = useSet(ensurePushSubscription$);
+const { signal: rootSignal } = useGet(rootSignal$);
+// …
+detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
+```
+
+### Signals — command that must also kick off a daemon loop
+
+If a command needs both "do the work" and "run a parallel loop for its
+duration" (e.g. the app skeleton typewriter), run them with `Promise.all`
+so the caller's signal owns both:
+
+```ts
+// ❌ floating daemon; the re-launch is invisible to the caller
+export const showAppSkeleton$ = command(({ get, set }) => {
+  set(internalVisible$, true);
+  const { signal } = get(rootSignal$);
+  void set(startSkeletonCycling$, signal).catch(throwIfNotAbort);
+});
+
+// ✅ split responsibilities: showAppSkeleton$ only flips state; the
+//    caller (which already has a signal) runs the loop in parallel with
+//    its own work via Promise.all
+export const showAppSkeleton$ = command(({ set }) => {
+  set(internalVisible$, true);
+  set(skeletonFirstCycle$, true);
+});
+
+export const onboardingContinueWeb$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    set(showAppSkeleton$);
+    await Promise.all([
+      set(startSkeletonCycling$, signal),
+      (async () => {
+        const agentId = await set(completeOnboarding$, signal);
+        // …
+      })(),
+    ]);
+  },
+);
+```
+
+### Signals — keyboard shortcut handler
+
+`setupGlobalShortcut` wraps each handler with `onDomEventFn`, which
+already calls `detach(..., Reason.DomCallback)` internally. Write the
+handler as an `async` function and use `await`:
+
+```ts
+// ❌
+y: () => {
+  if (taskId) {
+    void set(archiveAndFocusNext$, taskId, signal).catch(throwIfNotAbort);
+  }
+},
+
+// ✅ onDomEventFn detaches the returned promise
+y: async () => {
+  if (taskId) {
+    await set(archiveAndFocusNext$, taskId, signal);
+  }
+},
+```
+
+## Why not `.catch(throwIfNotAbort)`
+
+`.catch(throwIfNotAbort)` handles the promise (so TypeScript's
+`no-floating-promises` passes) but silently swallows `AbortError`
+— the promise never feeds back into `clearAllDetached()`, so tests can
+teardown before the in-flight work settles and surface
+`Unhandled Rejection` or `DOMException` from happy-dom. Either `await` the
+promise (propagating the abort) or `detach()` it (registering it with the
+tracker). Never swallow rejections with a bare handler.
