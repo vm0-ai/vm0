@@ -763,15 +763,25 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.expiresAt).toBe(expectedExpiry);
     });
 
-    it("should return null expiresAt for non-expiring token", async () => {
-      // tokenExpiresAt = null means non-expiring
+    it("should refresh and backfill tokenExpiresAt when stored expiry is null", async () => {
+      // Regression for #9836: historical rows with tokenExpiresAt = null must
+      // self-heal on next firewall call, not be treated as non-expiring.
       await setupNotionConnector({
         tokenExpiresAt: null,
-        accessToken: "permanent-notion-token",
+        accessToken: "stale-notion-token",
       });
 
+      server.use(
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "backfilled-notion-token",
+            expires_in: 3600,
+          });
+        }),
+      );
+
       const encrypted = encryptTestSecrets({
-        NOTION_ACCESS_TOKEN: "permanent-notion-token",
+        NOTION_ACCESS_TOKEN: "stale-notion-token",
         NOTION_REFRESH_TOKEN: "notion-refresh-token",
       });
 
@@ -790,10 +800,16 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.headers.Authorization).toBe("Bearer permanent-notion-token");
-      expect(data.refreshedConnectors).toEqual([]);
-      expect(data.refreshedSecrets).toEqual([]);
-      expect(data.expiresAt).toBeNull();
+      expect(data.headers.Authorization).toBe("Bearer backfilled-notion-token");
+      expect(data.refreshedConnectors).toEqual(["notion"]);
+      expect(data.refreshedSecrets).toEqual(["NOTION_ACCESS_TOKEN"]);
+      expect(data.expiresAt).toBeTypeOf("number");
+      // Verify the null was backfilled in DB
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.orgId,
+        "notion",
+      );
+      expect(tokenExpiresAt).not.toBeNull();
     });
 
     it("should return null expiresAt without secretConnectorMap", async () => {

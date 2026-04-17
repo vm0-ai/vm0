@@ -1548,8 +1548,10 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(tokenExpiresAt?.getTime()).toBe(expectedExpiry.getTime());
     });
 
-    it("should leave tokenExpiresAt null when provider does not return expires_in", async () => {
+    it("should fallback to 1h tokenExpiresAt when provider does not return expires_in", async () => {
       const user = await context.setupUser();
+      const frozenNow = 1700000000000;
+      vi.spyOn(Date, "now").mockReturnValue(frozenNow);
 
       const { handlers: mswHandlers } = createNotionOAuthMock({
         accessToken: "notion-access-token",
@@ -1574,12 +1576,14 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("/connector/success");
       expect(location).toContain("type=notion");
 
-      // Verify tokenExpiresAt is null (non-expiring token)
+      // Verify tokenExpiresAt falls back to now + 3600s so the firewall auth
+      // endpoint can still judge freshness and trigger refresh on expiry.
+      // See #9836.
       const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
         user.orgId,
         "notion",
       );
-      expect(tokenExpiresAt).toBeNull();
+      expect(tokenExpiresAt?.getTime()).toBe(frozenNow + 3600 * 1000);
     });
   });
 
