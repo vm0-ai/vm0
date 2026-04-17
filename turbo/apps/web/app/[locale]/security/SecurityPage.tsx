@@ -47,7 +47,7 @@ export default function SecurityPage() {
             <p className="text-[15px] leading-relaxed text-[hsl(var(--muted-foreground))]">
               {t("questionsAboutSecurity")}{" "}
               <a
-                href="mailto:contact@vm0.ai"
+                href="mailto:support@vm0.ai"
                 className="text-[hsl(var(--foreground))] underline underline-offset-4"
               >
                 {t("contactUs")}

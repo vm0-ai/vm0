@@ -212,7 +212,8 @@
     "status": "Status",
     "termsOfUse": "Nutzungsbedingungen",
     "privacyPolicy": "Datenschutzrichtlinie",
-    "consentPreferences": "Einwilligungseinstellungen"
+    "consentPreferences": "Einwilligungseinstellungen",
+    "support": "Support"
   },
   "skills": {
     "hero": {

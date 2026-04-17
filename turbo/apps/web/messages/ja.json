@@ -212,7 +212,8 @@
     "status": "ステータス",
     "termsOfUse": "利用規約",
     "privacyPolicy": "プライバシーポリシー",
-    "consentPreferences": "同意設定"
+    "consentPreferences": "同意設定",
+    "support": "サポート"
   },
   "skills": {
     "hero": {

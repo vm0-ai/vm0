@@ -75,6 +75,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "yearly" as const,
       lastModified: STATIC_DATE,
     },
+    {
+      path: "/support",
+      priority: 0.5,
+      changeFrequency: "monthly" as const,
+      lastModified: STATIC_DATE,
+    },
   ];
 
   const urls: MetadataRoute.Sitemap = [];
