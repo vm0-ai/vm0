@@ -663,6 +663,19 @@ mod tests {
     }
 
     #[test]
+    fn bitmap_save_rejects_path_without_parent() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        // `/` has no parent. The function must reject it before touching the FS
+        // so callers can't accidentally skip the parent-dir fsync durability
+        // guarantee by passing a degenerate path.
+        let err = cow.save_bitmap(Path::new("/")).unwrap_err();
+        assert!(matches!(err, NbdCowError::Io(_)), "got {err:?}");
+    }
+
+    #[test]
     fn bitmap_empty_round_trip() {
         let base = create_base_image(&vec![0x00; 4096]);
         let cow_file = NamedTempFile::new().unwrap();
