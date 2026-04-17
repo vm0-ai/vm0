@@ -368,7 +368,6 @@ export function ZeroScheduleCard({
   const handleCreateSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
-        // eslint-disable-next-line ccstate/no-abort-swallower -- save error is surfaced via useLoadableSet.saveError and displayed in the dialog; empty handler suppresses duplicate detach logging (test setup treats L.error as a failure)
         onSave({
           prompt: values.prompt.trim(),
           description: values.description.trim() || undefined,
@@ -420,7 +419,6 @@ export function ZeroScheduleCard({
   const handleEditSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
-        // eslint-disable-next-line ccstate/no-abort-swallower -- save error is surfaced via useLoadableSet.saveError and displayed in the dialog; empty handler suppresses duplicate detach logging (test setup treats L.error as a failure)
         onSave({
           prompt: values.prompt.trim(),
           description: values.description.trim() || undefined,

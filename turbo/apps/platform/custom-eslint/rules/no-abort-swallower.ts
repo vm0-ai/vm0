@@ -11,6 +11,14 @@
  * `await promise` in an async context where a parent signal propagates
  * the abort.
  *
+ * Scope: this rule only flags the named `throwIfNotAbort` swallower.
+ * `.then(onSuccess, () => {})` with an empty rejection handler is
+ * intentionally permitted — it is a narrow silencer that only catches
+ * rejections from the input promise (not from `onSuccess`), and is
+ * legitimate when the rejection is already tracked elsewhere (e.g. a
+ * `useLoadableSet` loadable state drives a UI error banner).
+ * `.catch(() => {})` remains forbidden by `no-empty-promise-catch`.
+ *
  * Bad:
  *   set(cmd$, signal).catch(throwIfNotAbort);
  *   fetchSomething().then(ok, throwIfNotAbort);
@@ -35,21 +43,6 @@ function isAbortSwallower(
   );
 }
 
-function isEmptyFunction(
-  node: TSESTree.Expression | TSESTree.SpreadElement,
-): boolean {
-  if (
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-    node.type === AST_NODE_TYPES.FunctionExpression
-  ) {
-    return (
-      node.body.type === AST_NODE_TYPES.BlockStatement &&
-      node.body.body.length === 0
-    );
-  }
-  return false;
-}
-
 export default createRule({
   name: "no-abort-swallower",
   defaultOptions: [],
@@ -57,14 +50,12 @@ export default createRule({
     type: "problem",
     docs: {
       description:
-        "Disallow .catch/.then handlers that only filter AbortError — use detach() or await",
+        "Disallow .catch/.then handlers named throwIfNotAbort — use detach() or await",
     },
     schema: [],
     messages: {
       noAbortSwallower:
         "Do not use `{{handler}}` as a promise rejection handler. It silently swallows AbortError and escapes the clearAllDetached() tracker. Use `detach(<expr>, Reason.DomCallback)` from DOM callbacks, or `await` with a parent signal. See turbo/docs/no-floating-promise.md#why-not-catchthrowifnotabort.",
-      noEmptyThenReject:
-        "Do not use an empty rejection handler in `.then(_, () => {})`. This silences floating-promise lint without tracking the rejection. Use `detach(<expr>, Reason.DomCallback)` instead.",
     },
   },
   create(context) {
@@ -107,13 +98,6 @@ export default createRule({
                     ? rejectHandler.name
                     : "handler",
               },
-            });
-            return;
-          }
-          if (isEmptyFunction(rejectHandler)) {
-            context.report({
-              node,
-              messageId: "noEmptyThenReject",
             });
           }
         }
