@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isTestEndpointAllowed } from "../../../../../src/lib/test-endpoints/guard";
+import { SLACK_E2E_FIXTURES } from "../../../../../src/lib/test-endpoints/slack-mock-fixtures";
 
 export async function POST(request: Request) {
   if (!isTestEndpointAllowed(request)) {
@@ -8,10 +9,10 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     url: "https://e2e-mock.invalid/",
-    team: "E2E Test Team",
+    team: SLACK_E2E_FIXTURES.teamName,
     user: "e2e-bot",
-    team_id: "T_E2E",
-    user_id: "U_E2E_BOT",
-    bot_id: "B_E2E_BOT",
+    team_id: SLACK_E2E_FIXTURES.teamId,
+    user_id: SLACK_E2E_FIXTURES.botUserId,
+    bot_id: SLACK_E2E_FIXTURES.botId,
   });
 }

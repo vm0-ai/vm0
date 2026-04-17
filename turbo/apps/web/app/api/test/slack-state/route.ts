@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { clerkClient } from "@clerk/nextjs/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { isTestEndpointAllowed } from "../../../../src/lib/test-endpoints/guard";
 import { slackOrgInstallations } from "../../../../src/db/schema/slack-org-installation";
@@ -10,8 +9,10 @@ import { zeroRuns } from "../../../../src/db/schema/zero-run";
 import { encryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
 import {
   DEFAULT_TEST_EMAIL,
+  resolveTestOrgId,
   resolveTestUserId,
 } from "../../../../src/lib/auth/test-user";
+import { SLACK_E2E_FIXTURES } from "../../../../src/lib/test-endpoints/slack-mock-fixtures";
 import { env } from "../../../../src/env";
 
 /**
@@ -93,18 +94,6 @@ interface SeedBody {
   seed_connection?: boolean;
 }
 
-async function resolveTestOrgId(userId: string): Promise<string> {
-  const clerk = await clerkClient();
-  const memberships = await clerk.users.getOrganizationMembershipList({
-    userId,
-  });
-  const orgId = memberships.data[0]?.organization.id;
-  if (!orgId) {
-    throw new Error(`Test user ${userId} has no organization membership`);
-  }
-  return orgId;
-}
-
 /**
  * POST /api/test/slack-state
  *
@@ -136,7 +125,7 @@ export async function POST(request: Request) {
 
   const { SECRETS_ENCRYPTION_KEY } = env();
   const encryptedBotToken = encryptSecretValue(
-    "xoxb-e2e-test-bot-token",
+    SLACK_E2E_FIXTURES.botToken,
     SECRETS_ENCRYPTION_KEY,
   );
 
@@ -147,7 +136,7 @@ export async function POST(request: Request) {
       slackWorkspaceName: raw.workspace_name ?? "E2E Test Workspace",
       orgId,
       encryptedBotToken,
-      botUserId: raw.bot_user_id ?? "U_E2E_BOT",
+      botUserId: raw.bot_user_id ?? SLACK_E2E_FIXTURES.botUserId,
       installedByUserId: userId,
       botScopes: "chat:write,im:write,users:read",
     })
@@ -156,7 +145,7 @@ export async function POST(request: Request) {
       set: {
         orgId,
         encryptedBotToken,
-        botUserId: raw.bot_user_id ?? "U_E2E_BOT",
+        botUserId: raw.bot_user_id ?? SLACK_E2E_FIXTURES.botUserId,
       },
     });
 

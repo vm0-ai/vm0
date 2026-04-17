@@ -8,13 +8,24 @@
 #   SLACK_SIGNING_SECRET               — shared secret the preview is deployed with
 #   VERCEL_AUTOMATION_BYPASS_SECRET    — for test-state endpoint on preview
 
-# Build curl args with bypass header when available.
-_slack_curl_headers() {
-    local -a headers=(-H "Content-Type: application/json")
+# Source canonical fixture identifiers (kept in sync with
+# turbo/apps/web/src/lib/test-endpoints/slack-mock-fixtures.ts).
+# shellcheck source=./slack-fixtures.sh
+source "$(dirname "${BASH_SOURCE[0]}")/slack-fixtures.sh"
+
+# Polling tunables for wait_for_slack_run.
+SLACK_POLL_INTERVAL_S="${SLACK_POLL_INTERVAL_S:-2}"
+SLACK_POLL_TIMEOUT_S="${SLACK_POLL_TIMEOUT_S:-30}"
+
+# Populate a named array (passed by reference in BASH 4+ via nameref) with the
+# `-H` args required to bypass Vercel preview protection. Empty when the secret
+# is unset (local dev).
+_slack_bypass_args() {
+    local -n _out="$1"
+    _out=()
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        headers+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+        _out+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
-    printf '%s\n' "${headers[@]}"
 }
 
 # Compute v0 Slack signature for a given body.
@@ -37,17 +48,15 @@ slack_sign_body() {
 # Output: HTTP status code on stderr, response body on stdout
 slack_post_command() {
     local command="$1" text="$2" team_id="$3" user_id="$4"
-    local channel_id="${5:-C_E2E}"
+    local channel_id="${5:-$SLACK_FIXTURE_CHANNEL_ID}"
     local body
     body=$(
-        printf 'token=xoxb-test&team_id=%s&team_domain=e2e&channel_id=%s&channel_name=e2e&user_id=%s&user_name=e2e-user&command=%s&text=%s&api_app_id=A_E2E_APP' \
-            "$team_id" "$channel_id" "$user_id" "$command" "$text"
+        printf 'token=xoxb-test&team_id=%s&team_domain=e2e&channel_id=%s&channel_name=e2e&user_id=%s&user_name=e2e-user&command=%s&text=%s&api_app_id=%s' \
+            "$team_id" "$channel_id" "$user_id" "$command" "$text" "$SLACK_FIXTURE_APP_ID"
     )
     slack_sign_body "$body"
     local -a bypass=()
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        bypass=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-    fi
+    _slack_bypass_args bypass
     curl -sS -X POST \
         -H "Content-Type: application/x-www-form-urlencoded" \
         -H "x-slack-request-timestamp: $SLACK_TS" \
@@ -63,9 +72,7 @@ slack_post_event() {
     local body="$1"
     slack_sign_body "$body"
     local -a bypass=()
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        bypass=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-    fi
+    _slack_bypass_args bypass
     curl -sS -X POST \
         -H "Content-Type: application/json" \
         -H "x-slack-request-timestamp: $SLACK_TS" \
@@ -80,9 +87,7 @@ slack_post_event() {
 slack_fetch_state() {
     local team_id="$1"
     local -a bypass=()
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        bypass=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-    fi
+    _slack_bypass_args bypass
     curl -sS "${bypass[@]}" \
         "$VM0_API_URL/api/test/slack-state?team_id=$team_id"
 }
@@ -102,9 +107,7 @@ slack_seed_state() {
         --argjson seed_connection "$seed_connection" \
         '{team_id: $team_id, slack_user_id: $slack_user_id, seed_connection: $seed_connection}')
     local -a bypass=()
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        bypass=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-    fi
+    _slack_bypass_args bypass
     curl -sS -X POST \
         -H "Content-Type: application/json" \
         "${bypass[@]}" \
@@ -117,18 +120,16 @@ slack_seed_state() {
 slack_reset_state() {
     local team_id="$1"
     local -a bypass=()
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        bypass=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-    fi
+    _slack_bypass_args bypass
     curl -sS -X DELETE "${bypass[@]}" \
         "$VM0_API_URL/api/test/slack-state?team_id=$team_id" >/dev/null
 }
 
 # Poll test-state until `recent_runs` contains at least one entry or timeout.
-# Usage: wait_for_slack_run <team_id> <timeout_seconds>
+# Usage: wait_for_slack_run <team_id> [timeout_seconds]
 wait_for_slack_run() {
     local team_id="$1"
-    local timeout="${2:-30}"
+    local timeout="${2:-$SLACK_POLL_TIMEOUT_S}"
     local elapsed=0
     while (( elapsed < timeout )); do
         local state
@@ -138,8 +139,8 @@ wait_for_slack_run() {
         if [[ "$count" -gt 0 ]]; then
             return 0
         fi
-        sleep 2
-        (( elapsed += 2 ))
+        sleep "$SLACK_POLL_INTERVAL_S"
+        (( elapsed += SLACK_POLL_INTERVAL_S ))
     done
     echo "# wait_for_slack_run: timed out after ${timeout}s for team $team_id" >&2
     echo "# last state: $(slack_fetch_state "$team_id")" >&2

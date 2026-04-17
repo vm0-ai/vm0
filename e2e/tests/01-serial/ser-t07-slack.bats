@@ -15,9 +15,10 @@ load '../../helpers/setup'
 load '../../helpers/slack'
 
 # Unique identifiers per run to avoid collisions between parallel previews.
-TEAM_ID="T_E2E_${GITHUB_RUN_ID:-local}_$$"
-CHANNEL_ID="C_E2E_${GITHUB_RUN_ID:-local}"
-SLACK_USER_ID="U_E2E_USER"
+# Base identifiers come from helpers/slack-fixtures.sh (sourced via helpers/slack).
+TEAM_ID="${SLACK_FIXTURE_TEAM_ID:-T_E2E}_${GITHUB_RUN_ID:-local}_$$"
+CHANNEL_ID="${SLACK_FIXTURE_CHANNEL_ID:-C_E2E_MOCK}_${GITHUB_RUN_ID:-local}"
+SLACK_USER_ID="${SLACK_FIXTURE_USER_USER_ID:-U_E2E_USER}"
 
 setup_file() {
     if [[ -z "${VM0_API_URL:-}" ]]; then

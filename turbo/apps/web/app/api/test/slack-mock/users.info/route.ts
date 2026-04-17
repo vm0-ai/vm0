@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isTestEndpointAllowed } from "../../../../../src/lib/test-endpoints/guard";
+import { SLACK_E2E_FIXTURES } from "../../../../../src/lib/test-endpoints/slack-mock-fixtures";
 
 async function readUserId(request: Request): Promise<string> {
   const ctype = request.headers.get("content-type") ?? "";
@@ -14,7 +15,7 @@ async function readUserId(request: Request): Promise<string> {
     const user = params.get("user");
     if (user) return user;
   }
-  return "U_E2E_USER";
+  return SLACK_E2E_FIXTURES.userUserId;
 }
 
 export async function POST(request: Request) {
