@@ -585,11 +585,7 @@ export const USE_CASES: UseCase[] = [
       { connector: AXIOM, required: true },
       { connector: SENTRY, required: false },
     ],
-    relatedSlugs: [
-      "error-triage-daily",
-      "sentry-triage",
-      "upgrade-agent",
-    ],
+    relatedSlugs: ["error-triage-daily", "sentry-triage", "upgrade-agent"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
