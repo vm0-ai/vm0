@@ -44,6 +44,14 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheReadTokenPrice: usd(1.5),
     cacheCreationTokenPrice: usd(18.75),
   },
+  {
+    model: "claude-opus-4-7",
+    modelProvider: "vm0",
+    inputTokenPrice: usd(15),
+    outputTokenPrice: usd(75),
+    cacheReadTokenPrice: usd(1.5),
+    cacheCreationTokenPrice: usd(18.75),
+  },
 ];
 
 /**

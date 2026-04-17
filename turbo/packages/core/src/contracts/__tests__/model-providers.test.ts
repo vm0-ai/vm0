@@ -102,6 +102,7 @@ describe("model selection for Anthropic-native providers", () => {
       const models = getModels(type);
       expect(models).toContain("claude-sonnet-4-6");
       expect(models).toContain("claude-opus-4-6");
+      expect(models).toContain("claude-opus-4-7");
     },
   );
 
