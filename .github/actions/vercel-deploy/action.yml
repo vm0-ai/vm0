@@ -49,6 +49,10 @@ inputs:
     description: "Build locally and deploy prebuilt artifacts (skips remote build on Vercel)"
     required: false
     default: "false"
+  skip-domain:
+    description: "Produce a Staged production deployment that is prod-eligible but not yet serving traffic (requires prebuilt=true and environment=production). Promote later via vercel-promote."
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -76,11 +80,19 @@ runs:
       env:
         INPUT_ENV_VARS: ${{ inputs.environment-variables }}
         INPUT_PREBUILT: ${{ inputs.prebuilt }}
+        INPUT_SKIP_DOMAIN: ${{ inputs.skip-domain }}
         INPUT_ENVIRONMENT: ${{ inputs.environment }}
         INPUT_VERCEL_TOKEN: ${{ inputs.vercel-token }}
         INPUT_META_BRANCH: ${{ inputs.meta-branch }}
         INPUT_META_PR: ${{ inputs.meta-pr }}
       run: |
+        if [ "$INPUT_SKIP_DOMAIN" == "true" ]; then
+          if [ "$INPUT_PREBUILT" != "true" ] || [ "$INPUT_ENVIRONMENT" != "production" ]; then
+            echo "::error::skip-domain=true requires prebuilt=true and environment=production (got prebuilt=$INPUT_PREBUILT, environment=$INPUT_ENVIRONMENT)"
+            exit 1
+          fi
+        fi
+
         if [ "$INPUT_PREBUILT" == "true" ]; then
           # === Prebuilt mode: build locally, deploy artifacts only ===
 
@@ -112,6 +124,10 @@ runs:
 
           if [ "$INPUT_ENVIRONMENT" == "production" ]; then
             DEPLOY_ARGS+=(--prod)
+          fi
+
+          if [ "$INPUT_SKIP_DOMAIN" == "true" ]; then
+            DEPLOY_ARGS+=(--skip-domain)
           fi
 
           # Add runtime environment variables
