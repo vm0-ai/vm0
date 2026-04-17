@@ -311,7 +311,7 @@ describe("/api/test/oauth-provider", () => {
     it("returns 401 with non-test token", async () => {
       const response = await userinfoGet(
         new Request(`${APP_URL}/api/test/oauth-provider/userinfo`, {
-          headers: { authorization: "Bearer ya29.real-looking-token" },
+          headers: { authorization: "Bearer not-a-testoauth-token" },
         }),
       );
       expect(response.status).toBe(401);
