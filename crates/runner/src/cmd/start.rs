@@ -1076,10 +1076,11 @@ fn spawn_job(
     let mode = ctx.mode;
     let factory_for_cleanup = Arc::clone(&factory);
 
-    // Captured for the post-complete deferred work below (telemetry flush +
-    // network-log upload). `context` gets moved into the inner executor task
-    // and `exec_config` with it, so we snapshot the token and bump the Arc
-    // before spawning.
+    // Captured for the post-complete deferred work below: the panic-arm
+    // empty `JobTelemetry` construction, the final `telemetry.flush()`, and
+    // the mitm `upload_network_logs()` POST. `context` gets moved into the
+    // inner executor task and `exec_config` with it, so we snapshot the
+    // token and bump the Arc before spawning.
     let sandbox_token = context.sandbox_token.clone();
     let exec_config_for_deferred = Arc::clone(&exec_config);
 
@@ -2244,18 +2245,28 @@ mod tests {
 
     /// Regression guard: the post-complete deferred network-log upload (moved
     /// out of `post_job_cleanup` by #9828) must still reach the telemetry
-    /// endpoint, including during graceful drain shutdown. The outer `jobs`
-    /// JoinSet must drain the `tokio::join!` in `spawn_job` — a fire-and-forget
-    /// `tokio::spawn` would silently lose this upload when the runtime drops.
+    /// endpoint, AND the drain shutdown must actually block on it — catching a
+    /// `tokio::spawn` fire-and-forget refactor that would silently lose the
+    /// upload on runtime drop.
+    ///
+    /// The mock responds with a 400 ms delay. Since the job completes almost
+    /// immediately under `MockSandboxRuntime`, `shutdown()` is invoked while
+    /// the deferred `tokio::join!(flush, upload)` is still in-flight, so a
+    /// well-behaved drain returns AFTER the mock delay elapses. A detached
+    /// upload would let shutdown return immediately — the elapsed-time
+    /// assertion below is what catches that.
     #[tokio::test]
     async fn deferred_network_log_upload_drains_on_graceful_shutdown() {
         use httpmock::prelude::*;
+
+        const MOCK_DELAY: Duration = Duration::from_millis(400);
 
         let server = MockServer::start_async().await;
         let telemetry_mock = server
             .mock_async(|when, then| {
                 when.method(POST).path("/api/webhooks/agent/telemetry");
-                then.status(200)
+                then.delay(MOCK_DELAY)
+                    .status(200)
                     .header("content-type", "application/json")
                     .body(r#"{"success":true,"id":"ok"}"#);
             })
@@ -2285,17 +2296,28 @@ mod tests {
             .await;
         assert!(completion.is_some(), "job should complete");
 
-        // Drain shutdown — `jobs.join_next()` must wait for each `spawn_job`
-        // closure's deferred `tokio::join!(flush, upload)` before returning.
+        // Drain shutdown — must block on each `spawn_job` closure's deferred
+        // `tokio::join!(flush, upload)` via the outer `jobs` JoinSet.
+        let shutdown_start = tokio::time::Instant::now();
         shutdown(&env, run_handle).await;
+        let shutdown_elapsed = shutdown_start.elapsed();
 
-        // At least one POST: the mitm network-log upload. Also possible: a
-        // separate POST for sandbox-op telemetry (vm_create etc). Either way,
-        // the endpoint must have been hit — proving the deferred work isn't
-        // silently dropped on runtime shutdown.
+        // At least one POST: the mitm network-log upload (and likely a second
+        // for sandbox-op telemetry like `vm_create`). The endpoint must have
+        // been hit — a fire-and-forget refactor that dropped the await on
+        // runtime shutdown would fail this.
         assert!(
             telemetry_mock.calls_async().await >= 1,
             "telemetry endpoint should receive deferred post-complete upload"
+        );
+
+        // Stronger invariant: drain must actually WAIT for the deferred work.
+        // With a 400 ms mock delay, a well-behaved drain takes ≥ the delay;
+        // a detached (fire-and-forget) upload would let shutdown return in
+        // tens of ms, dropping the in-flight request on runtime teardown.
+        assert!(
+            shutdown_elapsed >= MOCK_DELAY - Duration::from_millis(50),
+            "drain must block on deferred upload (≥{MOCK_DELAY:?}); took only {shutdown_elapsed:?}",
         );
     }
 
