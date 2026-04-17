@@ -28,8 +28,11 @@ import { agentById } from "../agent.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
+import { logger } from "../log.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
+
+const L = logger("ChatThread");
 
 // ---------------------------------------------------------------------------
 // ChatThreadSignals — returned by createChatThreadSignals
@@ -450,6 +453,19 @@ function createPagedMessages(threadId: string) {
     );
     signal.throwIfAborted();
 
+    L.debug("fetchNextPage$", {
+      threadId,
+      sinceId,
+      count: result.body.messages.length,
+      runStatuses: result.body.messages
+        .filter((m) => {
+          return m.runId;
+        })
+        .map((m) => {
+          return { id: m.id, runId: m.runId, status: m.status };
+        }),
+    });
+
     if (result.body.messages.length === 0) {
       return true; // no new messages
     }
@@ -527,8 +543,16 @@ function createRunTracking(
   const trackRun$ = command(
     async ({ get, set }, runId: string, signal: AbortSignal) => {
       const already = get(pendingRunIds$);
-      if (!already.includes(runId)) {
-        set(pendingRunIds$, [...already, runId]);
+      if (already.includes(runId)) {
+        L.debug("trackRun$ already tracking", { threadId, runId });
+      } else {
+        const next = [...already, runId];
+        set(pendingRunIds$, next);
+        L.debug("trackRun$ added to pendingRunIds", {
+          threadId,
+          runId,
+          pendingRunIds: next,
+        });
       }
 
       const checkRun$ = command(async ({ get, set }, sig: AbortSignal) => {
@@ -540,27 +564,49 @@ function createRunTracking(
           }),
           [200],
         );
+        L.debug("checkRun$ poll", {
+          threadId,
+          runId,
+          status: res.body.status,
+        });
         if (terminalStatuses.has(res.body.status)) {
           set(pendingRunIds$, (ids) => {
             return ids.filter((id) => {
               return id !== runId;
             });
           });
+          L.debug("checkRun$ terminal, removed from pendingRunIds", {
+            threadId,
+            runId,
+            status: res.body.status,
+            pendingRunIds: get(pendingRunIds$),
+          });
           return true;
         }
         return false;
       });
 
+      signal.addEventListener("abort", () => {
+        L.debug("trackRun$ aborted", { threadId, runId });
+      });
       await set(setAblyLoop$, `runUpdated:${runId}`, checkRun$, signal);
+      L.debug("trackRun$ exited (terminal)", { threadId, runId });
     },
   );
 
   const hasActiveRun$ = computed((get) => {
-    return get(pendingRunIds$).length > 0;
+    const pending = get(pendingRunIds$);
+    L.debug("hasActiveRun$ recomputed", {
+      threadId,
+      hasActiveRun: pending.length > 0,
+      pendingRunIds: pending,
+    });
+    return pending.length > 0;
   });
 
   const loadPagedMessages$ = command(
     async ({ get, set }, signal: AbortSignal) => {
+      L.debug("loadPagedMessages$ start", { threadId });
       await set(fetchNextPage$, signal);
       signal.throwIfAborted();
 
@@ -568,8 +614,13 @@ function createRunTracking(
       const thread = await get(threadData$);
       signal.throwIfAborted();
       if (!thread) {
+        L.debug("loadPagedMessages$ no thread", { threadId });
         return;
       }
+      L.debug("loadPagedMessages$ thread loaded", {
+        threadId,
+        activeRunIds: thread.activeRunIds,
+      });
 
       await Promise.all([
         (async () => {
@@ -596,9 +647,11 @@ function createRunTracking(
   const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroRunsCancelContract);
     const removedIds: string[] = [];
+    const before = get(pendingRunIds$);
+    L.debug("cancelRun$ start", { threadId, pendingRunIds: before });
 
     await Promise.all(
-      get(pendingRunIds$).map(async (runId) => {
+      before.map(async (runId) => {
         await accept(
           client.cancel({
             params: { id: runId },
@@ -607,6 +660,7 @@ function createRunTracking(
           [200],
         );
         removedIds.push(runId);
+        L.debug("cancelRun$ server accepted cancel", { threadId, runId });
       }),
     );
     signal.throwIfAborted();
@@ -615,6 +669,11 @@ function createRunTracking(
       return x.filter((id) => {
         return removedIds.indexOf(id) === -1;
       });
+    });
+    L.debug("cancelRun$ done", {
+      threadId,
+      removedIds,
+      pendingRunIds: get(pendingRunIds$),
     });
   });
 
@@ -659,15 +718,18 @@ export function createChatThreadSignals(
 
   const sendMessage$ = command(
     async ({ get, set }, prompt: string, signal: AbortSignal) => {
+      L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
       const thread = await get(threadData$);
       signal.throwIfAborted();
       const agentId = thread?.agentId;
       if (!agentId) {
+        L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
 
       const result = await set(prepareUserMessage$, prompt, signal);
       if (!result) {
+        L.debug("sendMessage$ prepare returned null, abort", { threadId });
         return;
       }
       signal.throwIfAborted();
@@ -691,12 +753,20 @@ export function createChatThreadSignals(
         [201],
       );
       signal.throwIfAborted();
+      L.debug("sendMessage$ POST accepted", {
+        threadId,
+        runId: sendResult.body.runId,
+      });
 
       set(reloadChatThreads$);
 
       // Track run until terminal — keeps sendLoadable in "loading" state
       // so the UI stays in sending mode until the run finishes.
       await set(trackRun$, sendResult.body.runId, signal);
+      L.debug("sendMessage$ done, trackRun resolved", {
+        threadId,
+        runId: sendResult.body.runId,
+      });
     },
   );
 
