@@ -77,7 +77,11 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_OAUTH_TOKEN: "$secret",
       ANTHROPIC_MODEL: "$model",
     } as Record<string, string>,
-    models: ["claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-7"] as string[],
+    models: [
+      "claude-sonnet-4-6",
+      "claude-opus-4-6",
+      "claude-opus-4-7",
+    ] as string[],
     defaultModel: "claude-sonnet-4-6",
   },
   "anthropic-api-key": {
@@ -91,7 +95,11 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_API_KEY: "$secret",
       ANTHROPIC_MODEL: "$model",
     } as Record<string, string>,
-    models: ["claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-7"] as string[],
+    models: [
+      "claude-sonnet-4-6",
+      "claude-opus-4-6",
+      "claude-opus-4-7",
+    ] as string[],
     defaultModel: "claude-sonnet-4-6",
   },
   "openrouter-api-key": {
