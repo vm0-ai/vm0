@@ -4000,6 +4000,29 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  msg9: {
+    label: "msg9",
+    environmentMapping: {
+      MSG9_TOKEN: "$secrets.MSG9_TOKEN",
+    },
+    helpText:
+      "Connect your msg9 account to send messages, manage inboxes, contacts, lists, channels, and skills",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [msg9](https://www.msg9.io)\n2. Go to **Settings > API Keys**\n3. Create a new API key\n4. Copy the key (format: `msg9_sk_...`)",
+        secrets: {
+          MSG9_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "msg9_sk_...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;

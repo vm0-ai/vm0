@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- shadow layer -->
+  <rect x="8" y="10" width="84" height="84" rx="20" fill="rgba(0,0,0,0.4)" />
+  <!-- card background -->
+  <rect x="4" y="4" width="92" height="92" rx="20" fill="#111111" />
+  <!-- card border -->
+  <rect x="4" y="4" width="92" height="92" rx="20" fill="none"
+    stroke="rgba(255,255,255,0.13)" stroke-width="2" />
+  <!-- 9 numeral -->
+  <text x="50" y="68" font-family="Arial Black, -apple-system, BlinkMacSystemFont, sans-serif"
+    font-size="58" font-weight="800" fill="white" text-anchor="middle">9</text>
+</svg>

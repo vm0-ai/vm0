@@ -84,6 +84,7 @@ import { mercuryHandler } from "./providers/mercury-handler";
 import { minioHandler } from "./providers/minio-handler";
 import { minimaxHandler } from "./providers/minimax-handler";
 import { mondayHandler } from "./providers/monday-handler";
+import { msg9Handler } from "./providers/msg9-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { openaiHandler } from "./providers/openai-handler";
@@ -223,6 +224,7 @@ export const PROVIDER_HANDLERS: Record<
   minio: minioHandler,
   minimax: minimaxHandler,
   monday: mondayHandler,
+  msg9: msg9Handler,
   neon: neonHandler,
   notion: notionHandler,
   openai: openaiHandler,
