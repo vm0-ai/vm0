@@ -154,6 +154,9 @@ teardown_file() {
 }
 
 @test "slack: DM dispatches an agent run" {
+    # Reset so the previous mention's run doesn't become recent_runs[0]
+    # and mask a genuine DM dispatch failure.
+    slack_reset_state "$TEAM_ID"
     local seed_resp vm0_user_id
     seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection --with-default-agent)
     vm0_user_id=$(echo "$seed_resp" | jq -r '.vm0_user_id')
@@ -169,9 +172,6 @@ teardown_file() {
     assert_success
 
     if ! wait_for_slack_run "$TEAM_ID"; then
-        echo "# dispatch-probe diagnostic:" >&2
-        slack_dispatch_probe "$TEAM_ID" "D_E2E_DM" "$SLACK_USER_ID" \
-            "hello from e2e DM probe" "$ts" "im" >&2
         return 1
     fi
     local state first_run
