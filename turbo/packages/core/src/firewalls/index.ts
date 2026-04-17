@@ -60,6 +60,7 @@ import { difyFirewall } from "./dify.generated";
 import { discordFirewall } from "./discord.generated";
 import { discordWebhookFirewall } from "./discord-webhook.generated";
 import { docusignFirewall } from "./docusign.generated";
+import { drive9Firewall } from "./drive9.generated";
 import { dropboxFirewall } from "./dropbox.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { exploriumFirewall } from "./explorium.generated";
@@ -105,7 +106,6 @@ import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { mondayFirewall } from "./monday.generated";
-import { drive9Firewall } from "./drive9.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
@@ -211,6 +211,7 @@ const CONNECTOR_FIREWALLS = {
   discord: discordFirewall,
   "discord-webhook": discordWebhookFirewall,
   docusign: docusignFirewall,
+  drive9: drive9Firewall,
   dropbox: dropboxFirewall,
   elevenlabs: elevenlabsFirewall,
   explorium: exploriumFirewall,
@@ -256,7 +257,6 @@ const CONNECTOR_FIREWALLS = {
   "meta-ads": metaAdsFirewall,
   minimax: minimaxFirewall,
   monday: mondayFirewall,
-  drive9: drive9Firewall,
   neon: neonFirewall,
   notion: notionFirewall,
   openai: openaiFirewall,
