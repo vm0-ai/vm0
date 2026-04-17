@@ -46,6 +46,10 @@ export default function Footer() {
                 {t("status")}
               </a>
               <span className="footer-legal-separator">•</span>
+              <Link href="/support" className="footer-legal-link">
+                {t("support")}
+              </Link>
+              <span className="footer-legal-separator">•</span>
               <Link href="/terms-of-use" className="footer-legal-link">
                 {t("termsOfUse")}
               </Link>

@@ -18,7 +18,7 @@
 use std::path::Path;
 use std::process::Stdio;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use tokio::io::AsyncBufReadExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
@@ -223,7 +223,13 @@ async fn tail_stderr(
                         map.get(&entry.source_ip).cloned()
                     };
                     if let Some(path) = log_path {
-                        write_jsonl(&path, &entry);
+                        // Move the blocking file I/O off the tokio worker thread.
+                        // Capture the timestamp *before* the spawn so it reflects
+                        // query time, not write time (which may lag under load).
+                        let timestamp = Utc::now();
+                        tokio::task::spawn_blocking(move || {
+                            write_jsonl(&path, &entry, timestamp);
+                        });
                     }
                 }
             }
@@ -269,13 +275,17 @@ fn parse_query_line(line: &str) -> Option<DnsQueryEntry> {
 }
 
 /// Append a JSON line to the network log file.
-fn write_jsonl(path: &Path, entry: &DnsQueryEntry) {
+///
+/// `timestamp` is captured by the caller (on the tokio worker) so the recorded
+/// time reflects when the DNS query was observed, not when this function —
+/// which runs on a tokio blocking thread — finally executes.
+fn write_jsonl(path: &Path, entry: &DnsQueryEntry, timestamp: DateTime<Utc>) {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
 
     // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     let json = serde_json::json!({
-        "timestamp": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        "timestamp": timestamp.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "type": "dns",
         "host": entry.domain,
         "port": 53,
@@ -381,6 +391,27 @@ mod tests {
     }
 
     #[test]
+    fn write_jsonl_serializes_provided_timestamp() {
+        // Locks the contract that `write_jsonl` must use the `timestamp`
+        // parameter rather than calling `Utc::now()` internally — the whole
+        // point of the parameter is to record observation time, not the
+        // delayed write time after spawn_blocking.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dns.jsonl");
+        let entry = DnsQueryEntry {
+            source_ip: "10.200.0.2".to_string(),
+            domain: "example.com".to_string(),
+        };
+        let ts = DateTime::parse_from_rfc3339("2024-01-15T10:30:45.123Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        write_jsonl(&path, &entry, ts);
+        let content = std::fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(parsed["timestamp"], "2024-01-15T10:30:45.123Z");
+    }
+
+    #[test]
     fn write_jsonl_creates_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("dns.jsonl");
@@ -388,7 +419,7 @@ mod tests {
             source_ip: "10.200.0.2".to_string(),
             domain: "api.github.com".to_string(),
         };
-        write_jsonl(&path, &entry);
+        write_jsonl(&path, &entry, Utc::now());
         let content = std::fs::read_to_string(&path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
         assert_eq!(parsed["type"], "dns");
@@ -408,6 +439,7 @@ mod tests {
                     source_ip: "10.0.0.1".to_string(),
                     domain: domain.to_string(),
                 },
+                Utc::now(),
             );
         }
         let content = std::fs::read_to_string(&path).unwrap();

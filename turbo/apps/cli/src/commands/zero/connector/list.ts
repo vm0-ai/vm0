@@ -2,27 +2,32 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   CONNECTOR_TYPES,
-  hasRequiredScopes,
   isFeatureEnabled,
   type ConnectorType,
 } from "@vm0/core";
 import { listZeroConnectors } from "../../../lib/api";
 import { getActiveOrg } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";
+import { resolveAgentContext } from "./agent-context";
+import { padEndAnsi, renderConnectedAsCell, stripAnsi } from "./connected-as";
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all connectors and their status")
+  .option("--agent <id>", "Show per-agent authorization column")
   .action(
-    withErrorHandler(async () => {
-      const result = await listZeroConnectors();
+    withErrorHandler(async (options: { agent?: string }) => {
+      const [{ connectors }, orgId, agentCtx] = await Promise.all([
+        listZeroConnectors(),
+        getActiveOrg(),
+        resolveAgentContext(options.agent),
+      ]);
       const connectedMap = new Map(
-        result.connectors.map((c) => {
+        connectors.map((c) => {
           return [c.type, c];
         }),
       );
-      const orgId = await getActiveOrg();
 
       const allTypesRaw = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
       const allTypes: ConnectorType[] = [];
@@ -35,53 +40,49 @@ export const listCommand = new Command()
         allTypes.push(type);
       }
 
-      // Calculate column widths
       const typeWidth = Math.max(
         4,
         ...allTypes.map((t) => {
           return t.length;
         }),
       );
-      const statusText = "STATUS";
-      const statusWidth = statusText.length;
+
+      const connectedAsHeader = "CONNECTED AS";
+      const connectedCells = allTypes.map((type) => {
+        return renderConnectedAsCell(connectedMap.get(type));
+      });
+      const connectedAsWidth = Math.max(
+        connectedAsHeader.length,
+        ...connectedCells.map((c) => {
+          return stripAnsi(c).length;
+        }),
+      );
+
+      const authorizedHeader = agentCtx
+        ? `AUTHORIZED FOR ${agentCtx.displayName}`
+        : null;
 
       // Print header
-      const header = [
+      const headerParts = [
         "TYPE".padEnd(typeWidth),
-        statusText.padEnd(statusWidth),
-        "ACCOUNT",
-      ].join("  ");
-      console.log(chalk.dim(header));
+        connectedAsHeader.padEnd(connectedAsWidth),
+      ];
+      if (authorizedHeader) headerParts.push(authorizedHeader);
+      console.log(chalk.dim(headerParts.join("  ")));
 
       // Print rows
-      for (const type of allTypes) {
-        const connector = connectedMap.get(type);
-        const scopeMismatch =
-          connector !== undefined &&
-          connector.authMethod === "oauth" &&
-          !hasRequiredScopes(type, connector.oauthScopes);
-        const status = connector
-          ? connector.needsReconnect
-            ? chalk.yellow("!".padEnd(statusWidth))
-            : scopeMismatch
-              ? chalk.yellow("!".padEnd(statusWidth))
-              : chalk.green("✓".padEnd(statusWidth))
-          : chalk.dim("-".padEnd(statusWidth));
-        const account = connector?.needsReconnect
-          ? chalk.yellow("(reconnect needed)")
-          : scopeMismatch
-            ? chalk.yellow("(permissions update available)")
-            : connector?.externalUsername
-              ? `@${connector.externalUsername}`
-              : chalk.dim("-");
-
-        const row = [type.padEnd(typeWidth), status, account].join("  ");
-        console.log(row);
+      for (let i = 0; i < allTypes.length; i++) {
+        const type = allTypes[i]!;
+        const connectedCell = padEndAnsi(connectedCells[i]!, connectedAsWidth);
+        const parts = [type.padEnd(typeWidth), connectedCell];
+        if (agentCtx) {
+          parts.push(
+            agentCtx.authorizedTypes.has(type)
+              ? chalk.green("✓")
+              : chalk.dim("-"),
+          );
+        }
+        console.log(parts.join("  "));
       }
-
-      // Always show connect hint
-      console.log();
-      console.log(chalk.dim("To connect a service:"));
-      console.log(chalk.dim("  zero connector connect <type>"));
     }),
   );

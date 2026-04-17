@@ -30,7 +30,7 @@ import {
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import slackIconImg from "./assets/slack-icon.svg";
+import slackIconImg from "./components/settings/icons/slack.svg";
 
 /** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
  *  carry it through to the Slack DM greeting. */
@@ -168,8 +168,8 @@ function SlackCard({ displayName }: { displayName: string }) {
     <>
       <div className="zero-card flex flex-col">
         <div className="flex items-center gap-4 p-4">
-          <div className="shrink-0">
-            <img src={slackIconImg} alt="" className="h-7 w-7" />
+          <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+            <img src={slackIconImg} alt="" className="h-7 w-7 scale-[2.2]" />
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
             <div className="text-sm font-medium text-foreground">Slack</div>

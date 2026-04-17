@@ -83,7 +83,16 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
         return HttpResponse.json({ tasks: [] });
       }),
       http.post("*/api/zero/voice-chat", () => {
-        return HttpResponse.json({ session: { id: "vc-prep-session" } });
+        return HttpResponse.json({
+          session: {
+            id: "vc-prep-session",
+            mode: "chat",
+            status: "preparing",
+            runId: "run-test-1",
+            createdAt: "2026-01-01T00:00:00Z",
+            prepared: false,
+          },
+        });
       }),
       // Hang the context poll so status stays "preparing"
       http.get("*/api/zero/voice-chat/vc-prep-session/context", async () => {
@@ -131,8 +140,10 @@ describe("voiceBanner — error on session creation (MC-VC-004)", () => {
       }),
       http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json(
-          { error: { message: "Service unavailable" } },
-          { status: 503 },
+          {
+            error: { message: "Service unavailable", code: "BAD_REQUEST" },
+          },
+          { status: 400 },
         );
       }),
     );
@@ -175,8 +186,8 @@ describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
       }),
       http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json(
-          { error: { message: "fail" } },
-          { status: 503 },
+          { error: { message: "fail", code: "BAD_REQUEST" } },
+          { status: 400 },
         );
       }),
       // endVoiceChat$ fires a best-effort POST to /end — let it succeed silently

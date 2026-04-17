@@ -69,6 +69,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
 
       const result = await createZeroRun(baseParams({ agentId: noKeyAgentId }));
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       // Model provider token is replaced with placeholder (firewall gateway protects it)
@@ -94,6 +95,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
 
       const result = await createZeroRun(baseParams({ agentId: modelAgentId }));
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
@@ -142,6 +144,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
         baseParams({ agentId: secretAgentId }),
       );
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       // User value should win
@@ -177,6 +180,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
         baseParams({ agentId: secretAgentId }),
       );
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
@@ -209,6 +213,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
 
       const result = await createZeroRun(baseParams({ agentId: varAgentId }));
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
@@ -237,6 +242,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
 
       const result = await createZeroRun(baseParams({ agentId: varAgentId }));
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
@@ -266,6 +272,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
 
       const result = await createZeroRun(baseParams({ agentId: varAgentId }));
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       // createZeroRun doesn't accept CLI vars directly, so user value wins
@@ -293,6 +300,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
 
       const result = await createZeroRun(baseParams({ agentId: connAgentId }));
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       // Real secret value must not leak — the template stays unresolved
@@ -324,6 +332,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
 
       const result = await createZeroRun(baseParams({ agentId: connAgentId }));
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       // AXIOM_TOKEN should be resolved (firewall gateway replaces with placeholder)
@@ -349,6 +358,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
 
       const result = await createZeroRun(baseParams({ agentId: connAgentId }));
 
+      await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       // Custom secrets should always pass through regardless of connector permissions

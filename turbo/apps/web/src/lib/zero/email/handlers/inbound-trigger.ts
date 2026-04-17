@@ -11,8 +11,7 @@ import {
   type HandlerResult,
 } from "./shared";
 import { createZeroRun } from "../../zero-run-service";
-import { buildIntegrationPrompt } from "../../integration-prompt";
-import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
+import { adaptEmailTriggerTrigger } from "./adapt-email-trigger";
 import { getUserIdByEmail } from "../../../auth/get-user-id-by-email";
 import { getOrgIdBySlug } from "../../../auth/org-cache";
 import { getMemberRole } from "../../../auth/org-membership-cache";
@@ -202,12 +201,13 @@ export async function handleInboundEmailTrigger(
   const sessionPlaceholderId = crypto.randomUUID();
   const replyToken = generateReplyToken(sessionPlaceholderId);
 
-  // 11. Build callback
-  const callbacks = [
-    {
-      url: `${getApiUrl()}/api/zero/email/callbacks/trigger`,
-      secret: generateCallbackSecret(),
-      payload: {
+  // 11. Dispatch agent run via pure adapter
+  const result = await createZeroRun(
+    adaptEmailTriggerTrigger({
+      userId,
+      agentId,
+      prompt,
+      callbackPayload: {
         senderEmail,
         agentId,
         userId,
@@ -220,19 +220,8 @@ export async function handleInboundEmailTrigger(
         replyRecipientTo: replyRecipients.to,
         replyRecipientCc: replyRecipients.cc,
       },
-    },
-  ];
-
-  // 12. Create run with integration context as system prompt
-  const appendSystemPrompt = buildIntegrationPrompt("Email");
-  const result = await createZeroRun({
-    userId,
-    prompt,
-    appendSystemPrompt,
-    agentId,
-    triggerSource: "email",
-    callbacks,
-  });
+    }),
+  );
 
   log.info("Dispatched agent run from email trigger", {
     runId: result.runId,

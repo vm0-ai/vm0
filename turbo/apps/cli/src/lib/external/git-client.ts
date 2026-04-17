@@ -3,10 +3,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import {
-  parseGitHubUrl as parseGitHubUrlCore,
-  type ParsedGitHubTreeUrl,
-} from "@vm0/core";
+import { parseGitHubUrl as parseGitHubUrlCore } from "@vm0/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -36,72 +33,6 @@ interface GitHubDownloadResult {
   dir: string;
   /** Path to the temp root directory (for cleanup) */
   tempRoot: string;
-}
-
-/**
- * Download a GitHub directory using git sparse-checkout
- *
- * @param parsed - Parsed GitHub URL
- * @param destDir - Destination directory for the downloaded content
- * @returns Path to the downloaded skill directory
- */
-export async function downloadGitHubSkill(
-  parsed: ParsedGitHubTreeUrl,
-  destDir: string,
-): Promise<string> {
-  const owner = sanitizeGitArg(parsed.owner, "repository owner");
-  const repo = sanitizeGitArg(parsed.repo, "repository name");
-  const branch = sanitizeGitArg(parsed.branch, "branch name");
-  const repoUrl = `https://github.com/${owner}/${repo}.git`;
-  const skillDir = path.join(destDir, parsed.skillName);
-
-  // Create a temporary directory for sparse checkout
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-skill-"));
-
-  try {
-    // Initialize sparse checkout
-    await execFileAsync("git", ["init"], { cwd: tempDir });
-    await execFileAsync("git", ["remote", "add", "origin", repoUrl], {
-      cwd: tempDir,
-    });
-    await execFileAsync("git", ["config", "core.sparseCheckout", "true"], {
-      cwd: tempDir,
-    });
-
-    // Configure sparse checkout to only fetch the skill path
-    // For root: use "/*" to get all root-level files
-    // For path: use the path directly
-    const sparsePattern = parsed.path || "/*";
-    const sparseFile = path.join(tempDir, ".git", "info", "sparse-checkout");
-    await fs.writeFile(sparseFile, sparsePattern + "\n");
-
-    // Fetch only the required branch
-    await execFileAsync("git", ["fetch", "--depth", "1", "origin", branch], {
-      cwd: tempDir,
-    });
-    await execFileAsync("git", ["checkout", branch], { cwd: tempDir });
-
-    // Move the skill directory to destination
-    await fs.mkdir(path.dirname(skillDir), { recursive: true });
-    if (parsed.path) {
-      // Subdirectory: move the fetched subdirectory
-      const fetchedPath = path.join(tempDir, parsed.path);
-      await fs.rename(fetchedPath, skillDir);
-    } else {
-      // Root: move all entries except .git from tempDir
-      await fs.mkdir(skillDir, { recursive: true });
-      const entries = await fs.readdir(tempDir);
-      for (const entry of entries) {
-        if (entry === ".git") continue;
-        await fs.rename(path.join(tempDir, entry), path.join(skillDir, entry));
-      }
-    }
-
-    return skillDir;
-  } finally {
-    // Clean up temp directory
-    await fs.rm(tempDir, { recursive: true, force: true });
-  }
 }
 
 /**

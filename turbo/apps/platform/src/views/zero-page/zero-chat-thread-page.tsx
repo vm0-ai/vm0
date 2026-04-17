@@ -448,6 +448,10 @@ function isImageFilename(filename: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
 }
 
+function isVideoFilename(filename: string): boolean {
+  return /\.(mp4|webm|mov)$/i.test(filename);
+}
+
 function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
@@ -572,6 +576,7 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
       filename: p.filename,
       url: p.url,
       isImage: isImageFilename(p.filename),
+      isVideo: isVideoFilename(p.filename),
     };
   });
 
@@ -589,28 +594,41 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
             {allAttachments.length > 0 && (
               <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
                 {allAttachments.map((a) => {
-                  return a.isImage ? (
-                    <button
-                      key={a.url}
-                      type="button"
-                      onClick={() => {
-                        return setLightboxUrl(a.url);
-                      }}
-                      className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-                    >
-                      <img
-                        src={a.url}
-                        alt={a.filename}
-                        className="h-9 max-w-[72px] object-cover"
-                      />
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                        <IconPhoto
-                          size={18}
-                          className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                  if (a.isImage) {
+                    return (
+                      <button
+                        key={a.url}
+                        type="button"
+                        onClick={() => {
+                          return setLightboxUrl(a.url);
+                        }}
+                        className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+                      >
+                        <img
+                          src={a.url}
+                          alt={a.filename}
+                          className="h-9 max-w-[72px] object-cover"
                         />
-                      </span>
-                    </button>
-                  ) : (
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                          <IconPhoto
+                            size={18}
+                            className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                          />
+                        </span>
+                      </button>
+                    );
+                  }
+                  if (a.isVideo) {
+                    return (
+                      <video
+                        key={a.url}
+                        src={a.url}
+                        controls
+                        className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+                      />
+                    );
+                  }
+                  return (
                     <FileAttachmentChip
                       key={a.url}
                       filename={a.filename}

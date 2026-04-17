@@ -11,6 +11,8 @@ export interface VolumeConfig {
   version: string; // Required: version hash or "latest"
   /** When true, skip mounting without error if volume doesn't exist */
   optional?: boolean;
+  /** When true, resolve SYSTEM_ORG first, agent org as fallback */
+  system?: boolean;
 }
 
 /**
@@ -27,12 +29,6 @@ interface AgentDefinition {
    * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
    */
   instructions?: string;
-  /**
-   * Array of GitHub tree URLs for agent skills.
-   * Each skill is auto-downloaded and mounted at /home/user/.claude/skills/{skillName}/
-   * Format: https://github.com/{owner}/{repo}/tree/{branch}/{path}
-   */
-  skills?: string[];
   /**
    * Route this agent to a self-hosted runner instead of E2B.
    * When specified, runs will be queued for the specified runner group.

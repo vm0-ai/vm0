@@ -12,6 +12,10 @@ export interface ConnectorRef {
   darkIcon?: string;
   /** true when the icon SVG is dark-coloured and needs inversion in dark mode */
   dark?: boolean;
+  /** true when the icon SVG's artwork only fills a fraction of its viewBox
+   *  (e.g. the official Slack Mark's 270×270 viewBox with artwork centred in
+   *  ~45%). The renderer scales the <img> up to compensate. */
+  looseViewBox?: boolean;
 }
 
 export interface IntegrationData {
@@ -55,6 +59,7 @@ const SLACK: ConnectorRef = {
   id: "slack",
   label: "Slack",
   icon: "/assets/mockup/slack.svg",
+  looseViewBox: true,
 };
 
 const SENTRY: ConnectorRef = {
@@ -158,6 +163,13 @@ const DROPBOX: ConnectorRef = {
   id: "dropbox",
   label: "Dropbox",
   icon: "/assets/connectors/dropbox.svg",
+};
+
+const RESEND: ConnectorRef = {
+  id: "resend",
+  label: "Resend",
+  icon: "/assets/connectors/resend.svg",
+  dark: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -560,6 +572,40 @@ export const USE_CASES: UseCase[] = [
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "marketing-emails",
+    color: "#d68c7c",
+    avatar: {
+      rotation: 4,
+      skin: 3,
+      hairStyle: 5,
+      hairColor: 2,
+      expression: 4,
+      intensity: "m",
+    },
+    roles: ["product", "ops"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, RESEND, NOTION, LINEAR],
+    integrations: [
+      { connector: RESEND, required: true },
+      { connector: SLACK, required: true },
+      { connector: NOTION, required: false },
+      { connector: LINEAR, required: false },
+    ],
+    relatedSlugs: [
+      "kol-cold-outreach",
+      "standup-summary",
+      "product-health-briefing",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 4,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,

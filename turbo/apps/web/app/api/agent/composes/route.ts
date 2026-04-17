@@ -171,13 +171,15 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
+    // Strip deprecated `skills` field — CLI path no longer processes it,
+    // and stored rows must not carry it going forward.
+    const { skills: _deprecatedSkills, ...agentWithoutSkills } = agent;
+
     // Build resolved content with normalized agent name
     const resolvedContent = {
       ...content,
       agents: {
-        [normalizedAgentName]: {
-          ...agent,
-        },
+        [normalizedAgentName]: agentWithoutSkills,
       },
     };
 

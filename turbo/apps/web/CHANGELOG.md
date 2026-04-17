@@ -1,5 +1,56 @@
 # Changelog
 
+## [12.249.0](https://github.com/vm0-ai/vm0/compare/web-v12.248.2...web-v12.249.0) (2026-04-17)
+
+
+### Features
+
+* **chat:** support video attachments in web chat ([#9662](https://github.com/vm0-ai/vm0/issues/9662)) ([c46edd2](https://github.com/vm0-ai/vm0/commit/c46edd2a31265d5aa2594a5adefd42fd8296afdc))
+* **web:** add marketing-emails use case with resend connector ([#9767](https://github.com/vm0-ai/vm0/issues/9767)) ([a287909](https://github.com/vm0-ai/vm0/commit/a287909f2020875c072b821b5cf97a521386dbcb))
+* **web:** add visible "Add to Slack" button on landing page ([#9792](https://github.com/vm0-ai/vm0/issues/9792)) ([8ae8b69](https://github.com/vm0-ai/vm0/commit/8ae8b6958c5383c1e0bc0b163709c6ee7a37fb2f))
+
+
+### Bug Fixes
+
+* **billing:** clear stale current_period_end via sql migration ([#9799](https://github.com/vm0-ai/vm0/issues/9799)) ([790ff8c](https://github.com/vm0-ai/vm0/commit/790ff8c5fc252812a5279f29f8d4c20bac04e1f0))
+* **billing:** persist subscription period end instead of invoice accrual period ([#9790](https://github.com/vm0-ai/vm0/issues/9790)) ([c5a279f](https://github.com/vm0-ai/vm0/commit/c5a279fc89507897bf60c3ba2b7d127654e38074))
+* **slack:** use after() callback form so nested dispatch runs ([#9796](https://github.com/vm0-ai/vm0/issues/9796)) ([bd80c31](https://github.com/vm0-ai/vm0/commit/bd80c31eab69d2055fd1b82336a6b1fcec1f0ea7))
+
+## [12.248.2](https://github.com/vm0-ai/vm0/compare/web-v12.248.1...web-v12.248.2) (2026-04-17)
+
+
+### Bug Fixes
+
+* **slack:** use official Slack Mark SVG per brand guidelines ([#9780](https://github.com/vm0-ai/vm0/issues/9780)) ([c1bb52b](https://github.com/vm0-ai/vm0/commit/c1bb52ba4677dc159667a105ea16b7b30bfca1be))
+
+
+### Refactoring
+
+* **api:** delete /api/skills/resolve and deprecate skills in contracts ([#9765](https://github.com/vm0-ai/vm0/issues/9765)) ([4883702](https://github.com/vm0-ai/vm0/commit/48837029f50864910896f2f5670eae903f845a07))
+* extract pure adapter for schedule cron trigger ([#9784](https://github.com/vm0-ai/vm0/issues/9784)) ([9ca254c](https://github.com/vm0-ai/vm0/commit/9ca254c740531b8db0e1b0f43fc1a8e16742f91f))
+* extract voice chat trigger adapters as pure functions ([#9781](https://github.com/vm0-ai/vm0/issues/9781)) ([e0bdab8](https://github.com/vm0-ai/vm0/commit/e0bdab886776a11e37110de738281e8e888f94e5))
+* **infra:** replace agent-skills prefix check with explicit system flag ([#9768](https://github.com/vm0-ai/vm0/issues/9768)) ([4f6f675](https://github.com/vm0-ai/vm0/commit/4f6f675ca42b478303882d5758066cb58bf8061a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.194.0
+
+## [12.248.1](https://github.com/vm0-ai/vm0/compare/web-v12.248.0...web-v12.248.1) (2026-04-17)
+
+
+### Refactoring
+
+* **api:** stop auto-injecting custom skills on /api/agent/runs ([#9766](https://github.com/vm0-ai/vm0/issues/9766)) ([26e5cdd](https://github.com/vm0-ai/vm0/commit/26e5cdd32da81e7e3ce16473e4a2762bbf4c03ed))
+* extract pure adapter for telegram trigger handler ([#9761](https://github.com/vm0-ai/vm0/issues/9761)) ([e5e97c5](https://github.com/vm0-ai/vm0/commit/e5e97c55729aabcef746c3ce609c710296075658)), closes [#9727](https://github.com/vm0-ai/vm0/issues/9727)
+* extract pure adapters for email inbound-reply and inbound-trigger ([#9756](https://github.com/vm0-ai/vm0/issues/9756)) ([d3b0e9d](https://github.com/vm0-ai/vm0/commit/d3b0e9d0f670a6044312f04fb330a267a17320ca)), closes [#9729](https://github.com/vm0-ai/vm0/issues/9729)
+* extract pure adapters for phone and imessage trigger handlers ([#9775](https://github.com/vm0-ai/vm0/issues/9775)) ([a4497e7](https://github.com/vm0-ai/vm0/commit/a4497e781fde613ae23c48070b24f4d37137f4ee))
+* hide after() inside createZeroRun and collapse optimized routes ([#9739](https://github.com/vm0-ai/vm0/issues/9739)) ([2252e51](https://github.com/vm0-ai/vm0/commit/2252e5194fe054378c24b2baa39571d7902da29f))
+* **slack-org:** extract slack trigger adapter as pure function ([#9726](https://github.com/vm0-ai/vm0/issues/9726)) ([#9763](https://github.com/vm0-ai/vm0/issues/9763)) ([1f9867a](https://github.com/vm0-ai/vm0/commit/1f9867ab440970b5020445daaecc9f0d3ad3c66c))
+* **zero-runs:** extract pure adapter for github issue-event handler ([#9774](https://github.com/vm0-ai/vm0/issues/9774)) ([b3e2c08](https://github.com/vm0-ai/vm0/commit/b3e2c08af5a3720ce975ef98ac6f9aad9437c7e1))
+
 ## [12.248.0](https://github.com/vm0-ai/vm0/compare/web-v12.247.0...web-v12.248.0) (2026-04-17)
 
 

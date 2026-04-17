@@ -391,6 +391,9 @@ export {
   getApiTokenRequiredSecretNames,
   getApiTokenFieldsByType,
   deriveApiTokenConnectedTypes,
+  searchConnectors,
+  type ConnectorSearchResult,
+  type ConnectorSearchOutput,
 } from "./connector-utils";
 export {
   connectorSessionStatusSchema,
@@ -516,11 +519,7 @@ export {
   type OnboardingSetupContract,
   type OnboardingStatusResponse,
 } from "./onboarding";
-export {
-  skillsResolveContract,
-  skillFrontmatterSchema,
-  type SkillsResolveContract,
-} from "./skills";
+export { skillFrontmatterSchema } from "./skills";
 export {
   zeroAgentsMainContract,
   zeroAgentsByIdContract,
@@ -808,14 +807,22 @@ export {
   type PushSubscriptionsContract,
 } from "./push-subscriptions";
 export {
-  zeroVoiceChatContextGetContract,
-  zeroVoiceChatContextAppendContract,
-  type ZeroVoiceChatContextGetContract,
-  type ZeroVoiceChatContextAppendContract,
+  zeroVoiceChatContextContract,
+  type ZeroVoiceChatContextContract,
   type ContextEvent,
   type ContextEventsResponse,
   type AppendContextEventBody,
 } from "./zero-voice-chat-context";
+export {
+  zeroVoiceChatSessionsContract,
+  type ZeroVoiceChatSessionsContract,
+  type VoiceChatMode,
+  type VoiceChatSession,
+  type VoiceChatSessionCreated,
+  type CreateVoiceChatSessionBody,
+  type VoiceChatTokenBody,
+  type VoiceChatTokenResponse,
+} from "./zero-voice-chat-sessions";
 export {
   zeroVoiceChatPrepareTriggerContract,
   zeroVoiceChatPrepareCompleteContract,

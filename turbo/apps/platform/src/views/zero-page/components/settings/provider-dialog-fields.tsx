@@ -22,6 +22,7 @@ import {
   getUIDefaultModel,
   getUISecretField,
   getUIAuthMethodLabel,
+  getModelDisplayName,
 } from "./provider-ui-config.ts";
 import { ClaudeCodeSetupPrompt } from "./setup-prompt.tsx";
 
@@ -351,7 +352,7 @@ function ModelSelector({
           {models.map((model) => {
             return (
               <SelectItem key={model} value={model}>
-                {model}
+                {getModelDisplayName(model)}
               </SelectItem>
             );
           })}

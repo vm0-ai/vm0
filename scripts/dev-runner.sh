@@ -98,16 +98,17 @@ cmd_deploy() {
     log "Building $PROFILE..."
     BUILD_LOG=$(mktemp)
     ssh_cmd "$RUNNER_BIN build --profile $PROFILE" | tee "$BUILD_LOG"
-    IMAGE_HASH=$(grep '^image_hash=' "$BUILD_LOG" | cut -d= -f2)
+    ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
+    SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
     rm -f "$BUILD_LOG"
 
-    if [[ -z "$IMAGE_HASH" ]]; then
-      log "Error: failed to extract image hash for $PROFILE"
+    if [[ -z "$ROOTFS_HASH" || -z "$SNAPSHOT_HASH" ]]; then
+      log "Error: failed to extract rootfs/snapshot hash for $PROFILE"
       exit 1
     fi
-    log "$PROFILE: image=$IMAGE_HASH"
+    log "$PROFILE: rootfs=$ROOTFS_HASH snapshot=$SNAPSHOT_HASH"
 
-    CONFIG_ARGS+=" --profile $PROFILE --image-hash $IMAGE_HASH"
+    CONFIG_ARGS+=" --profile $PROFILE --rootfs-hash $ROOTFS_HASH --snapshot-hash $SNAPSHOT_HASH"
   done
 
   # Generate config

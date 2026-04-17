@@ -25,28 +25,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build toolchain image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./docker/toolchain
-          file: ./docker/toolchain/Dockerfile
-          target: toolchain
-          push: false
-          tags: vm0-toolchain:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build toolchain-rust image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./docker/toolchain
-          file: ./docker/toolchain/Dockerfile
-          target: toolchain-rust
-          push: false
-          tags: vm0-toolchain-rust:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
+      # `target: development` builds through `toolchain` and `toolchain-rust`
+      # transitively, so this single step validates the entire Dockerfile.
       - name: Build development image
         uses: docker/build-push-action@v7
         with:

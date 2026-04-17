@@ -143,87 +143,6 @@ EOF
 }
 
 # ============================================
-# skills tests
-# ============================================
-
-@test "vm0 compose with skills downloads and uploads skill" {
-    echo "# Creating config with skills..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/github
-EOF
-
-    echo "# Running vm0 compose..."
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Verifying skill was processed (downloaded or served from cache)..."
-    assert_output --regexp "(Downloading|cached)"
-}
-
-@test "vm0 compose with skills deduplicates unchanged skill" {
-    echo "# Creating config with skills..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/github
-EOF
-
-    echo "# First compose..."
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Second compose with same skill..."
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-    # Should show unchanged or cached indicator for the skill
-    assert_output --regexp "(unchanged|cached)"
-}
-
-# ============================================
-# Combined instructions and skills tests
-# ============================================
-
-@test "vm0 compose with both instructions and skills" {
-    echo "# Creating config with both instructions and skills..."
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    framework: claude-code
-    instructions: AGENTS.md
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/github
-EOF
-
-    echo "# Creating AGENTS.md file..."
-    cat > "$TEST_DIR/AGENTS.md" <<EOF
-# Test Agent with Skills
-
-You are a test agent with GitHub skills enabled.
-EOF
-
-    echo "# Running vm0 compose..."
-    cd "$TEST_DIR"
-    run $VM0_CLI compose --yes vm0.yaml
-    assert_success
-
-    echo "# Verifying both uploads..."
-    assert_output --partial "instructions"
-    assert_output --partial "skill"
-}
-
-# ============================================
 # Run tests (verify files are mounted)
 # ============================================
 
@@ -266,43 +185,6 @@ EOF
 
     echo "# Verifying output contains the marker from AGENTS.md..."
     assert_output --partial "UNIQUE_MARKER_FOR_E2E_TEST"
-}
-
-@test "vm0 run with skills mounts skill directory" {
-    echo "# Creating config with skills..."
-    # Skills work with any image - they're just file mounts
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    framework: claude-code
-    skills:
-      - https://github.com/vm0-ai/vm0-skills/tree/main/github
-EOF
-
-    echo "# Running vm0 compose..."
-    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    echo "# Initializing artifact storage..."
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $VM0_CLI artifact push
-    assert_success
-
-    echo "# Running agent to verify skill is mounted..."
-    # The skill is mounted at /home/user/.claude/skills/github/
-    # Provide mock GH_TOKEN since github skill requires it
-    run $VM0_CLI run "$AGENT_NAME" \
-        --artifact "$ARTIFACT_NAME" \
-        --secrets "GH_TOKEN=mock-token-for-test" \
-        "ls /home/user/.claude/skills/github/"
-    assert_success
-
-    echo "# Verifying skill directory contains SKILL.md..."
-    assert_output --partial "SKILL.md"
 }
 
 @test "vm0 run has gh cli installed by default" {

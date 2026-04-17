@@ -57,6 +57,14 @@ describe("legalRedirectLayer", () => {
         "/privacy-policy",
       );
     });
+
+    it("redirects /en/support to /support with 308", async () => {
+      const response = await runLegal("https://www.vm0.ai/en/support");
+      expect(response.status).toBe(308);
+      expect(new URL(response.headers.get("location")!).pathname).toBe(
+        "/support",
+      );
+    });
   });
 
   describe("does not redirect root legal pages", () => {
@@ -67,6 +75,11 @@ describe("legalRedirectLayer", () => {
 
     it("passes through /privacy-policy without redirect", async () => {
       const response = await runLegal("https://www.vm0.ai/privacy-policy");
+      expect(response.status).toBe(200);
+    });
+
+    it("passes through /support without redirect", async () => {
+      const response = await runLegal("https://www.vm0.ai/support");
       expect(response.status).toBe(200);
     });
   });

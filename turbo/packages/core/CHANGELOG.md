@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.194.0](https://github.com/vm0-ai/vm0/compare/core-v8.193.0...core-v8.194.0) (2026-04-17)
+
+
+### Features
+
+* **cli:** add zero connector search command ([#9779](https://github.com/vm0-ai/vm0/issues/9779)) ([0030b78](https://github.com/vm0-ai/vm0/commit/0030b78d7f3c84bfc80271ba442cbab6ca7d86f4))
+
+
+### Refactoring
+
+* **api:** delete /api/skills/resolve and deprecate skills in contracts ([#9765](https://github.com/vm0-ai/vm0/issues/9765)) ([4883702](https://github.com/vm0-ai/vm0/commit/48837029f50864910896f2f5670eae903f845a07))
+* **contracts:** consolidate voice-chat ts-rest contracts ([#9776](https://github.com/vm0-ai/vm0/issues/9776)) ([c8c3cbf](https://github.com/vm0-ai/vm0/commit/c8c3cbf0ec49aab9e7515f1166e3f406783d149c))
+
 ## [8.193.0](https://github.com/vm0-ai/vm0/compare/core-v8.192.0...core-v8.193.0) (2026-04-17)
 
 

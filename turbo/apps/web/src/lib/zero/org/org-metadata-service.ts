@@ -62,8 +62,13 @@ export async function getOrgBillingPeriod(
   const now = new Date();
   if ((!periodEnd || periodEnd < now) && orgRow?.stripeSubscriptionId) {
     // Has subscription but period is missing or expired — fetch from Stripe.
-    // In Stripe v2025 API, current_period_end was removed from Subscription.
-    // Use the latest_invoice.period_end instead.
+    // In Stripe v2025 API, current_period_end was removed from the top-level
+    // Subscription object. The replacement is subscription.items.data[i].
+    // current_period_end — the end time of the subscription item's current
+    // billing period. (Do NOT read invoice.period_end — that field is the
+    // accrual period for the invoice, not the subscription period, and for
+    // renewal invoices collapses to the invoice creation moment, which
+    // would cause this function to re-fetch Stripe on every call.)
     if (periodEnd && periodEnd < now) {
       log.warn("currentPeriodEnd is stale, refreshing from Stripe", {
         orgId,
@@ -74,13 +79,26 @@ export async function getOrgBillingPeriod(
     const subscription = await stripe.subscriptions.retrieve(
       orgRow.stripeSubscriptionId,
     );
-    if (subscription.latest_invoice) {
-      const invoiceId =
-        typeof subscription.latest_invoice === "string"
-          ? subscription.latest_invoice
-          : subscription.latest_invoice.id;
-      const latestInvoice = await stripe.invoices.retrieve(invoiceId);
-      periodEnd = new Date(latestInvoice.period_end * 1000);
+    const itemPeriodEnd = subscription.items.data[0]?.current_period_end;
+    if (itemPeriodEnd) {
+      const refreshed = new Date(itemPeriodEnd * 1000);
+
+      // Don't cache a past-dated period. If Stripe returns a past-dated
+      // current_period_end for a subscription we believe is active, something
+      // is wrong (stale Stripe data, field confusion from a future code
+      // change, or an orphaned subscription). Log at warn so Axiom surfaces
+      // it and return null without caching — caching the bad value would
+      // cause an infinite "refresh from Stripe" loop on every call.
+      if (refreshed < now) {
+        log.warn("refreshed periodEnd still in past, not caching", {
+          orgId,
+          stripeSubscriptionId: orgRow.stripeSubscriptionId,
+          periodEnd: refreshed,
+        });
+        return null;
+      }
+
+      periodEnd = refreshed;
 
       // Update org_metadata so future lookups skip Stripe
       await db

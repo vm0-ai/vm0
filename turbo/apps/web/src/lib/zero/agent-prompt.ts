@@ -71,6 +71,7 @@ function buildAgentToolsPrompt(): string {
     "- Slack messaging, file uploads, and file downloads: `zero slack --help`. Your replies are automatically sent to the originating thread — only use these commands for different channels/threads. Never use SLACK_TOKEN directly — it's a user OAuth token.",
     "- Download a Slack file attachment to local disk: `zero slack download-file -h` for usage and how to read different file types. Use this whenever a Slack message context includes a `[Slack file]` block.",
     "- Download a web-uploaded file to local disk: `zero web download-file -h` for usage and how to read different file types. Use this whenever a web chat message includes a `[Web file]` block.",
+    "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose env vars like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
     "- Diagnose connector health (token presence, firewall rules, permission policies): `zero doctor check-connector --help`.",
     "- Troubleshoot permission denials: `zero doctor permission-deny --help` to identify which permission covers a blocked request.",
     "- Request permission changes: `zero doctor permission-change --help` to enable or disable a permission.",

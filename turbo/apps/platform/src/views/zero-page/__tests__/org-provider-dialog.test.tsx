@@ -181,11 +181,9 @@ describe("org-provider-dialog - interaction", () => {
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("anthropic/claude-sonnet-4.6"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
     });
-    expect(screen.getByText("anthropic/claude-opus-4.6")).toBeInTheDocument();
+    expect(screen.getByText("Claude Opus 4.6")).toBeInTheDocument();
   });
 
   // ORG-I-094: auth method selector for multi-auth providers

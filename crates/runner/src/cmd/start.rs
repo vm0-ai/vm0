@@ -609,8 +609,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 // claim() runs in the branch handler — non-interruptible,
                 // so a successful claim is always paired with complete().
                 let Some(context) = provider.claim(run_id).await else {
+                    // None means the job won't run here — either lost the race
+                    // to another runner, or the provider rejected the job
+                    // (e.g. poisoned .job handled inside the provider). Either
+                    // way, release the reservation and move on.
                     cancel_tokens.lock().await.remove(&run_id);
-                    budget.release(job_vcpu, job_memory); // rollback on 409
+                    budget.release(job_vcpu, job_memory);
                     continue;
                 };
                 info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");

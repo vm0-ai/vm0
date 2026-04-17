@@ -33,6 +33,7 @@ describe("zero voice-chat context get command", () => {
       const events = {
         events: [
           {
+            id: "evt-1",
             seq: 1,
             source: "user",
             type: "message",

@@ -1870,6 +1870,13 @@
       "when": 1776353998987,
       "tag": "0266_powerful_miss_america",
       "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1776407453753,
+      "tag": "0267_clear_stale_current_period_end",
+      "breakpoints": true
     }
   ]
 }

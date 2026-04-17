@@ -350,7 +350,10 @@ fn decode_exec_inner(payload: &[u8]) -> Result<(DecodedExec<'_>, usize), Protoco
     let env_count = read_u32_at(payload, env_start)
         .ok_or(ProtocolError::InvalidPayload("exec env count truncated"))?
         as usize;
-    let mut env = Vec::with_capacity(env_count);
+    // Do not pre-allocate based on env_count: it is untrusted wire data and a
+    // malformed message can claim u32::MAX pairs. The per-iteration bounds
+    // checks below return an error as soon as the payload runs out.
+    let mut env = Vec::new();
     let mut offset = env_start + 4;
     for _ in 0..env_count {
         let key_len = read_u32_at(payload, offset)
@@ -919,6 +922,19 @@ mod tests {
     #[test]
     fn decode_exec_too_short() {
         assert!(decode_exec(&[0; 4]).is_err());
+    }
+
+    #[test]
+    fn decode_exec_rejects_oversized_env_count() {
+        // Valid exec header (empty cmd, no env) plus an env_count field claiming
+        // u32::MAX pairs but no actual pair bytes. Must return Err without
+        // attempting to allocate a vector sized by env_count.
+        let mut p = encode_exec(1000, "", &[], false);
+        p.extend_from_slice(&u32::MAX.to_be_bytes());
+        assert!(matches!(
+            decode_exec(&p),
+            Err(ProtocolError::InvalidPayload(_))
+        ));
     }
 
     #[test]

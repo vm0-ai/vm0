@@ -1,4 +1,5 @@
 import { eq, and, sql } from "drizzle-orm";
+import { after } from "next/server";
 import {
   resolveFirewallPolicies,
   toFirewallPolicies,
@@ -22,7 +23,6 @@ import {
   loadCompose,
   markRunFailed,
   registerCallbacks,
-  type CreateRunResult,
   type CreateRunParams,
   type CreateRunRecordResult,
 } from "../infra/run";
@@ -78,7 +78,7 @@ const log = logger("service:zero-run");
  * All zero trigger paths (web, schedule, telegram, slack, email, github)
  * use this interface to create agent runs with consistent defaults.
  */
-interface ZeroRunParams {
+export interface CreateZeroRunParams {
   userId: string;
   prompt: string;
   agentId: string;
@@ -234,7 +234,7 @@ interface ZeroRunRecordResult {
   record?: CreateRunRecordResult;
   runParams?: CreateRunParams;
   orgId?: string;
-  zeroParams?: ZeroRunParams;
+  zeroParams?: CreateZeroRunParams;
   /** Pre-fetched in Phase 1 — reused in dispatchZeroRun to avoid duplicate DB query */
   featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   /** Pre-fetched user timezone in Phase 1 — passed to buildZeroExecutionContext */
@@ -275,10 +275,10 @@ function buildSystemSkillVolumes(): Array<{
  * (credits, model provider), and advisory-locked run record creation.
  * Does NOT generate tokens, build execution context, or dispatch to runner.
  *
- * Use dispatchZeroRun() to complete the dispatch pipeline after this returns.
+ * Internal to zero-run-service — callers should use createZeroRun().
  */
-export async function createZeroRunRecord(
-  params: ZeroRunParams,
+async function createZeroRunRecord(
+  params: CreateZeroRunParams,
 ): Promise<ZeroRunRecordResult> {
   const db = globalThis.services.db;
 
@@ -532,9 +532,9 @@ export async function createZeroRunRecord(
  * runner dispatch, and zero-layer metadata persistence.
  * On failure: marks run as failed and drains the org queue.
  *
- * Safe to call from after() — errors are handled internally.
+ * Internal to zero-run-service — scheduled via after() inside createZeroRun().
  */
-export async function dispatchZeroRun(
+async function dispatchZeroRun(
   result: ZeroRunRecordResult,
 ): Promise<{ status: RunStatus; sandboxId?: string } | undefined> {
   const { record, runParams, orgId, zeroParams } = result;
@@ -603,36 +603,54 @@ export async function dispatchZeroRun(
 }
 
 /**
+ * Public result of createZeroRun().
+ *
+ * Only fields populated by Phase 1 (pre-flight + INSERT) are exposed; Phase 2
+ * (tokens, context, dispatch) runs deferred inside after() so its outputs
+ * (sandboxId, final dispatched status) are not available at return time.
+ *
+ * `status` reflects Phase 1 state only — it is always `"pending"` (record
+ * inserted, dispatch scheduled via after()) or `"queued"` (concurrency limit,
+ * will be dispatched by the queue worker). It is NEVER a post-dispatch status.
+ */
+export interface CreateZeroRunResult {
+  runId: string;
+  status: RunStatus;
+  createdAt: Date;
+}
+
+/**
  * Create an agent run with zero-layer defaults.
  *
- * Composition of createZeroRunRecord() + dispatchZeroRun(). Performs the
- * full synchronous pipeline: pre-flight checks, record creation, token
- * generation, context building, and runner dispatch.
+ * Phase 1 (pre-flight checks + advisory-locked INSERT) runs synchronously and
+ * is awaited by the caller. Phase 2 (token generation, context building,
+ * runner dispatch) is deferred via Next.js after() so the caller's response
+ * flushes before the heavy dispatch pipeline runs.
  *
- * All trigger paths except chat messages use this function directly.
- * The chat messages route uses createZeroRunRecord() + after(dispatchZeroRun)
- * to defer the dispatch pipeline and return a response faster.
+ * Dispatch failures are caught inside the after() callback, logged, and
+ * persisted on the run row via markRunFailed() inside dispatchZeroRun.
  */
 export async function createZeroRun(
-  params: ZeroRunParams,
-): Promise<CreateRunResult> {
+  params: CreateZeroRunParams,
+): Promise<CreateZeroRunResult> {
   const result = await createZeroRunRecord(params);
 
-  // Enqueued runs (concurrency limit) — no dispatch needed
-  if (!result.record) {
-    return {
-      runId: result.runId,
-      status: result.status,
-      createdAt: result.createdAt,
-    };
+  // Dispatch only when a record was actually inserted; enqueued runs
+  // (concurrency limit) are drained by the queue worker later.
+  if (result.record) {
+    after(() => {
+      return dispatchZeroRun(result).catch((err: unknown) => {
+        log.error("Deferred dispatch failed", {
+          runId: result.runId,
+          err,
+        });
+      });
+    });
   }
-
-  const dispatchResult = await dispatchZeroRun(result);
 
   return {
     runId: result.runId,
-    status: dispatchResult?.status ?? "pending",
-    sandboxId: dispatchResult?.sandboxId,
+    status: result.status,
     createdAt: result.createdAt,
   };
 }
@@ -644,7 +662,7 @@ export async function createZeroRun(
  */
 async function persistZeroRunMetadata(
   runId: string,
-  params: ZeroRunParams,
+  params: CreateZeroRunParams,
 ): Promise<void> {
   await globalThis.services.db.insert(zeroRuns).values({
     id: runId,

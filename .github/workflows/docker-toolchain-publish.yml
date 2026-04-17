@@ -20,14 +20,21 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  toolchain:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -39,62 +46,121 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        run: |
-          echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-          echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push toolchain image
+      - name: Build and push toolchain image (digest only)
+        id: build-toolchain
         uses: docker/build-push-action@v7
         with:
           context: ./docker/toolchain
           file: ./docker/toolchain/Dockerfile
           target: toolchain
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/vm0-ai/vm0-toolchain:latest
-            ${{ env.REGISTRY }}/vm0-ai/vm0-toolchain:${{ steps.meta.outputs.sha_short }}
-            ${{ env.REGISTRY }}/vm0-ai/vm0-toolchain:${{ steps.meta.outputs.date }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY }}/vm0-ai/vm0-toolchain,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
           labels: |
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
             org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Build and push toolchain-rust image
+      - name: Build and push toolchain-rust image (digest only)
+        id: build-toolchain-rust
         uses: docker/build-push-action@v7
         with:
           context: ./docker/toolchain
           file: ./docker/toolchain/Dockerfile
           target: toolchain-rust
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/vm0-ai/vm0-toolchain-rust:latest
-            ${{ env.REGISTRY }}/vm0-ai/vm0-toolchain-rust:${{ steps.meta.outputs.sha_short }}
-            ${{ env.REGISTRY }}/vm0-ai/vm0-toolchain-rust:${{ steps.meta.outputs.date }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY }}/vm0-ai/vm0-toolchain-rust,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
           labels: |
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
             org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Build and push development image
+      - name: Build and push development image (digest only)
+        id: build-dev
         uses: docker/build-push-action@v7
         with:
           context: ./docker/toolchain
           file: ./docker/toolchain/Dockerfile
           target: development
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/vm0-ai/vm0-dev:latest
-            ${{ env.REGISTRY }}/vm0-ai/vm0-dev:${{ steps.meta.outputs.sha_short }}
-            ${{ env.REGISTRY }}/vm0-ai/vm0-dev:${{ steps.meta.outputs.date }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY }}/vm0-ai/vm0-dev,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
           labels: |
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
             org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Export digests
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests/toolchain /tmp/digests/toolchain-rust /tmp/digests/dev
+          tc_digest="${{ steps.build-toolchain.outputs.digest }}"
+          tr_digest="${{ steps.build-toolchain-rust.outputs.digest }}"
+          dev_digest="${{ steps.build-dev.outputs.digest }}"
+          [ -n "${tc_digest#sha256:}" ]  || { echo "empty digest from toolchain build" >&2; exit 1; }
+          [ -n "${tr_digest#sha256:}" ]  || { echo "empty digest from toolchain-rust build" >&2; exit 1; }
+          [ -n "${dev_digest#sha256:}" ] || { echo "empty digest from development build" >&2; exit 1; }
+          touch "/tmp/digests/toolchain/${tc_digest#sha256:}"
+          touch "/tmp/digests/toolchain-rust/${tr_digest#sha256:}"
+          touch "/tmp/digests/dev/${dev_digest#sha256:}"
+
+      - name: Upload digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifests
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          SHA_SHORT="${GITHUB_SHA:0:7}"
+          DATE="$(date +'%Y%m%d')"
+
+          for image in toolchain toolchain-rust dev; do
+            case "$image" in
+              dev) repo=vm0-dev ;;
+              *)   repo=vm0-$image ;;
+            esac
+
+            refs=()
+            for digest_file in /tmp/digests/digests-*/"$image"/*; do
+              digest=$(basename "$digest_file")
+              refs+=("${REGISTRY}/vm0-ai/${repo}@sha256:${digest}")
+            done
+
+            if [ "${#refs[@]}" -eq 0 ]; then
+              echo "Error: no digests found for $image" >&2
+              exit 1
+            fi
+
+            docker buildx imagetools create \
+              --tag "${REGISTRY}/vm0-ai/${repo}:latest" \
+              --tag "${REGISTRY}/vm0-ai/${repo}:${SHA_SHORT}" \
+              --tag "${REGISTRY}/vm0-ai/${repo}:${DATE}" \
+              "${refs[@]}"
+          done

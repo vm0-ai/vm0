@@ -1160,4 +1160,141 @@ describe("POST /api/zero/slack/events", () => {
       expect(await countSlackOrgConnections(workspaceId)).toBe(0);
     });
   });
+
+  // Regression: createZeroRun schedules its Phase 2 dispatch via a nested
+  // after() inside handleOrgMention/handleOrgDirectMessage. If the route
+  // registers the outer after() with an already-started promise, the nested
+  // after() is scheduled after the Next.js request context has been finalized
+  // and Phase 2 dispatch never runs — runs remain Pending forever.
+  describe("after() callback form (nested-after propagation)", () => {
+    it("registers app_mention handler via callback form", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: "U-random",
+          text: "Hello",
+          ts: uniqueId("ts"),
+          channel: "C-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers direct_message handler via callback form", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: "U-random",
+          text: "Hello",
+          ts: uniqueId("ts"),
+          channel: "D-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers app_home_opened (home) handler via callback form", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_home_opened",
+          user: "U-random",
+          tab: "home",
+          channel: "D-test",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers app_home_opened (messages) handler via callback form", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_home_opened",
+          user: "U-random",
+          tab: "messages",
+          channel: "D-test",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers app_uninstalled cleanup via callback form", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: { type: "app_uninstalled" },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+
+    it("registers tokens_revoked cleanup via callback form", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "tokens_revoked",
+          tokens: { bot: ["xoxb-revoked"] },
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      await POST(request);
+
+      expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+  });
 });
