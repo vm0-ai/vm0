@@ -5,13 +5,35 @@ import { logger } from "../../shared/logger";
 const log = logger("slack:client");
 
 /**
+ * Resolve the Slack Web API base URL. Returns undefined to use the
+ * `@slack/web-api` default (https://slack.com/api/). E2E tests running
+ * against a Vercel preview set `E2E_SLACK_MOCK_ENABLED=1` so outbound
+ * traffic is redirected to `/api/test/slack-mock/` on the same deployment.
+ */
+function resolveSlackApiUrl(): string | undefined {
+  if (process.env.SLACK_API_URL) return process.env.SLACK_API_URL;
+  const mockEnabled =
+    process.env.E2E_SLACK_MOCK_ENABLED === "1" ||
+    process.env.E2E_SLACK_MOCK_ENABLED === "true";
+  if (mockEnabled && process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/test/slack-mock/`;
+  }
+  return undefined;
+}
+
+function buildWebClient(token?: string): WebClient {
+  const slackApiUrl = resolveSlackApiUrl();
+  return new WebClient(token, slackApiUrl ? { slackApiUrl } : undefined);
+}
+
+/**
  * Create a Slack Web API client
  *
  * @param token - Bot token or user token
  * @returns WebClient instance
  */
 export function createSlackClient(token: string): WebClient {
-  return new WebClient(token);
+  return buildWebClient(token);
 }
 
 /**
@@ -199,7 +221,7 @@ export async function exchangeOAuthCode(
   authedUserId: string;
   scope: string;
 }> {
-  const client = new WebClient();
+  const client = buildWebClient();
   const result = await client.oauth.v2.access({
     client_id: clientId,
     client_secret: clientSecret,
@@ -242,7 +264,7 @@ export async function exchangeOAuthCodeForUser(
   teamId: string;
   authedUserId: string;
 }> {
-  const client = new WebClient();
+  const client = buildWebClient();
   const result = await client.oauth.v2.access({
     client_id: clientId,
     client_secret: clientSecret,
