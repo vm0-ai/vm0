@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.1...vsock-host-v0.9.2) (2026-04-17)
+
+
+### Bug Fixes
+
+* **vsock:** handle exec timeout_ms=0 across host and guest ([#9793](https://github.com/vm0-ai/vm0/issues/9793)) ([03a37b0](https://github.com/vm0-ai/vm0/commit/03a37b0ae1566f76ce0dbc97b5bb3e0bd1947f4b))
+
 ## [0.9.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.0...vsock-host-v0.9.1) (2026-04-17)
 
 ## [0.9.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.8.0...vsock-host-v0.9.0) (2026-04-14)

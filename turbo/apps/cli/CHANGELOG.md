@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.121.0](https://github.com/vm0-ai/vm0/compare/cli-v9.120.0...cli-v9.121.0) (2026-04-17)
+
+
+### Features
+
+* **cli:** show connection status in zero connector search output ([#9803](https://github.com/vm0-ai/vm0/issues/9803)) ([a5551e2](https://github.com/vm0-ai/vm0/commit/a5551e2a2c9e2b9f513d1a62b4d62700edd4ad7e)), closes [#9800](https://github.com/vm0-ai/vm0/issues/9800)
+
 ## [9.120.0](https://github.com/vm0-ai/vm0/compare/cli-v9.119.3...cli-v9.120.0) (2026-04-17)
 
 

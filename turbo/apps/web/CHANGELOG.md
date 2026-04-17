@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.250.0](https://github.com/vm0-ai/vm0/compare/web-v12.249.0...web-v12.250.0) (2026-04-17)
+
+
+### Features
+
+* **web:** add connector discovery guidance to agent system prompt ([#9806](https://github.com/vm0-ai/vm0/issues/9806)) ([1e1d059](https://github.com/vm0-ai/vm0/commit/1e1d0598fd38f64974cfe7d44596430273fd5cea))
+
+
+### Bug Fixes
+
+* **web:** scale slack icon on use-cases pages to match intended size ([#9802](https://github.com/vm0-ai/vm0/issues/9802)) ([2ab0efc](https://github.com/vm0-ai/vm0/commit/2ab0efca312cf2893a9b5dc04d5748cb54311422))
+
 ## [12.249.0](https://github.com/vm0-ai/vm0/compare/web-v12.248.2...web-v12.249.0) (2026-04-17)
 
 
