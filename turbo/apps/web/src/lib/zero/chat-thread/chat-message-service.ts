@@ -9,6 +9,10 @@ import { zeroRuns } from "../../../db/schema/zero-run";
 
 /**
  * Insert a user message. Called immediately on send, before run dispatch.
+ *
+ * When `id` is provided, it is used as the primary key so the client can
+ * reconcile an optimistic row by matching on id. Otherwise the DB default
+ * (`defaultRandom()`) is used.
  */
 export async function insertChatMessage(params: {
   chatThreadId: string;
@@ -17,10 +21,12 @@ export async function insertChatMessage(params: {
   runId: string | null;
   error?: string | null;
   attachFiles?: ChatMessageAttachFiles;
+  id?: string;
 }): Promise<{ id: string; createdAt: Date }> {
   const [row] = await globalThis.services.db
     .insert(chatMessages)
     .values({
+      ...(params.id ? { id: params.id } : {}),
       chatThreadId: params.chatThreadId,
       role: params.role,
       content: params.content,

@@ -182,6 +182,7 @@ export const sendNewThreadMessage$ = command(
           agentId,
           prompt,
           hasTextContent: prompt.trim().length > 0,
+          clientMessageId: crypto.randomUUID(),
         },
         fetchOptions: { signal },
       }),

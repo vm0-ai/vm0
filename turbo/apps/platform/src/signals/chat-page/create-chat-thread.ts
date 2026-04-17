@@ -22,6 +22,7 @@ import {
   type PersistedAttachment,
   type PagedChatMessage,
 } from "@vm0/core";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
@@ -391,25 +392,80 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
 // Sub-factory: paginated chat messages
 // ---------------------------------------------------------------------------
 
-/** Merge new messages into existing groups in place. */
+/**
+ * Merge new messages into existing groups.
+ *
+ * Upsert semantics by `id`: if an incoming message's id already exists in
+ * the groups, its fields are replaced in place — this lets an optimistic
+ * user row reconcile with the server-pushed row without React unmounting
+ * and remounting the message (the React key stays the same).
+ */
 function mergeIntoGroups(
   groups: GroupedChatMessageGroup[],
   messages: PagedChatMessage[],
 ): GroupedChatMessageGroup[] {
-  const result = [...groups];
+  const result = groups.map((g) => {
+    return { ...g, messages: [...g.messages] };
+  });
+
+  const positionById = new Map<string, { groupIdx: number; msgIdx: number }>();
+  for (let gi = 0; gi < result.length; gi++) {
+    const group = result[gi]!;
+    for (let mi = 0; mi < group.messages.length; mi++) {
+      positionById.set(group.messages[mi]!.id, { groupIdx: gi, msgIdx: mi });
+    }
+  }
+
   for (const msg of messages) {
+    const existing = positionById.get(msg.id);
+    if (existing) {
+      result[existing.groupIdx]!.messages[existing.msgIdx] = msg;
+      continue;
+    }
+
     const last = result[result.length - 1];
     if (last && last.role === msg.role) {
-      last.messages = [...last.messages, msg];
+      last.messages.push(msg);
+      positionById.set(msg.id, {
+        groupIdx: result.length - 1,
+        msgIdx: last.messages.length - 1,
+      });
     } else {
       result.push({
         beginMessageId: msg.id,
         role: msg.role,
         messages: [msg],
       });
+      positionById.set(msg.id, { groupIdx: result.length - 1, msgIdx: 0 });
     }
   }
   return result;
+}
+
+/** Remove a single message by id. Drops the enclosing group if it becomes empty. */
+function removeMessageById(
+  groups: GroupedChatMessageGroup[],
+  id: string,
+): GroupedChatMessageGroup[] {
+  const next: GroupedChatMessageGroup[] = [];
+  for (const g of groups) {
+    const messages = g.messages.filter((m) => {
+      return m.id !== id;
+    });
+    if (messages.length === 0) {
+      continue;
+    }
+    if (messages.length === g.messages.length) {
+      next.push(g);
+    } else {
+      next.push({
+        role: g.role,
+        beginMessageId: messages[0]!.id,
+        messages,
+      });
+    }
+  }
+  return next;
 }
 
 function createPagedMessages(threadId: string) {
@@ -477,11 +533,25 @@ function createPagedMessages(threadId: string) {
     return false;
   });
 
+  const insertOptimisticMessage$ = command(({ set }, msg: PagedChatMessage) => {
+    set(internalGroups$, (prev) => {
+      return mergeIntoGroups(prev, [msg]);
+    });
+  });
+
+  const removeOptimisticMessage$ = command(({ set }, id: string) => {
+    set(internalGroups$, (prev) => {
+      return removeMessageById(prev, id);
+    });
+  });
+
   return {
     pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
     fetchNextPage$,
+    insertOptimisticMessage$,
+    removeOptimisticMessage$,
   };
 }
 
@@ -708,6 +778,8 @@ export function createChatThreadSignals(
     latestChatMessageId$,
     groupedChatMessages$,
     fetchNextPage$,
+    insertOptimisticMessage$,
+    removeOptimisticMessage$,
   } = createPagedMessages(threadId);
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
@@ -741,6 +813,20 @@ export function createChatThreadSignals(
       await set(flushDraftClear$, signal);
       signal.throwIfAborted();
 
+      // Optimistic insert: render the user message immediately with a
+      // client-generated UUID. The server uses the same UUID as the row's
+      // primary key (see chatMessagesContract.send.body.clientMessageId),
+      // so paged fetches triggered by the Ably push reconcile by id
+      // without unmount/remount — `sinceId` cursor stays valid because
+      // `WHERE id = sinceId` matches the persisted row.
+      const clientMessageId = crypto.randomUUID();
+      set(insertOptimisticMessage$, {
+        id: clientMessageId,
+        role: "user",
+        content: result.fullPrompt,
+        createdAt: new Date().toISOString(),
+      });
+
       const client = get(zeroClient$)(chatMessagesContract);
       const sendResult = await accept(
         client.send({
@@ -749,11 +835,18 @@ export function createChatThreadSignals(
             prompt: result.fullPrompt,
             threadId: threadId,
             hasTextContent: result.hasTextContent,
+            clientMessageId,
           },
           fetchOptions: { signal },
         }),
         [201],
-      );
+      ).catch((error: unknown) => {
+        set(removeOptimisticMessage$, clientMessageId);
+        if (!signal.aborted) {
+          toast.error("Failed to send message");
+        }
+        throw error;
+      });
       signal.throwIfAborted();
       L.debug("sendMessage$ POST accepted", {
         threadId,

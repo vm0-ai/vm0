@@ -241,6 +241,7 @@ const router = tsr.router(chatMessagesContract, {
         attachFiles: body.attachFiles?.map((f) => {
           return f.id;
         }),
+        id: body.clientMessageId,
       });
 
       // Notify subscribers that a new run and messages were created on this thread

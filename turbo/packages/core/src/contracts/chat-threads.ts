@@ -191,6 +191,10 @@ export const chatMessagesContract = c.router({
       // still trigger title generation (server guards with !== false, not === true).
       hasTextContent: z.boolean().optional(),
       attachFiles: z.array(attachFileSchema).optional(),
+      // Client-generated UUID used as the user message's primary key.
+      // Lets the client render an optimistic row and reconcile with the
+      // server row by id — no temp-id swap, no React remount.
+      clientMessageId: z.string().uuid().optional(),
     }),
     responses: {
       201: z.object({
