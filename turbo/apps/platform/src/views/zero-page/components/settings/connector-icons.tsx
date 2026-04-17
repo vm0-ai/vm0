@@ -101,6 +101,7 @@ const CONNECTOR_ICON_COLORFUL = {
   loops: true,
   mailchimp: true,
   mailsac: true,
+  manus: true,
   "meta-ads": true,
   minimax: true,
   minio: true,

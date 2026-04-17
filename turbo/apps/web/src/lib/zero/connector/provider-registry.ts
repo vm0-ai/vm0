@@ -78,6 +78,7 @@ import { linearHandler } from "./providers/linear-handler";
 import { loopsHandler } from "./providers/loops-handler";
 import { mailsacHandler } from "./providers/mailsac-handler";
 import { makeHandler } from "./providers/make-handler";
+import { manusHandler } from "./providers/manus-handler";
 import { metabaseHandler } from "./providers/metabase-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { minioHandler } from "./providers/minio-handler";
@@ -215,6 +216,7 @@ export const PROVIDER_HANDLERS: Record<
   loops: loopsHandler,
   mailsac: mailsacHandler,
   make: makeHandler,
+  manus: manusHandler,
   metabase: metabaseHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
