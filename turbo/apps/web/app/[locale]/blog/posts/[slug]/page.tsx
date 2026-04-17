@@ -102,7 +102,10 @@ export async function generateStaticParams() {
   return params;
 }
 
-export default async function BlogPostPage({ params, searchParams }: PageProps) {
+export default async function BlogPostPage({
+  params,
+  searchParams,
+}: PageProps) {
   if (!isBlogEnabled()) {
     notFound();
   }
