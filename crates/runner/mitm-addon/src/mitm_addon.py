@@ -191,14 +191,20 @@ async def request(flow: http.HTTPFlow) -> None:
     hostname = flow.request.pretty_host.lower()
 
     # --- Step 1: Auto-allow VM0 API requests ---
-    # The agent MUST be able to communicate with the platform.
+    # The agent MUST be able to communicate with the platform (heartbeat,
+    # logs, CLI auth, etc.). Exception: `/api/test/*` routes exist only to
+    # exercise the firewall pipeline itself (e.g. the test-oauth provider),
+    # so they must go through Step 2 and get their auth injected by the
+    # matching firewall — otherwise the E2E tests that back them would
+    # auto-allow past the thing they're supposed to exercise.
     api_url = get_api_url()
     if api_url:
         parsed_api = urllib.parse.urlparse(api_url)
         api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
         if api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}")):
-            flow.metadata["firewall_action"] = "ALLOW"
-            return
+            if not flow.request.path.startswith("/api/test/"):
+                flow.metadata["firewall_action"] = "ALLOW"
+                return
 
     # --- Step 2: Firewall match with permission check ---
     # Match base URL, then check permission rules before injecting auth headers.

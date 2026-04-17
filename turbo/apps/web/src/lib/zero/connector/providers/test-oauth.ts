@@ -6,7 +6,7 @@
  * the CONNECTOR_TYPES_DEF entries' URLs are documentation-only placeholders.
  *
  * For tests only: UI is hidden by FeatureSwitchKey.TestOauthConnector, and
- * the provider routes themselves 404 in production via isAllowed().
+ * the provider routes themselves 404 in production via isTestEndpointAllowed().
  */
 
 import { getConnectorOAuthConfig } from "@vm0/core";

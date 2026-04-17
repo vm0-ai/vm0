@@ -13,32 +13,12 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { userConnectors } from "../../../../../src/db/schema/user-connector";
 import { getOrgMetadata } from "../../../../../src/lib/zero/org/org-metadata-service";
 import { isNotFound } from "../../../../../src/lib/shared/errors";
-import { env } from "../../../../../src/env";
+import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint-guard";
 
 const bodySchema = z.object({
   composeId: z.string().uuid("composeId must be a valid UUID"),
   connectorTypes: z.array(z.string()).min(1),
 });
-
-/**
- * Check if test endpoint is allowed (same guard as test-connector).
- */
-function isAllowed(request: Request): boolean {
-  const vercelEnv = env().VERCEL_ENV;
-  const nodeEnv = env().NODE_ENV;
-
-  if (!vercelEnv && nodeEnv === "development") {
-    return true;
-  }
-
-  if (vercelEnv === "preview") {
-    const bypassHeader = request.headers.get("x-vercel-protection-bypass");
-    const expectedSecret = env().VERCEL_AUTOMATION_BYPASS_SECRET;
-    return !!expectedSecret && bypassHeader === expectedSecret;
-  }
-
-  return false;
-}
 
 /**
  * POST /api/cli/auth/test-enable-connector
@@ -51,7 +31,7 @@ function isAllowed(request: Request): boolean {
  * Query: ?email=<email>
  */
 export async function POST(request: Request) {
-  if (!isAllowed(request)) {
+  if (!isTestEndpointAllowed(request)) {
     return new NextResponse("Not found", { status: 404 });
   }
 

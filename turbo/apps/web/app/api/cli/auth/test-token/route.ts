@@ -13,36 +13,10 @@ import {
   resolveTestUserId,
   DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
-import { env } from "../../../../../src/env";
+import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint-guard";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:test-token");
-
-/**
- * Check if test-token endpoint is allowed based on environment.
- * Follows deny-by-default security principle.
- *
- * Access rules:
- * - Local development (no VERCEL_ENV, NODE_ENV=development): Allow
- * - Vercel preview (VERCEL_ENV=preview): Requires bypass secret header
- * - All other environments: Deny
- */
-function isTestTokenAllowed(request: Request): boolean {
-  const vercelEnv = env().VERCEL_ENV;
-  const nodeEnv = env().NODE_ENV;
-
-  if (!vercelEnv && nodeEnv === "development") {
-    return true;
-  }
-
-  if (vercelEnv === "preview") {
-    const bypassHeader = request.headers.get("x-vercel-protection-bypass");
-    const expectedSecret = env().VERCEL_AUTOMATION_BYPASS_SECRET;
-    return !!expectedSecret && bypassHeader === expectedSecret;
-  }
-
-  return false;
-}
 
 /**
  * Ensure the test user has an org_cache entry for org resolution.
@@ -118,7 +92,7 @@ async function ensureTestOrg(userId: string): Promise<{ orgId: string }> {
  * allowing E2E tests to run without waiting for device flow authentication.
  */
 export async function POST(request: Request) {
-  if (!isTestTokenAllowed(request)) {
+  if (!isTestEndpointAllowed(request)) {
     return new NextResponse("Not found", { status: 404 });
   }
 

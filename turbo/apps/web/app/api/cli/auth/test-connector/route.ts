@@ -12,7 +12,7 @@ import {
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
 import { getOrgMetadata } from "../../../../../src/lib/zero/org/org-metadata-service";
 import { isNotFound } from "../../../../../src/lib/shared/errors";
-import { env } from "../../../../../src/env";
+import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint-guard";
 
 const bodySchema = z.object({
   connectorName: z.string(),
@@ -28,27 +28,6 @@ const bodySchema = z.object({
 });
 
 /**
- * Check if test endpoint is allowed (same guard as test-token).
- * Only available in local development or Vercel preview with bypass secret.
- */
-function isAllowed(request: Request): boolean {
-  const vercelEnv = env().VERCEL_ENV;
-  const nodeEnv = env().NODE_ENV;
-
-  if (!vercelEnv && nodeEnv === "development") {
-    return true;
-  }
-
-  if (vercelEnv === "preview") {
-    const bypassHeader = request.headers.get("x-vercel-protection-bypass");
-    const expectedSecret = env().VERCEL_AUTOMATION_BYPASS_SECRET;
-    return !!expectedSecret && bypassHeader === expectedSecret;
-  }
-
-  return false;
-}
-
-/**
  * POST /api/cli/auth/test-connector
  *
  * Test-only endpoint to set up a connector with a known access token.
@@ -58,7 +37,7 @@ function isAllowed(request: Request): boolean {
  * Query: ?email=<email> (default: dev+clerk_test+serial@vm0-e2e.ai)
  */
 export async function POST(request: Request) {
-  if (!isAllowed(request)) {
+  if (!isTestEndpointAllowed(request)) {
     return new NextResponse("Not found", { status: 404 });
   }
 

@@ -25,6 +25,15 @@ setup_file() {
         echo "VM0_API_URL not set" >&2
         return 1
     fi
+    # The test-oauth firewall rule matches only `{pr}.vm6.ai` hosts. If
+    # VM0_API_URL ever points elsewhere (e.g. a localhost tunnel or a
+    # different preview domain), the firewall won't match and the agent's
+    # request would pass through to the origin — echo might still respond,
+    # silently defeating the mid-run-refresh assertion. Fail early.
+    if [[ "$VM0_API_URL" != *.vm6.ai* ]]; then
+        echo "VM0_API_URL must be a *.vm6.ai host for the test-oauth firewall to match (got: $VM0_API_URL)" >&2
+        return 1
+    fi
 
     export TEST_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
@@ -167,8 +176,11 @@ EOF
     # Agent curls the echo endpoint. The proxy should intercept, refresh
     # the expired token, and inject a fresh Bearer. Echo validates the
     # token's baked-in expiry and returns 200 only if it's fresh.
+    # The x-vercel-protection-bypass header is interpolated by bash before
+    # the command reaches the sandbox; it's required to get past Vercel's
+    # preview deployment protection (same env guard as test-token).
     run $ZERO_CLI run "$COMPOSE_ID" \
-        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' '${VM0_API_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
+        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${VM0_API_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"
     assert_success
@@ -238,7 +250,7 @@ EOF
     assert_success
 
     run $ZERO_CLI run "$COMPOSE_ID" \
-        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' '${VM0_API_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
+        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${VM0_API_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"
     assert_success
