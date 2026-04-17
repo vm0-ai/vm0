@@ -13,6 +13,8 @@ export function buildAppHomeView(options: {
   vm0UserId?: string;
   userEmail?: string;
   agentName?: string;
+  isOverrideActive?: boolean;
+  canSwitch?: boolean;
   loginUrl?: string;
 }): View {
   const blocks: (Block | KnownBlock)[] = [
@@ -114,16 +116,19 @@ export function buildAppHomeView(options: {
   blocks.push({ type: "divider" });
 
   // Workspace Agent section
+  const agentHeading = options.isOverrideActive
+    ? ":robot_face: *Your Agent*"
+    : ":robot_face: *Workspace Agent*";
   blocks.push({
     type: "section",
     text: {
       type: "mrkdwn",
-      text: ":robot_face: *Workspace Agent*",
+      text: agentHeading,
     },
   });
 
   if (options.agentName) {
-    blocks.push({
+    const agentBlock: KnownBlock = {
       type: "section",
       text: {
         type: "mrkdwn",
@@ -135,7 +140,20 @@ export function buildAppHomeView(options: {
         url: `${getAppUrl()}/works`,
         action_id: "home_environment_setup",
       },
-    });
+    };
+    blocks.push(agentBlock);
+    if (options.canSwitch) {
+      blocks.push({
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Switch" },
+            action_id: "home_switch_agent",
+          },
+        ],
+      });
+    }
   } else {
     blocks.push({
       type: "section",
@@ -312,9 +330,19 @@ export function buildWelcomeMessage(
 /**
  * Build a help message
  *
+ * @param opts.canSwitch - Whether `/zero switch` is available for the caller.
+ *   When `false`, the switch line is omitted so users aren't shown a command
+ *   they cannot use. Defaults to `false` (the safe choice when the caller has
+ *   no user/org context yet, e.g. pre-installation help).
  * @returns Block Kit blocks
  */
-export function buildHelpMessage(): (Block | KnownBlock)[] {
+export function buildHelpMessage(opts?: {
+  canSwitch?: boolean;
+}): (Block | KnownBlock)[] {
+  const canSwitch = opts?.canSwitch ?? false;
+  const switchLine = canSwitch
+    ? "\n\u2022 `/zero switch` - Choose which agent responds to your messages"
+    : "";
   return [
     {
       type: "section",
@@ -330,7 +358,7 @@ export function buildHelpMessage(): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero\n\u2022 \`/zero disconnect\` - Disconnect from Zero`,
+        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero${switchLine}\n\u2022 \`/zero disconnect\` - Disconnect from Zero`,
       },
     },
     {
@@ -448,6 +476,89 @@ export function buildFooterBlocks(text: string): (Block | KnownBlock)[] {
       ],
     },
   ];
+}
+
+export const AGENT_PICKER_CALLBACK_ID = "switch_agent_modal";
+export const AGENT_PICKER_BLOCK_ID = "agent_select_block";
+export const AGENT_PICKER_ACTION_ID = "agent_select";
+export const AGENT_PICKER_ORG_DEFAULT_VALUE = "__org_default__";
+
+interface AgentPickerOption {
+  composeId: string;
+  name: string;
+  displayName?: string | null;
+}
+
+/**
+ * Build the "Switch Agent" modal view.
+ *
+ * `options` contains only agents the picker should offer to the user — the
+ * caller is expected to have already filtered out the org's default agent,
+ * which is represented by the dedicated "Use org default" entry. Slack caps
+ * `static_select` at 100 options, so callers should cap/paginate upstream.
+ */
+export function buildAgentPickerModal(args: {
+  options: AgentPickerOption[];
+  currentSelectedId: string | null;
+  orgDefaultName: string | null;
+  privateMetadata?: string;
+}): View {
+  const orgDefaultLabel = args.orgDefaultName
+    ? `Use org default (${args.orgDefaultName})`
+    : "Use org default";
+
+  const selectOptions = [
+    {
+      text: { type: "plain_text" as const, text: orgDefaultLabel },
+      value: AGENT_PICKER_ORG_DEFAULT_VALUE,
+    },
+    ...args.options.map((option) => {
+      const label = option.displayName ?? option.name;
+      return {
+        text: { type: "plain_text" as const, text: label.slice(0, 75) },
+        value: option.composeId,
+      };
+    }),
+  ];
+
+  const initialOptionRaw = args.currentSelectedId
+    ? selectOptions.find((option) => {
+        return option.value === args.currentSelectedId;
+      })
+    : selectOptions[0];
+  const initialOption = initialOptionRaw ?? selectOptions[0];
+
+  const view: View = {
+    type: "modal",
+    callback_id: AGENT_PICKER_CALLBACK_ID,
+    title: { type: "plain_text", text: "Switch Agent" },
+    submit: { type: "plain_text", text: "Switch" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Choose which agent should respond to your mentions and DMs. Only affects your own messages.",
+        },
+      },
+      {
+        type: "input",
+        block_id: AGENT_PICKER_BLOCK_ID,
+        label: { type: "plain_text", text: "Agent" },
+        element: {
+          type: "static_select",
+          action_id: AGENT_PICKER_ACTION_ID,
+          placeholder: { type: "plain_text", text: "Select an agent" },
+          options: selectOptions,
+          ...(initialOption && { initial_option: initialOption }),
+        },
+      },
+    ],
+    ...(args.privateMetadata && { private_metadata: args.privateMetadata }),
+  };
+
+  return view;
 }
 
 /**

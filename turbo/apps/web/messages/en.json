@@ -213,7 +213,10 @@
     "termsOfUse": "Terms of Use",
     "privacyPolicy": "Privacy Policy",
     "consentPreferences": "Consent Preferences",
-    "support": "Support"
+    "support": "Support",
+    "aiDisclaimerHeading": "Please note",
+    "aiDisclaimerInaccuracy": "Zero is powered by large language models. Responses, summaries, and other outputs may be inaccurate, incomplete, or outdated — please verify important information before acting on it.",
+    "aiDisclaimerPaidPlan": "Using the AI agent inside the Slack app container requires a paid Slack plan. @mentions and direct messages to Zero are available on all Slack plans."
   },
   "skills": {
     "hero": {
@@ -1463,6 +1466,88 @@
           "Name your audience explicitly — 'subscribers', 'trial users', or a specific tag — so Zero doesn't default to a broader list.",
           "Always preview before sending. Tell Zero to post the draft in a channel for approval so a human reads it before it reaches your list.",
           "Chain with the standup use case — run your weekly shipped-items summary first, then feed it into this campaign for a zero-copy newsletter pipeline."
+        ]
+      },
+      "managed-agent-workers": {
+        "title": "Run and check on your Anthropic Managed Agent workers",
+        "description": "You have purpose-built Managed Agents for code review, tests, tech debt, and builds. Zero becomes your fleet manager — launch them, check status, fetch their output, all from Slack.",
+        "timeSaved": "~20 min saved per worker task",
+        "headings": {
+          "scenario": "Why a fleet of Worker Agents is hard to manage alone",
+          "prompt": "How to ask Zero to run or monitor your Managed Agents",
+          "steps": "How Zero orchestrates your Managed Agent fleet",
+          "nextActions": "Launch specific agents, schedule recurring runs, or chain workers",
+          "integrations": "Required integrations: Anthropic Managed Agents and GitHub",
+          "tips": "Best practices for running a Managed Agent worker fleet"
+        },
+        "scenario": "You have invested in building specialized Worker Agents on Anthropic Managed Agents — a Tech Debt Cleaner, a PR Reviewer, a Test Runner, a Build Watcher. Each has its own system prompt, tools, and isolated cloud environment. Running any one of them today means opening the Anthropic console, creating a session, refreshing for status, and copying the output back into your workflow. When several are running at once, you lose track of who is busy, who finished, and whose output you already acted on. You tell Zero to check the fleet. It lists your agents, reports who is active, and streams results back into Slack when a session completes.",
+        "promptVariants": [
+          {
+            "label": "Launch a worker",
+            "prompt": "@Zero launch my Tech Debt Cleaner agent on vm0-ai/vm0 main. Post the findings back here when the session completes."
+          },
+          {
+            "label": "Check the fleet",
+            "prompt": "@Zero how are my Managed Agent workers doing? List every agent, its status, and what it is currently working on."
+          },
+          {
+            "label": "Recurring run",
+            "prompt": "@Zero every night at 10pm, launch the Test Runner on main and post the full results here by 9am."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero how is my Tech Debt Cleaner doing?"
+          },
+          {
+            "name": "Zero",
+            "text": "Tech Debt Cleaner is active — session sesn_011Ca8 has been running for 14 min on vm0-ai/vm0 main. Currently processing turbo/apps/web/components. Latest output: 7 dead-code imports flagged.\n\nOther workers:\n- PR Reviewer — idle\n- Test Runner — active (2 min in, running voice-chat.test.tsx)\n- Build Watcher — idle\n\nI will post the full Tech Debt Cleaner report here when the session finishes."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads your worker fleet",
+            "description": "Zero calls the Anthropic Managed Agents API to list every agent you have configured, along with its description, model, and tool access. This becomes the directory of workers Zero can operate."
+          },
+          {
+            "title": "Zero checks session status across the fleet",
+            "description": "For each agent, Zero queries active and recent sessions. It reports which workers are idle, which are running, how long each has been active, and what the latest output line is. No console hopping."
+          },
+          {
+            "title": "Zero launches and monitors on request",
+            "description": "When you ask Zero to run an agent, it creates a new session with the target you specify (repo, PR, branch). Zero polls to completion, pulls the final output, and posts a structured summary back into Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Launch a specific worker",
+            "description": "Kick off a single agent on a specific target",
+            "examplePrompt": "@Zero launch my PR Reviewer on PR #9711. Post the review comments here when done."
+          },
+          {
+            "title": "Schedule recurring worker runs",
+            "description": "Run a worker on a fixed cadence",
+            "examplePrompt": "@Zero every night at 10pm, launch the Test Runner on main. Post the full results here by 9am."
+          },
+          {
+            "title": "Chain workers into a pipeline",
+            "description": "Have one worker's output trigger the next",
+            "examplePrompt": "@Zero when the Tech Debt Cleaner finishes its next run, launch the PR Reviewer on the branch it opens."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Anthropic Managed Agents — Zero lists your agents, launches sessions, checks status, and fetches output. Connect it with an Anthropic API key from app.vm0.ai/connectors."
+          },
+          {
+            "description": "GitHub — most worker agents need repo access to run reviews, tests, or builds. Zero uses your GitHub connection to target the right branch or PR."
+          }
+        ],
+        "tips": [
+          "Give each agent a distinct, human-readable name in the Anthropic console. 'Tech Debt Cleaner' reads far better in Zero's replies than an agent_011 ID.",
+          "Keep each agent single-purpose. A worker that reviews PRs and also runs tests will drift on both. Narrow system prompts produce sharper output and easier orchestration.",
+          "Chain workers with conditional prompts — 'when X finishes, launch Y on the output'. A fleet of focused agents becomes a pipeline without any extra infrastructure."
         ]
       }
     }

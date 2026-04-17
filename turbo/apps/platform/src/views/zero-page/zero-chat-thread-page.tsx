@@ -308,11 +308,11 @@ function ChatThreadComposer({
 
   const handleInputChange = (text: string) => {
     setInput(text);
-    scheduleDraftSync(pageSignal);
+    detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
   };
 
   const handleDraftChange = () => {
-    scheduleDraftSync(pageSignal);
+    detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
   };
 
   const handleSend = (text: string) => {

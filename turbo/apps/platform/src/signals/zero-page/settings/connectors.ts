@@ -336,10 +336,17 @@ export const connectConnector$ = command(
       throw new Error("Failed to open authorization window");
     }
 
-    // Poll the API until the connector appears or the popup is closed.
+    // Poll the API until the connector appears (initial connect) or its
+    // updatedAt changes (reconnect), or the popup is closed.
     // The platform and OAuth callback page live on different origins
     // (app.* vs www.*), so BroadcastChannel cannot be used.
     const startTime = Date.now();
+
+    // Snapshot taken on the first poll: `null` marks "no connector yet" and
+    // an `updatedAt` value marks "reconnect scenario — wait for it to
+    // change". The snapshot must happen *inside* the loop so we start from
+    // the freshest server state, not a cached signal value.
+    let initialUpdatedAt: string | null | undefined;
 
     await setLoop(
       async (sig) => {
@@ -349,13 +356,21 @@ export const connectConnector$ = command(
           [200],
         );
         const polled = (result.body as ConnectorListResponse).connectors;
+        const current = polled.find((c) => {
+          return c.type === type;
+        });
 
-        if (
-          polled.some((c) => {
-            return c.type === type;
-          })
-        ) {
-          return true;
+        if (initialUpdatedAt === undefined) {
+          initialUpdatedAt = current?.updatedAt ?? null;
+        } else if (current) {
+          // initialUpdatedAt === null means the connector didn't exist on
+          // the first poll; any subsequent appearance signals completion.
+          if (initialUpdatedAt === null) {
+            return true;
+          }
+          if (current.updatedAt !== initialUpdatedAt) {
+            return true;
+          }
         }
 
         if (authWindow?.closed) {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
+import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import {
@@ -9,16 +10,26 @@ import {
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
-import { createSlackClient } from "../../../../../src/lib/zero/slack/client";
+import {
+  createSlackClient,
+  openView,
+} from "../../../../../src/lib/zero/slack/client";
 import {
   buildHelpMessage,
   buildErrorMessage,
   buildSuccessMessage,
   buildLoginMessage,
+  buildAgentPickerModal,
 } from "../../../../../src/lib/zero/slack/blocks";
 import { disconnect } from "../../../../../src/lib/zero/slack-org/connect-service";
 import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
-import { buildOrgConnectUrl } from "../../../../../src/lib/zero/slack-org/handlers/shared";
+import {
+  buildOrgConnectUrl,
+  getUserAgentPreference,
+  getWorkspaceAgent,
+  resolveDefaultComposeId,
+} from "../../../../../src/lib/zero/slack-org/handlers/shared";
+import { listComposes } from "../../../../../src/lib/zero/zero-compose-service";
 import { getAppUrl } from "../../../../../src/lib/zero/url";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -136,6 +147,84 @@ async function handleDisconnect(
   );
 }
 
+const AGENT_PICKER_MAX_OPTIONS = 100;
+
+/**
+ * Handle /zero switch command — opens the per-user agent picker modal.
+ */
+async function handleSwitch(
+  payload: SlackCommandPayload,
+  installation: typeof slackOrgInstallations.$inferSelect,
+  connection: typeof slackOrgConnections.$inferSelect,
+): Promise<NextResponse> {
+  if (!installation.orgId) {
+    return ephemeral(
+      buildErrorMessage(
+        "This workspace is not bound to an org. Please contact your admin.",
+      ),
+    );
+  }
+
+  if (!payload.trigger_id) {
+    return ephemeral(
+      buildErrorMessage("Couldn't open the agent picker — please try again."),
+    );
+  }
+
+  const orgId = installation.orgId;
+  const { composes } = await listComposes(orgId);
+  const defaultComposeId = await resolveDefaultComposeId(orgId);
+
+  const pickerOptions = composes
+    .filter((compose) => {
+      return compose.id !== defaultComposeId;
+    })
+    .slice(0, AGENT_PICKER_MAX_OPTIONS)
+    .map((compose) => {
+      return {
+        composeId: compose.id,
+        name: compose.name,
+        displayName: compose.displayName,
+      };
+    });
+
+  let orgDefaultName: string | null = null;
+  if (defaultComposeId) {
+    const agent = await getWorkspaceAgent(defaultComposeId);
+    orgDefaultName = agent?.displayName ?? agent?.name ?? null;
+  }
+
+  const currentOverride = await getUserAgentPreference(
+    connection.vm0UserId,
+    orgId,
+  );
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const botToken = decryptSecretValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+
+  const modal = buildAgentPickerModal({
+    options: pickerOptions,
+    currentSelectedId: currentOverride,
+    orgDefaultName,
+    privateMetadata: JSON.stringify({ channelId: payload.channel_id }),
+  });
+
+  try {
+    await openView(client, payload.trigger_id, modal);
+  } catch (err) {
+    log.warn("Failed to open agent picker modal", { error: err });
+    return ephemeral(
+      buildErrorMessage("Couldn't open the agent picker — please try again."),
+    );
+  }
+
+  return new NextResponse("", { status: 200 });
+}
+
 function buildNotInstalledMessage(detail?: string): unknown[] {
   const appUrl = getAppUrl();
   return [
@@ -212,9 +301,19 @@ export async function POST(request: Request) {
     .where(eq(slackOrgInstallations.slackWorkspaceId, payload.team_id))
     .limit(1);
 
+  // Whether /zero switch is exposed for this workspace's org. The feature is
+  // staff-gated; for unbound installations we can't evaluate it (no orgId), so
+  // default to off.
+  const switchEnabled = Boolean(
+    installation?.orgId &&
+    isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, {
+      orgId: installation.orgId,
+    }),
+  );
+
   // Handle help command (doesn't require installation)
   if (subCommand === "help" || subCommand === "") {
-    return ephemeral(buildHelpMessage());
+    return ephemeral(buildHelpMessage({ canSwitch: switchEnabled }));
   }
 
   // Handle connect command
@@ -264,6 +363,16 @@ export async function POST(request: Request) {
     return ephemeral(buildLoginMessage(connectUrl));
   }
 
+  // Handle switch command
+  if (subCommand === "switch") {
+    if (!switchEnabled) {
+      // Feature is gated off for this org — treat as unknown, show help
+      // without advertising the switch subcommand.
+      return ephemeral(buildHelpMessage({ canSwitch: false }));
+    }
+    return handleSwitch(payload, installation, connection);
+  }
+
   // Unknown command
-  return ephemeral(buildHelpMessage());
+  return ephemeral(buildHelpMessage({ canSwitch: switchEnabled }));
 }

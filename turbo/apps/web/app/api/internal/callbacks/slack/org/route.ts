@@ -18,6 +18,8 @@ import { extractAllRunOutputs } from "../../../../../../src/lib/infra/run/extrac
 import {
   saveThreadSession,
   buildLogsUrl,
+  getWorkspaceAgent,
+  resolveDefaultComposeId,
 } from "../../../../../../src/lib/zero/slack-org/handlers/shared";
 import { env } from "../../../../../../src/env";
 import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
@@ -45,6 +47,25 @@ function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
 
 function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
+}
+
+/**
+ * When the run came from a non-default agent, produce the `Sent via X` footer
+ * text so users know which agent answered. Returns undefined for default-agent
+ * replies, missing orgId, or unknown compose — keeping the existing output
+ * byte-for-byte identical to today in those cases.
+ */
+async function resolveTriggeredByFooter(
+  orgId: string | undefined,
+  composeId: string | undefined,
+): Promise<string | undefined> {
+  if (!orgId || !composeId) return undefined;
+  const orgDefaultComposeId = await resolveDefaultComposeId(orgId);
+  if (composeId === orgDefaultComposeId) return undefined;
+  const agent = await getWorkspaceAgent(composeId);
+  if (!agent) return undefined;
+  const label = agent.displayName ?? agent.name;
+  return `Sent via ${label}`;
 }
 
 function buildResponseText(
@@ -196,6 +217,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Resolve session
   await saveOrgThreadSession(payload, runId, status);
 
+  const triggeredBy = await resolveTriggeredByFooter(
+    runContext?.orgId,
+    payload.agentId,
+  );
+
   // Post each result as a separate Slack reply (in order)
   for (let i = 0; i < allOutputs.length; i++) {
     const output = allOutputs[i]!;
@@ -208,7 +234,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl),
+      blocks: buildAgentResponseMessage(responseText, logsUrl, triggeredBy),
     });
   }
 

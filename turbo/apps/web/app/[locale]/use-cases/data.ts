@@ -165,6 +165,13 @@ const DROPBOX: ConnectorRef = {
   icon: "/assets/connectors/dropbox.svg",
 };
 
+const ANTHROPIC_MANAGED_AGENTS: ConnectorRef = {
+  id: "anthropic-managed-agents",
+  label: "Anthropic Managed Agents",
+  icon: "/assets/connectors/anthropic.svg",
+  dark: true,
+};
+
 const RESEND: ConnectorRef = {
   id: "resend",
   label: "Resend",
@@ -572,6 +579,34 @@ export const USE_CASES: UseCase[] = [
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "managed-agent-workers",
+    color: "#8ea0be",
+    avatar: {
+      rotation: 3,
+      skin: 2,
+      hairStyle: 4,
+      hairColor: 4,
+      expression: 4,
+      intensity: "d",
+    },
+    roles: ["engineering"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [ANTHROPIC_MANAGED_AGENTS, GITHUB, SLACK],
+    integrations: [
+      { connector: ANTHROPIC_MANAGED_AGENTS, required: true },
+      { connector: GITHUB, required: true },
+    ],
+    relatedSlugs: ["tech-debt-scan", "upgrade-agent", "file-bugs-from-slack"],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,

@@ -80,7 +80,7 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       context.store.set(thread.draft.setInput$, "hello world");
 
       // Schedule a debounced sync (debounce is 0ms in tests)
-      context.store.set(thread!.scheduleDraftSync$, context.signal);
+      await context.store.set(thread!.scheduleDraftSync$, context.signal);
 
       // Wait for the PATCH to arrive
       await expect
@@ -125,11 +125,21 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       // Schedule sync, then schedule again immediately to reset the timer.
       // The first signal is aborted synchronously before its setTimeout(0) fires.
       context.store.set(thread.draft.setInput$, "first");
-      context.store.set(thread.scheduleDraftSync$, context.signal);
+      const first = context.store.set(
+        thread.scheduleDraftSync$,
+        context.signal,
+      );
 
       // Second call resets the debounce (aborts the first timer)
       context.store.set(thread.draft.setInput$, "second");
-      context.store.set(thread.scheduleDraftSync$, context.signal);
+      const second = context.store.set(
+        thread.scheduleDraftSync$,
+        context.signal,
+      );
+
+      // First call should be aborted, second should succeed
+      await expect(first).rejects.toThrow();
+      await second;
 
       // Wait for exactly one PATCH from the second call
       await expect
@@ -170,7 +180,7 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       const thread = context.store.get(currentChatThreadSignals$)!;
 
       // Leave input empty — should send null draftContent
-      context.store.set(thread.scheduleDraftSync$, context.signal);
+      await context.store.set(thread.scheduleDraftSync$, context.signal);
 
       await expect
         .poll(

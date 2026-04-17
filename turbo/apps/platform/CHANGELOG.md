@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.246.1](https://github.com/vm0-ai/vm0/compare/app-v0.246.0...app-v0.246.1) (2026-04-17)
+
+
+### Bug Fixes
+
+* **platform:** silence expected 401 auth errors in sentry ([#9838](https://github.com/vm0-ai/vm0/issues/9838)) ([08bf920](https://github.com/vm0-ai/vm0/commit/08bf920628122d4544c2e2842d540953ffea1394)), closes [#9716](https://github.com/vm0-ai/vm0/issues/9716)
+* **platform:** swallow service worker registration rejection ([#9837](https://github.com/vm0-ai/vm0/issues/9837)) ([ade25b1](https://github.com/vm0-ai/vm0/commit/ade25b12299ff7ce4c525adad2e87348d0bb08d3)), closes [#9717](https://github.com/vm0-ai/vm0/issues/9717)
+* **platform:** wait for updatedAt change when reconnecting a connector ([#9818](https://github.com/vm0-ai/vm0/issues/9818)) ([cad2d89](https://github.com/vm0-ai/vm0/commit/cad2d89924f9ac39f0251efcb8a25b5c94dc8674)), closes [#9812](https://github.com/vm0-ai/vm0/issues/9812)
+* **voice-chat:** collapse stacked mobile headers into one ([#9835](https://github.com/vm0-ai/vm0/issues/9835)) ([e861ff0](https://github.com/vm0-ai/vm0/commit/e861ff027cbbd996f703293868b74d2913e1e13f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.195.0
+
 ## [0.246.0](https://github.com/vm0-ai/vm0/compare/app-v0.245.2...app-v0.246.0) (2026-04-17)
 
 

@@ -356,6 +356,7 @@ export function mockChatLifecycle(options?: {
       }
       triggerAblyEvent(`thread:run-test-1`);
       triggerAblyEvent(`runUpdated:run-test-1`);
+      triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
       triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
     },
     failRun: (error: string) => {
@@ -364,6 +365,7 @@ export function mockChatLifecycle(options?: {
       assistantVersion++;
       triggerAblyEvent(`thread:run-test-1`);
       triggerAblyEvent(`runUpdated:run-test-1`);
+      triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
       triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
     },
     cancelRun: () => {
@@ -371,6 +373,7 @@ export function mockChatLifecycle(options?: {
       assistantVersion++;
       triggerAblyEvent(`thread:run-test-1`);
       triggerAblyEvent(`runUpdated:run-test-1`);
+      triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
       triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
     },
   };

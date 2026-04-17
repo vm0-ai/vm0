@@ -201,6 +201,7 @@ export const mobileBreadcrumb$ = computed(
       settings: { label: "Settings", path: ROUTES.settings },
       queues: { label: "Queue", path: ROUTES.queues },
       connectors: { label: "Connectors", path: ROUTES.connectors },
+      voiceChat: { label: "Voice Chat", path: ROUTES.voiceChat },
     };
     if (route) {
       const nonChatSection = nonChatSections[route];

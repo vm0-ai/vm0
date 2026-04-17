@@ -332,10 +332,29 @@ impl CowLayer {
         for word in raw {
             data.extend_from_slice(&(*word as u64).to_le_bytes());
         }
-        // Write to a temp file, fsync, then rename for crash-safe atomicity.
-        // Without fsync, a power failure after rename could leave a corrupt bitmap
-        // (data still in page cache), which would cause dirty-block information
-        // loss on the next restore.
+        // Crash-safe bitmap swap: write tmp → fsync(tmp) → rename → fsync(dir).
+        // Two fsyncs, each covering a different guarantee:
+        //   - fsync(tmp): makes the bitmap bytes durable on the inode.
+        //   - fsync(dir): makes the rename's dir-entry update durable. Without
+        //     this, rename(2) returns after journaling the entry but the update
+        //     may not hit disk until the FS's next commit (~5s on ext4
+        //     data=ordered). A crash in that window can leave the bitmap path
+        //     pointing at the old file (or absent), while the COW data file —
+        //     already fsynced by CowLayer::sync — is durable. The resulting
+        //     bitmap/COW divergence silently corrupts reads on the next restore:
+        //     dirty bits disagree with actual COW content, reads fall through
+        //     to stale base-image bytes.
+        //
+        // Open the parent dir fd up front so a malformed path (no parent) fails
+        // before any FS mutation, and hold it across the rename so the final
+        // fsync targets a stable inode.
+        let parent = path.parent().ok_or_else(|| {
+            NbdCowError::Io(std::io::Error::other(format!(
+                "bitmap path has no parent directory: {}",
+                path.display()
+            )))
+        })?;
+        let dir_fd = File::open(parent)?;
         let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
         if let Err(e) = File::create(&tmp_path).and_then(|f| {
             f.write_all_at(&data, 0)?;
@@ -348,6 +367,7 @@ impl CowLayer {
             let _ = std::fs::remove_file(&tmp_path);
             return Err(e.into());
         }
+        dir_fd.sync_all()?;
         Ok(())
     }
 
@@ -640,6 +660,19 @@ mod tests {
 
         let result = CowLayer::load_bitmap(bitmap_file.path(), 128);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn bitmap_save_rejects_path_without_parent() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        // `/` has no parent. The function must reject it before touching the FS
+        // so callers can't accidentally skip the parent-dir fsync durability
+        // guarantee by passing a degenerate path.
+        let err = cow.save_bitmap(Path::new("/")).unwrap_err();
+        assert!(matches!(err, NbdCowError::Io(_)), "got {err:?}");
     }
 
     #[test]

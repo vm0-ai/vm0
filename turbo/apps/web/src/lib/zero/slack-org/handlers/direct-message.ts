@@ -18,6 +18,7 @@ import {
   resolveOrgFromWorkspace,
   resolveConnectionFromSlackUser,
   resolveDefaultComposeId,
+  resolveEffectiveComposeId,
   lookupThreadSession,
   enrichMessageContent,
   fetchConversationContexts,
@@ -90,8 +91,11 @@ export async function handleOrgDirectMessage(
     return;
   }
 
-  // 3. Resolve default agent
-  const composeId = await resolveDefaultComposeId(orgId);
+  // 3. Resolve effective agent (user override or org default)
+  const composeId = await resolveEffectiveComposeId(
+    connection.vm0UserId,
+    orgId,
+  );
   if (!composeId) {
     await postMessage(
       client,
@@ -228,9 +232,14 @@ export async function handleOrgDirectMessage(
       })
         ? buildAgentLogsUrl()
         : undefined;
+      const orgDefaultComposeId = await resolveDefaultComposeId(orgId);
+      const triggeredBy =
+        composeId !== orgDefaultComposeId
+          ? `Sent via ${agent.displayName ?? agentName}`
+          : undefined;
       await postMessage(client, context.channelId, errorText, {
         threadTs,
-        blocks: buildAgentResponseMessage(errorText, logsUrl),
+        blocks: buildAgentResponseMessage(errorText, logsUrl, triggeredBy),
       });
     }
 

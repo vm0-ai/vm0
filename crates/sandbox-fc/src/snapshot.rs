@@ -438,6 +438,18 @@ async fn run_snapshot_workflow(
             let bitmap_dst = output.cow_bitmap();
             tokio::fs::rename(&bitmap_src, &bitmap_dst).await?;
         }
+        // Persist the output directory so all four final dir entries
+        // (snapshot.bin and memory.bin written by Firecracker via the API,
+        // cow.img and cow.img.bitmap just renamed in) are durable. Without
+        // this fsync, rename(2) and Firecracker's creates return once the
+        // update is journaled but the entry may not hit disk until the FS's
+        // next commit (~5s on ext4 data=ordered). A crash in that window can
+        // leave is_complete() returning true while one or more files are
+        // missing or rolled back — worst case, cow.img present but
+        // cow.img.bitmap absent, which silently corrupts restore reads
+        // (same failure class as #9794, one layer up).
+        let dir = tokio::fs::File::open(output.dir()).await?;
+        dir.sync_all().await?;
     }
     // On error, cow_device is dropped → Drop calls destroy() (best-effort).
 

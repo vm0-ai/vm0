@@ -22,8 +22,19 @@ export const registerServiceWorker$ = command(
       return;
     }
 
-    const registration = await navigator.serviceWorker.register("/sw.js");
+    // Registration can reject for reasons outside our control: private
+    // browsing, enterprise/browser policy, user-disabled SW, etc. Push
+    // notifications are a non-critical enhancement, so swallow the
+    // rejection to avoid aborting bootstrap or spamming Sentry.
+    const registration = await navigator.serviceWorker
+      .register("/sw.js")
+      .catch(() => {
+        return null;
+      });
     signal.throwIfAborted();
+    if (!registration) {
+      return;
+    }
     set(swRegistration$, registration);
   },
 );

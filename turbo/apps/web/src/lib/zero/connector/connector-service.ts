@@ -19,6 +19,14 @@ import { PROVIDER_HANDLERS } from "./provider-registry";
 const log = logger("service:connector");
 
 /**
+ * Fallback access-token lifetime (seconds) when a provider omits `expires_in`.
+ * 1 hour matches every OAuth provider we integrate (Google, Notion, etc.), and
+ * guarantees `tokenExpiresAt` is never null so the firewall auth endpoint can
+ * always judge freshness and trigger a refresh. See #9836.
+ */
+const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
+
+/**
  * Validate and parse connector type from database value
  */
 function parseConnectorType(type: string): ConnectorType {
@@ -286,10 +294,20 @@ export async function upsertOAuthConnector(
 ): Promise<{ connector: ConnectorResponse; created: boolean }> {
   const secretName = getSecretNameForConnector(type);
   const db = globalThis.services.db;
+  // Some providers issue non-expiring access tokens (e.g., classic GitHub
+  // OAuth apps, legacy Notion) — those handlers omit `refreshToken`, so we
+  // keep `tokenExpiresAt` null and the firewall refresh path naturally
+  // skips them. For refreshable providers, fall back to 1 h when the
+  // exchange response lacks `expires_in` so firewall auth can always judge
+  // freshness and never hit the null-skip bug from #9836.
+  const isRefreshable =
+    type !== "computer" && !!PROVIDER_HANDLERS[type].refreshToken;
+  const fallbackSecs = isRefreshable
+    ? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS
+    : null;
+  const expiresInSecs = options?.expiresIn ?? fallbackSecs;
   const tokenExpiresAt =
-    options?.expiresIn != null
-      ? new Date(Date.now() + options.expiresIn * 1000)
-      : null;
+    expiresInSecs != null ? new Date(Date.now() + expiresInSecs * 1000) : null;
 
   // Upsert access token secret
   await upsertSecretByOrg(
@@ -592,8 +610,10 @@ export async function refreshConnectorAccessToken(
     }
 
     // Update tokenExpiresAt so subsequent expiry checks are accurate.
-    // Fallback to 1 hour — all providers without expires_in (e.g. Notion) have ~1h tokens.
-    const expiresAt = new Date(Date.now() + (result.expiresIn ?? 3600) * 1000);
+    const expiresAt = new Date(
+      Date.now() +
+        (result.expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
+    );
     await globalThis.services.db
       .update(connectors)
       .set({ tokenExpiresAt: expiresAt, updatedAt: new Date() })

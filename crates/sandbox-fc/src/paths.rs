@@ -151,6 +151,10 @@ impl SnapshotOutputPaths {
         Self { output_dir }
     }
 
+    pub fn dir(&self) -> &Path {
+        &self.output_dir
+    }
+
     pub fn snapshot(&self) -> PathBuf {
         self.output_dir.join("snapshot.bin")
     }

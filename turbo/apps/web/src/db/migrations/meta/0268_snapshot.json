@@ -1,6 +1,6 @@
 {
-  "id": "6af3fc7e-e96c-4aa9-b45e-778e0e571a0e",
-  "prevId": "98bbee06-8fce-47a1-b1a4-5673439e3229",
+  "id": "b39fc933-e3d5-44cf-ad46-2c83869f312c",
+  "prevId": "6af3fc7e-e96c-4aa9-b45e-778e0e571a0e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -8208,6 +8208,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "summary": {
           "name": "summary",
           "type": "text",
@@ -8257,6 +8263,15 @@
           "tableFrom": "zero_runs",
           "tableTo": "agent_composes",
           "columnsFrom": ["trigger_agent_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "zero_runs_chat_thread_id_chat_threads_id_fk": {
+          "name": "zero_runs_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "zero_runs",
+          "tableTo": "chat_threads",
+          "columnsFrom": ["chat_thread_id"],
           "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"

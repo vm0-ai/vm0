@@ -49,6 +49,11 @@ export function initSentry(): void {
       "ResizeObserver loop",
       // Clerk SDK - session cleared by Mobile Safari ITP (third-party noise)
       "Unable to authenticate the request",
+      // 401 responses thrown by accept() — fetch$/zeroClient$ already route
+      // these to clerk.redirectToSignIn(), so the ApiError rejection is an
+      // expected side effect of the in-flight redirect, not a real failure.
+      "Not authenticated",
+      "Authentication required",
       // Expected API errors surfaced as toasts — not actionable in Sentry
       "Credits depleted",
       "Insufficient credits",

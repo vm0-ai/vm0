@@ -32,6 +32,17 @@ export default function Footer() {
             </div>
             <p className="footer-tagline">{t("tagline")}</p>
           </div>
+          <div className="footer-disclaimer">
+            <p className="footer-disclaimer-heading">
+              {t("aiDisclaimerHeading")}
+            </p>
+            <p className="footer-disclaimer-text">
+              {t("aiDisclaimerInaccuracy")}
+            </p>
+            <p className="footer-disclaimer-text">
+              {t("aiDisclaimerPaidPlan")}
+            </p>
+          </div>
         </div>
         <div className="footer-bottom">
           <div className="footer-left">

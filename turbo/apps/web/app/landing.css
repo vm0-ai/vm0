@@ -551,6 +551,10 @@ body {
 }
 
 .footer-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 40px;
   margin-bottom: 40px;
 }
 
@@ -558,6 +562,29 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex-shrink: 0;
+}
+
+.footer-disclaimer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 440px;
+}
+
+.footer-disclaimer-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.footer-disclaimer-text {
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.6;
+  margin: 0;
 }
 
 .footer-logo {
@@ -1078,6 +1105,15 @@ body {
 
   .mobile-menu-overlay {
     display: block;
+  }
+
+  .footer-content {
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  .footer-disclaimer {
+    max-width: 100%;
   }
 
   .footer-bottom {

@@ -527,6 +527,57 @@ describe("POST /api/zero/runs", () => {
         expect(systemIndex).toBeGreaterThanOrEqual(0);
         expect(customIndex).toBeGreaterThan(systemIndex);
       });
+
+      it("scopes connector skill volumes to user_connectors rows", async () => {
+        await createTestUserConnector(
+          user.orgId,
+          user.userId,
+          agentId,
+          "slack",
+        );
+
+        const response = await postRun({ agentId, prompt: "Hello" });
+        expect(response.status).toBe(201);
+        const data = await response.json();
+
+        const run = await findTestRunRecord(data.runId);
+        expect(run).toBeDefined();
+        const systemMounts = run!.additionalVolumes!.filter((v) => {
+          return v.system === true;
+        });
+        const mountPaths = new Set(
+          systemMounts.map((v) => {
+            return v.mountPath;
+          }),
+        );
+
+        expect(mountPaths.has("/home/user/.claude/skills/slack")).toBe(true);
+        expect(mountPaths.has("/home/user/.claude/skills/github")).toBe(false);
+      });
+
+      it("does not mount any connector skill when user has no user_connectors rows", async () => {
+        const response = await postRun({ agentId, prompt: "Hello" });
+        expect(response.status).toBe(201);
+        const data = await response.json();
+
+        const run = await findTestRunRecord(data.runId);
+        expect(run).toBeDefined();
+        const systemMounts = run!.additionalVolumes!.filter((v) => {
+          return v.system === true;
+        });
+        const mountPaths = new Set(
+          systemMounts.map((v) => {
+            return v.mountPath;
+          }),
+        );
+
+        expect(mountPaths.has("/home/user/.claude/skills/slack")).toBe(false);
+        expect(mountPaths.has("/home/user/.claude/skills/github")).toBe(false);
+        // SEED_SKILLS still mount
+        expect(mountPaths.has("/home/user/.claude/skills/deep-dive")).toBe(
+          true,
+        );
+      });
     });
   });
 

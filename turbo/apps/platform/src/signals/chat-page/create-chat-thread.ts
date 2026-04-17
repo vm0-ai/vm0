@@ -1,6 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { delay } from "signal-timers";
-import { onRef, resetSignal, throwIfNotAbort } from "../utils.ts";
+import { onRef, resetSignal } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
 import {
@@ -64,7 +64,7 @@ export interface ChatThreadSignals {
   setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
   // ── Draft sync ────────────────────────────────────────────────────────────
-  scheduleDraftSync$: Command<void, [AbortSignal]>;
+  scheduleDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // ── Paged messages (sole rendering path) ─────────────────────────────────
   pagedChatMessages$: Computed<PagedChatMessage[]>;
   latestChatMessageId$: Computed<string | undefined>;
@@ -369,9 +369,9 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
     },
   );
 
-  const scheduleDraftSync$ = command(({ set }, signal: AbortSignal) => {
+  const scheduleDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
     const debouncedSignal = set(draftSyncReset$, signal);
-    void set(debouncedSyncDraft$, debouncedSignal).catch(throwIfNotAbort);
+    await set(debouncedSyncDraft$, debouncedSignal);
   });
 
   const cancelDraftSync$ = command(({ set }) => {
@@ -609,19 +609,20 @@ function createRunTracking(
           onMessageCreated$,
           signal,
         ),
-        await set(
+        set(
           setAblyLoop$,
           `chatThreadRunCreated:${thread.id}`,
           onRunChanged$,
           signal,
         ),
-        await set(
+        set(
           setAblyLoop$,
           `chatThreadRunUpdated:${thread.id}`,
           onRunChanged$,
           signal,
         ),
       ]);
+
       signal.throwIfAborted();
     },
   );

@@ -1,4 +1,5 @@
 import { eq, and } from "drizzle-orm";
+import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { slackOrgInstallations } from "../../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../db/schema/slack-org-connection";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
@@ -12,6 +13,8 @@ import {
 import { buildAppHomeView, buildWelcomeMessage } from "../../slack/blocks";
 import {
   resolveDefaultComposeId,
+  resolveEffectiveComposeId,
+  getUserAgentPreference,
   getWorkspaceAgent,
   buildOrgConnectUrl,
 } from "./shared";
@@ -81,14 +84,31 @@ export async function refreshOrgAppHome(
     return;
   }
 
-  // Get agent name from org's default compose
+  // Resolve the agent currently active for THIS user (override or org default).
   let agentName: string | undefined;
+  let isOverrideActive = false;
+  let canSwitch = false;
   if (installation.orgId) {
-    const composeId = await resolveDefaultComposeId(installation.orgId);
-    if (composeId) {
-      const agent = await getWorkspaceAgent(composeId);
+    const orgId = installation.orgId;
+    const [effectiveComposeId, overrideComposeId, defaultComposeId] =
+      await Promise.all([
+        resolveEffectiveComposeId(connection.vm0UserId, orgId),
+        getUserAgentPreference(connection.vm0UserId, orgId),
+        resolveDefaultComposeId(orgId),
+      ]);
+
+    if (effectiveComposeId) {
+      const agent = await getWorkspaceAgent(effectiveComposeId);
       agentName = agent?.displayName ?? agent?.name;
     }
+    isOverrideActive = Boolean(
+      overrideComposeId && overrideComposeId !== defaultComposeId,
+    );
+    // Show the Switch button only when both (a) there's a default to switch
+    // from/to and (b) the feature is enabled for this org.
+    canSwitch =
+      Boolean(defaultComposeId) &&
+      isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, { orgId });
   }
 
   // Get user email for display
@@ -99,6 +119,8 @@ export async function refreshOrgAppHome(
     vm0UserId: connection.vm0UserId,
     userEmail,
     agentName,
+    isOverrideActive,
+    canSwitch,
   });
   await publishAppHome(client, slackUserId, view);
 }

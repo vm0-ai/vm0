@@ -16,6 +16,7 @@ import {
 import {
   countSlackOrgInstallations,
   countSlackOrgConnections,
+  seedSlackUserAgentPreference,
 } from "../../../../../../src/__tests__/db-test-assertions/slack";
 import {
   seedOrphanCompose,
@@ -23,7 +24,18 @@ import {
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { reloadEnv } from "../../../../../../src/env";
 
-import { POST } from "../route";
+vi.mock("@vm0/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@vm0/core")>();
+  return {
+    ...actual,
+    isFeatureEnabled: vi.fn().mockReturnValue(true),
+  };
+});
+
+const { isFeatureEnabled } = await import("@vm0/core");
+const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
+
+const { POST } = await import("../route");
 
 const SIGNING_SECRET = "test-slack-signing-secret";
 
@@ -54,6 +66,7 @@ describe("POST /api/zero/slack/events", () => {
     context.setupMocks();
     user = await context.setupUser();
     reloadEnv();
+    mockIsFeatureEnabled.mockReturnValue(true);
   });
 
   describe("url_verification", () => {
@@ -1295,6 +1308,273 @@ describe("POST /api/zero/slack/events", () => {
       await POST(request);
 
       expect(globalThis.nextAfterArgForms).toEqual(["fn"]);
+    });
+  });
+
+  /**
+   * End-to-end coverage for per-user agent overrides added in #9788 / #9795.
+   *
+   * These tests wire `handleOrgMention` through the HTTP route and force the
+   * pre-dispatch error branch (by clearing the agent's head version) so the
+   * handler posts a response. Asserting the presence / absence of the
+   * "Sent via <agent>" footer on that response is how we verify two things
+   * simultaneously:
+   *
+   *   1. `resolveEffectiveComposeId` actually routes the mention through the
+   *      user's override agent instead of the org default. Without this
+   *      wiring, the pre-dispatch error would reference the default agent and
+   *      no footer would appear.
+   *   2. `postPreDispatchErrorReply` correctly appends the footer only when
+   *      the effective compose differs from the org default — the
+   *      user-visible signal that "this reply came from your personal agent,
+   *      not the org default".
+   *
+   * These scenarios are unreachable from `commands/__tests__/route.test.ts`
+   * and `interactive/__tests__/route.test.ts`, which only exercise the modal
+   * and DB persistence paths.
+   */
+  describe("app_mention — per-user agent override routing", () => {
+    async function setupOrgWithOverride(opts: {
+      overrideToAlternate: boolean;
+      clearAlternate: boolean;
+      clearDefault: boolean;
+    }) {
+      // Default agent — used when the user has no override or feature is off.
+      const defaultCompose = await createTestCompose(uniqueId("default"));
+      await updateOrgDefaultAgent(user.orgId, defaultCompose.agentId);
+      if (opts.clearDefault) {
+        await clearComposeHeadVersion(defaultCompose.composeId);
+      }
+
+      // Alternate agent — the target of the user's override.
+      const alternate = await createTestCompose(uniqueId("alt"));
+      if (opts.clearAlternate) {
+        await clearComposeHeadVersion(alternate.composeId);
+      }
+
+      if (opts.overrideToAlternate) {
+        await seedSlackUserAgentPreference({
+          vm0UserId: user.userId,
+          orgId: user.orgId,
+          composeId: alternate.composeId,
+        });
+      }
+
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      return {
+        workspaceId,
+        slackUserId,
+        defaultCompose,
+        alternate,
+      };
+    }
+
+    it("routes the mention through the override agent and appends 'Sent via <agent>' on pre-dispatch error", async () => {
+      // Scenario: user has set a per-user override to an alternate agent. We
+      // clear the alternate's head version so dispatch fails pre-run. The
+      // handler should post the error message with a "Sent via <alternate>"
+      // footer, proving both that the override is honored AND that the
+      // footer surfaces which agent produced the reply.
+      const { workspaceId, slackUserId, alternate } =
+        await setupOrgWithOverride({
+          overrideToAlternate: true,
+          clearAlternate: true,
+          clearDefault: false,
+        });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: "2000.001",
+          channel: "C-test",
+          event_ts: "2000.001",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+      const callArg = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>)
+        .mock.calls[0]?.[0] as {
+        blocks?: unknown;
+      };
+      const serialized = JSON.stringify(callArg?.blocks ?? "");
+      // Footer uses the alternate agent's name (agent.displayName ?? agent.name).
+      // createTestCompose uses the provided agentName, so `alternate.name` matches.
+      expect(serialized).toContain(`Sent via ${alternate.name}`);
+    });
+
+    it("does NOT append the 'Sent via' footer when the user has no override (default agent path)", async () => {
+      // Scenario: no user override — the mention should flow through the org
+      // default agent and the error reply should NOT carry a footer (that
+      // footer is reserved for replies from a non-default agent, so users
+      // can tell when their personal override produced the reply).
+      const { workspaceId, slackUserId } = await setupOrgWithOverride({
+        overrideToAlternate: false,
+        clearAlternate: false,
+        clearDefault: true,
+      });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: "2000.002",
+          channel: "C-test",
+          event_ts: "2000.002",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+      const callArg = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>)
+        .mock.calls[0]?.[0] as {
+        blocks?: unknown;
+      };
+      const serialized = JSON.stringify(callArg?.blocks ?? "");
+      expect(serialized).not.toContain("Sent via");
+    });
+
+    it("ignores the user's override and uses the default agent when the feature is gated off for the org", async () => {
+      // Scenario: the user already has a persisted override (e.g. set while
+      // the feature was enabled), but the feature switch has since been
+      // turned off for this org. `resolveEffectiveComposeId` must ignore the
+      // DB override and route through the org default. We verify this the
+      // same way as the no-override case: the error reply carries no footer.
+      mockIsFeatureEnabled.mockReturnValue(false);
+
+      const { workspaceId, slackUserId } = await setupOrgWithOverride({
+        overrideToAlternate: true,
+        clearAlternate: false,
+        // Clear default to force the pre-dispatch error path we can assert on.
+        clearDefault: true,
+      });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: "2000.003",
+          channel: "C-test",
+          event_ts: "2000.003",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      // postMessage was called because the DEFAULT agent failed pre-dispatch.
+      // If the override were honored, the alternate (which is healthy here)
+      // would have taken the happy path and no error would be posted.
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+      const callArg = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>)
+        .mock.calls[0]?.[0] as {
+        blocks?: unknown;
+      };
+      const serialized = JSON.stringify(callArg?.blocks ?? "");
+      expect(serialized).not.toContain("Sent via");
+    });
+
+    it("falls back to the org default when the override points to a compose without a zero_agents row (stale override guard)", async () => {
+      // Scenario: the user's persisted override points to a compose that no
+      // longer has a corresponding `zero_agents` row (e.g. the agent was
+      // deleted or its zero_agents row was cleaned up out-of-band). The FK
+      // from `slack_user_agent_preferences.selected_compose_id` to
+      // `agent_composes.id` still holds, so the override row is present in
+      // the DB, but the guard in `resolveEffectiveComposeId` —
+      //   SELECT ... FROM zero_agents
+      //   WHERE id = override AND org_id = user.org_id
+      // — returns no row and the function must fall back to the org default.
+      // This is the exact semantic the guard protects against.
+      //
+      // We use `seedOrphanCompose` to create a compose row without a
+      // zero_agents row, then seed the preference pointing at that id. The
+      // default agent's head version is cleared so the mention lands on the
+      // pre-dispatch error branch we can assert against; the absence of a
+      // "Sent via" footer proves the default (not the stale override) was
+      // used.
+      const orphan = await seedOrphanCompose({
+        userId: user.userId,
+        name: uniqueId("stale-override"),
+        orgId: user.orgId,
+      });
+
+      const { workspaceId, slackUserId } = await setupOrgWithOverride({
+        overrideToAlternate: false,
+        clearAlternate: false,
+        clearDefault: true,
+      });
+
+      await seedSlackUserAgentPreference({
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+        composeId: orphan.composeId,
+      });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: "2000.004",
+          channel: "C-test",
+          event_ts: "2000.004",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+      const callArg = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>)
+        .mock.calls[0]?.[0] as {
+        blocks?: unknown;
+      };
+      const serialized = JSON.stringify(callArg?.blocks ?? "");
+      expect(serialized).not.toContain("Sent via");
     });
   });
 });

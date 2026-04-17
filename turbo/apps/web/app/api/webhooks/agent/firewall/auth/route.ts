@@ -30,6 +30,13 @@ const log = logger("webhook:firewall-auth");
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
+ * Refresh tokens whose expiry falls within this buffer to avoid serving a
+ * token that expires mid-request. Chosen to absorb network latency + clock
+ * skew between our server and the OAuth provider.
+ */
+const REFRESH_BUFFER_SECS = 60;
+
+/**
  * Load refresh tokens from DB into the secrets map.
  * The encrypted secrets snapshot only contains mapped env vars (access tokens);
  * refresh tokens are kept server-side and must be fetched from DB (#7365).
@@ -110,16 +117,16 @@ async function refreshExpiredTokens(
   );
 
   const now = Math.floor(Date.now() / 1000);
-  const REFRESH_BUFFER_SECS = 60;
 
-  // Refresh tokens that are expired or expiring within the buffer window (parallel)
+  // Refresh tokens that are expired or expiring within the buffer window (parallel).
+  // null/undefined expiry means we don't know when the token expires — treat as
+  // "needs refresh" so we backfill tokenExpiresAt. All connectors reaching this
+  // filter are refreshable OAuth (pre-filtered in resolve-connectors.ts), so
+  // their access tokens DO expire by definition. See #9836.
   const toRefresh = connectorTypes.filter((ct) => {
     const tokenExpiry = expiryMap.get(ct);
-    return (
-      tokenExpiry !== undefined &&
-      tokenExpiry !== null &&
-      tokenExpiry <= now + REFRESH_BUFFER_SECS
-    );
+    if (tokenExpiry === undefined || tokenExpiry === null) return true;
+    return tokenExpiry <= now + REFRESH_BUFFER_SECS;
   });
 
   // Build reverse map: connectorType → [envVarNames that reference its token]

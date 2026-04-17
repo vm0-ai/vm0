@@ -115,35 +115,30 @@ function VoiceChatFooter({
   toggleMute,
   onEnd,
   onRetry,
+  reconnectAttempt,
+  elapsedSeconds,
 }: {
   status: ConnectionStatus;
   muted: boolean;
   toggleMute: () => void;
   onEnd: () => void;
   onRetry: () => void;
+  reconnectAttempt?: number;
+  elapsedSeconds: number;
 }) {
   return (
-    <div className="border-t px-4 py-3 flex items-center justify-center gap-3">
-      {status === "preparing" ? (
-        <Button
-          variant="destructive"
-          size="sm"
-          className="h-10 rounded-full px-5"
-          onClick={onEnd}
-        >
-          <IconPhoneOff size={18} className="mr-2" />
-          Cancel
-        </Button>
-      ) : status === "disconnected" ? (
-        <>
-          <Button
-            variant="secondary"
-            className="h-10 rounded-full px-5"
-            onClick={onRetry}
-          >
-            <IconRefresh size={18} className="mr-2" />
-            Retry
-          </Button>
+    <div className="border-t">
+      <div className="px-4 pt-2 flex items-center justify-center gap-2">
+        <StatusBadge status={status} reconnectAttempt={reconnectAttempt} />
+        {status === "preparing" && elapsedSeconds > 0 && (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {Math.floor(elapsedSeconds / 60)}:
+            {String(elapsedSeconds % 60).padStart(2, "0")}
+          </span>
+        )}
+      </div>
+      <div className="px-4 pt-2 pb-3 flex items-center justify-center gap-3">
+        {status === "preparing" ? (
           <Button
             variant="destructive"
             size="sm"
@@ -151,35 +146,55 @@ function VoiceChatFooter({
             onClick={onEnd}
           >
             <IconPhoneOff size={18} className="mr-2" />
-            End Session
+            Cancel
           </Button>
-        </>
-      ) : (
-        <>
-          <Button
-            variant={muted ? "destructive" : "secondary"}
-            className="h-10 rounded-full px-5"
-            disabled={status !== "connected"}
-            onClick={toggleMute}
-          >
-            {muted ? (
-              <IconMicrophoneOff size={18} className="mr-2" />
-            ) : (
-              <IconMicrophone size={18} className="mr-2" />
-            )}
-            {muted ? "Unmute" : "Mute"}
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="h-10 rounded-full px-5"
-            onClick={onEnd}
-          >
-            <IconPhoneOff size={18} className="mr-2" />
-            End Session
-          </Button>
-        </>
-      )}
+        ) : status === "disconnected" ? (
+          <>
+            <Button
+              variant="secondary"
+              className="h-10 rounded-full px-5"
+              onClick={onRetry}
+            >
+              <IconRefresh size={18} className="mr-2" />
+              Retry
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-10 rounded-full px-5"
+              onClick={onEnd}
+            >
+              <IconPhoneOff size={18} className="mr-2" />
+              End Session
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              variant={muted ? "destructive" : "secondary"}
+              className="h-10 rounded-full px-5"
+              disabled={status !== "connected"}
+              onClick={toggleMute}
+            >
+              {muted ? (
+                <IconMicrophoneOff size={18} className="mr-2" />
+              ) : (
+                <IconMicrophone size={18} className="mr-2" />
+              )}
+              {muted ? "Unmute" : "Mute"}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-10 rounded-full px-5"
+              onClick={onEnd}
+            >
+              <IconPhoneOff size={18} className="mr-2" />
+              End Session
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -415,20 +430,6 @@ export function VoiceChatPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">Voice Chat</h1>
-          <StatusBadge status={status} reconnectAttempt={reconnectAttempt} />
-          {status === "preparing" && elapsedSeconds > 0 && (
-            <span className="text-sm tabular-nums text-muted-foreground">
-              {Math.floor(elapsedSeconds / 60)}:
-              {String(elapsedSeconds % 60).padStart(2, "0")}
-            </span>
-          )}
-        </div>
-      </div>
-
       {/* Prompt banner */}
       {prompt && (
         <div className="border-b px-4 py-3">
@@ -490,6 +491,8 @@ export function VoiceChatPage() {
         onRetry={() => {
           detach(retrySession(pageSignal), Reason.DomCallback);
         }}
+        reconnectAttempt={reconnectAttempt}
+        elapsedSeconds={elapsedSeconds}
       />
     </div>
   );

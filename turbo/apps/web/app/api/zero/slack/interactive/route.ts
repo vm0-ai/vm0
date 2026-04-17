@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
+import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import {
@@ -8,10 +9,31 @@ import {
 } from "../../../../../src/lib/zero/slack/verify";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
+import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
-import { createSlackClient } from "../../../../../src/lib/zero/slack/client";
+import {
+  createSlackClient,
+  openView,
+} from "../../../../../src/lib/zero/slack/client";
+import {
+  AGENT_PICKER_ACTION_ID,
+  AGENT_PICKER_BLOCK_ID,
+  AGENT_PICKER_CALLBACK_ID,
+  AGENT_PICKER_ORG_DEFAULT_VALUE,
+  buildAgentPickerModal,
+} from "../../../../../src/lib/zero/slack/blocks";
 import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
 import { disconnect } from "../../../../../src/lib/zero/slack-org/connect-service";
+import {
+  getUserAgentPreference,
+  getWorkspaceAgent,
+  resolveDefaultComposeId,
+  setUserAgentPreference,
+} from "../../../../../src/lib/zero/slack-org/handlers/shared";
+import { listComposes } from "../../../../../src/lib/zero/zero-compose-service";
+import { logger } from "../../../../../src/lib/shared/logger";
+
+const log = logger("slack-org:interactive");
 
 interface SlackInteractivePayload {
   type: "view_submission" | "block_actions" | "shortcut";
@@ -38,6 +60,22 @@ interface SlackInteractivePayload {
     selected_option?: { value: string };
     selected_options?: Array<{ value: string }>;
   }>;
+  view?: {
+    id: string;
+    callback_id: string;
+    private_metadata?: string;
+    state: {
+      values: Record<
+        string,
+        Record<
+          string,
+          {
+            selected_option?: { value: string } | null;
+          }
+        >
+      >;
+    };
+  };
 }
 
 /**
@@ -91,6 +129,13 @@ export async function POST(request: Request) {
 
   initServices();
 
+  if (
+    payload.type === "view_submission" &&
+    payload.view?.callback_id === AGENT_PICKER_CALLBACK_ID
+  ) {
+    return handleAgentPickerSubmit(payload);
+  }
+
   if (payload.type === "block_actions") {
     const action = payload.actions?.[0];
     if (!action) {
@@ -99,10 +144,286 @@ export async function POST(request: Request) {
 
     if (action.action_id === "home_disconnect") {
       await handleHomeDisconnect(payload);
+    } else if (action.action_id === "home_switch_agent") {
+      await handleHomeSwitchAgent(payload);
     }
   }
 
   return new Response("", { status: 200 });
+}
+
+const AGENT_PICKER_MAX_OPTIONS = 100;
+
+interface ConnectionContext {
+  connection: typeof slackOrgConnections.$inferSelect;
+  installation: typeof slackOrgInstallations.$inferSelect;
+  orgId: string;
+}
+
+async function resolveConnectionContext(
+  slackUserId: string,
+  workspaceId: string,
+): Promise<ConnectionContext | null> {
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+
+  if (!installation?.orgId) {
+    return null;
+  }
+
+  const [connection] = await globalThis.services.db
+    .select()
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackUserId, slackUserId),
+        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
+      ),
+    )
+    .limit(1);
+
+  if (!connection) {
+    return null;
+  }
+
+  return { connection, installation, orgId: installation.orgId };
+}
+
+function postEphemeralMessage(opts: {
+  botToken: string;
+  channel: string;
+  slackUserId: string;
+  text: string;
+}): Promise<void> {
+  const client = createSlackClient(opts.botToken);
+  return client.chat
+    .postEphemeral({
+      channel: opts.channel,
+      user: opts.slackUserId,
+      text: opts.text,
+    })
+    .then(() => {
+      return;
+    })
+    .catch((err) => {
+      log.warn("Failed to post switch ephemeral", { error: err });
+    });
+}
+
+function parseViewChannelId(
+  privateMetadata: string | undefined,
+): string | undefined {
+  if (!privateMetadata) return undefined;
+  try {
+    const meta = JSON.parse(privateMetadata) as { channelId?: unknown };
+    if (typeof meta.channelId === "string" && meta.channelId.length > 0) {
+      return meta.channelId;
+    }
+  } catch {
+    // Ignore malformed private_metadata; fall through without a channel.
+  }
+  return undefined;
+}
+
+async function resolveOrgDefaultName(orgId: string): Promise<string> {
+  const defaultComposeId = await resolveDefaultComposeId(orgId);
+  if (!defaultComposeId) return "the org default agent";
+  const agent = await getWorkspaceAgent(defaultComposeId);
+  return agent?.displayName ?? agent?.name ?? "the org default agent";
+}
+
+async function applyAgentSelection(opts: {
+  ctx: ConnectionContext;
+  botToken: string;
+  slackUserId: string;
+  channelId: string | undefined;
+  composeId: string | null;
+  switchedTo: string;
+}): Promise<void> {
+  await setUserAgentPreference({
+    vm0UserId: opts.ctx.connection.vm0UserId,
+    orgId: opts.ctx.orgId,
+    composeId: opts.composeId,
+  });
+
+  if (opts.channelId) {
+    await postEphemeralMessage({
+      botToken: opts.botToken,
+      channel: opts.channelId,
+      slackUserId: opts.slackUserId,
+      text: `Switched to *${opts.switchedTo}*.`,
+    });
+  }
+
+  void refreshOrgAppHome(
+    createSlackClient(opts.botToken),
+    opts.ctx.installation,
+    opts.slackUserId,
+  ).catch((err) => {
+    return log.warn("Failed to refresh App Home after switch", { error: err });
+  });
+}
+
+/**
+ * Persist the user's agent selection after they submit the switch modal.
+ *
+ * Returns `{ response_action: "errors" }` inline in the modal when the chosen
+ * agent is not accessible to the user, keeping the modal open for correction.
+ * On success, closes the modal and posts a best-effort ephemeral confirmation
+ * to the channel where `/zero switch` was invoked.
+ */
+async function handleAgentPickerSubmit(
+  payload: SlackInteractivePayload,
+): Promise<Response> {
+  const selected =
+    payload.view?.state.values[AGENT_PICKER_BLOCK_ID]?.[AGENT_PICKER_ACTION_ID]
+      ?.selected_option?.value;
+
+  if (!selected) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: { [AGENT_PICKER_BLOCK_ID]: "Please choose an agent." },
+    });
+  }
+
+  const ctx = await resolveConnectionContext(payload.user.id, payload.team.id);
+  if (!ctx) {
+    return new Response("", { status: 200 });
+  }
+
+  // Defense in depth: if the feature is gated off for this org, close the
+  // modal without persisting. The entry points that open the modal are also
+  // gated, so reaching here with the feature off implies the flag flipped
+  // after the user opened the picker.
+  if (
+    !isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, { orgId: ctx.orgId })
+  ) {
+    return new Response("", { status: 200 });
+  }
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const botToken = decryptSecretValue(
+    ctx.installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const channelId = parseViewChannelId(payload.view?.private_metadata);
+
+  if (selected === AGENT_PICKER_ORG_DEFAULT_VALUE) {
+    const defaultName = await resolveOrgDefaultName(ctx.orgId);
+    await applyAgentSelection({
+      ctx,
+      botToken,
+      slackUserId: payload.user.id,
+      channelId,
+      composeId: null,
+      switchedTo: defaultName,
+    });
+    return new Response("", { status: 200 });
+  }
+
+  const [agentRow] = await globalThis.services.db
+    .select({
+      id: zeroAgents.id,
+      name: zeroAgents.name,
+      displayName: zeroAgents.displayName,
+    })
+    .from(zeroAgents)
+    .where(and(eq(zeroAgents.id, selected), eq(zeroAgents.orgId, ctx.orgId)))
+    .limit(1);
+
+  if (!agentRow) {
+    return NextResponse.json({
+      response_action: "errors",
+      errors: {
+        [AGENT_PICKER_BLOCK_ID]: "You don't have access to that agent.",
+      },
+    });
+  }
+
+  await applyAgentSelection({
+    ctx,
+    botToken,
+    slackUserId: payload.user.id,
+    channelId,
+    composeId: agentRow.id,
+    switchedTo: agentRow.displayName ?? agentRow.name,
+  });
+
+  return new Response("", { status: 200 });
+}
+
+/**
+ * Open the switch modal from the App Home "Switch" button.
+ */
+async function handleHomeSwitchAgent(
+  payload: SlackInteractivePayload,
+): Promise<void> {
+  if (!payload.trigger_id) {
+    return;
+  }
+
+  const ctx = await resolveConnectionContext(payload.user.id, payload.team.id);
+  if (!ctx) {
+    return;
+  }
+
+  // Feature gate: the App Home button is hidden when the feature is off, but
+  // defend the action entry point too in case a stale client still has the
+  // button visible.
+  if (
+    !isFeatureEnabled(FeatureSwitchKey.SlackAgentSwitch, { orgId: ctx.orgId })
+  ) {
+    return;
+  }
+
+  const { composes } = await listComposes(ctx.orgId);
+  const defaultComposeId = await resolveDefaultComposeId(ctx.orgId);
+
+  const pickerOptions = composes
+    .filter((compose) => {
+      return compose.id !== defaultComposeId;
+    })
+    .slice(0, AGENT_PICKER_MAX_OPTIONS)
+    .map((compose) => {
+      return {
+        composeId: compose.id,
+        name: compose.name,
+        displayName: compose.displayName,
+      };
+    });
+
+  let orgDefaultName: string | null = null;
+  if (defaultComposeId) {
+    const agent = await getWorkspaceAgent(defaultComposeId);
+    orgDefaultName = agent?.displayName ?? agent?.name ?? null;
+  }
+
+  const currentOverride = await getUserAgentPreference(
+    ctx.connection.vm0UserId,
+    ctx.orgId,
+  );
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const botToken = decryptSecretValue(
+    ctx.installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+
+  const modal = buildAgentPickerModal({
+    options: pickerOptions,
+    currentSelectedId: currentOverride,
+    orgDefaultName,
+  });
+
+  await openView(client, payload.trigger_id, modal).catch((err) => {
+    return log.warn("Failed to open switch modal from App Home", {
+      error: err,
+    });
+  });
 }
 
 /**
