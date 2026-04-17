@@ -29,6 +29,21 @@ setup_file() {
     fi
     export TEAM_ID CHANNEL_ID SLACK_USER_ID
     slack_reset_state "$TEAM_ID"
+
+    # Pre-flight: seed installation + connection once so every test can
+    # either reset connection or mutate installation without races. Also
+    # fails loudly here with the raw response body if the seed endpoint
+    # is misconfigured, rather than masking as per-test assertion noise.
+    local preflight
+    preflight=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID")
+    if [[ "$(echo "$preflight" | jq -r '.ok // false')" != "true" ]]; then
+        echo "# slack_seed_state pre-flight failed" >&2
+        echo "# response: $preflight" >&2
+        echo "# E2E_SERIAL_EMAIL=${E2E_SERIAL_EMAIL:-<unset>}" >&2
+        return 1
+    fi
+    export E2E_SEED_VM0_USER_ID
+    E2E_SEED_VM0_USER_ID=$(echo "$preflight" | jq -r '.vm0_user_id')
 }
 
 teardown_file() {

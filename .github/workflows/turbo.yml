@@ -1322,6 +1322,10 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
           SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
+          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
+          # Keep Slack wait_for_slack_run within the 30s BATS_TEST_TIMEOUT.
+          SLACK_POLL_TIMEOUT_S: 25
+          SLACK_POLL_INTERVAL_S: 2
 
       - name: Print E2E trace log
         if: always()
