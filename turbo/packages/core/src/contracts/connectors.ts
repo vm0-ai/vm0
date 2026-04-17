@@ -46,6 +46,12 @@ export interface ConnectorConfig {
   readonly oauth?: ConnectorOAuthConfig;
   /** Environment mapping declaring which env vars this connector provides. */
   readonly environmentMapping: Record<string, string>;
+  /**
+   * Optional concept words and common-guess aliases used by connector search.
+   * Lowercase only. Avoid duplicating content already in `label`,
+   * `environmentMapping` keys, or `authMethods[*].secrets` keys.
+   */
+  readonly tags?: readonly string[];
 }
 
 /**
