@@ -404,3 +404,59 @@ describe("chat-d-063: download link renders for file attachment", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// CHAT-D-064: Video attachment chip uses the video branch (not image/file icon)
+// Covers the video branch added to AttachmentChip in #9662.
+// ---------------------------------------------------------------------------
+
+describe("chat-d-064: video attachment chip shows neither image thumbnail nor file-type icon", () => {
+  it("renders composer chip without image preview or file-type icon for an mp4 upload", async () => {
+    const user = userEvent.setup();
+    const videoUrl = "https://example.com/demo.mp4";
+
+    server.use(
+      http.post("*/api/zero/uploads", () => {
+        return HttpResponse.json({
+          id: "upload-video-1",
+          filename: "demo.mp4",
+          contentType: "video/mp4",
+          size: 2048,
+          url: videoUrl,
+        });
+      }),
+    );
+    mockChatAPI();
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    await user.upload(
+      fileInput!,
+      new File(["v"], "demo.mp4", { type: "video/mp4" }),
+    );
+
+    // Wait for the chip's Remove button, which appears only after the
+    // attachment has been added to the draft.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove demo.mp4")).toBeInTheDocument();
+    });
+
+    const chipDiv = document.querySelector<HTMLElement>('[title="demo.mp4"]');
+    expect(chipDiv).toBeInTheDocument();
+
+    // Image branch would render an <img> with src=videoUrl; video branch must not.
+    expect(
+      document.querySelector(`img[src="${videoUrl}"]`),
+    ).not.toBeInTheDocument();
+    // File branch would render an aria-hidden file-type icon <img>; video must not.
+    expect(
+      chipDiv?.querySelector('img[aria-hidden="true"]'),
+    ).not.toBeInTheDocument();
+  });
+});

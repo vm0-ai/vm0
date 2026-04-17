@@ -84,6 +84,42 @@ describe("zero chat thread page display - attachment file preview", () => {
   });
 });
 
+// CHAT-D-065: Video attachments render an inline <video controls> player.
+// Covers isVideoFilename + video branch added to PagedUserMessage in #9662.
+describe("zero chat thread page display - attachment video preview", () => {
+  it("renders a video element with controls for mp4 attachments", async () => {
+    const videoUrl = "https://example.com/clip.mp4";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: `[Attached file: clip.mp4](${videoUrl})\nDownload with: curl ${videoUrl}\n`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const video = await waitFor(() => {
+      const el = document.querySelector<HTMLVideoElement>(
+        `video[src="${videoUrl}"]`,
+      );
+      expect(el).toBeInTheDocument();
+      return el;
+    });
+
+    expect(video?.hasAttribute("controls")).toBeTruthy();
+    // Must not fall through to the image or download branches.
+    expect(
+      document.querySelector(`img[src="${videoUrl}"]`),
+    ).not.toBeInTheDocument();
+    expect(
+      document.querySelector('a[download="clip.mp4"]'),
+    ).not.toBeInTheDocument();
+  });
+});
+
 // CHAT-D-043: Message status indicators render in ChatMessageRow
 describe("zero chat thread page display - message status indicators", () => {
   it("displays a Stop button status indicator when a run is active", async () => {
