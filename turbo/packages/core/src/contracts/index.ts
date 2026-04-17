@@ -391,6 +391,9 @@ export {
   getApiTokenRequiredSecretNames,
   getApiTokenFieldsByType,
   deriveApiTokenConnectedTypes,
+  searchConnectors,
+  type ConnectorSearchResult,
+  type ConnectorSearchOutput,
 } from "./connector-utils";
 export {
   connectorSessionStatusSchema,

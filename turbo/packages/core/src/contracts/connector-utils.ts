@@ -3,6 +3,7 @@ import {
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodType,
+  type ConnectorConfig,
   type ConnectorOAuthConfig,
   type ConnectorSecretConfig,
   type ConnectorType,
@@ -356,4 +357,192 @@ export function deriveApiTokenConnectedTypes(
   }
 
   return connected;
+}
+
+/**
+ * Result of a connector search hit, one per matched connector type.
+ */
+export interface ConnectorSearchResult {
+  readonly type: ConnectorType;
+  readonly score: number;
+  /** Short label describing the matched field (e.g. "type", "env:GH_TOKEN", "tag:vcs", "token:gh"). */
+  readonly matchedField: string;
+}
+
+export interface ConnectorSearchOutput {
+  /** Results sorted by score desc then type asc, already capped at `limit`. */
+  readonly results: readonly ConnectorSearchResult[];
+  /** Total candidates above the minimum threshold, before applying `limit`. */
+  readonly total: number;
+}
+
+const TOKEN_BOUNDARY = /[_\-\s]+/;
+const CASE_BOUNDARY = /(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/;
+const MIN_SCORE = 10;
+
+/**
+ * Split a string into lowercase tokens on `_`, `-`, whitespace, and
+ * camel/Pascal case boundaries. Digits stay attached to the preceding letters
+ * (e.g. `v2`). Empty tokens are dropped and duplicates deduped.
+ */
+function tokenize(input: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const chunk of input.split(TOKEN_BOUNDARY)) {
+    if (!chunk) continue;
+    for (const sub of chunk.split(CASE_BOUNDARY)) {
+      const lower = sub.toLowerCase();
+      if (lower) tokens.add(lower);
+    }
+  }
+  return tokens;
+}
+
+function scoreConnector(
+  keywordLower: string,
+  keywordTokens: Set<string>,
+  type: ConnectorType,
+  config: ConnectorConfig,
+): { score: number; matchedField: string } | null {
+  // 100 — type key exact (case-insensitive)
+  if (type.toLowerCase() === keywordLower) {
+    return { score: 100, matchedField: "type" };
+  }
+
+  // 90 — env var key exact (any key in environmentMapping)
+  for (const envVar of Object.keys(config.environmentMapping)) {
+    if (envVar.toLowerCase() === keywordLower) {
+      return { score: 90, matchedField: `env:${envVar}` };
+    }
+  }
+
+  // 80 — label exact (case-insensitive)
+  if (config.label.toLowerCase() === keywordLower) {
+    return { score: 80, matchedField: "label" };
+  }
+
+  let bestScore = 0;
+  let bestField = "";
+  const record = (score: number, field: string): void => {
+    if (score > bestScore) {
+      bestScore = score;
+      bestField = field;
+    }
+  };
+
+  // 70 — tag exact
+  if (config.tags) {
+    for (const tag of config.tags) {
+      if (tag === keywordLower) {
+        record(70, `tag:${tag}`);
+      }
+    }
+  }
+
+  // 50 — type/label substring
+  if (type.toLowerCase().includes(keywordLower)) {
+    record(50, "type");
+  }
+  if (config.label.toLowerCase().includes(keywordLower)) {
+    record(50, "label");
+  }
+
+  // 40 — env var key substring
+  for (const envVar of Object.keys(config.environmentMapping)) {
+    if (envVar.toLowerCase().includes(keywordLower)) {
+      record(40, `env:${envVar}`);
+      break;
+    }
+  }
+
+  // 30 — secret name substring (any authMethods[*].secrets key)
+  for (const method of Object.values(config.authMethods)) {
+    let matched = false;
+    for (const secretName of Object.keys(method.secrets)) {
+      if (secretName.toLowerCase().includes(keywordLower)) {
+        record(30, `secret:${secretName}`);
+        matched = true;
+        break;
+      }
+    }
+    if (matched) break;
+  }
+
+  // 25 — tag substring
+  if (config.tags) {
+    for (const tag of config.tags) {
+      if (tag.includes(keywordLower)) {
+        record(25, `tag:${tag}`);
+        break;
+      }
+    }
+  }
+
+  // 10 × |intersection| — token-set intersection fallback
+  const candidateTokens = new Set<string>();
+  for (const t of tokenize(type)) candidateTokens.add(t);
+  for (const t of tokenize(config.label)) candidateTokens.add(t);
+  for (const envVar of Object.keys(config.environmentMapping)) {
+    for (const t of tokenize(envVar)) candidateTokens.add(t);
+  }
+  for (const method of Object.values(config.authMethods)) {
+    for (const secretName of Object.keys(method.secrets)) {
+      for (const t of tokenize(secretName)) candidateTokens.add(t);
+    }
+  }
+  if (config.tags) {
+    for (const tag of config.tags) {
+      for (const t of tokenize(tag)) candidateTokens.add(t);
+    }
+  }
+  let intersection = 0;
+  let firstCommon = "";
+  for (const t of keywordTokens) {
+    if (candidateTokens.has(t)) {
+      intersection++;
+      if (!firstCommon) firstCommon = t;
+    }
+  }
+  if (intersection > 0) {
+    record(10 * intersection, `token:${firstCommon}`);
+  }
+
+  if (bestScore < MIN_SCORE) return null;
+  return { score: bestScore, matchedField: bestField };
+}
+
+/**
+ * Search the connector catalog by weighted multi-field ranking.
+ *
+ * Matches the keyword against type keys, labels, env var names, secret names,
+ * and `tags`. Score is the max over matched rules (never a sum). Results with
+ * score below the minimum threshold are dropped. Sort order: score desc, then
+ * type asc.
+ */
+export function searchConnectors(
+  keyword: string,
+  limit: number,
+  filter?: (type: ConnectorType) => boolean,
+): ConnectorSearchOutput {
+  const trimmed = keyword.trim();
+  if (!trimmed) return { results: [], total: 0 };
+
+  const keywordLower = trimmed.toLowerCase();
+  const keywordTokens = tokenize(trimmed);
+
+  const hits: ConnectorSearchResult[] = [];
+  for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
+    if (filter && !filter(type)) continue;
+    const config = CONNECTOR_TYPES[type];
+    const hit = scoreConnector(keywordLower, keywordTokens, type, config);
+    if (!hit) continue;
+    hits.push({ type, score: hit.score, matchedField: hit.matchedField });
+  }
+
+  hits.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.type.localeCompare(b.type);
+  });
+
+  const capped = limit > 0 ? hits.slice(0, limit) : hits;
+  return { results: capped, total: hits.length };
 }
