@@ -1,6 +1,6 @@
 import { writeOutput } from "./codegen";
 
-const DOCS_URL = "https://github.com/mem9-ai/drive9/blob/main/README.md";
+const DOCS_URL = "https://drive9.ai/SKILL.md";
 const PLACEHOLDER_VALUE = "drive9_sk_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {

@@ -114,5 +114,5 @@
   ],
   "ignoreDependencies": ["@commitlint/cli", "@vm0/firewalls-generator"],
   "ignoreWorkspaces": [],
-  "ignoreUnresolved": []
+  "ignoreUnresolved": ["\\.generated$"]
 }
