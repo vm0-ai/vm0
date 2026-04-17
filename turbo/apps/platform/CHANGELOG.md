@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.246.0](https://github.com/vm0-ai/vm0/compare/app-v0.245.2...app-v0.246.0) (2026-04-17)
+
+
+### Features
+
+* **chat:** support video attachments in web chat ([#9662](https://github.com/vm0-ai/vm0/issues/9662)) ([c46edd2](https://github.com/vm0-ai/vm0/commit/c46edd2a31265d5aa2594a5adefd42fd8296afdc))
+
+
+### Refactoring
+
+* **voice-chat:** migrate voice-chat-session to zero client ([#9789](https://github.com/vm0-ai/vm0/issues/9789)) ([916d8b4](https://github.com/vm0-ai/vm0/commit/916d8b417f2124396b9f4f22b4f781858fcd3ad6))
+
 ## [0.245.2](https://github.com/vm0-ai/vm0/compare/app-v0.245.1...app-v0.245.2) (2026-04-17)
 
 

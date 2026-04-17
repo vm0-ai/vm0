@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.249.0](https://github.com/vm0-ai/vm0/compare/web-v12.248.2...web-v12.249.0) (2026-04-17)
+
+
+### Features
+
+* **chat:** support video attachments in web chat ([#9662](https://github.com/vm0-ai/vm0/issues/9662)) ([c46edd2](https://github.com/vm0-ai/vm0/commit/c46edd2a31265d5aa2594a5adefd42fd8296afdc))
+* **web:** add marketing-emails use case with resend connector ([#9767](https://github.com/vm0-ai/vm0/issues/9767)) ([a287909](https://github.com/vm0-ai/vm0/commit/a287909f2020875c072b821b5cf97a521386dbcb))
+* **web:** add visible "Add to Slack" button on landing page ([#9792](https://github.com/vm0-ai/vm0/issues/9792)) ([8ae8b69](https://github.com/vm0-ai/vm0/commit/8ae8b6958c5383c1e0bc0b163709c6ee7a37fb2f))
+
+
+### Bug Fixes
+
+* **billing:** clear stale current_period_end via sql migration ([#9799](https://github.com/vm0-ai/vm0/issues/9799)) ([790ff8c](https://github.com/vm0-ai/vm0/commit/790ff8c5fc252812a5279f29f8d4c20bac04e1f0))
+* **billing:** persist subscription period end instead of invoice accrual period ([#9790](https://github.com/vm0-ai/vm0/issues/9790)) ([c5a279f](https://github.com/vm0-ai/vm0/commit/c5a279fc89507897bf60c3ba2b7d127654e38074))
+* **slack:** use after() callback form so nested dispatch runs ([#9796](https://github.com/vm0-ai/vm0/issues/9796)) ([bd80c31](https://github.com/vm0-ai/vm0/commit/bd80c31eab69d2055fd1b82336a6b1fcec1f0ea7))
+
 ## [12.248.2](https://github.com/vm0-ai/vm0/compare/web-v12.248.1...web-v12.248.2) (2026-04-17)
 
 
