@@ -31,7 +31,29 @@ function resolveSlackApiUrl(): string | undefined {
 
 function buildWebClient(token?: string): WebClient {
   const slackApiUrl = resolveSlackApiUrl();
-  return new WebClient(token, slackApiUrl ? { slackApiUrl } : undefined);
+  if (!slackApiUrl) {
+    return new WebClient(token);
+  }
+  // When the base URL is redirected to this deployment's own mock routes
+  // (e2e mode), add the Vercel protection bypass header so the lambda's
+  // self-requests can get past deployment protection. Without it the
+  // mock endpoints return Vercel's HTML auth page and the WebClient
+  // retry loop hangs until the caller times out.
+  const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
+  const headers: Record<string, string> = bypass
+    ? { "x-vercel-protection-bypass": bypass }
+    : {};
+  return new WebClient(token, {
+    slackApiUrl,
+    headers,
+    // Fail fast in e2e — the default retryPolicy keeps retrying on
+    // network errors or 5xx for ~15s total. One retry is plenty when
+    // the peer is our own mock on the same deployment.
+    retryConfig: { retries: 1 },
+    // Keep request timeout short so we don't silently burn the lambda
+    // budget on a misrouted mock call.
+    timeout: 5000,
+  });
 }
 
 /**
