@@ -24,4 +24,10 @@ declare global {
   var services: Services;
   // Captured Next.js after() callbacks for test assertions (see setup.ts)
   var nextAfterCallbacks: Array<() => Promise<unknown>>;
+  // Per-call record of the after() argument form: "fn" when called with a
+  // callback, "promise" when called with an already-started promise. Callback
+  // form is required for nested after() to propagate the Next.js request
+  // context — promise form defers a chain that may register nested after()
+  // calls after the context has been finalized.
+  var nextAfterArgForms: Array<"fn" | "promise">;
 }
