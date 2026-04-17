@@ -194,6 +194,11 @@
   gap: 32px;
 }
 
+.blog-grid > a {
+  display: block;
+  height: 100%;
+}
+
 /* Blog Card - with cover image */
 .blog-card {
   background: var(--card-bg);
@@ -205,6 +210,7 @@
   position: relative;
   z-index: 1;
   border: 1px solid var(--border-light);
+  height: 100%;
 }
 
 .blog-card:hover {
@@ -219,15 +225,21 @@
 /* Blog Card Cover Image */
 .blog-card-cover {
   width: 100%;
-  height: 200px;
+  height: 240px;
   position: relative;
   overflow: hidden;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="light"] .blog-card-cover {
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .blog-card-cover img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  padding: 20px;
   transition: transform 0.3s ease;
 }
 
