@@ -443,6 +443,47 @@ describe("Agent Compose Upsert Behavior", () => {
       expect(agent.working_dir).toBeUndefined();
     });
 
+    it("should strip deprecated skills field from persisted content", async () => {
+      const agentName = `test-strip-skills-${Date.now()}`;
+      const config = {
+        version: "1.0",
+        agents: {
+          [agentName]: {
+            framework: "claude-code",
+            skills: [
+              "https://github.com/example/agent/tree/main/.claude/skills/slack",
+            ],
+          },
+        },
+      };
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/composes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: config }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+
+      const getRequest = createTestRequest(
+        `http://localhost:3000/api/agent/composes/${data.composeId}`,
+        { method: "GET" },
+      );
+
+      const getResponse = await getByIdGET(getRequest);
+      const composeData = await getResponse.json();
+
+      const agent = composeData.content.agents[agentName];
+      expect(agent.framework).toBe("claude-code");
+      expect(agent.skills).toBeUndefined();
+    });
+
     it("should update existing compose when name matches", async () => {
       const agentName = `test-agent-update-${Date.now()}`;
       const config = {
