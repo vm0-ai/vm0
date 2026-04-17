@@ -3085,6 +3085,334 @@
           "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
           "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
         ]
+      },
+      "voice-managed-agent": {
+        "title": "Lanza un agente de código gestionado con la voz, sin tocar el teclado",
+        "description": "Dicta una tarea a Zero desde el móvil o el coche. Zero arranca un Anthropic Managed Agent que clona el repo, instala dependencias, corre los tests y te devuelve el resultado — manos libres.",
+        "timeSaved": "~20 min ahorrados",
+        "headings": {
+          "scenario": "Por qué las tareas pequeñas de ingeniería se atascan cuando no estás en tu escritorio",
+          "prompt": "Cómo pedir a Zero una tarea de código por voz",
+          "steps": "Cómo Zero provisiona el agente y te va devolviendo el progreso",
+          "nextActions": "Revisar el diff, abrir un PR o programar chequeos recurrentes",
+          "integrations": "Integraciones necesarias: Anthropic Managed Agents y GitHub",
+          "tips": "Buenas prácticas para tareas de ingeniería dirigidas por voz"
+        },
+        "scenario": "Estás en la carretera cuando un compañero te avisa: la build nocturna está en rojo y nadie lo reproduce en local. No puedes abrir el portátil con seguridad, pero sí hablar. Dicta una instrucción breve a Zero y un agente de código gestionado la recoge, clona el repo, reproduce el fallo y manda los hallazgos a Slack antes de que llegues.",
+        "promptVariants": [
+          {
+            "label": "Voz — detallado",
+            "prompt": "@Zero lanza un agente de código gestionado. Clona nuestro repo web, instala dependencias, corre toda la suite de tests y publica el primer test que falle con las últimas 40 líneas de log en este hilo."
+          },
+          {
+            "label": "Voz — breve",
+            "prompt": "@Zero corre los tests de main en un agente gestionado y dime qué se rompe."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada día laborable a las 7am, levanta un agente gestionado, corre los smoke tests en main y publica pass/fail en una línea en #eng-signals."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Tú",
+            "text": "@Zero lanza un agente gestionado, clona el repo web, instala, corre los tests en main y reporta qué falla."
+          },
+          {
+            "name": "Zero",
+            "text": "Agente gestionado provisionado. Main clonado, instalado, tests ejecutados.\n\nResultado: 1 suite fallando — `billing/invoice.spec.ts`\nPrimer fallo: se esperaba retry count = 3, se obtuvo 2 (línea 84)\nDuración: 4m 12s\n\nLog completo adjunto. ¿Quieres que abra un PR en borrador con una propuesta de arreglo?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero captura la instrucción por voz",
+            "description": "Zero transcribe el mensaje, confirma el repo y la tarea, y solo pregunta lo que falta. Nada de ida y vuelta de configuración."
+          },
+          {
+            "title": "Zero provisiona un Anthropic Managed Agent",
+            "description": "Zero pide un agente gestionado, clona el repo y ejecuta los comandos de instalación y tests en un entorno aislado. El progreso llega a Slack en actualizaciones breves, no en una cascada de logs."
+          },
+          {
+            "title": "Resultados entregados en Slack",
+            "description": "Zero devuelve pass/fail, el primer test que falla, el extracto de log relevante y un siguiente paso sugerido — revisable desde el móvil en menos de un minuto."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Abrir un PR en borrador con el arreglo",
+            "description": "Deja que el agente gestionado proponga un parche y abra un PR revisable",
+            "examplePrompt": "@Zero pide al agente gestionado que proponga un arreglo y abra un PR en borrador con el diff y la salida de tests."
+          },
+          {
+            "title": "Registrar el fallo como issue",
+            "description": "Captura la reproducción en el tracker sin cambiar de contexto",
+            "examplePrompt": "@Zero abre un issue con el test fallido, el extracto de log y una reproducción en una línea."
+          },
+          {
+            "title": "Convertirlo en rutina",
+            "description": "Prográmalo como smoke test recurrente para detectar regresiones antes de que se extiendan",
+            "examplePrompt": "@Zero cada día laborable a las 7am, corre los smoke tests en main dentro de un agente gestionado y publica pass/fail en #eng-signals."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Anthropic Managed Agents es obligatorio. Zero lo usa para provisionar el entorno aislado donde clona, instala y ejecuta el código."
+          },
+          {
+            "description": "GitHub es opcional. Zero lo usa para abrir un PR en borrador o registrar un issue cuando quieres que el arreglo quede anotado."
+          }
+        ],
+        "tips": [
+          "Pronuncia claramente el nombre del repo — los nombres propios cortos se transcriben mejor que frases largas llenas de matices.",
+          "Pide el primer fallo más 40 líneas de contexto, no el log entero. Los extractos cortos y accionables funcionan mejor en el móvil.",
+          "Combínalo con Tech Debt Scan para que el agente gestionado también marque archivos riesgosos que tocó mientras reproducía el fallo."
+        ]
+      },
+      "draft-url-preview": {
+        "title": "Convierte una conversación en una URL de borrador revisable",
+        "description": "Describe a Zero el post que necesitas en Slack. Zero lo escribe, lo guarda como borrador en el CMS y devuelve una URL de vista previa compartible — así revisas sobre la página real, no sobre un documento.",
+        "timeSaved": "~45 min ahorrados",
+        "headings": {
+          "scenario": "Por qué revisar copy en documentos rompe el loop de feedback",
+          "prompt": "Cómo pedir a Zero que publique un borrador desde una conversación",
+          "steps": "Cómo Zero redacta, guarda y devuelve el enlace de vista previa",
+          "nextActions": "Iterar el borrador, traducirlo o programar la publicación",
+          "integrations": "Integraciones necesarias: un CMS headless como Strapi y Slack",
+          "tips": "Buenas prácticas para flujos con URL de borrador"
+        },
+        "scenario": "El equipo quiere sacar un post mañana. El loop habitual: alguien escribe en Google Docs, tres personas comentan, una ingeniera web pega el texto en el CMS, y los bugs de layout solo aparecen después de publicar. En cambio: suelta el brief en Slack, Zero escribe el post, sube un borrador al CMS y responde con una URL de vista previa que ya luce como la página real. Los revisores comentan sobre lo que realmente ven.",
+        "promptVariants": [
+          {
+            "label": "Desde un brief",
+            "prompt": "@Zero redacta un post de blog sobre nuestra nueva función de agentes programados. Público: managers de ingeniería. Intro breve, tres ejemplos de caso de uso y CTA final. Guarda como borrador en el CMS y devuelve la URL de preview."
+          },
+          {
+            "label": "Desde un hilo",
+            "prompt": "@Zero lee el hilo de arriba y conviértelo en una página de caso de uso de 500–700 palabras. Guárdalo como borrador y responde con el enlace de preview."
+          },
+          {
+            "label": "Actualizar borrador",
+            "prompt": "@Zero actualiza el borrador `launch-recap` — ajusta la intro, añade una cita sobre fiabilidad y devuelve la nueva URL de preview."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Tú",
+            "text": "@Zero redacta un post de blog sobre agentes programados para managers de ingeniería — 600 palabras, tres ejemplos, CTA al final. Guárdalo como borrador del CMS y mándame la preview."
+          },
+          {
+            "name": "Zero",
+            "text": "Borrador listo. Título: 'Agentes programados: el trabajo que corre mientras duermes'\nExtensión: 612 palabras\nEjemplos: digest nocturno de errores, escaneo semanal de deuda técnica, briefing del lunes\nPreview: https://preview.example.com/blog/scheduled-agents?draft=1\n\nListo para revisión. ¿Lanzo una pasada de traducción cuando cierre la copy?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero redacta a partir del contexto de la conversación",
+            "description": "Zero usa el brief (o el hilo de arriba) para escribir la pieza. Respeta las notas de estilo que hayas fijado — voz, extensión, estructura — y rellena títulos, intro, cuerpo y CTA."
+          },
+          {
+            "title": "Zero guarda el borrador en tu CMS",
+            "description": "Zero empuja el contenido a tu CMS headless como borrador sin publicar, rellenando título, slug, resumen y cualquier metadato obligatorio."
+          },
+          {
+            "title": "La URL de preview llega a Slack",
+            "description": "Zero responde con un enlace que renderiza el borrador en tu staging — los revisores ven la página real, no un documento. Un clic por cada ronda de feedback."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Iterar el borrador",
+            "description": "Aplica ediciones directamente desde Slack y obtén una URL de preview actualizada",
+            "examplePrompt": "@Zero actualiza el borrador `scheduled-agents` — acorta la intro en dos frases y regenera la preview."
+          },
+          {
+            "title": "Traducir el post",
+            "description": "Genera borradores localizados una vez aprobada la copy original",
+            "examplePrompt": "@Zero traduce el borrador `scheduled-agents` a DE, JA y ES. Guarda cada uno como borrador localizado y devuelve las URLs de preview."
+          },
+          {
+            "title": "Programar la publicación",
+            "description": "Pasa el borrador a publicado en la hora elegida sin entrar al CMS",
+            "examplePrompt": "@Zero publica el borrador `scheduled-agents` el martes a las 9am y avísame cuando esté en vivo."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Tu CMS headless (por ejemplo Strapi) es obligatorio. Zero crea y actualiza borradores a través de su API y genera la URL de preview."
+          },
+          {
+            "description": "Notion es opcional. Zero puede registrar el borrador en un tracker de contenido si quieres supervisión editorial."
+          }
+        ],
+        "tips": [
+          "Fija una guía de estilo breve (voz, frases prohibidas, cabeceras preferidas) en el hilo — Zero la aplica de forma consistente a cada borrador.",
+          "Pide el enlace de preview desde el principio. Una página renderizada en vivo revela problemas de layout que nunca se ven en un doc.",
+          "Combínalo con Blog Cover Art para generar la imagen principal en el mismo hilo — así el borrador de preview ya llega completo en la primera pasada."
+        ]
+      },
+      "blog-cover-art": {
+        "title": "Genera una imagen de portada de blog en segundos, fiel a la marca",
+        "description": "Pide a Zero una imagen de portada y recibe una ilustración de marca — fondo neutro suave, ilustración dibujada a mano, título en una sans-serif limpia — guardada en Dropbox y lista para el post.",
+        "timeSaved": "~30 min ahorrados",
+        "headings": {
+          "scenario": "Por qué elegir la portada del blog es un impuesto silencioso de 30 minutos",
+          "prompt": "Cómo pedir a Zero una portada fiel a la marca",
+          "steps": "Cómo Zero compone, renderiza y entrega la imagen",
+          "nextActions": "Iterar la imagen, adjuntarla a un borrador o guardar variantes",
+          "integrations": "Integraciones necesarias: ninguna — Dropbox y Figma son opcionales",
+          "tips": "Buenas prácticas para portadas consistentes y de marca"
+        },
+        "scenario": "La copy está aprobada. La imagen de portada no. Alguien trastea Figma media hora, las fotos de stock se sienten fuera de marca y el post sale tarde. En su lugar: describe el artículo en una línea y Zero produce una portada fiel al sistema de marca — fondo neutro, ilustración pequeña dibujada a mano, título en una sans-serif limpia — y la deja en Dropbox.",
+        "promptVariants": [
+          {
+            "label": "Desde un tema",
+            "prompt": "@Zero haz una portada para un post titulado 'Scheduled agents: the work that runs while you sleep'. Fondo con degradado neutro suave, ilustración dibujada a mano de un cielo nocturno con una pequeña lámpara de escritorio, título centrado en sans-serif limpia. Guárdalo en Dropbox."
+          },
+          {
+            "label": "Set de variantes",
+            "prompt": "@Zero dame tres opciones de portada para el post de recapitulación del lanzamiento. Mismo sistema de layout, tres ilustraciones distintas. Guarda las tres en Dropbox bajo el slug."
+          },
+          {
+            "label": "Desde un borrador",
+            "prompt": "@Zero lee el borrador `scheduled-agents` y genera una portada acorde a nuestro estilo de marca. Adjúntala al borrador."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Tú",
+            "text": "@Zero haz una portada para 'Scheduled agents: the work that runs while you sleep'. Estilo de marca — degradado neutro, ilustración dibujada a mano, título en sans-serif limpia."
+          },
+          {
+            "name": "Zero",
+            "text": "Portada renderizada. Layout: degradado suave de gris a crema, ilustración de lámpara de escritorio y cielo nocturno, título centrado en Inter.\n\nGuardado en Dropbox: /marketing/blog/scheduled-agents/cover-v1.png (1600x900, 412 KB)\n\n¿Quieres una segunda variante con otra ilustración o un recorte horizontal tipo banner?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero compone la portada a partir de las reglas de marca",
+            "description": "Zero aplica tu receta de marca estándar — fondo neutro, estilo de ilustración, tipografía de título aprobada — al tema que describes. Sin prompt engineering por post."
+          },
+          {
+            "title": "Zero renderiza y nombra el archivo",
+            "description": "Zero genera la imagen en tus dimensiones estándar de blog, aplica un nombre de archivo consistente (slug + versión) y hace un QA básico — legibilidad del título, peso de la ilustración, vista previa en dark mode."
+          },
+          {
+            "title": "Entrega y enlace del archivo",
+            "description": "Zero guarda la imagen en Dropbox (u otra carpeta compartida), responde con el enlace y una vista previa pequeña, y ofrece variantes o recortes si los necesitas."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Iterar la ilustración",
+            "description": "Cambia solo la ilustración sin regenerar todo el layout",
+            "examplePrompt": "@Zero mantén el mismo layout pero cambia la ilustración por un pequeño motivo de constelación."
+          },
+          {
+            "title": "Adjuntar al borrador",
+            "description": "Asocia la portada a un borrador existente del CMS para que la URL de preview la muestre",
+            "examplePrompt": "@Zero adjunta cover-v1 al borrador `scheduled-agents` como imagen hero y devuelve la preview actualizada."
+          },
+          {
+            "title": "Guardar un set de variantes",
+            "description": "Produce recortes horizontal, cuadrado y para redes en una sola pasada",
+            "examplePrompt": "@Zero genera recortes 1600x900, 1200x1200 y 1200x630 de cover-v1 y guárdalos bajo el mismo slug."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Ningún conector obligatorio — Zero puede devolver la imagen directamente en Slack."
+          },
+          {
+            "description": "Dropbox es opcional pero recomendado para assets de marca compartidos. Figma es opcional si quieres que la portada aterrice en un archivo de trabajo."
+          }
+        ],
+        "tips": [
+          "Define la receta de marca una vez en una memoria — tratamiento de fondo, estilo de ilustración, tipografía del título — para que cada portada sea consistente sin tener que redescribirla.",
+          "Pide primero una sola variante, decide, y luego escala a recortes. Generar tres de entrada suele ser esfuerzo desperdiciado.",
+          "Combínalo con Draft URL Preview para que la portada aterrice en la página del borrador en el mismo hilo — los revisores ven el post casi terminado desde la primera pasada."
+        ]
+      },
+      "ai-video-director": {
+        "title": "Dirige un vídeo corto con una cuadrilla de subagentes especialistas",
+        "description": "Describe la historia a Zero. Zero escribe el storyboard, levanta una flota de subagentes especializados (research, copy, visuales, voz), arma una deck y maneja un generador de avatar — de punta a punta, sin traspasos.",
+        "timeSaved": "~3 horas ahorradas",
+        "headings": {
+          "scenario": "Por qué los vídeos cortos de marketing consumen una semana entera",
+          "prompt": "Cómo pedir a Zero que dirija un vídeo de principio a fin",
+          "steps": "Cómo Zero planifica, delega y arma el corte final",
+          "nextActions": "Revisar el storyboard, regenerar una escena o publicar",
+          "integrations": "Integraciones necesarias: una herramienta de vídeo IA como HeyGen; Gamma es opcional",
+          "tips": "Buenas prácticas para vídeos cortos dirigidos por IA"
+        },
+        "scenario": "Un vídeo de producto de 60 segundos solía implicar kickoff, brief, dos rondas de guion, una deck, día de grabación y edición. Pide a Zero en su lugar: Zero escribe el storyboard, provisiona un conjunto de subagentes especializados que cubren cada pieza — research, copy de voz en off, visuales, textos en pantalla —, arma la deck y maneja un generador de avatar IA para producir el corte final. Revisas un vídeo montado, no seis entregables.",
+        "promptVariants": [
+          {
+            "label": "Producción completa",
+            "prompt": "@Zero dirige un vídeo de producto de 60 segundos presentando nuestra nueva función de agentes programados. Storyboard, guion, deck y render en HeyGen. Monta el corte final y déjalo en este hilo."
+          },
+          {
+            "label": "Solo storyboard",
+            "prompt": "@Zero escribe un storyboard de 6 escenas para un vídeo de 60 segundos sobre agentes programados. Escena, texto en pantalla, voz en off, sugerencia de b-roll."
+          },
+          {
+            "label": "Re-corte",
+            "prompt": "@Zero mantén el storyboard pero cambia la escena 4 — que sea una cita de cliente en vez de demo de producto — y re-renderiza la salida de HeyGen."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Tú",
+            "text": "@Zero dirige un vídeo de 60 segundos para el lanzamiento de agentes programados. Storyboard, guion, deck, render en HeyGen, corte final en este hilo."
+          },
+          {
+            "name": "Zero",
+            "text": "Plan: 6 escenas, 58s en total.\n\nSubagentes desplegados:\n• Research — saqué tres citas de cliente de conversaciones recientes\n• Copy — escribí la voz en off en nuestro tono de lanzamiento\n• Visuales — produje 6 imágenes de escena\n• Deck — monté una deck de Gamma para el embed del blog\n\nRender HeyGen: https://video.example.com/scheduled-agents-v1.mp4 (58s, 24 MB)\nDeck: https://gamma.app/docs/…\n\nListo para revisión. ¿Quieres re-cortar alguna escena?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero escribe el storyboard y el plan",
+            "description": "Zero convierte tu brief en un plan escena a escena: texto en pantalla, líneas de voz en off, dirección visual, duración total — aprobado antes de gastar en renders."
+          },
+          {
+            "title": "Zero despliega una cuadrilla de subagentes especialistas",
+            "description": "Zero provisiona subagentes para research, copywriting, visuales y armado de deck. Trabajan en paralelo y cada uno devuelve su parte al hilo del director."
+          },
+          {
+            "title": "Zero monta el corte final",
+            "description": "Zero alimenta guion y visuales en un generador de avatar IA (como HeyGen), produce el render y devuelve un único enlace más la deck acompañante — listos para revisar o publicar."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Re-cortar una escena",
+            "description": "Revisa una escena sin regenerar todo el vídeo",
+            "examplePrompt": "@Zero cambia la escena 3 por una cita de cliente de nuestras últimas entrevistas y re-renderiza solo esa escena."
+          },
+          {
+            "title": "Añadir una pasada de pulido",
+            "description": "Haz que un subagente de pulido ajuste ritmo, subtítulos y textos en pantalla",
+            "examplePrompt": "@Zero pasa un pulido al corte actual — ajusta transiciones, corrige subtítulos y añade una tarjeta de CTA al cierre."
+          },
+          {
+            "title": "Publicar y promocionar",
+            "description": "Programa el vídeo en canales sociales con copy afinado por canal",
+            "examplePrompt": "@Zero publica el corte final en nuestras cuentas de X y LinkedIn el martes a las 9am, con copy ajustado por canal."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "HeyGen (u otra herramienta de vídeo IA similar) es obligatorio. Zero la maneja para producir el corte final basado en avatar."
+          },
+          {
+            "description": "Gamma es opcional. Zero la usa para montar una deck que encaja junto al vídeo."
+          }
+        ],
+        "tips": [
+          "Cierra el storyboard antes de renderizar. Una ronda barata de edición de texto gana a tres rondas caras de re-render de vídeo.",
+          "Define tu tono de lanzamiento en una memoria — cadencia, vocabulario, frases prohibidas — para que cada vídeo suene a la misma marca.",
+          "Combínalo con Draft URL Preview y Blog Cover Art para lanzar el vídeo, el post y la imagen hero como un único paquete coordinado en el mismo hilo."
+        ]
       }
     }
   },

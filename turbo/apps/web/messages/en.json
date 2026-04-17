@@ -3167,6 +3167,334 @@
           "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
           "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
         ]
+      },
+      "voice-managed-agent": {
+        "title": "Spin up a managed coding agent, hands-free, by voice",
+        "description": "Dictate a task to Zero from your phone or car. Zero launches an Anthropic Managed Agent that clones the repo, installs dependencies, runs tests, and reports back — no keyboard required.",
+        "timeSaved": "~20 min saved",
+        "headings": {
+          "scenario": "Why small engineering tasks stall when you're away from your desk",
+          "prompt": "How to ask Zero to run a coding task by voice",
+          "steps": "How Zero provisions the agent and streams progress back",
+          "nextActions": "Review the diff, open a PR, or schedule recurring checks",
+          "integrations": "Required integrations: Anthropic Managed Agents and GitHub",
+          "tips": "Best practices for voice-driven engineering tasks"
+        },
+        "scenario": "You're on the road when a teammate pings: the nightly build is red and nobody can repro it locally. You can't safely open a laptop, but you can talk. Voice-dictate a short instruction to Zero and a managed coding agent picks it up, clones the repo, reproduces the failure, and sends the findings to Slack before you arrive.",
+        "promptVariants": [
+          {
+            "label": "Voice — detailed",
+            "prompt": "@Zero spin up a managed coding agent. Clone our web repo, install dependencies, run the full test suite, and post the first failing test plus the last 40 lines of output to this thread."
+          },
+          {
+            "label": "Voice — quick",
+            "prompt": "@Zero run the tests on main in a managed agent and tell me what breaks."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every weekday at 7am, spin up a managed agent, run the smoke tests on main, and post a one-line pass/fail to #eng-signals."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "You",
+            "text": "@Zero spin up a managed agent, clone the web repo, install, run tests on main, and report what fails."
+          },
+          {
+            "name": "Zero",
+            "text": "Managed agent provisioned. Cloned main, installed, ran tests.\n\nResult: 1 failing suite — `billing/invoice.spec.ts`\nFirst failure: expected retry count = 3, got 2 (line 84)\nDuration: 4m 12s\n\nFull log attached. Want me to open a draft PR with a fix?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero captures the voice instruction",
+            "description": "Zero transcribes the voice message, confirms the repo and task, and asks only for the missing pieces — no setup back-and-forth."
+          },
+          {
+            "title": "Zero provisions an Anthropic Managed Agent",
+            "description": "Zero requests a managed agent, clones the repo, and runs install + test commands inside an isolated environment. Progress streams to Slack in short updates, not a wall of logs."
+          },
+          {
+            "title": "Results delivered in Slack",
+            "description": "Zero returns pass/fail, the first failing test, the relevant log excerpt, and a suggested next step — reviewable from your phone in under a minute."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Open a draft PR with a fix",
+            "description": "Let the managed agent attempt a patch and open a reviewable pull request",
+            "examplePrompt": "@Zero have the managed agent propose a fix and open a draft PR with the diff and test output."
+          },
+          {
+            "title": "File an issue for the failure",
+            "description": "Capture the repro in your tracker without context switching",
+            "examplePrompt": "@Zero file an issue with the failing test, log excerpt, and a one-line repro."
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule this as a recurring smoke test so regressions get caught before they spread",
+            "examplePrompt": "@Zero every weekday at 7am, run the smoke tests on main in a managed agent and post pass/fail to #eng-signals."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Anthropic Managed Agents is required. Zero uses it to provision the isolated environment that clones, installs, and runs the code."
+          },
+          {
+            "description": "GitHub is optional. Zero uses it to open a draft PR or file an issue when you want the fix captured."
+          }
+        ],
+        "tips": [
+          "Say the repo name out loud — voice transcription works better on short proper nouns than long sentences full of qualifiers.",
+          "Ask for the first failure plus 40 lines of context, not the full log. Short, actionable excerpts travel well on mobile.",
+          "Pair with Tech Debt Scan to let the managed agent also flag risky files it touched while reproducing the issue."
+        ]
+      },
+      "draft-url-preview": {
+        "title": "Turn a conversation into a reviewable draft URL",
+        "description": "Describe the post you want to Zero in Slack. Zero writes it, saves it as a CMS draft, and returns a shareable preview URL — so edits happen on the live page, not in a doc.",
+        "timeSaved": "~45 min saved",
+        "headings": {
+          "scenario": "Why reviewing copy in docs breaks the feedback loop",
+          "prompt": "How to ask Zero to publish a draft from a conversation",
+          "steps": "How Zero drafts, saves, and returns the preview link",
+          "nextActions": "Iterate on the draft, translate it, or schedule publish",
+          "integrations": "Required integrations: a headless CMS like Strapi and Slack",
+          "tips": "Best practices for draft-URL writing workflows"
+        },
+        "scenario": "The team wants a blog post out by tomorrow. The usual loop is: someone writes in Google Docs, three reviewers comment, a web engineer paste-formats it into the CMS, and layout bugs only surface after publish. Drop the brief into Slack instead — Zero writes the post, pushes a draft into the CMS, and replies with a preview URL that already looks like the real page. Reviewers comment on what they actually see.",
+        "promptVariants": [
+          {
+            "label": "From a brief",
+            "prompt": "@Zero draft a blog post about our new scheduled agents feature. Audience is engineering managers. Include a short intro, three use-case examples, and a call to action. Save as a CMS draft and return the preview URL."
+          },
+          {
+            "label": "From a thread",
+            "prompt": "@Zero read the thread above and turn it into a 500–700 word use case page. Save as a draft and reply with the preview link."
+          },
+          {
+            "label": "Update existing draft",
+            "prompt": "@Zero update draft `launch-recap` — tighten the intro, add a pull quote about reliability, and return the new preview URL."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "You",
+            "text": "@Zero draft a blog post about our new scheduled agents feature for engineering managers — 600 words, three examples, CTA at the end. Save as a CMS draft and send me the preview."
+          },
+          {
+            "name": "Zero",
+            "text": "Drafted. Title: \"Scheduled agents: the work that runs while you sleep\"\nLength: 612 words\nExamples: nightly error digest, weekly tech-debt scan, Monday briefing\nPreview: https://preview.example.com/blog/scheduled-agents?draft=1\n\nReady for review. Want me to queue a translation pass once copy is locked?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero drafts from conversation context",
+            "description": "Zero uses the brief (or the thread above it) to write the piece. It follows any style notes you pin — voice, length, structure — and fills in headings, intro, body, and CTA."
+          },
+          {
+            "title": "Zero saves the draft to your CMS",
+            "description": "Zero pushes the content into your headless CMS as an unpublished draft, filling in title, slug, summary, and any required metadata fields."
+          },
+          {
+            "title": "Preview URL returned in Slack",
+            "description": "Zero replies with a link that renders the draft on your staging site — so reviewers see the real page, not a doc. One click for each round of feedback."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Iterate on the draft",
+            "description": "Push edits directly from Slack and get a refreshed preview URL",
+            "examplePrompt": "@Zero update draft `scheduled-agents` — make the intro two sentences shorter and regenerate the preview."
+          },
+          {
+            "title": "Translate the post",
+            "description": "Generate localized drafts once the source copy is approved",
+            "examplePrompt": "@Zero translate draft `scheduled-agents` to DE, JA, and ES. Save each as a locale draft and return the preview URLs."
+          },
+          {
+            "title": "Schedule publish",
+            "description": "Flip the draft to published at a chosen time without logging into the CMS",
+            "examplePrompt": "@Zero publish draft `scheduled-agents` on Tuesday 9am and ping me when it's live."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Your headless CMS (e.g. Strapi) is required. Zero creates and updates drafts through its API and generates the preview URL."
+          },
+          {
+            "description": "Notion is optional. Zero can log the draft to a content tracker for editorial oversight."
+          }
+        ],
+        "tips": [
+          "Pin a short style guide (voice, forbidden phrases, preferred headings) in the thread — Zero applies it consistently across drafts.",
+          "Ask for the preview link up front. A live-rendered page reveals layout issues that never show up in a doc review.",
+          "Pair with Blog Cover Art to generate the hero image in the same thread — so the draft preview is fully formed on the first pass."
+        ]
+      },
+      "blog-cover-art": {
+        "title": "Generate an on-brand blog cover image in seconds",
+        "description": "Ask Zero for a cover image and get a branded illustration — soft neutral background, hand-drawn spot illustration, clean sans-serif title — saved to Dropbox and ready for the post.",
+        "timeSaved": "~30 min saved",
+        "headings": {
+          "scenario": "Why picking a blog cover is a silent 30-minute tax",
+          "prompt": "How to ask Zero for a cover image that matches the brand",
+          "steps": "How Zero composes, renders, and delivers the image",
+          "nextActions": "Iterate on the image, attach it to a draft, or save a variant",
+          "integrations": "Required integrations: none — Dropbox and Figma are optional",
+          "tips": "Best practices for consistent, on-brand cover art"
+        },
+        "scenario": "The copy is approved. The cover image isn't. Someone pokes Figma for half an hour, stock photos feel off-brand, and the post ships late. Instead: describe the article in one line, Zero produces a cover that matches the brand system — neutral background, a small hand-drawn illustration, the title set in a clean sans-serif — and drops it into Dropbox.",
+        "promptVariants": [
+          {
+            "label": "From a topic",
+            "prompt": "@Zero make a blog cover for a post titled \"Scheduled agents: the work that runs while you sleep.\" Soft neutral gradient background, hand-drawn spot illustration of a night sky with a small desk lamp, title centered in a clean sans-serif. Save to Dropbox."
+          },
+          {
+            "label": "Variant set",
+            "prompt": "@Zero give me three cover options for the launch recap post. Same layout system, three different spot illustrations. Save all three to Dropbox under the slug."
+          },
+          {
+            "label": "From a draft",
+            "prompt": "@Zero read draft `scheduled-agents` and generate a matching cover in our brand style. Attach it back to the draft."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "You",
+            "text": "@Zero make a cover for \"Scheduled agents: the work that runs while you sleep.\" Brand style — neutral gradient, hand-drawn spot illustration, clean sans-serif title."
+          },
+          {
+            "name": "Zero",
+            "text": "Cover rendered. Layout: soft gray-to-cream gradient, spot illustration of a desk lamp and night sky, title centered in Inter.\n\nSaved to Dropbox: /marketing/blog/scheduled-agents/cover-v1.png (1600x900, 412 KB)\n\nWant a second variant with a different illustration or a horizontal banner crop?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero composes the cover from brand rules",
+            "description": "Zero applies your standing brand recipe — neutral background, spot-illustration style, approved title typography — to the topic you describe. No prompt engineering needed per post."
+          },
+          {
+            "title": "Zero renders and names the file",
+            "description": "Zero generates the image at your standard blog dimensions, applies a consistent filename (slug + version), and runs basic QA — title legibility, illustration weight, dark-mode preview."
+          },
+          {
+            "title": "File delivered and linked",
+            "description": "Zero saves the image to Dropbox (or another shared folder), replies with the link and a small preview, and offers variants or crops if you need them."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Iterate the illustration",
+            "description": "Swap the spot illustration without regenerating the whole layout",
+            "examplePrompt": "@Zero keep the same layout but swap the illustration for a small constellation motif."
+          },
+          {
+            "title": "Attach to a draft",
+            "description": "Wire the cover into an existing CMS draft so the preview URL shows it",
+            "examplePrompt": "@Zero attach cover-v1 to draft `scheduled-agents` as the hero image and return the updated preview."
+          },
+          {
+            "title": "Save a variant set",
+            "description": "Produce horizontal, square, and social-share crops in one pass",
+            "examplePrompt": "@Zero generate 1600x900, 1200x1200, and 1200x630 crops of cover-v1 and save them under the same slug."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "No required connectors — Zero can return the image directly in Slack."
+          },
+          {
+            "description": "Dropbox is optional but recommended for shared brand assets. Figma is optional if you want the cover pushed into a working file."
+          }
+        ],
+        "tips": [
+          "Define the brand recipe once in a memory — background treatment, illustration style, title font — so every cover stays consistent without re-describing.",
+          "Ask for one variant first, decide, then scale to crops. Generating three up front is usually wasted effort.",
+          "Pair with Draft URL Preview so the cover lands on the draft page in the same thread — reviewers see the finished-looking post on the first pass."
+        ]
+      },
+      "ai-video-director": {
+        "title": "Direct a short video with a crew of specialist sub-agents",
+        "description": "Describe the story to Zero. Zero writes the storyboard, spins up a fleet of specialist sub-agents (research, copy, visuals, voice), builds a deck, and drives an AI avatar generator — end to end, no handoffs.",
+        "timeSaved": "~3 hours saved",
+        "headings": {
+          "scenario": "Why short marketing videos eat a whole week",
+          "prompt": "How to ask Zero to direct a video end to end",
+          "steps": "How Zero plans, delegates, and assembles the final cut",
+          "nextActions": "Revise the storyboard, regenerate a scene, or publish",
+          "integrations": "Required integrations: an AI video tool like HeyGen; Gamma is optional",
+          "tips": "Best practices for AI-directed short videos"
+        },
+        "scenario": "A 60-second product video used to mean a kickoff meeting, a brief, two rounds of script, a deck, a recording day, and editing. Ask Zero instead: Zero writes the storyboard, pre-provisions a set of specialist sub-agents that each own one piece — research, voice-over copy, visuals, on-screen text — builds the deck, and drives an AI avatar generator to produce the final cut. You review one assembled video, not six deliverables.",
+        "promptVariants": [
+          {
+            "label": "Full production",
+            "prompt": "@Zero direct a 60-second product video introducing our new scheduled agents feature. Storyboard, script, deck, and HeyGen render. Assemble the final cut and drop it in this thread."
+          },
+          {
+            "label": "Storyboard only",
+            "prompt": "@Zero write a 6-scene storyboard for a 60-second video on scheduled agents. Scene, on-screen text, voice-over, b-roll suggestion."
+          },
+          {
+            "label": "Re-cut",
+            "prompt": "@Zero keep the storyboard but swap scene 4 — make it a customer quote instead of a product demo — and re-render the HeyGen output."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "You",
+            "text": "@Zero direct a 60-second video for the scheduled agents launch. Storyboard, script, deck, HeyGen render, final cut in this thread."
+          },
+          {
+            "name": "Zero",
+            "text": "Plan: 6 scenes, 58s total.\n\nSub-agents dispatched:\n• Research — pulled three customer quotes from recent conversations\n• Copy — wrote the voice-over in our launch tone\n• Visuals — produced 6 scene images\n• Deck — built a matching Gamma deck for the blog embed\n\nHeyGen render: https://video.example.com/scheduled-agents-v1.mp4 (58s, 24 MB)\nDeck: https://gamma.app/docs/…\n\nReady for review. Want me to re-cut any scene?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero writes the storyboard and plan",
+            "description": "Zero turns your brief into a scene-by-scene plan: on-screen text, voice-over lines, visual direction, and total runtime — approved before any render spends money."
+          },
+          {
+            "title": "Zero dispatches a crew of specialist sub-agents",
+            "description": "Zero pre-provisions sub-agents for research, copywriting, visuals, and deck assembly. They work in parallel and each return their piece to the director thread."
+          },
+          {
+            "title": "Zero assembles the final cut",
+            "description": "Zero feeds the script and visuals into an AI avatar generator (like HeyGen), produces the render, and returns a single link plus the supporting deck — ready for review or publish."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Re-cut a single scene",
+            "description": "Revise one scene without regenerating the whole video",
+            "examplePrompt": "@Zero swap scene 3 for a customer quote from our latest interviews and re-render only that scene."
+          },
+          {
+            "title": "Add a polish pass",
+            "description": "Have a polish sub-agent tighten pacing, captions, and on-screen text",
+            "examplePrompt": "@Zero run a polish pass on the current cut — tighten transitions, correct captions, add a closing CTA card."
+          },
+          {
+            "title": "Publish and promote",
+            "description": "Schedule the video across social channels with channel-tuned copy",
+            "examplePrompt": "@Zero publish the final cut to our X and LinkedIn accounts on Tuesday 9am, with tuned copy per channel."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "HeyGen (or a similar AI video tool) is required. Zero drives it to produce the avatar-based final cut."
+          },
+          {
+            "description": "Gamma is optional. Zero uses it to assemble a matching deck that can embed alongside the video."
+          }
+        ],
+        "tips": [
+          "Lock the storyboard before rendering. One round of cheap text edits beats three rounds of expensive video re-renders.",
+          "Define your launch tone in a memory — cadence, vocabulary, forbidden phrases — so every video sounds like the same brand.",
+          "Pair with Draft URL Preview and Blog Cover Art to ship the video, blog post, and hero image as one coordinated release in a single thread."
+        ]
       }
     }
   },

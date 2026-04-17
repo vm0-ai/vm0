@@ -3085,6 +3085,334 @@
           "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
           "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
         ]
+      },
+      "voice-managed-agent": {
+        "title": "Coding-Agent per Sprachbefehl starten — ohne Tastatur",
+        "description": "Diktiere Zero eine Aufgabe vom Handy oder aus dem Auto. Zero startet einen Anthropic Managed Agent, klont das Repo, installiert Abhängigkeiten, führt Tests aus und meldet sich zurück — freihändig.",
+        "timeSaved": "~20 Min gespart",
+        "headings": {
+          "scenario": "Warum kleine Engineering-Aufgaben stehenbleiben, sobald du nicht am Schreibtisch bist",
+          "prompt": "So bittest du Zero per Sprache um einen Coding-Task",
+          "steps": "Wie Zero den Agent bereitstellt und Fortschritt zurückspielt",
+          "nextActions": "Diff prüfen, PR öffnen oder wiederkehrende Checks planen",
+          "integrations": "Erforderliche Integrationen: Anthropic Managed Agents und GitHub",
+          "tips": "Best Practices für sprachgesteuerte Engineering-Tasks"
+        },
+        "scenario": "Du bist unterwegs, da pingt ein Kollege: Der Nightly-Build ist rot, niemand kann den Fehler lokal reproduzieren. Laptop aufklappen geht gerade nicht — reden schon. Diktiere Zero eine kurze Anweisung, ein Managed Coding Agent übernimmt, klont das Repo, reproduziert den Fehler und schickt die Befunde nach Slack, bevor du angekommen bist.",
+        "promptVariants": [
+          {
+            "label": "Sprache — detailliert",
+            "prompt": "@Zero starte einen Managed Coding Agent. Klone unser Web-Repo, installiere Abhängigkeiten, lass die komplette Test-Suite laufen und poste den ersten fehlschlagenden Test plus die letzten 40 Log-Zeilen in diesen Thread."
+          },
+          {
+            "label": "Sprache — kurz",
+            "prompt": "@Zero lass die Tests auf main in einem Managed Agent laufen und sag mir, was bricht."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Werktag 7 Uhr: Managed Agent hochfahren, Smoke-Tests auf main laufen lassen und einen Ein-Zeilen-Status (pass/fail) nach #eng-signals posten."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Du",
+            "text": "@Zero starte einen Managed Agent, klone das Web-Repo, installiere, lass Tests auf main laufen und berichte, was scheitert."
+          },
+          {
+            "name": "Zero",
+            "text": "Managed Agent bereitgestellt. main geklont, installiert, Tests ausgeführt.\n\nErgebnis: 1 Suite schlägt fehl — `billing/invoice.spec.ts`\nErster Fehler: erwartet retry count = 3, erhalten 2 (Zeile 84)\nDauer: 4m 12s\n\nKomplettes Log im Anhang. Soll ich einen Draft-PR mit einem Fix öffnen?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero erfasst den Sprachbefehl",
+            "description": "Zero transkribiert die Sprachnachricht, bestätigt Repo und Aufgabe und fragt nur fehlende Details nach — kein langes Setup-Pingpong."
+          },
+          {
+            "title": "Zero stellt einen Anthropic Managed Agent bereit",
+            "description": "Zero fordert einen Managed Agent an, klont das Repo und führt Install- und Test-Befehle in einer isolierten Umgebung aus. Fortschritt kommt in kurzen Slack-Updates, nicht als Log-Flut."
+          },
+          {
+            "title": "Ergebnisse in Slack",
+            "description": "Zero liefert pass/fail, den ersten fehlschlagenden Test, den relevanten Log-Ausschnitt und einen Next-Step-Vorschlag — vom Handy in unter einer Minute überprüfbar."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Draft-PR mit Fix öffnen",
+            "description": "Managed Agent einen Patch entwerfen und als Draft-PR einreichen lassen",
+            "examplePrompt": "@Zero lass den Managed Agent einen Fix vorschlagen und einen Draft-PR mit Diff und Testausgabe öffnen."
+          },
+          {
+            "title": "Issue für den Fehler anlegen",
+            "description": "Reproduktion im Tracker festhalten, ohne den Kontext zu wechseln",
+            "examplePrompt": "@Zero lege ein Issue an mit dem fehlschlagenden Test, Log-Ausschnitt und einer Ein-Zeilen-Repro."
+          },
+          {
+            "title": "Routine daraus machen",
+            "description": "Als wiederkehrender Smoke-Test planen, damit Regressionen früh auffallen",
+            "examplePrompt": "@Zero jeden Werktag 7 Uhr: Smoke-Tests auf main in einem Managed Agent ausführen und pass/fail nach #eng-signals posten."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Anthropic Managed Agents ist erforderlich. Zero nutzt es, um die isolierte Umgebung für Clone, Install und Test bereitzustellen."
+          },
+          {
+            "description": "GitHub ist optional. Zero öffnet damit den Draft-PR oder legt ein Issue an, wenn der Fix festgehalten werden soll."
+          }
+        ],
+        "tips": [
+          "Sprich den Repo-Namen deutlich aus — kurze Eigennamen werden zuverlässiger transkribiert als lange Sätze voller Einschränkungen.",
+          "Bitte um ersten Fehler plus 40 Zeilen Kontext, nicht das ganze Log. Kurze, handlungsnahe Ausschnitte funktionieren mobil besser.",
+          "Kombiniere mit Tech Debt Scan, damit der Managed Agent gleich riskante Dateien markiert, die er beim Reproduzieren berührt hat."
+        ]
+      },
+      "draft-url-preview": {
+        "title": "Aus einem Gespräch eine prüfbare Draft-URL machen",
+        "description": "Beschreibe Zero den Post, den du brauchst. Zero schreibt ihn, legt ihn als CMS-Entwurf an und antwortet mit einer teilbaren Vorschau-URL — Review passiert auf der Live-Seite, nicht in einem Dokument.",
+        "timeSaved": "~45 Min gespart",
+        "headings": {
+          "scenario": "Warum Review in Dokumenten den Feedback-Loop zerschlägt",
+          "prompt": "So lässt du Zero aus einem Gespräch einen Entwurf veröffentlichen",
+          "steps": "Wie Zero schreibt, speichert und den Vorschaulink schickt",
+          "nextActions": "Entwurf iterieren, übersetzen oder Veröffentlichung planen",
+          "integrations": "Erforderliche Integrationen: ein Headless-CMS wie Strapi und Slack",
+          "tips": "Best Practices für Draft-URL-Workflows"
+        },
+        "scenario": "Ein Blogpost soll bis morgen raus. Die übliche Schleife: Jemand schreibt in Google Docs, drei Reviewer kommentieren, ein Web-Engineer kopiert alles ins CMS — und Layout-Bugs zeigen sich erst nach dem Publish. Stattdessen: Brief in Slack werfen, Zero schreibt den Post, pusht einen Entwurf ins CMS und antwortet mit einer Vorschau-URL, die schon wie die fertige Seite aussieht. Reviewer kommentieren, was sie wirklich sehen.",
+        "promptVariants": [
+          {
+            "label": "Aus einem Brief",
+            "prompt": "@Zero entwirf einen Blogpost zu unserem neuen Feature „Scheduled Agents“. Zielgruppe: Engineering Manager. Kurze Einleitung, drei Use-Case-Beispiele und ein Call-to-Action. Speichere als CMS-Entwurf und schicke die Vorschau-URL."
+          },
+          {
+            "label": "Aus einem Thread",
+            "prompt": "@Zero lies den Thread oben und baue daraus eine Use-Case-Seite mit 500–700 Wörtern. Als Entwurf speichern und den Vorschau-Link antworten."
+          },
+          {
+            "label": "Entwurf aktualisieren",
+            "prompt": "@Zero aktualisiere den Entwurf `launch-recap` — Einleitung straffen, ein Pull-Quote zum Thema Zuverlässigkeit ergänzen und die neue Vorschau-URL zurückgeben."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Du",
+            "text": "@Zero entwirf einen Blogpost zu Scheduled Agents für Engineering Manager — 600 Wörter, drei Beispiele, CTA am Ende. Als CMS-Entwurf speichern und Vorschau schicken."
+          },
+          {
+            "name": "Zero",
+            "text": "Entwurf fertig. Titel: „Scheduled agents: die Arbeit, die läuft, während du schläfst“\nLänge: 612 Wörter\nBeispiele: nächtlicher Fehler-Digest, wöchentlicher Tech-Debt-Scan, Montags-Briefing\nVorschau: https://preview.example.com/blog/scheduled-agents?draft=1\n\nBereit zum Review. Soll ich eine Übersetzungsrunde vorbereiten, sobald die Copy steht?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero schreibt aus dem Gesprächskontext",
+            "description": "Zero nutzt den Brief (oder den Thread darüber), um den Text zu verfassen. Zero hält sich an angepinnte Stilvorgaben — Tonalität, Länge, Struktur — und füllt Überschriften, Intro, Body und CTA aus."
+          },
+          {
+            "title": "Zero legt den Entwurf im CMS an",
+            "description": "Zero pusht den Inhalt als unveröffentlichten Entwurf ins Headless-CMS und befüllt Titel, Slug, Zusammenfassung und sonstige Pflichtfelder."
+          },
+          {
+            "title": "Vorschau-URL in Slack",
+            "description": "Zero antwortet mit einem Link, der den Entwurf auf eurer Staging-Seite rendert — Reviewer sehen die echte Seite, nicht ein Doc. Pro Feedback-Runde ein Klick."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Entwurf iterieren",
+            "description": "Edits direkt aus Slack raushauen und eine aktualisierte Vorschau-URL bekommen",
+            "examplePrompt": "@Zero aktualisiere Entwurf `scheduled-agents` — Intro zwei Sätze kürzer machen und Vorschau neu generieren."
+          },
+          {
+            "title": "Post übersetzen",
+            "description": "Lokalisierte Entwürfe erzeugen, sobald die Ausgangscopy steht",
+            "examplePrompt": "@Zero übersetze Entwurf `scheduled-agents` nach DE, JA und ES. Jeweils als Locale-Entwurf speichern und die Vorschau-URLs zurückgeben."
+          },
+          {
+            "title": "Veröffentlichung planen",
+            "description": "Entwurf zu einer bestimmten Zeit live schalten, ohne sich ins CMS einzuloggen",
+            "examplePrompt": "@Zero veröffentliche Entwurf `scheduled-agents` am Dienstag 9 Uhr und ping mich, sobald er live ist."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Euer Headless-CMS (z. B. Strapi) ist erforderlich. Zero legt Entwürfe über dessen API an, aktualisiert sie und generiert die Vorschau-URL."
+          },
+          {
+            "description": "Notion ist optional. Zero kann den Entwurf im Content-Tracker protokollieren, wenn ihr redaktionellen Überblick wollt."
+          }
+        ],
+        "tips": [
+          "Pinne einen kurzen Styleguide (Tonalität, verbotene Phrasen, bevorzugte Überschriften) im Thread — Zero wendet ihn konsistent auf alle Entwürfe an.",
+          "Fordere den Vorschau-Link gleich mit an. Eine live gerenderte Seite zeigt Layout-Probleme, die im Doc nie auffallen würden.",
+          "Kombiniere mit Blog Cover Art, um das Hero-Bild im selben Thread zu generieren — dann ist der Vorschau-Entwurf in der ersten Runde komplett."
+        ]
+      },
+      "blog-cover-art": {
+        "title": "Ein markengerechtes Blog-Coverbild in Sekunden",
+        "description": "Frag Zero nach einem Coverbild und bekomm eine Marken-Illustration — weicher neutraler Hintergrund, handgezeichnete Spot-Illustration, saubere Sans-Serif-Headline — in Dropbox abgelegt, bereit für den Post.",
+        "timeSaved": "~30 Min gespart",
+        "headings": {
+          "scenario": "Warum die Wahl des Blog-Covers still 30 Minuten kostet",
+          "prompt": "So bittest du Zero um ein markengerechtes Cover",
+          "steps": "Wie Zero das Bild komponiert, rendert und ausliefert",
+          "nextActions": "Bild iterieren, an einen Entwurf hängen oder Varianten speichern",
+          "integrations": "Erforderliche Integrationen: keine — Dropbox und Figma sind optional",
+          "tips": "Best Practices für konsistente, markengerechte Cover"
+        },
+        "scenario": "Die Copy ist freigegeben. Das Coverbild nicht. Jemand stochert eine halbe Stunde in Figma herum, Stockfotos wirken nicht markig, der Post geht verspätet raus. Stattdessen: den Artikel in einem Satz beschreiben, Zero produziert ein Cover, das dem Brand-System entspricht — neutraler Hintergrund, kleine handgezeichnete Illustration, Titel in einer sauberen Sans-Serif — und legt es in Dropbox ab.",
+        "promptVariants": [
+          {
+            "label": "Aus einem Thema",
+            "prompt": "@Zero mach ein Blog-Cover für einen Post mit dem Titel „Scheduled agents: the work that runs while you sleep“. Weicher, neutraler Farbverlauf, handgezeichnete Spot-Illustration eines Nachthimmels mit kleiner Schreibtischlampe, Titel zentriert in einer klaren Sans-Serif. In Dropbox speichern."
+          },
+          {
+            "label": "Variantenset",
+            "prompt": "@Zero gib mir drei Cover-Varianten für den Launch-Recap-Post. Gleiches Layout-System, drei verschiedene Spot-Illustrationen. Alle drei unter dem Slug in Dropbox speichern."
+          },
+          {
+            "label": "Aus einem Entwurf",
+            "prompt": "@Zero lies den Entwurf `scheduled-agents` und erzeuge ein passendes Cover in unserem Brand-Style. Häng es direkt an den Entwurf an."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Du",
+            "text": "@Zero mach ein Cover für „Scheduled agents: the work that runs while you sleep“. Brand-Style — neutraler Verlauf, handgezeichnete Spot-Illustration, saubere Sans-Serif-Headline."
+          },
+          {
+            "name": "Zero",
+            "text": "Cover gerendert. Layout: weicher Grau-zu-Creme-Verlauf, Spot-Illustration mit Schreibtischlampe und Nachthimmel, Titel zentriert in Inter.\n\nIn Dropbox gespeichert: /marketing/blog/scheduled-agents/cover-v1.png (1600x900, 412 KB)\n\nSoll ich eine zweite Variante mit anderer Illustration oder einen horizontalen Banner-Crop liefern?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero komponiert das Cover nach Brand-Regeln",
+            "description": "Zero wendet euer stehendes Brand-Rezept an — neutraler Hintergrund, Spot-Illustrations-Stil, freigegebene Titel-Typografie — auf das beschriebene Thema. Kein Prompt-Engineering pro Post nötig."
+          },
+          {
+            "title": "Zero rendert und benennt die Datei",
+            "description": "Zero generiert das Bild in eurer Standard-Blog-Größe, vergibt einen konsistenten Dateinamen (Slug + Version) und macht ein kurzes QA — Lesbarkeit, Illustrationsgewicht, Dark-Mode-Preview."
+          },
+          {
+            "title": "Datei ausliefern und verlinken",
+            "description": "Zero speichert das Bild in Dropbox (oder einem anderen geteilten Ordner), antwortet mit Link und kleiner Vorschau und bietet Varianten oder Crops an, falls nötig."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Illustration iterieren",
+            "description": "Spot-Illustration tauschen, ohne das Layout neu zu generieren",
+            "examplePrompt": "@Zero behalte das Layout, aber tausche die Illustration gegen ein kleines Sternbild-Motiv."
+          },
+          {
+            "title": "An einen Entwurf hängen",
+            "description": "Cover in einen bestehenden CMS-Entwurf einbinden, damit die Vorschau-URL es zeigt",
+            "examplePrompt": "@Zero häng cover-v1 als Hero-Bild an Entwurf `scheduled-agents` und gib die aktualisierte Vorschau zurück."
+          },
+          {
+            "title": "Varianten-Set speichern",
+            "description": "Horizontale, quadratische und Social-Share-Crops in einem Zug erzeugen",
+            "examplePrompt": "@Zero erzeuge 1600x900-, 1200x1200- und 1200x630-Crops von cover-v1 und speichere sie unter demselben Slug."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Keine Pflicht-Connectors — Zero kann das Bild direkt in Slack zurückgeben."
+          },
+          {
+            "description": "Dropbox ist optional, aber empfehlenswert für geteilte Brand-Assets. Figma ist optional, falls das Cover in eine Arbeitsdatei gepusht werden soll."
+          }
+        ],
+        "tips": [
+          "Definiere das Brand-Rezept einmal als Memory — Hintergrundbehandlung, Illustrationsstil, Titel-Font — damit jedes Cover konsistent bleibt, ohne alles neu zu beschreiben.",
+          "Frag zuerst eine Variante an, entscheide dich, skaliere dann zu Crops. Drei Varianten von Anfang an sind meistens verschwendete Arbeit.",
+          "Kombiniere mit Draft URL Preview, damit das Cover im selben Thread auf der Entwurfs-Seite landet — Reviewer sehen den fertigen Post schon beim ersten Durchgang."
+        ]
+      },
+      "ai-video-director": {
+        "title": "Kurzes Video mit einem Ensemble spezialisierter Sub-Agents produzieren",
+        "description": "Beschreibe Zero die Story. Zero schreibt das Storyboard, stellt ein Ensemble spezialisierter Sub-Agents bereit (Research, Copy, Visuals, Voice), baut ein Deck und steuert einen AI-Avatar-Generator — ohne Übergaben.",
+        "timeSaved": "~3 Std gespart",
+        "headings": {
+          "scenario": "Warum kurze Marketing-Videos eine ganze Woche fressen",
+          "prompt": "So lässt du Zero ein Video komplett produzieren",
+          "steps": "Wie Zero plant, delegiert und den finalen Cut zusammenbaut",
+          "nextActions": "Storyboard überarbeiten, eine Szene neu rendern oder veröffentlichen",
+          "integrations": "Erforderliche Integrationen: ein AI-Video-Tool wie HeyGen; Gamma ist optional",
+          "tips": "Best Practices für AI-gesteuerte Kurzvideos"
+        },
+        "scenario": "Ein 60-Sekunden-Produktvideo bedeutete früher: Kickoff-Meeting, Brief, zwei Runden Skript, Deck, Drehtag, Schnitt. Frag stattdessen Zero: Zero schreibt das Storyboard, provisioniert ein Ensemble spezialisierter Sub-Agents — jeder übernimmt ein Teilstück: Research, Voice-Over-Copy, Visuals, On-Screen-Text — baut das Deck und steuert einen AI-Avatar-Generator für den finalen Cut. Du prüfst ein fertiges Video, nicht sechs Einzelteile.",
+        "promptVariants": [
+          {
+            "label": "Komplettproduktion",
+            "prompt": "@Zero produziere ein 60-Sekunden-Produktvideo, das unser neues Feature „Scheduled Agents“ vorstellt. Storyboard, Skript, Deck und HeyGen-Render. Finalen Cut in diesen Thread legen."
+          },
+          {
+            "label": "Nur Storyboard",
+            "prompt": "@Zero schreibe ein 6-Szenen-Storyboard für ein 60-Sekunden-Video zu Scheduled Agents. Szene, On-Screen-Text, Voice-Over, B-Roll-Vorschlag."
+          },
+          {
+            "label": "Re-Cut",
+            "prompt": "@Zero behalte das Storyboard, aber tausche Szene 4 — stattdessen ein Kunden-Quote, keine Produktdemo — und rendere den HeyGen-Output neu."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Du",
+            "text": "@Zero produziere ein 60-Sekunden-Video für den Launch von Scheduled Agents. Storyboard, Skript, Deck, HeyGen-Render, finaler Cut in diesem Thread."
+          },
+          {
+            "name": "Zero",
+            "text": "Plan: 6 Szenen, 58 s Gesamtlänge.\n\nSub-Agents verteilt:\n• Research — drei Kunden-Quotes aus aktuellen Gesprächen gezogen\n• Copy — Voice-Over in unserem Launch-Ton geschrieben\n• Visuals — 6 Szenenbilder produziert\n• Deck — passendes Gamma-Deck für das Blog-Embed gebaut\n\nHeyGen-Render: https://video.example.com/scheduled-agents-v1.mp4 (58 s, 24 MB)\nDeck: https://gamma.app/docs/…\n\nReady for Review. Soll ich eine Szene neu schneiden?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero schreibt Storyboard und Plan",
+            "description": "Zero macht aus dem Brief einen Szene-für-Szene-Plan: On-Screen-Text, Voice-Over-Zeilen, visuelle Richtung, Gesamtlaufzeit — freigegeben, bevor teure Renders laufen."
+          },
+          {
+            "title": "Zero dispatcht ein Ensemble spezialisierter Sub-Agents",
+            "description": "Zero provisioniert Sub-Agents für Research, Copywriting, Visuals und Deck-Aufbau. Sie arbeiten parallel und liefern ihren Part zurück in den Director-Thread."
+          },
+          {
+            "title": "Zero baut den finalen Cut zusammen",
+            "description": "Zero füttert Skript und Visuals in einen AI-Avatar-Generator (etwa HeyGen), produziert den Render und liefert einen einzigen Link plus das begleitende Deck — bereit für Review oder Publish."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Eine Szene neu schneiden",
+            "description": "Eine Szene überarbeiten, ohne das ganze Video neu zu rendern",
+            "examplePrompt": "@Zero tausche Szene 3 gegen ein Kunden-Quote aus unseren letzten Interviews und rendere nur diese Szene neu."
+          },
+          {
+            "title": "Polish-Pass hinzufügen",
+            "description": "Polish-Sub-Agent Pacing, Captions und On-Screen-Text feinziehen lassen",
+            "examplePrompt": "@Zero mach einen Polish-Pass am aktuellen Cut — Übergänge straffen, Captions korrigieren, Abschluss-CTA-Card ergänzen."
+          },
+          {
+            "title": "Veröffentlichen und promoten",
+            "description": "Video über Social-Kanäle planen, mit kanalspezifischem Copy",
+            "examplePrompt": "@Zero veröffentliche den finalen Cut am Dienstag 9 Uhr auf unseren X- und LinkedIn-Kanälen, mit angepasster Copy pro Kanal."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "HeyGen (oder ein ähnliches AI-Video-Tool) ist erforderlich. Zero steuert es, um den Avatar-basierten Final Cut zu produzieren."
+          },
+          {
+            "description": "Gamma ist optional. Zero baut damit ein passendes Deck, das sich neben dem Video einbetten lässt."
+          }
+        ],
+        "tips": [
+          "Storyboard vor dem Rendern festzurren. Eine Runde günstiger Text-Edits schlägt drei Runden teurer Video-Re-Renders.",
+          "Definiere euren Launch-Ton als Memory — Kadenz, Vokabular, verbotene Phrasen — damit jedes Video wie dieselbe Marke klingt.",
+          "Kombiniere mit Draft URL Preview und Blog Cover Art, um Video, Blogpost und Hero-Bild als einen abgestimmten Release im selben Thread auszuliefern."
+        ]
       }
     }
   },

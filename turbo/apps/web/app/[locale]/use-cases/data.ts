@@ -196,6 +196,20 @@ const REDDIT: ConnectorRef = {
   label: "Reddit",
   icon: "/assets/connectors/reddit.svg",
 };
+
+const HEYGEN: ConnectorRef = {
+  id: "heygen",
+  label: "HeyGen",
+  icon: "/assets/connectors/heygen.svg",
+  dark: true,
+};
+
+const GAMMA: ConnectorRef = {
+  id: "gamma",
+  label: "Gamma",
+  icon: "/assets/connectors/gamma.svg",
+  dark: true,
+};
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -1374,6 +1388,130 @@ export const USE_CASES: UseCase[] = [
     integrationCount: 4,
     tipCount: 3,
     promptVariantCount: 4,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "voice-managed-agent",
+    color: "#6a9ebe",
+    avatar: {
+      rotation: 2,
+      skin: 3,
+      hairStyle: 2,
+      hairColor: 2,
+      expression: 1,
+      intensity: "m",
+    },
+    roles: ["engineering", "everyone"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, GITHUB, ANTHROPIC_MANAGED_AGENTS],
+    integrations: [
+      { connector: ANTHROPIC_MANAGED_AGENTS, required: true },
+      { connector: GITHUB, required: false },
+    ],
+    relatedSlugs: ["upgrade-agent", "tech-debt-scan", "standup-summary"],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "draft-url-preview",
+    color: "#bea06a",
+    avatar: {
+      rotation: 3,
+      skin: 2,
+      hairStyle: 4,
+      hairColor: 3,
+      expression: 2,
+      intensity: "m",
+    },
+    roles: ["product", "ops"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, STRAPI, NOTION],
+    integrations: [
+      { connector: STRAPI, required: true },
+      { connector: NOTION, required: false },
+    ],
+    relatedSlugs: [
+      "marketing-content-automation",
+      "document-decisions",
+      "content-performance-report",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "blog-cover-art",
+    color: "#c89e86",
+    avatar: {
+      rotation: 1,
+      skin: 3,
+      hairStyle: 5,
+      hairColor: 4,
+      expression: 1,
+      intensity: "m",
+    },
+    roles: ["product", "ops"],
+    capability: "instant",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, FIGMA, DROPBOX],
+    integrations: [
+      { connector: FIGMA, required: false },
+      { connector: DROPBOX, required: false },
+    ],
+    relatedSlugs: [
+      "draft-url-preview",
+      "marketing-content-automation",
+      "document-decisions",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "ai-video-director",
+    color: "#7c6abe",
+    avatar: {
+      rotation: 4,
+      skin: 2,
+      hairStyle: 3,
+      hairColor: 2,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["product", "ops"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, HEYGEN, GAMMA, DROPBOX],
+    integrations: [
+      { connector: HEYGEN, required: true },
+      { connector: GAMMA, required: false },
+    ],
+    relatedSlugs: [
+      "blog-cover-art",
+      "marketing-content-automation",
+      "draft-url-preview",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
     slackPreviewCount: 2,
   },
 ];
