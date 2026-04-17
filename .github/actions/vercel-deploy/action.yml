@@ -136,6 +136,10 @@ runs:
           fi
 
           # Add runtime environment variables
+          # NOTE: `--build-env` is required alongside `--env` even in prebuilt mode;
+          # without it `vercel deploy --prebuilt` does not register these vars in the
+          # deployment's runtime env, leaving `process.env.CRON_SECRET` (and every
+          # other secret) undefined. This mirrors the standard-mode branch below.
           if [ -n "$INPUT_ENV_VARS" ]; then
             echo "Adding runtime environment variables..."
             while IFS= read -r line; do
@@ -144,7 +148,7 @@ runs:
                 KEY="${line%%=*}"
                 VALUE="${line#*=}"
                 echo "Adding runtime env: $KEY"
-                DEPLOY_ARGS+=(--env "$KEY=$VALUE")
+                DEPLOY_ARGS+=(--build-env "$KEY=$VALUE" --env "$KEY=$VALUE")
               fi
             done <<< "$INPUT_ENV_VARS"
           fi
