@@ -83,6 +83,7 @@ const CONNECTOR_ICON_COLORFUL = {
   cloudinary: true,
   cronlytic: true,
   "customer-io": true,
+  db9: true,
   deepseek: true,
   dify: true,
   discord: true,

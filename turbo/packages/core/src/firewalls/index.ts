@@ -105,6 +105,7 @@ import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { mondayFirewall } from "./monday.generated";
+import { db9Firewall } from "./db9.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
@@ -255,6 +256,7 @@ const CONNECTOR_FIREWALLS = {
   "meta-ads": metaAdsFirewall,
   minimax: minimaxFirewall,
   monday: mondayFirewall,
+  db9: db9Firewall,
   neon: neonFirewall,
   notion: notionFirewall,
   openai: openaiFirewall,
