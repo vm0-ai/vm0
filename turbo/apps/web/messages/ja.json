@@ -1375,6 +1375,344 @@
           "Sentryのプロジェクトタグまたは環境を使用して、Zeroのクエリをプロダクションのみに絞りましょう。ステージングは含めません。",
           "プロダクトヘルスブリーフィングと連携させましょう：8:45に分類を実行し、9:00のブリーフィングに出力を含めれば、チームがすべてを一箇所で確認できます。"
         ]
+      },
+      "deploy-health-check": {
+        "title": "Verify Deployment Health Before You Close the Tab",
+        "description": "After a Vercel deploy, ask Zero to pull error rate and latency data from Axiom and post a health summary to Slack — so you know immediately whether to roll back or ship.",
+        "timeSaved": "~15 min saved",
+        "headings": {
+          "scenario": "Why deploy health checks cost engineering time",
+          "prompt": "How to ask Zero to verify a deployment",
+          "steps": "How Zero checks your deployment health",
+          "nextActions": "Turn a one-off check into a post-deploy routine",
+          "integrations": "Required integrations: Vercel and Axiom",
+          "tips": "Best practices for automated deploy health checks"
+        },
+        "scenario": "You just merged the release branch and Vercel finished building in two minutes. But was the deploy clean? You open Axiom, set the time range, filter to the right service, check p95 latency, scan for 5xx spikes — that's another ten minutes of tab-switching just to confirm nothing broke. Multiply that by every engineer who deploys multiple times a day and it adds up fast. Zero can do the whole check in seconds and post the result where your team already is.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero the latest Vercel production deploy just finished. Pull Axiom data for the last 30 minutes: p50/p95 latency on /api/zero/runs, error rate by status code, and any 5xx spikes. Compare to the 24h baseline and tell me if anything looks off."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero quick deploy health check — Axiom p95 latency and error rate for the last 15 minutes vs. yesterday's baseline."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero after every Vercel production deploy, run the health check automatically and post a pass/fail summary to #dev. Page me if p95 exceeds 2s."
+          }
+        ],
+        "slackPreview": [
+          {
+            "role": "user",
+            "name": "Ethan",
+            "text": "@Zero production deploy just finished. Check Axiom — p95 latency and error rate for the last 15 minutes vs. baseline."
+          },
+          {
+            "role": "zero",
+            "name": "Zero",
+            "text": "Deploy health looks clean.\n\n• p50: 312ms (baseline 295ms) ✓\n• p95: 890ms (baseline 920ms) ✓\n• 5xx rate: 0.02% (baseline 0.03%) ✓\n• No spike in /api/zero/runs or /api/zero/chat\n\nAll metrics within normal range. Safe to close the tab."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero queries Axiom for post-deploy metrics",
+            "description": "Zero pulls p50/p95 latency, error rates by status code, and request volume for the time window you specify — scoped to your production environment."
+          },
+          {
+            "title": "Zero compares against baseline",
+            "description": "Zero calculates the delta versus the prior 24-hour baseline for each metric and flags anything that moved more than a configurable threshold."
+          },
+          {
+            "title": "Zero posts a pass/fail summary to Slack",
+            "description": "You get a concise health card in your #dev channel with green checks or red flags, so the whole team knows the deploy status without anyone digging through dashboards."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Automate the check",
+            "description": "Schedule it to run on every production deploy",
+            "examplePrompt": "@Zero after every Vercel production deploy, run a health check and post to #dev. If p95 exceeds 2s, create a GitHub incident issue and tag me."
+          },
+          {
+            "title": "Go deeper on a spike",
+            "description": "Ask Zero to explain a specific anomaly",
+            "examplePrompt": "@Zero the p95 for /api/zero/runs jumped to 3.2s after the deploy. Pull the slow-request logs from Axiom and tell me what's different about those requests."
+          },
+          {
+            "title": "Roll back if needed",
+            "description": "Trigger a rollback with context attached",
+            "examplePrompt": "@Zero the error rate is up 10x. Check Vercel for the previous deploy hash and tell me the rollback command. Also post what changed in the last PR."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Required to detect the latest deploy event and pull deployment metadata."
+          },
+          {
+            "description": "Required to query post-deploy latency and error rate data."
+          },
+          {
+            "description": "Optional. If connected, Zero posts the health summary directly to your #dev channel."
+          }
+        ],
+        "tips": [
+          "Set a baseline window that matches your traffic patterns — 24h works for most teams, but use the same weekday if your traffic has strong day-of-week variance.",
+          "Give Zero specific endpoint names (e.g. /api/zero/runs) rather than asking for a full-service check — it focuses the analysis and reduces noise.",
+          "Pair with the error-triage-daily use case: deploy health checks catch immediate regressions, while the daily triage surfaces slower-moving issues."
+        ]
+      },
+      "crm-deal-alerts": {
+        "title": "Turn Deal Stage Changes into Slack Alerts and Draft Emails",
+        "description": "Zero monitors your HubSpot pipeline on a schedule, surfaces deals that moved stages or went stale, and drafts follow-up emails in Gmail — so your team never lets a hot lead go cold silently.",
+        "timeSaved": "~20 min saved",
+        "headings": {
+          "scenario": "Why CRM follow-through falls through the cracks",
+          "prompt": "How to ask Zero to monitor your deal pipeline",
+          "steps": "How Zero turns pipeline changes into team action",
+          "nextActions": "Go from pipeline visibility to automatic outreach",
+          "integrations": "Required integrations: HubSpot and Gmail",
+          "tips": "Best practices for CRM deal monitoring with Zero"
+        },
+        "scenario": "A prospect moves to Proposal Sent on Friday afternoon and then goes quiet over the weekend. By Monday, the deal is already two days stale — but no one noticed because the only signal was a row color change in HubSpot that nobody was watching. Sales and ops teams lose deals not because they don't care but because CRM hygiene requires constant attention across dozens of contacts. Zero watches the pipeline for you and drafts the follow-up before you even think to check.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero check HubSpot for deals that changed stage in the last 24 hours. For any deal in Proposal Sent or Contract Out that hasn't had contact in 48h, draft a follow-up email in Gmail and post a summary to #sales with the draft link."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero which HubSpot deals moved stages today? List them with current stage and last contact date."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every weekday at 8am, check HubSpot for stale deals (no contact in 3+ days) and post a digest to #sales. Draft follow-up emails for anything in the Proposal stage."
+          }
+        ],
+        "slackPreview": [
+          {
+            "role": "user",
+            "name": "Scarlett",
+            "text": "@Zero check HubSpot — which deals moved stages this week and which ones have gone quiet for 3+ days?"
+          },
+          {
+            "role": "zero",
+            "name": "Zero",
+            "text": "Pipeline update for this week:\n\n*Stage changes (3)*\n• Acme Corp → Proposal Sent (Apr 15)\n• BuildCo → Contract Out (Apr 16)\n• NovaTech → Closed Won ✓ (Apr 17)\n\n*Stale deals (2 — no contact 3+ days)*\n• Acme Corp — last touch Apr 14\n• Meridian Labs — last touch Apr 12\n\nDraft follow-ups ready in Gmail for both. Want me to post the links here?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scans HubSpot for pipeline activity",
+            "description": "Zero queries your HubSpot pipeline for deals that changed stage or haven't had contact within the threshold you set. It groups them by urgency — new movement vs. stale."
+          },
+          {
+            "title": "Zero posts a digest to Slack",
+            "description": "A structured summary lands in your designated channel: stage changes with timestamps, stale deals ranked by days since last contact, and deal values so the team can prioritize."
+          },
+          {
+            "title": "Zero drafts follow-up emails in Gmail",
+            "description": "For each stale deal, Zero writes a context-aware follow-up email in Gmail drafts — pulling the contact name, last interaction, and deal stage to personalize the message. You review and send."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Schedule daily pipeline monitoring",
+            "description": "Turn this into a recurring morning ritual for the sales team",
+            "examplePrompt": "@Zero every weekday at 8am, check HubSpot for deals stale 3+ days and post a digest to #sales. Draft follow-up emails for anything in Proposal Sent or Contract Out."
+          },
+          {
+            "title": "Track win/loss patterns",
+            "description": "Ask Zero to analyze what's working in the pipeline",
+            "examplePrompt": "@Zero look at the last 30 closed deals in HubSpot. What's the average time in each stage for won vs. lost deals? Where are we losing the most time?"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Required to read deal pipeline, stage history, and contact activity."
+          },
+          {
+            "description": "Required to create follow-up email drafts on behalf of the deal owner."
+          },
+          {
+            "description": "Optional. If connected, Zero posts pipeline digests directly to your designated sales channel."
+          }
+        ],
+        "tips": [
+          "Give Zero a clear staleness threshold that matches your sales cycle — 48 hours works for high-velocity B2C, 5 days is more appropriate for enterprise deals.",
+          "Specify the pipeline stage names exactly as they appear in HubSpot (e.g. 'Proposal Sent' not 'proposal') to avoid ambiguous matches.",
+          "Pair with the kol-cold-outreach use case to handle both inbound follow-up and outbound prospecting from a single daily workflow."
+        ]
+      },
+      "hiring-pipeline-digest": {
+        "title": "Keep the Team in Sync on Hiring Progress",
+        "description": "Zero reads your Airtable hiring tracker, generates a candidate status digest, posts it to the team Slack channel, and emails individual interviewers their upcoming schedule — all in one command.",
+        "timeSaved": "~30 min saved",
+        "headings": {
+          "scenario": "Why hiring coordination burns ops time",
+          "prompt": "How to ask Zero to generate a hiring digest",
+          "steps": "How Zero coordinates your hiring pipeline",
+          "nextActions": "Turn a one-off digest into a full hiring workflow",
+          "integrations": "Required integrations: Airtable and Slack",
+          "tips": "Best practices for Zero-assisted hiring coordination"
+        },
+        "scenario": "You manage a hiring pipeline across eight open roles with thirty active candidates at various stages. Every Monday morning, someone has to manually check Airtable, pull together who's interviewing this week, remind each interviewer about their upcoming calls, flag offers that need approval, and send a status email to the hiring manager. That's an hour of pure coordination work that adds zero strategic value. Zero reads the same Airtable base you already maintain and handles all of it.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero check the hiring Airtable base. Give me a full status by role: how many candidates at each stage, who's interviewing this week, any offers pending approval, and any candidates who haven't moved in 7+ days. Post the digest to #hiring and email each interviewer their schedule for the week."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero who's interviewing this week across all open roles? Pull from Airtable and post to #hiring."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday at 9am, generate the weekly hiring digest from Airtable, post to #hiring, and email each interviewer their schedule for the week."
+          }
+        ],
+        "slackPreview": [
+          {
+            "role": "user",
+            "name": "Linghan",
+            "text": "@Zero generate the weekly hiring digest from Airtable and post it here. Email interviewers their schedules."
+          },
+          {
+            "role": "zero",
+            "name": "Zero",
+            "text": "*Hiring Digest — Week of Apr 17*\n\n*Frontend Engineer (3 active)*\n• 2 in phone screen, 1 in final round\n• Final round candidate: interview Wed 2pm with Ethan\n\n*Product Designer (5 active)*\n• 1 offer pending approval (expires Apr 20)\n• 2 in take-home stage\n\n*Backend Engineer (2 active)*\n• Both in phone screen, stale 8 days — worth following up?\n\nInterviewer emails sent to Ethan, Lancy, and Qiqi."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads your Airtable hiring tracker",
+            "description": "Zero connects to your Airtable base and reads candidate records across all open roles — pulling stage, next action, interviewer assignments, and last-updated timestamps."
+          },
+          {
+            "title": "Zero generates a structured digest and posts to Slack",
+            "description": "Zero groups candidates by role and stage, flags anything urgent (expiring offers, stale candidates, this-week interviews), and posts a formatted summary to your #hiring channel."
+          },
+          {
+            "title": "Zero emails interviewers their individual schedules",
+            "description": "For each interviewer with upcoming interviews, Zero composes a personalized email via Gmail with candidate names, roles, interview times, and any prep notes from the Airtable record."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Schedule weekly coordination",
+            "description": "Make Monday hiring sync automatic",
+            "examplePrompt": "@Zero every Monday at 9am, pull the hiring digest from Airtable, post to #hiring, and email each interviewer their week. Flag any offers expiring within 72 hours."
+          },
+          {
+            "title": "Track hiring velocity",
+            "description": "Understand where candidates are getting stuck",
+            "examplePrompt": "@Zero look at the last 60 days of hiring data in Airtable. What's the average time candidates spend in each stage? Which roles have the longest time-to-hire?"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Required to read candidate records, stage assignments, and interviewer information."
+          },
+          {
+            "description": "Required to post the weekly digest and urgent flags to your hiring channel."
+          },
+          {
+            "description": "Optional. If connected, Zero sends personalized schedule emails to each interviewer."
+          }
+        ],
+        "tips": [
+          "Structure your Airtable base with consistent field names — Zero works best when interviewer names, stages, and dates are in dedicated fields rather than freeform notes.",
+          "Include a 'Next Action' field in Airtable — Zero uses it to generate more specific digests and knows whether a candidate needs a follow-up call or a panel scheduling email.",
+          "Pair with employee-onboarding: once an offer is accepted, Zero can hand off seamlessly into the onboarding workflow."
+        ]
+      },
+      "customer-pain-digest": {
+        "title": "Surface Top Customer Pain Points from Support Conversations",
+        "description": "Ask Zero to scan recent Intercom conversations, extract recurring pain points, and write a structured Notion document with themes and verbatim quotes — giving your product team a clear signal without reading every ticket.",
+        "timeSaved": "~45 min saved",
+        "headings": {
+          "scenario": "Why customer insight stays trapped in support tickets",
+          "prompt": "How to ask Zero to analyze customer conversations",
+          "steps": "How Zero turns Intercom data into product insight",
+          "nextActions": "Turn raw insight into roadmap decisions",
+          "integrations": "Required integrations: Intercom and Notion",
+          "tips": "Best practices for customer pain analysis with Zero"
+        },
+        "scenario": "Your support team handles fifty conversations a week. Product knows there's signal in there — users who can't find the settings page, teams who churn because a key integration is missing, power users asking for the same workflow three different ways. But nobody has time to read every thread. The insights exist but they stay locked inside Intercom, accessible only to whoever's on support rotation that week. Zero reads the conversations, clusters the themes, and writes the document your product team actually needs.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero scan the last 50 closed Intercom conversations from this week. Identify recurring pain points, group them into themes, and write a Notion doc with: theme name, frequency count, severity (blocking / frustrating / nice-to-have), and 2-3 verbatim quotes per theme. Tag me when the doc is ready."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero what are the top 3 complaints in Intercom this week? Pull from the last 30 conversations."
+          },
+          {
+            "label": "On-demand",
+            "prompt": "@Zero before our product review tomorrow, pull Intercom conversations from the last 2 weeks and write a pain point summary in Notion. Focus on anything that caused users to say they'd churn or switch."
+          }
+        ],
+        "slackPreview": [
+          {
+            "role": "user",
+            "name": "Scarlett",
+            "text": "@Zero scan the last 50 Intercom conversations and write a Notion doc with the top pain point themes, frequency, and verbatim quotes. Post the link here when done."
+          },
+          {
+            "role": "zero",
+            "name": "Zero",
+            "text": "Done. Notion doc is ready: *Customer Pain Points — Apr 17*\n\n*Top themes (50 conversations)*\n1. Connector auth failures — 18 mentions (blocking)\n2. Missing Google Sheets integration — 12 mentions (frustrating)\n3. No bulk action on scheduled tasks — 9 mentions (nice-to-have)\n4. Onboarding confusion around permissions — 7 mentions (blocking)\n\nVerbatim quotes and suggested owner per theme included in the doc."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads recent Intercom conversations",
+            "description": "Zero fetches the conversation threads you specify — by time window, status, or tag — and extracts the customer-side messages, stripping out boilerplate to focus on the signal."
+          },
+          {
+            "title": "Zero clusters recurring themes",
+            "description": "Zero groups similar complaints and requests into named themes, counting frequency and assessing severity based on the language customers use (blocking language vs. nice-to-have phrasing)."
+          },
+          {
+            "title": "Zero writes a structured Notion document",
+            "description": "Zero creates a Notion page with theme names, frequency counts, severity ratings, and 2-3 representative verbatim quotes per theme — formatted for easy sharing in a product review or sprint planning session."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Turn insights into GitHub issues",
+            "description": "File product issues for the top pain points",
+            "examplePrompt": "@Zero take the top 3 themes from the Notion doc and create GitHub issues in vm0-ai/vm0. Use the verbatim quotes as user stories in the issue body. Label as 'customer-reported'."
+          },
+          {
+            "title": "Track themes over time",
+            "description": "Run the same analysis weekly to see trends",
+            "examplePrompt": "@Zero every Friday, scan this week's Intercom conversations and append a new weekly section to the Customer Pain Points Notion doc. Flag any theme that appeared for 3+ consecutive weeks."
+          },
+          {
+            "title": "Prepare for a user interview",
+            "description": "Use the themes to build a sharper interview guide",
+            "examplePrompt": "@Zero based on the Intercom pain point themes, write a 10-question user interview script that probes the connector auth and onboarding issues in depth."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Required to read conversation threads and extract customer messages."
+          },
+          {
+            "description": "Required to create and update the pain point analysis document."
+          },
+          {
+            "description": "Optional. If connected, Zero posts the Notion doc link to your product or insights channel when the analysis is complete."
+          }
+        ],
+        "tips": [
+          "Specify a time window and conversation count together — 'last 50 conversations from this week' gives better results than an open-ended request that might pull old or irrelevant data.",
+          "Ask Zero to separate blocking issues from frustrations from nice-to-haves — the severity bucketing helps product teams prioritize without re-reading the document.",
+          "Run this before every sprint planning or product review so the team has fresh customer signal rather than relying on anecdotes from whoever happened to be on support rotation."
+        ]
       }
     }
   },
