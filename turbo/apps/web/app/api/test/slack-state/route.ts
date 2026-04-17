@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { clerkClient } from "@clerk/nextjs/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { isTestEndpointAllowed } from "../../../../src/lib/test-endpoints/guard";
 import { slackOrgInstallations } from "../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../src/db/schema/slack-org-connection";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { zeroRuns } from "../../../../src/db/schema/zero-run";
+import { encryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
+import {
+  DEFAULT_TEST_EMAIL,
+  resolveTestUserId,
+} from "../../../../src/lib/auth/test-user";
+import { env } from "../../../../src/env";
 
 /**
  * GET /api/test/slack-state?team_id=...
@@ -73,6 +80,104 @@ export async function GET(request: Request) {
     installation: installation ?? null,
     connections,
     recent_runs: recentRuns,
+  });
+}
+
+interface SeedBody {
+  team_id: string;
+  slack_user_id: string;
+  workspace_name?: string;
+  bot_user_id?: string;
+  email?: string;
+  /** When true, also inserts a slack_org_connections row for the user. */
+  seed_connection?: boolean;
+}
+
+async function resolveTestOrgId(userId: string): Promise<string> {
+  const clerk = await clerkClient();
+  const memberships = await clerk.users.getOrganizationMembershipList({
+    userId,
+  });
+  const orgId = memberships.data[0]?.organization.id;
+  if (!orgId) {
+    throw new Error(`Test user ${userId} has no organization membership`);
+  }
+  return orgId;
+}
+
+/**
+ * POST /api/test/slack-state
+ *
+ * Seeds a Slack installation (and optionally a connection) for the test
+ * user. Mirrors the Vitest seeders at
+ * `src/__tests__/db-test-seeders/slack.ts` but exposed via HTTP so BATS
+ * tests can set up state on a live Vercel preview deployment.
+ */
+export async function POST(request: Request) {
+  if (!isTestEndpointAllowed(request)) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
+  const raw = (await request.json().catch(() => null)) as SeedBody | null;
+  if (!raw?.team_id || !raw.slack_user_id) {
+    return NextResponse.json(
+      { error: "team_id and slack_user_id are required" },
+      { status: 400 },
+    );
+  }
+
+  initServices();
+  const db = globalThis.services.db;
+
+  const userId = await resolveTestUserId(raw.email ?? DEFAULT_TEST_EMAIL);
+  const orgId = await resolveTestOrgId(userId);
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const encryptedBotToken = encryptSecretValue(
+    "xoxb-e2e-test-bot-token",
+    SECRETS_ENCRYPTION_KEY,
+  );
+
+  await db
+    .insert(slackOrgInstallations)
+    .values({
+      slackWorkspaceId: raw.team_id,
+      slackWorkspaceName: raw.workspace_name ?? "E2E Test Workspace",
+      orgId,
+      encryptedBotToken,
+      botUserId: raw.bot_user_id ?? "U_E2E_BOT",
+      installedByUserId: userId,
+      botScopes: "chat:write,im:write,users:read",
+    })
+    .onConflictDoUpdate({
+      target: slackOrgInstallations.slackWorkspaceId,
+      set: {
+        orgId,
+        encryptedBotToken,
+        botUserId: raw.bot_user_id ?? "U_E2E_BOT",
+      },
+    });
+
+  let connectionId: string | undefined;
+  if (raw.seed_connection) {
+    const [row] = await db
+      .insert(slackOrgConnections)
+      .values({
+        slackUserId: raw.slack_user_id,
+        slackWorkspaceId: raw.team_id,
+        vm0UserId: userId,
+      })
+      .onConflictDoNothing()
+      .returning({ id: slackOrgConnections.id });
+    connectionId = row?.id;
+  }
+
+  return NextResponse.json({
+    ok: true,
+    team_id: raw.team_id,
+    org_id: orgId,
+    vm0_user_id: userId,
+    connection_id: connectionId ?? null,
   });
 }
 
