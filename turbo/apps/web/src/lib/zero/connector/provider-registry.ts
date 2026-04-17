@@ -41,6 +41,7 @@ import { devtoHandler } from "./providers/devto-handler";
 import { dopplerHandler } from "./providers/doppler-handler";
 import { infisicalHandler } from "./providers/infisical-handler";
 import { docusignHandler } from "./providers/docusign-handler";
+import { drive9Handler } from "./providers/drive9-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { exploriumHandler } from "./providers/explorium-handler";
@@ -84,7 +85,6 @@ import { mercuryHandler } from "./providers/mercury-handler";
 import { minioHandler } from "./providers/minio-handler";
 import { minimaxHandler } from "./providers/minimax-handler";
 import { mondayHandler } from "./providers/monday-handler";
-import { db9Handler } from "./providers/db9-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { openaiHandler } from "./providers/openai-handler";
@@ -185,6 +185,7 @@ export const PROVIDER_HANDLERS: Record<
   doppler: dopplerHandler,
   infisical: infisicalHandler,
   docusign: docusignHandler,
+  drive9: drive9Handler,
   dropbox: dropboxHandler,
   elevenlabs: elevenlabsHandler,
   explorium: exploriumHandler,
@@ -224,7 +225,6 @@ export const PROVIDER_HANDLERS: Record<
   minio: minioHandler,
   minimax: minimaxHandler,
   monday: mondayHandler,
-  db9: db9Handler,
   neon: neonHandler,
   notion: notionHandler,
   openai: openaiHandler,

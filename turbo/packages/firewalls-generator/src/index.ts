@@ -39,6 +39,7 @@ import { generate as generateDoppler } from "./doppler";
 import { generate as generateDiscord } from "./discord";
 import { generate as generateDiscordWebhook } from "./discord-webhook";
 import { generate as generateDocusign } from "./docusign";
+import { generate as generateDrive9 } from "./drive9";
 import { generate as generateDropbox } from "./dropbox";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateExplorium } from "./explorium";
@@ -79,7 +80,6 @@ import { generate as generateMetabase } from "./metabase";
 import { generate as generateMetaAds } from "./meta-ads";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMonday } from "./monday";
-import { generate as generateDb9 } from "./db9";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
@@ -170,6 +170,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   discord: generateDiscord,
   "discord-webhook": generateDiscordWebhook,
   docusign: generateDocusign,
+  drive9: generateDrive9,
   dropbox: generateDropbox,
   elevenlabs: generateElevenlabs,
   explorium: generateExplorium,
@@ -210,7 +211,6 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "meta-ads": generateMetaAds,
   minimax: generateMinimax,
   monday: generateMonday,
-  db9: generateDb9,
   neon: generateNeon,
   notion: generateNotion,
   openai: generateOpenai,
