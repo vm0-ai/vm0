@@ -65,6 +65,9 @@ export async function GET(request: Request) {
     .from(slackOrgConnections)
     .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
 
+  // LEFT JOIN so we also surface agent_runs inserted without a matching
+  // zero_runs row (which can happen if dispatch fails between the two
+  // inserts). Makes BATS diagnostics far more informative.
   const recentRuns = installation?.orgId
     ? await db
         .select({
@@ -73,12 +76,11 @@ export async function GET(request: Request) {
           createdAt: agentRuns.createdAt,
           triggerSource: zeroRuns.triggerSource,
           userId: agentRuns.userId,
-          // Truncate prompt so BATS assertions can match without pulling
-          // large payloads. Tests only need a prefix for attribution.
+          error: agentRuns.error,
           promptPreview: sql<string>`substring(${agentRuns.prompt}, 1, 200)`,
         })
         .from(agentRuns)
-        .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
+        .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
         .where(eq(agentRuns.orgId, installation.orgId))
         .orderBy(desc(agentRuns.createdAt))
         .limit(10)
