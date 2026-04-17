@@ -98,10 +98,9 @@ jobs:
           tc_digest="${{ steps.build-toolchain.outputs.digest }}"
           tr_digest="${{ steps.build-toolchain-rust.outputs.digest }}"
           dev_digest="${{ steps.build-dev.outputs.digest }}"
-          for name in tc_digest tr_digest dev_digest; do
-            value="${!name}"
-            [ -n "${value#sha256:}" ] || { echo "empty $name from build step" >&2; exit 1; }
-          done
+          [ -n "${tc_digest#sha256:}" ]  || { echo "empty digest from toolchain build" >&2; exit 1; }
+          [ -n "${tr_digest#sha256:}" ]  || { echo "empty digest from toolchain-rust build" >&2; exit 1; }
+          [ -n "${dev_digest#sha256:}" ] || { echo "empty digest from development build" >&2; exit 1; }
           touch "/tmp/digests/toolchain/${tc_digest#sha256:}"
           touch "/tmp/digests/toolchain-rust/${tr_digest#sha256:}"
           touch "/tmp/digests/dev/${dev_digest#sha256:}"
@@ -116,11 +115,8 @@ jobs:
 
   merge:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
@@ -137,19 +133,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        run: |
-          echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-          echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
-
       - name: Create multi-arch manifests
-        env:
-          SHA_SHORT: ${{ steps.meta.outputs.sha_short }}
-          DATE: ${{ steps.meta.outputs.date }}
         run: |
           set -euo pipefail
           shopt -s nullglob
+
+          SHA_SHORT="${GITHUB_SHA:0:7}"
+          DATE="$(date +'%Y%m%d')"
 
           for image in toolchain toolchain-rust dev; do
             case "$image" in
