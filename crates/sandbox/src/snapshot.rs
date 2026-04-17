@@ -39,6 +39,8 @@ pub enum SnapshotError {
     Setup(String),
     #[error("process failed: {0}")]
     Process(String),
+    #[error("teardown failed: {0}")]
+    Teardown(String),
     #[error("backend api error: {0}")]
     Api(String),
     #[error("vsock connection failed: {0}")]

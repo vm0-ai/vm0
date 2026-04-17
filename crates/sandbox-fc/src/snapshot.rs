@@ -33,6 +33,8 @@ pub enum SnapshotError {
     Setup(String),
     #[error("firecracker process failed: {0}")]
     Process(String),
+    #[error("teardown failed: {0}")]
+    Teardown(String),
     #[error("api error: {0}")]
     Api(#[from] ApiError),
     #[error("vsock connection failed: {0}")]
@@ -432,7 +434,7 @@ async fn run_snapshot_workflow(
             // that `is_complete()` reports as valid but silently corrupts
             // restore reads (dirty blocks shadowed by base image). See #9843.
             cow_device.abandon();
-            return Err(SnapshotError::Process(format!(
+            return Err(SnapshotError::Teardown(format!(
                 "destroy_keep_cow exhausted retries; device abandoned, snapshot aborted (last error: {e})"
             )));
         }
@@ -441,7 +443,7 @@ async fn run_snapshot_workflow(
         // missing we want to fail loudly, not silently produce a
         // bitmap-less snapshot.
         let cow_file = cow_device.cow_file();
-        let bitmap_src = std::path::PathBuf::from(format!("{}.bitmap", cow_file.display()));
+        let bitmap_src = nbd_cow::cow::bitmap_path_for(cow_file);
         tokio::fs::rename(&bitmap_src, &output.cow_bitmap()).await?;
         tokio::fs::rename(cow_file, &output.cow()).await?;
         // Persist the output directory so all four final dir entries
@@ -590,6 +592,7 @@ impl SnapshotProvider for FirecrackerSnapshotProvider {
         let sc = create_snapshot(config).await.map_err(|e| match e {
             SnapshotError::Setup(msg) => sandbox::SnapshotError::Setup(msg),
             SnapshotError::Process(msg) => sandbox::SnapshotError::Process(msg),
+            SnapshotError::Teardown(msg) => sandbox::SnapshotError::Teardown(msg),
             SnapshotError::Api(api_err) => sandbox::SnapshotError::Api(api_err.to_string()),
             SnapshotError::Vsock(msg) => sandbox::SnapshotError::Vsock(msg),
             SnapshotError::Io(io_err) => sandbox::SnapshotError::Io(io_err),

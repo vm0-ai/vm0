@@ -423,7 +423,7 @@ impl CowLayer {
 /// Compute the bitmap sidecar path for a given COW file path.
 ///
 /// Convention: `{cow_path}.bitmap` (e.g., `cow.img.bitmap`).
-pub(crate) fn bitmap_path_for(cow_path: &Path) -> PathBuf {
+pub fn bitmap_path_for(cow_path: &Path) -> PathBuf {
     let mut name = cow_path.as_os_str().to_os_string();
     name.push(".bitmap");
     PathBuf::from(name)
