@@ -1544,6 +1544,17 @@ fn collect_heartbeat_state(
     idle_pool: &crate::idle_pool::IdlePool,
     mode: RunnerMode,
 ) -> HeartbeatState {
+    // Stopped is set only by `status.set_mode(Stopped)` immediately before
+    // `run()` returns, after the last heartbeat has been sent. If a caller
+    // reaches here with Stopped it means a new code path was added that
+    // heartbeats post-teardown, which breaks the contract that the server
+    // never sees mode=stopped on the wire. Debug-only: release still falls
+    // through to the defensive "stopping" mapping below.
+    debug_assert_ne!(
+        mode,
+        RunnerMode::Stopped,
+        "Stopped is never live-heartbeated",
+    );
     let (allocated_vcpu, allocated_memory_mb, budget_running) = budget.allocated();
     // budget.allocated() includes parked (idle) VMs that hold their budget.
     // Report only actively running jobs so the scheduler sees real capacity.
@@ -1564,7 +1575,7 @@ fn collect_heartbeat_state(
         mode: match mode {
             RunnerMode::Running => "running".to_string(),
             RunnerMode::Draining => "draining".to_string(),
-            // Stopped never heartbeats (set right before exit); map defensively.
+            // Stopped caught by the debug_assert above; release falls here.
             RunnerMode::Stopping | RunnerMode::Stopped => "stopping".to_string(),
         },
     }
@@ -2623,6 +2634,25 @@ mod tests {
             *env.mode_tx.borrow(),
             RunnerMode::Stopping,
             "mode_tx must reflect Stopping after natural drain transition"
+        );
+
+        // Observability pin: the Draining → Stopping auto-transition must
+        // emit a one-shot heartbeat with mode="stopping" before teardown,
+        // in addition to the terminal heartbeat during teardown. Two or
+        // more "stopping" heartbeats prove both sites fire (the one-shot
+        // at the transition and the terminal one). A single hit would mean
+        // one of the two was removed.
+        let stopping_count = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|h| h.mode == "stopping")
+            .count();
+        assert!(
+            stopping_count >= 2,
+            "expected at least 2 stopping heartbeats (one-shot + terminal), got {stopping_count}",
         );
     }
 
