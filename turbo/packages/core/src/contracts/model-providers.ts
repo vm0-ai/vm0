@@ -144,6 +144,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } as Record<string, string>,
     models: [
+      "kimi-k2.6-code-preview",
       "kimi-k2.5",
       "kimi-k2-thinking-turbo",
       "kimi-k2-thinking",

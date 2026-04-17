@@ -226,6 +226,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "MiniMax-M2.1": "MiniMax M2.1",
   "minimax/minimax-m2.5": "MiniMax M2.5",
   // Kimi / Moonshot
+  "kimi-k2.6-code-preview": "Kimi K2.6 Code Preview",
   "kimi-k2.5": "Kimi K2.5",
   "kimi-k2-thinking": "Kimi K2 Thinking",
   "kimi-k2-thinking-turbo": "Kimi K2 Thinking Turbo",
