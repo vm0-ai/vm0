@@ -538,19 +538,12 @@ function createPagedMessages(threadId: string) {
     });
   });
 
-  const removeOptimisticMessage$ = command(({ set }, id: string) => {
-    set(internalGroups$, (prev) => {
-      return removeMessageById(prev, id);
-    });
-  });
-
   return {
     pagedChatMessages$,
     latestChatMessageId$,
     groupedChatMessages$,
     fetchNextPage$,
     insertOptimisticMessage$,
-    removeOptimisticMessage$,
   };
 }
 
@@ -766,7 +759,6 @@ export function createChatThreadSignals(
     groupedChatMessages$,
     fetchNextPage$,
     insertOptimisticMessage$,
-    removeOptimisticMessage$,
   } = createPagedMessages(threadId);
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
@@ -801,8 +793,6 @@ export function createChatThreadSignals(
 
       set(cancelDraftSync$);
       set(draft.clear$);
-      await set(flushDraftClear$, signal);
-      signal.throwIfAborted();
 
       const clientMessageId = crypto.randomUUID();
       set(insertOptimisticMessage$, {
@@ -813,32 +803,24 @@ export function createChatThreadSignals(
       });
 
       const client = get(zeroClient$)(chatMessagesContract);
-      const sendResult = await accept(
-        client.send({
-          body: {
-            agentId,
-            prompt: result.fullPrompt,
-            threadId: threadId,
-            hasTextContent: result.hasTextContent,
-            clientMessageId,
-          },
-          fetchOptions: { signal },
-        }),
-        [201],
-      ).catch((error: unknown) => {
-        L.debug("sendMessage$ POST failed, rolling back optimistic row", {
-          threadId,
-          clientMessageId,
-          aborted: signal.aborted,
-          error,
-        });
-        set(removeOptimisticMessage$, clientMessageId);
-        if (!signal.aborted) {
-          toast.error("Failed to send message");
-        }
-        throw error;
-      });
+      const [, sendResult] = await Promise.all([
+        set(flushDraftClear$, signal),
+        accept(
+          client.send({
+            body: {
+              agentId,
+              prompt: result.fullPrompt,
+              threadId: threadId,
+              hasTextContent: result.hasTextContent,
+              clientMessageId,
+            },
+            fetchOptions: { signal },
+          }),
+          [201],
+        ),
+      ]);
       signal.throwIfAborted();
+
       L.debug("sendMessage$ POST accepted", {
         threadId,
         runId: sendResult.body.runId,
