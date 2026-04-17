@@ -1,5 +1,5 @@
 import { IconBrain } from "@tabler/icons-react";
-import type { VoiceChatEvent } from "../../signals/mission-control-page/create-voice-chat-panel-signals.ts";
+import type { ContextEvent } from "@vm0/core";
 import { Markdown } from "../components/markdown.tsx";
 
 // ---------------------------------------------------------------------------
@@ -8,7 +8,7 @@ import { Markdown } from "../components/markdown.tsx";
 
 type EventCategory = "user" | "assistant" | "slow-brain" | "system";
 
-function categorizeEvent(event: VoiceChatEvent): EventCategory {
+function categorizeEvent(event: ContextEvent): EventCategory {
   if (event.source === "user" && event.type === "speech") {
     return "user";
   }
@@ -98,7 +98,7 @@ export function SlowBrainIndicator({
 // Event renderer
 // ---------------------------------------------------------------------------
 
-export function VoiceChatEventItem({ event }: { event: VoiceChatEvent }) {
+export function VoiceChatEventItem({ event }: { event: ContextEvent }) {
   const category = categorizeEvent(event);
   switch (category) {
     case "user": {

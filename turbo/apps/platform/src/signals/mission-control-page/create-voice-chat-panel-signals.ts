@@ -1,81 +1,37 @@
 import { command, state, type Command, type State } from "ccstate";
-import { fetch$ } from "../fetch.ts";
+import { zeroVoiceChatContextContract, type ContextEvent } from "@vm0/core";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$ } from "../api-client.ts";
 import { setLoop } from "../utils.ts";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface VoiceChatEvent {
-  id: string;
-  seq: number;
-  source: string;
-  type: string;
-  content: string | null;
-  createdAt: string;
-}
-
-// ---------------------------------------------------------------------------
-// VoiceChatPanelSignals — returned by createVoiceChatPanelSignals
-// ---------------------------------------------------------------------------
 
 export interface VoiceChatPanelSignals {
   sessionId: string;
-  events$: State<VoiceChatEvent[]>;
+  events$: State<ContextEvent[]>;
   startPolling$: Command<Promise<void>, [AbortSignal]>;
   focusInput$: Command<void, []>;
 }
 
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
 export function createVoiceChatPanelSignals(
   sessionId: string,
 ): VoiceChatPanelSignals {
-  const events$ = state<VoiceChatEvent[]>([]);
+  const events$ = state<ContextEvent[]>([]);
   const lastSeq$ = state(0);
 
   const startPolling$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroVoiceChatContextContract);
     await setLoop(
       async (sig: AbortSignal) => {
         const lastSeq = get(lastSeq$);
-        const fetchFn = get(fetch$);
-        const res = await fetchFn(
-          `/api/zero/voice-chat/${sessionId}/context?after=${lastSeq}`,
-          { signal: sig },
+        const result = await accept(
+          client.getEvents({
+            params: { id: sessionId },
+            query: { after: lastSeq },
+            fetchOptions: { signal: sig },
+          }),
+          [200],
+          { toast: false },
         );
-
-        if (!res.ok) {
-          return false;
-        }
-
-        const json: unknown = await res.json();
-        sig.throwIfAborted();
-
-        if (
-          typeof json !== "object" ||
-          json === null ||
-          !("events" in json) ||
-          !Array.isArray((json as { events: unknown }).events)
-        ) {
-          return false;
-        }
-
-        const rawEvents = (json as { events: unknown[] }).events;
-        const incoming = rawEvents.filter((e): e is VoiceChatEvent => {
-          if (typeof e !== "object" || e === null) {
-            return false;
-          }
-          const ev = e as Record<string, unknown>;
-          return (
-            typeof ev.id === "string" &&
-            typeof ev.seq === "number" &&
-            typeof ev.source === "string" &&
-            typeof ev.type === "string" &&
-            (typeof ev.content === "string" || ev.content === null)
-          );
-        });
+        const incoming = result.body.events;
         if (incoming.length > 0) {
           set(events$, (prev) => {
             return [...prev, ...incoming];

@@ -143,7 +143,6 @@ export default [
       "src/signals/zero-page/chat-draft.ts",
       "src/signals/__tests__/fetch.test.ts",
       "src/signals/voice-chat/voice-chat-session.ts",
-      "src/signals/mission-control-page/create-voice-chat-panel-signals.ts", // TODO: migrate to zeroClient$ when voice-chat API contract is added
       "src/signals/voice-io/voice-io-tts.ts",
       "src/signals/voice-io/voice-io-stt.ts",
       "src/views/zero-page/components/org-manage/org-general-tab.tsx",
