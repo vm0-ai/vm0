@@ -755,6 +755,111 @@ mod tests {
         task.await.unwrap().unwrap();
     }
 
+    /// Constructs a CowLayer whose COW file is `/dev/full` — every write to it
+    /// returns ENOSPC, letting us trigger `cow.flush()` / `cow.sync()` failures
+    /// deterministically without filesystem tricks.
+    fn create_cow_with_full_device(base: &NamedTempFile, flush_threshold: usize) -> CowLayer {
+        CowLayer::new(
+            base.path(),
+            std::path::Path::new("/dev/full"),
+            8192,
+            4096,
+            flush_threshold,
+        )
+        .unwrap()
+    }
+
+    /// Covers the `handle_write` flush-error branch: `cow.write()` succeeds but
+    /// the triggered `cow.flush()` fails — the branch preserved in the fix to
+    /// keep the "flush error after write" log distinct from the write-error log.
+    #[tokio::test]
+    async fn dispatch_write_flush_failure_returns_error() {
+        let mut base = NamedTempFile::new().unwrap();
+        base.write_all(&vec![0xAA; 8192]).unwrap();
+        base.flush().unwrap();
+        // flush_threshold = block_size → one write forces an immediate flush.
+        let cow = Arc::new(RwLock::new(create_cow_with_full_device(&base, 4096)));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        let write_req = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 1,
+            offset: 0,
+            length: 4096,
+        };
+        writer
+            .write_all(&serialize_request(&write_req))
+            .await
+            .unwrap();
+        writer.write_all(&vec![0xBB; 4096]).await.unwrap();
+
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+        let error = u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]]);
+        assert_ne!(error, 0, "flush failure should return error reply");
+
+        // Drop client halves so the server sees EOF and exits cleanly.
+        drop(writer);
+        drop(reader);
+        task.await.unwrap().unwrap();
+    }
+
+    /// Covers the `handle_flush` sync-error branch: buffered data exists, a
+    /// Flush command triggers `cow.sync()` which calls `flush()` which writes
+    /// to `/dev/full` and fails.
+    #[tokio::test]
+    async fn dispatch_sync_failure_returns_error() {
+        let mut base = NamedTempFile::new().unwrap();
+        base.write_all(&vec![0xAA; 8192]).unwrap();
+        base.flush().unwrap();
+        // High threshold → the initial write stays buffered and succeeds;
+        // the failure lands on the subsequent Flush command.
+        let cow = Arc::new(RwLock::new(create_cow_with_full_device(
+            &base,
+            4 * 1024 * 1024,
+        )));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        // Buffered write — succeeds without touching the COW file.
+        let write_req = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 1,
+            offset: 0,
+            length: 4096,
+        };
+        writer
+            .write_all(&serialize_request(&write_req))
+            .await
+            .unwrap();
+        writer.write_all(&vec![0xBB; 4096]).await.unwrap();
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+        assert_eq!(
+            u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]]),
+            0,
+            "buffered write should succeed"
+        );
+
+        // Flush drains the buffer to /dev/full → ENOSPC.
+        let flush_req = NbdRequest {
+            flags: 0,
+            command: Command::Flush,
+            handle: 2,
+            offset: 0,
+            length: 0,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &flush_req).await;
+        assert_ne!(error, 0, "sync failure should return error reply");
+
+        drop(writer);
+        drop(reader);
+        task.await.unwrap().unwrap();
+    }
+
     /// Two dispatch tasks sharing the same COW layer handle concurrent
     /// read+write without deadlock or data corruption.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
