@@ -52,11 +52,10 @@ describe("adaptSlackTrigger", () => {
     expect(out.appendSystemPrompt?.endsWith("prior messages...")).toBe(true);
 
     expect(out.callbacks).toHaveLength(1);
-    expect(out.callbacks?.[0].url).toMatch(
-      /\/api\/internal\/callbacks\/slack\/org$/,
-    );
-    expect(out.callbacks?.[0].secret).toBe("fixed-secret");
-    expect(out.callbacks?.[0].payload).toBe(payload);
+    const callback = out.callbacks?.[0];
+    expect(callback?.url).toMatch(/\/api\/internal\/callbacks\/slack\/org$/);
+    expect(callback?.secret).toBe("fixed-secret");
+    expect(callback?.payload).toBe(payload);
   });
 
   it("keeps the integration header even when threadContext is empty", () => {
