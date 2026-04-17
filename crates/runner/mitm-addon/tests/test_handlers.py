@@ -79,26 +79,57 @@ class TestRequestHandler:
 
         assert flow.metadata["firewall_action"] == "ALLOW"
 
-    async def test_vm0_api_test_paths_skip_auto_allow(self, registry_file):
+    async def test_vm0_api_test_paths_skip_auto_allow(self, tmp_path):
         """`/api/test/*` routes exist to exercise the firewall pipeline itself.
 
-        If they fell into the auto-allow fast path, the test-oauth E2E test
-        would never get proxy-injected Authorization headers and the
-        pipeline it's supposed to exercise would be silently bypassed.
+        If they fell into Step 1's auto-allow fast path, the test-oauth E2E
+        test would never get proxy-injected Authorization headers and the
+        pipeline it's supposed to exercise would be silently bypassed. The
+        carve-out drops these paths into Step 2 so the registered firewall
+        runs `handle_firewall_request`.
         """
+        registry = {
+            "vms": {
+                "10.200.0.1": {
+                    "runId": "run-test-oauth",
+                    "sandboxToken": "tok-test",
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "firewalls": [
+                        {
+                            "name": "test-oauth",
+                            "ref": "test-oauth",
+                            "apis": [
+                                {
+                                    "base": "https://api.vm0.ai/api/test/oauth-provider",
+                                    "auth": {"headers": {"Authorization": "Bearer x"}},
+                                    "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            },
+            "updatedAt": 1700000000000,
+        }
+        reg_path = tmp_path / "proxy-registry.json"
+        reg_path.write_text(json.dumps(registry))
+
         flow = _make_http_flow(host="api.vm0.ai", path="/api/test/oauth-provider/echo")
 
+        mock_handler = AsyncMock()
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
+            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
             await mitm_addon.request(flow)
 
-        # Must NOT short-circuit to ALLOW. No firewalls are registered for
-        # this VM so it won't reach Step 2's FirewallAllow either — the
-        # point is that action stays unset here, proving the carve-out ran.
-        assert "firewall_action" not in flow.metadata
+        # Carve-out took effect: Step 2 ran and handed off to the firewall
+        # handler (not Step 1's auto-allow, which would `return` without
+        # invoking the handler).
+        mock_handler.assert_called_once()
 
     async def test_tracks_start_time(self, registry_file):
         flow = _make_http_flow(host="api.anthropic.com")
