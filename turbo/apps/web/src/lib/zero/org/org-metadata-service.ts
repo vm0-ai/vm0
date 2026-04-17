@@ -83,13 +83,16 @@ export async function getOrgBillingPeriod(
     if (itemPeriodEnd) {
       const refreshed = new Date(itemPeriodEnd * 1000);
 
-      // Defensive: don't cache a past-dated period. If Stripe somehow gives
-      // us a stale value, or a future code change reintroduces field
-      // confusion, this guard prevents an infinite "refresh from Stripe"
-      // loop on every call.
+      // Don't cache a past-dated period. If Stripe returns a past-dated
+      // current_period_end for a subscription we believe is active, something
+      // is wrong (stale Stripe data, field confusion from a future code
+      // change, or an orphaned subscription). Log at warn so Axiom surfaces
+      // it and return null without caching — caching the bad value would
+      // cause an infinite "refresh from Stripe" loop on every call.
       if (refreshed < now) {
-        log.debug("refreshed periodEnd still in past, not caching", {
+        log.warn("refreshed periodEnd still in past, not caching", {
           orgId,
+          stripeSubscriptionId: orgRow.stripeSubscriptionId,
           periodEnd: refreshed,
         });
         return null;
