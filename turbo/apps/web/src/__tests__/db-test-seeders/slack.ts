@@ -2,9 +2,11 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../db/schema/slack-org-thread-session";
-import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
+import {
+  insertSlackConnectionIfMissing,
+  upsertSlackInstallation,
+} from "../../lib/zero/slack/seed-install";
 import { uniqueId } from "../test-helpers";
 
 /**
@@ -24,31 +26,18 @@ export async function createTestSlackOrgInstallation(opts: {
   installation: typeof slackOrgInstallations.$inferSelect;
 }> {
   initServices();
-  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
 
   const workspaceId = opts.workspaceId ?? `T-${randomUUID().slice(0, 8)}`;
   const workspaceName = opts.workspaceName ?? "Test Org Workspace";
 
-  const encryptedBotToken = encryptSecretValue(
-    "xoxb-test-bot-token",
-    SECRETS_ENCRYPTION_KEY,
-  );
-
-  const [installation] = await globalThis.services.db
-    .insert(slackOrgInstallations)
-    .values({
-      slackWorkspaceId: workspaceId,
-      slackWorkspaceName: workspaceName,
-      orgId: opts.orgId,
-      encryptedBotToken,
-      botUserId: `B-${randomUUID().slice(0, 8)}`,
-      botScopes: opts.botScopes ?? null,
-    })
-    .returning();
-
-  if (!installation) {
-    throw new Error("Failed to create test Slack org installation");
-  }
+  const { installation } = await upsertSlackInstallation(globalThis.services, {
+    slackWorkspaceId: workspaceId,
+    slackWorkspaceName: workspaceName,
+    orgId: opts.orgId,
+    botUserId: `B-${randomUUID().slice(0, 8)}`,
+    botToken: "xoxb-test-bot-token",
+    botScopes: opts.botScopes ?? null,
+  });
 
   return {
     slackWorkspaceId: workspaceId,
@@ -84,21 +73,28 @@ export async function createTestSlackOrgConnection(opts: {
     );
   }
 
-  const [connection] = await globalThis.services.db
-    .insert(slackOrgConnections)
-    .values({
+  const { connectionId } = await insertSlackConnectionIfMissing(
+    globalThis.services,
+    {
       slackUserId,
       slackWorkspaceId: opts.slackWorkspaceId,
       vm0UserId: opts.vm0UserId,
-    })
-    .returning({ id: slackOrgConnections.id });
+    },
+  );
 
-  return { slackUserId, connectionId: connection!.id };
+  if (!connectionId) {
+    throw new Error("Failed to create Slack org connection");
+  }
+
+  return { slackUserId, connectionId };
 }
 
 /**
  * @why-db-direct Direct insert without installation-orgId validation; needed
  * for cleanup/disconnect tests where installation may lack orgId.
+ *
+ * Delegates to the shared `insertSlackConnectionIfMissing` helper so the
+ * schema-aware insert lives in one place.
  */
 export async function seedTestSlackOrgConnection(opts: {
   slackUserId: string;
@@ -106,39 +102,38 @@ export async function seedTestSlackOrgConnection(opts: {
   vm0UserId: string;
 }): Promise<{ connectionId: string }> {
   initServices();
-  const [row] = await globalThis.services.db
-    .insert(slackOrgConnections)
-    .values({
+  const { connectionId } = await insertSlackConnectionIfMissing(
+    globalThis.services,
+    {
       slackUserId: opts.slackUserId,
       slackWorkspaceId: opts.slackWorkspaceId,
       vm0UserId: opts.vm0UserId,
-    })
-    .returning({ id: slackOrgConnections.id });
-  if (!row) {
+    },
+  );
+  if (!connectionId) {
     throw new Error("Failed to seed Slack org connection");
   }
-  return { connectionId: row.id };
+  return { connectionId };
 }
 
 /**
  * @why-db-direct Minimal installation for external cleanup tests; no API path
  * creates installations without real OAuth.
+ *
+ * Uses the shared `upsertSlackInstallation` helper so schema changes to
+ * `slack_org_installations` land in one place.
  */
 export async function createSlackInstallationForOrg(
   orgId: string,
   workspaceId: string,
 ): Promise<void> {
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-
-  await globalThis.services.db
-    .insert(slackOrgInstallations)
-    .values({
-      slackWorkspaceId: workspaceId,
-      orgId,
-      encryptedBotToken: encryptSecretValue("xoxb-test-token", encryptionKey),
-      botUserId: `U${randomUUID().slice(0, 8)}`,
-    })
-    .onConflictDoNothing();
+  initServices();
+  await upsertSlackInstallation(globalThis.services, {
+    slackWorkspaceId: workspaceId,
+    orgId,
+    botUserId: `U${randomUUID().slice(0, 8)}`,
+    botToken: "xoxb-test-token",
+  });
 }
 
 /**
@@ -163,21 +158,28 @@ export async function insertTestSlackOrgInstallation(params: {
 
 /**
  * @why-db-direct Direct connection insert for deletion/cascade tests.
+ *
+ * Delegates to the shared `insertSlackConnectionIfMissing` helper so the
+ * schema-aware insert lives in one place.
  */
 export async function insertTestSlackOrgConnection(params: {
   slackUserId: string;
   slackWorkspaceId: string;
   vm0UserId: string;
 }): Promise<{ id: string }> {
-  const [row] = await globalThis.services.db
-    .insert(slackOrgConnections)
-    .values({
+  initServices();
+  const { connectionId } = await insertSlackConnectionIfMissing(
+    globalThis.services,
+    {
       slackUserId: params.slackUserId,
       slackWorkspaceId: params.slackWorkspaceId,
       vm0UserId: params.vm0UserId,
-    })
-    .returning({ id: slackOrgConnections.id });
-  return row!;
+    },
+  );
+  if (!connectionId) {
+    throw new Error("Failed to insert Slack org connection");
+  }
+  return { id: connectionId };
 }
 
 /**

@@ -9,7 +9,7 @@ interface Services {
 
 interface UpsertSlackInstallationInput {
   slackWorkspaceId: string;
-  slackWorkspaceName: string;
+  slackWorkspaceName?: string;
   orgId: string | null;
   botUserId: string;
   botToken: string;
@@ -18,7 +18,8 @@ interface UpsertSlackInstallationInput {
 }
 
 /**
- * Upsert a Slack org installation row with an encrypted bot token.
+ * Upsert a Slack org installation row with an encrypted bot token and
+ * return the resulting row.
  *
  * Shared between the Vitest seeder (`src/__tests__/db-test-seeders/slack.ts`)
  * and the e2e HTTP seeder (`app/api/test/slack-state/route.ts`) so the
@@ -27,13 +28,16 @@ interface UpsertSlackInstallationInput {
 export async function upsertSlackInstallation(
   services: Services,
   input: UpsertSlackInstallationInput,
-): Promise<{ slackWorkspaceId: string }> {
+): Promise<{
+  slackWorkspaceId: string;
+  installation: typeof slackOrgInstallations.$inferSelect;
+}> {
   const encryptedBotToken = encryptSecretValue(
     input.botToken,
     services.env.SECRETS_ENCRYPTION_KEY,
   );
 
-  await services.db
+  const [row] = await services.db
     .insert(slackOrgInstallations)
     .values({
       slackWorkspaceId: input.slackWorkspaceId,
@@ -51,9 +55,14 @@ export async function upsertSlackInstallation(
         encryptedBotToken,
         botUserId: input.botUserId,
       },
-    });
+    })
+    .returning();
 
-  return { slackWorkspaceId: input.slackWorkspaceId };
+  if (!row) {
+    throw new Error("Failed to upsert Slack installation");
+  }
+
+  return { slackWorkspaceId: input.slackWorkspaceId, installation: row };
 }
 
 interface UpsertSlackConnectionInput {
