@@ -10,16 +10,23 @@ const log = logger("slack:client");
  * `@slack/web-api` default (https://slack.com/api/). E2E tests running
  * against a Vercel preview set `E2E_SLACK_MOCK_ENABLED=1` so outbound
  * traffic is redirected to `/api/test/slack-mock/` on the same deployment.
+ *
+ * Throws when the mock flag is set but `VERCEL_URL` is unavailable, so
+ * a misconfigured preview fails loudly instead of silently hitting the
+ * real `slack.com` API.
  */
 function resolveSlackApiUrl(): string | undefined {
   const e = env();
   if (e.SLACK_API_URL) return e.SLACK_API_URL;
   const flag = e.E2E_SLACK_MOCK_ENABLED;
   const mockEnabled = flag === "1" || flag === "true";
-  if (mockEnabled && e.VERCEL_URL) {
-    return `https://${e.VERCEL_URL}/api/test/slack-mock/`;
+  if (!mockEnabled) return undefined;
+  if (!e.VERCEL_URL) {
+    throw new Error(
+      "E2E_SLACK_MOCK_ENABLED=1 but VERCEL_URL is unset; cannot redirect Slack Web API traffic to the preview mock routes",
+    );
   }
-  return undefined;
+  return `https://${e.VERCEL_URL}/api/test/slack-mock/`;
 }
 
 function buildWebClient(token?: string): WebClient {

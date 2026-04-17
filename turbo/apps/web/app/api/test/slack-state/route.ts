@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { isTestEndpointAllowed } from "../../../../src/lib/test-endpoints/guard";
 import { slackOrgInstallations } from "../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../src/db/schema/slack-org-connection";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { zeroRuns } from "../../../../src/db/schema/zero-run";
-import { encryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
 import {
   DEFAULT_TEST_EMAIL,
   resolveTestOrgId,
   resolveTestUserId,
 } from "../../../../src/lib/auth/test-user";
 import { SLACK_E2E_FIXTURES } from "../../../../src/lib/test-endpoints/slack-mock-fixtures";
-import { env } from "../../../../src/env";
+import {
+  insertSlackConnectionIfMissing,
+  upsertSlackInstallation,
+} from "../../../../src/lib/zero/slack/seed-install";
 
 /**
  * GET /api/test/slack-state?team_id=...
@@ -69,6 +71,10 @@ export async function GET(request: Request) {
           status: agentRuns.status,
           createdAt: agentRuns.createdAt,
           triggerSource: zeroRuns.triggerSource,
+          userId: agentRuns.userId,
+          // Truncate prompt so BATS assertions can match without pulling
+          // large payloads. Tests only need a prefix for attribution.
+          promptPreview: sql<string>`substring(${agentRuns.prompt}, 1, 200)`,
         })
         .from(agentRuns)
         .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
@@ -98,9 +104,10 @@ interface SeedBody {
  * POST /api/test/slack-state
  *
  * Seeds a Slack installation (and optionally a connection) for the test
- * user. Mirrors the Vitest seeders at
- * `src/__tests__/db-test-seeders/slack.ts` but exposed via HTTP so BATS
- * tests can set up state on a live Vercel preview deployment.
+ * user. The underlying upsert is shared with the Vitest seeders via
+ * `src/lib/zero/slack/seed-install.ts`, so schema changes live in one
+ * place. This route just exposes the seed over HTTP so BATS tests can
+ * drive a live Vercel preview.
  */
 export async function POST(request: Request) {
   if (!isTestEndpointAllowed(request)) {
@@ -118,49 +125,29 @@ export async function POST(request: Request) {
   }
 
   initServices();
-  const db = globalThis.services.db;
+  const services = globalThis.services;
 
   const userId = await resolveTestUserId(raw.email ?? DEFAULT_TEST_EMAIL);
   const orgId = await resolveTestOrgId(userId);
 
-  const { SECRETS_ENCRYPTION_KEY } = env();
-  const encryptedBotToken = encryptSecretValue(
-    SLACK_E2E_FIXTURES.botToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-
-  await db
-    .insert(slackOrgInstallations)
-    .values({
-      slackWorkspaceId: raw.team_id,
-      slackWorkspaceName: raw.workspace_name ?? "E2E Test Workspace",
-      orgId,
-      encryptedBotToken,
-      botUserId: raw.bot_user_id ?? SLACK_E2E_FIXTURES.botUserId,
-      installedByUserId: userId,
-      botScopes: "chat:write,im:write,users:read",
-    })
-    .onConflictDoUpdate({
-      target: slackOrgInstallations.slackWorkspaceId,
-      set: {
-        orgId,
-        encryptedBotToken,
-        botUserId: raw.bot_user_id ?? SLACK_E2E_FIXTURES.botUserId,
-      },
-    });
+  await upsertSlackInstallation(services, {
+    slackWorkspaceId: raw.team_id,
+    slackWorkspaceName: raw.workspace_name ?? "E2E Test Workspace",
+    orgId,
+    botUserId: raw.bot_user_id ?? SLACK_E2E_FIXTURES.botUserId,
+    botToken: SLACK_E2E_FIXTURES.botToken,
+    botScopes: "chat:write,im:write,users:read",
+    installedByUserId: userId,
+  });
 
   let connectionId: string | undefined;
   if (raw.seed_connection) {
-    const [row] = await db
-      .insert(slackOrgConnections)
-      .values({
-        slackUserId: raw.slack_user_id,
-        slackWorkspaceId: raw.team_id,
-        vm0UserId: userId,
-      })
-      .onConflictDoNothing()
-      .returning({ id: slackOrgConnections.id });
-    connectionId = row?.id;
+    const result = await insertSlackConnectionIfMissing(services, {
+      slackUserId: raw.slack_user_id,
+      slackWorkspaceId: raw.team_id,
+      vm0UserId: userId,
+    });
+    connectionId = result.connectionId;
   }
 
   return NextResponse.json({

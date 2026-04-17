@@ -47,7 +47,10 @@ teardown_file() {
 }
 
 @test "slack: app_mention dispatches an agent run" {
-    slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection >/dev/null
+    local seed_resp vm0_user_id
+    seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection)
+    vm0_user_id=$(echo "$seed_resp" | jq -r '.vm0_user_id')
+    [[ -n "$vm0_user_id" && "$vm0_user_id" != "null" ]]
 
     local ts payload
     ts="$(date +%s).000100"
@@ -59,14 +62,26 @@ teardown_file() {
     assert_success
 
     wait_for_slack_run "$TEAM_ID" 30
-    local state
+    local state first_run
     state=$(slack_fetch_state "$TEAM_ID")
     [[ "$(echo "$state" | jq -r '.recent_runs | length')" -gt 0 ]]
-    [[ "$(echo "$state" | jq -r '.recent_runs[0].triggerSource')" == "slack" ]]
+    first_run=$(echo "$state" | jq -c '.recent_runs[0]')
+    [[ "$(echo "$first_run" | jq -r '.triggerSource')" == "slack" ]]
+    # Run must be attributed to the vm0 user the connection belongs to.
+    [[ "$(echo "$first_run" | jq -r '.userId')" == "$vm0_user_id" ]]
+    # Prompt preview must reflect the app_mention text so a dispatch bug
+    # that sends the wrong payload is caught.
+    [[ "$(echo "$first_run" | jq -r '.promptPreview')" == *"hello from e2e"* ]]
+    # Status is a known enum value — reject empty/null from a broken insert.
+    [[ "$(echo "$first_run" | jq -r '.status')" != "null" ]]
+    [[ -n "$(echo "$first_run" | jq -r '.status')" ]]
 }
 
 @test "slack: DM dispatches an agent run" {
-    slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection >/dev/null
+    local seed_resp vm0_user_id
+    seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection)
+    vm0_user_id=$(echo "$seed_resp" | jq -r '.vm0_user_id')
+    [[ -n "$vm0_user_id" && "$vm0_user_id" != "null" ]]
 
     local ts payload
     ts="$(date +%s).000200"
@@ -78,9 +93,13 @@ teardown_file() {
     assert_success
 
     wait_for_slack_run "$TEAM_ID" 30
-    local state
+    local state first_run
     state=$(slack_fetch_state "$TEAM_ID")
     [[ "$(echo "$state" | jq -r '.recent_runs | length')" -gt 0 ]]
+    first_run=$(echo "$state" | jq -c '.recent_runs[0]')
+    [[ "$(echo "$first_run" | jq -r '.triggerSource')" == "slack" ]]
+    [[ "$(echo "$first_run" | jq -r '.userId')" == "$vm0_user_id" ]]
+    [[ "$(echo "$first_run" | jq -r '.promptPreview')" == *"hello from e2e DM"* ]]
 }
 
 @test "slack: /vm0 disconnect clears the connection" {
