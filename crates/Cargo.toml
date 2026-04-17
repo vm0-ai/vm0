@@ -42,6 +42,7 @@ vsock-host = { path = "vsock-host" }
 vsock-proto = { path = "vsock-proto" }
 
 # External dependencies
+aho-corasick = "1"
 async-trait = "0.1"
 aws-sdk-s3 = { version = "1", default-features = false }
 aws-smithy-mocks = "0.2"

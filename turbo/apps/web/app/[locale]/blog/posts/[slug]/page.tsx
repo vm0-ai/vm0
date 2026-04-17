@@ -24,10 +24,12 @@ export const revalidate = 3600;
 
 interface PageProps {
   params: Promise<{ slug: string; locale: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: PageProps): Promise<Metadata> {
   // Skip blog metadata in self-hosted mode (no Strapi available)
   if (!isBlogEnabled()) {
@@ -35,7 +37,8 @@ export async function generateMetadata({
   }
 
   const { slug, locale } = await params;
-  const post = await getPost(slug, locale);
+  const { status } = await searchParams;
+  const post = await getPost(slug, locale, { draft: status === "draft" });
 
   if (!post) {
     return { title: "Post Not Found" };
@@ -99,13 +102,17 @@ export async function generateStaticParams() {
   return params;
 }
 
-export default async function BlogPostPage({ params }: PageProps) {
+export default async function BlogPostPage({
+  params,
+  searchParams,
+}: PageProps) {
   if (!isBlogEnabled()) {
     notFound();
   }
 
   const { slug, locale } = await params;
-  const post = await getPost(slug, locale);
+  const { status } = await searchParams;
+  const post = await getPost(slug, locale, { draft: status === "draft" });
 
   if (!post) {
     notFound();

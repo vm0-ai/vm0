@@ -8,7 +8,6 @@ import {
   ALL_RUN_STATUSES,
   type RunStatus,
   orgTierSchema,
-  getCustomSkillStorageName,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -16,7 +15,6 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import type { AdditionalVolume } from "../../../../src/lib/infra/storage/types";
 import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
 import {
@@ -53,41 +51,19 @@ import { env } from "../../../../src/env";
 const log = logger("api:runs");
 
 /**
- * Resolve additional volumes for a run, including custom skill volumes.
+ * Merge body/resolved additionalVolumes, normalizing empty arrays to undefined.
  *
- * For new runs: injects the agent's custom skills as additional volumes,
- * merged with any explicit volumes from the request body or resolved context.
- *
- * For checkpoint/session resume: skills are already captured in the resolved
- * additionalVolumes from the original run — no re-injection needed.
+ * Body volumes take precedence over resolved context. The CLI run path is
+ * skill-agnostic: zeroAgents.customSkills are not injected here (they belong
+ * exclusively to /api/zero/runs).
  */
-async function resolveRunAdditionalVolumes(params: {
-  composeId: string | undefined;
-  isResume: boolean;
+function resolveRunAdditionalVolumes(params: {
   bodyAdditionalVolumes: AdditionalVolume[] | undefined;
   resolvedAdditionalVolumes: AdditionalVolume[] | undefined;
-}): Promise<AdditionalVolume[] | undefined> {
-  let skillVolumes: AdditionalVolume[] = [];
-  if (!params.isResume && params.composeId) {
-    const [agentRecord] = await globalThis.services.db
-      .select({ customSkills: zeroAgents.customSkills })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, params.composeId))
-      .limit(1);
-
-    skillVolumes = (agentRecord?.customSkills ?? []).map((name) => {
-      return {
-        name: getCustomSkillStorageName(name),
-        mountPath: `/home/user/.claude/skills/${name}`,
-      };
-    });
-  }
-
-  const merged = [
-    ...skillVolumes,
-    ...(params.bodyAdditionalVolumes ?? params.resolvedAdditionalVolumes ?? []),
-  ];
-  return merged.length > 0 ? merged : undefined;
+}): AdditionalVolume[] | undefined {
+  const merged =
+    params.bodyAdditionalVolumes ?? params.resolvedAdditionalVolumes;
+  return merged && merged.length > 0 ? merged : undefined;
 }
 
 /**
@@ -354,10 +330,8 @@ const router = tsr.router(runsMainContract, {
         );
       }
 
-      // 6. Resolve additional volumes (custom skills + explicit volumes)
-      const finalAdditionalVolumes = await resolveRunAdditionalVolumes({
-        composeId: composeMeta.composeId,
-        isResume: !!(body.checkpointId || body.sessionId),
+      // 6. Resolve additional volumes (body takes precedence over resolved context)
+      const finalAdditionalVolumes = resolveRunAdditionalVolumes({
         bodyAdditionalVolumes: body.additionalVolumes,
         resolvedAdditionalVolumes: resolved.additionalVolumes,
       });

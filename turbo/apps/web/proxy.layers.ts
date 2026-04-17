@@ -22,6 +22,7 @@ const SKIP_I18N_PREFIXES = [
   "/sign-up",
   "/privacy-policy",
   "/terms-of-use",
+  "/support",
   "/export",
 ] as const;
 
@@ -135,11 +136,13 @@ export const authRedirectLayer: ProxyLayer = (ctx) => {
 };
 
 /**
- * Redirect locale-prefixed legal pages (e.g. /en/privacy-policy) to the root
- * paths (/privacy-policy). These pages use Termly iframe embeds and don't need
- * i18n — Termly handles its own language.
+ * Redirect locale-prefixed legal / utility pages (e.g. /en/privacy-policy) to
+ * the root paths (/privacy-policy). These pages live outside the [locale]
+ * route tree: legal pages use Termly iframe embeds (Termly handles its own
+ * language) and /support is English-only per Slack App Directory guidelines.
  */
-const LOCALE_LEGAL_RE = /^\/(\w{2})\/(privacy-policy|terms-of-use)(\/.*)?$/;
+const LOCALE_LEGAL_RE =
+  /^\/(\w{2})\/(privacy-policy|terms-of-use|support)(\/.*)?$/;
 
 export const legalRedirectLayer: ProxyLayer = (ctx) => {
   const match = ctx.request.nextUrl.pathname.match(LOCALE_LEGAL_RE);

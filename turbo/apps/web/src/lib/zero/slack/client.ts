@@ -250,7 +250,7 @@ export async function exchangeOAuthCodeForUser(
  * Shows a typing-style status below the thread (e.g. "is thinking...").
  * Pass an empty string to clear the status.
  *
- * Requires the `assistant:write` scope and "Agents & AI Apps" enabled.
+ * Per the 2026-03-05 Slack scope update, this API only requires `chat:write`.
  *
  * @param client - Slack WebClient
  * @param channel - Channel ID

@@ -402,7 +402,7 @@ function WhereToWorkContent() {
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
-            <img src={slackIcon} alt="" className="h-6 w-6" />
+            <img src={slackIcon} alt="" className="h-6 w-6 scale-[2.2]" />
           </span>
           <div className="min-w-0 flex-1">
             <span className="block text-sm font-semibold text-foreground">

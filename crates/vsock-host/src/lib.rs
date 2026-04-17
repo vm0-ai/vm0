@@ -470,6 +470,11 @@ impl VsockHost {
     }
 
     /// Execute a command on the guest.
+    ///
+    /// `timeout_ms` must be positive. Callers needing unbounded commands
+    /// should use [`spawn_watch`](Self::spawn_watch), which decouples the
+    /// host request/response cycle from the command's lifetime and does not
+    /// leak a guest-side orphan when the host stops waiting.
     pub async fn exec(
         &self,
         command: &str,
@@ -477,6 +482,12 @@ impl VsockHost {
         env: &[(&str, &str)],
         sudo: bool,
     ) -> io::Result<ExecResult> {
+        if timeout_ms == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "exec requires a positive timeout; use spawn_watch for unbounded commands",
+            ));
+        }
         let payload = vsock_proto::encode_exec(timeout_ms, command, env, sudo);
         // Add 5s buffer for network latency
         let timeout = Duration::from_millis(timeout_ms as u64 + 5000);
@@ -826,6 +837,23 @@ mod tests {
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"hello\n");
         assert!(result.stderr.is_empty());
+    }
+
+    /// `host.exec` with `timeout_ms == 0` must reject at the boundary rather
+    /// than send the request to the guest — an unbounded exec would leak a
+    /// guest-side orphan when the host's outer timeout fires.
+    #[tokio::test]
+    async fn test_exec_rejects_zero_timeout() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let err = host.exec("echo hi", 0, &[], false).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[tokio::test]

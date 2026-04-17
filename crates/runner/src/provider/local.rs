@@ -155,20 +155,14 @@ impl LocalProvider {
             };
             let claim_path = self.group_dir.join(format!("{job_id}.claim"));
             if !claim_path.exists() {
-                let profile = match std::fs::read(&path) {
-                    Ok(buf) => match serde_json::from_slice::<JobRequest>(&buf) {
-                        Ok(req) => req.profile,
-                        Err(e) => {
-                            warn!(run_id = %job_id, error = %e, "local: failed to parse job file, using default profile");
-                            None
-                        }
-                    },
-                    Err(e) => {
-                        warn!(run_id = %job_id, error = %e, "local: failed to read job file, using default profile");
-                        None
-                    }
-                }
-                .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
+                // Silent fallback to default profile — claim() is the single
+                // source of truth for logging and poison handling, so errors
+                // here are intentionally swallowed to avoid duplicate warns.
+                let profile = std::fs::read(&path)
+                    .ok()
+                    .and_then(|buf| serde_json::from_slice::<JobRequest>(&buf).ok())
+                    .and_then(|req| req.profile)
+                    .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                 return Some((job_id, profile));
             }
         }
@@ -221,8 +215,27 @@ impl JobProvider for LocalProvider {
         let req: JobRequest = match serde_json::from_slice(&buf) {
             Ok(r) => r,
             Err(e) => {
-                warn!(run_id = %run_id, error = %e, "local: invalid job JSON");
+                warn!(run_id = %run_id, error = %e, "local: invalid job JSON, marking job as failed");
+                // Submit writes .job atomically (tmp + rename), so a malformed
+                // .job is a permanent error — retrying the parse will just
+                // spin. Ordering below is chosen so a failure inside complete()
+                // leaves the job retryable instead of stranded:
+                //   1. remove .claim — lets another runner (or the next poll)
+                //      rediscover the job if complete() below fails;
+                //   2. write .result via complete() — notifies the submitter;
+                //   3. remove .job — only after the submitter has a result, so
+                //      a complete() failure keeps .job around for retry.
+                //
+                // Retry is safe: complete() uses tmp + rename, so a partial
+                // first attempt leaves no observable .result, and a later
+                // attempt atomically replaces whatever is there. Multi-runner
+                // race (A and B both handle the same poison) is benign for the
+                // same reason — both write the same parse error, last rename
+                // wins, submitter sees one consistent result.
                 let _ = std::fs::remove_file(&claim_file);
+                self.complete(run_id, 1, Some(&format!("invalid job JSON: {e}")))
+                    .await;
+                let _ = std::fs::remove_file(&job_file);
                 return None;
             }
         };
@@ -648,22 +661,44 @@ mod tests {
         );
     }
 
-    /// Regression: if the job file contains invalid JSON, claim() must
-    /// remove the .claim file instead of leaving the job permanently stuck.
+    /// Malformed .job is a permanent error (submit writes atomically, so it
+    /// can't be "half-written"). claim() must delete the .job + .claim and
+    /// write a .result so the submitter unblocks and discover stops returning
+    /// the poisoned job on every poll.
     #[tokio::test]
-    async fn claim_cleans_up_on_invalid_job_json() {
+    async fn claim_handles_poison_job_json() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel, empty_cancel_tokens());
 
         let run_id = RunId::new_v4();
         let claim_path = dir.path().join(format!("{run_id}.claim"));
-        std::fs::write(dir.path().join(format!("{run_id}.job")), b"not json").unwrap();
+        let job_path = dir.path().join(format!("{run_id}.job"));
+        let result_path = dir.path().join(format!("{run_id}.result"));
+        std::fs::write(&job_path, b"not json").unwrap();
 
         assert!(provider.claim(run_id).await.is_none());
+
+        assert!(!claim_path.exists(), "claim file must be removed");
+        assert!(!job_path.exists(), "poison job file must be removed");
         assert!(
-            !claim_path.exists(),
-            "claim file must be removed when job JSON parse fails"
+            result_path.exists(),
+            ".result must be written for submitter"
         );
+
+        let buf = std::fs::read(&result_path).unwrap();
+        let resp: JobResponse = serde_json::from_slice(&buf).unwrap();
+        assert_eq!(resp.run_id, run_id);
+        assert_ne!(resp.exit_code, 0, "poison must report non-zero exit");
+        assert!(
+            resp.error
+                .as_deref()
+                .is_some_and(|e| e.contains("invalid job JSON")),
+            "error must mention invalid JSON, got: {:?}",
+            resp.error
+        );
+
+        // Next discover() scan must not re-surface the job.
+        assert!(provider.find_unclaimed_job().is_none());
     }
 }

@@ -2,8 +2,10 @@ import { command, computed, state } from "ccstate";
 import {
   FeatureSwitchKey,
   zeroVoiceChatPrepareTriggerContract,
+  zeroVoiceChatSessionsContract,
+  zeroVoiceChatContextContract,
+  type ContextEvent,
 } from "@vm0/core";
-import { fetch$ } from "../fetch.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { delay } from "signal-timers";
@@ -11,7 +13,7 @@ import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
 import { logger } from "../log.ts";
 
 const L = logger("VoiceChat");
@@ -29,14 +31,6 @@ interface TranscriptEntry {
   role: "user" | "assistant";
   text: string;
   id: string;
-}
-
-interface ContextEvent {
-  seq: number;
-  source: string;
-  type: string;
-  content: string | null;
-  createdAt: string;
 }
 
 function updateLastTranscriptEntry(
@@ -145,50 +139,6 @@ When you receive a message starting with [Slow-brain...], it is from your slow-b
 - Do not use markdown formatting, bullet points, or code blocks.
 - Be warm and conversational, like a helpful colleague.
 `.trim();
-
-function logContextEvent(
-  fetchFn: (url: string, init?: RequestInit) => Promise<Response>,
-  sessionId: string | null,
-  source: string,
-  type: string,
-  content: string,
-): void {
-  if (!sessionId) {
-    return;
-  }
-  void fetchFn(`/api/zero/voice-chat/${sessionId}/context`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ source, type, content }),
-  }).then(
-    () => {
-      return undefined;
-    },
-    () => {
-      return undefined;
-    },
-  );
-}
-
-async function prefetchCachedEvents(
-  fetchFn: (url: string, init?: RequestInit) => Promise<Response>,
-  sessionId: string,
-  signal: AbortSignal,
-): Promise<ContextEvent[] | null> {
-  const ctxRes = await fetchFn(
-    `/api/zero/voice-chat/${sessionId}/context?after=0`,
-  );
-  signal.throwIfAborted();
-  if (!ctxRes.ok) {
-    L.warn("Failed to pre-fetch cached events", {
-      status: ctxRes.status,
-      sessionId,
-    });
-    return null;
-  }
-  const data = (await ctxRes.json()) as { events: ContextEvent[] };
-  return data.events;
-}
 
 function formatInjectionMessage(event: ContextEvent): string {
   const prefixes: Record<string, string> = {
@@ -328,15 +278,71 @@ export const setVcModel$ = command(({ set }, model: RealtimeModel) => {
 
 // --- Internal commands ---
 
-const handleFnCall$ = command(
+const logContextEvent$ = command(
   (
     { get },
+    sessionId: string | null,
+    source: string,
+    type: string,
+    content: string,
+  ) => {
+    if (!sessionId) {
+      return;
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatContextContract);
+    accept(
+      client.appendEvent({
+        params: { id: sessionId },
+        body: { source, type, content },
+      }),
+      [200],
+      { toast: false },
+    ).catch(() => {
+      return undefined;
+    });
+  },
+);
+
+const prefetchCachedEvents$ = command(
+  async (
+    { get },
+    sessionId: string,
+    signal: AbortSignal,
+  ): Promise<ContextEvent[] | null> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatContextContract);
+    // eslint-disable-next-line no-restricted-syntax -- accept() throws on non-200; caller tolerates null on failure
+    try {
+      const res = await accept(
+        client.getEvents({ params: { id: sessionId }, query: { after: 0 } }),
+        [200],
+        { toast: false },
+      );
+      signal.throwIfAborted();
+      return res.body.events;
+    } catch (error) {
+      throwIfAbort(error);
+      if (error instanceof ApiError) {
+        L.warn("Failed to pre-fetch cached events", {
+          status: error.status,
+          sessionId,
+        });
+        return null;
+      }
+      throw error;
+    }
+  },
+);
+
+const handleFnCall$ = command(
+  (
+    { get, set },
     callId: string,
     name: string,
     args: string,
     signal: AbortSignal,
   ) => {
-    const fetchFn = get(fetch$);
     const sid = get(internalSessionId$);
     if (!sid) {
       return;
@@ -347,8 +353,8 @@ const handleFnCall$ = command(
 
     if (name === "request_slow_brain") {
       const parsed = JSON.parse(args) as { task: string };
-      logContextEvent(
-        fetchFn,
+      set(
+        logContextEvent$,
         sid,
         "fast-brain",
         "request-slow-brain",
@@ -418,8 +424,8 @@ const handleDCMessage$ = command(
           });
 
           // Auto-log user speech to shared context (fire-and-forget)
-          logContextEvent(
-            get(fetch$),
+          set(
+            logContextEvent$,
             get(internalSessionId$),
             "user",
             "speech",
@@ -469,8 +475,8 @@ const handleDCMessage$ = command(
           });
 
           // Auto-log fast-brain response to shared context (fire-and-forget)
-          logContextEvent(
-            get(fetch$),
+          set(
+            logContextEvent$,
             get(internalSessionId$),
             "fast-brain",
             "response",
@@ -659,17 +665,19 @@ const setupWebRTC$ = command(
 
 const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
   await setLoop(
-    async (sig: AbortSignal) => {
+    async () => {
       const sid = get(internalSessionId$);
       if (!sid) {
         return true;
       }
 
-      const fetchFn = get(fetch$);
-      await fetchFn(`/api/zero/voice-chat/${sid}/heartbeat`, {
-        method: "POST",
-        signal: sig,
-      });
+      const createClient = get(zeroClient$);
+      const client = createClient(zeroVoiceChatSessionsContract);
+      await accept(
+        client.heartbeat({ params: { id: sid }, body: {} }),
+        [200, 401, 404],
+        { toast: false },
+      );
       return false;
     },
     HEARTBEAT_INTERVAL_MS,
@@ -686,44 +694,53 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw new Error("startPoll$ called before session ID is set");
   }
 
-  const pollBody$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const sid = get(internalSessionId$);
-    if (!sid) {
+  const pollBody$ = command(async ({ get, set }, loopSignal: AbortSignal) => {
+    const innerSid = get(internalSessionId$);
+    if (!innerSid) {
       return true;
     }
 
     const lastSeq = get(internalLastSeq$);
-    const fetchFn = get(fetch$);
-    const res = await fetchFn(
-      `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
-      { signal },
-    );
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatContextContract);
 
-    if (!res.ok) {
-      consecutiveFailures++;
-      if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
-        set(internalError$, "Connection issues — retrying…");
+    let res: Awaited<ReturnType<typeof client.getEvents>> & { status: 200 };
+    // eslint-disable-next-line no-restricted-syntax -- observe ApiError to track threshold UI before rethrowing so setLoop applies backoff
+    try {
+      res = await accept(
+        client.getEvents({
+          params: { id: innerSid },
+          query: { after: lastSeq },
+        }),
+        [200],
+        { toast: false },
+      );
+    } catch (error) {
+      throwIfAbort(error);
+      if (error instanceof ApiError) {
+        consecutiveFailures++;
+        if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
+          set(internalError$, "Connection issues — retrying…");
+        }
       }
-      return false;
+      throw error;
     }
+    loopSignal.throwIfAborted();
 
     if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
       set(internalError$, null);
     }
     consecutiveFailures = 0;
 
-    const data = (await res.json()) as { events: ContextEvent[] };
-    signal.throwIfAborted();
-
-    if (data.events.length > 0) {
+    if (res.body.events.length > 0) {
       set(internalEvents$, (prev) => {
-        return [...prev, ...data.events];
+        return [...prev, ...res.body.events];
       });
-      const lastEvent = data.events[data.events.length - 1];
+      const lastEvent = res.body.events[res.body.events.length - 1];
       if (lastEvent) {
         set(internalLastSeq$, lastEvent.seq);
       }
-      set(injectSlowBrainEvents$, data.events);
+      set(injectSlowBrainEvents$, res.body.events);
     }
     return false;
   });
@@ -762,13 +779,15 @@ const reconnectVoiceSession$ = command(
     set(internalError$, null);
     set(internalReconnectAttempt$, 0);
 
-    const fetchFn = get(fetch$);
     const sid = get(internalSessionId$);
     if (!sid) {
       set(internalError$, "No session to reconnect");
       set(internalStatus$, "error");
       return;
     }
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceChatSessionsContract);
 
     for (let attempt = 1; attempt <= MAX_RECONNECT_ATTEMPTS; attempt++) {
       signal.throwIfAborted();
@@ -784,11 +803,13 @@ const reconnectVoiceSession$ = command(
       }
 
       // Check if session is still alive via heartbeat
-      const heartbeatRes = await fetchFn(
-        `/api/zero/voice-chat/${sid}/heartbeat`,
-        { method: "POST", signal },
+      const heartbeatRes = await accept(
+        client.heartbeat({ params: { id: sid }, body: {} }),
+        [200, 401, 404],
+        { toast: false },
       );
-      if (!heartbeatRes.ok) {
+      signal.throwIfAborted();
+      if (heartbeatRes.status !== 200) {
         set(internalError$, "Session is no longer active");
         set(internalStatus$, "error");
         return;
@@ -799,28 +820,26 @@ const reconnectVoiceSession$ = command(
 
       // Fetch new token with selected model
       const model = get(internalModel$);
-      const tokenRes = await fetchFn("/api/zero/voice-chat/token", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model }),
-        signal,
-      });
-      if (!tokenRes.ok) {
-        if (tokenRes.status === 401 || tokenRes.status === 403) {
-          const body = (await tokenRes.json()) as {
-            error?: { message?: string };
-          };
-          set(internalError$, body.error?.message ?? "Authentication failed");
-          set(internalStatus$, "error");
-          return;
-        }
+      const tokenRes = await accept(
+        client.token({ body: { model } }),
+        [200, 401, 403, 500, 503],
+        { toast: false },
+      );
+      signal.throwIfAborted();
+      if (tokenRes.status === 401 || tokenRes.status === 403) {
+        set(
+          internalError$,
+          tokenRes.body.error.message || "Authentication failed",
+        );
+        set(internalStatus$, "error");
+        return;
+      }
+      if (tokenRes.status !== 200) {
         // Transient failure — retry
         continue;
       }
 
-      const { client_secret: clientSecret } = (await tokenRes.json()) as {
-        client_secret: { value: string; expires_at: number };
-      };
+      const { client_secret: clientSecret } = tokenRes.body;
       signal.throwIfAborted();
 
       // Check if existing mic stream is still active
@@ -972,31 +991,26 @@ const releaseWakeLock$ = command(({ get, set }) => {
 
 const connectVoiceSession$ = command(
   async ({ get, set }, sessionSignal: AbortSignal) => {
-    const fetchFn = get(fetch$);
     const model = get(internalModel$);
 
     set(internalStatus$, "connecting");
 
-    const tokenRes = await fetchFn("/api/zero/voice-chat/token", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model }),
-    });
+    const createClient = get(zeroClient$);
+    const sessionsClient = createClient(zeroVoiceChatSessionsContract);
+    const tokenRes = await accept(
+      sessionsClient.token({ body: { model } }),
+      [200, 401, 403, 500, 503],
+      { toast: false },
+    );
     sessionSignal.throwIfAborted();
 
-    if (!tokenRes.ok) {
-      const body = (await tokenRes.json()) as {
-        error: { message: string };
-      };
-      sessionSignal.throwIfAborted();
-      set(internalError$, body.error.message);
+    if (tokenRes.status !== 200) {
+      set(internalError$, tokenRes.body.error.message);
       set(internalStatus$, "error");
       return;
     }
 
-    const { client_secret: clientSecret } = (await tokenRes.json()) as {
-      client_secret: { value: string; expires_at: number };
-    };
+    const { client_secret: clientSecret } = tokenRes.body;
     sessionSignal.throwIfAborted();
 
     let stream: MediaStream;
@@ -1053,7 +1067,6 @@ const prepareActivateConnect$ = command(
     timeoutMs: number,
     signal: AbortSignal,
   ) => {
-    const fetchFn = get(fetch$);
     const startTime = Date.now();
     let preparationReady = false;
 
@@ -1076,29 +1089,29 @@ const prepareActivateConnect$ = command(
         }
 
         const lastSeq = get(internalLastSeq$);
-        const res = await fetchFn(
-          `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
-          { signal: loopSignal },
+        const createClient = get(zeroClient$);
+        const contextClient = createClient(zeroVoiceChatContextContract);
+        const res = await accept(
+          contextClient.getEvents({
+            params: { id: sid },
+            query: { after: lastSeq },
+          }),
+          [200],
+          { toast: false },
         );
-
-        if (!res.ok) {
-          return false;
-        }
-
-        const data = (await res.json()) as { events: ContextEvent[] };
         loopSignal.throwIfAborted();
 
-        if (data.events.length > 0) {
+        if (res.body.events.length > 0) {
           set(internalEvents$, (prev) => {
-            return [...prev, ...data.events];
+            return [...prev, ...res.body.events];
           });
-          const lastEvent = data.events[data.events.length - 1];
+          const lastEvent = res.body.events[res.body.events.length - 1];
           if (lastEvent) {
             set(internalLastSeq$, lastEvent.seq);
           }
 
           if (
-            data.events.some((e) => {
+            res.body.events.some((e) => {
               return e.type === "preparation-ready";
             })
           ) {
@@ -1126,9 +1139,13 @@ const prepareActivateConnect$ = command(
         set(internalStatus$, "error");
         const sid = get(internalSessionId$);
         if (sid) {
-          void fetchFn(`/api/zero/voice-chat/${sid}/end`, {
-            method: "POST",
-          }).catch(() => {
+          const createClient = get(zeroClient$);
+          const sessionsClient = createClient(zeroVoiceChatSessionsContract);
+          accept(
+            sessionsClient.end({ params: { id: sid }, body: {} }),
+            [200, 401, 404],
+            { toast: false },
+          ).catch(() => {
             return undefined;
           });
         }
@@ -1139,13 +1156,16 @@ const prepareActivateConnect$ = command(
     signal.throwIfAborted();
 
     // Activate session (preparing → active)
-    const activateRes = await fetchFn(
-      `/api/zero/voice-chat/${sessionId}/activate`,
-      { method: "POST" },
+    const createClient = get(zeroClient$);
+    const sessionsClient = createClient(zeroVoiceChatSessionsContract);
+    const activateRes = await accept(
+      sessionsClient.activate({ params: { id: sessionId }, body: {} }),
+      [200, 401, 404],
+      { toast: false },
     );
     signal.throwIfAborted();
 
-    if (!activateRes.ok) {
+    if (activateRes.status !== 200) {
       set(internalError$, "Failed to activate session");
       set(internalStatus$, "error");
       return;
@@ -1241,7 +1261,6 @@ export const startVoiceChat$ = command(
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
-    const fetchFn = get(fetch$);
     const agentId = await get(defaultAgentId$);
     signal.throwIfAborted();
 
@@ -1266,50 +1285,42 @@ export const startVoiceChat$ = command(
     );
     signal.throwIfAborted();
 
-    const sessionRes = await fetchFn("/api/zero/voice-chat", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ agentId }),
-    });
+    const createClient = get(zeroClient$);
+    const sessionsClient = createClient(zeroVoiceChatSessionsContract);
+    const sessionRes = await accept(
+      sessionsClient.create({ body: { agentId, mode: "chat" } }),
+      [200, 400, 401, 403],
+      { toast: false },
+    );
     signal.throwIfAborted();
 
-    if (!sessionRes.ok) {
-      const body = (await sessionRes.json()) as {
-        error: { message: string };
-      };
-      signal.throwIfAborted();
-      set(internalError$, body.error.message);
+    if (sessionRes.status !== 200) {
+      set(internalError$, sessionRes.body.error.message);
       set(internalStatus$, "error");
       return;
     }
 
-    const { session } = (await sessionRes.json()) as {
-      session: { id: string; prepared?: boolean };
-    };
-    signal.throwIfAborted();
+    const { session } = sessionRes.body;
     set(internalSessionId$, session.id);
 
     if (session.prepared) {
       const heartbeatPromise = set(startHeartbeat$, sessionSignal);
 
-      const activateRes = await fetchFn(
-        `/api/zero/voice-chat/${session.id}/activate`,
-        { method: "POST" },
+      const activateRes = await accept(
+        sessionsClient.activate({ params: { id: session.id }, body: {} }),
+        [200, 401, 404],
+        { toast: false },
       );
       signal.throwIfAborted();
 
-      if (!activateRes.ok) {
+      if (activateRes.status !== 200) {
         set(internalError$, "Failed to activate session");
         set(internalStatus$, "error");
         return;
       }
 
       // Pre-fetch cached preparation events so they're available when DC opens
-      const cachedEvents = await prefetchCachedEvents(
-        fetchFn,
-        session.id,
-        signal,
-      );
+      const cachedEvents = await set(prefetchCachedEvents$, session.id, signal);
       if (cachedEvents && cachedEvents.length > 0) {
         set(internalEvents$, cachedEvents);
         const lastEvent = cachedEvents[cachedEvents.length - 1];
@@ -1359,7 +1370,6 @@ export const startVoiceMeeting$ = command(
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
-    const fetchFn = get(fetch$);
     const agentId = await get(defaultAgentId$);
     signal.throwIfAborted();
 
@@ -1369,50 +1379,44 @@ export const startVoiceMeeting$ = command(
       return;
     }
 
-    const sessionRes = await fetchFn("/api/zero/voice-chat", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ agentId, mode: "meeting", prompt }),
-    });
+    const createClient = get(zeroClient$);
+    const sessionsClient = createClient(zeroVoiceChatSessionsContract);
+    const sessionRes = await accept(
+      sessionsClient.create({
+        body: { agentId, mode: "meeting", prompt },
+      }),
+      [200, 400, 401, 403],
+      { toast: false },
+    );
     signal.throwIfAborted();
 
-    if (!sessionRes.ok) {
-      const body = (await sessionRes.json()) as {
-        error: { message: string };
-      };
-      signal.throwIfAborted();
-      set(internalError$, body.error.message);
+    if (sessionRes.status !== 200) {
+      set(internalError$, sessionRes.body.error.message);
       set(internalStatus$, "error");
       return;
     }
 
-    const { session } = (await sessionRes.json()) as {
-      session: { id: string; prepared?: boolean };
-    };
-    signal.throwIfAborted();
+    const { session } = sessionRes.body;
     set(internalSessionId$, session.id);
 
     if (session.prepared) {
       const heartbeatPromise = set(startHeartbeat$, sessionSignal);
 
-      const activateRes = await fetchFn(
-        `/api/zero/voice-chat/${session.id}/activate`,
-        { method: "POST" },
+      const activateRes = await accept(
+        sessionsClient.activate({ params: { id: session.id }, body: {} }),
+        [200, 401, 404],
+        { toast: false },
       );
       signal.throwIfAborted();
 
-      if (!activateRes.ok) {
+      if (activateRes.status !== 200) {
         set(internalError$, "Failed to activate session");
         set(internalStatus$, "error");
         return;
       }
 
       // Pre-fetch cached preparation events so they're available when DC opens
-      const cachedEvents = await prefetchCachedEvents(
-        fetchFn,
-        session.id,
-        signal,
-      );
+      const cachedEvents = await set(prefetchCachedEvents$, session.id, signal);
       if (cachedEvents && cachedEvents.length > 0) {
         set(internalEvents$, cachedEvents);
         const lastEvent = cachedEvents[cachedEvents.length - 1];
@@ -1439,18 +1443,18 @@ export const startVoiceMeeting$ = command(
 
 export const endVoiceChat$ = command(({ get, set }) => {
   const sid = get(internalSessionId$);
-  const fetchFn = get(fetch$);
 
   // End session on server so it's no longer "active" in DB
-  if (sid && fetchFn) {
-    void fetchFn(`/api/zero/voice-chat/${sid}/end`, { method: "POST" }).then(
-      () => {
-        return undefined;
-      },
-      () => {
-        return undefined;
-      },
-    );
+  if (sid) {
+    const createClient = get(zeroClient$);
+    const sessionsClient = createClient(zeroVoiceChatSessionsContract);
+    accept(
+      sessionsClient.end({ params: { id: sid }, body: {} }),
+      [200, 401, 404],
+      { toast: false },
+    ).catch(() => {
+      return undefined;
+    });
   }
 
   set(resetSessionSignal$);

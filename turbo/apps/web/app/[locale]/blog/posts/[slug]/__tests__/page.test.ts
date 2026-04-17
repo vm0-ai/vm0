@@ -112,6 +112,7 @@ describe("blog post page metadata", () => {
   it("includes canonical URL for existing post", async () => {
     const metadata = await generateMetadata({
       params: Promise.resolve({ slug: "test-post", locale: "en" }),
+      searchParams: Promise.resolve({}),
     });
 
     expect(metadata.alternates?.canonical).toBe(
@@ -122,6 +123,7 @@ describe("blog post page metadata", () => {
   it("uses locale in canonical URL", async () => {
     const metadata = await generateMetadata({
       params: Promise.resolve({ slug: "test-post", locale: "ja" }),
+      searchParams: Promise.resolve({}),
     });
 
     expect(metadata.alternates?.canonical).toBe(
@@ -132,6 +134,7 @@ describe("blog post page metadata", () => {
   it("returns no canonical URL when post does not exist", async () => {
     const metadata = await generateMetadata({
       params: Promise.resolve({ slug: "non-existent", locale: "en" }),
+      searchParams: Promise.resolve({}),
     });
 
     expect(metadata.title).toBe("Post Not Found");

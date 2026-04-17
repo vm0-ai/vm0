@@ -1,5 +1,34 @@
 # Changelog
 
+## [9.121.0](https://github.com/vm0-ai/vm0/compare/cli-v9.120.0...cli-v9.121.0) (2026-04-17)
+
+
+### Features
+
+* **cli:** show connection status in zero connector search output ([#9803](https://github.com/vm0-ai/vm0/issues/9803)) ([a5551e2](https://github.com/vm0-ai/vm0/commit/a5551e2a2c9e2b9f513d1a62b4d62700edd4ad7e)), closes [#9800](https://github.com/vm0-ai/vm0/issues/9800)
+
+## [9.120.0](https://github.com/vm0-ai/vm0/compare/cli-v9.119.3...cli-v9.120.0) (2026-04-17)
+
+
+### Features
+
+* **cli:** add per-agent authorization column to zero connector list and status ([#9772](https://github.com/vm0-ai/vm0/issues/9772)) ([73fea84](https://github.com/vm0-ai/vm0/commit/73fea84e51b1df826c82b9809c01a73fe3ea4b73)), closes [#9762](https://github.com/vm0-ai/vm0/issues/9762)
+* **cli:** add zero connector search command ([#9779](https://github.com/vm0-ai/vm0/issues/9779)) ([0030b78](https://github.com/vm0-ai/vm0/commit/0030b78d7f3c84bfc80271ba442cbab6ca7d86f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.194.0
+
+## [9.119.3](https://github.com/vm0-ai/vm0/compare/cli-v9.119.2...cli-v9.119.3) (2026-04-17)
+
+
+### Refactoring
+
+* **cli:** remove zero connector connect and disconnect commands ([#9755](https://github.com/vm0-ai/vm0/issues/9755)) ([886dc4c](https://github.com/vm0-ai/vm0/commit/886dc4c5ba9070c3474f21fd6093f09804ece8ac)), closes [#9747](https://github.com/vm0-ai/vm0/issues/9747)
+
 ## [9.119.2](https://github.com/vm0-ai/vm0/compare/cli-v9.119.1...cli-v9.119.2) (2026-04-17)
 
 

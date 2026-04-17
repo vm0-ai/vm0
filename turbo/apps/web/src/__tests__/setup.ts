@@ -66,6 +66,7 @@ const resetEnv = vi.hoisted(() => {
     );
     // Initialize Next.js after() callback queue (shared with test-helpers.ts flushAfter)
     globalThis.nextAfterCallbacks = [];
+    globalThis.nextAfterArgForms = [];
   };
   fn(); // Initial call before imports
   return fn;
@@ -89,8 +90,10 @@ vi.mock("next/server", async (importOriginal) => {
     ...original,
     after: (fnOrPromise: (() => Promise<unknown>) | Promise<unknown>) => {
       if (typeof fnOrPromise === "function") {
+        globalThis.nextAfterArgForms.push("fn");
         globalThis.nextAfterCallbacks.push(fnOrPromise);
       } else {
+        globalThis.nextAfterArgForms.push("promise");
         // Wrap promise in a function for consistent handling in flushAfter()
         globalThis.nextAfterCallbacks.push(() => {
           return fnOrPromise;
@@ -293,6 +296,7 @@ beforeEach(() => {
   resetEnv();
   reloadEnv();
   globalThis.nextAfterCallbacks = [];
+  globalThis.nextAfterArgForms = [];
 });
 
 afterEach(() => {

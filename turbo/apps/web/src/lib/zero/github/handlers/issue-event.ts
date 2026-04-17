@@ -8,8 +8,8 @@ import { validateAgentSession } from "../../zero-run-validation";
 import { createZeroRun } from "../../zero-run-service";
 import { buildGitHubPrompt } from "../../integration-prompt";
 import { resolveAgentId } from "../../zero-compose-service";
-import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
 import type { GitHubIssuesCallbackPayload } from "../../../infra/callback/callback-payloads";
+import { adaptGithubTrigger } from "./adapt-github-trigger";
 import { getInstallationAccessToken } from "../github-app";
 import {
   type IssueComment,
@@ -483,10 +483,8 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     !!commentId,
   );
 
-  // 6. Create agent run with callback
-  const callbackUrl = `${getApiUrl()}/api/internal/callbacks/github/issues`;
-  const callbackSecret = generateCallbackSecret();
-  const callbackContext: GitHubIssuesCallbackPayload = {
+  // 6. Create agent run via pure adapter
+  const callbackPayload: GitHubIssuesCallbackPayload = {
     installationId: installation.id,
     repo,
     issueNumber,
@@ -498,21 +496,16 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
   };
 
   try {
-    const result = await createZeroRun({
-      userId: vm0UserId,
-      prompt: resolvedPrompt,
-      appendSystemPrompt,
-      agentId,
-      sessionId: existingSessionId,
-      triggerSource: "github",
-      callbacks: [
-        {
-          url: callbackUrl,
-          secret: callbackSecret,
-          payload: callbackContext,
-        },
-      ],
-    });
+    const result = await createZeroRun(
+      adaptGithubTrigger({
+        userId: vm0UserId,
+        agentId,
+        sessionId: existingSessionId,
+        prompt: resolvedPrompt,
+        appendSystemPrompt,
+        callbackPayload,
+      }),
+    );
 
     log.info("Agent run dispatched for GitHub issue", {
       runId: result.runId,

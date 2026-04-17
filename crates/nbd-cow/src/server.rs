@@ -101,17 +101,18 @@ async fn handle_read(
         return Ok(());
     }
     let mut data = vec![0u8; request.length as usize];
-    {
+    let result = {
         let cow = cow.read().await;
-        if let Err(e) = cow.read(request.offset, &mut data) {
-            tracing::warn!(
-                offset = request.offset,
-                len = request.length,
-                "read error: {e}"
-            );
-            send_error_reply(writer, request.handle, libc::EIO as u32).await?;
-            return Ok(());
-        }
+        cow.read(request.offset, &mut data)
+    };
+    if let Err(e) = result {
+        tracing::warn!(
+            offset = request.offset,
+            len = request.length,
+            "read error: {e}"
+        );
+        send_error_reply(writer, request.handle, libc::EIO as u32).await?;
+        return Ok(());
     }
 
     let reply = NbdReply {
@@ -140,14 +141,15 @@ async fn handle_write(
     let mut data = vec![0u8; request.length as usize];
     reader.read_exact(&mut data).await?;
 
-    {
+    let failed = {
         let mut cow = cow.write().await;
         match cow.write(request.offset, &data) {
             Ok(needs_flush) => {
                 if needs_flush && let Err(e) = cow.flush() {
                     tracing::warn!("flush error after write: {e}");
-                    send_error_reply(writer, request.handle, libc::EIO as u32).await?;
-                    return Ok(());
+                    true
+                } else {
+                    false
                 }
             }
             Err(e) => {
@@ -156,10 +158,13 @@ async fn handle_write(
                     len = request.length,
                     "write error: {e}"
                 );
-                send_error_reply(writer, request.handle, libc::EIO as u32).await?;
-                return Ok(());
+                true
             }
         }
+    };
+    if failed {
+        send_error_reply(writer, request.handle, libc::EIO as u32).await?;
+        return Ok(());
     }
 
     let reply = NbdReply {
@@ -174,13 +179,14 @@ async fn handle_flush(
     cow: &Arc<RwLock<CowLayer>>,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
-    {
+    let result = {
         let mut cow = cow.write().await;
-        if let Err(e) = cow.sync() {
-            tracing::warn!("sync error: {e}");
-            send_error_reply(writer, request.handle, libc::EIO as u32).await?;
-            return Ok(());
-        }
+        cow.sync()
+    };
+    if let Err(e) = result {
+        tracing::warn!("sync error: {e}");
+        send_error_reply(writer, request.handle, libc::EIO as u32).await?;
+        return Ok(());
     }
 
     let reply = NbdReply {
@@ -746,6 +752,119 @@ mod tests {
             length: 0,
         };
         writer.write_all(&serialize_request(&disc)).await.unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    /// Constructs a CowLayer whose COW file is `/dev/full` — every write to it
+    /// returns ENOSPC, letting us trigger `cow.flush()` / `cow.sync()` failures
+    /// deterministically without filesystem tricks.
+    fn create_cow_with_full_device(base: &NamedTempFile, flush_threshold: usize) -> CowLayer {
+        CowLayer::new(
+            base.path(),
+            std::path::Path::new("/dev/full"),
+            8192,
+            4096,
+            flush_threshold,
+        )
+        .unwrap()
+    }
+
+    /// Covers the `handle_write` flush-error branch: `cow.write()` succeeds but
+    /// the triggered `cow.flush()` fails — the branch preserved in the fix to
+    /// keep the "flush error after write" log distinct from the write-error log.
+    #[tokio::test]
+    async fn dispatch_write_flush_failure_returns_error() {
+        let mut base = NamedTempFile::new().unwrap();
+        base.write_all(&vec![0xAA; 8192]).unwrap();
+        base.flush().unwrap();
+        // flush_threshold = block_size → one write forces an immediate flush.
+        let cow = Arc::new(RwLock::new(create_cow_with_full_device(&base, 4096)));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        let write_req = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 1,
+            offset: 0,
+            length: 4096,
+        };
+        writer
+            .write_all(&serialize_request(&write_req))
+            .await
+            .unwrap();
+        writer.write_all(&vec![0xBB; 4096]).await.unwrap();
+
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+        let error = u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]]);
+        assert_eq!(
+            error,
+            libc::EIO as u32,
+            "flush failure should return EIO reply"
+        );
+
+        // Drop client halves so the server sees EOF and exits cleanly.
+        drop(writer);
+        drop(reader);
+        task.await.unwrap().unwrap();
+    }
+
+    /// Covers the `handle_flush` sync-error branch: buffered data exists, a
+    /// Flush command triggers `cow.sync()` which calls `flush()` which writes
+    /// to `/dev/full` and fails.
+    #[tokio::test]
+    async fn dispatch_sync_failure_returns_error() {
+        let mut base = NamedTempFile::new().unwrap();
+        base.write_all(&vec![0xAA; 8192]).unwrap();
+        base.flush().unwrap();
+        // High threshold → the initial write stays buffered and succeeds;
+        // the failure lands on the subsequent Flush command.
+        let cow = Arc::new(RwLock::new(create_cow_with_full_device(
+            &base,
+            4 * 1024 * 1024,
+        )));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        // Buffered write — succeeds without touching the COW file.
+        let write_req = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 1,
+            offset: 0,
+            length: 4096,
+        };
+        writer
+            .write_all(&serialize_request(&write_req))
+            .await
+            .unwrap();
+        writer.write_all(&vec![0xBB; 4096]).await.unwrap();
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+        assert_eq!(
+            u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]]),
+            0,
+            "buffered write should succeed"
+        );
+
+        // Flush drains the buffer to /dev/full → ENOSPC.
+        let flush_req = NbdRequest {
+            flags: 0,
+            command: Command::Flush,
+            handle: 2,
+            offset: 0,
+            length: 0,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &flush_req).await;
+        assert_eq!(
+            error,
+            libc::EIO as u32,
+            "sync failure should return EIO reply"
+        );
+
+        drop(writer);
+        drop(reader);
         task.await.unwrap().unwrap();
     }
 

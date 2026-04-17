@@ -589,13 +589,15 @@ export function ZeroSidebar() {
                     }`}
                   >
                     {iconImg ? (
-                      <img
-                        src={iconImg}
-                        alt=""
-                        className="h-3.5 w-3.5 shrink-0"
-                        width={14}
-                        height={14}
-                      />
+                      <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center overflow-hidden">
+                        <img
+                          src={iconImg}
+                          alt=""
+                          className="h-3.5 w-3.5 scale-[2.2]"
+                          width={14}
+                          height={14}
+                        />
+                      </span>
                     ) : (
                       <Icon size={16} className="shrink-0" />
                     )}

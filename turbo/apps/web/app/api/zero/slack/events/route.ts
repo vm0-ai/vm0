@@ -89,8 +89,8 @@ function handleEventCallback(payload: SlackEventCallback) {
 
   if (event.type === "app_mention") {
     initServices();
-    after(
-      handleOrgMention({
+    after(() => {
+      return handleOrgMention({
         workspaceId: payload.team_id,
         channelId: event.channel,
         channelType: event.channel_type,
@@ -101,8 +101,8 @@ function handleEventCallback(payload: SlackEventCallback) {
         files: event.files,
       }).catch((error) => {
         log.error("Error handling org app_mention", { error });
-      }),
-    );
+      });
+    });
   }
 
   if (
@@ -112,8 +112,8 @@ function handleEventCallback(payload: SlackEventCallback) {
     !event.bot_id
   ) {
     initServices();
-    after(
-      handleOrgDirectMessage({
+    after(() => {
+      return handleOrgDirectMessage({
         workspaceId: payload.team_id,
         channelId: event.channel,
         userId: event.user,
@@ -123,42 +123,42 @@ function handleEventCallback(payload: SlackEventCallback) {
         threadTs: event.thread_ts,
       }).catch((error) => {
         log.error("Error handling org direct_message", { error });
-      }),
-    );
+      });
+    });
   }
 
   if (event.type === "app_home_opened" && event.tab === "home") {
     initServices();
-    after(
-      handleOrgAppHomeOpened({
+    after(() => {
+      return handleOrgAppHomeOpened({
         workspaceId: payload.team_id,
         userId: event.user,
       }).catch((error) => {
         log.error("Error handling org app_home_opened", { error });
-      }),
-    );
+      });
+    });
   }
 
   if (event.type === "app_home_opened" && event.tab === "messages") {
     initServices();
-    after(
-      handleOrgMessagesTabOpened({
+    after(() => {
+      return handleOrgMessagesTabOpened({
         workspaceId: payload.team_id,
         userId: event.user,
         channelId: event.channel,
       }).catch((error) => {
         log.error("Error handling org messages_tab_opened", { error });
-      }),
-    );
+      });
+    });
   }
 
   if (event.type === "app_uninstalled") {
     initServices();
-    after(
-      cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
+    after(() => {
+      return cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
         log.error("Error handling app_uninstalled", { error });
-      }),
-    );
+      });
+    });
   }
 
   if (
@@ -167,11 +167,11 @@ function handleEventCallback(payload: SlackEventCallback) {
     event.tokens.bot.length > 0
   ) {
     initServices();
-    after(
-      cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
+    after(() => {
+      return cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
         log.error("Error handling tokens_revoked", { error });
-      }),
-    );
+      });
+    });
   }
 }
 

@@ -19,13 +19,16 @@ interface PromptVariant {
 function ConnectorBadge({ connector }: { connector: ConnectorRef }) {
   if (!connector.icon) return null;
   return (
-    <span className="uc-connector-badge" title={connector.label}>
+    <span
+      className="uc-connector-badge overflow-hidden"
+      title={connector.label}
+    >
       <Image
         src={connector.icon}
         alt={connector.label}
         width={20}
         height={20}
-        className={`uc-connector-icon${connector.dark ? " landing-icon-invert" : ""}`}
+        className={`uc-connector-icon${connector.dark ? " landing-icon-invert" : ""}${connector.looseViewBox ? " scale-[2.2]" : ""}`}
       />
     </span>
   );
@@ -234,13 +237,15 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                 return (
                   <div key={i} className="uc-integration">
                     {integration.connector.icon ? (
-                      <Image
-                        src={integration.connector.icon}
-                        alt={integration.connector.label}
-                        width={32}
-                        height={32}
-                        className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}`}
-                      />
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
+                        <Image
+                          src={integration.connector.icon}
+                          alt={integration.connector.label}
+                          width={32}
+                          height={32}
+                          className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}${integration.connector.looseViewBox ? " scale-[2.2]" : ""}`}
+                        />
+                      </div>
                     ) : (
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--gray-100))] text-sm font-medium text-[hsl(var(--muted-foreground))]">
                         {integration.connector.label[0]}

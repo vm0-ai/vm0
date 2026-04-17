@@ -192,7 +192,7 @@ export default async function RootLayout({
                 logo: "https://www.vm0.ai/assets/vm0-logo.svg",
                 description:
                   "Your trustworthy AI teammate. Works in Slack and on the web, for individuals and team collaboration.",
-                email: "contact@vm0.ai",
+                email: "support@vm0.ai",
                 foundingDate: "2025",
                 sameAs: [
                   "https://twitter.com/vm0_ai",
@@ -201,7 +201,7 @@ export default async function RootLayout({
                 ],
                 contactPoint: {
                   "@type": "ContactPoint",
-                  email: "contact@vm0.ai",
+                  email: "support@vm0.ai",
                   contactType: "customer support",
                 },
               }),

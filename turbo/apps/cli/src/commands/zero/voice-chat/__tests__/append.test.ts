@@ -32,6 +32,7 @@ describe("zero voice-chat context append command", () => {
     it("should append an event with --content", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       const createdEvent = {
+        id: "evt-1",
         seq: 1,
         source: "slow-brain",
         type: "directive",
@@ -42,7 +43,7 @@ describe("zero voice-chat context append command", () => {
       server.use(
         http.post(CONTEXT_URL, async ({ request }) => {
           capturedBody = (await request.json()) as Record<string, unknown>;
-          return HttpResponse.json(createdEvent, { status: 200 });
+          return HttpResponse.json({ event: createdEvent }, { status: 200 });
         }),
       );
 
@@ -77,10 +78,14 @@ describe("zero voice-chat context append command", () => {
           capturedBody = (await request.json()) as Record<string, unknown>;
           return HttpResponse.json(
             {
-              seq: 1,
-              source: "slow-brain",
-              type: "heartbeat",
-              createdAt: "2026-01-01T00:00:00Z",
+              event: {
+                id: "evt-1",
+                seq: 1,
+                source: "slow-brain",
+                type: "heartbeat",
+                content: null,
+                createdAt: "2026-01-01T00:00:00Z",
+              },
             },
             { status: 200 },
           );

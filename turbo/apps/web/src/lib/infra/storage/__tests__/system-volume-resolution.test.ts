@@ -15,32 +15,10 @@ import type { AgentVolumeConfig } from "../types";
 
 const context = testContext();
 
-/** Build a skill GitHub URL with a unique suffix */
-function uniqueSkillUrl(): {
-  url: string;
-  storageName: string;
-} {
-  const suffix = uniqueId("skill");
-  const url = `https://github.com/test-org/test-repo/tree/main/${suffix}`;
-  const storageName = `agent-skills@test-org/test-repo/tree/main/${suffix}`;
-  return { url, storageName };
-}
-
-/** Agent config that produces a single skill volume */
-function skillAgentConfig(skillUrl: string): AgentVolumeConfig {
-  return {
-    agents: {
-      "test-agent": {
-        skills: [skillUrl],
-      },
-    },
-  };
-}
-
-/** Agent config that produces a regular (non-skill) volume */
-function regularVolumeConfig(
+function systemVolumeConfig(
   volumeName: string,
   storageName: string,
+  opts: { system: boolean; optional?: boolean },
 ): AgentVolumeConfig {
   return {
     agents: {
@@ -52,12 +30,14 @@ function regularVolumeConfig(
       [volumeName]: {
         name: storageName,
         version: "latest",
+        system: opts.system,
+        optional: opts.optional,
       },
     },
   };
 }
 
-describe("System Skill Resolution", () => {
+describe("System Volume Resolution (VolumeConfig.system)", () => {
   let user: UserContext;
 
   beforeEach(async () => {
@@ -65,17 +45,16 @@ describe("System Skill Resolution", () => {
     user = await context.setupUser();
   });
 
-  it("should resolve skill from system org when available", async () => {
-    const { url, storageName } = uniqueSkillUrl();
-
-    // Create skill storage under SYSTEM_ORG_ID
+  it("resolves system volume from SYSTEM_ORG when available", async () => {
+    const volumeName = uniqueId("vol");
+    const storageName = uniqueId("sys-vol");
     const { versionId } = await createTestVolumeForOrg(
       SYSTEM_ORG_ID,
       storageName,
     );
 
     const manifest = await prepareStorageManifest(
-      skillAgentConfig(url),
+      systemVolumeConfig(volumeName, storageName, { system: true }),
       {},
       user.orgId,
       user.orgId,
@@ -87,14 +66,13 @@ describe("System Skill Resolution", () => {
     expect(manifest.storages[0]!.vasVersionId).toBe(versionId);
   });
 
-  it("should fall back to agent org when skill not in system org", async () => {
-    const { url, storageName } = uniqueSkillUrl();
-
-    // Create skill storage under agent's org (NOT system org)
+  it("falls back to agent org when system volume not in SYSTEM_ORG", async () => {
+    const volumeName = uniqueId("vol");
+    const storageName = uniqueId("sys-fallback");
     const { versionId } = await createTestVolume(storageName);
 
     const manifest = await prepareStorageManifest(
-      skillAgentConfig(url),
+      systemVolumeConfig(volumeName, storageName, { system: true }),
       {},
       user.orgId,
       user.orgId,
@@ -106,15 +84,17 @@ describe("System Skill Resolution", () => {
     expect(manifest.storages[0]!.vasVersionId).toBe(versionId);
   });
 
-  it("should resolve regular volumes from agent org only", async () => {
+  it("prefers SYSTEM_ORG over agent org when both have the volume", async () => {
     const volumeName = uniqueId("vol");
-    const storageName = uniqueId("storage");
-
-    // Create regular volume under agent's org
+    const storageName = uniqueId("sys-priority");
+    const { versionId: systemVersionId } = await createTestVolumeForOrg(
+      SYSTEM_ORG_ID,
+      storageName,
+    );
     await createTestVolume(storageName);
 
     const manifest = await prepareStorageManifest(
-      regularVolumeConfig(volumeName, storageName),
+      systemVolumeConfig(volumeName, storageName, { system: true }),
       {},
       user.orgId,
       user.orgId,
@@ -122,14 +102,18 @@ describe("System Skill Resolution", () => {
     );
 
     expect(manifest.storages).toHaveLength(1);
-    expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
+    expect(manifest.storages[0]!.vasVersionId).toBe(systemVersionId);
   });
 
-  it("should skip skill volume when not found in any org", async () => {
-    const { url } = uniqueSkillUrl();
+  it("skips optional system volume silently when missing in both orgs", async () => {
+    const volumeName = uniqueId("vol");
+    const storageName = uniqueId("missing-sys");
 
     const manifest = await prepareStorageManifest(
-      skillAgentConfig(url),
+      systemVolumeConfig(volumeName, storageName, {
+        system: true,
+        optional: true,
+      }),
       {},
       user.orgId,
       user.orgId,
@@ -139,23 +123,13 @@ describe("System Skill Resolution", () => {
     expect(manifest.storages).toHaveLength(0);
   });
 
-  it("should resolve available skills and skip missing ones", async () => {
-    const found = uniqueSkillUrl();
-    const missing = uniqueSkillUrl();
-
-    // Only create storage for the first skill
-    await createTestVolumeForOrg(SYSTEM_ORG_ID, found.storageName);
-
-    const config: AgentVolumeConfig = {
-      agents: {
-        "test-agent": {
-          skills: [found.url, missing.url],
-        },
-      },
-    };
+  it("resolves non-system compose volume from agent org only", async () => {
+    const volumeName = uniqueId("vol");
+    const storageName = uniqueId("nonsys-vol");
+    const { versionId } = await createTestVolume(storageName);
 
     const manifest = await prepareStorageManifest(
-      config,
+      systemVolumeConfig(volumeName, storageName, { system: false }),
       {},
       user.orgId,
       user.orgId,
@@ -163,6 +137,7 @@ describe("System Skill Resolution", () => {
     );
 
     expect(manifest.storages).toHaveLength(1);
-    expect(manifest.storages[0]!.vasStorageName).toBe(found.storageName);
+    expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
+    expect(manifest.storages[0]!.vasVersionId).toBe(versionId);
   });
 });

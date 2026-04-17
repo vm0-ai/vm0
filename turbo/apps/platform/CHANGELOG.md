@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.246.0](https://github.com/vm0-ai/vm0/compare/app-v0.245.2...app-v0.246.0) (2026-04-17)
+
+
+### Features
+
+* **chat:** support video attachments in web chat ([#9662](https://github.com/vm0-ai/vm0/issues/9662)) ([c46edd2](https://github.com/vm0-ai/vm0/commit/c46edd2a31265d5aa2594a5adefd42fd8296afdc))
+
+
+### Refactoring
+
+* **voice-chat:** migrate voice-chat-session to zero client ([#9789](https://github.com/vm0-ai/vm0/issues/9789)) ([916d8b4](https://github.com/vm0-ai/vm0/commit/916d8b417f2124396b9f4f22b4f781858fcd3ad6))
+
+## [0.245.2](https://github.com/vm0-ai/vm0/compare/app-v0.245.1...app-v0.245.2) (2026-04-17)
+
+
+### Bug Fixes
+
+* add display name for claude-opus-4-7 ([#9770](https://github.com/vm0-ai/vm0/issues/9770)) ([05f51e2](https://github.com/vm0-ai/vm0/commit/05f51e222c8ae30fbc30536892950ff3835be9b5))
+* **slack:** use official Slack Mark SVG per brand guidelines ([#9780](https://github.com/vm0-ai/vm0/issues/9780)) ([c1bb52b](https://github.com/vm0-ai/vm0/commit/c1bb52ba4677dc159667a105ea16b7b30bfca1be))
+
+
+### Refactoring
+
+* **voice-chat:** migrate panel signals to typed zero client ([#9786](https://github.com/vm0-ai/vm0/issues/9786)) ([c1b68b1](https://github.com/vm0-ai/vm0/commit/c1b68b1d507fb90b79a3c504e30e2a2dd238da52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.194.0
+
+## [0.245.1](https://github.com/vm0-ai/vm0/compare/app-v0.245.0...app-v0.245.1) (2026-04-17)
+
+
+### Bug Fixes
+
+* truncate task description on mobile when steps badge present ([#9680](https://github.com/vm0-ai/vm0/issues/9680)) ([05f7daa](https://github.com/vm0-ai/vm0/commit/05f7daa39c46bc001c6a80ab90f06de64e96a2e1))
+
 ## [0.245.0](https://github.com/vm0-ai/vm0/compare/app-v0.244.1...app-v0.245.0) (2026-04-17)
 
 

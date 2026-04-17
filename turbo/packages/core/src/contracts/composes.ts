@@ -132,8 +132,10 @@ const agentDefinitionSchema = z.object({
     }, "Instructions path must be a relative path without '..' segments")
     .optional(),
   /**
-   * Array of GitHub tree URLs for agent skills.
-   * Each skill is auto-downloaded and mounted at /home/user/.claude/skills/{skillName}/
+   * @deprecated Skills are no longer processed by the CLI path. Declare
+   * mounts via `volumes:` / `--volume` instead. Field retained as optional
+   * so older CLI clients posting `skills:` are not rejected; server strips
+   * the field before persisting compose content.
    */
   skills: z.array(z.string()).optional(),
   /**

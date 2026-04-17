@@ -1,6 +1,10 @@
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { cn } from "@vm0/ui";
 
+const CONNECTOR_ICON_ALIASES = {
+  "slack-webhook": "slack",
+} as const satisfies Partial<Record<ConnectorType, ConnectorType>>;
+
 export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
   Object.freeze(
     (() => {
@@ -21,10 +25,14 @@ export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
       const connectorKeys = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
       const filtered: Record<string, string> = {};
       for (const key of connectorKeys) {
-        const icon = allIcons[key];
+        const iconKey =
+          key in CONNECTOR_ICON_ALIASES
+            ? CONNECTOR_ICON_ALIASES[key as keyof typeof CONNECTOR_ICON_ALIASES]
+            : key;
+        const icon = allIcons[iconKey];
         if (typeof icon !== "string") {
           throw new Error(
-            `Missing SVG icon for connector type "${key}". Add icons/${key}.svg.`,
+            `Missing SVG icon for connector type "${key}". Add icons/${iconKey}.svg.`,
           );
         }
         filtered[key] = icon;
@@ -33,6 +41,18 @@ export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
       return filtered as Record<ConnectorType, string>;
     })(),
   );
+
+/** Official Slack Mark ships with a 270×270 viewBox whose artwork only fills the central ~45%.
+ *  Callers render it inside an `overflow-hidden` box at layout size, and we scale the `<img>` up
+ *  so the visible mark matches the box. */
+const CONNECTOR_ICON_LOOSE_VIEWBOX = {
+  slack: true,
+  "slack-webhook": true,
+} as const;
+
+function connectorIconHasLooseViewBox(type: ConnectorType): boolean {
+  return type in CONNECTOR_ICON_LOOSE_VIEWBOX;
+}
 
 /**
  * Multi-color / gradient brand marks: skip `zero-icon-mono` so `filter: invert(1)` does not distort them.
@@ -189,9 +209,13 @@ export function ConnectorIcon({
   }
 
   const icon = CONNECTOR_ICONS[type];
+  const looseViewBox = connectorIconHasLooseViewBox(type);
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center"
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center",
+        looseViewBox && "overflow-hidden",
+      )}
       style={{ width: size, height: size }}
     >
       <img
@@ -201,6 +225,7 @@ export function ConnectorIcon({
         className={cn(
           "block h-full w-full max-h-full max-w-full object-contain",
           !connectorIconSkipsDarkInvert(type) && "zero-icon-mono",
+          looseViewBox && "scale-[2.2]",
         )}
       />
     </span>

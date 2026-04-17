@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.2...guest-agent-v0.21.3) (2026-04-17)
+
+
+### Bug Fixes
+
+* **guest-agent:** mask substring secrets with aho-corasick leftmost-longest ([#9808](https://github.com/vm0-ai/vm0/issues/9808)) ([f1bcd8e](https://github.com/vm0-ai/vm0/commit/f1bcd8e1c61880d22e83f3cdf328318810f4123f))
+
 ## [0.21.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.1...guest-agent-v0.21.2) (2026-04-13)
 
 

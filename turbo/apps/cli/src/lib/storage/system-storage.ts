@@ -1,15 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import {
-  parseGitHubTreeUrl,
-  downloadGitHubSkill,
-  getSkillStorageName,
-  getInstructionsStorageName,
-  validateSkillDirectory,
-  readSkillFrontmatter,
-  type SkillFrontmatter,
-} from "../domain/github-skills";
+import { getInstructionsStorageName } from "../domain/github-skills";
 import { directUpload } from "./direct-upload";
 import { getInstructionsFilename } from "@vm0/core";
 
@@ -17,18 +9,6 @@ interface StorageUploadResult {
   name: string;
   versionId: string;
   action: "created" | "deduplicated";
-}
-
-/**
- * Result of uploading or resolving a skill, including parsed frontmatter.
- * Action "resolved" means the skill was found in server cache (no download/upload needed).
- */
-export interface SkillUploadResult {
-  name: string;
-  versionId: string;
-  action: "created" | "deduplicated" | "resolved";
-  skillName: string;
-  frontmatter: SkillFrontmatter;
 }
 
 /**
@@ -75,47 +55,6 @@ export async function uploadInstructions(
       name: storageName,
       versionId: result.versionId,
       action: result.deduplicated ? "deduplicated" : "created",
-    };
-  } finally {
-    // Clean up temp directory
-    await fs.rm(tmpDir, { recursive: true, force: true });
-  }
-}
-
-/**
- * Upload a skill from GitHub as a volume
- *
- * @param skillUrl - GitHub tree URL for the skill
- * @returns Upload result with storage name, version, and parsed frontmatter
- */
-export async function uploadSkill(
-  skillUrl: string,
-): Promise<SkillUploadResult> {
-  const parsed = parseGitHubTreeUrl(skillUrl);
-  const storageName = getSkillStorageName(parsed);
-
-  // Create temp directory for download
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-skill-"));
-
-  try {
-    // Download skill from GitHub
-    const skillDir = await downloadGitHubSkill(parsed, tmpDir);
-
-    // Validate the skill has SKILL.md
-    await validateSkillDirectory(skillDir);
-
-    // Parse frontmatter before upload
-    const frontmatter = await readSkillFrontmatter(skillDir);
-
-    // Use direct upload (bypasses Vercel 4.5MB limit)
-    const result = await directUpload(storageName, "volume", skillDir);
-
-    return {
-      name: storageName,
-      versionId: result.versionId,
-      action: result.deduplicated ? "deduplicated" : "created",
-      skillName: parsed.skillName,
-      frontmatter,
     };
   } finally {
     // Clean up temp directory

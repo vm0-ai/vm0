@@ -10,8 +10,6 @@ import type {
 import {
   expandVariablesInString,
   getInstructionsStorageName,
-  getSkillStorageName,
-  parseGitHubTreeUrl,
   getValidatedFramework,
 } from "@vm0/core";
 
@@ -28,21 +26,6 @@ import {
 function getInstructionsMountPath(framework?: string): string {
   getValidatedFramework(framework);
   return "/home/user/.claude";
-}
-
-/**
- * Get the base path for skills based on framework
- *
- * Each framework expects skills at a specific location:
- * - claude-code: ~/.claude/skills/
- *
- * @param framework - The framework name (e.g., "claude-code")
- * @returns The base path for skills
- * @throws Error if framework is defined but not supported
- */
-function getSkillsBasePath(framework?: string): string {
-  getValidatedFramework(framework);
-  return "/home/user/.claude/skills";
 }
 
 /**
@@ -136,6 +119,7 @@ function resolveVasVolume(
       vasStorageName: storageName,
       vasVersion: version,
       optional: volumeConfig.optional,
+      system: volumeConfig.system,
     },
     error: null,
   };
@@ -236,16 +220,15 @@ function processVolumeDeclarations(
 }
 
 /**
- * Resolve instruction and skill volumes for an agent.
+ * Resolve instruction volumes for an agent.
  */
-function resolveInstructionsAndSkills(
+function resolveInstructions(
   config: AgentVolumeConfig,
-  agent: { instructions?: unknown; skills?: string[]; framework?: unknown },
+  agent: { instructions?: unknown; framework?: unknown },
 ): ResolvedVolume[] {
   const volumes: ResolvedVolume[] = [];
   const framework = agent.framework as string | undefined;
 
-  // Process instructions if specified
   if (agent.instructions) {
     const agentName = config.agents ? Object.keys(config.agents)[0] : undefined;
     if (agentName) {
@@ -258,25 +241,6 @@ function resolveInstructionsAndSkills(
         vasStorageName: storageName,
         vasVersion: "latest",
       });
-    }
-  }
-
-  // Process skills if specified
-  if (agent.skills && agent.skills.length > 0) {
-    const skillsBasePath = getSkillsBasePath(framework);
-    for (const skillUrl of agent.skills) {
-      const parsed = parseGitHubTreeUrl(skillUrl);
-      if (parsed) {
-        const storageName = getSkillStorageName(parsed.fullPath);
-        volumes.push({
-          name: storageName,
-          driver: "vas",
-          mountPath: `${skillsBasePath}/${parsed.skillName}`,
-          vasStorageName: storageName,
-          vasVersion: "latest",
-          optional: true,
-        });
-      }
     }
   }
 
@@ -324,9 +288,9 @@ export function resolveVolumes(
     errors.push(...declaredErrors);
   }
 
-  // Process instructions and skills
+  // Process instructions
   if (agent) {
-    volumes.push(...resolveInstructionsAndSkills(config, agent));
+    volumes.push(...resolveInstructions(config, agent));
   }
 
   // Process artifact (skip when resuming from checkpoint or when not provided)

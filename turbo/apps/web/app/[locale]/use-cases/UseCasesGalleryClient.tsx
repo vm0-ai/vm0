@@ -43,7 +43,7 @@ function ConnectorIcon({ connector }: { connector: ConnectorRef }) {
   if (!connector.icon) return null;
   return (
     <div
-      className="flex items-center justify-center rounded-[6px] bg-white p-1"
+      className="flex items-center justify-center overflow-hidden rounded-[6px] bg-white p-1"
       style={{ width: 32, height: 32 }}
       title={connector.label}
     >
@@ -52,7 +52,7 @@ function ConnectorIcon({ connector }: { connector: ConnectorRef }) {
         alt={connector.label}
         width={20}
         height={20}
-        className={`object-contain${connector.dark ? " landing-icon-invert" : ""}`}
+        className={`object-contain${connector.dark ? " landing-icon-invert" : ""}${connector.looseViewBox ? " scale-[2.2]" : ""}`}
       />
     </div>
   );

@@ -149,11 +149,15 @@ export async function getPostsFromStrapi(
 export async function getPostBySlugFromStrapi(
   slug: string,
   locale: string = "en",
+  options: { draft?: boolean } = {},
 ): Promise<BlogPost | null> {
-  const url = `${getStrapiUrl()}/api/articles?locale=${locale}&filters[slug][$eq]=${slug}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar`;
+  const statusParam = options.draft ? "&status=draft" : "";
+  const url = `${getStrapiUrl()}/api/articles?locale=${locale}&filters[slug][$eq]=${slug}&populate[0]=cover&populate[1]=blocks&populate[2]=category&populate[3]=author.avatar${statusParam}`;
 
   const res = await fetch(url, {
-    next: { revalidate: 3600 },
+    ...(options.draft
+      ? { cache: "no-store" as const }
+      : { next: { revalidate: 3600 } }),
     signal: AbortSignal.timeout(10_000),
   });
 

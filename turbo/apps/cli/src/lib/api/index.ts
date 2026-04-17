@@ -41,9 +41,6 @@ export {
   updateZeroUserPreferences,
 } from "./domains/zero-user-preferences";
 
-// Domain modules - Skills
-export { resolveSkills } from "./domains/skills";
-
 // Domain modules - Zero Organizations
 export {
   getZeroOrg,
@@ -119,11 +116,6 @@ export {
 export {
   listZeroConnectors,
   getZeroConnector,
-  deleteZeroConnector,
-  createZeroConnectorSession,
-  getZeroConnectorSession,
-  createZeroComputerConnector,
-  deleteZeroComputerConnector,
 } from "./domains/zero-connectors";
 
 // Domain modules - Integrations Slack

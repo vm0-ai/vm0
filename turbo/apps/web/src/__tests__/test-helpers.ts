@@ -399,13 +399,17 @@ export function testContext(): TestContext {
       dateNow: dateNowMock,
       date: dateMocks,
       async flushAfter() {
-        const callbacks = [...globalThis.nextAfterCallbacks];
-        globalThis.nextAfterCallbacks = [];
-        await Promise.all(
-          callbacks.map((fn) => {
-            return fn();
-          }),
-        );
+        // Drain iteratively so callbacks that schedule more after() calls
+        // (e.g. createZeroRun's deferred dispatch) are also executed.
+        while (globalThis.nextAfterCallbacks.length > 0) {
+          const callbacks = [...globalThis.nextAfterCallbacks];
+          globalThis.nextAfterCallbacks = [];
+          await Promise.all(
+            callbacks.map((fn) => {
+              return fn();
+            }),
+          );
+        }
       },
     };
     mockHelpers = helpers;

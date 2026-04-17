@@ -87,78 +87,17 @@ describe("createVoiceChatPanelSignals", () => {
     });
   });
 
-  it("should filter out items missing required fields from the events array", async () => {
-    setup();
-
-    server.use(
-      http.get("*/api/zero/voice-chat/sess-validate/context", () => {
-        return HttpResponse.json({
-          events: [
-            // Valid event
-            {
-              id: "evt-ok",
-              seq: 1,
-              source: "slow-brain",
-              type: "thinking",
-              content: "Valid",
-              createdAt: "2026-04-13T10:00:01Z",
-            },
-            // Missing id — should be filtered out
-            {
-              seq: 2,
-              source: "user",
-              type: "speech",
-              content: "No id",
-              createdAt: "2026-04-13T10:00:02Z",
-            },
-            // seq is a string, not number — should be filtered out
-            {
-              id: "evt-bad-seq",
-              seq: "3",
-              source: "fast-brain",
-              type: "response",
-              content: "Bad seq",
-              createdAt: "2026-04-13T10:00:03Z",
-            },
-            // null item — should be filtered out
-            null,
-            // content is undefined (field absent) — should be filtered out
-            {
-              id: "evt-no-content",
-              seq: 4,
-              source: "user",
-              type: "speech",
-              createdAt: "2026-04-13T10:00:04Z",
-            },
-          ],
-        });
-      }),
-    );
-
-    const signals = createVoiceChatPanelSignals("sess-validate");
-    detach(
-      context.store.set(signals.startPolling$, context.signal),
-      Reason.Daemon,
-    );
-
-    await waitFor(() => {
-      const events = context.store.get(signals.events$);
-      // Only the one valid event should be present
-      expect(events).toHaveLength(1);
-    });
-
-    const events = context.store.get(signals.events$);
-    expect(events[0]).toMatchObject({ id: "evt-ok", seq: 1 });
-  });
-
-  it("should return false from polling and not set events on non-ok response", async () => {
+  it("should keep events$ empty when polling hits an error response", async () => {
     setup();
 
     const pollFired = createDeferredPromise<void>(context.signal);
     server.use(
       http.get("*/api/zero/voice-chat/sess-error/context", () => {
         pollFired.resolve();
-        return new HttpResponse(null, { status: 500 });
+        return HttpResponse.json(
+          { error: { message: "boom", code: "INTERNAL" } },
+          { status: 500 },
+        );
       }),
     );
 
@@ -168,10 +107,11 @@ describe("createVoiceChatPanelSignals", () => {
       Reason.Daemon,
     );
 
-    // Wait until the poll has fired at least once
+    // Wait until the poll has fired at least once. accept() throws on 500
+    // and setLoop catches the error and applies fibonacci backoff — the
+    // observable invariant is that events$ stays empty.
     await pollFired.promise;
 
-    // Events remain empty after a failed response
     expect(context.store.get(signals.events$)).toHaveLength(0);
   });
 });

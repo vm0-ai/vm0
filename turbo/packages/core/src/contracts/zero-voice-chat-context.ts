@@ -5,10 +5,11 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 const contextEventSchema = z.object({
+  id: z.string(),
   seq: z.number(),
   source: z.string(),
   type: z.string(),
-  content: z.string().optional(),
+  content: z.string().nullable(),
   createdAt: z.string(),
 });
 
@@ -22,7 +23,7 @@ const appendContextEventBodySchema = z.object({
   content: z.string().optional(),
 });
 
-export const zeroVoiceChatContextGetContract = c.router({
+export const zeroVoiceChatContextContract = c.router({
   getEvents: {
     method: "GET",
     path: "/api/zero/voice-chat/:id/context",
@@ -36,9 +37,7 @@ export const zeroVoiceChatContextGetContract = c.router({
     },
     summary: "Get shared context events for a voice-chat session",
   },
-});
 
-export const zeroVoiceChatContextAppendContract = c.router({
   appendEvent: {
     method: "POST",
     path: "/api/zero/voice-chat/:id/context",
@@ -46,7 +45,7 @@ export const zeroVoiceChatContextAppendContract = c.router({
     pathParams: z.object({ id: z.string().min(1) }),
     body: appendContextEventBodySchema,
     responses: {
-      200: contextEventSchema,
+      200: z.object({ event: contextEventSchema }),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -54,10 +53,7 @@ export const zeroVoiceChatContextAppendContract = c.router({
   },
 });
 
-export type ZeroVoiceChatContextGetContract =
-  typeof zeroVoiceChatContextGetContract;
-export type ZeroVoiceChatContextAppendContract =
-  typeof zeroVoiceChatContextAppendContract;
+export type ZeroVoiceChatContextContract = typeof zeroVoiceChatContextContract;
 export type ContextEvent = z.infer<typeof contextEventSchema>;
 export type ContextEventsResponse = z.infer<typeof contextEventsResponseSchema>;
 export type AppendContextEventBody = z.infer<

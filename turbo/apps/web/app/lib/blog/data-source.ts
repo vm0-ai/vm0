@@ -33,9 +33,10 @@ export async function getPosts(locale: string = "en"): Promise<BlogPost[]> {
 export async function getPost(
   slug: string,
   locale: string = "en",
+  options: { draft?: boolean } = {},
 ): Promise<BlogPost | null> {
   assertStrapiDataSource();
-  return getPostBySlugFromStrapi(slug, locale);
+  return getPostBySlugFromStrapi(slug, locale, options);
 }
 
 export async function getFeatured(

@@ -18,9 +18,6 @@ agents:
     framework: claude-code
     # Build agentic workflow using natural language
     instructions: AGENTS.md
-    # Agent skills - see https://github.com/vm0-ai/vm0-skills for available skills
-    # skills:
-    #   - https://github.com/vm0-ai/vm0-skills/tree/main/github
 `;
 }
 

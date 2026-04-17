@@ -5,6 +5,7 @@
 //! `serde_json::Value` trees with `"***"`.
 
 use crate::env;
+use aho_corasick::{AhoCorasick, MatchKind};
 use base64::Engine;
 use serde_json::Value;
 
@@ -12,8 +13,17 @@ use serde_json::Value;
 const MIN_SECRET_LEN: usize = 5;
 
 /// Holds pre-computed secret patterns for efficient masking.
+///
+/// Uses Aho-Corasick with leftmost-longest match semantics so that when one
+/// configured secret is a substring of another, the longer match wins and no
+/// partial secret survives. See issue #9778.
 pub struct SecretMasker {
-    patterns: Vec<String>,
+    matcher: Option<Matcher>,
+}
+
+struct Matcher {
+    ac: AhoCorasick,
+    replacements: Vec<&'static str>,
 }
 
 impl SecretMasker {
@@ -28,9 +38,7 @@ impl SecretMasker {
     /// plain, base64-encoded, and percent-encoded.
     pub fn from_raw(raw: &str) -> Self {
         if raw.is_empty() {
-            return Self {
-                patterns: Vec::new(),
-            };
+            return Self::empty();
         }
 
         // Parse comma-separated base64 values
@@ -67,12 +75,37 @@ impl SecretMasker {
             }
         }
 
-        Self { patterns }
+        Self::build(patterns)
+    }
+
+    fn empty() -> Self {
+        Self { matcher: None }
+    }
+
+    /// # Panics
+    /// Panics if the Aho-Corasick automaton fails to build. The only
+    /// documented failure mode is pattern sets too large for the state-ID
+    /// type (millions of patterns); user-configured secrets never approach
+    /// that bound. A hard abort is preferred over silently degrading to a
+    /// pass-through masker, which would leak every subsequent event payload.
+    #[allow(clippy::expect_used)]
+    fn build(patterns: Vec<String>) -> Self {
+        if patterns.is_empty() {
+            return Self::empty();
+        }
+        let ac = AhoCorasick::builder()
+            .match_kind(MatchKind::LeftmostLongest)
+            .build(&patterns)
+            .expect("AhoCorasick build failed for secret pattern set");
+        let replacements = vec!["***"; patterns.len()];
+        Self {
+            matcher: Some(Matcher { ac, replacements }),
+        }
     }
 
     /// Recursively mask secrets in a JSON value tree (in-place).
     pub fn mask_value(&self, val: &mut Value) {
-        if self.patterns.is_empty() {
+        if self.matcher.is_none() {
             return;
         }
         match val {
@@ -94,12 +127,15 @@ impl SecretMasker {
     }
 
     /// Replace all secret patterns in a string with `***`.
+    ///
+    /// Uses leftmost-longest matching semantics: at each position, the
+    /// longest configured pattern wins, so a shorter secret that is a
+    /// substring of a longer one cannot strip a byte off the longer match.
     pub fn mask_string(&self, s: &str) -> String {
-        let mut result = s.to_string();
-        for pattern in &self.patterns {
-            result = result.replace(pattern.as_str(), "***");
+        match &self.matcher {
+            Some(m) => m.ac.replace_all(s, &m.replacements),
+            None => s.to_string(),
         }
-        result
     }
 }
 
@@ -152,11 +188,13 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn masker_with(patterns: Vec<&str>) -> SecretMasker {
+        SecretMasker::build(patterns.into_iter().map(String::from).collect())
+    }
+
     #[test]
     fn empty_masker_is_noop() {
-        let masker = SecretMasker {
-            patterns: Vec::new(),
-        };
+        let masker = SecretMasker::empty();
         let mut val = json!({"key": "value"});
         masker.mask_value(&mut val);
         assert_eq!(val, json!({"key": "value"}));
@@ -164,18 +202,14 @@ mod tests {
 
     #[test]
     fn masks_plain_secret() {
-        let masker = SecretMasker {
-            patterns: vec!["my-secret-token".to_string()],
-        };
+        let masker = masker_with(vec!["my-secret-token"]);
         let result = masker.mask_string("Bearer my-secret-token here");
         assert_eq!(result, "Bearer *** here");
     }
 
     #[test]
     fn masks_nested_json() {
-        let masker = SecretMasker {
-            patterns: vec!["secret123".to_string()],
-        };
+        let masker = masker_with(vec!["secret123"]);
         let mut val = json!({
             "outer": {
                 "inner": "has secret123 inside"
@@ -196,12 +230,11 @@ mod tests {
         let encoded = format!("{s1},{s2}");
 
         let masker = SecretMasker::from_raw(&encoded);
-        // "tiny" is < 5 chars, should be excluded
-        // "hello-world-secret" should have 2-3 patterns (plain + base64 + url if different)
-        assert!(!masker.patterns.is_empty());
-        assert!(masker.patterns.contains(&"hello-world-secret".to_string()));
-        // "tiny" excluded
-        assert!(!masker.patterns.contains(&"tiny".to_string()));
+        // "hello-world-secret" is masked (all three variants)
+        assert_eq!(masker.mask_string("hello-world-secret"), "***");
+        assert_eq!(masker.mask_string(&s1), "***");
+        // "tiny" is < 5 chars, not masked
+        assert_eq!(masker.mask_string("tiny"), "tiny");
     }
 
     #[test]
@@ -213,13 +246,13 @@ mod tests {
     #[test]
     fn from_raw_empty_string() {
         let masker = SecretMasker::from_raw("");
-        assert!(masker.patterns.is_empty());
+        assert_eq!(masker.mask_string("anything"), "anything");
     }
 
     #[test]
     fn from_raw_invalid_base64() {
         let masker = SecretMasker::from_raw("not-valid-b64!!!");
-        assert!(masker.patterns.is_empty());
+        assert_eq!(masker.mask_string("anything"), "anything");
     }
 
     #[test]
@@ -227,7 +260,7 @@ mod tests {
         let engine = base64::engine::general_purpose::STANDARD;
         let short = engine.encode("abcd"); // 4 chars < MIN_SECRET_LEN
         let masker = SecretMasker::from_raw(&short);
-        assert!(masker.patterns.is_empty());
+        assert_eq!(masker.mask_string("abcd"), "abcd");
     }
 
     #[test]
@@ -237,29 +270,15 @@ mod tests {
         let secret = "key=value&token=abc123";
         let encoded = engine.encode(secret);
         let masker = SecretMasker::from_raw(&encoded);
-        // Should contain plain, base64, and url-encoded variants
-        assert!(masker.patterns.contains(&secret.to_string()));
-        assert!(masker.patterns.contains(&encoded));
-        let url = url_encode(secret);
-        assert!(masker.patterns.contains(&url));
-    }
-
-    #[test]
-    fn from_raw_no_url_variant_when_same() {
-        let engine = base64::engine::general_purpose::STANDARD;
-        // Secret with only unreserved chars — url_encode returns same string
-        let secret = "simple-secret";
-        let encoded = engine.encode(secret);
-        let masker = SecretMasker::from_raw(&encoded);
-        // Should only have plain + base64 (no duplicate url variant)
-        assert_eq!(masker.patterns.len(), 2);
+        // Plain, base64, and url-encoded variants all mask
+        assert_eq!(masker.mask_string(secret), "***");
+        assert_eq!(masker.mask_string(&encoded), "***");
+        assert_eq!(masker.mask_string(&url_encode(secret)), "***");
     }
 
     #[test]
     fn mask_value_mixed_json_tree() {
-        let masker = SecretMasker {
-            patterns: vec!["secret".to_string()],
-        };
+        let masker = masker_with(vec!["secret"]);
         let mut val = json!({
             "token": "my secret key",
             "num": 42,
@@ -282,9 +301,7 @@ mod tests {
 
     #[test]
     fn mask_string_multiple_occurrences() {
-        let masker = SecretMasker {
-            patterns: vec!["token".to_string()],
-        };
+        let masker = masker_with(vec!["token"]);
         let result = masker.mask_string("token and token again");
         assert_eq!(result, "*** and *** again");
     }
@@ -309,5 +326,51 @@ mod tests {
             let expected = format!("{n:X}").chars().next().unwrap();
             assert_eq!(c, expected, "hex_digit({n})");
         }
+    }
+
+    /// Aho-Corasick matches on bytes, but `from_raw` guarantees every pattern
+    /// is valid UTF-8, so multi-byte codepoints must round-trip through
+    /// masking without corruption.
+    #[test]
+    fn masks_multibyte_utf8_secret() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        // Mix CJK + emoji — each codepoint is 3–4 bytes.
+        let secret = "北京-🔑-token";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_string(&format!("prefix {secret} suffix")),
+            "prefix *** suffix"
+        );
+        // Surrounding multi-byte content that is not part of the secret is
+        // preserved byte-for-byte.
+        assert_eq!(masker.mask_string("北京-other"), "北京-other");
+    }
+
+    /// Regression for #9778: when one secret is a substring of another,
+    /// the longer match must win so no portion of the longer secret leaks.
+    #[test]
+    fn substring_secret_is_fully_masked() {
+        // Short secret registered BEFORE the long one — this is the ordering
+        // that broke the old `str::replace` loop.
+        let engine = base64::engine::general_purpose::STANDARD;
+        let short = engine.encode("secret");
+        let long = engine.encode("mysecret-token-xyz");
+        let raw = format!("{short},{long}");
+        let masker = SecretMasker::from_raw(&raw);
+
+        // Longer pattern wins: no "my" or "-token-xyz" fragments escape.
+        assert_eq!(
+            masker.mask_string("mysecret-token-xyz appeared in log"),
+            "*** appeared in log"
+        );
+        // Short secret still masks when the long one is not present.
+        assert_eq!(masker.mask_string("plain secret alone"), "plain *** alone");
+        // Both secrets present at different positions: both get masked.
+        assert_eq!(
+            masker.mask_string("secret and mysecret-token-xyz"),
+            "*** and ***"
+        );
     }
 }

@@ -8,6 +8,7 @@ import {
   createTestCompose,
   createTestSchedule,
   findTestRunRecord,
+  findTestRunnerJobEntry,
   findTestZeroRun,
   findTestRunCallbacks,
   createTestSessionWithConversation,
@@ -16,7 +17,7 @@ import { createTestZeroAgent } from "../../../__tests__/db-test-seeders/agents";
 import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
-import { createZeroRun, createZeroRunRecord } from "../zero-run-service";
+import { createZeroRun } from "../zero-run-service";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/core";
 
@@ -146,6 +147,7 @@ describe("createZeroRun() — service-only parameters", () => {
         }),
       );
 
+      await context.mocks.flushAfter();
       const callbacks = await findTestRunCallbacks(result.runId);
       expect(callbacks).toHaveLength(1);
       expect(callbacks[0]!.url).toBe("https://example.com/callback");
@@ -307,7 +309,7 @@ describe("createZeroRun() — service-only parameters", () => {
       );
 
       // Resume with sessionId — should inject custom skills (agent-level binding)
-      const resumed = await createZeroRunRecord({
+      const resumed = await createZeroRun({
         userId: user.userId,
         prompt: "continue",
         agentId: resumeAgentId,
@@ -334,9 +336,10 @@ describe("createZeroRun() — service-only parameters", () => {
     });
   });
 
-  describe("createZeroRunRecord early metadata persistence", () => {
+  describe("early metadata persistence", () => {
     it("should persist zero_runs row before dispatch so activity queries see correct triggerSource", async () => {
-      const result = await createZeroRunRecord({
+      // No flushAfter() — triggerSource must be visible from Phase 1.
+      const result = await createZeroRun({
         userId: user.userId,
         prompt: "test prompt",
         agentId,
@@ -351,7 +354,7 @@ describe("createZeroRun() — service-only parameters", () => {
     it("should persist triggerSource for all sources before dispatch", async () => {
       const sources: TriggerSource[] = ["web", "slack", "schedule", "agent"];
       for (const triggerSource of sources) {
-        const result = await createZeroRunRecord({
+        const result = await createZeroRun({
           userId: user.userId,
           prompt: "test",
           agentId,
@@ -362,6 +365,26 @@ describe("createZeroRun() — service-only parameters", () => {
         expect(zeroRun).toBeDefined();
         expect(zeroRun!.triggerSource).toBe(triggerSource);
       }
+    });
+  });
+
+  describe("deferred dispatch", () => {
+    it("returns after Phase 1; Phase 2 runs only once the after() queue flushes", async () => {
+      const result = await createZeroRun(baseParams());
+
+      // Phase 1 is synchronous: run record exists immediately.
+      const runBeforeFlush = await findTestRunRecord(result.runId);
+      expect(runBeforeFlush).toBeDefined();
+
+      // Phase 2 is queued via after(): no runner job yet.
+      const jobBeforeFlush = await findTestRunnerJobEntry(result.runId);
+      expect(jobBeforeFlush).toBeUndefined();
+
+      await context.mocks.flushAfter();
+
+      // After flushing, dispatch has run and the runner job is visible.
+      const jobAfterFlush = await findTestRunnerJobEntry(result.runId);
+      expect(jobAfterFlush).toBeDefined();
     });
   });
 });

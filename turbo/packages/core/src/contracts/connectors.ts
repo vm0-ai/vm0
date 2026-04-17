@@ -46,6 +46,12 @@ export interface ConnectorConfig {
   readonly oauth?: ConnectorOAuthConfig;
   /** Environment mapping declaring which env vars this connector provides. */
   readonly environmentMapping: Record<string, string>;
+  /**
+   * Optional concept words and common-guess aliases used by connector search.
+   * Lowercase only. Avoid duplicating content already in `label`,
+   * `environmentMapping` keys, or `authMethods[*].secrets` keys.
+   */
+  readonly tags?: readonly string[];
 }
 
 /**
@@ -228,6 +234,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   github: {
     label: "GitHub",
+    tags: ["gh", "gh_api_key", "git", "vcs", "scm", "repos"],
     environmentMapping: {
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
       GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
@@ -255,6 +262,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   notion: {
     label: "Notion",
+    tags: ["docs", "wiki", "workspace"],
     environmentMapping: {
       NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
     },
@@ -284,6 +292,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   gmail: {
     label: "Gmail",
+    tags: ["email", "mail"],
     environmentMapping: {
       GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
     },
@@ -409,6 +418,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-calendar": {
     label: "Google Calendar",
+    tags: ["calendar", "scheduling", "gcal"],
     environmentMapping: {
       GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
     },
@@ -654,6 +664,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   slack: {
     label: "Slack",
+    tags: ["chat", "messaging", "im"],
     environmentMapping: {
       SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
     },
@@ -674,10 +685,13 @@ const CONNECTOR_TYPES_DEF = {
     oauth: {
       authorizationUrl: "https://slack.com/oauth/v2/authorize",
       tokenUrl: "https://slack.com/api/oauth.v2.access",
+      // Note: Slack does not approve `search:read` or user `*:history`
+      // scopes outside of RTS / MCP applications. The personal connector
+      // intentionally omits them. Bot-side history access is provided
+      // separately by the org install flow's SLACK_BOT_SCOPES.
       scopes: [
         // Channels
         "channels:read",
-        "channels:history",
         // Messaging
         "chat:write",
         // Users
@@ -687,16 +701,12 @@ const CONNECTOR_TYPES_DEF = {
         "files:read",
         "files:write",
         // Direct messages (high priority)
-        "im:history",
         "im:write",
         // Reactions (high priority)
         "reactions:read",
         "reactions:write",
-        // Search (high priority)
-        "search:read",
         // Private channels (high priority)
         "groups:read",
-        "groups:history",
         // Reminders (medium priority)
         "reminders:read",
         "reminders:write",
@@ -705,8 +715,6 @@ const CONNECTOR_TYPES_DEF = {
         "pins:write",
         // User groups (medium priority)
         "usergroups:read",
-        // Multi-person DMs (medium priority)
-        "mpim:history",
         // Do Not Disturb (low priority)
         "dnd:read",
         // Bookmarks (low priority)
@@ -797,6 +805,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   linear: {
     label: "Linear",
+    tags: ["issues", "tickets", "project-management"],
     environmentMapping: {
       LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
     },
@@ -900,6 +909,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   jira: {
     label: "Jira",
+    tags: ["issues", "tickets", "project-management"],
     environmentMapping: {
       JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",
       JIRA_DOMAIN: "$vars.JIRA_DOMAIN",
@@ -2406,6 +2416,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   stripe: {
     label: "Stripe",
+    tags: ["payments", "billing", "checkout"],
     environmentMapping: {
       STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
     },
@@ -2437,6 +2448,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   openai: {
     label: "OpenAI",
+    tags: ["llm", "ai", "gpt", "chatgpt"],
     environmentMapping: {
       OPENAI_TOKEN: "$secrets.OPENAI_TOKEN",
     },
@@ -3914,6 +3926,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   gitlab: {
     label: "GitLab",
+    tags: ["git", "vcs", "scm", "repos"],
     environmentMapping: {
       GITLAB_TOKEN: "$secrets.GITLAB_TOKEN",
       GITLAB_HOST: "$vars.GITLAB_HOST",

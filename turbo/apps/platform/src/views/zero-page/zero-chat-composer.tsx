@@ -96,6 +96,8 @@ import {
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB — keep in sync with uploads/route.ts
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -623,6 +625,10 @@ export function ZeroChatComposer({
       if (item.kind === "file") {
         const file = item.getAsFile();
         if (file) {
+          if (file.size > MAX_FILE_SIZE) {
+            toast.error(`${file.name} exceeds the 10 MB limit`);
+            continue;
+          }
           e.preventDefault();
           detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
           onDraftChange?.();
@@ -639,6 +645,10 @@ export function ZeroChatComposer({
       return;
     }
     for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} exceeds the 10 MB limit`);
+        continue;
+      }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
     }
     onDraftChange?.();
@@ -773,6 +783,10 @@ export function ZeroChatComposer({
       return;
     }
     for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} exceeds the 10 MB limit`);
+        continue;
+      }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
     }
     onDraftChange?.();
@@ -785,7 +799,7 @@ export function ZeroChatComposer({
         ref={setFileInputEl}
         type="file"
         className="hidden"
-        accept="image/*,.pdf,.txt,.csv,.md,.json"
+        accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.md,.json"
         multiple
         onChange={handleFileChange}
       />
