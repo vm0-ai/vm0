@@ -18,7 +18,6 @@ import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { reloadEnv } from "../../../../../src/env";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
-import * as activityLogService from "../../../../../src/lib/infra/run/activity-log-service";
 
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
@@ -576,42 +575,40 @@ describe("POST /api/zero/report-error", () => {
       },
     );
 
-    const originalAssemble = activityLogService.assembleActivityLog;
-    const spy = vi
-      .spyOn(activityLogService, "assembleActivityLog")
-      .mockImplementation((runId, run, agent) => {
-        if (runId === firstRunId) {
-          return Promise.reject(new Error("simulated assembly failure"));
-        }
-        return originalAssemble(runId, run, agent);
-      });
+    // Force per-run failure for the first run by returning a non-array from
+    // the agent-events Axiom query — assembleActivityLog then throws on
+    // events.map(...) and the bundle must isolate that failure.
+    // Call order: bundle (3 calls: agentEvents, systemLog, networkLog),
+    // then per run (3 calls each: queryAgentEvents, queryNetworkLogs,
+    // queryRunContext). Index 4 is run[0]'s queryAgentEvents.
+    context.mocks.axiom.queryAxiom
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(null as unknown as never[]);
 
-    try {
-      const response = await postReportError({
-        runId: failedRunId,
-        title: "Resilience test",
-      });
-      expect(response.status).toBe(200);
+    const response = await postReportError({
+      runId: failedRunId,
+      title: "Resilience test",
+    });
+    expect(response.status).toBe(200);
 
-      const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
-        .calls[0]![2] as Buffer;
-      const zip = new AdmZip(zipBuffer);
-      const activityLogEntries = zip.getEntries().filter((e) => {
-        return e.entryName.startsWith("activity-log-");
-      });
-      expect(activityLogEntries).toHaveLength(2);
+    const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
+      .calls[0]![2] as Buffer;
+    const zip = new AdmZip(zipBuffer);
+    const activityLogEntries = zip.getEntries().filter((e) => {
+      return e.entryName.startsWith("activity-log-");
+    });
+    expect(activityLogEntries).toHaveLength(2);
 
-      const contents = activityLogEntries.map((e) => {
-        return JSON.parse(e.getData().toString("utf-8"));
-      });
-      const erroredEntry = contents.find((c) => {
-        return typeof c.error === "string" && c.error.includes("simulated");
-      });
-      expect(erroredEntry).toBeDefined();
-      expect(erroredEntry.runId).toBe(firstRunId);
-    } finally {
-      spy.mockRestore();
-    }
+    const contents = activityLogEntries.map((e) => {
+      return JSON.parse(e.getData().toString("utf-8"));
+    });
+    const erroredEntry = contents.find((c) => {
+      return typeof c.error === "string";
+    });
+    expect(erroredEntry).toBeDefined();
+    expect(erroredEntry.runId).toBe(firstRunId);
   });
 
   // -------------------------------------------------------------------------
