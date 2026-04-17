@@ -397,117 +397,132 @@ function tokenize(input: string): Set<string> {
   return tokens;
 }
 
-function scoreConnector(
+function listSecretNames(config: ConnectorConfig): string[] {
+  const names: string[] = [];
+  for (const method of Object.values(config.authMethods)) {
+    for (const name of Object.keys(method.secrets)) {
+      names.push(name);
+    }
+  }
+  return names;
+}
+
+type ScoreHit = { score: number; matchedField: string };
+
+function findExactMatch(
   keywordLower: string,
-  keywordTokens: Set<string>,
   type: ConnectorType,
   config: ConnectorConfig,
-): { score: number; matchedField: string } | null {
-  // 100 — type key exact (case-insensitive)
+): ScoreHit | null {
   if (type.toLowerCase() === keywordLower) {
     return { score: 100, matchedField: "type" };
   }
-
-  // 90 — env var key exact (any key in environmentMapping)
   for (const envVar of Object.keys(config.environmentMapping)) {
     if (envVar.toLowerCase() === keywordLower) {
       return { score: 90, matchedField: `env:${envVar}` };
     }
   }
-
-  // 80 — label exact (case-insensitive)
   if (config.label.toLowerCase() === keywordLower) {
     return { score: 80, matchedField: "label" };
   }
-
-  let bestScore = 0;
-  let bestField = "";
-  const record = (score: number, field: string): void => {
-    if (score > bestScore) {
-      bestScore = score;
-      bestField = field;
-    }
-  };
-
-  // 70 — tag exact
-  if (config.tags) {
-    for (const tag of config.tags) {
-      if (tag === keywordLower) {
-        record(70, `tag:${tag}`);
-      }
+  const tags = config.tags ?? [];
+  for (const tag of tags) {
+    if (tag === keywordLower) {
+      return { score: 70, matchedField: `tag:${tag}` };
     }
   }
+  return null;
+}
 
-  // 50 — type/label substring
+function findSubstringMatch(
+  keywordLower: string,
+  type: ConnectorType,
+  config: ConnectorConfig,
+): ScoreHit | null {
   if (type.toLowerCase().includes(keywordLower)) {
-    record(50, "type");
+    return { score: 50, matchedField: "type" };
   }
   if (config.label.toLowerCase().includes(keywordLower)) {
-    record(50, "label");
+    return { score: 50, matchedField: "label" };
   }
-
-  // 40 — env var key substring
   for (const envVar of Object.keys(config.environmentMapping)) {
     if (envVar.toLowerCase().includes(keywordLower)) {
-      record(40, `env:${envVar}`);
-      break;
+      return { score: 40, matchedField: `env:${envVar}` };
     }
   }
+  for (const name of listSecretNames(config)) {
+    if (name.toLowerCase().includes(keywordLower)) {
+      return { score: 30, matchedField: `secret:${name}` };
+    }
+  }
+  const tags = config.tags ?? [];
+  for (const tag of tags) {
+    if (tag.includes(keywordLower)) {
+      return { score: 25, matchedField: `tag:${tag}` };
+    }
+  }
+  return null;
+}
 
-  // 30 — secret name substring (any authMethods[*].secrets key)
-  for (const method of Object.values(config.authMethods)) {
-    let matched = false;
-    for (const secretName of Object.keys(method.secrets)) {
-      if (secretName.toLowerCase().includes(keywordLower)) {
-        record(30, `secret:${secretName}`);
-        matched = true;
-        break;
-      }
+function collectCandidateTokens(
+  type: ConnectorType,
+  config: ConnectorConfig,
+): Set<string> {
+  const tokens = new Set<string>();
+  const sources = [
+    type,
+    config.label,
+    ...Object.keys(config.environmentMapping),
+    ...listSecretNames(config),
+    ...(config.tags ?? []),
+  ];
+  for (const source of sources) {
+    for (const token of tokenize(source)) {
+      tokens.add(token);
     }
-    if (matched) break;
   }
+  return tokens;
+}
 
-  // 25 — tag substring
-  if (config.tags) {
-    for (const tag of config.tags) {
-      if (tag.includes(keywordLower)) {
-        record(25, `tag:${tag}`);
-        break;
-      }
-    }
-  }
-
-  // 10 × |intersection| — token-set intersection fallback
-  const candidateTokens = new Set<string>();
-  for (const t of tokenize(type)) candidateTokens.add(t);
-  for (const t of tokenize(config.label)) candidateTokens.add(t);
-  for (const envVar of Object.keys(config.environmentMapping)) {
-    for (const t of tokenize(envVar)) candidateTokens.add(t);
-  }
-  for (const method of Object.values(config.authMethods)) {
-    for (const secretName of Object.keys(method.secrets)) {
-      for (const t of tokenize(secretName)) candidateTokens.add(t);
-    }
-  }
-  if (config.tags) {
-    for (const tag of config.tags) {
-      for (const t of tokenize(tag)) candidateTokens.add(t);
-    }
-  }
+function findTokenIntersection(
+  keywordTokens: Set<string>,
+  type: ConnectorType,
+  config: ConnectorConfig,
+): ScoreHit | null {
+  const candidateTokens = collectCandidateTokens(type, config);
   let intersection = 0;
   let firstCommon = "";
-  for (const t of keywordTokens) {
-    if (candidateTokens.has(t)) {
+  for (const token of keywordTokens) {
+    if (candidateTokens.has(token)) {
       intersection++;
-      if (!firstCommon) firstCommon = t;
+      if (!firstCommon) firstCommon = token;
     }
   }
-  if (intersection > 0) {
-    record(10 * intersection, `token:${firstCommon}`);
-  }
+  if (intersection === 0) return null;
+  return { score: 10 * intersection, matchedField: `token:${firstCommon}` };
+}
 
-  if (bestScore < MIN_SCORE) return null;
-  return { score: bestScore, matchedField: bestField };
+function scoreConnector(
+  keywordLower: string,
+  keywordTokens: Set<string>,
+  type: ConnectorType,
+  config: ConnectorConfig,
+): ScoreHit | null {
+  const exact = findExactMatch(keywordLower, type, config);
+  if (exact) return exact;
+
+  const candidates: ScoreHit[] = [];
+  const substring = findSubstringMatch(keywordLower, type, config);
+  if (substring) candidates.push(substring);
+  const token = findTokenIntersection(keywordTokens, type, config);
+  if (token) candidates.push(token);
+
+  if (candidates.length === 0) return null;
+  const best = candidates.reduce((a, b) => {
+    return a.score >= b.score ? a : b;
+  });
+  if (best.score < MIN_SCORE) return null;
+  return best;
 }
 
 /**
