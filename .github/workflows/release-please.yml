@@ -1044,8 +1044,9 @@ jobs:
           # Borrow an existing repo-level-only secret as the symmetric
           # encryption passphrase.  GRAFANA_CLOUD_API_KEY exists at repo
           # level but NOT in the "production" environment, so both this
-          # job (no environment) and deploy-runner-production (environment:
-          # production, falls back to repo level) resolve it to the same
+          # job (no environment) and build-runner-production /
+          # promote-runner-production (environment: production, falls
+          # back to repo level) resolve it to the same
           # value.  Because it is a registered secret GitHub masks it as
           # *** in all logs, keeping the passphrase invisible.
           PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
@@ -1063,12 +1064,14 @@ jobs:
             echo "r2-bucket=$R2_BUCKET"
           } >> "$GITHUB_OUTPUT"
 
-  # Deploy runner to production metal instances
-  deploy-runner-production:
-    needs: [release-please, migrate-production, promote-web-production, resolve-image-cache]
-    if: >-
-      !failure() && !cancelled() &&
-      needs.release-please.outputs.runner_rs_release_created == 'true'
+  # Build runner: compile binary, upload to GitHub Release, stage on
+  # metal hosts (provision OS + monitoring + `runner build`
+  # rootfs/snapshot). This job does not flip traffic — the systemd
+  # service is still running the previous version. Runs in parallel
+  # with build-web / build-app, only waits on release-please.
+  build-runner-production:
+    needs: [release-please, resolve-image-cache]
+    if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260416
@@ -1093,12 +1096,12 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Runner RS* deploying to production servers..."
+            text: "*Runner RS* building staged production deployment..."
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* deploying to production servers...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+                  text: "*Runner RS* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
 
       - name: Record start time
         id: timer
@@ -1191,12 +1194,11 @@ jobs:
             echo "R2_SECRET_ACCESS_KEY=$SK"
           } >> "$GITHUB_ENV"
 
-      - name: Deploy to production with Ansible
+      - name: Stage runner on production hosts with Ansible
         env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
@@ -1237,6 +1239,128 @@ jobs:
             -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
             -e "r2_bucket=${R2_USER_STORAGES_BUCKET_NAME:-}" \
             -v
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ✅ Staged build ready (not yet serving)"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ❌ Staged build failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Promote runner: install systemd service (traffic cutover), drain
+  # old runners, garbage-collect old artifacts, global health check.
+  # Waits for build-runner-production plus migrate-production and
+  # promote-web-production so the new runner only serves traffic after
+  # the schema and API it targets are live. Host-level prep
+  # (provision-runner, provision-monitoring) already ran in build.
+  promote-runner-production:
+    needs: [release-please, migrate-production, promote-web-production, resolve-image-cache, build-runner-production]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.runner_rs_release_created == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260416
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Runner RS* promoting staged deployment to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      # Same decrypt as build; needed here so `runner gc` (inside
+      # promote-runner.yml) can sweep stale image cache objects in R2.
+      - name: Decrypt R2 image cache credentials
+        env:
+          _PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          _ENC_AK: ${{ needs.resolve-image-cache.outputs.r2-access-key-id }}
+          _ENC_SK: ${{ needs.resolve-image-cache.outputs.r2-secret-access-key }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          AK=$(echo -n "$_ENC_AK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          SK=$(echo -n "$_ENC_SK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          if [ -z "$AK" ] || [ -z "$SK" ]; then
+            echo "::error::R2 credential decryption produced empty values"
+            exit 1
+          fi
+          {
+            echo "R2_ACCESS_KEY_ID=$AK"
+            echo "R2_SECRET_ACCESS_KEY=$SK"
+          } >> "$GITHUB_ENV"
+
+      - name: Promote runner on production hosts with Ansible
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
+          RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
+        run: |
+          cd ansible
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
             playbooks/promote-runner.yml \
@@ -1289,12 +1413,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Runner RS* ✅ Deployed successfully"
+            text: "*Runner RS* ✅ Promoted to production"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+                  text: "*Runner RS* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
 
       - name: Notify Slack - Success with warnings
         if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings == 'true' }}
@@ -1305,12 +1429,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Runner RS* ⚠️ Deployed with warnings"
+            text: "*Runner RS* ⚠️ Promoted with warnings"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ⚠️ Deployed with warnings\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Runner RS* ⚠️ Promoted with warnings\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -1321,12 +1445,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Runner RS* ❌ Deploy failed"
+            text: "*Runner RS* ❌ Promote failed"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Runner RS* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Build E2B templates to production account
   # Uses production environment E2B_API_KEY secret
