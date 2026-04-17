@@ -317,11 +317,11 @@
           "integrations": "Erforderliche Integrationen: GitHub und Slack",
           "tips": "Best Practices für autonomes Release-Merging"
         },
-        "scenario": "Release-please öffnet jedes Mal einen neuen `chore: release main` PR, sobald main genug Commits angesammelt hat — in einem lieferstarken Team ist das mehrmals täglich. Irgendjemand muss den Diff überfliegen, prüfen ob CI grün ist, einschätzen ob im Changelog etwas Heikles steht, auf Merge klicken und danach den Deploy im Auge behalten. Ist diese Person in einem Meeting, schläft oder sitzt auf einem anderen Kontinent, bleibt der Release liegen. Neue Commits stapeln sich, der Changelog wird länger, der Merge riskanter. Du sagst es Zero einmal — beobachte Release-PRs, überspringe Migrations, merge zur Arbeitszeit, poste in den Release-Channel — und ab dann läuft das Ausliefern von selbst, im Takt deines Teams.",
+        "scenario": "Ein neuer Release-PR öffnet sich, sobald auf main genug Commits angesammelt sind — in einem lieferstarken Team ist das mehrmals täglich. Irgendjemand muss den Diff überfliegen, prüfen ob CI grün ist, einschätzen ob im Changelog etwas Heikles steht, auf Merge klicken und danach den Deploy im Auge behalten. Ist diese Person in einem Meeting, schläft oder sitzt auf einem anderen Kontinent, bleibt der Release liegen. Neue Commits stapeln sich, der Changelog wird länger, der Merge riskanter. Du sagst es Zero einmal — beobachte Release-PRs, überspringe riskante Fälle, merge während der Arbeitszeit, poste in den Release-Channel — und ab dann läuft das Ausliefern von selbst, im Takt deines Teams.",
         "promptVariants": [
           {
             "label": "Ausführlich",
-            "prompt": "@Zero prüfe jede Stunde unser Repo auf einen offenen Release-PR. Wenn es Mo–Fr 10:00–19:00 in unserer Zeitzone ist und der PR keine DB-Migrationsdateien enthält, aktiviere Auto-Merge mit Squash, damit der PR automatisch rausgeht sobald CI durchläuft — und poste dann ein Update in #release-notify."
+            "prompt": "@Zero prüfe jede Stunde während unserer Arbeitszeit (Mo–Fr, tagsüber) unser Repo auf einen offenen Release-PR. Wenn er keine DB-Migrationsdateien enthält, aktiviere Auto-Merge mit Squash, damit der PR rausgeht sobald CI durchläuft — und poste dann ein Update in #release-notify."
           },
           {
             "label": "Schnell",
@@ -329,7 +329,7 @@
           },
           {
             "label": "Policy anpassen",
-            "prompt": "@Zero ab Montag erweitere das Release-Fenster werktags auf 09:00–20:00 und pausiere Merges freitags nach 17:00 komplett."
+            "prompt": "@Zero ab nächster Woche erweitere das Release-Fenster werktags um jeweils eine Stunde und pausiere Merges freitagnachmittags komplett."
           }
         ],
         "slackPreview": [
@@ -339,13 +339,13 @@
           },
           {
             "name": "Zero",
-            "text": "Release-PR #9565 (`chore: release main`) — alle 14 CI-Checks grün, keine Migrationsdateien angefasst. Auto-Merge mit Squash aktiviert. Geht raus, sobald Branch Protection das Ok gibt. Ich melde mich in #release-notify, sobald er drin ist."
+            "text": "Release-PR #9565 — alle 14 CI-Checks grün, keine Migrationsdateien angefasst. Auto-Merge mit Squash aktiviert. Geht raus, sobald Branch Protection das Ok gibt. Ich melde mich in #release-notify, sobald er drin ist."
           }
         ],
         "steps": [
           {
             "title": "Zero überwacht Release-PRs nach Zeitplan",
-            "description": "Zero fragt GitHub stündlich ab und filtert nach offenen PRs auf eurem Default-Branch mit `release` im Titel. Außerhalb des definierten Zeitfensters wird die Prüfung nur geloggt — keine Merges nach Feierabend, keine Wochenend-Überraschungen."
+            "description": "Zero fragt GitHub stündlich ab und filtert offene Release-PRs auf eurem Default-Branch. Außerhalb des definierten Zeitfensters wird die Prüfung nur geloggt — keine Merges nach Feierabend, keine Wochenend-Überraschungen."
           },
           {
             "title": "Zero prüft jeden PR gegen eure Sicherheitsregeln",
@@ -370,7 +370,7 @@
           {
             "title": "Zur Routine machen",
             "description": "Plane die Prüfung als wiederkehrende Aufgabe, damit Releases ohne Nachdenken rausgehen.",
-            "examplePrompt": "@Zero jede Stunde Mo–Fr 10:00–19:00, führe die Release-Auto-Merge-Prüfung aus und logge die Ergebnisse in #release-notify."
+            "examplePrompt": "@Zero jede Stunde während unserer Arbeitszeit, führe die Release-Auto-Merge-Prüfung aus und logge die Ergebnisse in #release-notify."
           }
         ],
         "integrations": [

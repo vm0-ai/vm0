@@ -317,11 +317,11 @@
           "integrations": "Integraciones requeridas: GitHub y Slack",
           "tips": "Buenas prácticas para la fusión autónoma de releases"
         },
-        "scenario": "Cada vez que main acumula suficientes commits, release-please abre un nuevo PR `chore: release main` — en un equipo que publica rápido, eso ocurre varias veces al día. Alguien tiene que mirar el diff, confirmar que CI está en verde, decidir si el changelog trae algo inquietante, darle a Merge y luego vigilar el despliegue. Si esa persona está en una reunión, dormida o en otro continente, el release se queda parado. Los commits se apilan, el changelog crece, la fusión se vuelve más arriesgada. Le dices a Zero una sola vez — vigila los PRs de release, salta migraciones, fusiona en horario laboral, publica en el canal de releases — y desde ese momento, publicar pasa solo, al ritmo de tu equipo.",
+        "scenario": "Cada vez que main acumula suficientes commits se abre un nuevo PR de release — en un equipo que publica rápido, eso ocurre varias veces al día. Alguien tiene que mirar el diff, confirmar que CI está en verde, decidir si el changelog trae algo inquietante, darle a Merge y luego vigilar el despliegue. Si esa persona está en una reunión, dormida o en otro continente, el release se queda parado. Los commits se apilan, el changelog crece, la fusión se vuelve más arriesgada. Le dices a Zero una sola vez — vigila los PRs de release, salta los arriesgados, fusiona en horario laboral, publica en el canal de releases — y desde ese momento, publicar pasa solo, al ritmo de tu equipo.",
         "promptVariants": [
           {
             "label": "Detallado",
-            "prompt": "@Zero cada hora, revisa si hay un PR de release abierto en nuestro repo. Si es lunes–viernes 10:00–19:00 en nuestra zona horaria y el PR no contiene archivos de migración de BD, activa auto-merge con squash para que salga en cuanto CI pase — y publica un aviso en #release-notify."
+            "prompt": "@Zero cada hora durante nuestro horario laboral (lunes a viernes, durante el día), revisa si hay un PR de release abierto en nuestro repo. Si no contiene archivos de migración de BD, activa auto-merge con squash para que salga en cuanto CI pase — y publica un aviso en #release-notify."
           },
           {
             "label": "Rápido",
@@ -329,7 +329,7 @@
           },
           {
             "label": "Ajustar política",
-            "prompt": "@Zero desde el lunes, amplía la ventana de release a 09:00–20:00 entre semana, y pausa por completo las fusiones los viernes después de las 17:00."
+            "prompt": "@Zero a partir de la próxima semana, amplía la ventana de release en una hora a cada lado entre semana, y pausa por completo las fusiones los viernes por la tarde."
           }
         ],
         "slackPreview": [
@@ -339,13 +339,13 @@
           },
           {
             "name": "Zero",
-            "text": "PR de release #9565 (`chore: release main`) — los 14 checks de CI en verde, ningún archivo de migración tocado. Activé auto-merge con squash. Saldrá en cuanto branch protection dé paso. Vuelvo a avisar en #release-notify cuando esté dentro."
+            "text": "PR de release #9565 — los 14 checks de CI en verde, ningún archivo de migración tocado. Activé auto-merge con squash. Saldrá en cuanto branch protection dé paso. Vuelvo a avisar en #release-notify cuando esté dentro."
           }
         ],
         "steps": [
           {
             "title": "Zero vigila los PRs de release según tu horario",
-            "description": "Zero consulta GitHub cada hora y filtra los PRs abiertos cuyo título contiene `release` sobre tu rama por defecto. Fuera de la ventana que definiste, solo registra la verificación y se detiene — sin merges fuera de horario, sin sorpresas de fin de semana."
+            "description": "Zero consulta GitHub cada hora y filtra los PRs de release abiertos sobre tu rama por defecto. Fuera de la ventana que definiste, solo registra la verificación y se detiene — sin merges fuera de horario, sin sorpresas de fin de semana."
           },
           {
             "title": "Zero valida cada PR contra tus reglas de seguridad",
@@ -370,7 +370,7 @@
           {
             "title": "Conviértelo en rutina",
             "description": "Programa la revisión para que publicar ocurra sin que tengas que pensarlo.",
-            "examplePrompt": "@Zero cada hora, lunes–viernes 10:00–19:00, ejecuta la revisión de auto-merge de release y registra los resultados en #release-notify."
+            "examplePrompt": "@Zero cada hora durante nuestro horario laboral, ejecuta la revisión de auto-merge de release y registra los resultados en #release-notify."
           }
         ],
         "integrations": [
