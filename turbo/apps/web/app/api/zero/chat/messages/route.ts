@@ -11,10 +11,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import {
-  createZeroRunRecord,
-  dispatchZeroRun,
-} from "../../../../../src/lib/zero/zero-run-service";
+import { createZeroRun } from "../../../../../src/lib/zero/zero-run-service";
 import {
   buildWebChatPrompt,
   buildWebAttachFilesPrompt,
@@ -217,9 +214,9 @@ const router = tsr.router(chatMessagesContract, {
       // Build prompt: user text + file descriptions appended
       const fullPrompt = buildFullPrompt(body.prompt, body.attachFiles);
 
-      // Create the run record (pre-flight checks + advisory-locked INSERT).
-      // Does NOT dispatch — tokens, secrets, and runner dispatch are deferred.
-      const result = await createZeroRunRecord({
+      // Create the run. Phase 2 dispatch is deferred inside createZeroRun
+      // via after() so the response flushes before tokens/secrets/runner work.
+      const result = await createZeroRun({
         userId: authCtx.userId,
         prompt: fullPrompt,
         agentId: body.agentId,
@@ -258,18 +255,6 @@ const router = tsr.router(chatMessagesContract, {
           [authCtx.userId],
           `chatThreadMessageCreated:${threadId}`,
         );
-      });
-
-      // Defer the heavy dispatch pipeline (token generation, secret resolution,
-      // OAuth refresh, storage manifest, runner dispatch) to after the response
-      // is flushed. Failures are recorded via markRunFailed() inside dispatchZeroRun().
-      after(() => {
-        return dispatchZeroRun(result).catch((err: unknown) => {
-          log.error("Deferred dispatch failed", {
-            runId: result.runId,
-            err,
-          });
-        });
       });
 
       return {

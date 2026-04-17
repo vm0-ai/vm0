@@ -20,14 +20,23 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { POST } from "../route";
 import { reloadEnv } from "../../../../../src/env";
 
-// Mock Next.js after() to capture callbacks for controlled execution
+// Mock Next.js after() to capture callbacks for controlled execution.
+// Supports both function and promise arguments to match Next.js behavior.
 const afterPromises: Promise<unknown>[] = [];
 vi.mock("next/server", async (importOriginal) => {
   const original = await importOriginal<typeof import("next/server")>();
   return {
     ...original,
-    after: (promise: Promise<unknown>) => {
-      afterPromises.push(promise);
+    after: (fnOrPromise: (() => Promise<unknown>) | Promise<unknown>) => {
+      if (typeof fnOrPromise === "function") {
+        afterPromises.push(
+          Promise.resolve().then(() => {
+            return fnOrPromise();
+          }),
+        );
+      } else {
+        afterPromises.push(fnOrPromise);
+      }
     },
   };
 });
@@ -37,10 +46,12 @@ const context = testContext();
 const TEST_WEBHOOK_SECRET = "test-github-webhook-secret";
 const TEST_APP_SLUG = "vm0-bot";
 
-/** Wait for all after() callbacks to complete */
+/** Wait for all after() callbacks to complete, including nested ones. */
 async function flushAfterCallbacks() {
-  await Promise.all(afterPromises);
-  afterPromises.length = 0;
+  while (afterPromises.length > 0) {
+    const pending = afterPromises.splice(0, afterPromises.length);
+    await Promise.all(pending);
+  }
 }
 
 /** Sign a payload with HMAC-SHA256 matching GitHub's format */

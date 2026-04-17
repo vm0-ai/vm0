@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import { after } from "next/server";
 import {
   createHandler,
   createSafeErrorHandler,
@@ -11,10 +10,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
-import {
-  createZeroRunRecord,
-  dispatchZeroRun,
-} from "../../../../src/lib/zero/zero-run-service";
+import { createZeroRun } from "../../../../src/lib/zero/zero-run-service";
 import { handleCreateRunError } from "../../../../src/lib/zero/zero-run-errors";
 import {
   generateCallbackSecret,
@@ -125,7 +121,7 @@ const router = tsr.router(zeroRunsMainContract, {
           ]
         : [];
 
-      const result = await createZeroRunRecord({
+      const result = await createZeroRun({
         userId: authCtx.userId,
         prompt: body.prompt,
         agentId: agent.id,
@@ -134,18 +130,6 @@ const router = tsr.router(zeroRunsMainContract, {
         triggerSource: isAgentTriggered ? "agent" : "web",
         triggerAgentId,
         callbacks: agentCallbacks.length > 0 ? agentCallbacks : undefined,
-      });
-
-      // Defer the heavy dispatch pipeline (token generation, secret resolution,
-      // OAuth refresh, storage manifest, runner dispatch) to after the response
-      // is flushed. Failures are recorded via markRunFailed() inside dispatchZeroRun().
-      after(() => {
-        return dispatchZeroRun(result).catch((err: unknown) => {
-          log.error("Deferred dispatch failed", {
-            runId: result.runId,
-            err,
-          });
-        });
       });
 
       return {
