@@ -217,6 +217,9 @@ function initEnv() {
       AGENTPHONE_API_KEY: z.string().min(1).optional(),
       // Plain.com (developer support thread creation) — optional, falls back to email
       PLAIN_API_KEY: z.string().min(1).optional(),
+      // Shared secret for the /api/preview route that enables Next.js Draft Mode
+      // so editors can preview unpublished Strapi articles on the live blog.
+      STRAPI_PREVIEW_SECRET: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -373,6 +376,7 @@ function initEnv() {
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
       AGENTPHONE_API_KEY: process.env.AGENTPHONE_API_KEY,
       PLAIN_API_KEY: process.env.PLAIN_API_KEY,
+      STRAPI_PREVIEW_SECRET: process.env.STRAPI_PREVIEW_SECRET,
 
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,

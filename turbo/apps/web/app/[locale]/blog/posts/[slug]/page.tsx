@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Script from "next/script";
@@ -35,7 +36,8 @@ export async function generateMetadata({
   }
 
   const { slug, locale } = await params;
-  const post = await getPost(slug, locale);
+  const { isEnabled: isDraft } = await draftMode();
+  const post = await getPost(slug, locale, { draft: isDraft });
 
   if (!post) {
     return { title: "Post Not Found" };
@@ -105,7 +107,8 @@ export default async function BlogPostPage({ params }: PageProps) {
   }
 
   const { slug, locale } = await params;
-  const post = await getPost(slug, locale);
+  const { isEnabled: isDraft } = await draftMode();
+  const post = await getPost(slug, locale, { draft: isDraft });
 
   if (!post) {
     notFound();

@@ -224,6 +224,38 @@ describe("blog/strapi", () => {
         "Failed to fetch post by slug: 404 Not Found",
       );
     });
+
+    it("requests draft content when draft option is set", async () => {
+      let capturedStatus: string | null = null;
+
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
+          const url = new URL(request.url);
+          capturedStatus = url.searchParams.get("status");
+          return HttpResponse.json({ data: [], meta: {} });
+        }),
+      );
+
+      await getPostBySlugFromStrapi("test-post", "en", { draft: true });
+
+      expect(capturedStatus).toBe("draft");
+    });
+
+    it("does not send status=draft by default", async () => {
+      let capturedStatus: string | null = null;
+
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, ({ request }) => {
+          const url = new URL(request.url);
+          capturedStatus = url.searchParams.get("status");
+          return HttpResponse.json({ data: [], meta: {} });
+        }),
+      );
+
+      await getPostBySlugFromStrapi("test-post", "en");
+
+      expect(capturedStatus).toBeNull();
+    });
   });
 
   describe("getFeaturedPostFromStrapi", () => {
