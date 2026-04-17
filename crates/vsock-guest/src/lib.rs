@@ -266,8 +266,22 @@ unsafe fn kill_process_tree(child_id: u32) -> bool {
 
 /// Run a child process with timeout. Returns (exit_code, stdout, stderr).
 /// Returns exit code 124 on timeout (same as bash timeout command).
+///
+/// `timeout_ms == 0` means "no timeout" — the command runs until it exits on
+/// its own. This matches the protocol-wide convention used by spawn_watch.
 fn wait_with_timeout(child: std::process::Child, timeout_ms: u32) -> (i32, Vec<u8>, Vec<u8>) {
     use std::sync::mpsc;
+
+    if timeout_ms == 0 {
+        return match child.wait_with_output() {
+            Ok(output) => (
+                extract_exit_code(output.status),
+                output.stdout,
+                output.stderr,
+            ),
+            Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
+        };
+    }
 
     let timeout = Duration::from_millis(timeout_ms as u64);
     let child_id = child.id();
@@ -734,18 +748,7 @@ fn spawn_buffered_monitor(
     writer: Arc<Mutex<UnixStream>>,
 ) {
     thread::spawn(move || {
-        let result = if timeout_ms > 0 {
-            wait_with_timeout(child, timeout_ms)
-        } else {
-            match child.wait_with_output() {
-                Ok(output) => (
-                    extract_exit_code(output.status),
-                    output.stdout,
-                    output.stderr,
-                ),
-                Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
-            }
-        };
+        let result = wait_with_timeout(child, timeout_ms);
 
         log(
             "INFO",
@@ -1369,6 +1372,44 @@ mod tests {
             send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "sleep 60", 500);
         assert_eq!(code, EXIT_CODE_TIMEOUT);
         assert_eq!(String::from_utf8_lossy(&stderr), "Timeout");
+
+        drop(host_writer);
+        drop(host_reader);
+        let _ = handle.join();
+    }
+
+    /// Regression for #9701: `timeout_ms == 0` must mean "no timeout", not
+    /// "kill immediately". Before the fix, `wait_with_timeout` built a
+    /// `Duration::ZERO` and the killer thread fired on the first tick,
+    /// returning exit 124 ("Timeout") for any command.
+    #[test]
+    fn exec_timeout_zero_means_no_timeout() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+
+        let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+        let mut host_writer = host_stream.try_clone().unwrap();
+        let mut host_reader = host_stream;
+
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        // Discard MSG_READY
+        let mut hdr = [0u8; 4];
+        host_reader.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        host_reader.read_exact(&mut body).unwrap();
+
+        host_reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+
+        let (code, stdout, stderr) =
+            send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, "echo hello", 0);
+        assert_eq!(code, 0);
+        assert_eq!(String::from_utf8_lossy(&stdout), "hello\n");
+        assert_eq!(stderr, b"");
 
         drop(host_writer);
         drop(host_reader);
