@@ -78,7 +78,7 @@ const log = logger("service:zero-run");
  * All zero trigger paths (web, schedule, telegram, slack, email, github)
  * use this interface to create agent runs with consistent defaults.
  */
-interface ZeroRunParams {
+export interface CreateZeroRunParams {
   userId: string;
   prompt: string;
   agentId: string;
@@ -232,7 +232,7 @@ interface ZeroRunRecordResult {
   record?: CreateRunRecordResult;
   runParams?: CreateRunParams;
   orgId?: string;
-  zeroParams?: ZeroRunParams;
+  zeroParams?: CreateZeroRunParams;
   /** Pre-fetched in Phase 1 — reused in dispatchZeroRun to avoid duplicate DB query */
   featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   /** Pre-fetched user timezone in Phase 1 — passed to buildZeroExecutionContext */
@@ -276,7 +276,7 @@ function buildSystemSkillVolumes(): Array<{
  * Internal to zero-run-service — callers should use createZeroRun().
  */
 async function createZeroRunRecord(
-  params: ZeroRunParams,
+  params: CreateZeroRunParams,
 ): Promise<ZeroRunRecordResult> {
   const db = globalThis.services.db;
 
@@ -629,7 +629,7 @@ export interface CreateZeroRunResult {
  * persisted on the run row via markRunFailed() inside dispatchZeroRun.
  */
 export async function createZeroRun(
-  params: ZeroRunParams,
+  params: CreateZeroRunParams,
 ): Promise<CreateZeroRunResult> {
   const result = await createZeroRunRecord(params);
 
@@ -660,7 +660,7 @@ export async function createZeroRun(
  */
 async function persistZeroRunMetadata(
   runId: string,
-  params: ZeroRunParams,
+  params: CreateZeroRunParams,
 ): Promise<void> {
   await globalThis.services.db.insert(zeroRuns).values({
     id: runId,
