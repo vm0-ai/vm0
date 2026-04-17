@@ -1227,11 +1227,21 @@ jobs:
           fi
           ansible-playbook \
             -i "${AWS_METAL_RUNNER_HOSTS}," \
-            playbooks/deploy-runner.yml \
+            playbooks/build-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
-            -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
             -e "api_url=https://www.vm0.ai" \
+            -e "runner_version=${RUNNER_VERSION}" \
+            -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
+            -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
+            -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
+            -e "r2_bucket=${R2_USER_STORAGES_BUCKET_NAME:-}" \
+            -v
+          ansible-playbook \
+            -i "${AWS_METAL_RUNNER_HOSTS}," \
+            playbooks/promote-runner.yml \
+            -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+            -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \

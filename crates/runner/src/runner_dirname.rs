@@ -46,7 +46,7 @@ pub fn validate_or_err(name: &str) -> RunnerResult<()> {
 /// Implicitly rejects `/` and `\` (neither is in the charset), keeping the
 /// name to a single path segment regardless of the host's separator
 /// conventions. The dot allowance exists for production semver dirnames
-/// produced by `ansible/playbooks/deploy-runner.yml` (e.g. `v0.3.0`).
+/// produced by `ansible/playbooks/build-runner.yml` (e.g. `v0.3.0`).
 pub(crate) fn validate_name(name: &str) -> bool {
     if name.is_empty() || name.starts_with('.') || name.starts_with('-') {
         return false;

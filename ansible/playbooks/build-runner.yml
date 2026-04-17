@@ -1,22 +1,28 @@
-# Deploy VM0 Runner (Rust)
+# Build VM0 Runner (Rust)
 #
-# This playbook deploys a new version of the Rust-based VM0 runner to production
-# metal instances. Each version gets its own bin dir and systemd service, allowing
-# the old runner to drain gracefully while the new one starts accepting jobs.
+# This playbook prepares a new version of the Rust-based VM0 runner on
+# production metal instances **without starting the service**. It copies the
+# binary, downloads dependencies, builds the default rootfs/snapshot, and
+# writes the per-version config file. The systemd service is installed by
+# the companion `promote-runner.yml` in the promote phase — this lets the
+# heavy `runner build` step run in parallel with other production builds
+# without cutting traffic over.
+#
+# Idempotent: safe to re-run for the same version (e.g. after a failed deploy).
 #
 # Usage:
-#   ansible-playbook -i "host1,host2," playbooks/deploy-runner.yml \
+#   ansible-playbook -i "host1,host2," playbooks/build-runner.yml \
 #     -e "ansible_user=ubuntu" \
 #     -e "official_runner_secret=xxx" \
 #     -e "api_url=https://www.vm0.ai" \
 #     -e "runner_version=0.3.0"
 #
 # Required Variables:
-#   - runner_version: Semantic version of the runner being deployed
-#   - official_runner_secret: Runner authentication secret
-#   - api_url: vm0 API URL
+#   - runner_version: Semantic version of the runner being built
+#   - official_runner_secret: Runner authentication secret (baked into config)
+#   - api_url: vm0 API URL (baked into config)
 
-- name: Deploy VM0 Runner
+- name: Build VM0 Runner
   hosts: all
   become: true
 
@@ -72,8 +78,10 @@
         default_snapshot_hash: "{{ default_build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
 
     # ========================================
-    # Phase 3: Configure + Install
+    # Phase 3a: Configure (no service install)
     # ========================================
+    # Writes runner.yaml to a per-version directory. Does not touch any
+    # running service — the promote phase is responsible for systemd install.
     - name: Generate runner config
       command: >
         {{ bin_dir }}/runner config
@@ -85,52 +93,3 @@
         --runner-dirname {{ runner_name }}
         --api-url {{ api_url }}
         --token vm0_official_{{ official_runner_secret }}
-
-    - name: Install and start runner service
-      command: >
-        {{ bin_dir }}/runner service install
-        --name {{ runner_name }}
-        --config {{ runner_dir }}/runner.yaml
-        {% if sentry_dsn is defined and sentry_dsn %}
-        --env SENTRY_DSN={{ sentry_dsn }}
-        {% endif %}
-
-    # ========================================
-    # Phase 4: Health check
-    # ========================================
-    - name: Verify runner health
-      command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
-
-    # ========================================
-    # Phase 5: Drain old runners + Cleanup
-    # ========================================
-    - name: Find running runner services
-      shell: >
-        systemctl list-units 'vm0-runner-*.service' --state=running
-        --plain --no-legend | awk '{print $1}'
-        | sed 's/^vm0-runner-//;s/\.service$//'
-      register: running_runners
-      changed_when: false
-      ignore_errors: true
-
-    - name: Drain old runner services
-      command: "{{ bin_dir }}/runner service drain --name {{ item }}"
-      loop: "{{ running_runners.stdout_lines | default([]) }}"
-      when: item != runner_name
-      ignore_errors: true
-
-    - name: Garbage collect old artifacts
-      command: "{{ bin_dir }}/runner gc --keep-latest 6 --protect-version {{ runner_name }}"
-      environment:
-        # R2 credentials so `runner gc` can sweep stale image cache objects.
-        # Without these, R2-side cleanup is skipped (objects accumulate forever).
-        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
-        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
-        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
-        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
-
-    # ========================================
-    # Phase 6: Final health check
-    # ========================================
-    - name: Verify runner health after cleanup
-      command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"

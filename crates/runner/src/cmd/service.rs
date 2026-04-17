@@ -326,7 +326,7 @@ async fn get_service_pid(unit: &str) -> RunnerResult<Option<u32>> {
 /// Resolve the runner's base_dir from its service name suffix using the
 /// project-wide convention: `/var/lib/vm0-runner/runners/<suffix>/`.
 ///
-/// This matches `ansible/playbooks/deploy-runner.yml` and the `--runner-dirname`
+/// This matches `ansible/playbooks/build-runner.yml` and the `--runner-dirname`
 /// default in `runner config`. Non-standard `base_dir` overrides (dev-only)
 /// will fail to locate status.json and fall through to forceful stop.
 fn runner_base_dir(suffix: &str) -> Option<PathBuf> {

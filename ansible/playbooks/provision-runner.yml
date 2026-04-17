@@ -94,7 +94,7 @@
       when: nbd_load.stdout | default('') | length > 0
 
     # When groups change, the current SSH session still has the old group list.
-    # Reset the connection so subsequent playbooks (deploy-runner) pick up the
+    # Reset the connection so subsequent playbooks (build-runner) pick up the
     # new membership.
     - name: Reset SSH connection to pick up new group membership
       meta: reset_connection
