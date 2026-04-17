@@ -71,6 +71,25 @@ const TEST_ZERO_PRICE = JSON.stringify({
   team: [TEST_PRICE_TEAM, TEST_PRICE_TEAM_LEGACY],
 });
 
+/**
+ * Build a minimal invoice.lines payload carrying a subscription line item
+ * whose period.end matches the real subscription billing-cycle end.
+ *
+ * This mirrors the shape `handleInvoicePaid` now reads from — specifically,
+ * `invoice.lines.data[i].period.end` where the line's parent type is
+ * `"subscription_item_details"`. See issue #9777.
+ */
+function invoiceLinesWithSubscriptionPeriod(periodEnd: number) {
+  return {
+    data: [
+      {
+        period: { end: periodEnd },
+        parent: { type: "subscription_item_details" as const },
+      },
+    ],
+  };
+}
+
 const context = testContext();
 
 /** Create a Stripe webhook request */
@@ -172,7 +191,7 @@ describe("POST /api/webhooks/stripe", () => {
     it("activates subscription and sets tier", async () => {
       const cusId = uniqueId("cus-checkout");
       const subId = uniqueId("sub-checkout");
-      const invId = uniqueId("inv-checkout");
+      const itemPeriodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
 
       await updateOrgStripeFields(user.orgId, {
         stripeCustomerId: cusId,
@@ -181,13 +200,14 @@ describe("POST /api/webhooks/stripe", () => {
       stripeMocks.subscriptionsRetrieve.mockResolvedValue({
         id: subId,
         status: "active",
-        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
-        latest_invoice: invId,
-      });
-
-      stripeMocks.invoicesRetrieve.mockResolvedValue({
-        id: invId,
-        period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
+        items: {
+          data: [
+            {
+              price: { id: TEST_PRICE_PRO },
+              current_period_end: itemPeriodEnd,
+            },
+          ],
+        },
       });
 
       const response = await sendWebhookEvent("checkout.session.completed", {
@@ -204,6 +224,9 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing?.subscriptionStatus).toBe("active");
       expect(billing?.currentPeriodEnd).toBeInstanceOf(Date);
       expect(billing?.cancelAtPeriodEnd).toBe(false);
+      // invoices.retrieve must NOT be called — checkout handler now reads
+      // period end directly from subscription.items (issue #9777).
+      expect(stripeMocks.invoicesRetrieve).not.toHaveBeenCalled();
     });
 
     it("is idempotent — skips if subscription already stored", async () => {
@@ -220,7 +243,6 @@ describe("POST /api/webhooks/stripe", () => {
         id: subId,
         status: "active",
         items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
-        latest_invoice: null,
       });
 
       const response = await sendWebhookEvent("checkout.session.completed", {
@@ -258,7 +280,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
-        period_end: periodEnd,
+        lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -292,7 +314,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
-        period_end: periodEnd,
+        lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -325,7 +347,7 @@ describe("POST /api/webhooks/stripe", () => {
       await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
-        period_end: periodEnd,
+        lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -427,7 +449,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
-        period_end: periodEnd,
+        lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -584,7 +606,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
-        period_end: periodEnd,
+        lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -596,7 +618,7 @@ describe("POST /api/webhooks/stripe", () => {
       expect(records[0]!.remaining).toBe(20000);
       expect(records[0]!.stripeInvoiceId).toBe(invId);
 
-      // expires_at should be period_end + 1 month
+      // expires_at should be subscription line period.end + 1 month
       const expectedExpiresAt = new Date(periodEnd * 1000);
       expectedExpiresAt.setMonth(expectedExpiresAt.getMonth() + 1);
       expect(records[0]!.expiresAt.getTime()).toBe(expectedExpiresAt.getTime());
@@ -634,7 +656,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
-        period_end: periodEnd,
+        lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -672,7 +694,7 @@ describe("POST /api/webhooks/stripe", () => {
       await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
-        period_end: periodEnd,
+        lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -680,7 +702,7 @@ describe("POST /api/webhooks/stripe", () => {
       await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
-        period_end: periodEnd,
+        lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -688,7 +710,7 @@ describe("POST /api/webhooks/stripe", () => {
       expect(records).toHaveLength(1);
     });
 
-    it("throws and rolls back transaction when period_end is missing", async () => {
+    it("throws and rolls back transaction when no subscription line item has period.end", async () => {
       const cusId = uniqueId("cus-no-period-end");
       const subId = uniqueId("sub-no-period-end");
       const invId = uniqueId("inv-no-period-end");
@@ -705,16 +727,17 @@ describe("POST /api/webhooks/stripe", () => {
 
       const creditsBefore = await getOrgCredits(user.orgId);
 
-      // Send invoice.paid without period_end — handler throws because
-      // period_end is required to create the expiry record
+      // Send invoice.paid with lines.data containing no subscription_item_details
+      // line — handler throws because it cannot derive the subscription
+      // period end from the invoice.
       await expect(
         sendWebhookEvent("invoice.paid", {
           id: invId,
           customer: cusId,
           parent: { subscription_details: { subscription: subId } },
-          // period_end intentionally omitted
+          lines: { data: [] },
         }),
-      ).rejects.toThrow("missing period_end");
+      ).rejects.toThrow("no subscription line item with period.end");
 
       // Credits must NOT have changed (transaction rolled back)
       const creditsAfter = await getOrgCredits(user.orgId);
@@ -723,6 +746,57 @@ describe("POST /api/webhooks/stripe", () => {
       // No expires record should have been created
       const records = await findCreditExpiresRecords(user.orgId);
       expect(records).toHaveLength(0);
+    });
+
+    it("writes subscription line period.end to currentPeriodEnd (not invoice.period_end) — regression for #9777", async () => {
+      // Regression test: before the fix, handleInvoicePaid read the
+      // top-level invoice.period_end, which on a renewal invoice collapses
+      // to the invoice creation moment — NOT the next renewal date.
+      // This resulted in currentPeriodEnd being persisted as a stale
+      // timestamp, producing an infinite "currentPeriodEnd is stale"
+      // warning loop every time getOrgBillingPeriod was called.
+      const cusId = uniqueId("cus-regression");
+      const subId = uniqueId("sub-regression");
+      const invId = uniqueId("inv-regression");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+      });
+
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+        id: subId,
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      // Simulate the exact shape of a real Stripe renewal invoice:
+      // the top-level invoice.period_end reflects the INVOICE accrual
+      // period (effectively the invoice creation moment), while the
+      // subscription line item's period.end is the actual next renewal
+      // date. The handler MUST use the latter.
+      const invoiceAccrualEnd = Math.floor(
+        new Date("2026-03-26T07:24:12Z").getTime() / 1000,
+      );
+      const subscriptionPeriodEnd = Math.floor(
+        new Date("2026-04-26T07:24:12Z").getTime() / 1000,
+      );
+
+      const response = await sendWebhookEvent("invoice.paid", {
+        id: invId,
+        customer: cusId,
+        period_end: invoiceAccrualEnd, // wrong field — must be ignored
+        lines: invoiceLinesWithSubscriptionPeriod(subscriptionPeriodEnd),
+        parent: { subscription_details: { subscription: subId } },
+      });
+
+      expect(response.status).toBe(200);
+
+      const billing = await getOrgBillingFields(user.orgId);
+      // currentPeriodEnd must be the subscription period end (Apr 26),
+      // NOT the invoice accrual end (Mar 26).
+      expect(billing?.currentPeriodEnd).toEqual(
+        new Date("2026-04-26T07:24:12Z"),
+      );
     });
 
     it("auto-recharge does NOT create expires record", async () => {

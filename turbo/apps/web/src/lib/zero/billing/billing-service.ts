@@ -32,7 +32,14 @@ interface InvoiceInput {
   id: string;
   customer: string | { id: string } | null;
   metadata: Record<string, string> | null;
-  period_end?: number;
+  lines: {
+    data: Array<{
+      period: { end: number };
+      parent: {
+        type: "subscription_item_details" | "invoice_item_details";
+      } | null;
+    }>;
+  };
   parent: {
     subscription_details: {
       subscription: string | { id: string };
@@ -195,17 +202,14 @@ export async function handleCheckoutCompleted(
     return;
   }
 
-  // In Stripe v2025 API, current_period_end was removed from Subscription.
-  // Use the latest_invoice.period_end if available, otherwise leave null.
-  let periodEnd: Date | undefined;
-  if (subscription.latest_invoice) {
-    const invoiceId =
-      typeof subscription.latest_invoice === "string"
-        ? subscription.latest_invoice
-        : subscription.latest_invoice.id;
-    const latestInvoice = await stripe.invoices.retrieve(invoiceId);
-    periodEnd = new Date(latestInvoice.period_end * 1000);
-  }
+  // In Stripe v2025 API, current_period_end was removed from the top-level
+  // Subscription object. The replacement is subscription.items.data[i].
+  // current_period_end — the end time of the subscription item's current
+  // billing period. (Do NOT read invoice.period_end — that field is the
+  // accrual period for the invoice, not the subscription period, and for
+  // renewal invoices collapses to the invoice creation moment.)
+  const itemPeriodEnd = subscription.items.data[0]?.current_period_end;
+  const periodEnd = itemPeriodEnd ? new Date(itemPeriodEnd * 1000) : undefined;
 
   await db
     .update(orgMetadata)
@@ -322,16 +326,22 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
 
     await grantOrgCredits(tx, org.orgId, credits);
 
-    // Calculate expires_at: currentPeriodEnd + 1 month
-    // invoice.period_end is required to create the expiry record correctly.
-    // If it is missing, throw so the webhook fails and Stripe retries, alerting operators.
-    const periodEndUnix = invoice.period_end;
+    // The subscription line item's period.end is the actual subscription
+    // billing-cycle end — i.e. the time the customer is paying through.
+    // (The top-level invoice.period_end is the "period over which billables
+    // accrued" and for a renewal invoice collapses to the invoice creation
+    // moment, not the next renewal date — do NOT use it here.)
+    const subscriptionLine = invoice.lines.data.find((line) => {
+      return line.parent?.type === "subscription_item_details";
+    });
+    const periodEndUnix = subscriptionLine?.period.end;
     if (!periodEndUnix) {
       throw new Error(
-        `invoice.paid missing period_end — cannot create expiry record (invoiceId=${invoice.id}, orgId=${org.orgId})`,
+        `invoice.paid has no subscription line item with period.end — cannot create expiry record (invoiceId=${invoice.id}, orgId=${org.orgId})`,
       );
     }
 
+    // Calculate expires_at: currentPeriodEnd + 1 month
     const periodEndDate = new Date(periodEndUnix * 1000);
     const expiresAt = new Date(periodEndDate);
     expiresAt.setMonth(expiresAt.getMonth() + 1);
@@ -347,7 +357,7 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
       .update(orgMetadata)
       .set({
         lastProcessedInvoiceId: invoice.id,
-        currentPeriodEnd: new Date(periodEndUnix * 1000),
+        currentPeriodEnd: periodEndDate,
         updatedAt: new Date(),
       })
       .where(eq(orgMetadata.orgId, org.orgId));

@@ -114,7 +114,7 @@ describe("getOrgBillingPeriod", () => {
     reloadEnv();
   });
 
-  it("returns billing period from Stripe invoice when currentPeriodEnd is not cached", async () => {
+  it("returns billing period from Stripe subscription item when currentPeriodEnd is not cached", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
     mockClerk({ userId });
@@ -130,29 +130,30 @@ describe("getOrgBillingPeriod", () => {
       currentPeriodEnd: null,
     });
 
+    // Use a far-future date so the "don't cache past-dated value" guard
+    // never kicks in regardless of when the test runs.
     const periodEndUnix = Math.floor(
-      new Date("2026-05-01T00:00:00Z").getTime() / 1000,
+      new Date("2099-05-01T00:00:00Z").getTime() / 1000,
     );
 
     stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
-      latest_invoice: "inv_abc123",
-    });
-    stripeMocks.invoicesRetrieve.mockResolvedValueOnce({
-      period_end: periodEndUnix,
+      items: { data: [{ current_period_end: periodEndUnix }] },
     });
 
     const result = await getOrgBillingPeriod(orgId);
 
     if (!result) throw new Error("expected result to be non-null");
-    expect(result.end).toEqual(new Date("2026-05-01T00:00:00Z"));
+    expect(result.end).toEqual(new Date("2099-05-01T00:00:00Z"));
 
     // Start should be 1 month before end
-    const expectedStart = new Date("2026-04-01T00:00:00Z");
+    const expectedStart = new Date("2099-04-01T00:00:00Z");
     expect(result.start).toEqual(expectedStart);
 
     // Verify Stripe was called with the correct subscription ID
     expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledWith(subId);
-    expect(stripeMocks.invoicesRetrieve).toHaveBeenCalledWith("inv_abc123");
+    // invoices.retrieve MUST NOT be called — the subscription item carries
+    // the period end directly, which eliminates an unnecessary round trip.
+    expect(stripeMocks.invoicesRetrieve).not.toHaveBeenCalled();
   });
 
   it("returns null for free tier org without subscription", async () => {
@@ -167,7 +168,7 @@ describe("getOrgBillingPeriod", () => {
     expect(stripeMocks.subscriptionsRetrieve).not.toHaveBeenCalled();
   });
 
-  it("returns null when subscription has no latest_invoice", async () => {
+  it("returns null when subscription has no items with current_period_end", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
     mockClerk({ userId });
@@ -181,12 +182,45 @@ describe("getOrgBillingPeriod", () => {
     });
 
     stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
-      latest_invoice: null,
+      items: { data: [] },
     });
 
     const result = await getOrgBillingPeriod(orgId);
 
     expect(result).toBeNull();
+  });
+
+  it("returns null and does NOT cache when refreshed periodEnd is still in the past", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    const subId = uniqueId("sub");
+    const stalePeriodEnd = new Date("2020-01-01T00:00:00Z"); // stale cached value
+
+    await updateOrgStripeFields(orgId, {
+      stripeSubscriptionId: subId,
+      stripeCustomerId: uniqueId("cus"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: stalePeriodEnd,
+    });
+
+    // Stripe returns a past-dated value (simulates data corruption or field
+    // confusion). Without the defensive guard this would persist the bad
+    // value and cause an infinite refresh loop on every subsequent call.
+    const pastPeriodEndUnix = Math.floor(
+      new Date("2020-02-01T00:00:00Z").getTime() / 1000,
+    );
+
+    stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
+      items: { data: [{ current_period_end: pastPeriodEndUnix }] },
+    });
+
+    const result = await getOrgBillingPeriod(orgId);
+
+    expect(result).toBeNull();
+    expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes from Stripe when currentPeriodEnd is in the past", async () => {
@@ -196,7 +230,7 @@ describe("getOrgBillingPeriod", () => {
     const { id: orgId } = await createTestOrg(slug);
 
     const subId = uniqueId("sub");
-    const stalePeriodEnd = new Date("2026-03-01T00:00:00Z"); // past date
+    const stalePeriodEnd = new Date("2020-03-01T00:00:00Z"); // past date
 
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: subId,
@@ -210,10 +244,7 @@ describe("getOrgBillingPeriod", () => {
     );
 
     stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
-      latest_invoice: "inv_fresh123",
-    });
-    stripeMocks.invoicesRetrieve.mockResolvedValueOnce({
-      period_end: newPeriodEndUnix,
+      items: { data: [{ current_period_end: newPeriodEndUnix }] },
     });
 
     const result = await getOrgBillingPeriod(orgId);
@@ -221,7 +252,8 @@ describe("getOrgBillingPeriod", () => {
     if (!result) throw new Error("expected result to be non-null");
     expect(result.end).toEqual(new Date("2099-04-01T00:00:00Z"));
     expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledWith(subId);
-    expect(stripeMocks.invoicesRetrieve).toHaveBeenCalledWith("inv_fresh123");
+    // invoices.retrieve MUST NOT be called anymore
+    expect(stripeMocks.invoicesRetrieve).not.toHaveBeenCalled();
   });
 
   it("uses cached value when currentPeriodEnd is in the future", async () => {
@@ -230,7 +262,7 @@ describe("getOrgBillingPeriod", () => {
     mockClerk({ userId });
     const { id: orgId } = await createTestOrg(slug);
 
-    const futurePeriodEnd = new Date("2026-05-01T00:00:00Z"); // future date
+    const futurePeriodEnd = new Date("2099-05-01T00:00:00Z"); // future date
 
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
@@ -268,10 +300,7 @@ describe("getOrgBillingPeriod", () => {
     );
 
     stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
-      latest_invoice: "inv_cache_test",
-    });
-    stripeMocks.invoicesRetrieve.mockResolvedValueOnce({
-      period_end: periodEndUnix,
+      items: { data: [{ current_period_end: periodEndUnix }] },
     });
 
     // First call — fetches from Stripe and writes back to DB
