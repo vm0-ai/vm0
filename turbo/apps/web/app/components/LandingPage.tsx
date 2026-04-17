@@ -120,20 +120,21 @@ function CtaButton({
 
 function AddToSlackButton({ className }: { className?: string }) {
   return (
-    <a
+    <NextLink
       href="/api/zero/slack/oauth/install"
       aria-label="Add to Slack"
-      className={`inline-flex items-center justify-center ${className ?? ""}`}
+      className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-[hsl(var(--gray-300))] px-6 py-3.5 text-base font-medium text-[hsl(var(--foreground))] transition-all hover:bg-[hsl(var(--gray-100))] sm:px-8 ${className ?? ""}`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        alt="Add to Slack"
-        height="40"
-        width="139"
-        src="https://platform.slack-edge.com/img/add_to_slack.png"
-        srcSet="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"
-      />
-    </a>
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/assets/mockup/slack.svg"
+          alt=""
+          className="h-5 w-5 max-w-none scale-[2.2]"
+        />
+      </span>
+      Add to Slack
+    </NextLink>
   );
 }
 
@@ -1258,12 +1259,6 @@ export default function LandingPage({
                 ctaHref={ctaHref}
               />
               <AddToSlackButton />
-              <NextLink
-                href="/use-cases"
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-[hsl(var(--gray-300))] px-6 py-3.5 text-base font-medium text-[hsl(var(--foreground))] transition-all hover:bg-[hsl(var(--gray-100))] sm:px-8"
-              >
-                {t("hero.seeUseCases")}
-              </NextLink>
             </div>
           </div>
         </section>
