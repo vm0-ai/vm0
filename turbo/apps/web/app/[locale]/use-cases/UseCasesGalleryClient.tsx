@@ -11,6 +11,8 @@ import type { UseCase, ConnectorRef, AvatarConfig, Role } from "./data";
 
 const AVATAR_BASE = "/assets/avatar";
 
+// "everyone" is intentionally omitted — it's redundant with the "All" chip.
+// Use cases tagged "everyone" surface under every specific role filter below.
 const ROLE_OPTIONS: Role[] = [
   "engineering",
   "product",
@@ -19,7 +21,6 @@ const ROLE_OPTIONS: Role[] = [
   "ops",
   "hr",
   "founders",
-  "everyone",
 ];
 
 function AgentAvatar({ config, size }: { config: AvatarConfig; size: number }) {
@@ -135,7 +136,9 @@ export default function UseCasesGalleryClient() {
 
   const filtered = useMemo(() => {
     if (selectedRole === "all") return USE_CASES;
-    return USE_CASES.filter((uc) => uc.roles.includes(selectedRole));
+    return USE_CASES.filter((uc) => {
+      return uc.roles.includes(selectedRole) || uc.roles.includes("everyone");
+    });
   }, [selectedRole]);
 
   return (
@@ -159,7 +162,9 @@ export default function UseCasesGalleryClient() {
               role="tab"
               aria-selected={selectedRole === "all"}
               className={`uc-pill${selectedRole === "all" ? " uc-pill--active" : ""}`}
-              onClick={() => setSelectedRole("all")}
+              onClick={() => {
+                setSelectedRole("all");
+              }}
             >
               {t("all")}
             </button>
@@ -172,7 +177,9 @@ export default function UseCasesGalleryClient() {
                   role="tab"
                   aria-selected={active}
                   className={`uc-pill${active ? " uc-pill--active" : ""}`}
-                  onClick={() => setSelectedRole(role)}
+                  onClick={() => {
+                    setSelectedRole(role);
+                  }}
                 >
                   {t(`roleLabels.${role}`)}
                 </button>
