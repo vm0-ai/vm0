@@ -234,6 +234,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   github: {
     label: "GitHub",
+    tags: ["gh", "gh_api_key", "git", "vcs", "scm", "repos"],
     environmentMapping: {
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
       GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
@@ -261,6 +262,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   notion: {
     label: "Notion",
+    tags: ["docs", "wiki", "workspace"],
     environmentMapping: {
       NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
     },
@@ -290,6 +292,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   gmail: {
     label: "Gmail",
+    tags: ["email", "mail"],
     environmentMapping: {
       GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
     },
@@ -415,6 +418,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-calendar": {
     label: "Google Calendar",
+    tags: ["calendar", "scheduling", "gcal"],
     environmentMapping: {
       GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
     },
@@ -660,6 +664,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   slack: {
     label: "Slack",
+    tags: ["chat", "messaging", "im"],
     environmentMapping: {
       SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
     },
@@ -800,6 +805,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   linear: {
     label: "Linear",
+    tags: ["issues", "tickets", "project-management"],
     environmentMapping: {
       LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
     },
@@ -903,6 +909,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   jira: {
     label: "Jira",
+    tags: ["issues", "tickets", "project-management"],
     environmentMapping: {
       JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",
       JIRA_DOMAIN: "$vars.JIRA_DOMAIN",
@@ -2409,6 +2416,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   stripe: {
     label: "Stripe",
+    tags: ["payments", "billing", "checkout"],
     environmentMapping: {
       STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
     },
@@ -2440,6 +2448,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   openai: {
     label: "OpenAI",
+    tags: ["llm", "ai", "gpt", "chatgpt"],
     environmentMapping: {
       OPENAI_TOKEN: "$secrets.OPENAI_TOKEN",
     },
@@ -3917,6 +3926,7 @@ const CONNECTOR_TYPES_DEF = {
   },
   gitlab: {
     label: "GitLab",
+    tags: ["git", "vcs", "scm", "repos"],
     environmentMapping: {
       GITLAB_TOKEN: "$secrets.GITLAB_TOKEN",
       GITLAB_HOST: "$vars.GITLAB_HOST",
