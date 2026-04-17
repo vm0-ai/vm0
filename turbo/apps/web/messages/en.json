@@ -307,29 +307,29 @@
     "content": {
       "auto-merge-releases": {
         "title": "Ship release PRs on your team's schedule — without chasing them",
-        "description": "Tell Zero once which release PRs to merge and when. It checks every hour during work hours, skips risky changes, and merges the rest — so you stop being a human cron job.",
+        "description": "Tell Zero once when to ship release PRs and which ones to skip. It runs the check on your cadence, skips risky changes, and merges the rest — so you stop being a human cron job.",
         "timeSaved": "~15 min saved per release",
         "headings": {
           "scenario": "Why chasing release PRs drains the on-call engineer",
           "prompt": "How to ask Zero to ship release PRs",
           "steps": "How Zero merges your release PRs",
-          "nextActions": "Tighten the policy, escalate the risky ones, or chain into the next pipeline",
+          "nextActions": "Tighten the policy, escalate the risky ones, or crank up the cadence",
           "integrations": "Required integrations: GitHub and Slack",
           "tips": "Best practices for autonomous release merging"
         },
-        "scenario": "A new release PR opens whenever your main branch picks up enough commits — on a shipping team that is several times a day. Someone has to glance at the diff, confirm CI is green, decide whether the changelog contains anything scary, click Merge, and then babysit the deploy. If they are in a meeting, asleep, or on another continent, the release sits. Commits keep stacking on top, the changelog grows, and the merge gets riskier. You tell Zero once — watch for release PRs, skip the risky ones, merge during work hours, post to the release channel — and from then on, shipping happens on its own, on your team's clock.",
+        "scenario": "A new release PR opens whenever your main branch picks up enough commits — on most teams that's once or twice a day. Someone has to glance at the diff, confirm CI is green, decide whether the changelog contains anything scary, click Merge, and then babysit the deploy. If they are in a meeting, asleep, or on another continent, the release sits. Commits keep stacking on top, the changelog grows, and the merge gets riskier. You tell Zero once — run the release check once a workday, skip the risky ones, merge during work hours, post to the release channel — and from then on, shipping happens on its own, on your team's clock.",
         "promptVariants": [
           {
             "label": "Detailed",
-            "prompt": "@Zero every hour during our work hours (Mon–Fri, daytime), check our repo for an open release PR. If it has no DB migration files, enable auto-merge with squash so it ships the moment CI passes — then post an update in #release-notify."
+            "prompt": "@Zero every weekday at 3pm, check our repo for an open release PR. If it has no DB migration files, enable auto-merge with squash so it ships the moment CI passes — then post an update in #release-notify."
           },
           {
             "label": "Quick",
             "prompt": "@Zero merge the open release PR now."
           },
           {
-            "label": "Adjust policy",
-            "prompt": "@Zero starting next week, widen the release window by an hour on either side on weekdays, and pause merges entirely on Friday afternoons."
+            "label": "High-velocity",
+            "prompt": "@Zero every hour during work hours (Mon–Fri, daytime), run the release auto-merge check. Skip migrations, post results in #release-notify."
           }
         ],
         "slackPreview": [
@@ -344,8 +344,8 @@
         ],
         "steps": [
           {
-            "title": "Zero watches for release PRs on schedule",
-            "description": "Zero polls GitHub every hour for open release PRs on your default branch. Outside the work window you defined, it logs the check and stops — no after-hours merges, no weekend surprises."
+            "title": "Zero checks for release PRs on your cadence",
+            "description": "Zero runs on whatever schedule you set — once a workday for most teams, hourly for high-velocity ones — and queries GitHub for open release PRs on your default branch. Outside that window, it does nothing. No after-hours merges, no weekend surprises."
           },
           {
             "title": "Zero vets each PR against your safety rules",
@@ -368,9 +368,9 @@
             "examplePrompt": "@Zero when you find a release PR with a migration file, open a thread in #dev tagging @oncall with the diff link."
           },
           {
-            "title": "Make it routine",
-            "description": "Schedule the check so shipping happens without you thinking about it.",
-            "examplePrompt": "@Zero every hour during our work hours, run the release auto-merge check and log results to #release-notify."
+            "title": "Crank up the cadence when you're ready",
+            "description": "Move from daily to multiple times a day once the policy has proven itself.",
+            "examplePrompt": "@Zero starting next week, run the release auto-merge check twice a day — once in the morning, once after lunch — instead of just at 3pm."
           }
         ],
         "integrations": [
@@ -382,9 +382,9 @@
           }
         ],
         "tips": [
+          "Start with one check a day and increase the cadence only after the policy has earned trust. Daily gives the team a predictable shipping rhythm without feeling surveilled.",
           "Encode your unwritten release rules in the prompt. 'Skip migrations' is obvious; 'pause merges during demo windows' or 'never ship on Friday afternoons' are the quiet rules Zero should know about.",
-          "Keep the work-hour window honest — only merge when the team is awake to roll back. Autonomous shipping is safer when humans can respond if a release breaks.",
-          "Chain it with a daily engineering brief so your morning report opens with 'N releases shipped overnight, M skipped because of migrations'. Pair autonomous shipping with visible reporting."
+          "Chain it with a daily engineering brief so your morning report opens with 'yesterday's release shipped, N commits in it, M PRs still queued'. Pair autonomous shipping with visible reporting."
         ]
       },
       "sentry-triage": {

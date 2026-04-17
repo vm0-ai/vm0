@@ -307,29 +307,29 @@
     "content": {
       "auto-merge-releases": {
         "title": "Release-PRs automatisch im Teamrhythmus mergen — ohne hinterherrennen zu müssen",
-        "description": "Sag Zero einmal, welche Release-PRs wann rausgehen sollen. Zero prüft stündlich während der Kernzeit, überspringt riskante Änderungen und mergt den Rest — damit ihr nicht länger als Cronjob für Menschen herhalten müsst.",
+        "description": "Sag Zero einmal, wann Release-PRs rausgehen sollen und welche übersprungen werden. Zero läuft in eurem Takt, überspringt riskante Änderungen und mergt den Rest — damit ihr nicht länger als Cronjob für Menschen herhalten müsst.",
         "timeSaved": "~15 Min pro Release gespart",
         "headings": {
           "scenario": "Warum das Jagen von Release-PRs den Bereitschaftsdienst auffrisst",
           "prompt": "Wie du Zero bittest, Release-PRs auszuliefern",
           "steps": "So mergt Zero eure Release-PRs",
-          "nextActions": "Regeln verschärfen, Riskantes eskalieren oder in die nächste Pipeline verketten",
+          "nextActions": "Regeln verschärfen, Riskantes eskalieren oder die Taktung erhöhen",
           "integrations": "Erforderliche Integrationen: GitHub und Slack",
           "tips": "Best Practices für autonomes Release-Merging"
         },
-        "scenario": "Ein neuer Release-PR öffnet sich, sobald auf main genug Commits angesammelt sind — in einem lieferstarken Team ist das mehrmals täglich. Irgendjemand muss den Diff überfliegen, prüfen ob CI grün ist, einschätzen ob im Changelog etwas Heikles steht, auf Merge klicken und danach den Deploy im Auge behalten. Ist diese Person in einem Meeting, schläft oder sitzt auf einem anderen Kontinent, bleibt der Release liegen. Neue Commits stapeln sich, der Changelog wird länger, der Merge riskanter. Du sagst es Zero einmal — beobachte Release-PRs, überspringe riskante Fälle, merge während der Arbeitszeit, poste in den Release-Channel — und ab dann läuft das Ausliefern von selbst, im Takt deines Teams.",
+        "scenario": "Ein neuer Release-PR öffnet sich, sobald auf main genug Commits angesammelt sind — in den meisten Teams ein- oder zweimal am Tag. Irgendjemand muss den Diff überfliegen, prüfen ob CI grün ist, einschätzen ob im Changelog etwas Heikles steht, auf Merge klicken und danach den Deploy im Auge behalten. Ist diese Person in einem Meeting, schläft oder sitzt auf einem anderen Kontinent, bleibt der Release liegen. Neue Commits stapeln sich, der Changelog wird länger, der Merge riskanter. Du sagst es Zero einmal — einmal pro Arbeitstag prüfen, riskante Fälle überspringen, während der Arbeitszeit mergen, im Release-Channel posten — und ab dann läuft das Ausliefern von selbst, im Takt deines Teams.",
         "promptVariants": [
           {
             "label": "Ausführlich",
-            "prompt": "@Zero prüfe jede Stunde während unserer Arbeitszeit (Mo–Fr, tagsüber) unser Repo auf einen offenen Release-PR. Wenn er keine DB-Migrationsdateien enthält, aktiviere Auto-Merge mit Squash, damit der PR rausgeht sobald CI durchläuft — und poste dann ein Update in #release-notify."
+            "prompt": "@Zero jeden Werktag um 15:00 Uhr, prüfe unser Repo auf einen offenen Release-PR. Wenn er keine DB-Migrationsdateien enthält, aktiviere Auto-Merge mit Squash, damit der PR rausgeht sobald CI durchläuft — und poste dann ein Update in #release-notify."
           },
           {
             "label": "Schnell",
             "prompt": "@Zero merge den offenen Release-PR jetzt."
           },
           {
-            "label": "Policy anpassen",
-            "prompt": "@Zero ab nächster Woche erweitere das Release-Fenster werktags um jeweils eine Stunde und pausiere Merges freitagnachmittags komplett."
+            "label": "High-Velocity",
+            "prompt": "@Zero jede Stunde während der Arbeitszeit (Mo–Fr, tagsüber), führe die Release-Auto-Merge-Prüfung aus. Migrations überspringen, Ergebnisse in #release-notify posten."
           }
         ],
         "slackPreview": [
@@ -344,8 +344,8 @@
         ],
         "steps": [
           {
-            "title": "Zero überwacht Release-PRs nach Zeitplan",
-            "description": "Zero fragt GitHub stündlich ab und filtert offene Release-PRs auf eurem Default-Branch. Außerhalb des definierten Zeitfensters wird die Prüfung nur geloggt — keine Merges nach Feierabend, keine Wochenend-Überraschungen."
+            "title": "Zero prüft Release-PRs in eurem Takt",
+            "description": "Zero läuft in dem Takt, den ihr festlegt — einmal pro Arbeitstag für die meisten Teams, stündlich für High-Velocity-Teams — und fragt GitHub nach offenen Release-PRs auf dem Default-Branch ab. Außerhalb dieses Fensters passiert nichts. Keine Merges nach Feierabend, keine Wochenend-Überraschungen."
           },
           {
             "title": "Zero prüft jeden PR gegen eure Sicherheitsregeln",
@@ -368,9 +368,9 @@
             "examplePrompt": "@Zero wenn du einen Release-PR mit Migrationsdatei findest, öffne einen Thread in #dev mit @oncall und Link zum Diff."
           },
           {
-            "title": "Zur Routine machen",
-            "description": "Plane die Prüfung als wiederkehrende Aufgabe, damit Releases ohne Nachdenken rausgehen.",
-            "examplePrompt": "@Zero jede Stunde während unserer Arbeitszeit, führe die Release-Auto-Merge-Prüfung aus und logge die Ergebnisse in #release-notify."
+            "title": "Taktung erhöhen, wenn ihr bereit seid",
+            "description": "Von täglich auf mehrmals täglich umstellen, sobald sich die Regeln bewährt haben.",
+            "examplePrompt": "@Zero ab nächster Woche, führe die Release-Auto-Merge-Prüfung zweimal täglich aus — einmal vormittags, einmal nach der Mittagspause — statt nur um 15 Uhr."
           }
         ],
         "integrations": [
@@ -382,9 +382,9 @@
           }
         ],
         "tips": [
+          "Fangt mit einer Prüfung pro Tag an und erhöht die Taktung erst, wenn die Regeln Vertrauen aufgebaut haben. Täglich gibt dem Team einen planbaren Lieferrhythmus, ohne sich überwacht zu fühlen.",
           "Verschlüssele eure ungeschriebenen Release-Regeln im Prompt. 'Migrations überspringen' ist offensichtlich; 'Merges während Demo-Fenstern pausieren' oder 'niemals freitagnachmittags ausliefern' sind die leisen Regeln, die Zero kennen sollte.",
-          "Halte das Zeitfenster ehrlich — merge nur dann, wenn das Team wach ist, um ggf. zurückzurollen. Autonomes Ausliefern ist sicherer, wenn Menschen im Fehlerfall antworten können.",
-          "Verkette es mit einem täglichen Engineering Brief, damit euer Morgen-Report mit 'N Releases über Nacht ausgeliefert, M wegen Migrations übersprungen' öffnet. Autonomes Ausliefern + sichtbares Reporting = saubere Kombi."
+          "Verkette es mit einem täglichen Engineering Brief, damit euer Morgen-Report mit 'Gestern wurde ein Release ausgeliefert, N Commits drin, M PRs noch in der Pipeline' öffnet. Autonomes Ausliefern + sichtbares Reporting = saubere Kombi."
         ]
       },
       "sentry-triage": {
