@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.7...sandbox-fc-v0.25.8) (2026-04-17)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** fsync output directory after snapshot finalization ([#9839](https://github.com/vm0-ai/vm0/issues/9839)) ([3197baf](https://github.com/vm0-ai/vm0/commit/3197baf1de15f08b8c21d4ab79a47d96d7527542)), closes [#9825](https://github.com/vm0-ai/vm0/issues/9825)
+
+
+### Documentation
+
+* **sandbox-fc:** note firecracker v1.14.1 fsyncs snapshot files ([#9844](https://github.com/vm0-ai/vm0/issues/9844)) ([855e02d](https://github.com/vm0-ai/vm0/commit/855e02d1570d1f73a15909b0ccb115b62c7ea568))
+
 ## [0.25.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.6...sandbox-fc-v0.25.7) (2026-04-17)
 
 ## [0.25.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.5...sandbox-fc-v0.25.6) (2026-04-17)

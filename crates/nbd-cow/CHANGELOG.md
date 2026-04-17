@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.2...nbd-cow-v0.4.3) (2026-04-17)
+
+
+### Bug Fixes
+
+* **nbd-cow:** fsync parent directory after bitmap rename ([#9827](https://github.com/vm0-ai/vm0/issues/9827)) ([b04f40b](https://github.com/vm0-ai/vm0/commit/b04f40bd39b0a92a776f79205b86e8ef78aca857))
+
 ## [0.4.2](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.1...nbd-cow-v0.4.2) (2026-04-17)
 
 

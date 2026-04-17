@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.251.1](https://github.com/vm0-ai/vm0/compare/web-v12.251.0...web-v12.251.1) (2026-04-17)
+
+
+### Bug Fixes
+
+* self-heal oauth connectors with null token expiry ([#9842](https://github.com/vm0-ai/vm0/issues/9842)) ([b73bd81](https://github.com/vm0-ai/vm0/commit/b73bd818a0e4433c8fdf81075df4ffc94e18e2d2))
+* **web:** align blog cards and scale cover illustrations ([#9845](https://github.com/vm0-ai/vm0/issues/9845)) ([bc2f276](https://github.com/vm0-ai/vm0/commit/bc2f2760f51fcc25e391134f2e604fba241f5436))
+
 ## [12.251.0](https://github.com/vm0-ai/vm0/compare/web-v12.250.0...web-v12.251.0) (2026-04-17)
 
 
