@@ -15,6 +15,7 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { createTestZeroAgent } from "../../../__tests__/db-test-seeders/agents";
 import { bindCustomSkillToAgent } from "../../../__tests__/db-test-seeders/skills";
+import { createTestUserConnector } from "../../../__tests__/db-test-seeders/connectors";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
@@ -365,6 +366,59 @@ describe("createZeroRun() — service-only parameters", () => {
         expect(zeroRun).toBeDefined();
         expect(zeroRun!.triggerSource).toBe(triggerSource);
       }
+    });
+  });
+
+  describe("connector skill volume scoping", () => {
+    function getSystemSkillNames(
+      volumes: Array<{ mountPath: string; system?: boolean }>,
+    ) {
+      return new Set(
+        volumes
+          .filter((v) => {
+            return v.system === true;
+          })
+          .map((v) => {
+            return v.mountPath.split("/").pop()!;
+          }),
+      );
+    }
+
+    it("mounts only SEED_SKILLS when no user_connectors rows exist", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      const skillNames = getSystemSkillNames(run!.additionalVolumes!);
+      expect(skillNames.has("deep-dive")).toBe(true);
+      expect(skillNames.has("slack")).toBe(false);
+      expect(skillNames.has("github")).toBe(false);
+    });
+
+    it("mounts an authorized connector's skill alongside SEED_SKILLS", async () => {
+      await createTestUserConnector(user.orgId, user.userId, agentId, "slack");
+
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      const skillNames = getSystemSkillNames(run!.additionalVolumes!);
+      expect(skillNames.has("deep-dive")).toBe(true);
+      expect(skillNames.has("slack")).toBe(true);
+      expect(skillNames.has("github")).toBe(false);
+    });
+
+    it("mounts multiple authorized connector skills", async () => {
+      await createTestUserConnector(user.orgId, user.userId, agentId, "slack");
+      await createTestUserConnector(user.orgId, user.userId, agentId, "github");
+
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      const skillNames = getSystemSkillNames(run!.additionalVolumes!);
+      expect(skillNames.has("slack")).toBe(true);
+      expect(skillNames.has("github")).toBe(true);
     });
   });
 

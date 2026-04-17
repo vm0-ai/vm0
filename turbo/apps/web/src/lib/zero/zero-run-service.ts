@@ -8,7 +8,6 @@ import {
   FeatureSwitchKey,
   getCustomSkillStorageName,
   getSkillStorageName,
-  getEligibleConnectorTypes,
   resolveSkillRef,
   parseGitHubTreeUrl,
   type TriggerSource,
@@ -240,18 +239,17 @@ interface ZeroRunRecordResult {
 }
 
 /**
- * Compute system skill additional volumes from SEED_SKILLS + eligible connectors.
- * Mirrors the skill resolution logic in buildComposeContent() but produces
- * AdditionalVolume-shaped objects instead of compose skill URLs.
+ * Compute system skill additional volumes from SEED_SKILLS plus the per-user
+ * authorized connector types. SEED_SKILLS are always injected; connector
+ * skills are injected only for connectors the user has authorized for the
+ * agent (via the user_connectors table).
  */
-function buildSystemSkillVolumes(): Array<{
+function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
   name: string;
   mountPath: string;
   system: boolean;
 }> {
-  const allSkillNames = [
-    ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
-  ];
+  const allSkillNames = [...new Set([...SEED_SKILLS, ...connectorTypes])];
   return allSkillNames.flatMap((skillName) => {
     const url = resolveSkillRef(skillName);
     const parsed = parseGitHubTreeUrl(url);
@@ -414,7 +412,9 @@ async function createZeroRunRecord(
 
   // Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
   // Inject system + custom skill volumes (needed on every run).
-  const systemSkillVolumes = buildSystemSkillVolumes();
+  const systemSkillVolumes = buildSystemSkillVolumes(
+    allowedConnectorTypes ?? [],
+  );
   const customSkillVolumes = (row?.customSkills ?? []).map((name) => {
     return {
       name: getCustomSkillStorageName(name),
