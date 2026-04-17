@@ -61,7 +61,7 @@ teardown_file() {
     run slack_post_event "$payload"
     assert_success
 
-    wait_for_slack_run "$TEAM_ID" 30
+    wait_for_slack_run "$TEAM_ID"
     local state first_run
     state=$(slack_fetch_state "$TEAM_ID")
     [[ "$(echo "$state" | jq -r '.recent_runs | length')" -gt 0 ]]
@@ -92,7 +92,7 @@ teardown_file() {
     run slack_post_event "$payload"
     assert_success
 
-    wait_for_slack_run "$TEAM_ID" 30
+    wait_for_slack_run "$TEAM_ID"
     local state first_run
     state=$(slack_fetch_state "$TEAM_ID")
     [[ "$(echo "$state" | jq -r '.recent_runs | length')" -gt 0 ]]

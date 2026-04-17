@@ -4,14 +4,18 @@ import { describe, expect, it } from "vitest";
 import { SLACK_E2E_FIXTURES } from "../slack-mock-fixtures";
 
 /**
- * The canonical Slack e2e fixture identifiers live in
- * `src/lib/test-endpoints/slack-mock-fixtures.ts` and are mirrored into
- * `e2e/helpers/slack-fixtures.sh` so the BATS suite can consume them.
+ * Cross-file contract test: asserts the hand-maintained BATS mirror at
+ * `e2e/helpers/slack-fixtures.sh` agrees with the canonical TS source in
+ * `src/lib/test-endpoints/slack-mock-fixtures.ts`.
  *
- * This test parses the shell file and asserts each mirrored constant
- * matches the TS source, so a careless edit to only one file is caught
- * in CI instead of silently drifting the mock responses away from the
- * BATS assertions.
+ * This is intentionally a contract check, not a unit test of internal
+ * logic (no business behavior is exercised). Because the Slack mock
+ * routes consume the TS constants while BATS assertions consume the
+ * shell constants, a careless edit to only one file would silently
+ * drift mock responses away from BATS expectations. The alternative —
+ * code-generating the `.sh` file from the `.ts` source at build-time —
+ * would be a stronger contract but adds build complexity we don't yet
+ * need; this test keeps the invariant enforced at CI time.
  */
 
 const SHELL_FIXTURES_PATH = resolve(

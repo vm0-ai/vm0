@@ -13,9 +13,12 @@
 # shellcheck source=./slack-fixtures.sh
 source "$(dirname "${BASH_SOURCE[0]}")/slack-fixtures.sh"
 
-# Polling tunables for wait_for_slack_run.
+# Polling tunables for wait_for_slack_run. The 60s default accommodates
+# Vercel preview cold-starts where the first lambda invocation can take
+# 15-20s before the handler begins executing. Override via env for faster
+# local iteration against a warm preview.
 SLACK_POLL_INTERVAL_S="${SLACK_POLL_INTERVAL_S:-2}"
-SLACK_POLL_TIMEOUT_S="${SLACK_POLL_TIMEOUT_S:-30}"
+SLACK_POLL_TIMEOUT_S="${SLACK_POLL_TIMEOUT_S:-60}"
 
 # Populate a named array (passed by reference in BASH 4+ via nameref) with the
 # `-H` args required to bypass Vercel preview protection. Empty when the secret
