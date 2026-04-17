@@ -1413,6 +1413,35 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       const location = response.headers.get("location");
       expect(location).toContain("/connector/error");
     });
+
+    it("should keep tokenExpiresAt null for non-refreshable connector missing expires_in", async () => {
+      // Slack user tokens are long-lived and the handler defines no
+      // refreshToken method, so the #9836 fallback must NOT apply — we keep
+      // null to signal "don't try to refresh" to the firewall auth path.
+      const user = await context.setupUser();
+
+      const { handlers: mswHandlers } = createSlackOAuthMock({
+        accessToken: "xoxp-no-expiry-token",
+      });
+      server.use(...mswHandlers);
+
+      const request = createCallbackRequest({
+        code: "valid-code",
+        state: "test-state",
+        savedState: "test-state",
+        connectorType: "slack",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "slack" }),
+      });
+
+      expect(response.status).toBe(307);
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.orgId,
+        "slack",
+      );
+      expect(tokenExpiresAt).toBeNull();
+    });
   });
 
   describe("Notion OAuth Flow", () => {
