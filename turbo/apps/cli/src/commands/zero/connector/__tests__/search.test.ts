@@ -16,6 +16,31 @@ import chalk from "chalk";
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
 const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
 
+const connectedGithub = {
+  id: "1",
+  type: "github",
+  authMethod: "oauth",
+  externalId: "12345",
+  externalUsername: "octocat",
+  externalEmail: "octocat@github.com",
+  oauthScopes: ["repo", "project", "workflow"],
+  needsReconnect: false,
+  createdAt: "2025-01-01T00:00:00Z",
+  updatedAt: "2025-01-01T00:00:00Z",
+};
+
+function stubConnectors(connectors: Array<Record<string, unknown>>) {
+  return http.get("http://localhost:3000/api/zero/connectors", () => {
+    return HttpResponse.json({
+      connectors,
+      configuredTypes: connectors.map((c) => {
+        return c.type as string;
+      }),
+      connectorProvidedSecretNames: [],
+    });
+  });
+}
+
 function stubAgent(id: string, displayName: string | null) {
   return http.get(`http://localhost:3000/api/zero/agents/${id}`, () => {
     return HttpResponse.json({
@@ -95,6 +120,8 @@ describe("zero connector search command", () => {
       expect(output).not.toContain("No exact match");
       expect(output).not.toContain("Too many results");
       expect(output).not.toContain("AUTHORIZED FOR");
+      expect(output).not.toContain("LABEL");
+      expect(output).toContain("CONNECTED AS");
 
       const dataRows = findDataRows(lines);
       expect(dataRows[0]).toMatch(/^github\s/);
@@ -267,6 +294,73 @@ describe("zero connector search command", () => {
       const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
       expect(output).toContain("AUTHORIZED FOR from-flag");
       expect(output).not.toContain(ALT_AGENT_UUID);
+    });
+  });
+
+  describe("CONNECTED AS column", () => {
+    it("renders @username for a connected type", async () => {
+      server.use(stubConnectors([connectedGithub]));
+
+      await searchCommand.parseAsync(["node", "cli", "github"]);
+
+      const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
+      expect(output).toContain("CONNECTED AS");
+      expect(output).not.toContain("LABEL");
+      expect(output).toContain("@octocat");
+    });
+
+    it("renders (not connected) for a type with no connector", async () => {
+      server.use(stubConnectors([]));
+
+      await searchCommand.parseAsync(["node", "cli", "github"]);
+
+      const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
+      expect(output).toContain("(not connected)");
+    });
+
+    it("renders reconnect-needed state", async () => {
+      server.use(
+        stubConnectors([{ ...connectedGithub, needsReconnect: true }]),
+      );
+
+      await searchCommand.parseAsync(["node", "cli", "github"]);
+
+      const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
+      expect(output).toContain("@octocat (reconnect needed)");
+    });
+
+    it("renders permissions-update-available when oauth scopes are insufficient", async () => {
+      server.use(
+        stubConnectors([{ ...connectedGithub, oauthScopes: ["repo"] }]),
+      );
+
+      await searchCommand.parseAsync(["node", "cli", "github"]);
+
+      const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
+      expect(output).toContain("(permissions update available)");
+    });
+  });
+
+  describe("error handling", () => {
+    it("surfaces auth errors from listZeroConnectors", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json(
+            {
+              error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+            },
+            { status: 401 },
+          );
+        }),
+      );
+
+      await expect(async () => {
+        await searchCommand.parseAsync(["node", "cli", "github"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Not authenticated"),
+      );
     });
   });
 });

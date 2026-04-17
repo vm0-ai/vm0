@@ -6,22 +6,14 @@ import {
   searchConnectors,
   type ConnectorType,
 } from "@vm0/core";
+import { listZeroConnectors } from "../../../lib/api";
 import { getActiveOrg } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";
 import { resolveAgentContext } from "./agent-context";
+import { padEndAnsi, renderConnectedAsCell, stripAnsi } from "./connected-as";
 
 const DEFAULT_LIMIT = 5;
 const EXACT_MATCH_THRESHOLD = 80;
-const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
-
-function stripAnsi(s: string): string {
-  return s.replace(ANSI_PATTERN, "");
-}
-
-function padEndAnsi(s: string, width: number): string {
-  const visible = stripAnsi(s).length;
-  return s + " ".repeat(Math.max(0, width - visible));
-}
 
 function parseLimit(raw: string): number {
   const n = Number.parseInt(raw, 10);
@@ -50,10 +42,16 @@ export const searchCommand = new Command()
           throw new Error("Keyword cannot be empty.");
         }
 
-        const [orgId, agentCtx] = await Promise.all([
+        const [{ connectors }, orgId, agentCtx] = await Promise.all([
+          listZeroConnectors(),
           getActiveOrg(),
           resolveAgentContext(options.agent),
         ]);
+        const connectedMap = new Map(
+          connectors.map((c) => {
+            return [c.type, c];
+          }),
+        );
 
         const isTypeAvailable = (type: ConnectorType): boolean => {
           const config = CONNECTOR_TYPES[type];
@@ -82,34 +80,39 @@ export const searchCommand = new Command()
         }
 
         const typeHeader = "TYPE";
-        const labelHeader = "LABEL";
+        const connectedAsHeader = "CONNECTED AS";
+
+        const connectedCells = results.map((r) => {
+          return renderConnectedAsCell(connectedMap.get(r.type));
+        });
+
         const typeWidth = Math.max(
           typeHeader.length,
           ...results.map((r) => {
             return r.type.length;
           }),
         );
-        const labelWidth = Math.max(
-          labelHeader.length,
-          ...results.map((r) => {
-            return CONNECTOR_TYPES[r.type].label.length;
+        const connectedAsWidth = Math.max(
+          connectedAsHeader.length,
+          ...connectedCells.map((c) => {
+            return stripAnsi(c).length;
           }),
         );
 
         const headerParts = [
           typeHeader.padEnd(typeWidth),
-          labelHeader.padEnd(labelWidth),
+          connectedAsHeader.padEnd(connectedAsWidth),
         ];
         if (agentCtx) {
           headerParts.push(`AUTHORIZED FOR ${agentCtx.displayName}`);
         }
         console.log(chalk.dim(headerParts.join("  ")));
 
-        for (const result of results) {
-          const config = CONNECTOR_TYPES[result.type];
+        for (let i = 0; i < results.length; i++) {
+          const result = results[i]!;
           const parts = [
             result.type.padEnd(typeWidth),
-            padEndAnsi(config.label, labelWidth),
+            padEndAnsi(connectedCells[i]!, connectedAsWidth),
           ];
           if (agentCtx) {
             parts.push(
