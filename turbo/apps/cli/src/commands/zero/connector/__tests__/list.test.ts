@@ -114,19 +114,6 @@ describe("zero connector list command", () => {
       expect(logCalls).toContain("(reconnect needed)");
       expect(logCalls).not.toContain("✓");
     });
-
-    it("should show zero connector connect hint", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
-          return HttpResponse.json({ connectors: [], configuredTypes: [] });
-        }),
-      );
-
-      await listCommand.parseAsync(["node", "cli"]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("zero connector connect <type>");
-    });
   });
 
   describe("error handling", () => {

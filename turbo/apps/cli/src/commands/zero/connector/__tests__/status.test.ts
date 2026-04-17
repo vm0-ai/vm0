@@ -60,12 +60,11 @@ describe("zero connector status command", () => {
       expect(logCalls).toContain("connected");
       expect(logCalls).toContain("@octocat");
       expect(logCalls).toContain("oauth");
-      expect(logCalls).toContain("zero connector disconnect github");
     });
   });
 
   describe("not connected", () => {
-    it("should display not connected status with connect hint", async () => {
+    it("should display not connected status", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/connectors/:type", () => {
           return HttpResponse.json(
@@ -79,7 +78,6 @@ describe("zero connector status command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("not connected");
-      expect(logCalls).toContain("zero connector connect github");
     });
   });
 

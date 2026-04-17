@@ -119,11 +119,6 @@ export {
 export {
   listZeroConnectors,
   getZeroConnector,
-  deleteZeroConnector,
-  createZeroConnectorSession,
-  getZeroConnectorSession,
-  createZeroComputerConnector,
-  deleteZeroComputerConnector,
 } from "./domains/zero-connectors";
 
 // Domain modules - Integrations Slack

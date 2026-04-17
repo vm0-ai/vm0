@@ -77,17 +77,10 @@ export const statusCommand = new Command()
             `${"Last Updated:".padEnd(LABEL_WIDTH)}${formatDateTime(connector.updatedAt)}`,
           );
         }
-
-        console.log();
-        console.log(chalk.dim("To disconnect:"));
-        console.log(chalk.dim(`  zero connector disconnect ${type}`));
       } else {
         console.log(
           `${"Status:".padEnd(LABEL_WIDTH)}${chalk.dim("not connected")}`,
         );
-        console.log();
-        console.log(chalk.dim("To connect:"));
-        console.log(chalk.dim(`  zero connector connect ${type}`));
       }
     }),
   );

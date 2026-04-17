@@ -78,10 +78,5 @@ export const listCommand = new Command()
         const row = [type.padEnd(typeWidth), status, account].join("  ");
         console.log(row);
       }
-
-      // Always show connect hint
-      console.log();
-      console.log(chalk.dim("To connect a service:"));
-      console.log(chalk.dim("  zero connector connect <type>"));
     }),
   );
