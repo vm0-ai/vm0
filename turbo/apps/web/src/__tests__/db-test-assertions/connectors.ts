@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { secrets } from "../../db/schema/secret";
 import { connectors } from "../../db/schema/connector";
+import { userConnectors } from "../../db/schema/user-connector";
 import { decryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 
 // ---------------------------------------------------------------------------
@@ -57,4 +58,27 @@ export async function findTestConnectorTokenExpiresAt(
 
   if (!row) return undefined;
   return row.tokenExpiresAt;
+}
+
+/**
+ * List the connector types granted to a (user, agent) pair. Returns the
+ * literal `connector_type` strings in insertion order.
+ */
+export async function findUserConnectorTypes(
+  userId: string,
+  agentId: string,
+): Promise<string[]> {
+  initServices();
+  const rows = await globalThis.services.db
+    .select({ connectorType: userConnectors.connectorType })
+    .from(userConnectors)
+    .where(
+      and(
+        eq(userConnectors.userId, userId),
+        eq(userConnectors.agentId, agentId),
+      ),
+    );
+  return rows.map((r) => {
+    return r.connectorType;
+  });
 }

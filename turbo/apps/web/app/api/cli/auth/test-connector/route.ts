@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { eq, desc } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOAuthConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import { PROVIDER_HANDLERS } from "../../../../../src/lib/zero/connector/provider-registry";
 import {
   resolveTestUserId,
+  resolveTestUserOrg,
   DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
-import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import { getOrgMetadata } from "../../../../../src/lib/zero/org/org-metadata-service";
-import { isNotFound } from "../../../../../src/lib/shared/errors";
 import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint-guard";
 
 const bodySchema = z.object({
@@ -71,25 +68,7 @@ export async function POST(request: Request) {
   const url = new URL(request.url);
   const email = url.searchParams.get("email") ?? DEFAULT_TEST_EMAIL;
   const userId = await resolveTestUserId(email);
-
-  // Look up test user's org from org_members_cache (populated by test-token endpoint)
-  const [cached] = await globalThis.services.db
-    .select({ orgId: orgMembersCache.orgId })
-    .from(orgMembersCache)
-    .where(eq(orgMembersCache.userId, userId))
-    .orderBy(desc(orgMembersCache.cachedAt))
-    .limit(1);
-
-  let org: { orgId: string; tier: string } | null = null;
-  if (cached) {
-    try {
-      org = await getOrgMetadata(cached.orgId);
-    } catch (error) {
-      if (!isNotFound(error)) throw error;
-      // org_members_cache entry exists but org_metadata row doesn't yet — use defaults
-      org = { orgId: cached.orgId, tier: "free" };
-    }
-  }
+  const org = await resolveTestUserOrg(userId);
   if (!org) {
     return NextResponse.json(
       { error: "Test user has no org — run test-token first" },

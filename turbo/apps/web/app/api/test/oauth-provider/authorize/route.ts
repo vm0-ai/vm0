@@ -20,7 +20,7 @@ const scenarioSchema = z.enum(TEST_OAUTH_SCENARIOS);
  * The scenario is encoded into the code itself — the token endpoint decodes
  * it — because on Vercel there's no shared in-memory state across instances.
  */
-export function GET(request: Request): Response {
+export async function GET(request: Request): Promise<Response> {
   if (!isTestEndpointAllowed(request)) {
     return new NextResponse("Not found", { status: 404 });
   }

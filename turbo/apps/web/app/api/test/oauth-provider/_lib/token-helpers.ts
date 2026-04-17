@@ -39,6 +39,16 @@ export function mintAccessToken(expiresInSecs: number): string {
   return `${ACCESS_PREFIX}${expiresAtMs}_${randomId()}`;
 }
 
+/**
+ * Mint a token whose embedded expiry is unambiguously in the past.
+ * Avoids the `mintAccessToken(0)` + "hope the next Date.now() is later"
+ * race in tests.
+ */
+export function mintExpiredAccessToken(): string {
+  const pastMs = Date.now() - 1000;
+  return `${ACCESS_PREFIX}${pastMs}_${randomId()}`;
+}
+
 export function mintRefreshToken(scenario: TestOAuthScenario): string {
   return `${REFRESH_PREFIX}${scenario}_${randomId()}`;
 }
@@ -49,6 +59,10 @@ export function mintAuthCode(scenario: TestOAuthScenario): string {
 
 export function isTestOAuthAccessToken(value: string): boolean {
   return value.startsWith(ACCESS_PREFIX);
+}
+
+export function isTestOAuthRefreshToken(value: string): boolean {
+  return value.startsWith(REFRESH_PREFIX);
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   TEST_OAUTH_CLIENT_SECRET,
 } from "../../../../../src/lib/zero/connector/providers/test-oauth";
 import {
+  isTestOAuthRefreshToken,
   mintAccessToken,
   mintRefreshToken,
   parseScenarioFromCode,
@@ -80,18 +81,32 @@ function handleRefreshToken(refreshToken: string | null): Response {
       { status: 400 },
     );
   }
-  // Unknown refresh tokens (not minted by us) are treated as success — this
-  // matches real OAuth 2 providers that don't require their refresh tokens
-  // to carry structure. Tests that want to drive refresh failure do so by
-  // first minting a refresh token via authorize(?scenario=invalid-refresh).
-  const scenario = parseScenarioFromRefreshToken(refreshToken) ?? "success";
-  if (scenario === "invalid-refresh" || scenario === "revoked") {
+  // Refresh token handling tiers:
+  //  1. testoauth_rt_* but scenario segment is unknown → reject as malformed.
+  //     Without this a typo ("revokes" instead of "revoked") would silently
+  //     fall through to "success" and mask the test scenario the author meant.
+  //  2. testoauth_rt_<scenario>_* with one of the rejection scenarios → 400.
+  //  3. No prefix at all (not one of ours) → accept-as-success. Real OAuth
+  //     providers don't force callers to carry structure; we preserve that
+  //     tolerance so tests seeding arbitrary refresh tokens still succeed.
+  const scenario = parseScenarioFromRefreshToken(refreshToken);
+  if (!scenario && isTestOAuthRefreshToken(refreshToken)) {
+    return NextResponse.json(
+      {
+        error: "invalid_grant",
+        error_description: "malformed or unknown refresh token scenario",
+      },
+      { status: 400 },
+    );
+  }
+  const resolved: TestOAuthScenario = scenario ?? "success";
+  if (resolved === "invalid-refresh" || resolved === "revoked") {
     return NextResponse.json(
       { error: "invalid_grant", error_description: "refresh token rejected" },
       { status: 400 },
     );
   }
-  return NextResponse.json(mintTokensForScenario(scenario));
+  return NextResponse.json(mintTokensForScenario(resolved));
 }
 
 /**

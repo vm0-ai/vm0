@@ -34,20 +34,28 @@ interface UserInfo {
   email: string | null;
 }
 
-function resolveUrl(path: string | undefined): string {
+function resolveUrl(field: string, path: string | undefined): string {
   if (!path) {
-    throw new Error("Test OAuth URL missing from CONNECTOR_TYPES_DEF");
+    throw new Error(
+      `Test OAuth URL missing: CONNECTOR_TYPES_DEF["test-oauth"].oauth.${field} is not set`,
+    );
   }
   const base = env().NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   return `${base}${path}`;
 }
 
 function getAuthorizationUrl(): string {
-  return resolveUrl(getConnectorOAuthConfig("test-oauth")?.authorizationUrl);
+  return resolveUrl(
+    "authorizationUrl",
+    getConnectorOAuthConfig("test-oauth")?.authorizationUrl,
+  );
 }
 
 function getTokenUrl(): string {
-  return resolveUrl(getConnectorOAuthConfig("test-oauth")?.tokenUrl);
+  return resolveUrl(
+    "tokenUrl",
+    getConnectorOAuthConfig("test-oauth")?.tokenUrl,
+  );
 }
 
 export function buildTestOAuthAuthorizationUrl(
@@ -170,7 +178,7 @@ export async function fetchTestOAuthUserInfo(
         : {}),
     },
   });
-  const response = userinfoRouteHandler(request);
+  const response = await userinfoRouteHandler(request);
 
   if (!response.ok) {
     throw new Error(`Test OAuth userinfo failed: ${response.status}`);

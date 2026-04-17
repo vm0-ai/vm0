@@ -4,7 +4,7 @@ import { POST as tokenPost } from "../token/route";
 import { GET as userinfoGet } from "../userinfo/route";
 import { GET as echoGet } from "../echo/route";
 import { reloadEnv } from "../../../../../src/env";
-import { mintAccessToken } from "../_lib/token-helpers";
+import { mintAccessToken, mintExpiredAccessToken } from "../_lib/token-helpers";
 
 const APP_URL = "http://localhost:3000";
 
@@ -259,15 +259,33 @@ describe("/api/test/oauth-provider", () => {
       expect(body.error).toBe("invalid_grant");
     });
 
-    it("unknown refresh token succeeds with default scenario", async () => {
-      // A fresh refresh token the server hasn't seen is treated as success —
-      // matches real OAuth 2 providers that don't track every refresh token.
+    it("rejects testoauth_rt_* with unknown scenario tag", async () => {
+      // Prefix says "this is one of ours" but the scenario segment isn't one
+      // of the four valid values → reject as malformed. Guards against
+      // silently falling through to success when a test typos the scenario.
       const response = await tokenPost(
         makeTokenRequest({
           grant_type: "refresh_token",
           client_id: "test-oauth-client",
           client_secret: "test-oauth-secret",
-          refresh_token: "testoauth_rt_unknown",
+          refresh_token: "testoauth_rt_unknown_abc",
+        }),
+      );
+      expect(response.status).toBe(400);
+      const body = await response.json();
+      expect(body.error).toBe("invalid_grant");
+    });
+
+    it("accepts refresh tokens without our prefix as success", async () => {
+      // Real OAuth 2 providers don't require refresh tokens to carry
+      // structure; preserve that tolerance so tests seeding arbitrary
+      // tokens (e.g. from external fixtures) still succeed.
+      const response = await tokenPost(
+        makeTokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: "arbitrary-opaque-token",
         }),
       );
       expect(response.status).toBe(200);
@@ -318,8 +336,7 @@ describe("/api/test/oauth-provider", () => {
     });
 
     it("returns 401 for expired access token", async () => {
-      const token = mintAccessToken(0);
-      // Move Date.now forward so the token has demonstrably expired.
+      const token = mintExpiredAccessToken();
       const response = await userinfoGet(
         new Request(`${APP_URL}/api/test/oauth-provider/userinfo`, {
           headers: { authorization: `Bearer ${token}` },
@@ -352,7 +369,7 @@ describe("/api/test/oauth-provider", () => {
     });
 
     it("returns 401 for expired access token", async () => {
-      const token = mintAccessToken(0);
+      const token = mintExpiredAccessToken();
       const response = await echoGet(
         new Request(`${APP_URL}/api/test/oauth-provider/echo`, {
           headers: { authorization: `Bearer ${token}` },

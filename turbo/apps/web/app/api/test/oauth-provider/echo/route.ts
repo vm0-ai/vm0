@@ -14,7 +14,7 @@ import {
  * access token. Validates the injected token's baked-in expiry and returns
  * 401 if stale — so a broken refresh pipeline surfaces as a non-200 in E2E.
  */
-export function GET(request: Request): Response {
+export async function GET(request: Request): Promise<Response> {
   if (!isTestEndpointAllowed(request)) {
     return new NextResponse("Not found", { status: 404 });
   }

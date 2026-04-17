@@ -14,7 +14,7 @@ import {
  * Validates the token's embedded expiry — tokens past their baked-in
  * timestamp return 401, mirroring real providers.
  */
-export function GET(request: Request): Response {
+export async function GET(request: Request): Promise<Response> {
   if (!isTestEndpointAllowed(request)) {
     return new NextResponse("Not found", { status: 404 });
   }
