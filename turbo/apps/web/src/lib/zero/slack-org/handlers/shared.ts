@@ -2,6 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { slackOrgInstallations } from "../../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../../db/schema/slack-org-thread-session";
+import { slackUserAgentPreferences } from "../../../../db/schema/slack-user-agent-preference";
 import { zeroAgents } from "../../../../db/schema/zero-agent";
 import { orgMetadata as orgTable } from "../../../../db/schema/org-metadata";
 import { getAppUrl } from "../../url";
@@ -80,6 +81,82 @@ export async function resolveDefaultComposeId(
   if (orgRow?.defaultAgentId) return orgRow.defaultAgentId;
 
   return resolveDefaultAgentComposeId();
+}
+
+/**
+ * Resolve the user's agent override, or null when no override is set.
+ */
+export async function getUserAgentPreference(
+  vm0UserId: string,
+  orgId: string,
+): Promise<string | null> {
+  const [row] = await globalThis.services.db
+    .select({ selectedComposeId: slackUserAgentPreferences.selectedComposeId })
+    .from(slackUserAgentPreferences)
+    .where(
+      and(
+        eq(slackUserAgentPreferences.vm0UserId, vm0UserId),
+        eq(slackUserAgentPreferences.orgId, orgId),
+      ),
+    )
+    .limit(1);
+
+  return row?.selectedComposeId ?? null;
+}
+
+/**
+ * Persist (or clear) a user's agent override.
+ *
+ * Passing `null` for `composeId` clears the override so the user reverts to
+ * the org default.
+ */
+export async function setUserAgentPreference(opts: {
+  vm0UserId: string;
+  orgId: string;
+  composeId: string | null;
+}): Promise<void> {
+  await globalThis.services.db
+    .insert(slackUserAgentPreferences)
+    .values({
+      vm0UserId: opts.vm0UserId,
+      orgId: opts.orgId,
+      selectedComposeId: opts.composeId,
+    })
+    .onConflictDoUpdate({
+      target: [
+        slackUserAgentPreferences.vm0UserId,
+        slackUserAgentPreferences.orgId,
+      ],
+      set: {
+        selectedComposeId: opts.composeId,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+/**
+ * Resolve the compose that should respond for this user.
+ *
+ * Prefers the user's override from `slack_user_agent_preferences`, falling
+ * back to the org default when no override is set or the overridden agent is
+ * no longer accessible in the org.
+ */
+export async function resolveEffectiveComposeId(
+  vm0UserId: string,
+  orgId: string,
+): Promise<string | null> {
+  const override = await getUserAgentPreference(vm0UserId, orgId);
+  if (override) {
+    const [row] = await globalThis.services.db
+      .select({ id: zeroAgents.id })
+      .from(zeroAgents)
+      .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
+      .limit(1);
+    if (row?.id) {
+      return override;
+    }
+  }
+  return resolveDefaultComposeId(orgId);
 }
 
 /**

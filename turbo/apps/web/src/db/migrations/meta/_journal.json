@@ -1870,6 +1870,13 @@
       "when": 1776407453753,
       "tag": "0266_clear_stale_current_period_end",
       "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1776412341038,
+      "tag": "0267_slack_user_agent_preferences",
+      "breakpoints": true
     }
   ]
 }

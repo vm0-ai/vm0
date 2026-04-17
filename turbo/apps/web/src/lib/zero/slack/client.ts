@@ -77,6 +77,24 @@ export async function publishAppHome(
   });
 }
 
+/**
+ * Open a modal view in response to a user action.
+ *
+ * Requires a valid `trigger_id` from a slash command or interactive payload;
+ * Slack invalidates trigger_ids after ~3 seconds.
+ */
+export async function openView(
+  client: WebClient,
+  triggerId: string,
+  view: View,
+): Promise<{ viewId: string | undefined }> {
+  const result = await client.views.open({
+    trigger_id: triggerId,
+    view,
+  });
+  return { viewId: result.view?.id };
+}
+
 export interface SlackUserInfo {
   id: string;
   name?: string;

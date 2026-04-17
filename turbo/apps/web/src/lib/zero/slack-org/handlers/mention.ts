@@ -14,6 +14,7 @@ import {
   resolveOrgFromWorkspace,
   resolveConnectionFromSlackUser,
   resolveDefaultComposeId,
+  resolveEffectiveComposeId,
   lookupThreadSession,
   enrichMessageContent,
   fetchConversationContexts,
@@ -87,8 +88,11 @@ export async function handleOrgMention(
     return;
   }
 
-  // 3. Resolve default agent
-  const composeId = await resolveDefaultComposeId(orgId);
+  // 3. Resolve effective agent (user override or org default)
+  const composeId = await resolveEffectiveComposeId(
+    connection.vm0UserId,
+    orgId,
+  );
   if (!composeId) {
     await client.chat.postEphemeral({
       channel: context.channelId,
@@ -219,24 +223,15 @@ export async function handleOrgMention(
     // When the run was created (runId exists), the completion callback
     // will post the error to Slack — skip here to avoid duplicate messages.
     if (!runId) {
-      const errorText =
-        response ?? "Sorry, an error occurred. Please try again.";
-      const overrides = await loadFeatureSwitchOverrides(
+      await postPreDispatchErrorReply({
+        client,
+        channelId: context.channelId,
+        threadTs,
+        errorText: response ?? "Sorry, an error occurred. Please try again.",
         orgId,
-        connection.vm0UserId,
-      );
-      const logsUrl = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
-        userId: connection.vm0UserId,
-        orgId,
-        overrides,
-      })
-        ? buildAgentLogsUrl()
-        : undefined;
-      await client.chat.postMessage({
-        channel: context.channelId,
-        thread_ts: threadTs,
-        text: errorText,
-        blocks: buildAgentResponseMessage(errorText, logsUrl),
+        vm0UserId: connection.vm0UserId,
+        composeId,
+        agentLabel: agent.displayName ?? agentName,
       });
     }
 
@@ -246,4 +241,38 @@ export async function handleOrgMention(
       },
     );
   }
+}
+
+async function postPreDispatchErrorReply(opts: {
+  client: ReturnType<typeof createSlackClient>;
+  channelId: string;
+  threadTs: string;
+  errorText: string;
+  orgId: string;
+  vm0UserId: string;
+  composeId: string;
+  agentLabel: string;
+}): Promise<void> {
+  const overrides = await loadFeatureSwitchOverrides(
+    opts.orgId,
+    opts.vm0UserId,
+  );
+  const logsUrl = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+    userId: opts.vm0UserId,
+    orgId: opts.orgId,
+    overrides,
+  })
+    ? buildAgentLogsUrl()
+    : undefined;
+  const orgDefaultComposeId = await resolveDefaultComposeId(opts.orgId);
+  const triggeredBy =
+    opts.composeId !== orgDefaultComposeId
+      ? `Sent via ${opts.agentLabel}`
+      : undefined;
+  await opts.client.chat.postMessage({
+    channel: opts.channelId,
+    thread_ts: opts.threadTs,
+    text: opts.errorText,
+    blocks: buildAgentResponseMessage(opts.errorText, logsUrl, triggeredBy),
+  });
 }
