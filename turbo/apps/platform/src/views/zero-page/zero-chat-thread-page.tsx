@@ -348,6 +348,17 @@ function ChatThreadComposer({
           setComposerFileInput$={thread.setComposerFileInput$}
           setInputRef={setInputRef}
         />
+        {sending && (
+          <div className="flex items-center justify-end gap-1.5 mt-2 pr-1">
+            <IconLoader2
+              size={12}
+              className="animate-spin text-foreground/50 shrink-0"
+            />
+            <span className="zero-shimmer-text text-xs">
+              {displayName} is working...
+            </span>
+          </div>
+        )}
       </div>
     </footer>
   );
