@@ -296,7 +296,7 @@ function ChatThreadComposer({
   const groups = useGet(thread.groupedChatMessages$);
   const hasMessages = groups.length > 0;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  const hasActiveRun = useGet(thread.hasActiveRun$);
+  const hasActiveRun = useLastResolved(thread.hasActiveRun$) ?? false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const sending = hasActiveRun || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
@@ -394,7 +394,7 @@ function ChatSkeleton() {
 // ---------------------------------------------------------------------------
 
 function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
-  const hasActiveRun = useGet(thread.hasActiveRun$);
+  const hasActiveRun = useLastResolved(thread.hasActiveRun$) ?? false;
   const groups = useGet(thread.groupedChatMessages$);
   const lastGroup = groups[groups.length - 1];
   const show = hasActiveRun && (!lastGroup || lastGroup.role !== "assistant");

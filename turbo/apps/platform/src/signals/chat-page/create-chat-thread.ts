@@ -21,7 +21,6 @@ import {
   type PersistedAttachment,
   type PagedChatMessage,
 } from "@vm0/core";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
@@ -70,7 +69,7 @@ export interface ChatThreadSignals {
   pagedChatMessages$: Computed<PagedChatMessage[]>;
   latestChatMessageId$: Computed<string | undefined>;
   groupedChatMessages$: Computed<GroupedChatMessageGroup[]>;
-  hasActiveRun$: Computed<boolean>;
+  hasActiveRun$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
 }
@@ -441,32 +440,6 @@ function mergeIntoGroups(
   return result;
 }
 
-/** Remove a single message by id. Drops the enclosing group if it becomes empty. */
-function removeMessageById(
-  groups: GroupedChatMessageGroup[],
-  id: string,
-): GroupedChatMessageGroup[] {
-  const next: GroupedChatMessageGroup[] = [];
-  for (const g of groups) {
-    const messages = g.messages.filter((m) => {
-      return m.id !== id;
-    });
-    if (messages.length === 0) {
-      continue;
-    }
-    if (messages.length === g.messages.length) {
-      next.push(g);
-    } else {
-      next.push({
-        role: g.role,
-        beginMessageId: messages[0]!.id,
-        messages,
-      });
-    }
-  }
-  return next;
-}
-
 function createPagedMessages(threadId: string) {
   const internalGroups$ = state<GroupedChatMessageGroup[]>([]);
 
@@ -589,101 +562,43 @@ function createInputRef() {
 // ---------------------------------------------------------------------------
 
 function createRunTracking(
-  threadId: string,
   reloadThread$: Command<void, []>,
   threadData$: Computed<Promise<ChatThread | null>>,
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>,
 ) {
-  // pendingRunIds$ synced from threadData.activeRunIds (server SSOT)
-  const pendingRunIds$ = state<string[]>([]);
-  const subscribedRunIds = new Set<string>();
-
-  const hasActiveRun$ = computed((get) => {
-    return get(pendingRunIds$).length > 0;
-  });
-
-  const syncFromThread$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const hasActiveRun$ = computed(async (get) => {
     const thread = await get(threadData$);
-    signal.throwIfAborted();
-    set(pendingRunIds$, thread?.activeRunIds ?? []);
+    if (!thread) {
+      return false;
+    }
+    return thread.activeRunIds.length > 0;
   });
-
-  // Subscribe to runUpdated for a specific run; on event, reload thread and sync
-  const subscribeToRunUpdated$ = command(
-    async ({ set }, runId: string, signal: AbortSignal) => {
-      if (subscribedRunIds.has(runId)) {
-        return;
-      }
-      subscribedRunIds.add(runId);
-
-      // setAblyLoop$ calls loopCommand$ once initially, then again on each event.
-      // We only want to exit the loop when we actually receive a runUpdated event.
-      let isInitialCall = true;
-      const onRunUpdated$ = command(({ set }) => {
-        if (isInitialCall) {
-          isInitialCall = false;
-          return false; // Continue listening, don't exit on initial call
-        }
-        L.debug("runUpdated received, reloading thread", { threadId, runId });
-        set(reloadThread$);
-        return true; // exit loop after handling the event
-      });
-
-      signal.addEventListener("abort", () => {
-        subscribedRunIds.delete(runId);
-      });
-
-      await set(setAblyLoop$, `runUpdated:${runId}`, onRunUpdated$, signal);
-      // After loop exits (run completed), sync pendingRunIds from server
-      if (!signal.aborted) {
-        await set(syncFromThread$, signal);
-      }
-    },
-  );
-
-  // Start subscriptions for active runs
-  const startRunSubscriptions$ = command(
-    ({ get, set }, signal: AbortSignal) => {
-      const activeRunIds = get(pendingRunIds$);
-      for (const runId of activeRunIds) {
-        if (!subscribedRunIds.has(runId)) {
-          L.debug("startRunSubscriptions$ subscribing", { threadId, runId });
-          void set(subscribeToRunUpdated$, runId, signal).catch(
-            throwIfNotAbort,
-          );
-        }
-      }
-    },
-  );
 
   const loadPagedMessages$ = command(
     async ({ get, set }, signal: AbortSignal) => {
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      if (!thread) {
+        throw new Error("invalid thread");
+      }
+
+      const threadId = thread.id;
       L.debug("loadPagedMessages$ start", { threadId });
       await set(fetchNextPage$, signal);
       signal.throwIfAborted();
 
-      const thread = await get(threadData$);
-      signal.throwIfAborted();
-      if (!thread) {
-        return;
-      }
       L.debug("loadPagedMessages$ thread loaded", {
         threadId,
         activeRunIds: thread.activeRunIds,
       });
 
-      await set(syncFromThread$, signal);
-      signal.throwIfAborted();
-      set(startRunSubscriptions$, signal);
-
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
         await set(fetchNextPage$, sig);
         return false;
       });
-      const onRunCreated$ = command(async ({ set }, sig: AbortSignal) => {
+
+      const onRunChanged$ = command(({ set }) => {
         set(reloadThread$);
-        await set(syncFromThread$, sig);
-        set(startRunSubscriptions$, sig);
         return false;
       });
 
@@ -694,10 +609,16 @@ function createRunTracking(
           onMessageCreated$,
           signal,
         ),
-        set(
+        await set(
           setAblyLoop$,
-          `chatThreadRunCreated:${threadId}`,
-          onRunCreated$,
+          `chatThreadRunCreated:${thread.id}`,
+          onRunChanged$,
+          signal,
+        ),
+        await set(
+          setAblyLoop$,
+          `chatThreadRunUpdated:${thread.id}`,
+          onRunChanged$,
           signal,
         ),
       ]);
@@ -705,9 +626,16 @@ function createRunTracking(
     },
   );
 
-  const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const cancelRun$ = command(async ({ get }, signal: AbortSignal) => {
+    const thread = await get(threadData$);
+    signal.throwIfAborted();
+    if (!thread) {
+      return;
+    }
+
     const client = get(zeroClient$)(zeroRunsCancelContract);
-    const before = get(pendingRunIds$);
+    const before = thread.activeRunIds;
+    const threadId = thread.id;
     L.debug("cancelRun$ start", { threadId, pendingRunIds: before });
 
     await Promise.all(
@@ -720,13 +648,6 @@ function createRunTracking(
       }),
     );
     signal.throwIfAborted();
-
-    set(reloadThread$);
-    await set(syncFromThread$, signal);
-    L.debug("cancelRun$ done, synced from server", {
-      threadId,
-      pendingRunIds: get(pendingRunIds$),
-    });
   });
 
   return { hasActiveRun$, loadPagedMessages$, cancelRun$ };
@@ -767,7 +688,6 @@ export function createChatThreadSignals(
   const prepareUserMessage$ = createPrepareUserMessage(draft);
 
   const { hasActiveRun$, loadPagedMessages$, cancelRun$ } = createRunTracking(
-    threadId,
     reloadThread$,
     threadData$,
     fetchNextPage$,

@@ -8,6 +8,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
+import { chatMessages } from "../../../../../src/db/schema/chat-message";
 import { eq, and } from "drizzle-orm";
 import {
   transitionRunStatus,
@@ -51,6 +52,20 @@ function scheduleTerminalSideEffects(
     // Notify run owner that run state changed
     await publishUserSignal([userId], `thread:${runId}`);
     await publishUserSignal([userId], `runUpdated:${runId}`);
+
+    // If this run belongs to a chat thread, notify that thread's run status changed
+    const [msg] = await globalThis.services.db
+      .select({ chatThreadId: chatMessages.chatThreadId })
+      .from(chatMessages)
+      .where(eq(chatMessages.runId, runId))
+      .limit(1);
+    if (msg?.chatThreadId) {
+      await publishUserSignal(
+        [userId],
+        `chatThreadRunUpdated:${msg.chatThreadId}`,
+      );
+    }
+
     // Notify org members that task list may have changed
     const orgMembers = await getOrgMemberUserIds(orgId);
     await publishUserSignal(orgMembers, `tasks:${orgId}`);
