@@ -102,6 +102,24 @@ teardown_file() {
     assert_output --partial "/settings/slack"
 }
 
+@test "slack: app_mention handler runs without error (dispatch probe)" {
+    slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection --with-default-agent >/dev/null
+
+    local ts probe_resp
+    ts="$(date +%s).000090"
+    probe_resp=$(slack_dispatch_probe "$TEAM_ID" "$CHANNEL_ID" "$SLACK_USER_ID" \
+        "hello from e2e mention probe" "$ts" "channel")
+    # The probe either returns {ok: true} (dispatch ran, run row created)
+    # or {ok: false, error: {...}}. Anything else is a transport bug.
+    local ok
+    ok=$(echo "$probe_resp" | jq -r '.ok')
+    if [[ "$ok" != "true" ]]; then
+        echo "# dispatch-probe returned failure:" >&2
+        echo "$probe_resp" | jq '.' >&2
+        return 1
+    fi
+}
+
 @test "slack: app_mention dispatches an agent run" {
     local seed_resp vm0_user_id
     seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection --with-default-agent)
@@ -118,9 +136,6 @@ teardown_file() {
     assert_success
 
     if ! wait_for_slack_run "$TEAM_ID"; then
-        echo "# dispatch-probe diagnostic:" >&2
-        slack_dispatch_probe "$TEAM_ID" "$CHANNEL_ID" "$SLACK_USER_ID" \
-            "hello from e2e mention probe" "$ts" "channel" >&2
         return 1
     fi
     local state first_run

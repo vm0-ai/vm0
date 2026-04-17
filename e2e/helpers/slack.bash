@@ -192,7 +192,10 @@ slack_dispatch_probe() {
           channel_type: $channel_type}')
     local -a bypass=()
     _slack_bypass_args bypass
-    curl -sS -X POST \
+    # --max-time bounds the probe so a hung handler doesn't eat the
+    # entire BATS budget. 60s is generous for a cold-started lambda
+    # doing DB + Clerk + mock calls.
+    curl -sS --max-time 60 -X POST \
         -H "Content-Type: application/json" \
         "${bypass[@]}" \
         --data "$body" \
