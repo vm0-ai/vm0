@@ -62,7 +62,7 @@ function mockSessionEndpointError() {
       const body = await request.json();
       sessionCalls.push(body);
       return HttpResponse.json(
-        { error: { message: "test-session-error" } },
+        { error: { message: "test-session-error", code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }),
@@ -196,6 +196,7 @@ describe("chat mode preparation cache", () => {
   describe("startVoiceChat$ cached preparation events", () => {
     const MOCK_EVENTS = [
       {
+        id: "evt-1",
         seq: 1,
         source: "slow-brain",
         type: "slow-brain/thinking",
@@ -203,6 +204,7 @@ describe("chat mode preparation cache", () => {
         createdAt: "2026-01-01T00:00:00Z",
       },
       {
+        id: "evt-2",
         seq: 2,
         source: "slow-brain",
         type: "slow-brain/directive",
@@ -210,6 +212,7 @@ describe("chat mode preparation cache", () => {
         createdAt: "2026-01-01T00:00:01Z",
       },
       {
+        id: "evt-3",
         seq: 3,
         source: "slow-brain",
         type: "slow-brain/preparation-ready",
@@ -222,7 +225,14 @@ describe("chat mode preparation cache", () => {
       server.use(
         http.post("*/api/zero/voice-chat", () => {
           return HttpResponse.json({
-            session: { id: "sess-cached-1", prepared: true },
+            session: {
+              id: "sess-cached-1",
+              mode: "chat",
+              status: "preparing",
+              runId: "run-test-1",
+              createdAt: "2026-01-01T00:00:00Z",
+              prepared: true,
+            },
           });
         }),
       );
@@ -232,8 +242,11 @@ describe("chat mode preparation cache", () => {
       const calls: string[] = [];
       server.use(
         http.post("*/api/zero/voice-chat/:sessionId/activate", ({ params }) => {
-          calls.push(params["sessionId"] as string);
-          return HttpResponse.json({ ok: true });
+          const sessionId = params["sessionId"] as string;
+          calls.push(sessionId);
+          return HttpResponse.json({
+            session: { id: sessionId, mode: "chat", status: "active" },
+          });
         }),
       );
       return calls;
@@ -254,8 +267,13 @@ describe("chat mode preparation cache", () => {
       server.use(
         http.post("*/api/zero/voice-chat/token", () => {
           return HttpResponse.json(
-            { error: { message: "test-token-error" } },
-            { status: 400 },
+            {
+              error: {
+                message: "test-token-error",
+                code: "INTERNAL_SERVER_ERROR",
+              },
+            },
+            { status: 500 },
           );
         }),
       );
@@ -343,6 +361,7 @@ describe("chat mode preparation cache", () => {
   describe("startVoiceMeeting$ cached preparation events", () => {
     const MOCK_EVENTS = [
       {
+        id: "evt-1",
         seq: 1,
         source: "slow-brain",
         type: "slow-brain/thinking",
@@ -350,6 +369,7 @@ describe("chat mode preparation cache", () => {
         createdAt: "2026-01-01T00:00:00Z",
       },
       {
+        id: "evt-2",
         seq: 2,
         source: "slow-brain",
         type: "slow-brain/directive",
@@ -357,6 +377,7 @@ describe("chat mode preparation cache", () => {
         createdAt: "2026-01-01T00:00:01Z",
       },
       {
+        id: "evt-3",
         seq: 3,
         source: "slow-brain",
         type: "slow-brain/preparation-ready",
@@ -369,7 +390,14 @@ describe("chat mode preparation cache", () => {
       server.use(
         http.post("*/api/zero/voice-chat", () => {
           return HttpResponse.json({
-            session: { id: "sess-meeting-cached-1", prepared: true },
+            session: {
+              id: "sess-meeting-cached-1",
+              mode: "meeting",
+              status: "preparing",
+              runId: "run-test-1",
+              createdAt: "2026-01-01T00:00:00Z",
+              prepared: true,
+            },
           });
         }),
       );
@@ -379,8 +407,11 @@ describe("chat mode preparation cache", () => {
       const calls: string[] = [];
       server.use(
         http.post("*/api/zero/voice-chat/:sessionId/activate", ({ params }) => {
-          calls.push(params["sessionId"] as string);
-          return HttpResponse.json({ ok: true });
+          const sessionId = params["sessionId"] as string;
+          calls.push(sessionId);
+          return HttpResponse.json({
+            session: { id: sessionId, mode: "meeting", status: "active" },
+          });
         }),
       );
       return calls;
@@ -401,8 +432,13 @@ describe("chat mode preparation cache", () => {
       server.use(
         http.post("*/api/zero/voice-chat/token", () => {
           return HttpResponse.json(
-            { error: { message: "test-token-error" } },
-            { status: 400 },
+            {
+              error: {
+                message: "test-token-error",
+                code: "INTERNAL_SERVER_ERROR",
+              },
+            },
+            { status: 500 },
           );
         }),
       );
