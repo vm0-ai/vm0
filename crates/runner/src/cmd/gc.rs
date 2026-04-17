@@ -323,7 +323,7 @@ async fn gc_nested_images(
         });
 
         // Sort by mtime descending (newest first), keep latest N.
-        candidates.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+        candidates.sort_by_key(|c| std::cmp::Reverse(c.mtime));
         let keep_count = keep_latest.unwrap_or(0);
         for c in candidates.iter().take(keep_count) {
             info!(
@@ -459,7 +459,7 @@ async fn gc_debootstrap(
     });
 
     // Sort newest first, keep the N most recent.
-    files.sort_by(|a, b| b.2.cmp(&a.2));
+    files.sort_by_key(|f| std::cmp::Reverse(f.2));
     let keep = keep_latest.unwrap_or(0);
 
     let mut freed: u64 = 0;
