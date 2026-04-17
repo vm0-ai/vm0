@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
+import { env } from "../../../../src/env";
 import { isTestEndpointAllowed } from "../../../../src/lib/test-endpoints/guard";
 import { slackOrgInstallations } from "../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../src/db/schema/slack-org-connection";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { zeroRuns } from "../../../../src/db/schema/zero-run";
+import { orgMetadata } from "../../../../src/db/schema/org-metadata";
+import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../src/db/schema/agent-compose";
 import {
   DEFAULT_TEST_EMAIL,
   resolveTestOrgId,
@@ -86,10 +93,92 @@ export async function GET(request: Request) {
         .limit(10)
     : [];
 
+  const orgMeta = installation?.orgId
+    ? ((
+        await db
+          .select({
+            orgId: orgMetadata.orgId,
+            defaultAgentId: orgMetadata.defaultAgentId,
+            credits: orgMetadata.credits,
+            tier: orgMetadata.tier,
+          })
+          .from(orgMetadata)
+          .where(eq(orgMetadata.orgId, installation.orgId))
+          .limit(1)
+      )[0] ?? null)
+    : null;
+
+  const defaultAgent = orgMeta?.defaultAgentId
+    ? ((
+        await db
+          .select({
+            id: zeroAgents.id,
+            name: zeroAgents.name,
+            orgId: zeroAgents.orgId,
+          })
+          .from(zeroAgents)
+          .where(eq(zeroAgents.id, orgMeta.defaultAgentId))
+          .limit(1)
+      )[0] ?? null)
+    : null;
+
+  const compose = orgMeta?.defaultAgentId
+    ? ((
+        await db
+          .select({
+            id: agentComposes.id,
+            name: agentComposes.name,
+            headVersionId: agentComposes.headVersionId,
+          })
+          .from(agentComposes)
+          .where(eq(agentComposes.id, orgMeta.defaultAgentId))
+          .limit(1)
+      )[0] ?? null)
+    : null;
+
+  const composeVersion = compose?.headVersionId
+    ? ((
+        await db
+          .select({
+            id: agentComposeVersions.id,
+            content: agentComposeVersions.content,
+          })
+          .from(agentComposeVersions)
+          .where(eq(agentComposeVersions.id, compose.headVersionId))
+          .limit(1)
+      )[0] ?? null)
+    : null;
+
+  // Surface the slack-api URL that outbound traffic from this deployment
+  // would actually use. Lets BATS diagnose whether E2E_SLACK_MOCK_ENABLED
+  // was propagated to the serverless runtime. Re-implements the logic in
+  // src/lib/zero/slack/client.ts's resolveSlackApiUrl() so we don't have
+  // to import it (that module imports WebClient which is heavy).
+  const resolvedSlackApiUrl = (() => {
+    const e = env();
+    if (e.SLACK_API_URL) return e.SLACK_API_URL;
+    const flag = e.E2E_SLACK_MOCK_ENABLED;
+    const mockEnabled = flag === "1" || flag === "true";
+    if (mockEnabled && e.VERCEL_URL) {
+      return `https://${e.VERCEL_URL}/api/test/slack-mock/`;
+    }
+    return null;
+  })();
+
   return NextResponse.json({
     installation: installation ?? null,
     connections,
     recent_runs: recentRuns,
+    org_metadata: orgMeta,
+    default_agent: defaultAgent,
+    default_compose: compose,
+    default_compose_version: composeVersion && {
+      id: composeVersion.id,
+      content_keys: Object.keys(
+        (composeVersion.content ?? {}) as Record<string, unknown>,
+      ),
+    },
+    resolved_slack_api_url: resolvedSlackApiUrl,
   });
 }
 
