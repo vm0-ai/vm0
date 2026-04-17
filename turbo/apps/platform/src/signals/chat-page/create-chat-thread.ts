@@ -694,6 +694,15 @@ function createRunTracking(
         activeRunIds: thread.activeRunIds,
       });
 
+      // Drive `pendingRunIds$` entirely from server-truth:
+      // - `chatThreadRunCreated:${threadId}` fires when a new run is created
+      //   on the thread (by sendMessage$, schedules, external callers). The
+      //   loop body re-fetches the thread and calls `trackRun$` for every
+      //   active runId. `setAblyLoop$` also calls the body once on setup,
+      //   so the initial bootstrap of `activeRunIds` happens there — no
+      //   separate initial mapping needed.
+      // - `trackRun$` is idempotent (de-duped by runId) and owns removal
+      //   via its own `runUpdated:${runId}` subscription.
       await Promise.all([
         (async () => {
           const pagedLoopBody$ = command(async ({ set }, sig: AbortSignal) => {
@@ -708,9 +717,39 @@ function createRunTracking(
             signal,
           );
         })(),
-        ...thread.activeRunIds.map((runId) => {
-          return set(trackRun$, runId, signal);
-        }),
+        (async () => {
+          const runCreatedLoopBody$ = command(
+            async ({ get, set }, sig: AbortSignal) => {
+              const threadClient = get(zeroClient$)(chatThreadByIdContract);
+              const res = await accept(
+                threadClient.get({
+                  params: { id: threadId },
+                  fetchOptions: { signal: sig },
+                }),
+                [200],
+              );
+              const pending = get(pendingRunIds$);
+              for (const runId of res.body.activeRunIds) {
+                if (pending.includes(runId)) {
+                  continue;
+                }
+                L.debug("chatThreadRunCreated: starting trackRun$", {
+                  threadId,
+                  runId,
+                });
+                void set(trackRun$, runId, sig).catch(throwIfNotAbort);
+              }
+              return false;
+            },
+          );
+
+          await set(
+            setAblyLoop$,
+            `chatThreadRunCreated:${threadId}`,
+            runCreatedLoopBody$,
+            signal,
+          );
+        })(),
       ]);
       signal.throwIfAborted();
     },
@@ -749,7 +788,7 @@ function createRunTracking(
     });
   });
 
-  return { trackRun$, hasActiveRun$, loadPagedMessages$, cancelRun$ };
+  return { hasActiveRun$, loadPagedMessages$, cancelRun$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -787,8 +826,11 @@ export function createChatThreadSignals(
 
   const prepareUserMessage$ = createPrepareUserMessage(draft);
 
-  const { trackRun$, hasActiveRun$, loadPagedMessages$, cancelRun$ } =
-    createRunTracking(threadId, threadData$, fetchNextPage$);
+  const { hasActiveRun$, loadPagedMessages$, cancelRun$ } = createRunTracking(
+    threadId,
+    threadData$,
+    fetchNextPage$,
+  );
 
   const sendMessage$ = command(
     async ({ get, set }, prompt: string, signal: AbortSignal) => {
@@ -813,12 +855,6 @@ export function createChatThreadSignals(
       await set(flushDraftClear$, signal);
       signal.throwIfAborted();
 
-      // Optimistic insert: render the user message immediately with a
-      // client-generated UUID. The server uses the same UUID as the row's
-      // primary key (see chatMessagesContract.send.body.clientMessageId),
-      // so paged fetches triggered by the Ably push reconcile by id
-      // without unmount/remount — `sinceId` cursor stays valid because
-      // `WHERE id = sinceId` matches the persisted row.
       const clientMessageId = crypto.randomUUID();
       set(insertOptimisticMessage$, {
         id: clientMessageId,
@@ -841,6 +877,12 @@ export function createChatThreadSignals(
         }),
         [201],
       ).catch((error: unknown) => {
+        L.debug("sendMessage$ POST failed, rolling back optimistic row", {
+          threadId,
+          clientMessageId,
+          aborted: signal.aborted,
+          error,
+        });
         set(removeOptimisticMessage$, clientMessageId);
         if (!signal.aborted) {
           toast.error("Failed to send message");
@@ -854,14 +896,13 @@ export function createChatThreadSignals(
       });
 
       set(reloadChatThreads$);
-
-      // Track run until terminal — keeps sendLoadable in "loading" state
-      // so the UI stays in sending mode until the run finishes.
-      await set(trackRun$, sendResult.body.runId, signal);
-      L.debug("sendMessage$ done, trackRun resolved", {
+      L.debug("sendMessage$ done", {
         threadId,
         runId: sendResult.body.runId,
       });
+      // `pendingRunIds$` is populated by the `chatThreadRunCreated` Ably
+      // loop in `loadPagedMessages$`, not here — sendMessage$ does not
+      // wait for run termination.
     },
   );
 
