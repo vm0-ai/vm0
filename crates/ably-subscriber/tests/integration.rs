@@ -1535,14 +1535,13 @@ async fn backpressure_drops_messages() {
     // messages into ONE ProtocolMessage frame. With channel capacity = 2
     // exactly the first 2 enqueue and the rest are dropped.
     //
-    // The oneshot gate ensures the batch is sent only after the consumer has
-    // drained the Connected event, so the channel is empty when the batch
-    // arrives (otherwise Connected would occupy one of the two slots).
-    //
-    // Scope note: this asserts the inner try_send invariant (single-frame
-    // overflow drops cleanly). The outer multi-frame "slow consumer" property
-    // follows by composition — every WS-frame processing cycle uses this same
-    // non-blocking try_send, so the subscriber cannot stall on a slow consumer.
+    // Two oneshot gates order the mock's sends:
+    //   1. `batch_gate` — mock sends the burst only after the consumer has
+    //      drained the Connected event, so the channel is empty when the
+    //      burst arrives (otherwise Connected would occupy one of the two slots).
+    //   2. `sentinel_gate` — after the burst drops, mock sends one more
+    //      message. Receiving it proves the subscriber didn't stall — the
+    //      real backpressure contract is "drop when slow, don't hang".
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
@@ -1551,12 +1550,16 @@ async fn backpressure_drops_messages() {
     const CAP: usize = 2;
 
     let ws_port = ws.port;
-    let (gate_tx, gate_rx) = tokio::sync::oneshot::channel::<()>();
+    let (batch_gate_tx, batch_gate_rx) = tokio::sync::oneshot::channel::<()>();
+    let (sentinel_gate_tx, sentinel_gate_rx) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(async move {
-        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
-        gate_rx.await.unwrap();
+        let mut conn = ws
+            .accept_and_handshake("ch", "conn-1")
+            .await
+            .expect("mock handshake failed");
 
-        let msg = ProtocolMessage {
+        batch_gate_rx.await.expect("batch gate sender dropped");
+        let burst = ProtocolMessage {
             action: action::MESSAGE,
             channel: Some("ch".into()),
             channel_serial: Some("serial-1".into()),
@@ -1574,11 +1577,36 @@ async fn backpressure_drops_messages() {
             ..Default::default()
         };
         conn.send(tungstenite::Message::Binary(
-            encode_msg(&msg).unwrap().into(),
+            encode_msg(&burst).expect("encode burst failed").into(),
         ))
         .await
-        .unwrap();
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        .expect("send burst failed");
+
+        sentinel_gate_rx
+            .await
+            .expect("sentinel gate sender dropped");
+        let sentinel = ProtocolMessage {
+            action: action::MESSAGE,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-2".into()),
+            messages: Some(vec![AblyMessage {
+                id: Some("sentinel".into()),
+                name: Some("sentinel".into()),
+                data: Some(serde_json::json!("alive")),
+                timestamp: Some(now_ms()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&sentinel)
+                .expect("encode sentinel failed")
+                .into(),
+        ))
+        .await
+        .expect("send sentinel failed");
+
+        std::future::pending::<()>().await;
     });
 
     let mut timing = TimingConfig::default();
@@ -1588,7 +1616,9 @@ async fn backpressure_drops_messages() {
         .unwrap();
 
     assert!(matches!(sub.next().await.unwrap(), Event::Connected));
-    gate_tx.send(()).unwrap();
+    batch_gate_tx
+        .send(())
+        .expect("subscription closed before burst");
 
     let mut received = 0;
     while let Ok(Some(Event::Message(_))) =
@@ -1598,8 +1628,20 @@ async fn backpressure_drops_messages() {
     }
     assert_eq!(
         received, CAP,
-        "batch of {BURST} into a cap-{CAP} channel should deliver exactly {CAP} and drop the rest, got {received}"
+        "batch of {BURST} into a cap-{CAP} channel should deliver exactly {CAP} and drop the rest, got {received} — if this regressed, check connection.rs message-dispatch loop is still synchronous (no .await between try_send calls)"
     );
+
+    sentinel_gate_tx
+        .send(())
+        .expect("subscription closed before sentinel");
+    let next = tokio::time::timeout(Duration::from_secs(2), sub.next())
+        .await
+        .expect("subscriber stalled after drops — backpressure recovery broken")
+        .expect("subscription closed unexpectedly");
+    match next {
+        Event::Message(m) => assert_eq!(m.name.as_deref(), Some("sentinel")),
+        other => panic!("expected sentinel Message, got {other:?}"),
+    }
 }
 
 // ---------------------------------------------------------------------------
