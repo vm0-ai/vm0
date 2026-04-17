@@ -109,8 +109,7 @@
     "apps/web/scripts/migrations/001-backfill-clerk-orgs/**",
     "apps/web/scripts/migrations/002-backfill-clerk-metadata/**",
     "apps/web/scripts/migrations/003-sync-clerk-slugs/**",
-    "apps/web/scripts/migrations/004-backfill-default-agent/**",
-    "apps/web/scripts/migrations/007-backfill-current-period-end/**"
+    "apps/web/scripts/migrations/004-backfill-default-agent/**"
   ],
   "ignoreDependencies": ["@commitlint/cli", "@vm0/firewalls-generator"],
   "ignoreWorkspaces": [],
