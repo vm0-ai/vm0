@@ -536,6 +536,7 @@ export function ZeroSchedulePage() {
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     detach(
+      // eslint-disable-next-line ccstate/no-abort-swallower -- save error is surfaced via useLoadableSet.saveError and displayed in the dialog; empty handler suppresses duplicate detach logging (test setup treats L.error as a failure)
       saveScheduleTracked(
         {
           prompt: values.prompt.trim(),
@@ -555,12 +556,17 @@ export function ZeroSchedulePage() {
             : {}),
         },
         pageSignal,
-      ).then((scheduleId) => {
-        setCreateOpen(false);
-        navigate("/schedules/:scheduleId", {
-          pathParams: { scheduleId: scheduleId },
-        });
-      }),
+      ).then(
+        (scheduleId) => {
+          setCreateOpen(false);
+          navigate("/schedules/:scheduleId", {
+            pathParams: { scheduleId: scheduleId },
+          });
+        },
+        (_error: unknown) => {
+          // error is already captured by useLoadableSet and displayed in the dialog via saveError
+        },
+      ),
       Reason.DomCallback,
     );
   };

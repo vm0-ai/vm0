@@ -368,6 +368,7 @@ export function ZeroScheduleCard({
   const handleCreateSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
+        // eslint-disable-next-line ccstate/no-abort-swallower -- save error is surfaced via useLoadableSet.saveError and displayed in the dialog; empty handler suppresses duplicate detach logging (test setup treats L.error as a failure)
         onSave({
           prompt: values.prompt.trim(),
           description: values.description.trim() || undefined,
@@ -381,9 +382,14 @@ export function ZeroScheduleCard({
             values.freq === "every_week" ? values.dayOfWeek : undefined,
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
-        }).then(() => {
-          detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
-        }),
+        }).then(
+          () => {
+            detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
+          },
+          () => {
+            // error is captured by useLoadableSet in the consuming view and passed as saveError prop
+          },
+        ),
         Reason.DomCallback,
       );
       return;
@@ -414,6 +420,7 @@ export function ZeroScheduleCard({
   const handleEditSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
+        // eslint-disable-next-line ccstate/no-abort-swallower -- save error is surfaced via useLoadableSet.saveError and displayed in the dialog; empty handler suppresses duplicate detach logging (test setup treats L.error as a failure)
         onSave({
           prompt: values.prompt.trim(),
           description: values.description.trim() || undefined,
@@ -428,9 +435,14 @@ export function ZeroScheduleCard({
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
           editName: editingEntry?.name,
-        }).then(() => {
-          detach(setEditingScheduleId(null, signal), Reason.DomCallback);
-        }),
+        }).then(
+          () => {
+            detach(setEditingScheduleId(null, signal), Reason.DomCallback);
+          },
+          () => {
+            // error is captured by useLoadableSet in the consuming view and passed as saveError prop
+          },
+        ),
         Reason.DomCallback,
       );
       return;
