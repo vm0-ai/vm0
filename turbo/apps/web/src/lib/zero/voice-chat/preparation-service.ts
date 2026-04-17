@@ -5,8 +5,7 @@ import {
   buildVoiceChatPrepareOnlyPrompt,
   buildVoiceChatMeetingPreparePrompt,
 } from "../integration-prompt";
-import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
-import type { VoiceChatPrepareCallbackPayload } from "../../infra/callback/callback-payloads";
+import { adaptVoiceChatPrepareTrigger } from "./adapt-voice-chat-prepare-trigger";
 import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat:preparation");
@@ -179,22 +178,15 @@ export async function dispatchPreparationRun(
     ? "You are Zero preparing for a voice meeting. Research the meeting topic and prepare a comprehensive briefing."
     : "You are Zero preparing for a voice chat. Review the agent configuration and user context, then output an initial directive.";
 
-  const callbackPayload: VoiceChatPrepareCallbackPayload = { preparationId };
-
-  const result = await createZeroRun({
-    userId,
-    agentId,
-    prompt,
-    appendSystemPrompt,
-    triggerSource: "voice-chat",
-    callbacks: [
-      {
-        url: `${getApiUrl()}/api/internal/callbacks/voice-chat-prepare`,
-        secret: generateCallbackSecret(),
-        payload: callbackPayload,
-      },
-    ],
-  });
+  const result = await createZeroRun(
+    adaptVoiceChatPrepareTrigger({
+      userId,
+      agentId,
+      prompt,
+      appendSystemPrompt,
+      preparationId,
+    }),
+  );
 
   await db
     .update(voiceChatPreparations)
