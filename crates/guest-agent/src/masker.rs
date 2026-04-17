@@ -82,23 +82,21 @@ impl SecretMasker {
         Self { matcher: None }
     }
 
+    /// # Panics
+    /// Panics if the Aho-Corasick automaton fails to build. The only
+    /// documented failure mode is pattern sets too large for the state-ID
+    /// type (millions of patterns); user-configured secrets never approach
+    /// that bound. A hard abort is preferred over silently degrading to a
+    /// pass-through masker, which would leak every subsequent event payload.
+    #[allow(clippy::expect_used)]
     fn build(patterns: Vec<String>) -> Self {
         if patterns.is_empty() {
             return Self::empty();
         }
-        // Build can only fail for pathologically large pattern sets (millions
-        // of patterns); user-configured secrets never come close. Fall back to
-        // a no-op masker and warn on stderr rather than crashing the agent.
-        let ac = match AhoCorasick::builder()
+        let ac = AhoCorasick::builder()
             .match_kind(MatchKind::LeftmostLongest)
             .build(&patterns)
-        {
-            Ok(ac) => ac,
-            Err(e) => {
-                eprintln!("SecretMasker: failed to build matcher: {e}");
-                return Self::empty();
-            }
-        };
+            .expect("AhoCorasick build failed for secret pattern set");
         let replacements = vec!["***"; patterns.len()];
         Self {
             matcher: Some(Matcher { ac, replacements }),
@@ -129,6 +127,10 @@ impl SecretMasker {
     }
 
     /// Replace all secret patterns in a string with `***`.
+    ///
+    /// Uses leftmost-longest matching semantics: at each position, the
+    /// longest configured pattern wins, so a shorter secret that is a
+    /// substring of a longer one cannot strip a byte off the longer match.
     pub fn mask_string(&self, s: &str) -> String {
         match &self.matcher {
             Some(m) => m.ac.replace_all(s, &m.replacements),
@@ -324,6 +326,26 @@ mod tests {
             let expected = format!("{n:X}").chars().next().unwrap();
             assert_eq!(c, expected, "hex_digit({n})");
         }
+    }
+
+    /// Aho-Corasick matches on bytes, but `from_raw` guarantees every pattern
+    /// is valid UTF-8, so multi-byte codepoints must round-trip through
+    /// masking without corruption.
+    #[test]
+    fn masks_multibyte_utf8_secret() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        // Mix CJK + emoji — each codepoint is 3–4 bytes.
+        let secret = "北京-🔑-token";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_string(&format!("prefix {secret} suffix")),
+            "prefix *** suffix"
+        );
+        // Surrounding multi-byte content that is not part of the secret is
+        // preserved byte-for-byte.
+        assert_eq!(masker.mask_string("北京-other"), "北京-other");
     }
 
     /// Regression for #9778: when one secret is a substring of another,
