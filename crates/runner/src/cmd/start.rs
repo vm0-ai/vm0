@@ -23,6 +23,7 @@ use crate::http::HttpClient;
 use crate::idle_pool::{IdleEntry, IdlePool, IdlePoolConfig, ParkResult};
 use crate::kmsg_log;
 use crate::lock;
+use crate::network_logs;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
 use crate::provider::{ApiProvider, JobProvider, LocalProvider};
@@ -1074,6 +1075,11 @@ fn spawn_job(
     let mode = ctx.mode;
     let factory_for_cleanup = Arc::clone(&factory);
 
+    // Preserve the sandbox token so the post-complete network-log upload (below)
+    // can authenticate after `context` has been moved into the executor task.
+    let sandbox_token = context.sandbox_token.clone();
+    let exec_config_for_upload = Arc::clone(&exec_config);
+
     jobs.spawn(async move {
         // Inner spawn isolates panics: if execute_job panics, the outer task
         // still reports completion and releases budget.
@@ -1095,8 +1101,8 @@ fn spawn_job(
             }
         });
 
-        let (exit_code, err, sandbox, source_ip, guest_session_id) = match inner.await {
-            Ok(outcome) => {
+        let (exit_code, err, sandbox, source_ip, guest_session_id, telemetry) = match inner.await {
+            Ok((outcome, telemetry)) => {
                 let err = if job_cancel.is_cancelled() {
                     Some("cancelled by user".to_string())
                 } else {
@@ -1108,6 +1114,7 @@ fn spawn_job(
                     outcome.sandbox,
                     outcome.source_ip,
                     outcome.guest_session_id,
+                    Some(telemetry),
                 )
             }
             Err(e) => {
@@ -1117,6 +1124,7 @@ fn spawn_job(
                     Some(format!("internal error: {e}")),
                     None,
                     String::new(),
+                    None,
                     None,
                 )
             }
@@ -1228,6 +1236,22 @@ fn spawn_job(
         if !parked {
             budget.release(vcpu, memory_mb);
         }
+
+        // Best-effort telemetry, deferred past `provider.complete` so the
+        // user-visible run-complete signal isn't blocked on these uploads.
+        // They're still awaited (not spawned) so the surrounding `jobs`
+        // JoinSet drains them on graceful shutdown — no data loss on SIGTERM.
+        if let Some(telemetry) = telemetry {
+            telemetry.flush().await;
+        }
+        let network_log_path = exec_config_for_upload.log_paths.network_log(run_id);
+        network_logs::upload_network_logs(
+            &exec_config_for_upload.http,
+            run_id,
+            &sandbox_token,
+            &network_log_path,
+        )
+        .await;
 
         Some(run_id)
     });

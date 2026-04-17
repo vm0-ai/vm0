@@ -20,7 +20,6 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::idle_pool::IdleEntry;
 use crate::kmsg_log;
-use crate::network_logs;
 use crate::paths::{LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
@@ -58,8 +57,11 @@ pub struct ExecuteOutcome {
 
 /// Execute a single job inside a **new** Firecracker VM.
 ///
-/// Returns [`ExecuteOutcome`] with the sandbox still alive (not stopped/destroyed).
-/// The caller decides whether to park it in the idle pool or destroy it.
+/// Returns [`ExecuteOutcome`] with the sandbox still alive (not stopped/destroyed)
+/// plus the pending [`JobTelemetry`] buffer. The caller decides whether to
+/// park the sandbox or destroy it, and **must** flush the telemetry **after**
+/// firing `provider.complete` so the user-visible run-complete signal isn't
+/// blocked on best-effort telemetry uploads (~383 ms saved per job).
 pub async fn execute_job(
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
@@ -67,7 +69,7 @@ pub async fn execute_job(
     config: &ExecutorConfig,
     params: &JobParams,
     cancel: CancellationToken,
-) -> ExecuteOutcome {
+) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
@@ -99,21 +101,21 @@ pub async fn execute_job(
     };
 
     info!(run_id = %run_id, exit_code = outcome.exit_code, "job finished");
-    telemetry.flush().await;
-
-    outcome
+    (outcome, telemetry)
 }
 
 /// Execute a single job inside a **reused** (kept-alive) VM.
 ///
 /// Skips create + start. Re-registers proxy, fixes clock, then runs the agent.
-/// Returns [`ExecuteOutcome`] with the sandbox still alive.
+/// Returns [`ExecuteOutcome`] with the sandbox still alive plus the pending
+/// [`JobTelemetry`] buffer — the caller must flush telemetry after firing
+/// `provider.complete` (see [`execute_job`] for rationale).
 pub async fn execute_job_reuse(
     idle_entry: IdleEntry,
     context: ExecutionContext,
     config: &ExecutorConfig,
     cancel: CancellationToken,
-) -> ExecuteOutcome {
+) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
@@ -139,9 +141,7 @@ pub async fn execute_job_reuse(
     .await;
 
     info!(run_id = %run_id, exit_code = outcome.exit_code, reused = true, "job finished");
-    telemetry.flush().await;
-
-    outcome
+    (outcome, telemetry)
 }
 
 fn record_api_latency(context: &ExecutionContext, telemetry: &mut JobTelemetry) {
@@ -338,10 +338,13 @@ async fn unregister_proxy(config: &ExecutorConfig, context: &ExecutionContext, s
     config.ip_log_map.lock().await.remove(source_ip);
 }
 
-/// Post-job cleanup: copy logs, unregister proxy, upload network logs.
+/// Post-job cleanup: copy logs, unregister proxy.
 ///
 /// Called after `run_in_sandbox` completes, whether the sandbox will be
-/// parked (keep-alive) or destroyed.
+/// parked (keep-alive) or destroyed. The mitmproxy network-log upload is
+/// deliberately **not** done here — the caller runs it after
+/// `provider.complete` so the user-visible run-complete signal isn't blocked
+/// on the best-effort upload (~1.6 s saved per job).
 async fn post_job_cleanup(
     sandbox: &dyn Sandbox,
     config: &ExecutorConfig,
@@ -349,17 +352,7 @@ async fn post_job_cleanup(
     source_ip: &str,
 ) {
     copy_guest_logs(sandbox, context, &config.log_paths).await;
-
     unregister_proxy(config, context, source_ip).await;
-
-    let network_log_path = config.log_paths.network_log(context.run_id);
-    network_logs::upload_network_logs(
-        &config.http,
-        context.run_id,
-        &context.sandbox_token,
-        &network_log_path,
-    )
-    .await;
 }
 
 async fn run_in_sandbox(
@@ -2416,7 +2409,7 @@ mod tests {
         factory.startup().await.unwrap();
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job(
+        let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
             SandboxId::new_v4(),
@@ -2439,7 +2432,7 @@ mod tests {
         factory.push_create_result(Err(SandboxError::CreationFailed("boom".into())));
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job(
+        let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
             SandboxId::new_v4(),
@@ -2466,7 +2459,7 @@ mod tests {
 
         // First: create a sandbox via normal execute_job
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job(
+        let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
             SandboxId::new_v4(),
@@ -2497,7 +2490,8 @@ mod tests {
 
         // Reuse the sandbox for a second turn
         let cancel = tokio_util::sync::CancellationToken::new();
-        let reuse_outcome = execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
         assert!(reuse_outcome.error.is_none());
         assert!(reuse_outcome.sandbox.is_some());
@@ -2519,7 +2513,7 @@ mod tests {
         assert_eq!(ctx.session_id(), Some("test-session-abc"));
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job(
+        let (outcome, _telemetry) = execute_job(
             &factory,
             ctx,
             SandboxId::new_v4(),
@@ -2559,7 +2553,8 @@ mod tests {
         });
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let reuse_outcome = execute_job_reuse(idle_entry, ctx2, &config, cancel).await;
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_entry, ctx2, &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
@@ -2575,7 +2570,7 @@ mod tests {
 
         // Execute first job
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job(
+        let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
             SandboxId::new_v4(),
@@ -2620,7 +2615,7 @@ mod tests {
 
         // Execute reuse
         let cancel = tokio_util::sync::CancellationToken::new();
-        let reuse_outcome =
+        let (reuse_outcome, _telemetry) =
             execute_job_reuse(reuse_entry, minimal_context(), &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
         assert!(reuse_outcome.sandbox.is_some());
@@ -2688,7 +2683,8 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+        let (outcome, _telemetry) =
+            execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.error.unwrap().contains("vsock broken"));
@@ -2730,7 +2726,8 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+        let (outcome, _telemetry) =
+            execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.error.unwrap().contains("reseed timeout"));
@@ -2774,7 +2771,7 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
+        let (outcome, _telemetry) = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.error.unwrap().contains("disk full"));
@@ -2792,7 +2789,7 @@ mod tests {
         factory.startup().await.unwrap();
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job(
+        let (outcome, _telemetry) = execute_job(
             &factory,
             minimal_context(),
             SandboxId::new_v4(),
