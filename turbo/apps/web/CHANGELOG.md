@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.251.0](https://github.com/vm0-ai/vm0/compare/web-v12.250.0...web-v12.251.0) (2026-04-17)
+
+
+### Features
+
+* **slack:** add /zero switch for per-user agent selection ([#9795](https://github.com/vm0-ai/vm0/issues/9795)) ([5367c54](https://github.com/vm0-ai/vm0/commit/5367c549bad7755ce43f4159c9d4aa461280dbf6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.195.0
+
 ## [12.250.0](https://github.com/vm0-ai/vm0/compare/web-v12.249.0...web-v12.250.0) (2026-04-17)
 
 
