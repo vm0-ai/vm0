@@ -58,10 +58,11 @@ pub struct ExecuteOutcome {
 /// Execute a single job inside a **new** Firecracker VM.
 ///
 /// Returns [`ExecuteOutcome`] with the sandbox still alive (not stopped/destroyed)
-/// plus the pending [`JobTelemetry`] buffer. The caller decides whether to
-/// park the sandbox or destroy it, and **must** flush the telemetry **after**
-/// firing `provider.complete` so the user-visible run-complete signal isn't
-/// blocked on best-effort telemetry uploads (~383 ms saved per job).
+/// plus the pending [`JobTelemetry`] buffer. The caller (`spawn_job` in
+/// `cmd/start.rs`) decides whether to park the sandbox or destroy it, and
+/// **must** flush the telemetry **after** firing `provider.complete` so the
+/// user-visible run-complete signal isn't blocked on best-effort telemetry
+/// uploads (~383 ms saved per job).
 pub async fn execute_job(
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
@@ -108,8 +109,9 @@ pub async fn execute_job(
 ///
 /// Skips create + start. Re-registers proxy, fixes clock, then runs the agent.
 /// Returns [`ExecuteOutcome`] with the sandbox still alive plus the pending
-/// [`JobTelemetry`] buffer — the caller must flush telemetry after firing
-/// `provider.complete` (see [`execute_job`] for rationale).
+/// [`JobTelemetry`] buffer — the caller (`spawn_job` in `cmd/start.rs`) must
+/// flush telemetry after firing `provider.complete` (see [`execute_job`] for
+/// rationale).
 pub async fn execute_job_reuse(
     idle_entry: IdleEntry,
     context: ExecutionContext,
@@ -342,9 +344,9 @@ async fn unregister_proxy(config: &ExecutorConfig, context: &ExecutionContext, s
 ///
 /// Called after `run_in_sandbox` completes, whether the sandbox will be
 /// parked (keep-alive) or destroyed. The mitmproxy network-log upload is
-/// deliberately **not** done here — the caller runs it after
-/// `provider.complete` so the user-visible run-complete signal isn't blocked
-/// on the best-effort upload (~1.6 s saved per job).
+/// deliberately **not** done here — `spawn_job` (in `cmd/start.rs`) runs
+/// it after `provider.complete` so the user-visible run-complete signal
+/// isn't blocked on the best-effort upload (~1.6 s saved per job).
 async fn post_job_cleanup(
     sandbox: &dyn Sandbox,
     config: &ExecutorConfig,

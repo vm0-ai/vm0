@@ -51,6 +51,7 @@ guest-download = { workspace = true }
 guest-init = { workspace = true }
 guest-mock-claude = { workspace = true }
 guest-reseed = { workspace = true }
+httpmock = { workspace = true }
 sandbox-mock = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 

@@ -17,6 +17,7 @@ const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(5);
 /// periodically (auto on 30 s threshold) and at job end.
 ///
 /// Owns its state — passed as `&mut` through the call chain, no `Mutex` needed.
+#[must_use = "JobTelemetry buffers pending ops until `flush()` is awaited; dropping it loses them"]
 pub struct JobTelemetry {
     http: HttpClient,
     run_id: RunId,

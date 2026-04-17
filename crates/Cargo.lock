@@ -2419,6 +2419,7 @@ dependencies = [
  "guest-mock-claude",
  "guest-reseed",
  "hex",
+ "httpmock",
  "nbd-cow",
  "nix",
  "reqeast",
