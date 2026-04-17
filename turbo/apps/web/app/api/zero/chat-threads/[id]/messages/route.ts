@@ -49,6 +49,7 @@ const router = tsr.router(chatThreadMessagesContract, {
           role: row.role as "user" | "assistant",
           content: row.content,
           runId: row.runId ?? undefined,
+          sequenceNumber: row.sequenceNumber ?? undefined,
           error: effectiveError,
           status: row.runStatus ?? undefined,
           createdAt: row.createdAt.toISOString(),

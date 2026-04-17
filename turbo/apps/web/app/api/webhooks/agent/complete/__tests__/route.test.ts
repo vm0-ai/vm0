@@ -1025,7 +1025,10 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Flush the after() callback to trigger signal publishing
       await context.mocks.flushAfter();
 
-      expect(mockAblyPublish).toHaveBeenCalledWith(`thread:${testRunId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `runEventCreated:${testRunId}`,
+        null,
+      );
       expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
       expect(mockAblyPublish).toHaveBeenCalledWith(
         `runUpdated:${testRunId}`,

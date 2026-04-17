@@ -50,7 +50,7 @@ function scheduleTerminalSideEffects(
     await processOrgCredits(orgId);
 
     // Notify run owner that run state changed
-    await publishUserSignal([userId], `thread:${runId}`);
+    await publishUserSignal([userId], `runEventCreated:${runId}`);
     await publishUserSignal([userId], `runUpdated:${runId}`);
 
     // If this run belongs to a chat thread, notify that thread's run status changed

@@ -27,6 +27,10 @@ import { agentById } from "../agent.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
+import {
+  createChatActivitySignals,
+  type ChatActivitySignals,
+} from "./create-chat-activity.ts";
 import { logger } from "../log.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
@@ -56,10 +60,11 @@ export interface ChatThreadSignals {
   agentDisplayName$: Computed<Promise<string | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;
   // ── Per-thread UI state ───────────────────────────────────────────────────
-  timelineExpandedIds$: Computed<Set<string>>;
-  toggleTimelineExpanded$: Command<void, [string]>;
   copiedMessageId$: Computed<string | null>;
   copyMessage$: Command<Promise<void>, [string, string, AbortSignal]>;
+  // ── Run activity events (parallel to chat messages) ───────────────────────
+  activityRunId$: ChatActivitySignals["activeRunId$"];
+  activityEvents$: ChatActivitySignals["events$"];
   // ── Focus ─────────────────────────────────────────────────────────────────
   setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
@@ -217,24 +222,6 @@ function createAgentInfoSignals(
 // ---------------------------------------------------------------------------
 
 function createThreadUIState() {
-  // Timeline expansion
-  const internalExpandedIds$ = state(new Set<string>());
-
-  const timelineExpandedIds$ = computed((get) => {
-    return get(internalExpandedIds$);
-  });
-
-  const toggleTimelineExpanded$ = command(({ get, set }, messageId: string) => {
-    const current = get(internalExpandedIds$);
-    const next = new Set(current);
-    if (next.has(messageId)) {
-      next.delete(messageId);
-    } else {
-      next.add(messageId);
-    }
-    set(internalExpandedIds$, next);
-  });
-
   // Copy state with 2s auto-clear
   const internalCopiedId$ = state<string | null>(null);
   const internalCopiedTimerId$ = state<number | null>(null);
@@ -269,8 +256,6 @@ function createThreadUIState() {
   );
 
   return {
-    timelineExpandedIds$,
-    toggleTimelineExpanded$,
     copiedMessageId$,
     copyMessage$,
   };
@@ -599,6 +584,7 @@ function createRunTracking(
   reloadThread$: Command<void, []>,
   threadData$: Computed<Promise<ChatThread | null>>,
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>,
+  trackActivityLoop$: Command<Promise<void>, [AbortSignal]>,
 ) {
   const allFinished$ = computed(async (get) => {
     const thread = await get(threadData$);
@@ -651,6 +637,7 @@ function createRunTracking(
           onRunChanged$,
           signal,
         ),
+        set(trackActivityLoop$, signal),
       ]);
 
       signal.throwIfAborted();
@@ -699,18 +686,19 @@ export function createChatThreadSignals(
     createComposerFileInput();
   const { agentId$, agentDisplayName$, agentPinned$ } =
     createAgentInfoSignals(threadData$);
-  const {
-    timelineExpandedIds$,
-    toggleTimelineExpanded$,
-    copiedMessageId$,
-    copyMessage$,
-  } = createThreadUIState();
+  const { copiedMessageId$, copyMessage$ } = createThreadUIState();
   const {
     latestChatMessageId$,
     groupedChatMessages$,
     fetchNextPage$,
     insertOptimisticMessage$,
   } = createPagedMessages(threadId);
+
+  const {
+    activeRunId$: activityRunId$,
+    events$: activityEvents$,
+    trackActivityLoop$,
+  } = createChatActivitySignals(threadId, groupedChatMessages$);
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft);
@@ -721,6 +709,7 @@ export function createChatThreadSignals(
     reloadThread$,
     threadData$,
     fetchNextPage$,
+    trackActivityLoop$,
   );
 
   const sendMessage$ = command(
@@ -799,10 +788,10 @@ export function createChatThreadSignals(
     agentId$,
     agentDisplayName$,
     agentPinned$,
-    timelineExpandedIds$,
-    toggleTimelineExpanded$,
     copiedMessageId$,
     copyMessage$,
+    activityRunId$,
+    activityEvents$,
     setInputRef$,
     focusInput$,
     scheduleDraftSync$,

@@ -89,7 +89,7 @@ const router = tsr.router(webhookEventsContract, {
 
     // Notify run owner that new events are available
     after(() => {
-      return publishUserSignal([userId], `thread:${body.runId}`);
+      return publishUserSignal([userId], `runEventCreated:${body.runId}`);
     });
 
     return {

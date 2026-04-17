@@ -121,7 +121,7 @@ describe("activity paged events", () => {
     expect(eventFetchCount).toBeGreaterThanOrEqual(2);
 
     // Trigger Ably event to unblock the polling loop so it re-checks status
-    triggerAblyEvent("thread:a0000000-0000-4000-a000-000000000099");
+    triggerAblyEvent("runEventCreated:a0000000-0000-4000-a000-000000000099");
 
     // Wait for completion
     await waitFor(() => {

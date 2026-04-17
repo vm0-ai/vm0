@@ -362,7 +362,10 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       // Flush the after() callback to trigger signal publishing
       await context.mocks.flushAfter();
 
-      expect(mockAblyPublish).toHaveBeenCalledWith(`thread:${run.runId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `runEventCreated:${run.runId}`,
+        null,
+      );
       expect(mockAblyPublish).toHaveBeenCalledWith(`tasks:${user.orgId}`, null);
       expect(mockAblyPublish).toHaveBeenCalledWith(
         `runUpdated:${run.runId}`,

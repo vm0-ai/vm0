@@ -178,6 +178,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string | null;
   runId?: string;
+  sequenceNumber?: number;
   error?: string;
   status?: string;
   attachFiles?: ResolvedAttachFile[];
@@ -248,6 +249,7 @@ export async function getChatThreadMessages(
         role: row.role as "user" | "assistant",
         content: row.content,
         runId: row.runId ?? undefined,
+        sequenceNumber: row.sequenceNumber ?? undefined,
         error: effectiveError,
         status: row.runStatus ?? undefined,
         attachFiles,

@@ -103,7 +103,7 @@ describe("activity detail polling with initially empty events", () => {
     // Drive the Ably-based polling loop. Each triggerAblyEvent unblocks the
     // deferred promise inside setAblyLoop$. We must wait for the loop body
     // to finish (which creates a new deferred) before firing the next event.
-    const topic = "thread:a0000000-0000-4000-a000-000000000099";
+    const topic = "runEventCreated:a0000000-0000-4000-a000-000000000099";
 
     triggerAblyEvent(topic);
     await waitFor(() => {

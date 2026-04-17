@@ -127,6 +127,7 @@ export function mockChatLifecycle(options?: {
     role: "user" | "assistant";
     content: string | null;
     runId?: string;
+    sequenceNumber?: number;
     error?: string;
     status?: string;
     createdAt: string;
@@ -165,6 +166,7 @@ export function mockChatLifecycle(options?: {
         role: "user" | "assistant";
         content: string | null;
         runId?: string;
+        sequenceNumber?: number;
         error?: string;
         status?: string;
         createdAt: string;
@@ -354,7 +356,7 @@ export function mockChatLifecycle(options?: {
           },
         ];
       }
-      triggerAblyEvent(`thread:run-test-1`);
+      triggerAblyEvent(`runEventCreated:run-test-1`);
       triggerAblyEvent(`runUpdated:run-test-1`);
       triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
       triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
@@ -363,7 +365,7 @@ export function mockChatLifecycle(options?: {
       runStatus = "failed";
       runError = error;
       assistantVersion++;
-      triggerAblyEvent(`thread:run-test-1`);
+      triggerAblyEvent(`runEventCreated:run-test-1`);
       triggerAblyEvent(`runUpdated:run-test-1`);
       triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
       triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
@@ -371,7 +373,7 @@ export function mockChatLifecycle(options?: {
     cancelRun: () => {
       runStatus = "cancelled";
       assistantVersion++;
-      triggerAblyEvent(`thread:run-test-1`);
+      triggerAblyEvent(`runEventCreated:run-test-1`);
       triggerAblyEvent(`runUpdated:run-test-1`);
       triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
       triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);

@@ -1166,7 +1166,10 @@ describe("POST /api/webhooks/agent/events", () => {
       // Flush the after() callback to trigger signal publishing
       await context.mocks.flushAfter();
 
-      expect(mockAblyPublish).toHaveBeenCalledWith(`thread:${testRunId}`, null);
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `runEventCreated:${testRunId}`,
+        null,
+      );
     });
   });
 });

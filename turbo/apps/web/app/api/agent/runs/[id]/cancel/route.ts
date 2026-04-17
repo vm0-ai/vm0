@@ -78,7 +78,7 @@ const router = tsr.router(runsCancelContract, {
         }
 
         // Notify run owner that run was cancelled
-        await publishUserSignal([userId], `thread:${runId}`);
+        await publishUserSignal([userId], `runEventCreated:${runId}`);
         await publishUserSignal([userId], `runUpdated:${runId}`);
         // Notify org members that task list may have changed
         const orgMembers = await getOrgMemberUserIds(result.orgId);

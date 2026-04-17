@@ -528,7 +528,7 @@ export async function dispatchCancelSideEffects(
       : undefined,
   );
 
-  await publishUserSignal([result.userId], `thread:${result.runId}`);
+  await publishUserSignal([result.userId], `runEventCreated:${result.runId}`);
   await publishUserSignal([result.userId], `runUpdated:${result.runId}`);
 
   const [msg] = await globalThis.services.db

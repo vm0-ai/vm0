@@ -57,6 +57,7 @@ import {
   currentChatThreadSignals$,
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
+import type { AgentEvent } from "../../signals/zero-page/log-types.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
@@ -275,6 +276,7 @@ export function ZeroChatThreadPageInner({
                 />
               );
             })}
+            <RunActivityLine thread={thread} />
             <ThinkingIndicator thread={thread} />
           </div>
         </main>
@@ -444,6 +446,87 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
         <div className="hidden @[900px]:block" />
         <div className="flex items-center py-2 gap-1 -ml-1" />
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RunActivityLine — live run telemetry shown under the last assistant group.
+// Renders up to 3 most-recent events as a lightweight status list while the
+// run is active. Goes away on terminal state (signal yields null/[]).
+// ---------------------------------------------------------------------------
+
+const MAX_ACTIVITY_LINES = 3;
+
+function summarizeAgentEvent(event: AgentEvent): string | null {
+  if (event.eventType === "assistant") {
+    const data = event.eventData as
+      | { message?: { content?: unknown[] } }
+      | undefined;
+    const content = data?.message?.content;
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        const b = block as { type?: string; name?: string; text?: string };
+        if (b.type === "tool_use" && b.name) {
+          return `Running ${b.name}...`;
+        }
+        if (b.type === "text" && b.text) {
+          const first = b.text.trim().split("\n")[0] ?? "";
+          return first.length > 80 ? `${first.slice(0, 77)}...` : first;
+        }
+      }
+    }
+    return "Thinking...";
+  }
+  if (event.eventType === "user") {
+    return "Tool output received";
+  }
+  return null;
+}
+
+function RunActivityLine({ thread }: { thread: ChatThreadSignals }) {
+  const events = useLastResolved(thread.activityEvents$);
+  if (!events || events.length === 0) {
+    return null;
+  }
+  const lines = events
+    .slice(-MAX_ACTIVITY_LINES)
+    .map((event) => {
+      return {
+        sequenceNumber: event.sequenceNumber,
+        text: summarizeAgentEvent(event),
+      };
+    })
+    .filter((l): l is { sequenceNumber: number; text: string } => {
+      return l.text !== null;
+    });
+
+  if (lines.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      data-role="run-activity-line"
+      className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+    >
+      <div className="hidden @[900px]:block" />
+      <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {lines.map((line) => {
+          return (
+            <li
+              key={line.sequenceNumber}
+              className="flex items-center gap-2 min-w-0"
+            >
+              <IconLoader2
+                size={12}
+                className="animate-spin text-foreground/50 shrink-0"
+              />
+              <span className="truncate zero-shimmer-text">{line.text}</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

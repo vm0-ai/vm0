@@ -144,8 +144,8 @@ async function findLastEventSequence(
   return undefined;
 }
 
-function createRunPagedEvents(runId: string) {
-  const firstPage = createEventPageComputed(runId);
+function createRunPagedEvents(runId: string, initialSince?: number) {
+  const firstPage = createEventPageComputed(runId, initialSince);
   const pagedEventsList$ = state([firstPage]);
 
   const finished$ = computed(async (get) => {
@@ -181,7 +181,7 @@ function createRunPagedEvents(runId: string) {
   };
 }
 
-export function createRunLoop(runId: string) {
+export function createRunLoop(runId: string, initialSince?: number) {
   const {
     detail$: runDetail$,
     reload$: reloadRunStatus$,
@@ -193,7 +193,7 @@ export function createRunLoop(runId: string) {
   const {
     pagedEventsList$: initialRunPagedEvents$,
     checkFinished$: initialCheckFinished$,
-  } = createRunPagedEvents(runId);
+  } = createRunPagedEvents(runId, initialSince);
 
   const internalLoopedPagedEvents$ = state<Computed<Promise<PagedRunEvents>>[]>(
     [],
