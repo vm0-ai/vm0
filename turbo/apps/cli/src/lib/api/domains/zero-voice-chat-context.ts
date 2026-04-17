@@ -1,7 +1,6 @@
 import { initClient } from "@ts-rest/core";
 import {
-  zeroVoiceChatContextGetContract,
-  zeroVoiceChatContextAppendContract,
+  zeroVoiceChatContextContract,
   type ContextEventsResponse,
   type ContextEvent,
   type AppendContextEventBody,
@@ -13,7 +12,7 @@ export async function getVoiceChatContextEvents(
   after?: number,
 ): Promise<ContextEventsResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroVoiceChatContextGetContract, config);
+  const client = initClient(zeroVoiceChatContextContract, config);
 
   const result = await client.getEvents({
     params: { id: sessionId },
@@ -33,7 +32,7 @@ export async function appendVoiceChatContextEvent(
   body: AppendContextEventBody,
 ): Promise<ContextEvent> {
   const config = await getClientConfig();
-  const client = initClient(zeroVoiceChatContextAppendContract, config);
+  const client = initClient(zeroVoiceChatContextContract, config);
 
   const result = await client.appendEvent({
     params: { id: sessionId },
@@ -42,7 +41,7 @@ export async function appendVoiceChatContextEvent(
   });
 
   if (result.status === 200) {
-    return result.body;
+    return result.body.event;
   }
 
   handleError(result, "Failed to append voice-chat context event");
