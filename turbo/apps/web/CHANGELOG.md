@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.253.0](https://github.com/vm0-ai/vm0/compare/web-v12.252.0...web-v12.253.0) (2026-04-17)
+
+
+### Features
+
+* add competitor-pricing-monitor use case ([#9385](https://github.com/vm0-ai/vm0/issues/9385)) ([7bf56c6](https://github.com/vm0-ai/vm0/commit/7bf56c63a2dedf9f1cbe086675d9933b19247c76))
+* add msg9 connector ([#9848](https://github.com/vm0-ai/vm0/issues/9848)) ([675abd9](https://github.com/vm0-ai/vm0/commit/675abd93366c0c1c9a027cf60690d895af377fa8))
+* **web:** add cross-tool context query, customer 360, trending topic radar, and content performance report use cases ([#9392](https://github.com/vm0-ai/vm0/issues/9392)) ([73e116d](https://github.com/vm0-ai/vm0/commit/73e116db1b37b51f19df164a3ba9536ea5ab421d))
+
+
+### Bug Fixes
+
+* **blog:** fill card covers edge-to-edge ([#9863](https://github.com/vm0-ai/vm0/issues/9863)) ([fba4cd0](https://github.com/vm0-ai/vm0/commit/fba4cd057f669a5ebd9319d4b36f141fd70b40d7))
+* **platform+web:** stabilize chat thinking indicator and publish cancel signals ([#9866](https://github.com/vm0-ai/vm0/issues/9866)) ([51c7152](https://github.com/vm0-ai/vm0/commit/51c7152f8822d451452b8c6aa6426cdb534e2557))
+* **zero-runs:** restore oauth pre-refresh before dispatching run ([#9865](https://github.com/vm0-ai/vm0/issues/9865)) ([da8c753](https://github.com/vm0-ai/vm0/commit/da8c7533c21f85b69575bd8d44a129f9c82b9033))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.196.0
+
 ## [12.252.0](https://github.com/vm0-ai/vm0/compare/web-v12.251.1...web-v12.252.0) (2026-04-17)
 
 

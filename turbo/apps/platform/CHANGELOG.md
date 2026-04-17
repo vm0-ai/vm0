@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.247.0](https://github.com/vm0-ai/vm0/compare/app-v0.246.2...app-v0.247.0) (2026-04-17)
+
+
+### Features
+
+* add msg9 connector ([#9848](https://github.com/vm0-ai/vm0/issues/9848)) ([675abd9](https://github.com/vm0-ai/vm0/commit/675abd93366c0c1c9a027cf60690d895af377fa8))
+
+
+### Bug Fixes
+
+* **platform+web:** stabilize chat thinking indicator and publish cancel signals ([#9866](https://github.com/vm0-ai/vm0/issues/9866)) ([51c7152](https://github.com/vm0-ai/vm0/commit/51c7152f8822d451452b8c6aa6426cdb534e2557))
+* **platform:** only show thinking indicator when awaiting reply to user ([#9858](https://github.com/vm0-ai/vm0/issues/9858)) ([c09c03d](https://github.com/vm0-ai/vm0/commit/c09c03dff373e0abe400e9903925746e9f71b9a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.196.0
+
 ## [0.246.2](https://github.com/vm0-ai/vm0/compare/app-v0.246.1...app-v0.246.2) (2026-04-17)
 
 

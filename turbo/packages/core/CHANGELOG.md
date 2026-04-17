@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.196.0](https://github.com/vm0-ai/vm0/compare/core-v8.195.1...core-v8.196.0) (2026-04-17)
+
+
+### Features
+
+* add msg9 connector ([#9848](https://github.com/vm0-ai/vm0/issues/9848)) ([675abd9](https://github.com/vm0-ai/vm0/commit/675abd93366c0c1c9a027cf60690d895af377fa8))
+* **runner:** split drain and stop with stopping state and service resume ([#9817](https://github.com/vm0-ai/vm0/issues/9817)) ([148d5ea](https://github.com/vm0-ai/vm0/commit/148d5ea463e973494a1fb9a95659b70744c7569a))
+
 ## [8.195.1](https://github.com/vm0-ai/vm0/compare/core-v8.195.0...core-v8.195.1) (2026-04-17)
 
 

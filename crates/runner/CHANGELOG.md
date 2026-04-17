@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.83.0...runner-rs-v0.84.0) (2026-04-17)
+
+
+### Features
+
+* **runner:** split drain and stop with stopping state and service resume ([#9817](https://github.com/vm0-ai/vm0/issues/9817)) ([148d5ea](https://github.com/vm0-ai/vm0/commit/148d5ea463e973494a1fb9a95659b70744c7569a))
+
 ## [0.83.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.82.4...runner-rs-v0.83.0) (2026-04-17)
 
 
