@@ -1,4 +1,9 @@
-import { useGet, useLastLoadable, useLastResolved, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
