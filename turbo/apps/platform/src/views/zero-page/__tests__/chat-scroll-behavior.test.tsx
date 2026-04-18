@@ -5,6 +5,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -364,5 +365,121 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
     await waitFor(() => {
       expect(screen.getByText("Thread B message")).toBeInTheDocument();
     });
+  });
+});
+
+// CHAT-SCROLL-009: regression guard for the "skeleton → jump → bottom" glitch.
+// `setupChatPage$` must scroll the list to the bottom BEFORE hiding the
+// skeleton, and the message container must stay `visibility: hidden` while
+// the skeleton overlay is up so the first paint the user sees is already at
+// the bottom. Covers the fix in PR #9995.
+describe("zero chat thread page - scrolls before hiding skeleton", () => {
+  it("message container is visibility:hidden under the skeleton, and scrollTop lands at scrollHeight before the skeleton is removed (CHAT-SCROLL-009)", async () => {
+    const messagesDeferred = createDeferredPromise<void>(context.signal);
+
+    server.use(
+      http.get(
+        "*/api/zero/chat-threads/thread-pre-scroll/messages",
+        async ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          // Defer the initial page so we can observe the skeleton overlay
+          // covering the message container with visibility:hidden beneath it.
+          await messagesDeferred.promise;
+          return HttpResponse.json({
+            messages: [
+              {
+                id: "msg-pre-1",
+                role: "user" as const,
+                content: "Pre-scroll user message",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-pre-2",
+                role: "assistant" as const,
+                content: "Pre-scroll assistant reply",
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+          });
+        },
+      ),
+      http.get("*/api/zero/chat-threads/thread-pre-scroll", () => {
+        return HttpResponse.json({
+          id: "thread-pre-scroll",
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          chatMessages: [],
+          latestSessionId: null,
+          activeRunIds: [],
+          unsavedRuns: [],
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    // Intercept the scroll container as soon as it mounts and give it a
+    // non-zero scrollHeight so `scrollToBottom$` has something to scroll to.
+    const observer = new MutationObserver(() => {
+      const el = document.querySelector<HTMLElement>("[data-scroll-container]");
+      if (!el) {
+        return;
+      }
+      Object.defineProperty(el, "scrollHeight", {
+        get: () => {
+          return 800;
+        },
+        configurable: true,
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    try {
+      detachedSetupPage({ context, path: "/chats/thread-pre-scroll" });
+
+      // While the messages fetch is pending, the skeleton overlay should be
+      // up AND the message container should be rendered with
+      // visibility:hidden (so its scrollHeight is already correct when we
+      // eventually scroll).
+      await waitFor(() => {
+        const skeleton = document.querySelector("[data-chat-skeleton]");
+        const container = document.querySelector<HTMLElement>(
+          "[data-message-container]",
+        );
+        expect(skeleton).not.toBeNull();
+        expect(container).not.toBeNull();
+        expect(container!.style.visibility).toBe("hidden");
+      });
+
+      // Resolve the messages fetch — `setupChatPage$` should now scroll to
+      // the bottom BEFORE hiding the skeleton.
+      messagesDeferred.resolve();
+
+      // After setup completes: skeleton is gone, container is visible, and
+      // scrollTop landed at scrollHeight.
+      await waitFor(() => {
+        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+      });
+
+      const scrollContainer = document.querySelector<HTMLElement>(
+        "[data-scroll-container]",
+      );
+      const container = document.querySelector<HTMLElement>(
+        "[data-message-container]",
+      );
+      expect(scrollContainer).not.toBeNull();
+      expect(container).not.toBeNull();
+      expect(container!.style.visibility).toBe("visible");
+      expect(scrollContainer!.scrollTop).toBe(800);
+    } finally {
+      observer.disconnect();
+    }
   });
 });
