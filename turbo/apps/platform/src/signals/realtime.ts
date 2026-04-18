@@ -91,13 +91,29 @@ export const setAblyLoop$ = command(
 
     let deferred = createDeferredPromise(signal);
 
+    const pokeLoop = () => {
+      deferred.resolve(true);
+      deferred = createDeferredPromise(signal);
+    };
+
     const callback = (message: InboundMessage) => {
       L.debug("got message from topic", topic, message);
-
-      if (!deferred.settled()) {
-        deferred.resolve(true);
-      }
+      pokeLoop();
     };
+    // The browser may throttle or suspend this tab in the background, which
+    // can drop the Ably connection or leave us unaware of missed events.
+    // When the tab becomes visible again, poke the loop so it re-runs once
+    // and resyncs state with the server.
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      L.debug("tab visible, poking loop", topic);
+      pokeLoop();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange, {
+      signal,
+    });
     signal.addEventListener("abort", () => {
       channel.unsubscribe(topic, callback);
     });
@@ -109,11 +125,10 @@ export const setAblyLoop$ = command(
       await deferred.promise;
       signal.throwIfAborted();
 
-      deferred = createDeferredPromise(signal);
-
       // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
       try {
         const done = await set(loopCommand$, signal);
+        signal.throwIfAborted();
         if (done) {
           channel.unsubscribe(topic, callback);
           return;
