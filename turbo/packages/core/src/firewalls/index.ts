@@ -63,6 +63,7 @@ import { docusignFirewall } from "./docusign.generated";
 import { db9Firewall } from "./db9.generated";
 import { drive9Firewall } from "./drive9.generated";
 import { dropboxFirewall } from "./dropbox.generated";
+import { dropboxSignFirewall } from "./dropbox-sign.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { exploriumFirewall } from "./explorium.generated";
 import { falFirewall } from "./fal.generated";
@@ -217,6 +218,7 @@ const CONNECTOR_FIREWALLS = {
   db9: db9Firewall,
   drive9: drive9Firewall,
   dropbox: dropboxFirewall,
+  "dropbox-sign": dropboxSignFirewall,
   elevenlabs: elevenlabsFirewall,
   explorium: exploriumFirewall,
   fal: falFirewall,
