@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.201.0](https://github.com/vm0-ai/vm0/compare/core-v8.200.1...core-v8.201.0) (2026-04-18)
+
+
+### Features
+
+* **chat-threads:** track read/archive state on messages and hide archived threads ([#9976](https://github.com/vm0-ai/vm0/issues/9976)) ([56b2af5](https://github.com/vm0-ai/vm0/commit/56b2af51ec5fe9026a2860b095f69e2cf68cbd7f))
+
 ## [8.200.1](https://github.com/vm0-ai/vm0/compare/core-v8.200.0...core-v8.200.1) (2026-04-18)
 
 
