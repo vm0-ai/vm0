@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.198.0](https://github.com/vm0-ai/vm0/compare/core-v8.197.0...core-v8.198.0) (2026-04-18)
+
+
+### Features
+
+* add test-oauth connector for end-to-end oauth testing ([#9878](https://github.com/vm0-ai/vm0/issues/9878)) ([e8be957](https://github.com/vm0-ai/vm0/commit/e8be957b65578f32d6ca87a6f1eb248ee5737726))
+
 ## [8.197.0](https://github.com/vm0-ai/vm0/compare/core-v8.196.0...core-v8.197.0) (2026-04-17)
 
 

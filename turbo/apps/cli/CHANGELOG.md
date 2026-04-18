@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.122.0](https://github.com/vm0-ai/vm0/compare/cli-v9.121.4...cli-v9.122.0) (2026-04-18)
+
+
+### Features
+
+* **cli:** guide connector authorization in agent create and status output ([#9861](https://github.com/vm0-ai/vm0/issues/9861)) ([dd17d9d](https://github.com/vm0-ai/vm0/commit/dd17d9d00885f6dce64434058ba8d6cd8237ae21))
+
+
+### Bug Fixes
+
+* **schedule:** preserve next-run time when update omits enabled for loop ([#9881](https://github.com/vm0-ai/vm0/issues/9881)) ([1427209](https://github.com/vm0-ai/vm0/commit/1427209bcd6f383d2d5c15570767e2642ded0b28))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.198.0
+
 ## [9.121.4](https://github.com/vm0-ai/vm0/compare/cli-v9.121.3...cli-v9.121.4) (2026-04-17)
 
 

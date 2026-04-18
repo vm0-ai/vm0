@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.255.0](https://github.com/vm0-ai/vm0/compare/web-v12.254.0...web-v12.255.0) (2026-04-18)
+
+
+### Features
+
+* add test-oauth connector for end-to-end oauth testing ([#9878](https://github.com/vm0-ai/vm0/issues/9878)) ([e8be957](https://github.com/vm0-ai/vm0/commit/e8be957b65578f32d6ca87a6f1eb248ee5737726))
+
+
+### Bug Fixes
+
+* **github:** use after() callback form in webhook route ([#9886](https://github.com/vm0-ai/vm0/issues/9886)) ([0ed2140](https://github.com/vm0-ai/vm0/commit/0ed2140e157524a9ff889e4298d935f10ace38c7)), closes [#9880](https://github.com/vm0-ai/vm0/issues/9880) [#9882](https://github.com/vm0-ai/vm0/issues/9882)
+* **phone:** use after() callback form in webhook route ([#9885](https://github.com/vm0-ai/vm0/issues/9885)) ([83f4b64](https://github.com/vm0-ai/vm0/commit/83f4b641763e752d0a029c589ac2be8396426482))
+* **schedule:** preserve next-run time when update omits enabled for loop ([#9881](https://github.com/vm0-ai/vm0/issues/9881)) ([1427209](https://github.com/vm0-ai/vm0/commit/1427209bcd6f383d2d5c15570767e2642ded0b28))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.198.0
+
 ## [12.254.0](https://github.com/vm0-ai/vm0/compare/web-v12.253.0...web-v12.254.0) (2026-04-17)
 
 

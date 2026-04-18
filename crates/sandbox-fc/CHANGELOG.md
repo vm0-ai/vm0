@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.0...sandbox-fc-v0.26.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** fail snapshot when destroy_keep_cow retries exhaust ([#9870](https://github.com/vm0-ai/vm0/issues/9870)) ([c0c4120](https://github.com/vm0-ai/vm0/commit/c0c41201de5362b982295b498476bcfbffe5bebc))
+
 ## [0.26.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.25.8...sandbox-fc-v0.26.0) (2026-04-17)
 
 

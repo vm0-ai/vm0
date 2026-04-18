@@ -1970,7 +1970,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "bitvec",
  "libc",
@@ -2419,7 +2419,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.84.0"
+version = "0.85.0"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -2609,7 +2609,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "async-trait",
  "serde",
@@ -2621,7 +2621,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.26.0"
+version = "0.26.1"
 dependencies = [
  "async-trait",
  "base64",
@@ -2646,7 +2646,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "sandbox",

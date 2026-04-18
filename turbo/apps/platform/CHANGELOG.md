@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.249.0](https://github.com/vm0-ai/vm0/compare/app-v0.248.0...app-v0.249.0) (2026-04-18)
+
+
+### Features
+
+* add test-oauth connector for end-to-end oauth testing ([#9878](https://github.com/vm0-ai/vm0/issues/9878)) ([e8be957](https://github.com/vm0-ai/vm0/commit/e8be957b65578f32d6ca87a6f1eb248ee5737726))
+* **platform:** scroll chat to bottom on send and message created ([#9900](https://github.com/vm0-ai/vm0/issues/9900)) ([7020b36](https://github.com/vm0-ai/vm0/commit/7020b363422c4814d919b2dfa89d6563575471cb))
+
+
+### Refactoring
+
+* **platform:** move voice chat status to header and fix flex layout ([#9888](https://github.com/vm0-ai/vm0/issues/9888)) ([d7e61df](https://github.com/vm0-ai/vm0/commit/d7e61dfa8ca88af1973bf5299978eb1c038dac64))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.198.0
+
 ## [0.248.0](https://github.com/vm0-ai/vm0/compare/app-v0.247.0...app-v0.248.0) (2026-04-17)
 
 

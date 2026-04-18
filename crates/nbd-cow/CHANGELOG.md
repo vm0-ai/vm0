@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.4...nbd-cow-v0.4.5) (2026-04-18)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** fail snapshot when destroy_keep_cow retries exhaust ([#9870](https://github.com/vm0-ai/vm0/issues/9870)) ([c0c4120](https://github.com/vm0-ai/vm0/commit/c0c41201de5362b982295b498476bcfbffe5bebc))
+
 ## [0.4.4](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.3...nbd-cow-v0.4.4) (2026-04-17)
 
 

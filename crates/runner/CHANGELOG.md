@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.85.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.84.0...runner-rs-v0.85.0) (2026-04-18)
+
+
+### Features
+
+* add test-oauth connector for end-to-end oauth testing ([#9878](https://github.com/vm0-ai/vm0/issues/9878)) ([e8be957](https://github.com/vm0-ai/vm0/commit/e8be957b65578f32d6ca87a6f1eb248ee5737726))
+
+
+### Refactoring
+
+* **ansible:** split deploy-runner.yml into build and promote ([#9890](https://github.com/vm0-ai/vm0/issues/9890)) ([5239678](https://github.com/vm0-ai/vm0/commit/5239678391428f9107436d40bbff8c5bb12af8c7))
+
+
+### Performance Improvements
+
+* **runner:** defer best-effort telemetry past provider.complete ([#9828](https://github.com/vm0-ai/vm0/issues/9828)) ([14fd7ae](https://github.com/vm0-ai/vm0/commit/14fd7ae194e6672535f3076527ed5f4ed0ba7aa8))
+
 ## [0.84.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.83.0...runner-rs-v0.84.0) (2026-04-17)
 
 
