@@ -115,7 +115,8 @@ export default class PerfReporter implements Reporter {
       .slice(0, 10)
       .reduce((s, f) => s + f.duration + f.overhead, 0);
     const grandTotal = totalDuration + totalOverhead;
-    const pct = grandTotal > 0 ? Math.round((top10Total / grandTotal) * 100) : 0;
+    const pct =
+      grandTotal > 0 ? Math.round((top10Total / grandTotal) * 100) : 0;
     console.log(
       `  Files: ${stats.length}  |  Accumulated tests: ${fmtMs(totalDuration)}  |  Total overhead: ${fmtMs(totalOverhead)}  |  Top-10: ${fmtMs(top10Total)} (${pct}%)`,
     );

@@ -13,7 +13,9 @@ export function getGmtOffset(iana: string): string {
     timeZoneName: "longOffset",
   }).formatToParts(new Date());
   const offset =
-    parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+00:00";
+    parts.find((p) => {
+      return p.type === "timeZoneName";
+    })?.value ?? "GMT+00:00";
   gmtOffsetCache.set(iana, offset);
   return offset;
 }

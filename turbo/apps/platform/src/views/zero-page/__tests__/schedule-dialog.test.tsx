@@ -162,7 +162,9 @@ async function openEditDialog(user: ReturnType<typeof userEvent.setup>) {
 
 function getOpenListboxOption(text: string): HTMLElement {
   const listbox = document.querySelector<HTMLElement>('[role="listbox"]');
-  if (!listbox) throw new Error("No open listbox");
+  if (!listbox) {
+    throw new Error("No open listbox");
+  }
   return within(listbox).getByText(text);
 }
 
@@ -172,7 +174,9 @@ async function switchFrequency(
 ) {
   const freqTrigger = screen.getByRole("combobox", { name: "Time" });
   await user.click(freqTrigger);
-  const option = await waitFor(() => getOpenListboxOption(freqLabel));
+  const option = await waitFor(() => {
+    return getOpenListboxOption(freqLabel);
+  });
   await user.click(option);
 }
 
@@ -303,9 +307,9 @@ describe("schedule dialog - agent selection (SCHED-D-051)", () => {
     await openCreateDialog(user);
     const agentTrigger = screen.getByRole("combobox", { name: "Agent" });
     await user.click(agentTrigger);
-    const agentOption = await waitFor(() =>
-      getOpenListboxOption("Research Agent"),
-    );
+    const agentOption = await waitFor(() => {
+      return getOpenListboxOption("Research Agent");
+    });
     await user.click(agentOption);
     await waitFor(() => {
       expect(screen.getByRole("combobox", { name: "Agent" })).toHaveTextContent(
@@ -338,7 +342,9 @@ describe("schedule dialog - loop interval (SCHED-D-055)", () => {
     });
     const loopTrigger = screen.getByRole("combobox", { name: "Every" });
     await user.click(loopTrigger);
-    const loopOption = await waitFor(() => getOpenListboxOption("30 minutes"));
+    const loopOption = await waitFor(() => {
+      return getOpenListboxOption("30 minutes");
+    });
     await user.click(loopOption);
     await waitFor(() => {
       expect(screen.getByRole("combobox", { name: "Every" })).toHaveTextContent(
@@ -376,7 +382,9 @@ describe("schedule dialog - day of month (SCHED-D-058)", () => {
       ).toBeInTheDocument();
     });
     await user.click(screen.getByRole("combobox", { name: "Day of month" }));
-    const domOption = await waitFor(() => getOpenListboxOption("15"));
+    const domOption = await waitFor(() => {
+      return getOpenListboxOption("15");
+    });
     await user.click(domOption);
     await waitFor(() => {
       expect(
@@ -397,7 +405,9 @@ describe("schedule dialog - hour select (SCHED-D-059)", () => {
       ).toBeInTheDocument();
     });
     await user.click(screen.getByRole("combobox", { name: "Hour" }));
-    const hourOption = await waitFor(() => getOpenListboxOption("14"));
+    const hourOption = await waitFor(() => {
+      return getOpenListboxOption("14");
+    });
     await user.click(hourOption);
     await waitFor(() => {
       expect(screen.getByRole("combobox", { name: "Hour" })).toHaveTextContent(
@@ -418,7 +428,9 @@ describe("schedule dialog - minute select (SCHED-D-060)", () => {
       ).toBeInTheDocument();
     });
     await user.click(screen.getByRole("combobox", { name: "Minute" }));
-    const minuteOption = await waitFor(() => getOpenListboxOption("30"));
+    const minuteOption = await waitFor(() => {
+      return getOpenListboxOption("30");
+    });
     await user.click(minuteOption);
     await waitFor(() => {
       expect(
