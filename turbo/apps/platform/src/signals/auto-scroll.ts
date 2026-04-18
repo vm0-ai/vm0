@@ -75,6 +75,9 @@ export function createScrollSignals(id?: string) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
   const autoScrollDisabled$ = state(false);
   let firstScrollToBottomCall = true;
+  // Held while ResizeObserver is still growing the container up to a saved
+  // position — set scrollTop clamps early and needs to be re-applied.
+  let pendingRestorePosition: number | null = null;
 
   const setScrollContainer$ = onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
@@ -97,6 +100,11 @@ export function createScrollSignals(id?: string) {
       const onScroll = () => {
         const distanceFromBottom =
           el.scrollHeight - el.scrollTop - el.clientHeight;
+        const userRecent =
+          performance.now() - lastUserInputAt < USER_INPUT_WINDOW_MS;
+        if (pendingRestorePosition !== null && userRecent) {
+          pendingRestorePosition = null;
+        }
         if (distanceFromBottom <= AT_BOTTOM_THRESHOLD) {
           const wasDisabled = get(autoScrollDisabled$);
           set(autoScrollDisabled$, false);
@@ -113,27 +121,14 @@ export function createScrollSignals(id?: string) {
           // clamps to the new max, and scroll anchoring can nudge position on
           // layout changes. Those programmatic shifts should not disable
           // auto-scroll; we want ResizeObserver to snap back to the bottom.
-          const userRecent =
-            performance.now() - lastUserInputAt < USER_INPUT_WINDOW_MS;
           if (userRecent) {
             const wasDisabled = get(autoScrollDisabled$);
             set(autoScrollDisabled$, true);
-            if (id !== undefined) {
-              set(setCachedScrollTop$, id, el.scrollTop);
-            }
             if (!wasDisabled) {
-              L.debug(
-                "DISABLED (scrolled up)",
-                scrollInfo(el),
-                `lastKnown=${Math.round(lastKnownScrollTop)}`,
-              );
+              L.debug("DISABLED (scrolled up)", scrollInfo(el));
             }
           } else {
-            L.debug(
-              "scrollTop decreased without user input (ignored)",
-              scrollInfo(el),
-              `lastKnown=${Math.round(lastKnownScrollTop)}`,
-            );
+            L.debug("scrollTop decreased without user input", scrollInfo(el));
           }
         }
         if (id !== undefined && get(autoScrollDisabled$)) {
@@ -151,6 +146,13 @@ export function createScrollSignals(id?: string) {
       const resizeObserver = new ResizeObserver(() => {
         const disabled = get(autoScrollDisabled$);
         L.debug("ResizeObserver fired", scrollInfo(el), `disabled=${disabled}`);
+        if (pendingRestorePosition !== null) {
+          el.scrollTop = pendingRestorePosition;
+          if (el.scrollTop >= pendingRestorePosition) {
+            pendingRestorePosition = null;
+          }
+          return;
+        }
         if (!disabled) {
           el.scrollTop = el.scrollHeight;
         }
@@ -201,6 +203,7 @@ export function createScrollSignals(id?: string) {
     if (wasFirst && id !== undefined) {
       const saved = get(scrollPositionCache$).get(id);
       if (saved !== undefined) {
+        pendingRestorePosition = saved;
         scrollEl.scrollTop = saved;
         set(autoScrollDisabled$, true);
         L.debug("scrollToBottom$ → restored", `id=${id}`, `saved=${saved}`);
