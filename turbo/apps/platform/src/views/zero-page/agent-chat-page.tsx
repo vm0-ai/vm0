@@ -15,6 +15,7 @@ import {
   IconArrowUpRight,
   IconMicrophone,
   IconPin,
+  IconPlus,
   IconUserPlus,
 } from "@tabler/icons-react";
 import {
@@ -24,6 +25,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/core";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   currentChatAgentId$,
   currentChatAgentDisplayName$,
@@ -53,6 +56,8 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import {
+  createNewChatThread$,
+  creatingNewSession$,
   resetTalkSendSignal$,
   sendNewThreadMessage$,
   startNewZeroSession$,
@@ -182,6 +187,50 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
   );
 }
 
+function NewChatButton({ pageSignal }: { pageSignal: AbortSignal }) {
+  const currentChatAgentId = useResolved(currentChatAgentId$);
+  const createNewChat = useSet(createNewChatThread$);
+  const navigateToChatFn = useSet(navigateToChat$);
+  const creatingLoadable = useLoadable(creatingNewSession$);
+  const creating = creatingLoadable.state === "loading";
+
+  const handleNewChat = () => {
+    detach(
+      createNewChat(currentChatAgentId ?? null, pageSignal).then((threadId) => {
+        if (threadId) {
+          navigateToChatFn(threadId);
+        }
+      }),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleNewChat}
+      disabled={creating}
+      className="zero-btn-morandi gap-1.5"
+      data-testid="chat-header-new-button"
+    >
+      <IconPlus size={14} stroke={1.5} />
+      NEW
+    </Button>
+  );
+}
+
+function ChatHeaderAction({ pageSignal }: { pageSignal: AbortSignal }) {
+  const features = useLastResolved(featureSwitch$);
+  const newButtonEnabled =
+    features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
+  return newButtonEnabled ? (
+    <NewChatButton pageSignal={pageSignal} />
+  ) : (
+    <InviteButton pageSignal={pageSignal} />
+  );
+}
+
 export function AgentChatPage() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
   const currentChatAgentDisplayName = useResolved(currentChatAgentDisplayName$);
@@ -250,7 +299,7 @@ export function AgentChatPage() {
     <div className="relative flex flex-1 flex-col min-h-0">
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end">
-          <InviteButton pageSignal={pageSignal} />
+          <ChatHeaderAction pageSignal={pageSignal} />
         </div>
       </header>
 
