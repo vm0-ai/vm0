@@ -4,11 +4,13 @@
  * Mock handlers for /api/zero/model-providers endpoint.
  */
 
-import { http, HttpResponse } from "msw";
-import type {
-  ModelProviderListResponse,
-  ModelProviderResponse,
+import {
+  type ModelProviderResponse,
+  zeroModelProvidersDefaultContract,
+  zeroModelProvidersMainContract,
+  zeroModelProvidersByTypeContract,
 } from "@vm0/core";
+import { mockApi } from "../msw-contract.ts";
 
 // Mock org model providers data — empty by default
 let mockOrgModelProviders: ModelProviderResponse[] = [];
@@ -22,23 +24,12 @@ export function resetMockOrgModelProviders(): void {
 
 export const apiOrgModelProvidersHandlers = [
   // GET /api/zero/model-providers - List all org model providers
-  http.get("*/api/zero/model-providers", () => {
-    const response: ModelProviderListResponse = {
-      modelProviders: mockOrgModelProviders,
-    };
-    return HttpResponse.json(response);
+  mockApi(zeroModelProvidersMainContract.list, ({ respond }) => {
+    return respond(200, { modelProviders: mockOrgModelProviders });
   }),
 
   // POST /api/zero/model-providers - Create or update org model provider
-  http.post("*/api/zero/model-providers", async ({ request }) => {
-    const body = (await request.json()) as {
-      type: ModelProviderResponse["type"];
-      secret?: string;
-      authMethod?: string;
-      secrets?: Record<string, string>;
-      selectedModel?: string;
-    };
-
+  mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
     const now = new Date().toISOString();
     const existing = mockOrgModelProviders.find((p) => {
       return p.type === body.type;
@@ -70,53 +61,49 @@ export const apiOrgModelProvidersHandlers = [
       mockOrgModelProviders.push(provider);
     }
 
-    return HttpResponse.json(
-      { provider, created },
-      { status: created ? 201 : 200 },
-    );
+    return respond(created ? 201 : 200, { provider, created });
   }),
 
   // POST /api/zero/model-providers/:type/default - Set default provider
-  http.post("*/api/zero/model-providers/:type/default", ({ params }) => {
-    const type = params.type as ModelProviderResponse["type"];
-    const existing = mockOrgModelProviders.find((p) => {
-      return p.type === type;
-    });
+  mockApi(
+    zeroModelProvidersDefaultContract.setDefault,
+    ({ params, respond }) => {
+      const existing = mockOrgModelProviders.find((p) => {
+        return p.type === params.type;
+      });
 
-    if (!existing) {
-      return HttpResponse.json(
-        { error: { message: "Model provider not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
-    }
+      if (!existing) {
+        return respond(404, {
+          error: { message: "Model provider not found", code: "NOT_FOUND" },
+        });
+      }
 
-    mockOrgModelProviders = mockOrgModelProviders.map((p) => {
-      return {
-        ...p,
-        isDefault: p.type === type,
-      };
-    });
+      mockOrgModelProviders = mockOrgModelProviders.map((p) => {
+        return {
+          ...p,
+          isDefault: p.type === params.type,
+        };
+      });
 
-    return HttpResponse.json({ ...existing, isDefault: true });
-  }),
+      return respond(200, { ...existing, isDefault: true });
+    },
+  ),
 
   // DELETE /api/zero/model-providers/:type - Delete org model provider
-  http.delete("*/api/zero/model-providers/:type", ({ params }) => {
-    const type = params.type as ModelProviderResponse["type"];
+  mockApi(zeroModelProvidersByTypeContract.delete, ({ params, respond }) => {
     const existing = mockOrgModelProviders.find((p) => {
-      return p.type === type;
+      return p.type === params.type;
     });
 
     if (!existing) {
-      return HttpResponse.json(
-        { error: { message: "Model provider not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
+      return respond(404, {
+        error: { message: "Model provider not found", code: "NOT_FOUND" },
+      });
     }
 
     mockOrgModelProviders = mockOrgModelProviders.filter((p) => {
-      return p.type !== type;
+      return p.type !== params.type;
     });
-    return new HttpResponse(null, { status: 204 });
+    return respond(204);
   }),
 ];
