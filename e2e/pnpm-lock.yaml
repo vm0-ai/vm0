@@ -18,8 +18,8 @@ importers:
         specifier: ^25.6.0
         version: 25.6.0
       dotenv:
-        specifier: ^17.4.1
-        version: 17.4.1
+        specifier: ^17.4.2
+        version: 17.4.2
     devDependencies:
       tsx:
         specifier: ^4.21.0
@@ -233,8 +233,8 @@ packages:
     resolution: {integrity: sha512-Sf2LSQP+bOlhKWWyhFsn0UsfdK/kCWRv1iuA2gXAwt3dyNabr6QSj00I2V10pidqz69soatm9ZwZvpQMTIOd5Q==}
     engines: {node: '>=12'}
 
-  dotenv@17.4.1:
-    resolution: {integrity: sha512-k8DaKGP6r1G30Lx8V4+pCsLzKr8vLmV2paqEj1Y55GdAgJuIqpRp5FfajGF8KtwMxCz9qJc6wUIJnm053d/WCw==}
+  dotenv@17.4.2:
+    resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
 
   esbuild@0.27.2:
@@ -419,7 +419,7 @@ snapshots:
 
   dotenv@17.2.2: {}
 
-  dotenv@17.4.1: {}
+  dotenv@17.4.2: {}
 
   esbuild@0.27.2:
     optionalDependencies:
