@@ -200,7 +200,11 @@ export function createScrollSignals(id?: string) {
         el,
         () => {
           const disabled = get(autoScrollDisabled$);
-          L.debug("ResizeObserver fired", scrollInfo(el), `disabled=${disabled}`);
+          L.debug(
+            "ResizeObserver fired",
+            scrollInfo(el),
+            `disabled=${disabled}`,
+          );
           if (restoreState.pendingRestorePosition !== null) {
             el.scrollTop = restoreState.pendingRestorePosition;
             if (el.scrollTop >= restoreState.pendingRestorePosition) {
