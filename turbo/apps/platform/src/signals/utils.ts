@@ -263,29 +263,6 @@ export function onRef<T extends HTMLElement | SVGSVGElement>(
 }
 
 /**
- * Wrap a command so it can be fired from a DOM callback (onClick, onSave, …).
- * The returned command preserves the inner command's args (including the
- * trailing `AbortSignal`) and just detaches the resulting promise with
- * `Reason.DomCallback`, returning `void` so it can be passed to JSX props via
- * `useSet`.
- *
- * Read `pageSignal$` with `useGet(pageSignal$)` in the view and pass it when
- * invoking the `useSet` result — signals should flow in as parameters, not be
- * pulled from state inside infrastructure code.
- *
- * Use this instead of writing `detach(cmd(...), Reason.DomCallback)` inside a
- * React handler — it lets the whole flow live in a single `command` body
- * where `await` reads naturally.
- */
-export function onDomCallback<TArgs extends unknown[]>(
-  command$: Command<void | Promise<void>, TArgs>,
-): Command<void, TArgs> {
-  return command(({ set }, ...args: TArgs) => {
-    detach(set(command$, ...args), Reason.DomCallback, "onDomCallback");
-  });
-}
-
-/**
  * Create a deferred promise that can be resolved/rejected externally.
  * The promise is automatically rejected when the abort signal is triggered.
  */

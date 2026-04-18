@@ -53,7 +53,7 @@ import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
@@ -516,9 +516,9 @@ export function ZeroSchedulePage() {
 
   const saving = useGet(creatingOrgSchedule$);
   const createSchedule = useSet(createOrgScheduleFromForm$);
-  const onCreateSave = (values: ScheduleFormValues) => {
-    createSchedule(values, pageSignal);
-  };
+  const onCreateSave = onDomEventFn((values: ScheduleFormValues) => {
+    return createSchedule(values, pageSignal);
+  });
 
   const combinedSchedule = buildCombinedSchedule(entries);
 
