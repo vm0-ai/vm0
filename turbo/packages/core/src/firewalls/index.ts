@@ -63,6 +63,7 @@ import { docusignFirewall } from "./docusign.generated";
 import { db9Firewall } from "./db9.generated";
 import { drive9Firewall } from "./drive9.generated";
 import { dropboxFirewall } from "./dropbox.generated";
+import { duffelFirewall } from "./duffel.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { exploriumFirewall } from "./explorium.generated";
 import { falFirewall } from "./fal.generated";
@@ -93,6 +94,7 @@ import { intervalsIcuFirewall } from "./intervals-icu.generated";
 import { jamFirewall } from "./jam.generated";
 import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
+import { klaviyoFirewall } from "./klaviyo.generated";
 import { kommoFirewall } from "./kommo.generated";
 import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
@@ -136,6 +138,7 @@ import { salesforceFirewall } from "./salesforce.generated";
 import { scrapeninjaFirewall } from "./scrapeninja.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
+import { shopifyFirewall } from "./shopify.generated";
 import { shortioFirewall } from "./shortio.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackFirewall } from "./slack.generated";
@@ -218,6 +221,7 @@ const CONNECTOR_FIREWALLS = {
   db9: db9Firewall,
   drive9: drive9Firewall,
   dropbox: dropboxFirewall,
+  duffel: duffelFirewall,
   elevenlabs: elevenlabsFirewall,
   explorium: exploriumFirewall,
   fal: falFirewall,
@@ -248,6 +252,7 @@ const CONNECTOR_FIREWALLS = {
   jam: jamFirewall,
   jira: jiraFirewall,
   jotform: jotformFirewall,
+  klaviyo: klaviyoFirewall,
   kommo: kommoFirewall,
   lark: larkFirewall,
   line: lineFirewall,
@@ -291,6 +296,7 @@ const CONNECTOR_FIREWALLS = {
   scrapeninja: scrapeninjaFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
+  shopify: shopifyFirewall,
   shortio: shortioFirewall,
   similarweb: similarwebFirewall,
   slack: slackFirewall,

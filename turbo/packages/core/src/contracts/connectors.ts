@@ -757,6 +757,29 @@ const CONNECTOR_TYPES_DEF = {
       scopes: ["signature", "extended", "openid"],
     },
   },
+  duffel: {
+    label: "Duffel",
+    environmentMapping: {
+      DUFFEL_TOKEN: "$secrets.DUFFEL_TOKEN",
+    },
+    helpText:
+      "Connect your Duffel account to search and book flights and stays (hotels) through the Duffel API",
+    authMethods: {
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          "1. Log in to the [Duffel dashboard](https://app.duffel.com)\n2. Click your organisation name, then **Developers > Access tokens**\n3. Click **New token**, give it a name, leave scope as **Read write**\n4. Click **Create token** and copy the value (format: `duffel_test_...` for test mode, `duffel_live_...` for live mode)",
+        secrets: {
+          DUFFEL_TOKEN: {
+            label: "Access Token",
+            required: true,
+            placeholder: "duffel_test_...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   dropbox: {
     label: "Dropbox",
     environmentMapping: {
@@ -960,6 +983,29 @@ const CONNECTOR_TYPES_DEF = {
           JOTFORM_TOKEN: {
             label: "API Key",
             required: true,
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
+  klaviyo: {
+    label: "Klaviyo",
+    environmentMapping: {
+      KLAVIYO_TOKEN: "$secrets.KLAVIYO_TOKEN",
+    },
+    helpText:
+      "Connect your Klaviyo account to manage profiles, lists, events, subscriptions, and campaigns",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Klaviyo](https://www.klaviyo.com/)\n2. Go to **Account > Settings > API keys**\n3. Click **Create Private API Key**\n4. Grant the scopes your workflow needs (e.g. `profiles:write`, `lists:write`, `events:write`, `subscriptions:write`)\n5. Copy the key (format: `pk_...`)",
+        secrets: {
+          KLAVIYO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "pk_...",
           },
         },
       },
@@ -3306,6 +3352,37 @@ const CONNECTOR_TYPES_DEF = {
             label: "API Key",
             required: true,
             placeholder: "your-runway-api-key",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
+  shopify: {
+    label: "Shopify",
+    tags: ["ecommerce", "store", "products", "orders"],
+    environmentMapping: {
+      SHOPIFY_TOKEN: "$secrets.SHOPIFY_TOKEN",
+      SHOPIFY_SHOP: "$vars.SHOPIFY_SHOP",
+    },
+    helpText:
+      "Connect your Shopify store to manage products, orders, customers, and inventory through the Admin API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. In your Shopify admin, go to **Settings → Apps and sales channels → Develop apps**\n2. Click **Create an app**, name it (e.g. `vm0`), and open it\n3. Under **Configuration → Admin API integration**, grant the scopes you need (e.g. `read_products`, `read_orders`)\n4. Click **Install app** and then **Reveal token once** — copy the Admin API access token (starts with `shpat_`)\n5. For the **Store subdomain** below, enter only the subdomain of your `.myshopify.com` URL (for `acme.myshopify.com` enter `acme`)",
+        secrets: {
+          SHOPIFY_TOKEN: {
+            label: "Admin API Access Token",
+            required: true,
+            placeholder: "shpat_...",
+          },
+          SHOPIFY_SHOP: {
+            label: "Store Subdomain",
+            required: true,
+            type: "variable",
+            placeholder: "acme",
           },
         },
       },
