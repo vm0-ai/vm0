@@ -42,7 +42,10 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { WEEKDAY_LABELS, type ScheduleEntry } from "./zero-schedule-card";
-import { ScheduleFormDialog } from "./schedule-dialog.tsx";
+import {
+  ScheduleFormDialog,
+  type ScheduleFormValues,
+} from "./schedule-dialog.tsx";
 import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
 import { ScheduleListView } from "./schedule-list-view.tsx";
 import { agents$ } from "../../signals/agent.ts";
@@ -512,7 +515,10 @@ export function ZeroSchedulePage() {
   const setPendingDelete = useSet(setPagePendingDelete$);
 
   const saving = useGet(creatingOrgSchedule$);
-  const onCreateSave = useSet(createOrgScheduleFromForm$);
+  const createSchedule = useSet(createOrgScheduleFromForm$);
+  const onCreateSave = (values: ScheduleFormValues) => {
+    createSchedule(values, pageSignal);
+  };
 
   const combinedSchedule = buildCombinedSchedule(entries);
 

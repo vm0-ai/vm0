@@ -3,7 +3,6 @@ import type { CSSProperties } from "react";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { logger } from "./log.ts";
-import { pageSignalHolder$ } from "./page-signal.ts";
 
 const L = logger("Promise");
 
@@ -265,21 +264,24 @@ export function onRef<T extends HTMLElement | SVGSVGElement>(
 
 /**
  * Wrap a command so it can be fired from a DOM callback (onClick, onSave, …).
- * The returned command:
- * - chains onto `pageSignal$` so in-flight work is cancelled on navigation,
- * - detaches the resulting promise with `Reason.DomCallback`,
- * - returns `void` so it can be passed straight to JSX props via `useSet`.
+ * The returned command preserves the inner command's args (including the
+ * trailing `AbortSignal`) and just detaches the resulting promise with
+ * `Reason.DomCallback`, returning `void` so it can be passed to JSX props via
+ * `useSet`.
+ *
+ * Read `pageSignal$` with `useGet(pageSignal$)` in the view and pass it when
+ * invoking the `useSet` result — signals should flow in as parameters, not be
+ * pulled from state inside infrastructure code.
  *
  * Use this instead of writing `detach(cmd(...), Reason.DomCallback)` inside a
- * React handler — it lets the whole flow live in a single `command`
- * body where `await` reads naturally.
+ * React handler — it lets the whole flow live in a single `command` body
+ * where `await` reads naturally.
  */
 export function onDomCallback<TArgs extends unknown[]>(
-  command$: Command<void | Promise<void>, [...TArgs, AbortSignal]>,
+  command$: Command<void | Promise<void>, TArgs>,
 ): Command<void, TArgs> {
-  return command(({ get, set }, ...args: TArgs) => {
-    const signal = get(pageSignalHolder$).signal;
-    detach(set(command$, ...args, signal), Reason.DomCallback, "onDomCallback");
+  return command(({ set }, ...args: TArgs) => {
+    detach(set(command$, ...args), Reason.DomCallback, "onDomCallback");
   });
 }
 
