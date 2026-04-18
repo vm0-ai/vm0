@@ -44,6 +44,7 @@ import { docusignHandler } from "./providers/docusign-handler";
 import { db9Handler } from "./providers/db9-handler";
 import { drive9Handler } from "./providers/drive9-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
+import { duffelHandler } from "./providers/duffel-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { exploriumHandler } from "./providers/explorium-handler";
 import { falHandler } from "./providers/fal-handler";
@@ -73,6 +74,7 @@ import { intercomHandler } from "./providers/intercom-handler";
 import { jamHandler } from "./providers/jam-handler";
 import { jiraHandler } from "./providers/jira-handler";
 import { jotformHandler } from "./providers/jotform-handler";
+import { klaviyoHandler } from "./providers/klaviyo-handler";
 import { kommoHandler } from "./providers/kommo-handler";
 import { larkHandler } from "./providers/lark-handler";
 import { lineHandler } from "./providers/line-handler";
@@ -95,6 +97,7 @@ import { reporteiHandler } from "./providers/reportei-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
 import { runwayHandler } from "./providers/runway-handler";
 import { salesforceHandler } from "./providers/salesforce-handler";
+import { shopifyHandler } from "./providers/shopify-handler";
 import { shortioHandler } from "./providers/shortio-handler";
 import { strapiHandler } from "./providers/strapi-handler";
 import { streakHandler } from "./providers/streak-handler";
@@ -102,6 +105,7 @@ import { supadataHandler } from "./providers/supadata-handler";
 import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
 import { twentyHandler } from "./providers/twenty-handler";
+import { typeformHandler } from "./providers/typeform-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
 import { zapierHandler } from "./providers/zapier-handler";
 import { zapsignHandler } from "./providers/zapsign-handler";
@@ -192,6 +196,7 @@ export const PROVIDER_HANDLERS: Record<
   db9: db9Handler,
   drive9: drive9Handler,
   dropbox: dropboxHandler,
+  duffel: duffelHandler,
   elevenlabs: elevenlabsHandler,
   explorium: exploriumHandler,
   fal: falHandler,
@@ -243,6 +248,7 @@ export const PROVIDER_HANDLERS: Record<
   jam: jamHandler,
   jira: jiraHandler,
   jotform: jotformHandler,
+  klaviyo: klaviyoHandler,
   kommo: kommoHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
@@ -278,12 +284,14 @@ export const PROVIDER_HANDLERS: Record<
   zeptomail: zeptomailHandler,
   runway: runwayHandler,
   salesforce: salesforceHandler,
+  shopify: shopifyHandler,
   shortio: shortioHandler,
   streak: streakHandler,
   supadata: supadataHandler,
   tavily: tavilyHandler,
   tldv: tldvHandler,
   twenty: twentyHandler,
+  typeform: typeformHandler,
   youtube: youtubeHandler,
   zapier: zapierHandler,
   zapsign: zapsignHandler,

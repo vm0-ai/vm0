@@ -42,6 +42,7 @@ import { generate as generateDocusign } from "./docusign";
 import { generate as generateDb9 } from "./db9";
 import { generate as generateDrive9 } from "./drive9";
 import { generate as generateDropbox } from "./dropbox";
+import { generate as generateDuffel } from "./duffel";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateExplorium } from "./explorium";
 import { generate as generateFal } from "./fal";
@@ -67,6 +68,7 @@ import { generate as generateIntervalsIcu } from "./intervals-icu";
 import { generate as generateJam } from "./jam";
 import { generate as generateJira } from "./jira";
 import { generate as generateJotform } from "./jotform";
+import { generate as generateKlaviyo } from "./klaviyo";
 import { generate as generateKommo } from "./kommo";
 import { generate as generateLark } from "./lark";
 import { generate as generateLine } from "./line";
@@ -110,6 +112,7 @@ import { generate as generateScrapeninja } from "./scrapeninja";
 import { generate as generateSalesforce } from "./salesforce";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
+import { generate as generateShopify } from "./shopify";
 import { generate as generateShortio } from "./shortio";
 import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
@@ -126,6 +129,7 @@ import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTwenty } from "./twenty";
+import { generate as generateTypeform } from "./typeform";
 import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateWebflow } from "./webflow";
@@ -177,6 +181,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   db9: generateDb9,
   drive9: generateDrive9,
   dropbox: generateDropbox,
+  duffel: generateDuffel,
   elevenlabs: generateElevenlabs,
   explorium: generateExplorium,
   fal: generateFal,
@@ -202,6 +207,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   jam: generateJam,
   jira: generateJira,
   jotform: generateJotform,
+  klaviyo: generateKlaviyo,
   kommo: generateKommo,
   lark: generateLark,
   line: generateLine,
@@ -245,6 +251,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   scrapeninja: generateScrapeninja,
   sentry: generateSentry,
   serpapi: generateSerpapi,
+  shopify: generateShopify,
   shortio: generateShortio,
   similarweb: generateSimilarweb,
   slack: generateSlack,
@@ -261,6 +268,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tldv: generateTldv,
   todoist: generateTodoist,
   twenty: generateTwenty,
+  typeform: generateTypeform,
   v0: generateV0,
   vercel: generateVercel,
   webflow: generateWebflow,
