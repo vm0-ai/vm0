@@ -43,7 +43,7 @@ export function LabPage() {
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 px-4 sm:px-6 pt-10 pb-3">
-        <div className="mx-auto max-w-[900px] flex items-center justify-between">
+        <div className="mx-auto max-w-[1200px] flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-foreground">
               Lab
@@ -64,8 +64,8 @@ export function LabPage() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
-        <div className="mx-auto max-w-[900px]">
-          <div className="zero-card divide-y divide-border">
+        <div className="mx-auto max-w-[1200px]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {Object.values(FeatureSwitchKey)
               .sort((a, b) => {
                 return a.localeCompare(b, undefined, { sensitivity: "base" });
@@ -75,17 +75,18 @@ export function LabPage() {
                 return (
                   <label
                     key={key}
-                    className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                    className="zero-card flex items-start justify-between gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
                   >
-                    <div className="flex flex-col">
+                    <div className="flex-1 min-w-0 flex flex-col">
                       <span className="text-sm text-foreground">{key}</span>
                       {descriptions[key] && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="mt-0.5 text-xs text-muted-foreground">
                           {descriptions[key]}
                         </span>
                       )}
                     </div>
                     <Switch
+                      className="mt-0.5 shrink-0"
                       checked={enabled}
                       onCheckedChange={(checked) => {
                         handleToggle(key, checked);
