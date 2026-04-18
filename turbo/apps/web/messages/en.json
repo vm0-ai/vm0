@@ -3167,6 +3167,346 @@
           "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
           "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
         ]
+      },
+      "release-notes-digest": {
+        "title": "Turn the week's merged PRs into a release-notes digest",
+        "description": "Zero scans GitHub for merged PRs and Linear for shipped issues since the last tag, groups them by theme, and posts a polished changelog to Slack every Monday.",
+        "timeSaved": "~30 min saved weekly",
+        "headings": {
+          "scenario": "Why release notes slip through the cracks",
+          "prompt": "How to ask Zero for a weekly release digest",
+          "steps": "How Zero assembles the changelog",
+          "nextActions": "Publish, archive, or chain into a marketing email",
+          "integrations": "Required integrations: GitHub and Slack",
+          "tips": "Best practices for automated release notes"
+        },
+        "scenario": "Monday morning. Seventy PRs merged last week across refactors, features, and fixes. Someone will eventually ask 'what shipped?' and nobody wants to scroll through commit history to answer. Release notes usually get written once a quarter in a panic, then go stale. Zero watches the merge queue all week, then on Monday pulls every merged PR since the last tag, groups them by theme, and posts a clean digest in Slack — ready to ship, archive, or paste into a newsletter.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero every Monday at 9am, pull all PRs merged to main in vm0-ai/vm0 since the last release tag. Group by theme — features, fixes, refactors, infra. Include PR numbers and one-line summaries. Cross-reference with shipped Linear issues. Post the digest to #release-notes."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero what shipped to main this week? Give me a grouped changelog."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday 9am, post a weekly release digest of merged PRs from vm0-ai/vm0 to #release-notes."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero what shipped to main this week? Group by theme."
+          },
+          {
+            "name": "Zero",
+            "text": "*Week of 2026-04-14 — 70 PRs merged*\n\n*Features*\n• #9709 — Claude Opus 4.7 via managed provider\n• #9795 — Per-user agent switch on /zero\n• #9708 — Manus connector\n\n*Fixes*\n• #9799 — Clear stale billing period_end\n• #9842 — OAuth null token expiry self-heals\n\n*Infra*\n• #9854 — Split release-please into build + promote\n• #9748 — Runner poison-job loop fix\n\nFull list in thread. Want me to publish this to #release-notes or draft a Resend email?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads merged PRs since last tag",
+            "description": "Zero queries the GitHub API for every PR merged to main since the most recent release tag, along with titles, authors, labels, and descriptions."
+          },
+          {
+            "title": "Group and summarize by theme",
+            "description": "Zero clusters PRs by label or keyword into features, fixes, refactors, and infra. Where a Linear issue is linked, Zero pulls the shipped issue for business-facing context."
+          },
+          {
+            "title": "Post the digest to Slack",
+            "description": "Zero posts a grouped changelog in the channel you named, with PR numbers, one-line summaries, and a thread listing the long tail."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Publish to a release channel",
+            "description": "Mirror the same digest to a customer-facing announcement channel",
+            "examplePrompt": "@Zero cross-post this week's release digest to #announcements with a friendlier intro."
+          },
+          {
+            "title": "Chain into a marketing email",
+            "description": "Turn the digest into the spine of a weekly product newsletter",
+            "examplePrompt": "@Zero draft this week's product newsletter from the release digest and send via Resend to subscribers after I approve."
+          },
+          {
+            "title": "Archive to a changelog doc",
+            "description": "Append each week's digest to a rolling changelog for long-term reference",
+            "examplePrompt": "@Zero after each weekly digest, append a copy to the 'Changelog 2026' Notion page under the current week's heading."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub is where Zero reads merged PRs, release tags, and commit history. Needs read access on the target repo."
+          },
+          {
+            "description": "Slack is where the digest is posted. Pick the channel in your prompt — Zero respects channel membership."
+          },
+          {
+            "description": "Linear is optional. Used to cross-reference shipped issues so feature bullets read for humans, not just PR titles."
+          }
+        ],
+        "tips": [
+          "Anchor on release tags, not dates — 'since last tag' produces cleaner cutoffs than 'last 7 days' when cadence shifts.",
+          "Ask Zero to label-filter noisy PRs out. Dependency bumps and auto-generated chores clutter the digest and hide the real changes.",
+          "Route to a #release-notes channel, not a general dev channel — the digest is reference material, and people will want to scan it later without scrolling through chatter."
+        ]
+      },
+      "weekly-traffic-digest": {
+        "title": "Weekly traffic digest with growth callouts",
+        "description": "Zero pulls last week's Plausible numbers, highlights what moved and what didn't, and posts a short, readable summary to Slack every Monday.",
+        "timeSaved": "~20 min saved weekly",
+        "headings": {
+          "scenario": "Why traffic dashboards go unread",
+          "prompt": "How to ask Zero for a weekly traffic digest",
+          "steps": "How Zero turns Plausible data into a readable digest",
+          "nextActions": "Drill into sources, archive the digest, or alert on anomalies",
+          "integrations": "Required integrations: Plausible and Slack",
+          "tips": "Best practices for weekly traffic reviews"
+        },
+        "scenario": "Plausible has the answers but nobody opens the dashboard. Traffic goes up, traffic goes down, and by Friday you have no idea which campaign actually moved the needle. A weekly digest with the five numbers that matter, the top sources, and one-line callouts on what changed is what you actually want. Zero runs the query every Monday, shapes the numbers into a short readable post, and calls out the deltas so you don't have to stare at charts.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero every Monday at 9am, pull vm0.ai traffic for the prior week from Plausible — visitors, visits, pageviews, bounce rate, avg duration. Compare to the week before. Top 5 sources, top 5 pages, top 5 countries. Call out any source that grew or dropped by more than 30%. Post to #marketing."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero last week's traffic in one message — top sources, top pages, deltas."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday 9am, post last week's vm0.ai traffic digest to #marketing with weekly deltas."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ming",
+            "text": "@Zero last week's vm0.ai traffic in one digest."
+          },
+          {
+            "name": "Zero",
+            "text": "*vm0.ai — Apr 11–17*\n• Visitors: *364* (+38% WoW)\n• Pageviews: *3,074* · Bounce: *36%* · Avg: *14m 40s*\n\n*Top sources*\n• Direct 271 · LinkedIn 20 · taaft 18 · Google 17 · X 5\n\n*Top pages*\n• /en (home) 238 · /agents/:id/chat 84 · /use-cases 66\n\n*Callouts*\n• LinkedIn +67% WoW — the founder post moved the needle\n• X still ~2% of traffic and 100% bounce — worth a look"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero queries Plausible for the prior week",
+            "description": "Zero pulls the aggregate metrics — visitors, visits, pageviews, bounce rate, average duration — plus top sources, top pages, and top countries."
+          },
+          {
+            "title": "Compare against the previous week",
+            "description": "Zero computes week-over-week deltas for every metric and source, then flags anything that moved by more than the threshold you set."
+          },
+          {
+            "title": "Post the digest to Slack",
+            "description": "Zero writes a short, readable summary with the five numbers that matter, a ranked source list, and one-line callouts on what moved."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Drill into a specific source",
+            "description": "Ask Zero for the page-level breakdown of a single source",
+            "examplePrompt": "@Zero show me every page LinkedIn visitors landed on last week and the bounce rate per page."
+          },
+          {
+            "title": "Archive the digest",
+            "description": "Append each week's digest to a rolling traffic log for reference",
+            "examplePrompt": "@Zero after the Monday digest, append a copy to the 'Traffic 2026' Notion page."
+          },
+          {
+            "title": "Alert on anomalies",
+            "description": "Trigger a same-day Slack alert when a metric swings outside a threshold",
+            "examplePrompt": "@Zero if daily visitors drop more than 40% from the 7-day average, post an alert in #marketing same day."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Plausible is the analytics source. Zero needs API access on the vm0.ai site."
+          },
+          {
+            "description": "Slack is where the digest is posted. Pick the channel in your prompt."
+          },
+          {
+            "description": "Notion is optional. Used when you want Zero to archive each week's digest to a rolling doc."
+          }
+        ],
+        "tips": [
+          "Set a meaningful threshold — '30% WoW' filters out daily noise and highlights real movement. Too low and the callouts lose signal.",
+          "Pair with the content-performance report once the traffic digest surfaces something interesting — the traffic digest tells you *what* changed, the content report tells you *why*.",
+          "Ask for deltas, not absolutes. '364 visitors' means nothing without last week's number beside it."
+        ]
+      },
+      "cpa-tax-handoff": {
+        "title": "Package monthly books for your CPA",
+        "description": "Zero gathers the monthly statements from Dropbox, drafts a professional handoff email to your accountant in Gmail, and blocks a follow-up slot on your calendar — all from one Slack prompt.",
+        "timeSaved": "~45 min saved monthly",
+        "headings": {
+          "scenario": "Why month-end handoffs drain an afternoon",
+          "prompt": "How to ask Zero to package and send the monthly books",
+          "steps": "How Zero assembles and delivers the CPA package",
+          "nextActions": "Track open items, schedule the review, or automate monthly",
+          "integrations": "Required integrations: Gmail and Dropbox",
+          "tips": "Best practices for CPA handoffs"
+        },
+        "scenario": "The books close and now the monthly CPA package has to go out. You open Dropbox, find the right folder, rename two files, attach them to a new Gmail thread, write a polite note summarizing the month, list the open questions, cc your co-founder, and block a 20-minute follow-up slot on the calendar for after the CPA responds. That's a Wednesday afternoon gone. Zero runs the whole workflow from one Slack message: it pulls the statements, drafts the email in a professional tone, previews it in Slack for a sanity check, sends once you approve, and drops the calendar hold on your week.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero prep the March 2026 CPA handoff. Pull the bank statement, credit card export, and P&L PDF from Dropbox /Finance/2026-03/. Draft a Gmail to cpa@example.com — professional tone, cc lancy@vm0.ai — summarizing the month with any variance callouts. List the two open questions from our Slack thread. Preview here first, then send after I approve and block a 20-min follow-up on my calendar for next Wednesday."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero package the March books for our CPA and draft the handoff email. Preview before sending."
+          },
+          {
+            "label": "Monthly",
+            "prompt": "@Zero on the 3rd of every month, assemble the prior month's books from Dropbox and draft the CPA handoff email for my approval."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero prep the March CPA handoff — pull Dropbox files, draft the Gmail, preview here first."
+          },
+          {
+            "name": "Zero",
+            "text": "Package ready.\n\n*Attachments (3)*\n• 2026-03-bank-statement.pdf\n• 2026-03-amex-export.csv\n• 2026-03-pnl.pdf\n\n*Draft email*\nTo: cpa@example.com · Cc: lancy@vm0.ai\nSubject: March 2026 books — handoff and two open items\n\nHi Sarah,\n\nAttached is the March 2026 close package. Headlines:\n• Revenue tracking to plan; COGS +8% from the infra bump we discussed.\n• Two open items for your review: the prepaid software reclass, and the new vendor onboarding (docs linked below).\n\nHappy to jump on a call if easier. I've held 20 min on Wednesday at 3pm as a default — feel free to suggest another time.\n\nBest,\nLancy\n\nReply 'send' to fire, or tell me what to tweak."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero pulls the books from Dropbox",
+            "description": "Zero lists the target month's folder, picks up the statements and P&L you named, and stages them as attachments."
+          },
+          {
+            "title": "Draft the handoff and preview in Slack",
+            "description": "Zero writes a professional email in your voice, cites the variance callouts from the close thread, lists the open questions, and renders a preview with the attachment list so you can scan it in 30 seconds."
+          },
+          {
+            "title": "Send, and hold time on the calendar",
+            "description": "Once you approve, Zero sends via Gmail and drops a 20-minute follow-up hold on your calendar for the day you specified — so the review slot exists before the CPA even reads the email."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Track open items",
+            "description": "Have Zero create a short ledger of open questions and chase on a cadence",
+            "examplePrompt": "@Zero track the two open items from the March handoff and ping me if the CPA hasn't replied in 5 business days."
+          },
+          {
+            "title": "Automate monthly",
+            "description": "Run the whole package on a monthly schedule for your approval",
+            "examplePrompt": "@Zero on the 3rd of every month, prep the prior month's CPA package and post the draft here for my approval."
+          },
+          {
+            "title": "Log the close to Notion",
+            "description": "Archive each handoff — attachments, note, and CPA reply — to a finance doc",
+            "examplePrompt": "@Zero after every monthly handoff, log the package and the CPA's reply to the 'Monthly Close' Notion database."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail is where the handoff email is drafted and sent. Zero needs send and drafts permissions on your mailbox."
+          },
+          {
+            "description": "Dropbox is the source of truth for the monthly statements and P&L. Zero needs read access on the finance folder."
+          },
+          {
+            "description": "Google Calendar is optional. Used when you want Zero to hold a follow-up slot after sending the handoff."
+          },
+          {
+            "description": "Slack is optional. Used as the approval surface when you want to preview the draft before it's sent."
+          }
+        ],
+        "tips": [
+          "Always preview before sending. Tax correspondence is high-stakes — a 30-second glance at the draft catches issues no automation can.",
+          "Keep the Dropbox folder naming consistent ('YYYY-MM') so Zero can resolve the target month from a natural-language date without guesswork.",
+          "Pair this with a monthly schedule once the flow is trusted — the first few cycles should stay manual-approval so the email voice matches yours."
+        ]
+      },
+      "email-reply-assistant": {
+        "title": "Draft polished email replies without leaving Slack",
+        "description": "Forward a Gmail thread to Zero with a quick note; Zero drafts a professional reply in the tone you specify, previews it in Slack, and sends once you approve.",
+        "timeSaved": "~10 min per reply",
+        "headings": {
+          "scenario": "Why writing a good reply takes longer than it should",
+          "prompt": "How to ask Zero to draft and send a reply",
+          "steps": "How Zero reads the thread and drafts the reply",
+          "nextActions": "Tweak the tone, forward to a teammate, or queue a follow-up",
+          "integrations": "Required integrations: Gmail",
+          "tips": "Best practices for delegating email drafting"
+        },
+        "scenario": "An investor email lands in your inbox. You have 12 minutes before your next meeting, the reply needs to be warm but precise, and you want to say no without closing the door. Writing it yourself takes 15 minutes of second-guessing. Zero reads the full thread, drafts a reply in the tone you named — friendly, firm, or formal — drops a preview in Slack, and sends the moment you say go. What would have been a 15-minute context-switch becomes a 30-second approval.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero draft a reply to the latest email from investor@example.com in Gmail. Tone: warm but professional. I want to politely decline this round and leave the door open for a future conversation. Reference the prior exchange, keep it under 150 words, and preview it here first before sending."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero reply to the latest thread from sarah@example.com — friendly tone, under 100 words. Preview first."
+          },
+          {
+            "label": "Template",
+            "prompt": "@Zero whenever I forward you a Gmail thread, draft a professional reply in my voice and preview here. Don't send until I say 'send'."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Yuma",
+            "text": "@Zero reply to the latest thread from partnerships@acme.com — warm but firm, politely pass on the pilot, leave door open. Preview first."
+          },
+          {
+            "name": "Zero",
+            "text": "*Draft*\nTo: partnerships@acme.com\nSubject: Re: ACME × vm0 pilot proposal\n\nHi Dana,\n\nThanks for the detailed proposal and for the patience on our side. After discussing with the team, we're going to hold off on starting a formal pilot this quarter — we want to land a few roadmap commitments before taking on an integration partner of this scope.\n\nThat said, the use cases you outlined are genuinely interesting, and I'd love to keep the conversation warm. Could we revisit in Q3?\n\nBest,\nYuma\n\nReply 'send' to fire, or tell me what to tweak."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads the thread in Gmail",
+            "description": "Zero fetches the full message history for the thread you named, understands the context, and identifies who is waiting on what."
+          },
+          {
+            "title": "Draft in your tone and preview in Slack",
+            "description": "Zero writes a reply matching the tone and length you specified — warm, firm, formal, concise — and renders a clean preview in the same Slack thread so you can scan it in 30 seconds."
+          },
+          {
+            "title": "Send via Gmail on approval",
+            "description": "Once you approve or ask for a tweak, Zero sends the final version as a reply to the original thread and confirms delivery."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Tweak the tone and regenerate",
+            "description": "Ask Zero to rewrite with a different tone or tighter word count",
+            "examplePrompt": "@Zero rewrite the reply — punchier, cut the softening phrases, keep it under 80 words."
+          },
+          {
+            "title": "Forward to a teammate first",
+            "description": "Preview the draft to a teammate for a second opinion before sending",
+            "examplePrompt": "@Zero post the draft to #exec for Lancy's review before I send."
+          },
+          {
+            "title": "Queue a follow-up",
+            "description": "Nudge if the recipient hasn't replied in N days",
+            "examplePrompt": "@Zero if there's no reply within 5 business days, draft a gentle follow-up and preview it here."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail is where Zero reads the thread and sends the reply. Zero needs read, drafts, and send permissions on your mailbox."
+          },
+          {
+            "description": "Slack is optional. Used as the preview and approval surface so you can scan the draft before it's sent."
+          }
+        ],
+        "tips": [
+          "Always preview before sending. A 30-second glance catches tone mismatches and factual slips that no prompt can fully prevent.",
+          "Name the tone explicitly — 'warm but firm,' 'concise and formal,' or 'friendly and casual.' Zero's default is middle-of-the-road professional, which is rarely what you actually want.",
+          "Set a word limit. Replies under a stated word count stay punchier and feel more human than unbounded drafts that tend to over-explain."
+        ]
       }
     }
   },
