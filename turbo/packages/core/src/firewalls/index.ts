@@ -113,6 +113,7 @@ import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
 import { outlookCalendarFirewall } from "./outlook-calendar.generated";
 import { outlookMailFirewall } from "./outlook-mail.generated";
+import { pandadocFirewall } from "./pandadoc.generated";
 import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
@@ -267,6 +268,7 @@ const CONNECTOR_FIREWALLS = {
   openai: openaiFirewall,
   "outlook-calendar": outlookCalendarFirewall,
   "outlook-mail": outlookMailFirewall,
+  pandadoc: pandadocFirewall,
   pdf4me: pdf4meFirewall,
   pdfco: pdfcoFirewall,
   pdforge: pdforgeFirewall,

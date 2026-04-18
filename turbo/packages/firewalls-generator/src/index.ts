@@ -87,6 +87,7 @@ import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
 import { generate as generateOutlookCalendar } from "./outlook-calendar";
 import { generate as generateOutlookMail } from "./outlook-mail";
+import { generate as generatePandadoc } from "./pandadoc";
 import { generate as generatePdf4me } from "./pdf4me";
 import { generate as generatePdfco } from "./pdfco";
 import { generate as generatePdforge } from "./pdforge";
@@ -221,6 +222,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   openai: generateOpenai,
   "outlook-calendar": generateOutlookCalendar,
   "outlook-mail": generateOutlookMail,
+  pandadoc: generatePandadoc,
   pdf4me: generatePdf4me,
   pdfco: generatePdfco,
   pdforge: generatePdforge,
