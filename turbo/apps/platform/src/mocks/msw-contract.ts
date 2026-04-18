@@ -84,12 +84,7 @@ export function mockApi<R extends AppRoute>(
     if (route.method !== "GET") {
       const text = await request.clone().text();
       if (text.length > 0) {
-        try {
-          body = JSON.parse(text) as InferBody<R>;
-        } catch {
-          // Non-JSON bodies fall through as undefined; handler can read
-          // `request` directly if it needs the raw payload.
-        }
+        body = JSON.parse(text) as InferBody<R>;
       }
     }
 

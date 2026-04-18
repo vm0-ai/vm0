@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, expectTypeOf } from "vitest";
+import type { ServerInferResponseBody } from "@ts-rest/core";
 import {
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
@@ -114,33 +115,36 @@ describe("mockApi contract helper", () => {
   });
 
   it("enforces response body shape at compile time", () => {
-    mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
-      // @ts-expect-error — `wrongField` is not part of the 200 response schema
-      return respond(200, { wrongField: "bad" });
-    });
+    // 200 body must be the full connector list shape — wrongField is not in it
+    expectTypeOf<{ wrongField: string }>().not.toExtend<
+      ServerInferResponseBody<(typeof zeroConnectorsMainContract)["list"], 200>
+    >();
 
-    mockApi(zeroConnectorsByTypeContract.delete, ({ respond }) => {
-      // @ts-expect-error — 204 in this contract is declared as noBody
-      return respond(204, { anything: "forbidden" });
-    });
+    // 204 in this contract is declared as noBody
+    expectTypeOf<
+      ServerInferResponseBody<
+        (typeof zeroConnectorsByTypeContract)["delete"],
+        204
+      >
+    >().toEqualTypeOf<undefined>();
 
-    mockApi(zeroConnectorsByTypeContract.delete, ({ respond }) => {
-      // @ts-expect-error — 500 is not declared on this contract
-      return respond(500, { error: { message: "x", code: "x" } });
-    });
+    // 500 is not declared on this contract
+    expectTypeOf<500>().not.toExtend<
+      keyof (typeof zeroConnectorsByTypeContract)["delete"]["responses"] &
+        number
+    >();
   });
 
   it("enforces request body + query shape at compile time", () => {
     mockApi(zeroFeatureSwitchesContract.update, ({ body, respond }) => {
-      // body.switches is typed; reading an unrelated field should fail.
-      // @ts-expect-error — `somethingElse` is not part of the request body schema
-      void body.somethingElse;
+      // body.switches is typed; somethingElse must not be present
+      expectTypeOf(body).not.toExtend<{ somethingElse: unknown }>();
       return respond(200, { switches: body.switches });
     });
 
     mockApi(zeroIntegrationsSlackContract.disconnect, ({ query, respond }) => {
-      // @ts-expect-error — `unknownParam` is not declared in the query schema
-      void query.unknownParam;
+      // unknownParam must not be present in the typed query
+      expectTypeOf(query).not.toExtend<{ unknownParam: unknown }>();
       return respond(200, { ok: true });
     });
   });
