@@ -10,10 +10,7 @@ import { IconMenu2, IconUserPlus, IconVolume2 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
-import {
-  currentChatAgent$,
-  currentChatAgentId$,
-} from "../../signals/agent-chat.ts";
+import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
@@ -23,7 +20,6 @@ import {
   setSidebarExpanded$,
   isChatRoute,
 } from "../../signals/zero-page/zero-nav.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
@@ -50,6 +46,10 @@ import {
 } from "../../signals/voice-chat/voice-chat-session.ts";
 import { StatusBadge } from "../voice-chat/voice-chat-page.tsx";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
+import {
+  InstallBanner,
+  IosInstallModal,
+} from "../pwa-install/install-banner.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -69,9 +69,7 @@ function AgentAvatarInTopBar() {
 }
 
 function MobileTopBar() {
-  const navigateTo = useSet(detachedNavigateTo$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const agentId = useLastResolved(currentChatAgentId$);
 
   const breadcrumbLoadable = useLastLoadable(mobileBreadcrumb$);
   const breadcrumb =
@@ -85,8 +83,6 @@ function MobileTopBar() {
   const openManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
-  const mobileChatListEnabled =
-    features?.[FeatureSwitchKey.MobileChatListPage] ?? false;
   const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
@@ -96,25 +92,13 @@ function MobileTopBar() {
   const showInvite = isChatRoute(activeId) && isAdmin;
   const showVoiceChatStatus = activeId === "voiceChat" && vcStatus !== "idle";
 
-  const handleMenuClick = () => {
-    if (mobileChatListEnabled) {
-      if (agentId) {
-        navigateTo("/chats", {
-          searchParams: new URLSearchParams({ agentId }),
-        });
-      } else {
-        navigateTo("/chats");
-      }
-    } else {
-      setExpanded(true);
-    }
-  };
-
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       <button
         type="button"
-        onClick={handleMenuClick}
+        onClick={() => {
+          setExpanded(true);
+        }}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
         aria-label="Open menu"
       >
@@ -220,6 +204,8 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         }}
       />
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
+        <InstallBanner />
+        <IosInstallModal />
         <MobileTopBar />
         {showAboutPage ? (
           <ZeroAboutPage

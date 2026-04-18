@@ -14,11 +14,10 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { pathname, search } from "../../../signals/location.ts";
+import { pathname } from "../../../signals/location.ts";
 import { setSidebarExpanded$ } from "../../../signals/zero-page/zero-nav.ts";
 
 const context = testContext();
@@ -137,15 +136,11 @@ describe("sidebar layout - invite button hidden for non-admins (SIDEBAR-D-049)",
   });
 });
 
-describe("sidebar layout - menu toggle expands sidebar when flag is off (SIDEBAR-D-050)", () => {
-  it("expands the sidebar overlay when the menu toggle button is clicked and MobileChatListPage flag is off", async () => {
+describe("sidebar layout - menu toggle expands sidebar (SIDEBAR-D-050)", () => {
+  it("expands the sidebar overlay when the menu toggle button is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    detachedSetupPage({
-      context,
-      path: "/",
-      featureSwitches: { [FeatureSwitchKey.MobileChatListPage]: false },
-    });
+    detachedSetupPage({ context, path: "/" });
 
     const menuButton = await waitFor(() => {
       return screen.getByLabelText("Open menu");
@@ -154,33 +149,6 @@ describe("sidebar layout - menu toggle expands sidebar when flag is off (SIDEBAR
 
     await waitFor(() => {
       expect(screen.getByLabelText("Sidebar overlay")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("sidebar layout - menu toggle navigates to chat list when flag is on (SIDEBAR-D-050b)", () => {
-  it("navigates to the chat list page when the menu toggle button is clicked and MobileChatListPage flag is on", async () => {
-    const user = userEvent.setup();
-    mockBaseAPIs();
-    detachedSetupPage({
-      context,
-      path: "/",
-      featureSwitches: { [FeatureSwitchKey.MobileChatListPage]: true },
-    });
-
-    const menuButton = await waitFor(() => {
-      return screen.getByLabelText("Open menu");
-    });
-    await user.click(menuButton);
-
-    await waitFor(() => {
-      expect(pathname()).toBe("/chats");
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: /Chats with/ }),
-      ).toBeInTheDocument();
     });
   });
 });
@@ -265,55 +233,6 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Members" }),
-      ).toBeInTheDocument();
-    });
-  });
-});
-
-describe("sidebar layout - menu toggle passes agent ID to chat list (SIDEBAR-D-053)", () => {
-  it("navigates to /chats with agentId query param when a chat agent is active and MobileChatListPage flag is on", async () => {
-    const user = userEvent.setup();
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: DEFAULT_AGENT_ID,
-            displayName: "My Agent",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
-    detachedSetupPage({
-      context,
-      path: "/",
-      featureSwitches: { [FeatureSwitchKey.MobileChatListPage]: true },
-    });
-
-    const menuButton = await waitFor(() => {
-      return screen.getByLabelText("Open menu");
-    });
-    await user.click(menuButton);
-
-    await waitFor(() => {
-      // Navigates to /chats with agentId search param for the default agent
-      expect(pathname()).toBe("/chats");
-      expect(new URLSearchParams(search()).get("agentId")).toBe(
-        DEFAULT_AGENT_ID,
-      );
-    });
-
-    // Wait for the chat list page to fully render after navigation
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: /Chats with/ }),
       ).toBeInTheDocument();
     });
   });

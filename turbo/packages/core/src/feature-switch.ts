@@ -197,12 +197,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.MobileChatListPage]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Navigate to /chats list page from mobile menu instead of sidebar drawer",
-    enabled: false,
-  },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",

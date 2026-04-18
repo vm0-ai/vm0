@@ -1,12 +1,12 @@
 {
-  "name": "vm0",
-  "short_name": "vm0",
-  "description": "vm0 — your AI workspace",
+  "name": "Zero",
+  "short_name": "Zero",
+  "description": "Zero — your AI workspace",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#ED4E01",
-  "theme_color": "#ED4E01",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "/icons/icon-192.png",

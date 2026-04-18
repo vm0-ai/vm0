@@ -10,6 +10,7 @@ import {
   pathParams$,
 } from "./route.ts";
 import { registerServiceWorker$ } from "../lib/push-notifications.ts";
+import { setupInstallPrompt$ } from "./pwa-install.ts";
 import { ROUTES, type RoutePath } from "./route-paths.ts";
 
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
@@ -317,6 +318,7 @@ export const bootstrap$ = command(
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
+      set(setupInstallPrompt$, signal),
       set(startSkeletonCycling$, signal),
       (async () => {
         await set(setupClerk$, signal);
