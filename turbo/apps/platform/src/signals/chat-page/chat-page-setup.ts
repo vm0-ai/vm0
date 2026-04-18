@@ -78,29 +78,16 @@ export const setupChatPage$ = command(
     await get(thread.groupedChatMessages$);
     signal.throwIfAborted();
 
-    // Wait one animation frame so React flushes the message DOM before we
-    // scroll. The list is mounted with visibility:hidden under the skeleton,
-    // so scrollHeight is already correct — we just need the commit to land.
-    await new Promise<void>((resolve, reject) => {
-      if (signal.aborted) {
-        reject(signal.reason);
-        return;
-      }
-      const onAbort = () => {
-        reject(signal.reason);
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
-      animationFrame(
-        () => {
-          signal.removeEventListener("abort", onAbort);
-          resolve();
-        },
-        { signal },
-      );
-    });
-    signal.throwIfAborted();
-    set(thread.scrollToBottom$);
-    set(thread.hideSkeleton$);
+    // The list is mounted with visibility:hidden under the skeleton so
+    // scrollHeight is already correct; wait one frame for React to commit
+    // the message DOM, then scroll and reveal in the same tick.
+    animationFrame(
+      () => {
+        set(thread.scrollToBottom$);
+        set(thread.hideSkeleton$);
+      },
+      { signal },
+    );
 
     await set(thread.loadPagedMessages$, signal);
   },
