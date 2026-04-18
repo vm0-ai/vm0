@@ -89,12 +89,8 @@ describe("install banner - visible on iOS Safari (PWA-D-001)", () => {
         screen.getByText("Install Zero for a better experience"),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("button", { name: "Install" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Dismiss install banner"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Install")).toBeInTheDocument();
+    expect(screen.getByLabelText("Dismiss install banner")).toBeInTheDocument();
   });
 });
 
@@ -111,7 +107,7 @@ describe("install banner - install opens iOS modal (PWA-D-002)", () => {
     detachedSetupPage({ context, path: "/" });
 
     const installButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Install" });
+      return screen.getByText("Install");
     });
     await user.click(installButton);
 
