@@ -4,10 +4,17 @@
  * Mock handlers for /api/zero/billing endpoints.
  */
 
-import { http, HttpResponse } from "msw";
-import type { BillingStatus } from "../../signals/zero-page/billing.ts";
+import {
+  zeroBillingStatusContract,
+  zeroBillingCheckoutContract,
+  zeroBillingPortalContract,
+  zeroBillingDowngradeContract,
+  zeroBillingAutoRechargeContract,
+  type BillingStatusResponse,
+} from "@vm0/core";
+import { mockApi } from "../msw-contract.ts";
 
-let mockBillingStatus: BillingStatus = {
+let mockBillingStatus: BillingStatusResponse = {
   tier: "free",
   credits: 100_000,
   subscriptionStatus: null,
@@ -18,7 +25,9 @@ let mockBillingStatus: BillingStatus = {
   creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
 };
 
-export function setMockBillingStatus(status: Partial<BillingStatus>): void {
+export function setMockBillingStatus(
+  status: Partial<BillingStatusResponse>,
+): void {
   mockBillingStatus = { ...mockBillingStatus, ...status };
 }
 
@@ -36,49 +45,39 @@ export function resetMockBilling(): void {
 }
 
 export const apiBillingHandlers = [
-  http.get("*/api/zero/billing/status", () => {
-    return HttpResponse.json(mockBillingStatus);
+  mockApi(zeroBillingStatusContract.get, ({ respond }) => {
+    return respond(200, mockBillingStatus);
   }),
 
-  http.post("*/api/zero/billing/checkout", async ({ request }) => {
-    const body = (await request.json()) as {
-      tier: string;
-      successUrl: string;
-      cancelUrl: string;
-    };
-    return HttpResponse.json({
+  mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+    return respond(200, {
       url: `https://checkout.stripe.com/test?tier=${body.tier}`,
     });
   }),
 
-  http.post("*/api/zero/billing/portal", () => {
-    return HttpResponse.json({
+  mockApi(zeroBillingPortalContract.create, ({ respond }) => {
+    return respond(200, {
       url: "https://billing.stripe.com/test-portal",
     });
   }),
 
-  http.post("*/api/zero/billing/downgrade", () => {
-    return HttpResponse.json({
+  mockApi(zeroBillingDowngradeContract.create, ({ respond }) => {
+    return respond(200, {
       success: true,
       effectiveDate: null,
     });
   }),
 
-  http.get("*/api/zero/billing/auto-recharge", () => {
-    return HttpResponse.json(mockBillingStatus.autoRecharge);
+  mockApi(zeroBillingAutoRechargeContract.get, ({ respond }) => {
+    return respond(200, mockBillingStatus.autoRecharge);
   }),
 
-  http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-    const body = (await request.json()) as {
-      enabled: boolean;
-      threshold?: number;
-      amount?: number;
-    };
+  mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
     mockBillingStatus.autoRecharge = {
       enabled: body.enabled,
       threshold: body.enabled ? (body.threshold ?? null) : null,
       amount: body.enabled ? (body.amount ?? null) : null,
     };
-    return HttpResponse.json(mockBillingStatus.autoRecharge);
+    return respond(200, mockBillingStatus.autoRecharge);
   }),
 ];

@@ -232,9 +232,76 @@ function ChatHeaderAction({ pageSignal }: { pageSignal: AbortSignal }) {
   );
 }
 
+function PinPill() {
+  const currentChatAgentId = useLastResolved(currentChatAgentId$);
+  const pinnedStatus = useLastResolved(currentChatAgentPinned$);
+  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const pinSaving = pinLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+  if (pinnedStatus !== false || !currentChatAgentId) {
+    return null;
+  }
+  const handlePin = () => {
+    const newPinnedIds = [...pinnedIds, currentChatAgentId];
+    detach(savePinnedIds(newPinnedIds, pageSignal), Reason.DomCallback);
+  };
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={handlePin}
+            disabled={pinSaving}
+            className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Pin to sidebar"
+          >
+            <IconPin size={12} stroke={2} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">Pin to sidebar</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function VoiceChatLauncher() {
+  const vcEnabled = useLastResolved(vcEnabled$) ?? false;
+  const navigate = useSet(detachedNavigateTo$);
+  if (!vcEnabled) {
+    return null;
+  }
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => {
+              navigate(ROUTES.voiceChat);
+            }}
+            className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+            aria-label="Start voice chat"
+          >
+            <IconMicrophone size={20} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">Voice chat</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export function AgentChatPage() {
-  const currentChatAgentId = useResolved(currentChatAgentId$);
-  const currentChatAgentDisplayName = useResolved(currentChatAgentDisplayName$);
+  const currentChatAgentId = useLastResolved(currentChatAgentId$);
+  const currentChatAgentDisplayName = useLastResolved(
+    currentChatAgentDisplayName$,
+  );
 
   const sendNewThread = useSet(sendNewThreadMessage$);
   const startNewSession = useSet(startNewZeroSession$);
@@ -278,21 +345,7 @@ export function AgentChatPage() {
 
   const suggestedPrompts = useGet(suggestedPrompts$);
   const navigate = useSet(detachedNavigateTo$);
-  const vcEnabled = useLastResolved(vcEnabled$) ?? false;
-
-  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const pinnedStatus = useLastResolved(currentChatAgentPinned$);
-  const showPinPill = pinnedStatus === false;
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
-  const pinSaving = pinLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
-
-  const handlePin = () => {
-    if (currentChatAgentId) {
-      const newPinnedIds = [...pinnedIds, currentChatAgentId];
-      detach(savePinnedIds(newPinnedIds, pageSignal), Reason.DomCallback);
-    }
-  };
 
   const handleSend = (text: string) => {
     setInput("");
@@ -344,49 +397,10 @@ export function AgentChatPage() {
                   />
                 </div>
               )}
-              {showPinPill && (
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={handlePin}
-                        disabled={pinSaving}
-                        className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                        aria-label="Pin to sidebar"
-                      >
-                        <IconPin size={12} stroke={2} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p className="text-xs">Pin to sidebar</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
+              <PinPill />
             </div>
             <div className="flex-1 min-w-0 flex items-center gap-3">
-              {vcEnabled && (
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigate(ROUTES.voiceChat);
-                        }}
-                        className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
-                        aria-label="Start voice chat"
-                      >
-                        <IconMicrophone size={20} stroke={1.5} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p className="text-xs">Voice chat</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
+              <VoiceChatLauncher />
               <h2
                 aria-label={tagline}
                 data-testid="chat-tagline"

@@ -1,4 +1,4 @@
-import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
@@ -26,7 +26,7 @@ export function SidebarUpgradeCard() {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
   const billing =
     billingLoadable.state === "hasData" ? billingLoadable.data : null;
-  const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const setTab = useSet(setActiveOrgManageTab$);

@@ -20,6 +20,8 @@ function mockTwoAgents() {
       agentId: "agent-alpha",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
+      isRead: false,
+      isArchived: false,
     },
     {
       id: "thread-beta-1",
@@ -27,6 +29,8 @@ function mockTwoAgents() {
       agentId: "agent-beta",
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
+      isRead: false,
+      isArchived: false,
     },
   ];
 

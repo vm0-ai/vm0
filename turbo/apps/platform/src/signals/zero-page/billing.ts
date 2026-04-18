@@ -6,7 +6,6 @@ import {
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
-  type BillingStatusResponse,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -16,8 +15,6 @@ import { accept } from "../../lib/accept.ts";
 // ---------------------------------------------------------------------------
 
 export type BillingTier = "free" | "pro" | "team";
-
-export type BillingStatus = BillingStatusResponse;
 
 export function apiTierToBillingTier(tier: string | undefined): BillingTier {
   if (tier === "free" || tier === "pro" || tier === "team") {

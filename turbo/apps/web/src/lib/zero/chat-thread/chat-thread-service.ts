@@ -1,5 +1,6 @@
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, isNull, sql } from "drizzle-orm";
 import { chatThreads } from "../../../db/schema/chat-thread";
+import { chatMessages } from "../../../db/schema/chat-message";
 import { zeroRuns } from "../../../db/schema/zero-run";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { notFound } from "../../shared/errors";
@@ -50,6 +51,11 @@ export async function createChatThread(
 
 /**
  * List chat threads for a user + agent compose, ordered by updatedAt desc.
+ *
+ * Joins each thread to its most recent message and returns that message's
+ * read/archive state. Threads whose last message is archived are hidden
+ * (user intent: archiving the last message dismisses the thread from the
+ * list). Threads with no messages yet are kept (last-message columns null).
  */
 export async function listChatThreads(
   userId: string,
@@ -60,20 +66,41 @@ export async function listChatThreads(
     title: string | null;
     createdAt: Date;
     updatedAt: Date;
+    lastMessageReadAt: Date | null;
+    lastMessageArchivedAt: Date | null;
   }>
 > {
+  const lastMessage = globalThis.services.db
+    .select({
+      chatThreadId: chatMessages.chatThreadId,
+      readAt: chatMessages.readAt,
+      archivedAt: chatMessages.archivedAt,
+      rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${chatMessages.chatThreadId} ORDER BY ${chatMessages.createdAt} DESC)`.as(
+        "rn",
+      ),
+    })
+    .from(chatMessages)
+    .as("last_message");
+
   const threads = await globalThis.services.db
     .select({
       id: chatThreads.id,
       title: chatThreads.title,
       createdAt: chatThreads.createdAt,
       updatedAt: chatThreads.updatedAt,
+      lastMessageReadAt: lastMessage.readAt,
+      lastMessageArchivedAt: lastMessage.archivedAt,
     })
     .from(chatThreads)
+    .leftJoin(
+      lastMessage,
+      and(eq(lastMessage.chatThreadId, chatThreads.id), eq(lastMessage.rn, 1)),
+    )
     .where(
       and(
         eq(chatThreads.userId, userId),
         eq(chatThreads.agentComposeId, agentComposeId),
+        isNull(lastMessage.archivedAt),
       ),
     )
     .orderBy(desc(chatThreads.updatedAt));

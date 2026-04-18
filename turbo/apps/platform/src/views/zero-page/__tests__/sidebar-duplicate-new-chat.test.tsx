@@ -18,6 +18,8 @@ function mockAPIs() {
     agentId: string;
     createdAt: string;
     updatedAt: string;
+    isRead: boolean;
+    isArchived: boolean;
   }[] = [];
 
   server.use(
@@ -66,6 +68,8 @@ function mockAPIs() {
         agentId: body.agentId,
         createdAt: now,
         updatedAt: now,
+        isRead: false,
+        isArchived: false,
       };
       threads.unshift(newThread);
       return HttpResponse.json(
