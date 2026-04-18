@@ -5,7 +5,6 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { currentChatThreadSignals$ } from "../../../signals/chat-page/create-chat-thread.ts";
 
 const context = testContext();
 
@@ -192,9 +191,24 @@ describe("zero chat thread page - browser-initiated scroll does not disable auto
       { role: "assistant", content: "Browser scroll test reply" },
     ]);
 
+    // Capture the ResizeObserver callback installed by createScrollSignals so
+    // we can fire it manually to simulate a content-resize event. This avoids
+    // reaching into the signal store and tests through the same code path that
+    // fires in production when the inner content grows.
+    let capturedResizeCallback: ResizeObserverCallback | null = null;
+    const originalRO = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) {
+        capturedResizeCallback = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+
     // Intercept the scroll container as it mounts and give it a non-zero
     // scrollHeight so we can distinguish a real scroll from a no-op.
-    const observer = new MutationObserver(() => {
+    const mutationObserver = new MutationObserver(() => {
       const el = document.querySelector<HTMLElement>("[data-scroll-container]");
       if (!el) {
         return;
@@ -212,7 +226,7 @@ describe("zero chat thread page - browser-initiated scroll does not disable auto
         configurable: true,
       });
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    mutationObserver.observe(document.body, { childList: true, subtree: true });
 
     detachedSetupPage({ context, path: "/chats/thread-browser-scroll" });
 
@@ -222,7 +236,8 @@ describe("zero chat thread page - browser-initiated scroll does not disable auto
       ).toBeInTheDocument();
     });
 
-    observer.disconnect();
+    mutationObserver.disconnect();
+    globalThis.ResizeObserver = originalRO;
 
     const scrollContainer = document.querySelector<HTMLElement>(
       "[data-scroll-container]",
@@ -238,12 +253,13 @@ describe("zero chat thread page - browser-initiated scroll does not disable auto
     scrollContainer!.scrollTop = 100;
     scrollContainer!.dispatchEvent(new Event("scroll"));
 
-    // Auto-scroll should NOT have been disabled. Prove it by invoking autoScroll$
-    // via the signal layer — if disabled, scrollTop would remain at 100; if
-    // enabled, autoScroll$ will snap it to scrollHeight (900).
-    const thread = context.store.get(currentChatThreadSignals$)!;
-    context.store.set(thread.autoScroll$);
-    expect(scrollContainer!.scrollTop).toBe(900);
+    // Auto-scroll should NOT have been disabled. Prove it by firing the
+    // ResizeObserver callback (the same path the browser uses when inner
+    // content grows during streaming). If disabled, scrollTop stays at 100;
+    // if enabled, the callback snaps it to scrollHeight.
+    expect(capturedResizeCallback).not.toBeNull();
+    capturedResizeCallback!([], {} as ResizeObserver);
+    expect(scrollContainer!.scrollTop).toBe(scrollContainer!.scrollHeight);
   });
 });
 
@@ -311,11 +327,15 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
     detachedSetupPage({ context, path: "/chats/thread-last-loadable" });
 
     // While the first messages fetch is pending, the page should show the
-    // skeleton (no messages yet — groupedChatMessages$ is in loading state)
+    // skeleton (no messages yet — groupedChatMessages$ is in loading state).
+    // Verify the scroll container is present but the message is not yet visible.
     await waitFor(() => {
       const scrollContainer = document.querySelector("[data-scroll-container]");
       expect(scrollContainer).not.toBeNull();
     });
+    // The message must NOT appear before the fetch resolves — if useLastLoadable
+    // were absent and the component showed data immediately, this would fail.
+    expect(screen.queryByText("Last loadable message")).toBeNull();
 
     // Resolve the first (deferred) fetch with real messages
     resolveMessages();
