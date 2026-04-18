@@ -1702,7 +1702,7 @@
         ],
         "integrations": [
           {
-            "description": "StrapiインスタンスへのOAuth接続。Zeroがロケールをまたいでエントリを作成・更新するには content-manager 権限が必要です。"
+            "description": "StrapiインスタンスへのAPIトークン接続。Zeroがロケールをまたいでエントリを作成・更新するには content-manager 権限が必要です。"
           },
           {
             "description": "任意。Notionをコンテンツ計画の拠点として活用 — ブリーフ、コンテンツカレンダー、またはZeroが草稿前に参照するソース素材として使えます。"

@@ -1784,7 +1784,7 @@
         ],
         "integrations": [
           {
-            "description": "OAuth connection to your Strapi instance. Zero needs content-manager permissions to create and update entries across locales."
+            "description": "API token connection to your Strapi instance. Zero needs content-manager permissions to create and update entries across locales."
           },
           {
             "description": "Optional. Use Notion as your content planning hub — brief, content calendar, or source material that Zero reads before drafting."

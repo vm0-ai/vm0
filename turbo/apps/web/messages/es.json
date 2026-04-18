@@ -3085,6 +3085,88 @@
           "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
           "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
         ]
+      },
+      "multilingual-cms-publishing": {
+        "title": "Publica contenido multilingüe en Strapi desde un solo prompt de Zero",
+        "description": "Dile a Zero qué escribir. Zero redacta tu contenido en inglés, chino y japonés — adaptado por idioma, no solo traducido — y sube los tres a Strapi como borradores de una sola vez.",
+        "timeSaved": "~60 min ahorrados",
+        "headings": {
+          "scenario": "Por qué publicar en CMS multilingüe consume toda tu tarde",
+          "prompt": "Cómo pedirle a Zero que cree y publique contenido multilingüe",
+          "steps": "Cómo Zero escribe, localiza y sincroniza contenido con Strapi",
+          "nextActions": "Programar publicaciones recurrentes, procesar un calendario de contenido o localizar contenido existente",
+          "integrations": "Integraciones requeridas: Strapi y Notion",
+          "tips": "Mejores prácticas para publicación multilingüe asistida por IA"
+        },
+        "scenario": "Tu producto acaba de lanzar una nueva función. Necesita un artículo en tres idiomas — inglés para el sitio global, chino para el mercado asiático, japonés para el blog de Japón. Normalmente eso significa: escribir la versión en inglés, abrir una herramienta de traducción, copiar y pegar en Strapi para cada idioma, corregir el formato, verificar que no falten campos. Cuarenta y cinco minutos como mínimo, solo para una publicación. Le das a Zero los puntos clave y tus idiomas objetivo. Listo.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero crea un anuncio de producto para nuestra nueva función de Aislamiento de Permisos. Puntos clave: los agentes solo pueden acceder a herramientas autorizadas por su propietario, sin filtración de tokens entre agentes, aislamiento de nivel empresarial. Publica en Strapi en inglés, chino simplificado y japonés como borradores."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero escribe un anuncio corto para Aislamiento de Permisos y publícalo en Strapi en inglés, chino y japonés."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada vez que enviemos un release a producción, obtén las notas de lanzamiento de GitHub y publica un anuncio localizado en Strapi en inglés, chino y japonés."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero crea un anuncio de producto para Aislamiento de Permisos — los agentes solo acceden a herramientas autorizadas, sin filtración de tokens entre agentes. Publica en Strapi en inglés, chino y japonés como borradores."
+          },
+          {
+            "name": "Zero",
+            "text": "Listo. Entrada #42 creada en Strapi con 3 idiomas:\n• en — \"Introducing Permission Isolation\"\n• zh-Hans — \"权限隔离正式上线\"\n• ja — \"権限の分離機能リリース\"\n\nTodos como borrador. Revisar: cms.vm0.ai/admin/content-manager/use-cases/42"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero escribe la versión maestra en inglés",
+            "description": "Zero toma tus puntos clave y redacta un anuncio estructurado: título, meta descripción y cuerpo del texto. Sigue el tono de tu marca y formatea el contenido para coincidir con el esquema de tu colección en Strapi."
+          },
+          {
+            "title": "Zero localiza por mercado",
+            "description": "Zero no solo traduce. Adapta cada versión al registro cultural del mercado objetivo — estructura formal para japonés, directo e informativo para chino, conversacional para inglés — para que cada publicación se lea como contenido nativo, no como una traducción."
+          },
+          {
+            "title": "Zero sincroniza todos los idiomas con Strapi",
+            "description": "Zero llama a la API REST de Strapi, crea la entrada maestra y luego publica cada localización en secuencia. Las tres quedan como borradores con etiquetas de idioma correctas y mapeo de campos. Recibes una confirmación y un enlace directo para revisar en el admin de Strapi."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Automatiza tus notas de lanzamiento",
+            "description": "Conecta con GitHub y publica automáticamente en cada deploy",
+            "examplePrompt": "@Zero cada vez que se etiquete un release de GitHub en nuestro repo, escribe un anuncio localizado y publícalo en Strapi en inglés, chino y japonés."
+          },
+          {
+            "title": "Localiza contenido existente",
+            "description": "Traduce un backlog de publicaciones solo en inglés",
+            "examplePrompt": "@Zero encuentra todos los artículos de Strapi etiquetados como 'en-only' y crea localizaciones en chino y japonés para cada uno. Publica como borradores."
+          },
+          {
+            "title": "Procesa un calendario de contenido",
+            "description": "Planifica y publica una semana completa de publicaciones desde un documento de Notion",
+            "examplePrompt": "@Zero lee el calendario de contenido en Notion y publica cada publicación planificada en Strapi en los tres idiomas. Marca cada una como borrador."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Conexión por token API a tu instancia de Strapi. Zero necesita permisos de content-manager para crear y actualizar entradas en todos los idiomas."
+          },
+          {
+            "description": "Opcional. Usa Notion como tu centro de planificación de contenido — brief, calendario de contenido o material fuente que Zero lee antes de redactar."
+          }
+        ],
+        "tips": [
+          "Dale a Zero el nombre de la colección de Strapi y los códigos de idioma desde el principio. 'Publica en la colección de anuncios en en, zh-Hans y ja' produce resultados más limpios que instrucciones vagas.",
+          "Revisa antes de publicar. Zero crea borradores por defecto — usa el enlace del admin de Strapi que Zero devuelve para verificar cada idioma antes de publicar.",
+          "Dale contexto de marca a Zero. Pega tus guías de voz de marca o una publicación de ejemplo del idioma objetivo — la salida será notablemente más acorde a la marca."
+        ]
       }
     }
   },

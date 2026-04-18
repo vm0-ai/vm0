@@ -3085,6 +3085,88 @@
           "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
           "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
         ]
+      },
+      "multilingual-cms-publishing": {
+        "title": "Mehrsprachige Strapi-Inhalte mit einem einzigen Zero-Prompt veröffentlichen",
+        "description": "Sagen Sie Zero, was geschrieben werden soll. Zero erstellt Ihren Inhalt auf Englisch, Chinesisch und Japanisch — an jede Sprache angepasst, nicht nur übersetzt — und überträgt alle drei als Entwürfe in einem Schritt nach Strapi.",
+        "timeSaved": "~60 Min. gespart",
+        "headings": {
+          "scenario": "Warum mehrsprachige CMS-Veröffentlichung Ihren Nachmittag frisst",
+          "prompt": "So bitten Sie Zero, mehrsprachige Inhalte zu erstellen und zu veröffentlichen",
+          "steps": "Wie Zero Inhalte schreibt, lokalisiert und mit Strapi synchronisiert",
+          "nextActions": "Wiederkehrende Beiträge planen, einen Content-Kalender stapelweise abarbeiten oder bestehende Inhalte lokalisieren",
+          "integrations": "Erforderliche Integrationen: Strapi und Notion",
+          "tips": "Best Practices für KI-gestützte mehrsprachige Content-Veröffentlichung"
+        },
+        "scenario": "Ihr Produkt hat gerade ein neues Feature geliefert. Es braucht einen Artikel in drei Sprachen — Englisch für die globale Website, Chinesisch für den asiatischen Markt, Japanisch für den Japan-Blog. Normalerweise bedeutet das: die englische Version schreiben, ein Übersetzungstool öffnen, für jede Sprache in Strapi kopieren, Formatierung korrigieren, prüfen ob keine Felder fehlen. Mindestens 45 Minuten, nur für einen Beitrag. Sie geben Zero die Stichpunkte und Ihre Zielsprachen. Fertig.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero erstelle eine Produktankündigung für unser neues Permission-Isolation-Feature. Kernpunkte: Agenten können nur auf vom Eigentümer autorisierte Tools zugreifen, kein gemeinsamer Token-Leak zwischen Agenten, Enterprise-Grade-Isolation. Veröffentliche als Entwürfe in Strapi auf Englisch, vereinfachtem Chinesisch und Japanisch."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero schreibe eine kurze Ankündigung für Permission Isolation und veröffentliche sie in Strapi auf Englisch, Chinesisch und Japanisch."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jedes Mal wenn wir ein Release in Produktion liefern, ziehe die Release Notes von GitHub und veröffentliche eine lokalisierte Ankündigung in Strapi auf Englisch, Chinesisch und Japanisch."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero erstelle eine Produktankündigung für Permission Isolation — Agenten greifen nur auf autorisierte Tools zu, kein Cross-Agent-Token-Leak. Veröffentliche als Entwürfe in Strapi auf Englisch, Chinesisch und Japanisch."
+          },
+          {
+            "name": "Zero",
+            "text": "Fertig. Eintrag #42 in Strapi mit 3 Sprachen erstellt:\n• en — \"Introducing Permission Isolation\"\n• zh-Hans — \"权限隔离正式上线\"\n• ja — \"権限の分離機能リリース\"\n\nAlle als Entwurf gespeichert. Prüfen: cms.vm0.ai/admin/content-manager/use-cases/42"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero schreibt die englische Vorlage",
+            "description": "Zero nimmt Ihre Stichpunkte und erstellt eine strukturierte Ankündigung: Titel, Meta-Beschreibung und Fließtext. Es folgt Ihrem Markenton und formatiert den Inhalt passend zu Ihrem Strapi-Collection-Schema."
+          },
+          {
+            "title": "Zero lokalisiert pro Markt",
+            "description": "Zero übersetzt nicht einfach. Es passt jede Version an den kulturellen Kontext des Zielmarkts an — formelle Struktur für Japanisch, direkt und informativ für Chinesisch, gesprächig für Englisch — damit jeder Beitrag wie nativer Inhalt wirkt, nicht wie eine Übersetzung."
+          },
+          {
+            "title": "Zero synchronisiert alle Sprachen mit Strapi",
+            "description": "Zero ruft die Strapi REST API auf, erstellt den Haupteintrag und postet dann jede Lokalisierung der Reihe nach. Alle drei landen als Entwürfe mit korrekten Sprach-Tags und Feld-Zuordnungen. Sie erhalten eine Bestätigung und einen direkten Link zur Überprüfung im Strapi-Admin."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Release Notes automatisieren",
+            "description": "Mit GitHub verbinden und bei jedem Deploy automatisch veröffentlichen",
+            "examplePrompt": "@Zero immer wenn ein GitHub-Release in unserem Repo getaggt wird, schreibe eine lokalisierte Ankündigung und veröffentliche sie in Strapi auf Englisch, Chinesisch und Japanisch."
+          },
+          {
+            "title": "Bestehende Inhalte lokalisieren",
+            "description": "Einen Rückstand nur-englischer Beiträge übersetzen",
+            "examplePrompt": "@Zero finde alle Strapi-Artikel mit dem Tag 'en-only' und erstelle chinesische und japanische Lokalisierungen. Veröffentliche als Entwürfe."
+          },
+          {
+            "title": "Content-Kalender stapelweise abarbeiten",
+            "description": "Eine ganze Woche an Beiträgen aus einem Notion-Dokument planen und veröffentlichen",
+            "examplePrompt": "@Zero lies den Content-Kalender in Notion und veröffentliche jeden geplanten Beitrag in Strapi in allen drei Sprachen. Markiere jeden als Entwurf."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "API-Token-Verbindung zu Ihrer Strapi-Instanz. Zero benötigt Content-Manager-Berechtigungen zum Erstellen und Aktualisieren von Einträgen über Sprachen hinweg."
+          },
+          {
+            "description": "Optional. Nutzen Sie Notion als Content-Planungszentrale — Brief, Content-Kalender oder Quellmaterial, das Zero vor dem Schreiben liest."
+          }
+        ],
+        "tips": [
+          "Geben Sie Zero den Strapi-Collection-Namen und die Sprach-Codes direkt an. 'Veröffentliche in der Announcements-Collection in en, zh-Hans und ja' liefert sauberere Ergebnisse als vage Anweisungen.",
+          "Vor dem Veröffentlichen prüfen. Zero erstellt standardmäßig Entwürfe — nutzen Sie den Strapi-Admin-Link, den Zero zurückgibt, um jede Sprache vor dem Go-Live zu überprüfen.",
+          "Geben Sie Zero Markenkontext. Fügen Sie Ihre Brand-Voice-Richtlinien oder einen Beispielbeitrag aus der Zielsprache ein — die Ausgabe wird spürbar markengerechter."
+        ]
       }
     }
   },
