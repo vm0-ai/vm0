@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.253.0](https://github.com/vm0-ai/vm0/compare/app-v0.252.0...app-v0.253.0) (2026-04-18)
+
+
+### Features
+
+* persist chat scroll position across thread switches ([#9972](https://github.com/vm0-ai/vm0/issues/9972)) ([12bb1ea](https://github.com/vm0-ai/vm0/commit/12bb1ead32d511a007a4b78e78654733e1f7e2d0))
+* **platform:** swap streaming cursor spinner for dot-trail pulse ([#9978](https://github.com/vm0-ai/vm0/issues/9978)) ([eca20a6](https://github.com/vm0-ai/vm0/commit/eca20a6c350553ab4646822b193b05dd0b0b850f))
+
+
+### Bug Fixes
+
+* address p0/p1 issues found in pr [#9927](https://github.com/vm0-ai/vm0/issues/9927) review ([#9971](https://github.com/vm0-ai/vm0/issues/9971)) ([0f1a87c](https://github.com/vm0-ai/vm0/commit/0f1a87c903fb08a8b51c6c5a5fdb7dbd70d5f6b5))
+
+
+### Refactoring
+
+* **platform:** migrate api-integrations-slack-org.ts to mockapi helper ([#9977](https://github.com/vm0-ai/vm0/issues/9977)) ([c8676f6](https://github.com/vm0-ai/vm0/commit/c8676f6746188f8958e9a4e6bc05c052bbbc0f37))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.200.1
+
 ## [0.252.0](https://github.com/vm0-ai/vm0/compare/app-v0.251.0...app-v0.252.0) (2026-04-18)
 
 

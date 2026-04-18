@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.200.1](https://github.com/vm0-ai/vm0/compare/core-v8.200.0...core-v8.200.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* address p0/p1 issues found in pr [#9927](https://github.com/vm0-ai/vm0/issues/9927) review ([#9971](https://github.com/vm0-ai/vm0/issues/9971)) ([0f1a87c](https://github.com/vm0-ai/vm0/commit/0f1a87c903fb08a8b51c6c5a5fdb7dbd70d5f6b5))
+
 ## [8.200.0](https://github.com/vm0-ai/vm0/compare/core-v8.199.0...core-v8.200.0) (2026-04-18)
 
 
