@@ -228,38 +228,40 @@ describe("zero chat thread page - browser-initiated scroll does not disable auto
     });
     mutationObserver.observe(document.body, { childList: true, subtree: true });
 
-    detachedSetupPage({ context, path: "/chats/thread-browser-scroll" });
+    try {
+      detachedSetupPage({ context, path: "/chats/thread-browser-scroll" });
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Browser scroll test message"),
-      ).toBeInTheDocument();
-    });
+      await waitFor(() => {
+        expect(
+          screen.getByText("Browser scroll test message"),
+        ).toBeInTheDocument();
+      });
 
-    mutationObserver.disconnect();
-    globalThis.ResizeObserver = originalRO;
+      const scrollContainer = document.querySelector<HTMLElement>(
+        "[data-scroll-container]",
+      );
+      expect(scrollContainer).not.toBeNull();
 
-    const scrollContainer = document.querySelector<HTMLElement>(
-      "[data-scroll-container]",
-    );
-    expect(scrollContainer).not.toBeNull();
+      // Simulate a browser-initiated scrollTop decrease (no wheel/pointer/key
+      // event fires before the scroll). This mimics scroll-anchor clamping or
+      // content shrinkage — NOT a deliberate user gesture.
+      scrollContainer!.scrollTop = 400;
+      scrollContainer!.dispatchEvent(new Event("scroll"));
+      // Decrease without any user-input event:
+      scrollContainer!.scrollTop = 100;
+      scrollContainer!.dispatchEvent(new Event("scroll"));
 
-    // Simulate a browser-initiated scrollTop decrease (no wheel/pointer/key
-    // event fires before the scroll). This mimics scroll-anchor clamping or
-    // content shrinkage — NOT a deliberate user gesture.
-    scrollContainer!.scrollTop = 400;
-    scrollContainer!.dispatchEvent(new Event("scroll"));
-    // Decrease without any user-input event:
-    scrollContainer!.scrollTop = 100;
-    scrollContainer!.dispatchEvent(new Event("scroll"));
-
-    // Auto-scroll should NOT have been disabled. Prove it by firing the
-    // ResizeObserver callback (the same path the browser uses when inner
-    // content grows during streaming). If disabled, scrollTop stays at 100;
-    // if enabled, the callback snaps it to scrollHeight.
-    expect(capturedResizeCallback).not.toBeNull();
-    capturedResizeCallback!([], {} as ResizeObserver);
-    expect(scrollContainer!.scrollTop).toBe(scrollContainer!.scrollHeight);
+      // Auto-scroll should NOT have been disabled. Prove it by firing the
+      // ResizeObserver callback (the same path the browser uses when inner
+      // content grows during streaming). If disabled, scrollTop stays at 100;
+      // if enabled, the callback snaps it to scrollHeight.
+      expect(capturedResizeCallback).not.toBeNull();
+      capturedResizeCallback!([], {} as ResizeObserver);
+      expect(scrollContainer!.scrollTop).toBe(scrollContainer!.scrollHeight);
+    } finally {
+      mutationObserver.disconnect();
+      globalThis.ResizeObserver = originalRO;
+    }
   });
 });
 
