@@ -126,6 +126,7 @@ import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTwenty } from "./twenty";
+import { generate as generateTypeform } from "./typeform";
 import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateWebflow } from "./webflow";
@@ -260,6 +261,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tldv: generateTldv,
   todoist: generateTodoist,
   twenty: generateTwenty,
+  typeform: generateTypeform,
   v0: generateV0,
   vercel: generateVercel,
   webflow: generateWebflow,

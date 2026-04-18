@@ -102,6 +102,7 @@ import { supadataHandler } from "./providers/supadata-handler";
 import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
 import { twentyHandler } from "./providers/twenty-handler";
+import { typeformHandler } from "./providers/typeform-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
 import { zapierHandler } from "./providers/zapier-handler";
 import { zapsignHandler } from "./providers/zapsign-handler";
@@ -283,6 +284,7 @@ export const PROVIDER_HANDLERS: Record<
   tavily: tavilyHandler,
   tldv: tldvHandler,
   twenty: twentyHandler,
+  typeform: typeformHandler,
   youtube: youtubeHandler,
   zapier: zapierHandler,
   zapsign: zapsignHandler,

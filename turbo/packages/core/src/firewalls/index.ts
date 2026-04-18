@@ -151,6 +151,7 @@ import { testOauthFirewall } from "./test-oauth.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { twentyFirewall } from "./twenty.generated";
+import { typeformFirewall } from "./typeform.generated";
 import { v0Firewall } from "./v0.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { webflowFirewall } from "./webflow.generated";
@@ -305,6 +306,7 @@ const CONNECTOR_FIREWALLS = {
   tldv: tldvFirewall,
   todoist: todoistFirewall,
   twenty: twentyFirewall,
+  typeform: typeformFirewall,
   v0: v0Firewall,
   vercel: vercelFirewall,
   webflow: webflowFirewall,
