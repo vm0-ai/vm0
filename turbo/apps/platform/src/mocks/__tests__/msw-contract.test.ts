@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
+  zeroFeatureSwitchesContract,
+  zeroIntegrationsSlackContract,
 } from "@vm0/core";
 import { mockApi } from "../msw-contract.ts";
 import { server } from "../server.ts";
@@ -51,6 +53,63 @@ describe("mockApi contract helper", () => {
     });
   });
 
+  it("parses JSON request bodies for mutation routes", async () => {
+    let received: unknown = null;
+    server.use(
+      mockApi(zeroFeatureSwitchesContract.update, ({ body, respond }) => {
+        received = body;
+        return respond(200, { switches: body.switches });
+      }),
+    );
+
+    const response = await fetch("/api/zero/feature-switches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ switches: { newNav: true, darkMode: false } }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      switches: { newNav: true, darkMode: false },
+    });
+    expect(received).toStrictEqual({
+      switches: { newNav: true, darkMode: false },
+    });
+  });
+
+  it("exposes typed query params to the handler", async () => {
+    let seenAction: string | undefined;
+    server.use(
+      mockApi(zeroIntegrationsSlackContract.disconnect, ({ query, respond }) => {
+        seenAction = query.action;
+        return respond(200, { ok: true });
+      }),
+    );
+
+    const response = await fetch(
+      "/api/zero/integrations/slack?action=uninstall",
+      { method: "DELETE" },
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ ok: true });
+    expect(seenAction).toBe("uninstall");
+  });
+
+  it("tolerates empty request bodies on mutation routes", async () => {
+    let received: unknown = "sentinel";
+    server.use(
+      mockApi(zeroIntegrationsSlackContract.disconnect, ({ body, respond }) => {
+        received = body;
+        return respond(200, { ok: true });
+      }),
+    );
+
+    const response = await fetch("/api/zero/integrations/slack", {
+      method: "DELETE",
+    });
+    expect(response.status).toBe(200);
+    expect(received).toBeUndefined();
+  });
+
   it("enforces response body shape at compile time", () => {
     mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
       // @ts-expect-error — `wrongField` is not part of the 200 response schema
@@ -65,6 +124,21 @@ describe("mockApi contract helper", () => {
     mockApi(zeroConnectorsByTypeContract.delete, ({ respond }) => {
       // @ts-expect-error — 500 is not declared on this contract
       return respond(500, { error: { message: "x", code: "x" } });
+    });
+  });
+
+  it("enforces request body + query shape at compile time", () => {
+    mockApi(zeroFeatureSwitchesContract.update, ({ body, respond }) => {
+      // body.switches is typed; reading an unrelated field should fail.
+      // @ts-expect-error — `somethingElse` is not part of the request body schema
+      void body.somethingElse;
+      return respond(200, { switches: body.switches });
+    });
+
+    mockApi(zeroIntegrationsSlackContract.disconnect, ({ query, respond }) => {
+      // @ts-expect-error — `unknownParam` is not declared in the query schema
+      void query.unknownParam;
+      return respond(200, { ok: true });
     });
   });
 });
