@@ -62,6 +62,7 @@ const CONNECTOR_ICON_COLORFUL = {
   agentphone: true,
   ahrefs: true,
   airtable: true,
+  amplitude: true,
   anthropic: true,
   apify: true,
   asana: true,
