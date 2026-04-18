@@ -76,8 +76,16 @@ export function mockApi<R extends AppRoute>(
   };
   return register(pattern, async ({ params, request }) => {
     const url = new URL(request.url);
-    const query = Object.fromEntries(
-      url.searchParams.entries(),
+    const rawQuery = Object.fromEntries(url.searchParams.entries());
+    // Apply Zod coercion and defaults from the contract's query schema when
+    // present (e.g. `z.coerce.number().default(20)` for `limit`).
+    const querySchema = route.query as
+      | { safeParse: (v: unknown) => { success: boolean; data?: unknown } }
+      | undefined;
+    const query = (
+      querySchema && typeof querySchema.safeParse === "function"
+        ? (querySchema.safeParse(rawQuery).data ?? rawQuery)
+        : rawQuery
     ) as InferQuery<R>;
 
     let body = undefined as InferBody<R>;

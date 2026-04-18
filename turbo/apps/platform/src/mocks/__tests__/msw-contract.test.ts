@@ -1,6 +1,7 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import type { ServerInferResponseBody } from "@ts-rest/core";
 import {
+  logsListContract,
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
   zeroFeatureSwitchesContract,
@@ -133,6 +134,28 @@ describe("mockApi contract helper", () => {
       keyof (typeof zeroConnectorsByTypeContract)["delete"]["responses"] &
         number
     >();
+  });
+
+  it("applies Zod coercion and defaults to query params", async () => {
+    let seenLimit: number | undefined;
+    server.use(
+      mockApi(logsListContract.list, ({ query, respond }) => {
+        seenLimit = query.limit;
+        return respond(200, {
+          data: [],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+          filters: { statuses: [], sources: [], agents: [] },
+        });
+      }),
+    );
+
+    // No `limit` param — contract declares default(20), mockApi must apply it
+    await fetch("/api/zero/logs");
+    expect(seenLimit).toBe(20);
+
+    // String "5" must be coerced to number 5
+    await fetch("/api/zero/logs?limit=5");
+    expect(seenLimit).toBe(5);
   });
 
   it("enforces request body + query shape at compile time", () => {

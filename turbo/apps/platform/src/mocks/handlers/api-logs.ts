@@ -60,8 +60,7 @@ const mockLogDetails: LogDetail[] = [
 export const appLogsHandlers = [
   // GET /api/zero/logs - List logs with basic fields
   mockApi(logsListContract.list, ({ query, respond }) => {
-    const { cursor } = query;
-    const limit = Number(query.limit);
+    const { cursor, limit } = query;
 
     const cursorIndex = cursor
       ? mockLogDetails.findIndex((r) => r.id === cursor) + 1
