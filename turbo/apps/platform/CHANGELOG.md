@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.252.0](https://github.com/vm0-ai/vm0/compare/app-v0.251.0...app-v0.252.0) (2026-04-18)
+
+
+### Features
+
+* add chatHeaderNewButton switch to swap invite with new chat ([#9963](https://github.com/vm0-ai/vm0/issues/9963)) ([c4bfa6f](https://github.com/vm0-ai/vm0/commit/c4bfa6f011f168096f6f1540cba220de9b0c5451))
+* **platform:** open mobile sidebar via left-edge swipe in PWA mode ([#9965](https://github.com/vm0-ai/vm0/issues/9965)) ([1dacf8b](https://github.com/vm0-ai/vm0/commit/1dacf8b116c99c136fd0b43313b7f23ccf65f10c))
+
+
+### Bug Fixes
+
+* **platform:** only show auto-read toggle on chat routes ([#9962](https://github.com/vm0-ai/vm0/issues/9962)) ([2de2b56](https://github.com/vm0-ai/vm0/commit/2de2b560fa650a71014086f7ddf80ba77c287b34))
+
+
+### Refactoring
+
+* **platform:** extend mockApi with typed body/query/params ([#9707](https://github.com/vm0-ai/vm0/issues/9707) Phase 0) ([#9937](https://github.com/vm0-ai/vm0/issues/9937)) ([792bef3](https://github.com/vm0-ai/vm0/commit/792bef33a6da12f15b3a60fda873d84bf897149d))
+* **platform:** migrate api-onboarding.ts to mock api helper ([#9968](https://github.com/vm0-ai/vm0/issues/9968)) ([b5d4b62](https://github.com/vm0-ai/vm0/commit/b5d4b6292a7a1b53067329e40f4aa91e8b84e6b7))
+* **platform:** migrate api-org.ts to mockapi helper ([#9961](https://github.com/vm0-ai/vm0/issues/9961)) ([88fd284](https://github.com/vm0-ai/vm0/commit/88fd2847ef3f84f512b0fad5dd91f0cd0acd07ad))
+* **platform:** migrate api-user-preferences.ts to mockapi helper ([#9966](https://github.com/vm0-ai/vm0/issues/9966)) ([0b42d25](https://github.com/vm0-ai/vm0/commit/0b42d253bf9ab3887d0b862a4e1b44e9cabdfa52))
+
+
+### Performance Improvements
+
+* react render profiling, sidebar optimization, and schedule dialog refactor ([#9927](https://github.com/vm0-ai/vm0/issues/9927)) ([4ebe2fd](https://github.com/vm0-ai/vm0/commit/4ebe2fd87b12a1467da38ff08f1fa0de6abb3a17))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.200.0
+
 ## [0.251.0](https://github.com/vm0-ai/vm0/compare/app-v0.250.1...app-v0.251.0) (2026-04-18)
 
 

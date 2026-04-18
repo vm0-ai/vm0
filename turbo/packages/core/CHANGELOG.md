@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.200.0](https://github.com/vm0-ai/vm0/compare/core-v8.199.0...core-v8.200.0) (2026-04-18)
+
+
+### Features
+
+* add chatHeaderNewButton switch to swap invite with new chat ([#9963](https://github.com/vm0-ai/vm0/issues/9963)) ([c4bfa6f](https://github.com/vm0-ai/vm0/commit/c4bfa6f011f168096f6f1540cba220de9b0c5451))
+
+
+### Performance Improvements
+
+* react render profiling, sidebar optimization, and schedule dialog refactor ([#9927](https://github.com/vm0-ai/vm0/issues/9927)) ([4ebe2fd](https://github.com/vm0-ai/vm0/commit/4ebe2fd87b12a1467da38ff08f1fa0de6abb3a17))
+
 ## [8.199.0](https://github.com/vm0-ai/vm0/compare/core-v8.198.0...core-v8.199.0) (2026-04-18)
 
 
