@@ -89,13 +89,12 @@ async function queryAssistantEvents(
 
 /**
  * Load the prior conversation turns to feed into title generation, excluding
- * the current exchange (this run's assistant events and the matching user
- * message). Returns up to the last 10 messages (~5 rounds), oldest → newest.
+ * the current exchange (this run's user message and assistant events).
+ * Returns up to the last 10 messages (~5 rounds), oldest → newest.
  */
 async function loadPriorTitleContext(
   threadId: string,
   currentRunId: string,
-  currentPrompt: string,
 ): Promise<TitleContextMessage[]> {
   const messages = await getMessagesByThreadId(threadId);
   const prior: TitleContextMessage[] = [];
@@ -103,11 +102,6 @@ async function loadPriorTitleContext(
     if (m.runId === currentRunId) continue;
     if (m.content === null) continue;
     if (m.role !== "user" && m.role !== "assistant") continue;
-    // The send-time user message is persisted with a null runId, so the
-    // runId filter above doesn't catch it. Drop any user message whose
-    // content matches the current prompt — a duplicate in a prior round
-    // carries no extra signal for the title prompt.
-    if (m.role === "user" && m.content === currentPrompt) continue;
     prior.push({ role: m.role, content: m.content });
   }
   return prior.slice(-10);
@@ -143,7 +137,7 @@ async function handleCompleted(
   // Pass prior rounds in addition to the current exchange so the title stays
   // consistent across the thread instead of flipping each turn.
   try {
-    const priorRounds = await loadPriorTitleContext(threadId, runId, prompt);
+    const priorRounds = await loadPriorTitleContext(threadId, runId);
     const title = await generateChatTitle({
       currentUserMessage: prompt,
       currentAssistantReply: lastResultText ?? undefined,

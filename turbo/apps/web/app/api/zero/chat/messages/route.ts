@@ -235,12 +235,14 @@ const router = tsr.router(chatMessagesContract, {
       // Only file IDs are stored — metadata is resolved at query time from S3.
       // insertChatMessage also publishes chatThreadMessageCreated internally,
       // so the paged-messages view picks up the new row.
+      // Stamp with the runId so the callback's prior-context filter can
+      // exclude this message structurally (by runId) instead of by content.
       await insertChatMessage({
         chatThreadId: threadId,
         userId: authCtx.userId,
         role: "user",
         content: body.prompt,
-        runId: null,
+        runId: result.runId,
         attachFiles: body.attachFiles?.map((f) => {
           return f.id;
         }),
