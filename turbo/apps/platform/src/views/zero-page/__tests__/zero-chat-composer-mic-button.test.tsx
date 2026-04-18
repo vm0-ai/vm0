@@ -202,7 +202,7 @@ describe("chat-i-033: mic button recording interaction", () => {
   });
 });
 
-describe("chat-i-034: mic button transcription auto-send", () => {
+describe("chat-i-034: mic button transcription appends to draft", () => {
   beforeEach(() => {
     stubMediaDevices();
     stubMediaRecorder();
@@ -213,9 +213,9 @@ describe("chat-i-034: mic button transcription auto-send", () => {
     vi.unstubAllGlobals();
   });
 
-  it("should send transcribed text after recording stops", async () => {
+  it("should populate composer input with transcribed text without sending", async () => {
     const user = userEvent.setup();
-    const ctrl = mockChatLifecycle();
+    mockChatLifecycle();
 
     const transcribedText = "hello from voice";
     mockSttEndpoint(transcribedText);
@@ -226,30 +226,64 @@ describe("chat-i-034: mic button transcription auto-send", () => {
       featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
     });
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
     const micButton = await waitFor(() => {
       return screen.getByLabelText("Voice input");
     });
 
-    // Start recording
     await user.click(micButton);
 
-    // Wait for the stop button to appear (recording state)
     const stopButton = await waitFor(() => {
       return screen.getByLabelText("Stop recording");
     });
 
-    // Stop recording - this should trigger transcription and auto-send
     await user.click(stopButton);
 
-    // After transcription, the run should be created (Stop button appears during sending)
     await waitFor(() => {
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(textarea.value).toBe(transcribedText);
     });
 
-    ctrl.completeRun("Response to voice input");
+    // Send button is present (not replaced by Stop), meaning no auto-send happened.
+    expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+  });
+
+  it("should append transcribed text to existing draft with a space separator", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    const transcribedText = "from voice";
+    mockSttEndpoint(transcribedText);
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await user.type(textarea, "hello");
+
+    const micButton = await waitFor(() => {
+      return screen.getByLabelText("Voice input");
+    });
+
+    await user.click(micButton);
+
+    const stopButton = await waitFor(() => {
+      return screen.getByLabelText("Stop recording");
+    });
+
+    await user.click(stopButton);
+
+    await waitFor(() => {
+      expect(textarea.value).toBe(`hello ${transcribedText}`);
+    });
   });
 });
