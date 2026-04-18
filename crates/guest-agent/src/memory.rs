@@ -3,12 +3,51 @@
 //! Creates a symlink from Claude Code's expected auto-memory directory to the
 //! vm0 memory volume mount path, enabling native auto-memory read/write.
 
-use guest_common::log_info;
+use guest_common::{log_info, log_warn};
 use std::path::Path;
 
+use crate::artifact;
 use crate::env;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+
+/// Snapshot of the memory mount's content at boot, used by the checkpoint
+/// step to detect whether the CLI modified memory during the run. `None`
+/// means memory is not configured or the mount doesn't exist — in both cases
+/// the checkpoint step falls through to the normal path. Propagated
+/// explicitly from `main::execute` into `checkpoint::create_checkpoint` to
+/// avoid process-wide mutable state.
+pub type MemoryBootFingerprint = Option<[u8; 32]>;
+
+/// Capture the memory mount's fingerprint right now. Must be called during
+/// init, before the CLI can modify the mount. Returns `None` when memory
+/// isn't configured or the mount doesn't exist — in either case the
+/// checkpoint step's `has_memory` / `mount exists` early-returns fire, so
+/// the captured value would go unused.
+///
+/// The walk + per-file SHA-256 is offloaded to `spawn_blocking` because it
+/// can take tens to hundreds of ms for large memory directories and would
+/// otherwise block a runtime worker thread.
+pub async fn capture_boot_fingerprint() -> MemoryBootFingerprint {
+    if env::memory_driver().is_empty() || env::memory_name().is_empty() {
+        return None;
+    }
+    let mount = env::memory_mount_path();
+    if mount.is_empty() || !Path::new(mount).exists() {
+        return None;
+    }
+    let mount = mount.to_string();
+    match tokio::task::spawn_blocking(move || artifact::compute_directory_fingerprint(&mount)).await
+    {
+        Ok(fp) => Some(fp),
+        Err(e) => {
+            // spawn_blocking only returns Err on panic. Log so a silent
+            // loss of the skip optimization is observable in production.
+            log_warn!(LOG_TAG, "memory boot fingerprint capture failed: {e}");
+            None
+        }
+    }
+}
 
 /// Compute Claude Code's project directory name from a working directory path.
 ///
