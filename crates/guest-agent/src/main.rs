@@ -190,18 +190,34 @@ async fn execute(
         log_info!(LOG_TAG, "✗ Execution failed ({}s)", cli_elapsed.as_secs());
     }
 
-    // Checkpoint on success (skip when no API — local/test mode). Run the
-    // final telemetry upload in parallel with checkpoint: they share no state
-    // and target independent APIs, so serializing just inflates guest-exit
-    // latency by the telemetry upload duration (~1s). The failure / no-API
-    // branches run telemetry serially since there's no checkpoint to overlap.
+    // Checkpoint on success (skip when no API — local/test mode). The final
+    // telemetry upload runs in two phases to keep the operator-visible log
+    // output identical to the pre-parallelization sequence while still
+    // overlapping the ~1s upload with checkpoint:
+    //   1. A silent first pass inside `tokio::join!` drains the pre-checkpoint
+    //      sandbox_ops under cover of `checkpoint::create_checkpoint` — no
+    //      log banner, no error log, no `record_sandbox_op`. On failure,
+    //      position tracking doesn't advance so the catch-up re-reads the
+    //      same delta.
+    //   2. After checkpoint completes, `final_telemetry` runs serially as
+    //      the pre-parallelization "cleanup" step — it emits the `▷ Cleanup`
+    //      lifecycle banner, the `"Performing final telemetry upload..."`
+    //      log inside `final_upload`, the failure log on error, and records
+    //      the `final_telemetry_upload` sandbox op.
+    // The catch-up step also captures records checkpoint wrote after the
+    // parallel pass snapshotted the file (`session_id_read`, VAS snapshot
+    // timings, `checkpoint_total`, etc) — `telemetry_loop` breaks on
+    // shutdown without a final flush, so without this serial pass those
+    // records would never reach the server.
     if cli_exit_code == 0 && exit_code == 0 && env::has_api() {
         log_info!(LOG_TAG, "claude-code completed successfully");
 
-        log_info!(LOG_TAG, "▷ Checkpoint + Cleanup");
+        log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
-        let (cp_result, ()) =
-            tokio::join!(checkpoint::create_checkpoint(), final_telemetry(masker));
+        let (cp_result, _) = tokio::join!(
+            checkpoint::create_checkpoint(),
+            telemetry::final_upload_silent(masker),
+        );
         match cp_result {
             Ok(()) => {
                 log_info!(
@@ -223,14 +239,8 @@ async fn execute(
             }
         }
 
-        // Catch-up upload: the parallel pass above read the sandbox_ops file
-        // before checkpoint finished writing its sub-op records (`session_id_read`,
-        // VAS snapshot timings, `checkpoint_total`, etc). `telemetry_loop` breaks
-        // on shutdown without a final flush, so without this second pass those
-        // records would never reach the server. The delta here is small (~10
-        // records) so this adds ~300 ms to the critical path instead of the full
-        // ~1 s we avoided by parallelizing.
-        let _ = telemetry::final_upload(masker).await;
+        log_info!(LOG_TAG, "▷ Cleanup");
+        final_telemetry(masker).await;
     } else {
         if cli_exit_code == 0 && exit_code == 0 {
             log_info!(LOG_TAG, "claude-code completed successfully");

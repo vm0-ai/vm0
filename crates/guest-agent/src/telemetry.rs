@@ -149,6 +149,19 @@ pub async fn final_upload(masker: &SecretMasker) -> Result<(), AgentError> {
     upload_telemetry(masker).await
 }
 
+/// Same as [`final_upload`] but without the log banner or error log.
+/// Used by the parallel-with-checkpoint first pass in `main.rs` so the
+/// operator-visible log output stays identical to the pre-parallelization
+/// sequence: only the post-`▷ Cleanup` catch-up emits the banner, and
+/// a first-pass failure is silently deferred to the catch-up (which reads
+/// the same unchanged file position and re-uploads the delta).
+pub async fn final_upload_silent(masker: &SecretMasker) -> Result<(), AgentError> {
+    if !env::has_api() {
+        return Ok(());
+    }
+    upload_telemetry(masker).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
