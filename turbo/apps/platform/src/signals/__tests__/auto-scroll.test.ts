@@ -166,3 +166,133 @@ describe("createScrollSignals - scrollToBottom$ unconditional", () => {
     expect(container.scrollTop).toBe(1000);
   });
 });
+
+// VC-SCROLL-006: scroll position is persisted by id across container re-binds
+describe("createScrollSignals - scroll position persistence", () => {
+  function mountContainer(id: string) {
+    const container = document.createElement("div");
+    container.dataset.testId = id;
+    const inner = document.createElement("div");
+    container.appendChild(inner);
+    document.body.appendChild(container);
+
+    Object.defineProperty(container, "scrollHeight", {
+      get: () => {
+        return 1000;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      get: () => {
+        return 300;
+      },
+      configurable: true,
+    });
+    return container;
+  }
+
+  it("restores saved position on first scrollToBottom$ when id matches (VC-SCROLL-006)", () => {
+    const threadId = `thread-${Math.random().toString(36).slice(2)}`;
+
+    // First mount: user scrolls up to a non-bottom position.
+    const first = mountContainer(threadId);
+    {
+      const { setScrollContainer$ } = createScrollSignals(threadId);
+      context.store.set(setScrollContainer$, first);
+
+      first.scrollTop = 700;
+      first.dispatchEvent(new Event("scroll"));
+      first.dispatchEvent(new Event("wheel"));
+      first.scrollTop = 250;
+      first.dispatchEvent(new Event("scroll"));
+    }
+
+    // Second mount (simulates switching away and back): the first
+    // scrollToBottom$ call should restore 250 instead of going to 1000.
+    const second = mountContainer(threadId);
+    const { setScrollContainer$, scrollToBottom$ } =
+      createScrollSignals(threadId);
+    context.store.set(setScrollContainer$, second);
+    context.store.set(scrollToBottom$);
+
+    expect(second.scrollTop).toBe(250);
+  });
+
+  it("does not restore when id is omitted (VC-SCROLL-007)", () => {
+    const first = mountContainer("no-id");
+    {
+      const { setScrollContainer$ } = createScrollSignals();
+      context.store.set(setScrollContainer$, first);
+
+      first.scrollTop = 700;
+      first.dispatchEvent(new Event("scroll"));
+      first.dispatchEvent(new Event("wheel"));
+      first.scrollTop = 250;
+      first.dispatchEvent(new Event("scroll"));
+    }
+
+    const second = mountContainer("no-id");
+    const { setScrollContainer$, scrollToBottom$ } = createScrollSignals();
+    context.store.set(setScrollContainer$, second);
+    context.store.set(scrollToBottom$);
+
+    expect(second.scrollTop).toBe(1000);
+  });
+
+  it("clears cached position when user scrolls back to bottom (VC-SCROLL-008)", () => {
+    const threadId = `thread-${Math.random().toString(36).slice(2)}`;
+
+    const first = mountContainer(threadId);
+    {
+      const { setScrollContainer$ } = createScrollSignals(threadId);
+      context.store.set(setScrollContainer$, first);
+
+      // User scrolls up, then back down to bottom.
+      first.scrollTop = 700;
+      first.dispatchEvent(new Event("scroll"));
+      first.dispatchEvent(new Event("wheel"));
+      first.scrollTop = 250;
+      first.dispatchEvent(new Event("scroll"));
+      first.scrollTop = 695;
+      first.dispatchEvent(new Event("scroll"));
+    }
+
+    // Because the cache was cleared, the next mount should go to bottom.
+    const second = mountContainer(threadId);
+    const { setScrollContainer$, scrollToBottom$ } =
+      createScrollSignals(threadId);
+    context.store.set(setScrollContainer$, second);
+    context.store.set(scrollToBottom$);
+
+    expect(second.scrollTop).toBe(1000);
+  });
+
+  it("second scrollToBottom$ call after restore goes to bottom (VC-SCROLL-009)", () => {
+    const threadId = `thread-${Math.random().toString(36).slice(2)}`;
+
+    const first = mountContainer(threadId);
+    {
+      const { setScrollContainer$ } = createScrollSignals(threadId);
+      context.store.set(setScrollContainer$, first);
+
+      first.scrollTop = 700;
+      first.dispatchEvent(new Event("scroll"));
+      first.dispatchEvent(new Event("wheel"));
+      first.scrollTop = 250;
+      first.dispatchEvent(new Event("scroll"));
+    }
+
+    const second = mountContainer(threadId);
+    const { setScrollContainer$, scrollToBottom$ } =
+      createScrollSignals(threadId);
+    context.store.set(setScrollContainer$, second);
+
+    // First call restores.
+    context.store.set(scrollToBottom$);
+    expect(second.scrollTop).toBe(250);
+
+    // Second call (e.g. user sent a new message) scrolls all the way down.
+    context.store.set(scrollToBottom$);
+    expect(second.scrollTop).toBe(1000);
+  });
+});
