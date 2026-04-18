@@ -25,6 +25,9 @@ function cell<T>(initial: T) {
 export const { get$: createDialogOpen$, set$: setCreateDialogOpen$ } =
   cell(false);
 
+export const { get$: creatingOrgSchedule$, set$: setCreatingOrgSchedule$ } =
+  cell(false);
+
 export const { get$: pageTogglingIds$, set$: setPageTogglingIds$ } = cell<
   Set<string>
 >(new Set());

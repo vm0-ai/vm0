@@ -30,7 +30,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@vm0/ui";
-import { detach, Reason, bestEffort } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   ScheduleFormDialog,
@@ -365,24 +365,22 @@ export function ZeroScheduleCard({
   const handleCreateSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
-        bestEffort(
-          onSave({
-            prompt: values.prompt.trim(),
-            description: values.description.trim() || undefined,
-            freq: values.freq,
-            date: values.date,
-            hour: values.hour,
-            minute: values.minute,
-            timezone: values.timezone,
-            intervalSeconds: values.loopMinutes * 60,
-            dayOfWeek:
-              values.freq === "every_week" ? values.dayOfWeek : undefined,
-            dayOfMonth:
-              values.freq === "every_month" ? values.dayOfMonth : undefined,
-          }).then(() => {
-            detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
-          }),
-        ),
+        onSave({
+          prompt: values.prompt.trim(),
+          description: values.description.trim() || undefined,
+          freq: values.freq,
+          date: values.date,
+          hour: values.hour,
+          minute: values.minute,
+          timezone: values.timezone,
+          intervalSeconds: values.loopMinutes * 60,
+          dayOfWeek:
+            values.freq === "every_week" ? values.dayOfWeek : undefined,
+          dayOfMonth:
+            values.freq === "every_month" ? values.dayOfMonth : undefined,
+        }).then(() => {
+          return setAddScheduleOpen(false, signal);
+        }),
         Reason.DomCallback,
       );
       return;
@@ -413,25 +411,23 @@ export function ZeroScheduleCard({
   const handleEditSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
-        bestEffort(
-          onSave({
-            prompt: values.prompt.trim(),
-            description: values.description.trim() || undefined,
-            freq: values.freq,
-            date: values.date,
-            hour: values.hour,
-            minute: values.minute,
-            timezone: values.timezone,
-            intervalSeconds: values.loopMinutes * 60,
-            dayOfWeek:
-              values.freq === "every_week" ? values.dayOfWeek : undefined,
-            dayOfMonth:
-              values.freq === "every_month" ? values.dayOfMonth : undefined,
-            editName: editingEntry?.name,
-          }).then(() => {
-            detach(setEditingScheduleId(null, signal), Reason.DomCallback);
-          }),
-        ),
+        onSave({
+          prompt: values.prompt.trim(),
+          description: values.description.trim() || undefined,
+          freq: values.freq,
+          date: values.date,
+          hour: values.hour,
+          minute: values.minute,
+          timezone: values.timezone,
+          intervalSeconds: values.loopMinutes * 60,
+          dayOfWeek:
+            values.freq === "every_week" ? values.dayOfWeek : undefined,
+          dayOfMonth:
+            values.freq === "every_month" ? values.dayOfMonth : undefined,
+          editName: editingEntry?.name,
+        }).then(() => {
+          return setEditingScheduleId(null, signal);
+        }),
         Reason.DomCallback,
       );
       return;

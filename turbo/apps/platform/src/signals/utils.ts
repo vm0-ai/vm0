@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { logger } from "./log.ts";
+import { pageSignalHolder$ } from "./page-signal.ts";
 
 const L = logger("Promise");
 
@@ -259,6 +260,26 @@ export function onRef<T extends HTMLElement | SVGSVGElement>(
     return () => {
       ctrl.abort();
     };
+  });
+}
+
+/**
+ * Wrap a command so it can be fired from a DOM callback (onClick, onSave, …).
+ * The returned command:
+ * - chains onto `pageSignal$` so in-flight work is cancelled on navigation,
+ * - detaches the resulting promise with `Reason.DomCallback`,
+ * - returns `void` so it can be passed straight to JSX props via `useSet`.
+ *
+ * Use this instead of writing `detach(cmd(...), Reason.DomCallback)` inside a
+ * React handler — it lets the whole flow live in a single `command`
+ * body where `await` reads naturally.
+ */
+export function onDomCallback<TArgs extends unknown[]>(
+  command$: Command<void | Promise<void>, [...TArgs, AbortSignal]>,
+): Command<void, TArgs> {
+  return command(({ get, set }, ...args: TArgs) => {
+    const signal = get(pageSignalHolder$).signal;
+    detach(set(command$, ...args, signal), Reason.DomCallback, "onDomCallback");
   });
 }
 

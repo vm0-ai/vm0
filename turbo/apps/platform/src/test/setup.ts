@@ -34,6 +34,11 @@ beforeEach(() => {
   // - "not wrapped in act(...)": unavoidable with our async bootstrap pattern
   //   (render() runs inside act, then route setup updates page$ outside act).
   //   Silently ignored.
+  // - "Detached promise rejected": detach()'s bookkeeping log for non-abort
+  //   rejections from DOM-callback flows. The UI surfaces these via toast;
+  //   the log is for dev-console visibility, not a test assertion. Silently
+  //   ignored so tests can assert on toast/dialog behaviour without needing
+  //   to swallow the same rejection at the call site.
   // - Everything else: thrown so real problems surface early.
   vi.spyOn(console, "error").mockImplementation((...message: unknown[]) => {
     const str = message.map(String).join(" ");
@@ -41,6 +46,9 @@ beforeEach(() => {
       return;
     }
     if (str.includes("not wrapped in act(")) {
+      return;
+    }
+    if (str.includes("Detached promise rejected")) {
       return;
     }
     const err = message[0];

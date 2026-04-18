@@ -42,10 +42,7 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { WEEKDAY_LABELS, type ScheduleEntry } from "./zero-schedule-card";
-import {
-  ScheduleFormDialog,
-  type ScheduleFormValues,
-} from "./schedule-dialog.tsx";
+import { ScheduleFormDialog } from "./schedule-dialog.tsx";
 import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
 import { ScheduleListView } from "./schedule-list-view.tsx";
 import { agents$ } from "../../signals/agent.ts";
@@ -53,11 +50,10 @@ import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
-import { detach, Reason, bestEffort } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
-  saveOrgSchedule$,
   toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
   runScheduleNow$,
@@ -68,6 +64,7 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   createDialogOpen$,
   setCreateDialogOpen$,
+  creatingOrgSchedule$,
   pageTogglingIds$,
   setPageTogglingIds$,
   pageRunningIds$,
@@ -75,6 +72,7 @@ import {
   pagePendingDelete$,
   setPagePendingDelete$,
 } from "../../signals/schedule-page/schedule-page-ui.ts";
+import { createOrgScheduleFromForm$ } from "../../signals/schedule-page/schedule-save-flow.ts";
 import {
   scheduleListTab$,
   setScheduleListTab$,
@@ -513,8 +511,8 @@ export function ZeroSchedulePage() {
   const pendingDelete = useGet(pagePendingDelete$);
   const setPendingDelete = useSet(setPagePendingDelete$);
 
-  const [saveLoadable, saveScheduleTracked] = useLoadableSet(saveOrgSchedule$);
-  const saving = saveLoadable.state === "loading";
+  const saving = useGet(creatingOrgSchedule$);
+  const onCreateSave = useSet(createOrgScheduleFromForm$);
 
   const combinedSchedule = buildCombinedSchedule(entries);
 
@@ -530,39 +528,6 @@ export function ZeroSchedulePage() {
     navigate("/schedules/:scheduleId", {
       pathParams: { scheduleId: entry.id },
     });
-  };
-
-  const handleCreateSave = (values: ScheduleFormValues) => {
-    detach(
-      bestEffort(
-        saveScheduleTracked(
-          {
-            prompt: values.prompt.trim(),
-            description: values.description.trim() || undefined,
-            freq: values.freq,
-            date: values.date,
-            hour: values.hour,
-            minute: values.minute,
-            timezone: values.timezone,
-            intervalSeconds: values.loopMinutes * 60,
-            agentId: values.agentId,
-            ...(values.freq === "every_week"
-              ? { dayOfWeek: values.dayOfWeek }
-              : {}),
-            ...(values.freq === "every_month"
-              ? { dayOfMonth: values.dayOfMonth }
-              : {}),
-          },
-          pageSignal,
-        ).then((scheduleId) => {
-          setCreateOpen(false);
-          navigate("/schedules/:scheduleId", {
-            pathParams: { scheduleId: scheduleId },
-          });
-        }),
-      ),
-      Reason.DomCallback,
-    );
   };
 
   const handleToggle = (entry: CombinedEntry, enabled: boolean) => {
@@ -743,7 +708,7 @@ export function ZeroSchedulePage() {
         onClose={() => {
           return setCreateOpen(false);
         }}
-        onSave={handleCreateSave}
+        onSave={onCreateSave}
         saving={saving}
         mode="create"
         agents={agents}
