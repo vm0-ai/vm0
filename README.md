@@ -10,15 +10,17 @@
     <a href="https://codecov.io/gh/vm0-ai/vm0"><img src="https://codecov.io/gh/vm0-ai/vm0/branch/main/graph/badge.svg?token=UZSMUBBOUC"/></a>
     <a href="https://discord.gg/WMpAmHFfp6"><img src="https://img.shields.io/discord/1234567890?label=Discord&logo=discord" alt="Discord" /></a>
   </p>
-  <a href="https://trendshift.io/repositories/19748" target="_blank"><img src="https://trendshift.io/api/badge/repositories/19748" alt="vm0-ai%2Fvm0 | Trendshift" width="250" height="55"/></a>
 </h2>
+
+<p align="center">
+  <a href="https://trendshift.io/repositories/19748" target="_blank"><img src="https://trendshift.io/api/badge/repositories/19748" alt="vm0-ai%2Fvm0 | Trendshift" width="250" height="55"/></a>
+</p>
 
 <p align="center">
   <b>Zero connects to 100+ tools and does the work — reports, triage, outreach, research. In Slack or on the web.</b>
 </p>
 
 <p align="center">
-  <a href="https://vm0.ai/sign-up"><b>Get started →</b></a> ·
   <a href="https://vm0.ai/en/use-cases"><b>Use cases</b></a> ·
   <a href="https://vm0.ai/en/blog"><b>Blog</b></a> ·
   <a href="https://discord.gg/WMpAmHFfp6"><b>Discord</b></a>
@@ -86,16 +88,6 @@ Slack · GitHub · Gmail · Google Calendar · Google Sheets · Notion · Linear
 - **Open source** — This repo. Inspect, fork, or self-host.
 
 Read our [Security overview](https://vm0.ai/en/security).
-
----
-
-## Get started
-
-<p align="center">
-  <a href="https://vm0.ai/sign-up"><b>Sign up at vm0.ai →</b></a>
-</p>
-
-From first message to working AI teammate in under 5 minutes. No credit card required.
 
 ---
 
