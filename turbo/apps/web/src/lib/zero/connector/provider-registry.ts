@@ -73,6 +73,7 @@ import { intercomHandler } from "./providers/intercom-handler";
 import { jamHandler } from "./providers/jam-handler";
 import { jiraHandler } from "./providers/jira-handler";
 import { jotformHandler } from "./providers/jotform-handler";
+import { klaviyoHandler } from "./providers/klaviyo-handler";
 import { kommoHandler } from "./providers/kommo-handler";
 import { larkHandler } from "./providers/lark-handler";
 import { lineHandler } from "./providers/line-handler";
@@ -242,6 +243,7 @@ export const PROVIDER_HANDLERS: Record<
   jam: jamHandler,
   jira: jiraHandler,
   jotform: jotformHandler,
+  klaviyo: klaviyoHandler,
   kommo: kommoHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,

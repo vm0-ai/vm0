@@ -67,6 +67,7 @@ import { generate as generateIntervalsIcu } from "./intervals-icu";
 import { generate as generateJam } from "./jam";
 import { generate as generateJira } from "./jira";
 import { generate as generateJotform } from "./jotform";
+import { generate as generateKlaviyo } from "./klaviyo";
 import { generate as generateKommo } from "./kommo";
 import { generate as generateLark } from "./lark";
 import { generate as generateLine } from "./line";
@@ -201,6 +202,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   jam: generateJam,
   jira: generateJira,
   jotform: generateJotform,
+  klaviyo: generateKlaviyo,
   kommo: generateKommo,
   lark: generateLark,
   line: generateLine,

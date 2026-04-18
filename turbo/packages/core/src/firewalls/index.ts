@@ -93,6 +93,7 @@ import { intervalsIcuFirewall } from "./intervals-icu.generated";
 import { jamFirewall } from "./jam.generated";
 import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
+import { klaviyoFirewall } from "./klaviyo.generated";
 import { kommoFirewall } from "./kommo.generated";
 import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
@@ -247,6 +248,7 @@ const CONNECTOR_FIREWALLS = {
   jam: jamFirewall,
   jira: jiraFirewall,
   jotform: jotformFirewall,
+  klaviyo: klaviyoFirewall,
   kommo: kommoFirewall,
   lark: larkFirewall,
   line: lineFirewall,
