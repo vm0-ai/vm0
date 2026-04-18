@@ -134,7 +134,7 @@ function MobileTopBar() {
         </div>
       )}
       {!breadcrumb && <div className="flex-1" />}
-      {audioIOEnabled && (
+      {audioIOEnabled && isChatRoute(activeId) && (
         <button
           type="button"
           onClick={() => {
