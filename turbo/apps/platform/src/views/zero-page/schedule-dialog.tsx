@@ -128,8 +128,6 @@ interface ScheduleFormDialogProps {
   initialValues?: Partial<ScheduleFormValues>;
   /** When provided, renders an agent selector dropdown. */
   agents?: { id: string; displayName?: string | null }[];
-  /** Error message displayed above the footer. */
-  saveError?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -541,7 +539,6 @@ function ScheduleFormDialogInner({
   mode,
   initialValues,
   agents,
-  saveError,
   preferredTimezone,
 }: Omit<ScheduleFormDialogProps, "open"> & {
   preferredTimezone: string | null | undefined;
@@ -734,8 +731,6 @@ function ScheduleFormDialogInner({
             }}
           />
         </div>
-
-        {saveError && <p className="text-sm text-destructive">{saveError}</p>}
 
         <DialogFooter>
           <Button

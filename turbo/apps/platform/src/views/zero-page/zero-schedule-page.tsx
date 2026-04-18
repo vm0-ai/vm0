@@ -53,7 +53,7 @@ import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, bestEffort } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
@@ -515,8 +515,6 @@ export function ZeroSchedulePage() {
 
   const [saveLoadable, saveScheduleTracked] = useLoadableSet(saveOrgSchedule$);
   const saving = saveLoadable.state === "loading";
-  const saveError =
-    saveLoadable.state === "hasError" ? String(saveLoadable.error) : null;
 
   const combinedSchedule = buildCombinedSchedule(entries);
 
@@ -536,36 +534,32 @@ export function ZeroSchedulePage() {
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     detach(
-      // eslint-disable-next-line ccstate/no-abort-swallower -- known debt: useLoadableSet's setter both sets saveError state AND rethrows; the empty .then reject handler silences the rethrow so detach does not double-log a rejection the dialog already shows. Tracked for follow-up.
-      saveScheduleTracked(
-        {
-          prompt: values.prompt.trim(),
-          description: values.description.trim() || undefined,
-          freq: values.freq,
-          date: values.date,
-          hour: values.hour,
-          minute: values.minute,
-          timezone: values.timezone,
-          intervalSeconds: values.loopMinutes * 60,
-          agentId: values.agentId,
-          ...(values.freq === "every_week"
-            ? { dayOfWeek: values.dayOfWeek }
-            : {}),
-          ...(values.freq === "every_month"
-            ? { dayOfMonth: values.dayOfMonth }
-            : {}),
-        },
-        pageSignal,
-      ).then(
-        (scheduleId) => {
+      bestEffort(
+        saveScheduleTracked(
+          {
+            prompt: values.prompt.trim(),
+            description: values.description.trim() || undefined,
+            freq: values.freq,
+            date: values.date,
+            hour: values.hour,
+            minute: values.minute,
+            timezone: values.timezone,
+            intervalSeconds: values.loopMinutes * 60,
+            agentId: values.agentId,
+            ...(values.freq === "every_week"
+              ? { dayOfWeek: values.dayOfWeek }
+              : {}),
+            ...(values.freq === "every_month"
+              ? { dayOfMonth: values.dayOfMonth }
+              : {}),
+          },
+          pageSignal,
+        ).then((scheduleId) => {
           setCreateOpen(false);
           navigate("/schedules/:scheduleId", {
             pathParams: { scheduleId: scheduleId },
           });
-        },
-        (_error: unknown) => {
-          // error is already captured by useLoadableSet and displayed in the dialog via saveError
-        },
+        }),
       ),
       Reason.DomCallback,
     );
@@ -751,7 +745,6 @@ export function ZeroSchedulePage() {
         }}
         onSave={handleCreateSave}
         saving={saving}
-        saveError={saveError}
         mode="create"
         agents={agents}
         initialValues={{
