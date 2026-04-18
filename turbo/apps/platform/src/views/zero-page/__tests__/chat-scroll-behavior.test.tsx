@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { currentChatThreadSignals$ } from "../../../signals/chat-page/create-chat-thread.ts";
 
 const context = testContext();
 
@@ -237,13 +238,11 @@ describe("zero chat thread page - browser-initiated scroll does not disable auto
     scrollContainer!.scrollTop = 100;
     scrollContainer!.dispatchEvent(new Event("scroll"));
 
-    // Auto-scroll should NOT have been disabled — ResizeObserver (or a direct
-    // autoScroll$ call) should still be able to snap to the bottom.
-    // Verify by firing a synthetic resize that triggers the ResizeObserver
-    // callback path: set scrollTop back to scrollHeight directly to confirm
-    // the disabled flag is false by attempting autoScroll$ via the thread.
-    // The simplest observable check: scrollTop is not stuck at 100.
-    scrollContainer!.scrollTop = scrollContainer!.scrollHeight;
+    // Auto-scroll should NOT have been disabled. Prove it by invoking autoScroll$
+    // via the signal layer — if disabled, scrollTop would remain at 100; if
+    // enabled, autoScroll$ will snap it to scrollHeight (900).
+    const thread = context.store.get(currentChatThreadSignals$)!;
+    context.store.set(thread.autoScroll$);
     expect(scrollContainer!.scrollTop).toBe(900);
   });
 });
@@ -257,7 +256,7 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
   it("previously-loaded messages are not replaced by a skeleton when groupedChatMessages$ recomputes (CHAT-SCROLL-008)", async () => {
     // Use a deferred first response so we can verify the loading state,
     // then a fast subsequent response so messages resolve.
-    let resolveMessages = () => {};
+    let resolveMessages!: () => void;
     let firstCall = true;
     const messagesResponse = HttpResponse.json({
       messages: [
@@ -321,14 +320,9 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
     // Resolve the first (deferred) fetch with real messages
     resolveMessages();
 
-    // Messages should now appear
+    // Messages should now appear and remain visible (not replaced by skeleton
+    // or empty state) — this is the core guarantee of useLastLoadable.
     await waitFor(() => {
-      expect(screen.getByText("Last loadable message")).toBeInTheDocument();
-    });
-
-    // Verify the message remains visible (not replaced by skeleton or empty
-    // state) — this is the core guarantee of useLastLoadable.
-    await vi.waitFor(() => {
       expect(screen.getByText("Last loadable message")).toBeInTheDocument();
     });
   });

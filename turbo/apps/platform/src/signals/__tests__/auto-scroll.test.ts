@@ -132,8 +132,8 @@ describe("createScrollSignals - autoScroll$ gate", () => {
 
 // VC-SCROLL-006: browser-initiated scrollTop decrease (no user input) does NOT
 // disable auto-scroll. The scroll anchor or layout clamping can shift scrollTop
-// down without any user gesture; those shifts must be ignored so the
-// ResizeObserver can keep snapping to the bottom.
+// without any user gesture; those shifts must be ignored so that subsequent
+// autoScroll$ calls can still snap to the bottom.
 describe("createScrollSignals - browser-initiated scroll does not disable auto-scroll", () => {
   it("auto-scroll stays enabled when scrollTop decreases without a user input event (VC-SCROLL-006)", () => {
     const container = document.createElement("div");
