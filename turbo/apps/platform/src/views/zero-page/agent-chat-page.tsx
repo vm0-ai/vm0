@@ -10,6 +10,7 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   IconArrowUpRight,
@@ -239,13 +240,16 @@ export function AgentChatPage() {
   const startNewSession = useSet(startNewZeroSession$);
   const resetTalkSendSignal = useSet(resetTalkSendSignal$);
   const navigateToChatFn = useSet(navigateToChat$);
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const handleSendMessage = (message: string) => {
     if (!currentChatAgentId) {
       return;
     }
     startNewSession();
-    const talkSignal = resetTalkSendSignal();
+    // Link to rootSignal so the send is cancellable on app/test teardown,
+    // but not on page navigation (unlike pageSignal).
+    const talkSignal = resetTalkSendSignal(rootSignal);
     detach(
       sendNewThread(currentChatAgentId, message, talkSignal).then(
         (threadId) => {
