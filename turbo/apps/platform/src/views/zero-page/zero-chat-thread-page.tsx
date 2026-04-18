@@ -479,12 +479,12 @@ function InlineStreamingCursor({
       aria-hidden
       className="pointer-events-none absolute -bottom-2 left-0 flex gap-1.5 animate-in fade-in duration-200"
     >
-      {Array.from({ length: 8 }).map((_, i) => {
+      {[0, 120, 240, 360, 480, 600, 720, 840].map((delay) => {
         return (
           <span
-            key={i}
+            key={delay}
             className="zero-dot-trail-item inline-block size-1 rounded-full bg-foreground/50"
-            style={{ animationDelay: `${i * 120}ms` }}
+            style={{ animationDelay: `${delay}ms` }}
           />
         );
       })}
