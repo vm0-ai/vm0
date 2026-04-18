@@ -74,7 +74,7 @@ describe("setAblyLoop$ with mock Ably", () => {
     // and get dropped on the floor.
     await vi.waitFor(() => {
       expect(calls).toBe(1);
-      expect(hasSubscription("test-topic")).toBe(true);
+      expect(hasSubscription("test-topic")).toBeTruthy();
     });
 
     triggerAblyEvent("test-topic"); // calls === 2, returns false → loop continues
