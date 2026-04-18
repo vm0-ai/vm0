@@ -53,6 +53,48 @@ function scrollInfo(el: HTMLElement) {
   return `scrollTop=${top} scrollHeight=${height} clientHeight=${client} fromBottom=${fromBottom}`;
 }
 
+interface RestoreState {
+  pendingRestorePosition: number | null;
+  suppressNextScrollToBottom: boolean;
+}
+
+function attachUserInputListeners(
+  el: HTMLElement,
+  markUserInput: () => void,
+  onScroll: () => void,
+  signal: AbortSignal,
+) {
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (isUserScrollKey(e.key)) {
+      markUserInput();
+    }
+  };
+  el.addEventListener("scroll", onScroll, { passive: true });
+  el.addEventListener("wheel", markUserInput, { passive: true });
+  el.addEventListener("touchmove", markUserInput, { passive: true });
+  el.addEventListener("pointerdown", markUserInput, { passive: true });
+  el.addEventListener("keydown", onKeyDown, { passive: true });
+  signal.addEventListener("abort", () => {
+    el.removeEventListener("scroll", onScroll);
+    el.removeEventListener("wheel", markUserInput);
+    el.removeEventListener("touchmove", markUserInput);
+    el.removeEventListener("pointerdown", markUserInput);
+    el.removeEventListener("keydown", onKeyDown);
+  });
+}
+
+function observeContainerResize(
+  el: HTMLElement,
+  onResize: () => void,
+  signal: AbortSignal,
+) {
+  const resizeObserver = new ResizeObserver(onResize);
+  resizeObserver.observe(el.firstElementChild ?? el);
+  signal.addEventListener("abort", () => {
+    resizeObserver.disconnect();
+  });
+}
+
 /**
  * Factory that creates scroll-management signals for a scrollable container.
  *
@@ -79,13 +121,15 @@ function scrollInfo(el: HTMLElement) {
 export function createScrollSignals(id?: string) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
   const autoScrollDisabled$ = state(false);
-  // Held while ResizeObserver is still growing the container up to a saved
-  // position — set scrollTop clamps early and needs to be re-applied.
-  let pendingRestorePosition: number | null = null;
-  // True when bind-time restore happened and the caller has not yet fired
-  // its post-load scrollToBottom$. That call must be suppressed so it
-  // doesn't override the restored position.
-  let suppressNextScrollToBottom = false;
+  // `pendingRestorePosition` is held while ResizeObserver is still growing the
+  // container up to a saved position — set scrollTop clamps early and needs to
+  // be re-applied. `suppressNextScrollToBottom` is set when bind-time restore
+  // happened and the caller has not yet fired its post-load scrollToBottom$.
+  // That call must be suppressed so it doesn't override the restored position.
+  const restoreState: RestoreState = {
+    pendingRestorePosition: null,
+    suppressNextScrollToBottom: false,
+  };
 
   const setScrollContainer$ = onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
@@ -95,8 +139,8 @@ export function createScrollSignals(id?: string) {
       const saved =
         id !== undefined ? get(scrollPositionCache$).get(id) : undefined;
       if (saved !== undefined) {
-        pendingRestorePosition = saved;
-        suppressNextScrollToBottom = true;
+        restoreState.pendingRestorePosition = saved;
+        restoreState.suppressNextScrollToBottom = true;
         el.scrollTop = saved;
         set(autoScrollDisabled$, true);
         L.debug("container bound → restoring", `id=${id}`, `saved=${saved}`);
@@ -107,13 +151,7 @@ export function createScrollSignals(id?: string) {
 
       const markUserInput = () => {
         lastUserInputAt = performance.now();
-        suppressNextScrollToBottom = false;
-      };
-
-      const onKeyDown = (e: KeyboardEvent) => {
-        if (isUserScrollKey(e.key)) {
-          markUserInput();
-        }
+        restoreState.suppressNextScrollToBottom = false;
       };
 
       const onScroll = () => {
@@ -121,8 +159,8 @@ export function createScrollSignals(id?: string) {
           el.scrollHeight - el.scrollTop - el.clientHeight;
         const userRecent =
           performance.now() - lastUserInputAt < USER_INPUT_WINDOW_MS;
-        if (pendingRestorePosition !== null && userRecent) {
-          pendingRestorePosition = null;
+        if (restoreState.pendingRestorePosition !== null && userRecent) {
+          restoreState.pendingRestorePosition = null;
         }
         if (distanceFromBottom <= AT_BOTTOM_THRESHOLD) {
           const wasDisabled = get(autoScrollDisabled$);
@@ -156,41 +194,29 @@ export function createScrollSignals(id?: string) {
         lastKnownScrollTop = el.scrollTop;
       };
 
-      el.addEventListener("scroll", onScroll, { passive: true });
-      el.addEventListener("wheel", markUserInput, { passive: true });
-      el.addEventListener("touchmove", markUserInput, { passive: true });
-      el.addEventListener("pointerdown", markUserInput, { passive: true });
-      el.addEventListener("keydown", onKeyDown, { passive: true });
+      attachUserInputListeners(el, markUserInput, onScroll, signal);
 
-      const resizeObserver = new ResizeObserver(() => {
-        const disabled = get(autoScrollDisabled$);
-        L.debug("ResizeObserver fired", scrollInfo(el), `disabled=${disabled}`);
-        if (pendingRestorePosition !== null) {
-          el.scrollTop = pendingRestorePosition;
-          if (el.scrollTop >= pendingRestorePosition) {
-            pendingRestorePosition = null;
+      observeContainerResize(
+        el,
+        () => {
+          const disabled = get(autoScrollDisabled$);
+          L.debug("ResizeObserver fired", scrollInfo(el), `disabled=${disabled}`);
+          if (restoreState.pendingRestorePosition !== null) {
+            el.scrollTop = restoreState.pendingRestorePosition;
+            if (el.scrollTop >= restoreState.pendingRestorePosition) {
+              restoreState.pendingRestorePosition = null;
+            }
+            return;
           }
-          return;
-        }
-        if (!disabled) {
-          el.scrollTop = el.scrollHeight;
-        }
-      });
-      const inner = el.firstElementChild;
-      if (inner) {
-        resizeObserver.observe(inner);
-      } else {
-        resizeObserver.observe(el);
-      }
+          if (!disabled) {
+            el.scrollTop = el.scrollHeight;
+          }
+        },
+        signal,
+      );
 
       signal.addEventListener("abort", () => {
         L.debug("container unbound (abort)");
-        resizeObserver.disconnect();
-        el.removeEventListener("scroll", onScroll);
-        el.removeEventListener("wheel", markUserInput);
-        el.removeEventListener("touchmove", markUserInput);
-        el.removeEventListener("pointerdown", markUserInput);
-        el.removeEventListener("keydown", onKeyDown);
         set(internalScrollContainer$, null);
       });
     }),
@@ -217,8 +243,8 @@ export function createScrollSignals(id?: string) {
       L.debug("scrollToBottom$ SKIPPED (no container)");
       return;
     }
-    if (suppressNextScrollToBottom) {
-      suppressNextScrollToBottom = false;
+    if (restoreState.suppressNextScrollToBottom) {
+      restoreState.suppressNextScrollToBottom = false;
       L.debug("scrollToBottom$ → skipped (restore in progress)");
       return;
     }
