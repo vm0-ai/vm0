@@ -13,8 +13,6 @@ import { createTestRequest } from "./core";
 // Re-exports: DB-direct seeders
 export {
   insertTestUser,
-  insertUserRow,
-  deleteUserRow,
   seedUserCacheEntry,
   insertUserCacheEntry,
   insertVm0ApiKeys,
@@ -25,7 +23,6 @@ export {
 
 // Re-exports: read-only assertions
 export {
-  getUserRow,
   countUserRows,
   getPushSubscriptionsByEndpoint,
   getTestVoiceChatSessionStatus,

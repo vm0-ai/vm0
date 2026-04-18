@@ -33,20 +33,6 @@ export async function getOrgCacheEntry(orgId: string) {
 }
 
 /**
- * Read a full org_metadata row by orgId.
- * Returns undefined if no row exists.
- */
-export async function getOrgRow(orgId: string) {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select()
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return row;
-}
-
-/**
  * Read a full org_members_metadata row by (orgId, userId).
  * Returns undefined if no row exists.
  */

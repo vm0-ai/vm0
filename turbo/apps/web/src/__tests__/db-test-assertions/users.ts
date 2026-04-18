@@ -1,26 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import { users } from "../../db/schema/user";
 import { pushSubscriptions } from "../../db/schema/push-subscription";
 import {
   voiceChatSessions,
   voiceChatEvents,
   voiceChatPreparations,
 } from "../../db/schema/voice-chat";
-
-/**
- * Read a full users row by userId.
- * Returns undefined if no row exists.
- */
-export async function getUserRow(userId: string) {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select()
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return row;
-}
 
 /**
  * Count rows in a table where user_id matches.
