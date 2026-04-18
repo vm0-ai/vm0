@@ -92,7 +92,7 @@ async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByText(/Add schedule/i));
   await waitFor(() => {
     expect(
-      screen.getByText("Add schedule", { selector: "h2" }),
+      screen.getByRole("heading", { name: "Add schedule" }),
     ).toBeInTheDocument();
   });
 }
@@ -155,16 +155,13 @@ async function openEditDialog(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByText("Edit"));
   await waitFor(() => {
     expect(
-      screen.getByText("Edit schedule", { selector: "h2" }),
+      screen.getByRole("heading", { name: "Edit schedule" }),
     ).toBeInTheDocument();
   });
 }
 
 function getOpenListboxOption(text: string): HTMLElement {
-  const listbox = document.querySelector<HTMLElement>('[role="listbox"]');
-  if (!listbox) {
-    throw new Error("No open listbox");
-  }
+  const listbox = screen.getByRole("listbox");
   return within(listbox).getByText(text);
 }
 
@@ -185,7 +182,7 @@ describe("schedule dialog - form title (SCHED-D-046)", () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
     expect(
-      screen.getByText("Add schedule", { selector: "h2" }),
+      screen.getByRole("heading", { name: "Add schedule" }),
     ).toBeInTheDocument();
   });
 
@@ -193,7 +190,7 @@ describe("schedule dialog - form title (SCHED-D-046)", () => {
     const user = userEvent.setup();
     await openEditDialog(user);
     expect(
-      screen.getByText("Edit schedule", { selector: "h2" }),
+      screen.getByRole("heading", { name: "Edit schedule" }),
     ).toBeInTheDocument();
   });
 });

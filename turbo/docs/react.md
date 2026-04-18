@@ -4,44 +4,44 @@ This document records React re-render anti-patterns discovered through CPU profi
 
 ---
 
-## 背景：如何识别过度重渲染
+## Background: How to Identify Excessive Re-renders
 
-CPU profile 中出现大量 `renderWithHooksAgain` 样本，说明组件在同一个 render pass 内被迫重新执行。触发原因是 `useSyncExternalStore` 在 render 过程中检测到 snapshot 已变化，React 会立即重跑该组件的 render 函数。
+Dense `renderWithHooksAgain` samples in a CPU profile indicate that a component is being forced to re-execute within the same render pass. This is triggered when `useSyncExternalStore` detects that the snapshot has changed during render, causing React to immediately re-run that component's render function.
 
 ---
 
-## Anti-Pattern 1：在大型组件顶层订阅多个异步信号
+## Anti-Pattern 1: Subscribing to Multiple Async Signals at the Top of a Large Component
 
-### 问题
+### Problem
 
-一个父组件（如 `ZeroSidebar`）在顶层同时订阅多个异步信号：
+A parent component (e.g. `ZeroSidebar`) subscribes to multiple async signals at the top level simultaneously:
 
 ```tsx
-// ❌ 每个异步信号解析时，整个大组件都重渲染一次
+// ❌ Every time an async signal resolves, the entire large component re-renders
 export function ZeroSidebar() {
   const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
   const subagentsLoadable = useLastLoadable(subagents$);
   const defaultDisplayName = useLastResolved(defaultAgentName$);
   const features = useLastResolved(featureSwitch$);
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$);
-  const currentChatAgentId = useResolved(currentChatAgentId$); // 2 次 Promise 转换 → 4 次重渲染
+  const currentChatAgentId = useResolved(currentChatAgentId$); // 2 Promise transitions → 4 re-renders
   // ...
-  // 大量 JSX，每次重渲染都完整执行
+  // Large JSX block that fully executes on every re-render
 }
 ```
 
-### 为什么有害
+### Why This Is Harmful
 
-- 每个异步信号解析都触发整个组件重渲染，包括所有 nav 项的重新计算和完整 DOM 协调
-- 使用 `useResolved`（keepLastResolved=false）的信号每次 Promise 转换产生 2 次渲染；经过多跳 async computed 链的信号会有更多转换次数
-- 渲染次数 = Σ (每个信号的 Promise 转换次数 × 每次转换的渲染倍数)
+- Every async signal resolution triggers a full component re-render, including recomputation of all nav items and full DOM reconciliation
+- Signals using `useResolved` (keepLastResolved=false) produce 2 renders per Promise transition (loading → hasData) rather than 1; signals that depend on another async computed chain accumulate more transitions
+- Total renders = Σ (number of Promise transitions per signal × renders per transition)
 
-### 修复：让叶子节点直接订阅
+### Fix: Push Subscriptions Down to Leaf Components
 
-将异步订阅下沉到只需要该数据的最小子组件：
+Move async subscriptions into the smallest subcomponent that actually needs the data:
 
 ```tsx
-// ✅ 每个组件只订阅自己需要的信号
+// ✅ Each component subscribes only to the signals it needs
 
 function ChatThreadsSectionWithKey() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
@@ -52,18 +52,18 @@ function ManagePinnedAgentsDialogContainer() {
   const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
   const subagentsLoadable = useLastLoadable(subagents$);
   const [pinLoadable, save] = useLoadableSet(updatePinnedAgentIds$);
-  // ...仅渲染 dialog，不影响 nav
+  // ...renders dialog only, does not affect nav
 }
 
 function SidebarNavContent() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$);
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$);
-  // ...渲染 nav 内容
+  // ...renders nav content
 }
 
 export function ZeroSidebar() {
-  // 零异步订阅，页面加载只渲染 1 次
+  // Zero async subscriptions — renders exactly once on page load
   return (
     <VM0ClerkProvider>
       <SidebarNavContent />
@@ -76,45 +76,45 @@ export function ZeroSidebar() {
 
 ---
 
-## Anti-Pattern 2：对 async computed 链使用 `useResolved`（keepLastResolved=false）
+## Anti-Pattern 2: Using `useResolved` (keepLastResolved=false) on Async Computed Chains
 
-### 问题
+### Problem
 
-`useResolved` 内部使用 `useLoadable`（keepLastResolved=false），每次 Promise 转换触发 2 次渲染（loading → hasData），而非 1 次。当信号依赖另一个 async computed 时，Promise 转换次数会叠加：
+`useResolved` uses `useLoadable` (keepLastResolved=false) internally, triggering 2 renders per Promise transition (loading → hasData) instead of 1. When a signal depends on another async computed, the transition counts compound:
 
 ```tsx
 // agent-chat.ts
 export const currentChatAgentId$ = computed(async (get) => {
   return get(internalChatAgentId$) ?? (await get(defaultAgentId$));
-  // defaultAgentId$ 本身也是 async → 2 次 Promise 转换
+  // defaultAgentId$ is itself async → 2 Promise transitions
 });
 
-// 视图层
+// View layer
 const currentChatAgentId = useResolved(currentChatAgentId$);
-// 结果：2 次转换 × 2 渲染/次 = 4 次额外重渲染
+// Result: 2 transitions × 2 renders/transition = 4 extra re-renders
 ```
 
-### 修复：优先使用 `useLastResolved`
+### Fix: Prefer `useLastResolved`
 
-如果组件只需要"最近一次解析的值"而不需要感知 loading 状态，用 `useLastResolved`（keepLastResolved=true）：
+If a component only needs the most recently resolved value and does not need to track loading state, use `useLastResolved` (keepLastResolved=true):
 
 ```tsx
-// ✅ 每次 Promise 转换只触发 1 次渲染，且不会在 loading 时闪回 undefined
+// ✅ Only 1 render per Promise transition, and no flash back to undefined during loading
 const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
 ```
 
-只有在**需要感知 loading 状态**（如显示 skeleton）时才使用 `useLoadable` / `useResolved`。
+Only use `useLoadable` / `useResolved` when the component **needs to react to the loading state** (e.g. to show a skeleton).
 
 ---
 
-## Anti-Pattern 3：通过 props 传递异步派生数据（prop drilling）
+## Anti-Pattern 3: Passing Async-Derived Data via Props (Prop Drilling)
 
-### 问题
+### Problem
 
-父组件订阅异步信号，然后将解析结果作为 props 逐层传递：
+A parent component subscribes to async signals and then passes the resolved values as props down through the tree:
 
 ```tsx
-// ❌ 父组件承担了不属于它的订阅，每次异步更新父组件都重渲染
+// ❌ Parent takes on subscriptions it doesn't own; re-renders on every async update
 export function ZeroSidebar() {
   const displayName  = useLastResolved(currentChatAgentDisplayName$);
   const subagents    = useLastResolved(subagents$);
@@ -131,15 +131,15 @@ export function ZeroSidebar() {
 }
 ```
 
-### 为什么有害
+### Why This Is Harmful
 
-- 父组件为了给子组件传数据而订阅了它本身不需要的信号
-- 每次这些信号更新，整个父组件树重渲染，即使父组件自己的 UI 没有变化
+- The parent subscribes to signals it doesn't need for its own UI, just to pass data to a child
+- Every update to those signals re-renders the entire parent tree, even when the parent's own UI hasn't changed
 
-### 修复：子组件直接订阅所需信号
+### Fix: Child Components Subscribe Directly
 
 ```tsx
-// ✅ dialog 容器自己订阅，父组件零 props 传递
+// ✅ Dialog container owns its subscriptions; parent passes zero props
 function ManagePinnedAgentsDialogContainer() {
   const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
   const subagentsLoadable   = useLastLoadable(subagents$);
@@ -151,11 +151,11 @@ function ManagePinnedAgentsDialogContainer() {
 
 ---
 
-## 验证方法
+## Verification Methods
 
-### 受控实验：逐步减少订阅，观察渲染次数
+### Controlled Experiment: Incrementally Remove Subscriptions
 
-在组件顶部添加渲染计数器，用测试逐步移除订阅，确认每个信号对渲染次数的贡献：
+Add a render counter to the top of a component and use tests to progressively remove subscriptions, confirming each signal's contribution to the render count:
 
 ```tsx
 let _renderCount = 0;
@@ -169,31 +169,31 @@ export function ZeroSidebar() {
 }
 ```
 
-### CPU Profile 分析
+### CPU Profile Analysis
 
-- `renderWithHooksAgain` 样本密集 → 存在过度重渲染
-- `analyze-batching.mjs`：确认多个信号更新是否在同一个 React work loop 内批处理
-- `analyze-rewind-cause.mjs`：定位触发 `renderWithHooksAgain` 的具体 snapshot 函数
-- `dump-rewind-chains.mjs`：查看完整调用链，确认重渲染的来源
+- Dense `renderWithHooksAgain` samples → excessive re-renders present
+- `analyze-batching.mjs`: confirm whether multiple signal updates are batched within the same React work loop
+- `analyze-rewind-cause.mjs`: pinpoint which snapshot function triggers `renderWithHooksAgain`
+- `dump-rewind-chains.mjs`: view the full call chain to identify the re-render source
 
-### React 批处理确认
+### Confirming React Batching
 
-多个信号在同一微任务内更新时，React 会批处理为一次 `renderRootSync`。可通过分析 CPU profile 确认：1318 次 `renderWithHooksAgain` 样本分布在仅 11 个 `renderRootSync` 实例中，说明批处理正常工作。
+When multiple signals update within the same microtask, React batches them into a single `renderRootSync`. This can be confirmed by analyzing a CPU profile: 1,318 `renderWithHooksAgain` samples distributed across only 11 `renderRootSync` instances confirms that batching is working correctly.
 
 ---
 
-## 渲染次数公式
+## Render Count Formula
 
-对于订阅了 N 个异步信号的组件，页面加载时的额外渲染次数为：
+For a component subscribed to N async signals, the number of extra renders on page load is:
 
 ```
-额外渲染次数 = Σ (signal_i 的 Promise 转换次数 × 渲染倍数_i)
+extra renders = Σ (Promise transitions for signal_i × renders per transition_i)
 
-渲染倍数：
-  useLastResolved / useLastLoadable  → 1 次/转换（keepLastResolved=true）
-  useResolved / useLoadable          → 2 次/转换（keepLastResolved=false）
+Renders per transition:
+  useLastResolved / useLastLoadable  → 1 render/transition (keepLastResolved=true)
+  useResolved / useLoadable          → 2 renders/transition (keepLastResolved=false)
 
-Promise 转换次数：
-  直接 async computed               → 通常 1 次
-  依赖另一个 async computed 的链    → 转换次数叠加（如 currentChatAgentId$ 经过两跳 → 2 次）
+Promise transition count:
+  direct async computed              → typically 1
+  chain depending on another async   → transition counts compound (e.g. currentChatAgentId$ via two hops → 2)
 ```
