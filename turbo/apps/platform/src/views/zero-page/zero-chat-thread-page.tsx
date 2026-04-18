@@ -298,10 +298,15 @@ function ChatThreadComposer({
 }) {
   const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const hasMessages = groups.length > 0;
-  const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  const allFinished = useLastResolved(thread.allFinished$) ?? false;
+  const rawDisplayName = useLastResolved(thread.agentDisplayName$);
+  const displayName = rawDisplayName ?? "Zero";
+  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
+  const hasAllFinished = allFinishedLoadable.state === "hasData";
+  const allFinished = hasAllFinished ? allFinishedLoadable.data : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const sending = !allFinished || sendLoadable.state === "loading";
+  const showWorking =
+    rawDisplayName !== undefined && hasAllFinished && !allFinished;
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
@@ -354,21 +359,17 @@ function ChatThreadComposer({
           setComposerFileInput$={thread.setComposerFileInput$}
           setInputRef={setInputRef}
         />
-        <div
-          aria-hidden={allFinished}
-          className={cn(
-            "flex items-center justify-end gap-1.5 mt-2 pr-1 transition-opacity",
-            allFinished && "opacity-0",
-          )}
-        >
-          <IconLoader2
-            size={12}
-            className="animate-spin text-foreground/50 shrink-0"
-          />
-          <span className="zero-shimmer-text text-xs">
-            {displayName} is working...
-          </span>
-        </div>
+        {showWorking && (
+          <div className="flex items-center justify-end gap-1.5 mt-2 pr-1">
+            <IconLoader2
+              size={12}
+              className="animate-spin text-foreground/50 shrink-0"
+            />
+            <span className="zero-shimmer-text text-xs">
+              {displayName} is working...
+            </span>
+          </div>
+        )}
       </div>
     </footer>
   );
