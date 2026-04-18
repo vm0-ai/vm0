@@ -447,6 +447,39 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
+// Absolutely positioned so it contributes zero layout — the surrounding
+// message bubble's height is unchanged whether the cursor is shown or not.
+function InlineStreamingCursor({
+  thread,
+  groupBeginMessageId,
+}: {
+  thread: ChatThreadSignals;
+  groupBeginMessageId: string;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  const enabled = features?.[FeatureSwitchKey.InlineThinkingDot] ?? false;
+  const allFinished = useLastResolved(thread.allFinished$) ?? false;
+  const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
+  const lastGroup = groups[groups.length - 1];
+  const isLastAssistantGroup =
+    !!lastGroup &&
+    lastGroup.role === "assistant" &&
+    lastGroup.beginMessageId === groupBeginMessageId;
+
+  if (!enabled || allFinished || !isLastAssistantGroup) {
+    return null;
+  }
+
+  return (
+    <span
+      aria-hidden
+      className="absolute -bottom-0.5 right-0 pointer-events-none animate-in fade-in duration-200"
+    >
+      <IconLoader2 size={12} className="animate-spin text-foreground/50" />
+    </span>
+  );
+}
+
 /**
  * Parse inline attachment lines from message content.
  * Matches `[Attached file: name](url)` optionally followed by a curl line.
@@ -690,10 +723,14 @@ function PagedAssistantGroup({
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
-        <div className="flex flex-col gap-3">
+        <div className="relative flex flex-col gap-3">
           {group.messages.map((msg) => {
             return <PagedAssistantMessageItem key={msg.id} message={msg} />;
           })}
+          <InlineStreamingCursor
+            thread={thread}
+            groupBeginMessageId={group.beginMessageId}
+          />
         </div>
       </div>
       <PagedGroupActions group={group} content={fullContent} thread={thread} />
