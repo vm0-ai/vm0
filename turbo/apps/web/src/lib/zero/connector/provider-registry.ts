@@ -30,6 +30,7 @@ import { clickupHandler } from "./providers/clickup-handler";
 import { cloudflareHandler } from "./providers/cloudflare-handler";
 import { cloudinaryHandler } from "./providers/cloudinary-handler";
 import { closeHandler } from "./providers/close-handler";
+import { codaHandler } from "./providers/coda-handler";
 import { cronlyticHandler } from "./providers/cronlytic-handler";
 import { customerIoHandler } from "./providers/customer-io-handler";
 import { deelHandler } from "./providers/deel-handler";
@@ -177,6 +178,7 @@ export const PROVIDER_HANDLERS: Record<
   cloudflare: cloudflareHandler,
   cloudinary: cloudinaryHandler,
   close: closeHandler,
+  coda: codaHandler,
   cronlytic: cronlyticHandler,
   "customer-io": customerIoHandler,
   deel: deelHandler,

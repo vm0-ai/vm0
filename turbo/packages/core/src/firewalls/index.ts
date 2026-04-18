@@ -51,6 +51,7 @@ import { chatwootFirewall } from "./chatwoot.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
+import { codaFirewall } from "./coda.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
@@ -203,6 +204,7 @@ const CONNECTOR_FIREWALLS = {
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
+  coda: codaFirewall,
   cronlytic: cronlyticFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,

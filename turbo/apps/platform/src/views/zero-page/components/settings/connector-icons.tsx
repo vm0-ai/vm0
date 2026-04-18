@@ -80,6 +80,7 @@ const CONNECTOR_ICON_COLORFUL = {
   close: true,
   cloudflare: true,
   cloudinary: true,
+  coda: true,
   cronlytic: true,
   "customer-io": true,
   deepseek: true,

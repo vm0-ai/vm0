@@ -29,6 +29,7 @@ import { generate as generateChatwoot } from "./chatwoot";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
 import { generate as generateCloudflare } from "./cloudflare";
+import { generate as generateCoda } from "./coda";
 import { generate as generateCronlytic } from "./cronlytic";
 import { generate as generateCustomerIo } from "./customer-io";
 import { generate as generateDeepseek } from "./deepseek";
@@ -163,6 +164,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   clickup: generateClickup,
   close: generateClose,
   cloudflare: generateCloudflare,
+  coda: generateCoda,
   cronlytic: generateCronlytic,
   "customer-io": generateCustomerIo,
   deel: generateDeel,
