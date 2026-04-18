@@ -44,6 +44,7 @@ import { docusignHandler } from "./providers/docusign-handler";
 import { db9Handler } from "./providers/db9-handler";
 import { drive9Handler } from "./providers/drive9-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
+import { duffelHandler } from "./providers/duffel-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { exploriumHandler } from "./providers/explorium-handler";
 import { falHandler } from "./providers/fal-handler";
@@ -191,6 +192,7 @@ export const PROVIDER_HANDLERS: Record<
   db9: db9Handler,
   drive9: drive9Handler,
   dropbox: dropboxHandler,
+  duffel: duffelHandler,
   elevenlabs: elevenlabsHandler,
   explorium: exploriumHandler,
   fal: falHandler,

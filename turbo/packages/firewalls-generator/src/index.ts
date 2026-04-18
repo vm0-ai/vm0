@@ -42,6 +42,7 @@ import { generate as generateDocusign } from "./docusign";
 import { generate as generateDb9 } from "./db9";
 import { generate as generateDrive9 } from "./drive9";
 import { generate as generateDropbox } from "./dropbox";
+import { generate as generateDuffel } from "./duffel";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateExplorium } from "./explorium";
 import { generate as generateFal } from "./fal";
@@ -176,6 +177,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   db9: generateDb9,
   drive9: generateDrive9,
   dropbox: generateDropbox,
+  duffel: generateDuffel,
   elevenlabs: generateElevenlabs,
   explorium: generateExplorium,
   fal: generateFal,

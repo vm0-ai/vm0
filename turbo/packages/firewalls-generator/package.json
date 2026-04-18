@@ -58,6 +58,7 @@
     "generate:discord-webhook": "tsx src/index.ts discord-webhook",
     "generate:docusign": "tsx src/index.ts docusign",
     "generate:dropbox": "tsx src/index.ts dropbox",
+    "generate:duffel": "tsx src/index.ts duffel",
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
     "generate:explorium": "tsx src/index.ts explorium",
     "generate:fal": "tsx src/index.ts fal",
