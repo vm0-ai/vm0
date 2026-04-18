@@ -44,6 +44,11 @@ import {
   autoReadEnabled$,
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
+import {
+  vcStatus$,
+  vcReconnectAttempt$,
+} from "../../signals/voice-chat/voice-chat-session.ts";
+import { StatusBadge } from "../voice-chat/voice-chat-page.tsx";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 
 function AgentAvatarInTopBar() {
@@ -85,8 +90,11 @@ function MobileTopBar() {
   const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
+  const vcStatus = useGet(vcStatus$);
+  const vcReconnectAttempt = useGet(vcReconnectAttempt$);
 
   const showInvite = isChatRoute(activeId) && isAdmin;
+  const showVoiceChatStatus = activeId === "voiceChat" && vcStatus !== "idle";
 
   const handleMenuClick = () => {
     if (mobileChatListEnabled) {
@@ -115,8 +123,8 @@ function MobileTopBar() {
       {breadcrumb && (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}
-          <div className="flex items-baseline gap-1 min-w-0 flex-1">
-            <div className="text-sm font-medium text-foreground flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="text-sm font-medium text-foreground flex items-center gap-1 min-w-0">
               <Link
                 pathname={breadcrumb.sectionPath}
                 className="hover:opacity-70 transition-opacity no-underline text-inherit"
@@ -132,6 +140,12 @@ function MobileTopBar() {
                 </>
               )}
             </div>
+            {showVoiceChatStatus && (
+              <StatusBadge
+                status={vcStatus}
+                reconnectAttempt={vcReconnectAttempt}
+              />
+            )}
           </div>
         </div>
       )}

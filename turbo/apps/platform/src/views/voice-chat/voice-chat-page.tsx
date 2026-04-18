@@ -57,7 +57,7 @@ type ConnectionStatus =
   | "disconnected"
   | "error";
 
-function StatusBadge({
+export function StatusBadge({
   status,
   reconnectAttempt,
 }: {
@@ -119,7 +119,8 @@ function VoiceChatStatusHeader({
   elapsedSeconds: number;
 }) {
   return (
-    <div className="shrink-0 border-b px-4 py-2 flex items-center justify-center gap-2">
+    <div className="shrink-0 border-b px-4 py-2 hidden md:flex items-center gap-2">
+      <span className="text-sm font-medium text-foreground">Voice Chat</span>
       <StatusBadge status={status} reconnectAttempt={reconnectAttempt} />
       {status === "preparing" && elapsedSeconds > 0 && (
         <span className="text-xs tabular-nums text-muted-foreground">
