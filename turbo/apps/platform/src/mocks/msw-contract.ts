@@ -82,11 +82,11 @@ export function mockApi<R extends AppRoute>(
     const querySchema = route.query as
       | { safeParse: (v: unknown) => { success: boolean; data?: unknown } }
       | undefined;
-    const query = (
+    const parsed =
       querySchema && typeof querySchema.safeParse === "function"
-        ? (querySchema.safeParse(rawQuery).data ?? rawQuery)
-        : rawQuery
-    ) as InferQuery<R>;
+        ? querySchema.safeParse(rawQuery)
+        : undefined;
+    const query = (parsed?.success ? parsed.data : rawQuery) as InferQuery<R>;
 
     let body = undefined as InferBody<R>;
     if (route.method !== "GET") {
