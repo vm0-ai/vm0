@@ -11,28 +11,29 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
+function detectIOSSafari(): boolean {
+  const ua = navigator.userAgent;
+  const iosDevice =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (!iosDevice) {
+    return false;
+  }
+  return /Safari/.test(ua) && !/CriOS|FxiOS|OPiOS|EdgiOS/.test(ua);
+}
+
 const deferredPrompt$ = state<BeforeInstallPromptEvent | null>(null);
 const iosModalOpen$ = state(false);
+const isIOSSafari$ = state(detectIOSSafari());
+
+/** Override iOS Safari detection in tests. */
+export const setIsIOSSafari$ = command(({ set }, value: boolean) => {
+  set(isIOSSafari$, value);
+});
 
 const { get$: dismissedRaw$, set$: setDismissed$ } = localStorageSignals(
   "zero-install-banner-dismissed",
 );
-
-function isIOS(): boolean {
-  const ua = navigator.userAgent;
-  if (/iPad|iPhone|iPod/.test(ua)) {
-    return true;
-  }
-  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
-}
-
-function isIOSSafari(): boolean {
-  if (!isIOS()) {
-    return false;
-  }
-  const ua = navigator.userAgent;
-  return /Safari/.test(ua) && !/CriOS|FxiOS|OPiOS|EdgiOS/.test(ua);
-}
 
 export const installBannerVisible$ = computed((get) => {
   if (isStandaloneMode()) {
@@ -44,7 +45,7 @@ export const installBannerVisible$ = computed((get) => {
   if (get(deferredPrompt$)) {
     return true;
   }
-  return isIOSSafari();
+  return get(isIOSSafari$);
 });
 
 export const iosInstallModalOpen$ = computed((get) => {
@@ -78,7 +79,7 @@ export const triggerInstall$ = command(
       set(deferredPrompt$, null);
       return;
     }
-    if (isIOSSafari()) {
+    if (get(isIOSSafari$)) {
       set(iosModalOpen$, true);
     }
   },

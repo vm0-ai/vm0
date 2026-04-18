@@ -92,7 +92,9 @@ export default [
         {
           // scroll events cannot be simulated by userEvent; allow dispatchEvent
           // with new Event("scroll") for tests that verify auto-scroll behaviour.
-          allowedEventTypes: ["scroll"],
+          // beforeinstallprompt and appinstalled are browser-generated PWA events
+          // that cannot be triggered via userEvent.
+          allowedEventTypes: ["scroll", "beforeinstallprompt", "appinstalled"],
         },
       ],
       "ccstate/no-test-delay": "error",
