@@ -54,7 +54,7 @@ clap = "4"
 flate2 = "1"
 futures-util = "0.3"
 hex = "0.4"
-hmac = "0.13.0-rc.6"
+hmac = "0.13.0"
 httpmock = "0.8"
 libc = "0.2"
 nix = { version = "0.31", default-features = false }
