@@ -185,7 +185,9 @@ describe("chat page keyboard shortcuts", () => {
     // Patch scrollHeight to a non-zero value so scrollToBottom$ sets
     // scrollTop = scrollHeight. In JSDOM scrollHeight is always 0.
     Object.defineProperty(scrollContainer, "scrollHeight", {
-      get: () => 1200,
+      get: () => {
+        return 1200;
+      },
       configurable: true,
     });
     scrollContainer!.scrollTop = 0;
