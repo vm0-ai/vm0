@@ -8,7 +8,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
-import { chatMessages } from "../../../../../src/db/schema/chat-message";
+import { getChatThreadIdForRun } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { eq, and } from "drizzle-orm";
 import {
   transitionRunStatus,
@@ -53,16 +53,13 @@ function scheduleTerminalSideEffects(
     await publishUserSignal([userId], `thread:${runId}`);
     await publishUserSignal([userId], `runUpdated:${runId}`);
 
-    // If this run belongs to a chat thread, notify that thread's run status changed
-    const [msg] = await globalThis.services.db
-      .select({ chatThreadId: chatMessages.chatThreadId })
-      .from(chatMessages)
-      .where(eq(chatMessages.runId, runId))
-      .limit(1);
-    if (msg?.chatThreadId) {
+    // Resolve chat thread from the authoritative zero_runs.chatThreadId mapping
+    // so this signal fires even when no chat_messages row has been written yet.
+    const chatThread = await getChatThreadIdForRun(runId);
+    if (chatThread) {
       await publishUserSignal(
         [userId],
-        `chatThreadRunUpdated:${msg.chatThreadId}`,
+        `chatThreadRunUpdated:${chatThread.chatThreadId}`,
       );
     }
 

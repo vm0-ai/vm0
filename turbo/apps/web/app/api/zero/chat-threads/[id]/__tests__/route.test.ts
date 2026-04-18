@@ -110,11 +110,13 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     // 3. Insert messages directly into chat_messages table
     await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "user",
       content: "What files changed?",
     });
     await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "assistant",
       content: "Here are the changed files.",
       runId,
@@ -293,7 +295,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
       prompt: "multi-step prompt",
     });
     await addTestRunToThread(threadId, runId, testUserId);
-    await insertTestAssistantEventMessages(runId, threadId, [
+    await insertTestAssistantEventMessages(runId, threadId, testUserId, [
       { sequenceNumber: 0, content: "First partial response" },
       { sequenceNumber: 1, content: "Second partial response" },
     ]);

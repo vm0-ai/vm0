@@ -31,7 +31,7 @@ import {
   publishUserSignal,
 } from "../realtime/client";
 import { getOrgMemberUserIds } from "../realtime/audience";
-import { chatMessages } from "../../../db/schema/chat-message";
+import { getChatThreadIdForRun } from "../../zero/chat-thread/chat-message-service";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
 
 const log = logger("service:run");
@@ -531,15 +531,14 @@ export async function dispatchCancelSideEffects(
   await publishUserSignal([result.userId], `thread:${result.runId}`);
   await publishUserSignal([result.userId], `runUpdated:${result.runId}`);
 
-  const [msg] = await globalThis.services.db
-    .select({ chatThreadId: chatMessages.chatThreadId })
-    .from(chatMessages)
-    .where(eq(chatMessages.runId, result.runId))
-    .limit(1);
-  if (msg?.chatThreadId) {
+  // Resolve chat thread from the authoritative zero_runs.chatThreadId mapping
+  // so the run-level signal fires even when no chat_messages row exists yet
+  // (e.g., user cancels before the first assistant token).
+  const chatThread = await getChatThreadIdForRun(result.runId);
+  if (chatThread) {
     await publishUserSignal(
       [result.userId],
-      `chatThreadRunUpdated:${msg.chatThreadId}`,
+      `chatThreadRunUpdated:${chatThread.chatThreadId}`,
     );
   }
 

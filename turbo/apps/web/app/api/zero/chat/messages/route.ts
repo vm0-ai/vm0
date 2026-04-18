@@ -230,8 +230,11 @@ const router = tsr.router(chatMessagesContract, {
 
       // Persist user message to chat_messages.
       // Only file IDs are stored — metadata is resolved at query time from S3.
+      // insertChatMessage also publishes chatThreadMessageCreated internally,
+      // so the paged-messages view picks up the new row.
       await insertChatMessage({
         chatThreadId: threadId,
+        userId: authCtx.userId,
         role: "user",
         content: body.prompt,
         runId: null,
@@ -241,15 +244,10 @@ const router = tsr.router(chatMessagesContract, {
         id: body.clientMessageId,
       });
 
-      // Notify subscribers that a new run and messages were created on this thread
       after(async () => {
         await publishUserSignal(
           [authCtx.userId],
           `chatThreadRunCreated:${threadId}`,
-        );
-        await publishUserSignal(
-          [authCtx.userId],
-          `chatThreadMessageCreated:${threadId}`,
         );
       });
 

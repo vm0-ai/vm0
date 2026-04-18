@@ -24,6 +24,7 @@ import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
 import webpush, { WebPushError } from "web-push";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 vi.mock("web-push", async (importActual) => {
   const actual = await importActual<{ WebPushError: typeof WebPushError }>();
@@ -55,6 +56,7 @@ describe("POST /api/internal/callbacks/chat", () => {
   let agentId: string;
 
   beforeEach(async () => {
+    mockAblyPublish.mockClear();
     context.setupMocks();
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("chat-cb"));
@@ -384,6 +386,9 @@ describe("POST /api/internal/callbacks/chat", () => {
     });
 
     it("should persist user + error messages on failed run", async () => {
+      vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+      reloadEnv();
+
       const { threadId, runId, secret } = await setupRunAndThread({
         status: "failed",
       });
@@ -420,6 +425,14 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(errorMsg!.content).toBe("Agent crashed");
       expect(errorMsg!.runId).toBe(runId);
       expect(errorMsg!.error).toBe("Agent crashed");
+
+      // The insert fans out chatThreadMessageCreated so the frontend's paged
+      // message view refetches and the cancelled/error row appears without
+      // a page refresh.
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `chatThreadMessageCreated:${threadId}`,
+        null,
+      );
     });
 
     it("should not derive sessionId on failed run without agentSessionId", async () => {

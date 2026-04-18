@@ -54,11 +54,13 @@ describe("POST /api/user/export", () => {
       );
       await insertTestChatMessage({
         chatThreadId: threadId,
+        userId: user.userId,
         role: "user",
         content: "hello",
       });
       await insertTestChatMessage({
         chatThreadId: threadId,
+        userId: user.userId,
         role: "assistant",
         content: "hi there",
       });

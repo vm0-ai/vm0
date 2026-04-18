@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { randomUUID } from "crypto";
 import { POST } from "../route";
 import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
+  insertTestChatThread,
+  addTestRunToThread,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -13,6 +15,8 @@ import {
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
+import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
+import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
 
@@ -103,5 +107,41 @@ describe("POST /api/zero/runs/:id/cancel", () => {
 
     const data = await response.json();
     expect(data.error.message).toContain("agent-run:write");
+  });
+
+  it("should publish chatThreadRunUpdated when the run is linked to a chat thread", async () => {
+    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    reloadEnv();
+    mockAblyPublish.mockClear();
+
+    const userId = uniqueId("zcanc-chat");
+    await setupOrg(userId);
+    const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
+    const threadId = await insertTestChatThread(
+      userId,
+      compose.composeId,
+      "chat thread under cancel test",
+    );
+    // Seed a running run and attach it to the thread. addTestRunToThread
+    // inserts a user message with runId=null (matching production) and sets
+    // zero_runs.chatThreadId — the authoritative mapping the cancel path now
+    // reads. The legacy reverse-lookup through chat_messages.runId would miss
+    // this row (runId is null), which is the failure mode the fix targets.
+    const { runId } = await seedTestRun(userId, compose.composeId, {
+      status: "running",
+    });
+    await addTestRunToThread(threadId, runId, userId);
+
+    const response = await POST(
+      createTestRequest(cancelUrl(runId), { method: "POST" }),
+    );
+    expect(response.status).toBe(200);
+
+    await context.mocks.flushAfter();
+
+    expect(mockAblyPublish).toHaveBeenCalledWith(
+      `chatThreadRunUpdated:${threadId}`,
+      null,
+    );
   });
 });

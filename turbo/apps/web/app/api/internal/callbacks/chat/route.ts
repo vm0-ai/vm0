@@ -101,7 +101,7 @@ async function handleCompleted(
   // cannot produce duplicates.
   const items = await queryAssistantEvents(runId);
   if (items.length > 0) {
-    await insertAssistantEventMessages(runId, threadId, items);
+    await insertAssistantEventMessages(runId, threadId, userId, items);
   }
 
   // Use last assistant text for downstream (title, summary, notification)
@@ -155,6 +155,7 @@ async function handleFailed(
 ): Promise<void> {
   await insertChatMessage({
     chatThreadId: threadId,
+    userId,
     role: "assistant",
     content: errorMessage,
     runId,
