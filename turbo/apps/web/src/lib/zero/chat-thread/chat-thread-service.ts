@@ -94,10 +94,7 @@ export async function listChatThreads(
     .from(chatThreads)
     .leftJoin(
       lastMessage,
-      and(
-        eq(lastMessage.chatThreadId, chatThreads.id),
-        eq(lastMessage.rn, 1),
-      ),
+      and(eq(lastMessage.chatThreadId, chatThreads.id), eq(lastMessage.rn, 1)),
     )
     .where(
       and(
