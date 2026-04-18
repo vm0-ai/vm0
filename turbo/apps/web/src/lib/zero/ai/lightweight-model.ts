@@ -121,7 +121,7 @@ export interface ChatTitleInput {
  * Cap per-message content when composing the title-generation prompt.
  * Keeps the OpenRouter request small even on long conversations.
  */
-const TITLE_CONTEXT_CHAR_CAP = 200;
+const TITLE_CONTEXT_CHAR_CAP = 150;
 /** Keep the last 5 rounds (~10 messages) of prior history. */
 const TITLE_PRIOR_MESSAGE_CAP = 10;
 
