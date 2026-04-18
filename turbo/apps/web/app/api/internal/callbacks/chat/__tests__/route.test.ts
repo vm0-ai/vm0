@@ -720,14 +720,18 @@ describe("POST /api/internal/callbacks/chat", () => {
       vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
       reloadEnv();
 
-      // The callback hits OpenRouter twice (title + notification summary);
-      // keep the first request so assertions target the title-generation call.
+      // The callback hits OpenRouter multiple times (run summary + title +
+      // notification summary); capture the title-generation call by matching
+      // its system prompt.
       let capturedBody: unknown;
       const { handler } = http.post(
         "https://openrouter.ai/api/v1/chat/completions",
         async ({ request }) => {
-          const body = await request.json();
-          if (capturedBody === undefined) {
+          const body = (await request.json()) as {
+            messages: Array<{ role: string; content: string }>;
+          };
+          const systemContent = body.messages[0]?.content ?? "";
+          if (systemContent.includes("Generate a short, descriptive title")) {
             capturedBody = body;
           }
           return HttpResponse.json({
