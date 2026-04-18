@@ -8,6 +8,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mitmproxy import http
+from mitmproxy.flow import Error
+from mitmproxy.test import tutils
 
 import auth
 import body_utils
@@ -16,70 +19,28 @@ import usage
 from usage import create_sse_usage_extractor
 
 
-def _make_http_flow(client_ip="10.200.0.1", host="example.com", port=443, path="/"):
-    """Create a mock HTTP flow."""
-    flow = MagicMock()
-    flow.id = f"flow-{id(flow)}"
-    flow.client_conn.peername = (client_ip, 12345)
-    flow.request.pretty_host = host
-    flow.request.port = port
-    flow.request.path = path
-    flow.request.pretty_url = f"https://{host}{path}"
-    flow.request.method = "GET"
-    flow.request.content = b""
-    flow.request.headers = {}
-    flow.metadata = {}
-    flow.response = None
-    return flow
-
-
-def _make_tls_data(client_ip="10.200.0.1", sni="example.com"):
-    """Create a mock TLS ClientHelloData."""
-    data = MagicMock()
-    data.context.client.peername = (client_ip, 12345)
-    data.context.client.sni = sni
-    data.ignore_connection = False
-    return data
-
-
-def _reset():
-    """Reset module state."""
-    mitm_addon._request_start_times.clear()
-    mitm_addon._registry_cache = {}
-    mitm_addon._registry_cache_key = (0, 0)
-    auth._firewall_header_cache.clear()
-    auth._cache_locks.clear()
-
-
 class TestRequestHandler:
-    def setup_method(self):
-        _reset()
-
-    async def test_allowed_domain_passes_through(self, registry_file):
-        flow = _make_http_flow(host="api.anthropic.com")
+    async def test_allowed_domain_passes_through(self, registry_file, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         ):
             await mitm_addon.request(flow)
 
         assert flow.metadata["firewall_action"] == "ALLOW"
 
-    async def test_vm0_api_auto_allowed(self, registry_file):
-        flow = _make_http_flow(host="api.vm0.ai")
+    async def test_vm0_api_auto_allowed(self, registry_file, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="api.vm0.ai")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         ):
             await mitm_addon.request(flow)
 
         assert flow.metadata["firewall_action"] == "ALLOW"
 
-    async def test_vm0_api_test_paths_skip_auto_allow(self, tmp_path):
+    async def test_vm0_api_test_paths_skip_auto_allow(self, tmp_path, real_flow, mitm_ctx, headers):
         """`/api/test/*` routes exist to exercise the firewall pipeline itself.
 
         If they fell into Step 1's auto-allow fast path, the test-oauth E2E
@@ -115,13 +76,13 @@ class TestRequestHandler:
         reg_path = tmp_path / "proxy-registry.json"
         reg_path.write_text(json.dumps(registry))
 
-        flow = _make_http_flow(host="api.vm0.ai", path="/api/test/oauth-provider/echo")
+        flow = real_flow(
+            with_response=False, host="api.vm0.ai", path="/api/test/oauth-provider/echo"
+        )
 
         mock_handler = AsyncMock()
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
             patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
             await mitm_addon.request(flow)
@@ -131,25 +92,21 @@ class TestRequestHandler:
         # invoking the handler).
         mock_handler.assert_called_once()
 
-    async def test_tracks_start_time(self, registry_file):
-        flow = _make_http_flow(host="api.anthropic.com")
+    async def test_tracks_start_time(self, registry_file, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         ):
             await mitm_addon.request(flow)
 
         assert flow.id in mitm_addon._request_start_times
 
-    async def test_unregistered_vm_passes_through(self, registry_file):
-        flow = _make_http_flow(client_ip="192.168.99.99", host="anything.com")
+    async def test_unregistered_vm_passes_through(self, registry_file, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, client_ip="192.168.99.99", host="anything.com")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         ):
             await mitm_addon.request(flow)
 
@@ -157,14 +114,12 @@ class TestRequestHandler:
         assert flow.response is None
         assert "firewall_action" not in flow.metadata
 
-    async def test_mitm_allowed_passes_through(self, registry_file):
+    async def test_mitm_allowed_passes_through(self, registry_file, real_flow, mitm_ctx):
         """Allowed request passes through without rewrite."""
-        flow = _make_http_flow(host="api.anthropic.com", path="/v1/messages")
+        flow = real_flow(with_response=False, host="api.anthropic.com", path="/v1/messages")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         ):
             await mitm_addon.request(flow)
 
@@ -173,7 +128,7 @@ class TestRequestHandler:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
 
-    async def test_firewall_match_calls_handler(self, tmp_path):
+    async def test_firewall_match_calls_handler(self, tmp_path, real_flow, mitm_ctx, headers):
         """When URL matches a firewall rule, handle_firewall_request is called."""
         registry = {
             "vms": {
@@ -215,13 +170,13 @@ class TestRequestHandler:
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 
-        flow = _make_http_flow(client_ip="10.200.0.5", host="api.github.com", path="/repos")
+        flow = real_flow(
+            with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/repos"
+        )
 
         mock_handler = AsyncMock()
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
             patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
             await mitm_addon.request(flow)
@@ -235,7 +190,9 @@ class TestRequestHandler:
         assert match_info["ref"] == "github"
         assert match_info["permission"] == "full-access"
 
-    async def test_firewall_permission_blocks_unmatched(self, tmp_path):
+    async def test_firewall_permission_blocks_unmatched(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
         """Firewall with permissions but no matching rule returns 403."""
         registry = {
             "vms": {
@@ -280,13 +237,13 @@ class TestRequestHandler:
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 
-        flow = _make_http_flow(client_ip="10.200.0.5", host="api.github.com", path="/orgs")
+        flow = real_flow(
+            with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/orgs"
+        )
 
         mock_handler = AsyncMock()
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
             patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
             await mitm_addon.request(flow)
@@ -304,7 +261,7 @@ class TestRequestHandler:
         assert body["permissions"] == []
         assert body["base"] == "https://api.github.com"
 
-    async def test_firewall_permission_allows_matched(self, tmp_path):
+    async def test_firewall_permission_allows_matched(self, tmp_path, real_flow, mitm_ctx, headers):
         """Firewall with permissions and matching rule calls handler with match_info."""
         registry = {
             "vms": {
@@ -349,15 +306,16 @@ class TestRequestHandler:
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 
-        flow = _make_http_flow(
-            client_ip="10.200.0.5", host="api.github.com", path="/repos/octocat/hello"
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos/octocat/hello",
         )
 
         mock_handler = AsyncMock()
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
             patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
             await mitm_addon.request(flow)
@@ -373,7 +331,9 @@ class TestRequestHandler:
         assert match_info["rule"] == "GET /repos/{owner}/{repo}"
         assert match_info["params"] == {"owner": "octocat", "repo": "hello"}
 
-    async def test_firewall_no_base_match_passes_through(self, tmp_path):
+    async def test_firewall_no_base_match_passes_through(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
         """URL not matching any firewall base → pass-through (not block)."""
         registry = {
             "vms": {
@@ -412,13 +372,13 @@ class TestRequestHandler:
         reg_path.write_text(json.dumps(registry))
 
         # Request to example.com — not a firewall match, passes through
-        flow = _make_http_flow(client_ip="10.200.0.5", host="api.example.com", path="/data")
+        flow = real_flow(
+            with_response=False, client_ip="10.200.0.5", host="api.example.com", path="/data"
+        )
 
         mock_handler = AsyncMock()
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
             patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
             await mitm_addon.request(flow)
@@ -432,12 +392,12 @@ class TestRequestHandler:
 class TestResponseHeadersHandler:
     """Tests for the responseheaders() hook that enables streaming."""
 
-    def test_enables_streaming_with_buffer(self):
+    def test_enables_streaming_with_buffer(self, real_flow, headers):
         """All responses should be streamed via a buffer callback."""
-        flow = _make_http_flow(host="api.example.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -445,12 +405,12 @@ class TestResponseHeadersHandler:
         assert "stream_buffer" in flow.metadata
         assert isinstance(flow.metadata["stream_buffer"], bytearray)
 
-    def test_stream_callback_buffers_chunks(self):
+    def test_stream_callback_buffers_chunks(self, real_flow, headers):
         """The stream callback should accumulate chunks in the buffer."""
-        flow = _make_http_flow(host="api.example.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -463,12 +423,12 @@ class TestResponseHeadersHandler:
         assert bytes(flow.metadata["stream_buffer"]) == b"hello world"
         assert flow.metadata["stream_buffer_state"]["truncated"] is False
 
-    def test_stream_callback_stops_buffering_at_limit(self):
+    def test_stream_callback_stops_buffering_at_limit(self, real_flow, headers):
         """Buffering should stop when exceeding the size limit."""
-        flow = _make_http_flow(host="api.example.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -486,12 +446,12 @@ class TestResponseHeadersHandler:
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
-    def test_stream_callback_large_single_chunk(self):
+    def test_stream_callback_large_single_chunk(self, real_flow, headers):
         """A single chunk larger than the limit should still capture the first part."""
-        flow = _make_http_flow(host="api.example.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -502,12 +462,12 @@ class TestResponseHeadersHandler:
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
-    def test_stream_callback_partial_fill_then_overflow(self):
+    def test_stream_callback_partial_fill_then_overflow(self, real_flow, headers):
         """Partial fill followed by an oversized chunk should capture up to the limit."""
-        flow = _make_http_flow(host="api.example.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -524,12 +484,12 @@ class TestResponseHeadersHandler:
         assert flow.metadata["stream_buffer"][half:] == bytearray(b"B" * remaining)
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
-    def test_capture_body_also_streams(self):
+    def test_capture_body_also_streams(self, real_flow, headers):
         """When capture_body is set, streaming should still be enabled."""
-        flow = _make_http_flow(host="api.example.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
         flow.metadata["capture_body"] = True
 
         mitm_addon.responseheaders(flow)
@@ -537,12 +497,12 @@ class TestResponseHeadersHandler:
         assert callable(flow.response.stream)
         assert "stream_buffer" in flow.metadata
 
-    def test_stream_callback_empty_chunk(self):
+    def test_stream_callback_empty_chunk(self, real_flow, headers):
         """Empty chunks should be forwarded without affecting the buffer."""
-        flow = _make_http_flow(host="api.example.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.example.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -556,29 +516,28 @@ class TestResponseHeadersHandler:
         callback(b"hello")
         assert bytes(flow.metadata["stream_buffer"]) == b"hello"
 
-    def test_no_response_is_noop(self):
+    def test_no_response_is_noop(self, real_flow):
         """Flow without response should not raise."""
-        flow = _make_http_flow(host="api.example.com")
+        flow = real_flow(with_response=False, host="api.example.com")
         flow.response = None
 
         mitm_addon.responseheaders(flow)  # Should not raise
 
     # ---- X NDJSON streaming parser registration (issue #9534) ----
 
-    def test_x_stream_endpoint_registers_ndjson_parser(self):
+    def test_x_stream_endpoint_registers_ndjson_parser(self, real_flow, headers):
         """X filtered-stream endpoint wires incremental NDJSON parser.
 
         Note: X streams return ``content-type: application/json`` with chunked
         transfer encoding — same as non-stream endpoints.  Stream detection is
         URL-based, not content-type-based.
         """
-        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -590,15 +549,14 @@ class TestResponseHeadersHandler:
         assert state["data_count"] == 2
         assert state["includes"] == {"users": 2}
 
-    def test_x_stream_buffer_capped_at_stream_limit(self):
+    def test_x_stream_buffer_capped_at_stream_limit(self, real_flow, headers):
         """Stream endpoint must NOT buffer multi-MB bodies — uses 64 KB cap."""
-        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -610,15 +568,14 @@ class TestResponseHeadersHandler:
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert flow.metadata["x_ndjson_state"]["data_count"] == 1
 
-    def test_x_non_stream_endpoint_keeps_unbounded_buffer(self):
+    def test_x_non_stream_endpoint_keeps_unbounded_buffer(self, real_flow, headers):
         """Non-stream X requests still need full body for json.loads."""
-        flow = _make_http_flow(host="api.x.com", path="/2/users/by")
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/users/by")
         flow.metadata["firewall_name"] = "x"
         flow.metadata["original_url"] = "https://api.x.com/2/users/by?ids=1,2,3"
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -628,35 +585,35 @@ class TestResponseHeadersHandler:
         assert flow.metadata["stream_buffer_state"]["truncated"] is False
         assert "x_ndjson_state" not in flow.metadata
 
-    def test_x_stream_rules_is_not_registered_as_stream(self):
+    def test_x_stream_rules_is_not_registered_as_stream(self, real_flow, headers):
         """/2/tweets/search/stream/rules is rules mgmt, not a stream — no NDJSON parser."""
-        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream/rules")
+        flow = real_flow(
+            with_response=False, host="api.x.com", path="/2/tweets/search/stream/rules"
+        )
         flow.metadata["firewall_name"] = "x"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream/rules"
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
         # No NDJSON state registered; regular unbounded X buffer path
         assert "x_ndjson_state" not in flow.metadata
 
-    def test_x_stream_error_response_keeps_unbounded_buffer(self):
+    def test_x_stream_error_response_keeps_unbounded_buffer(self, real_flow, headers):
         """4xx/5xx on stream endpoints must preserve full error body (no NDJSON parser).
 
         Error responses on stream endpoints return a single JSON error object,
         not NDJSON.  The NDJSON parser gate on 2xx prevents the stream buffer
         from being capped at 64 KB so forensic logging sees the full body.
         """
-        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
-        flow.response = MagicMock()
-        flow.response.status_code = 401  # unauthorized — returns JSON error, not NDJSON
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow.response = tutils.tresp(
+            status_code=401, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -669,7 +626,7 @@ class TestResponseHeadersHandler:
         assert len(flow.metadata["stream_buffer"]) == len(error_body)
         assert flow.metadata["stream_buffer_state"]["truncated"] is False
 
-    def test_x_stream_gzip_compressed_body(self):
+    def test_x_stream_gzip_compressed_body(self, real_flow, headers):
         """Gzip-encoded NDJSON stream: decompressor + parser wire up correctly."""
         ndjson_body = (
             b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n'
@@ -678,16 +635,18 @@ class TestResponseHeadersHandler:
         )
         compressed = gzip.compress(ndjson_body)
 
-        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {
-            "content-type": "application/json",
-            "content-encoding": "gzip",
-        }
-        flow.response.stream = False
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(
+                **{
+                    "content-type": "application/json",
+                    "content-encoding": "gzip",
+                }
+            ),
+        )
 
         mitm_addon.responseheaders(flow)
 
@@ -702,11 +661,10 @@ class TestResponseHeadersHandler:
 
 
 class TestResponseHandler:
-    def setup_method(self):
-        _reset()
-
-    def test_calculates_latency_and_logs(self, registry_file, tmp_path):
-        flow = _make_http_flow(host="api.anthropic.com")
+    def test_calculates_latency_and_logs(
+        self, registry_file, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
 
         # Simulate request handler setting metadata
@@ -718,19 +676,22 @@ class TestResponseHandler:
         flow.metadata["original_url"] = "https://api.anthropic.com/"
 
         # Add response
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {
-            "content-length": "256",
-            "content-type": "application/json",
-            "content-encoding": "gzip",
-            "transfer-encoding": "chunked",
-        }
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(
+                **{
+                    "content-length": "256",
+                    "content-type": "application/json",
+                    "content-encoding": "gzip",
+                    "transfer-encoding": "chunked",
+                }
+            ),
+        )
 
         # Simulate tracked start time
         mitm_addon._request_start_times[flow.id] = time.time() - 0.1
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.response(flow)
 
         # Start time should be cleaned up
@@ -745,9 +706,11 @@ class TestResponseHandler:
         assert entry["latency_ms"] > 0
         assert entry["response_size"] == 256
 
-    def test_response_size_from_stream_buffer(self, registry_file, tmp_path):
+    def test_response_size_from_stream_buffer(
+        self, registry_file, tmp_path, real_flow, mitm_ctx, headers
+    ):
         """response_size should use stream_buffer length when not truncated."""
-        flow = _make_http_flow(host="api.example.com")
+        flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
         flow.metadata["vm_run_id"] = "run-abc-123"
@@ -759,22 +722,24 @@ class TestResponseHandler:
         flow.metadata["stream_buffer"] = bytearray(b"x" * 100)
         flow.metadata["stream_buffer_state"] = {"truncated": False}
 
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-length": "999"}  # should be ignored
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-length": "999"})
+        )
 
         mitm_addon._request_start_times[flow.id] = time.time()
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.response(flow)
 
         lines = Path(log_path).read_text().splitlines()
         entry = json.loads(lines[0])
         assert entry["response_size"] == 100  # from buffer, not Content-Length
 
-    def test_response_size_falls_back_when_truncated(self, registry_file, tmp_path):
+    def test_response_size_falls_back_when_truncated(
+        self, registry_file, tmp_path, real_flow, mitm_ctx, headers
+    ):
         """response_size should fall back to Content-Length when buffer is truncated."""
-        flow = _make_http_flow(host="api.example.com")
+        flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
 
         flow.metadata["vm_run_id"] = "run-abc-123"
@@ -785,22 +750,22 @@ class TestResponseHandler:
         flow.metadata["stream_buffer"] = bytearray(b"x" * 100)
         flow.metadata["stream_buffer_state"] = {"truncated": True}
 
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-length": "50000"}
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-length": "50000"})
+        )
 
         mitm_addon._request_start_times[flow.id] = time.time()
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.response(flow)
 
         lines = Path(log_path).read_text().splitlines()
         entry = json.loads(lines[0])
         assert entry["response_size"] == 50000  # from Content-Length header
 
-    def test_401_firewall_cache_invalidation(self):
+    def test_401_firewall_cache_invalidation(self, real_flow, mitm_ctx, headers):
         """401 response with firewall_base pops the cache entry."""
-        flow = _make_http_flow(host="api.github.com")
+        flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-1"
         flow.metadata["vm_client_ip"] = "10.200.0.5"
 
@@ -810,9 +775,7 @@ class TestResponseHandler:
         flow.metadata["firewall_api_id"] = "run-conn-1:0"
         flow.metadata["original_url"] = "https://api.github.com/repos"
 
-        flow.response = MagicMock()
-        flow.response.status_code = 401
-        flow.response.headers = {}
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers(**{}))
 
         # Pre-populate firewall header cache keyed by api_id
         cache_key = ("run-conn-1", "run-conn-1:0")
@@ -820,15 +783,15 @@ class TestResponseHandler:
             "headers": {"Authorization": "Bearer old-token"},
         }
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.response(flow)
 
         # Cache entry should have been removed
         assert cache_key not in auth._firewall_header_cache
 
-    def test_error_status_logs_warning(self, tmp_path):
+    def test_error_status_logs_warning(self, tmp_path, real_flow, headers):
         """Response with status >= 400 writes to per-job proxy log."""
-        flow = _make_http_flow(host="api.example.com")
+        flow = real_flow(with_response=False, host="api.example.com")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
 
@@ -839,9 +802,7 @@ class TestResponseHandler:
         flow.metadata["firewall_rule"] = "domain:*.example.com"
         flow.metadata["original_url"] = "https://api.example.com/"
 
-        flow.response = MagicMock()
-        flow.response.status_code = 500
-        flow.response.headers = {}
+        flow.response = tutils.tresp(status_code=500, headers=http.Headers(**{}))
 
         mitm_addon.response(flow)
 
@@ -1265,11 +1226,11 @@ class TestPostWebhook:
 class TestResponseHeadersSseParser:
     """Tests for SSE parser setup in responseheaders()."""
 
-    def test_sets_up_sse_parser_for_model_provider(self):
-        flow = _make_http_flow(host="api.anthropic.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "text/event-stream"}
-        flow.response.stream = False
+    def test_sets_up_sse_parser_for_model_provider(self, real_flow, headers):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
+        )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
 
         mitm_addon.responseheaders(flow)
@@ -1287,15 +1248,18 @@ class TestResponseHeadersSseParser:
         assert flow.metadata["proxy_usage"]["model"] == "claude-sonnet-4-6"
         assert flow.metadata["proxy_usage"]["input_tokens"] == 42
 
-    def test_decompresses_gzip_sse_before_parsing(self):
+    def test_decompresses_gzip_sse_before_parsing(self, real_flow, headers):
         """Compressed SSE streams must be decompressed before usage extraction."""
-        flow = _make_http_flow(host="api.anthropic.com")
-        flow.response = MagicMock()
-        flow.response.headers = {
-            "content-type": "text/event-stream; charset=utf-8",
-            "content-encoding": "gzip",
-        }
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(
+                **{
+                    "content-type": "text/event-stream; charset=utf-8",
+                    "content-encoding": "gzip",
+                }
+            ),
+        )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
 
         mitm_addon.responseheaders(flow)
@@ -1316,33 +1280,33 @@ class TestResponseHeadersSseParser:
         assert flow.metadata["proxy_usage"]["model"] == "claude-sonnet-4-6"
         assert flow.metadata["proxy_usage"]["input_tokens"] == 99
 
-    def test_no_sse_parser_for_non_model_provider(self):
-        flow = _make_http_flow(host="api.github.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "text/event-stream"}
-        flow.response.stream = False
+    def test_no_sse_parser_for_non_model_provider(self, real_flow, headers):
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
+        )
         flow.metadata["firewall_name"] = "github"
 
         mitm_addon.responseheaders(flow)
 
         assert "proxy_usage" not in flow.metadata
 
-    def test_no_sse_parser_for_non_sse_response(self):
-        flow = _make_http_flow(host="api.anthropic.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+    def test_no_sse_parser_for_non_sse_response(self, real_flow, headers):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
 
         mitm_addon.responseheaders(flow)
 
         assert "proxy_usage" not in flow.metadata
 
-    def test_no_sse_parser_without_firewall_name(self):
-        flow = _make_http_flow(host="api.anthropic.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "text/event-stream"}
-        flow.response.stream = False
+    def test_no_sse_parser_without_firewall_name(self, real_flow, headers):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
+        )
         # No firewall_name set (e.g. auto-allowed VM0 API request)
 
         mitm_addon.responseheaders(flow)
@@ -1353,9 +1317,6 @@ class TestResponseHeadersSseParser:
 class TestResponseUsageReporting:
     """Tests for usage extraction and reporting in response() hook."""
 
-    def setup_method(self):
-        _reset()
-
     def teardown_method(self):
         try:
             usage.usage_executor.submit(lambda: None)
@@ -1364,9 +1325,9 @@ class TestResponseUsageReporting:
                 max_workers=4, thread_name_prefix="usage"
             )
 
-    def test_reports_proxy_usage_from_sse(self, tmp_path):
+    def test_reports_proxy_usage_from_sse(self, tmp_path, real_flow, mitm_ctx, headers):
         """When proxy_usage is set by SSE parser, it should trigger a usage report."""
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
@@ -1380,22 +1341,22 @@ class TestResponseUsageReporting:
             "input_tokens": 100,
             "output_tokens": 500,
         }
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "text/event-stream"}
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
+        )
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage, "maybe_report_proxy_usage") as mock_report,
         ):
             mitm_addon.response(flow)
 
         mock_report.assert_called_once_with(flow, "run-abc-123")
 
-    def test_non_streaming_json_fallback(self, tmp_path):
+    def test_non_streaming_json_fallback(self, tmp_path, real_flow, mitm_ctx, headers):
         """Non-streaming JSON response should extract usage from buffer."""
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
@@ -1415,18 +1376,16 @@ class TestResponseUsageReporting:
         ).encode()
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {"truncated": False}
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = MagicMock()
-        flow.response.headers.get = lambda k, d="": {
-            "content-type": "application/json",
-            "content-encoding": "",
-            "content-length": str(len(body)),
-        }.get(k, d)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(
+                **{"content-type": "application/json", "content-length": str(len(body))}
+            ),
+        )
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage, "maybe_report_proxy_usage") as mock_report,
         ):
             mitm_addon.response(flow)
@@ -1438,12 +1397,12 @@ class TestResponseUsageReporting:
         assert extracted["output_tokens"] == 200
         mock_report.assert_called_once_with(flow, "run-abc-123")
 
-    def test_model_provider_buffer_not_truncated(self):
+    def test_model_provider_buffer_not_truncated(self, real_flow, headers):
         """Model provider responses should buffer without truncation."""
-        flow = _make_http_flow(host="api.anthropic.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
 
         mitm_addon.responseheaders(flow)
@@ -1458,12 +1417,12 @@ class TestResponseUsageReporting:
         assert len(buf) == len(large_chunk)
         assert not state["truncated"]
 
-    def test_non_model_provider_buffer_truncated(self):
+    def test_non_model_provider_buffer_truncated(self, real_flow, headers):
         """Non-model-provider responses should truncate at 64KB."""
-        flow = _make_http_flow(host="api.github.com")
-        flow.response = MagicMock()
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
         # No firewall_name — not a model provider
 
         mitm_addon.responseheaders(flow)
@@ -1477,13 +1436,12 @@ class TestResponseUsageReporting:
         assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
         assert state["truncated"]
 
-    def test_billable_connector_buffer_not_truncated(self):
+    def test_billable_connector_buffer_not_truncated(self, real_flow, headers):
         """Billable connector responses should buffer the full body (no 64KB cap)."""
-        flow = _make_http_flow(host="api.x.com")
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow = real_flow(with_response=False, host="api.x.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
         flow.metadata["firewall_name"] = "x"
 
         mitm_addon.responseheaders(flow)
@@ -1497,9 +1455,9 @@ class TestResponseUsageReporting:
         assert len(buf) == len(large_chunk)
         assert not state["truncated"]
 
-    def test_no_usage_report_for_non_model_provider(self, tmp_path):
+    def test_no_usage_report_for_non_model_provider(self, tmp_path, real_flow, mitm_ctx, headers):
         """Non-model-provider requests should not trigger usage reporting."""
-        flow = _make_http_flow(host="api.github.com")
+        flow = real_flow(with_response=False, host="api.github.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
@@ -1507,13 +1465,13 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.github.com/repos"
         flow.metadata["firewall_name"] = "github"
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "application/json"}
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage, "maybe_report_proxy_usage") as mock_report,
         ):
             mitm_addon.response(flow)
@@ -1521,12 +1479,12 @@ class TestResponseUsageReporting:
         # maybe_report_proxy_usage is always called; it checks firewall_name internally
         mock_report.assert_called_once()
 
-    def test_full_path_response_to_opener(self, tmp_path):
+    def test_full_path_response_to_opener(self, tmp_path, real_flow, mitm_ctx, headers):
         """Integration: response() → _maybe_report → _enqueue → _retry → _opener.
 
         Only _opener is mocked — verifies wiring between all intermediate layers.
         """
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-int-001"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
@@ -1540,14 +1498,14 @@ class TestResponseUsageReporting:
             "input_tokens": 100,
             "output_tokens": 500,
         }
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "text/event-stream"}
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
+        )
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
@@ -1567,12 +1525,12 @@ class TestResponseUsageReporting:
         assert body["usage"]["input_tokens"] == 100
         assert body["usage"]["output_tokens"] == 500
 
-    def test_full_path_error_to_opener(self, tmp_path):
+    def test_full_path_error_to_opener(self, tmp_path, real_flow, mitm_ctx):
         """Integration: error() → _maybe_report → _enqueue → _retry → _opener.
 
         Verifies that error() hook delivers partial usage all the way to _opener.
         """
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-int-002"
         flow.metadata["vm_network_log_path"] = log_path
@@ -1584,13 +1542,12 @@ class TestResponseUsageReporting:
             "model": "claude-sonnet-4-6",
             "input_tokens": 80,
         }
-        flow.error = MagicMock()
-        flow.error.msg = "connection reset by peer"
+        flow.error = Error("connection reset by peer")
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
@@ -1605,14 +1562,14 @@ class TestResponseUsageReporting:
         assert body["runId"] == "run-int-002"
         assert body["usage"]["input_tokens"] == 80
 
-    def test_uses_flow_id_when_message_id_missing(self, tmp_path):
+    def test_uses_flow_id_when_message_id_missing(self, tmp_path, real_flow, mitm_ctx, headers):
         """Missing message_id in proxy_usage falls back to flow.id.
 
         Without a stable per-flow key, server-side dedup of usage webhook
         retries fails, which would double-charge.  flow.id is stable
         across retries because _enqueue_webhook copies the dict once.
         """
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-uuid-xyz-123"
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-fallback"
@@ -1626,14 +1583,14 @@ class TestResponseUsageReporting:
             "input_tokens": 10,
             # no message_id set
         }
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "text/event-stream"}
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
+        )
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
@@ -1647,10 +1604,10 @@ class TestResponseUsageReporting:
         body = json.loads(req.data)
         assert body["usage"]["message_id"] == "flow-uuid-xyz-123"
 
-    def test_preserves_message_id_from_response(self, tmp_path):
+    def test_preserves_message_id_from_response(self, tmp_path, real_flow, mitm_ctx, headers):
         """When proxy_usage already has a message_id, flow.id fallback
         must not override it."""
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-should-not-win"
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-preserved"
@@ -1664,14 +1621,14 @@ class TestResponseUsageReporting:
             "message_id": "msg_real_anthropic_id",
             "input_tokens": 10,
         }
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "text/event-stream"}
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
+        )
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage, "_opener") as mock_opener,
         ):
             mock_opener.open.return_value = MagicMock()
@@ -1687,44 +1644,38 @@ class TestResponseUsageReporting:
 
 
 class TestErrorHandler:
-    def setup_method(self):
-        _reset()
-
-    def test_cleans_up_start_time(self, tmp_path):
-        flow = _make_http_flow()
+    def test_cleans_up_start_time(self, tmp_path, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False)
         flow.id = "flow-err-1"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
-        flow.error = MagicMock()
-        flow.error.msg = "connection reset"
+        flow.error = Error("connection reset")
         mitm_addon._request_start_times["flow-err-1"] = 12345.0
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.error(flow)
 
         assert "flow-err-1" not in mitm_addon._request_start_times
 
-    def test_skips_log_when_no_metadata(self):
-        flow = _make_http_flow()
-        flow.error = MagicMock()
-        flow.error.msg = "connection reset"
+    def test_skips_log_when_no_metadata(self, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False)
+        flow.error = Error("connection reset")
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.error(flow)  # Should not raise, no JSONL written
 
-    def test_logs_error_to_jsonl(self, tmp_path):
-        flow = _make_http_flow(host="slack.com", path="/api/chat.postMessage")
+    def test_logs_error_to_jsonl(self, tmp_path, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="slack.com", path="/api/chat.postMessage")
         flow.request.method = "POST"
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["original_url"] = "https://slack.com/api/chat.postMessage"
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.error = MagicMock()
-        flow.error.msg = "connection reset by peer"
+        flow.error = Error("connection reset by peer")
         mitm_addon._request_start_times[flow.id] = time.time() - 1.5
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.error(flow)
 
         lines = Path(log_path).read_text().splitlines()
@@ -1739,8 +1690,8 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert entry["latency_ms"] > 0
 
-    def test_error_includes_firewall_context(self, tmp_path):
-        flow = _make_http_flow(host="slack.com")
+    def test_error_includes_firewall_context(self, tmp_path, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="slack.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
@@ -1751,10 +1702,9 @@ class TestErrorHandler:
         flow.metadata["firewall_name"] = "Slack API"
         flow.metadata["firewall_permission"] = "chat:write"
         flow.metadata["firewall_rule_match"] = "POST /chat.postMessage"
-        flow.error = MagicMock()
-        flow.error.msg = "timed out"
+        flow.error = Error("timed out")
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.error(flow)
 
         entry = json.loads(Path(log_path).read_text().strip())
@@ -1765,16 +1715,15 @@ class TestErrorHandler:
         assert entry["firewall_rule_match"] == "POST /chat.postMessage"
         assert entry["error"] == "timed out"
 
-    def test_error_logs_warning_to_proxy_log(self, tmp_path):
-        flow = _make_http_flow(host="slack.com")
+    def test_error_logs_warning_to_proxy_log(self, tmp_path, real_flow):
+        flow = real_flow(with_response=False, host="slack.com")
         log_path = str(tmp_path / "network.jsonl")
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
         flow.metadata["original_url"] = "https://slack.com/api/test"
-        flow.error = MagicMock()
-        flow.error.msg = "connection reset by peer"
+        flow.error = Error("connection reset by peer")
 
         mitm_addon.error(flow)
 
@@ -1783,9 +1732,9 @@ class TestErrorHandler:
         assert "connection reset by peer" in content
         assert "slack.com" in content
 
-    def test_error_logs_connector_usage_for_x_stream(self, tmp_path):
+    def test_error_logs_connector_usage_for_x_stream(self, tmp_path, real_flow, headers):
         """Mid-flight stream crash: partial counts still reported (issue #9534)."""
-        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         log_path = str(tmp_path / "network.jsonl")
         proxy_log = tmp_path / "proxy.jsonl"
         flow.metadata["vm_run_id"] = "run-abc-123"
@@ -1804,12 +1753,10 @@ class TestErrorHandler:
         }
         flow.metadata["stream_buffer"] = bytearray()
         flow.metadata["stream_buffer_state"] = {"truncated": False}
-        flow.response = MagicMock()
-        flow.response.status_code = 200
+        flow.response = tutils.tresp(status_code=200)
         # X streams return application/json with chunked transfer, not x-ndjson.
         flow.response.headers = {"content-type": "application/json"}
-        flow.error = MagicMock()
-        flow.error.msg = "connection reset by peer"
+        flow.error = Error("connection reset by peer")
         flow.metadata["vm_sandbox_token"] = "test-token"
 
         with (
@@ -1825,14 +1772,14 @@ class TestErrorHandler:
         assert by_cat["tweet.read"] == 23
         assert by_cat["users.read"] == 5
 
-    def test_full_pipeline_stream_error_midflight(self, tmp_path):
+    def test_full_pipeline_stream_error_midflight(self, tmp_path, real_flow, headers):
         """End-to-end: responseheaders → partial chunks → error() logs observed counts.
 
         Simulates a real scenario: stream opens successfully, a few tweets
         arrive, then the connection resets.  No pre-populated state — the
         incremental parser must have accumulated counts from the chunks.
         """
-        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         log_path = str(tmp_path / "network.jsonl")
         proxy_log = tmp_path / "proxy.jsonl"
         flow.metadata["vm_run_id"] = "run-abc-123"
@@ -1843,10 +1790,9 @@ class TestErrorHandler:
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_permission"] = "tweet.read"
         flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "application/json"}
-        flow.response.stream = False
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
 
         # 1. Register parser
         mitm_addon.responseheaders(flow)
@@ -1859,8 +1805,7 @@ class TestErrorHandler:
         callback(b'{"data":{"id":"3"}')  # no trailing \n — connection dies here
 
         # 3. Connection aborts
-        flow.error = MagicMock()
-        flow.error.msg = "connection reset by peer"
+        flow.error = Error("connection reset by peer")
         flow.metadata["vm_sandbox_token"] = "test-token"
 
         with (
@@ -1879,12 +1824,9 @@ class TestErrorHandler:
 class TestMaybeReportProxyUsage:
     """Tests for maybe_report_proxy_usage helper."""
 
-    def setup_method(self):
-        _reset()
-
-    def test_reports_usage_for_model_provider(self):
+    def test_reports_usage_for_model_provider(self, real_flow):
         """Should enqueue usage when proxy_usage exists for model provider."""
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["proxy_usage"] = {
@@ -1906,9 +1848,9 @@ class TestMaybeReportProxyUsage:
         assert payload["runId"] == "run-abc-123"
         assert payload["usage"]["input_tokens"] == 100
 
-    def test_skips_non_model_provider(self):
+    def test_skips_non_model_provider(self, real_flow):
         """Should NOT enqueue usage for non-model-provider requests."""
-        flow = _make_http_flow(host="api.github.com")
+        flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["firewall_name"] = "github"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
 
@@ -1917,9 +1859,9 @@ class TestMaybeReportProxyUsage:
 
         mock_enqueue.assert_not_called()
 
-    def test_skips_when_no_proxy_usage(self):
+    def test_skips_when_no_proxy_usage(self, real_flow):
         """Should NOT enqueue when proxy_usage is absent."""
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         # No proxy_usage in metadata
@@ -1932,9 +1874,9 @@ class TestMaybeReportProxyUsage:
 
         mock_enqueue.assert_not_called()
 
-    def test_skips_when_no_run_id(self):
+    def test_skips_when_no_run_id(self, real_flow):
         """Should NOT enqueue when run_id is empty."""
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
 
@@ -1943,9 +1885,9 @@ class TestMaybeReportProxyUsage:
 
         mock_enqueue.assert_not_called()
 
-    def test_warns_when_missing_sandbox_token(self, tmp_path):
+    def test_warns_when_missing_sandbox_token(self, tmp_path, real_flow):
         """Should write to proxy log and skip when sandbox_token is empty."""
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = ""
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
@@ -1962,9 +1904,9 @@ class TestMaybeReportProxyUsage:
         assert proxy_log.exists()
         assert "missing sandbox_token or api_url" in proxy_log.read_text()
 
-    def test_warns_when_missing_api_url(self, tmp_path):
+    def test_warns_when_missing_api_url(self, tmp_path, real_flow):
         """Should write to proxy log and skip when api_url is empty."""
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
@@ -2006,11 +1948,9 @@ class TestIsXStreamPath:
 class TestLogConnectorUsage:
     """Tests for log_connector_usage helper (issue #9504)."""
 
-    def setup_method(self):
-        _reset()
-
     def _make_x_flow(
         self,
+        real_flow,
         tmp_path,
         *,
         path="/2/tweets",
@@ -2021,7 +1961,7 @@ class TestLogConnectorUsage:
         rule="GET /2/tweets",
         content_encoding="",
     ):
-        flow = _make_http_flow(host="api.x.com", path=path)
+        flow = real_flow(with_response=False, host="api.x.com", path=path)
         flow.metadata["original_url"] = (
             f"https://api.x.com{path}?{query}" if query else f"https://api.x.com{path}"
         )
@@ -2032,12 +1972,15 @@ class TestLogConnectorUsage:
         flow.metadata["firewall_rule_match"] = rule
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {"truncated": False}
-        flow.response = MagicMock()
-        flow.response.status_code = status
-        flow.response.headers = {
-            "content-type": "application/json",
-            "content-encoding": content_encoding,
-        }
+        flow.response = tutils.tresp(
+            status_code=status,
+            headers=http.Headers(
+                **{
+                    "content-type": "application/json",
+                    "content-encoding": content_encoding,
+                }
+            ),
+        )
         return flow
 
     def _call_and_get_billing(self, flow, run_id="run-abc-123"):
@@ -2059,31 +2002,33 @@ class TestLogConnectorUsage:
 
     # ---- positive cases ----
 
-    def test_logs_single_resource_get(self, tmp_path):
+    def test_logs_single_resource_get(self, tmp_path, real_flow):
         """GET /2/tweets/:id -> category=tweet.read, quantity=1."""
         body = json.dumps({"data": {"id": "1", "text": "hi"}}).encode()
-        flow = self._make_x_flow(tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}")
+        flow = self._make_x_flow(
+            real_flow, tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}"
+        )
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 1
 
-    def test_logs_batch_ids(self, tmp_path):
+    def test_logs_batch_ids(self, tmp_path, real_flow):
         """GET /2/tweets?ids=1,2,3 -> category=tweet.read, quantity=3."""
         body = json.dumps({"data": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}).encode()
-        flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=body)
+        flow = self._make_x_flow(real_flow, tmp_path, query="ids=1,2,3", body=body)
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 3
 
-    def test_logs_batch_ids_with_deletions(self, tmp_path):
+    def test_logs_batch_ids_with_deletions(self, tmp_path, real_flow):
         """Batch with some missing ids -> bills actual data returned."""
         body = json.dumps({"data": [{"id": "1"}, {"id": "3"}]}).encode()
-        flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=body)
+        flow = self._make_x_flow(real_flow, tmp_path, query="ids=1,2,3", body=body)
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 2
 
-    def test_logs_expansions_includes(self, tmp_path):
+    def test_logs_expansions_includes(self, tmp_path, real_flow):
         """?expansions=author_id -> three billing payloads for each resource type."""
         body = json.dumps(
             {
@@ -2095,6 +2040,7 @@ class TestLogConnectorUsage:
             }
         ).encode()
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             query="expansions=author_id,attachments.media_keys",
             body=body,
@@ -2103,10 +2049,11 @@ class TestLogConnectorUsage:
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat == {"tweet.read": 1, "users.read": 1, "media.read": 2}
 
-    def test_logs_empty_search_bills_zero(self, tmp_path):
+    def test_logs_empty_search_bills_zero(self, tmp_path, real_flow):
         """Search returning zero results bills 0."""
         body = json.dumps({"data": [], "meta": {"result_count": 0}}).encode()
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/tweets/search/recent",
             query="query=nothing",
@@ -2117,7 +2064,7 @@ class TestLogConnectorUsage:
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 0
 
-    def test_soft_error_bills_zero(self, tmp_path):
+    def test_soft_error_bills_zero(self, tmp_path, real_flow):
         """HTTP 200 + errors array + no data field -> bills 0 (issue #9620)."""
         body = json.dumps(
             {
@@ -2134,16 +2081,21 @@ class TestLogConnectorUsage:
             }
         ).encode()
         flow = self._make_x_flow(
-            tmp_path, path="/2/tweets/999999999999999999", body=body, rule="GET /2/tweets/{id}"
+            real_flow,
+            tmp_path,
+            path="/2/tweets/999999999999999999",
+            body=body,
+            rule="GET /2/tweets/{id}",
         )
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 0
 
-    def test_zero_result_search_with_max_results_bills_zero(self, tmp_path):
+    def test_zero_result_search_with_max_results_bills_zero(self, tmp_path, real_flow):
         """Search with max_results=10 returning 0 results -> bills 0 (issue #9620)."""
         body = json.dumps({"meta": {"result_count": 0, "newest_id": None}}).encode()
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/tweets/search/recent",
             query="query=xyzzy_no_results&max_results=10",
@@ -2154,7 +2106,7 @@ class TestLogConnectorUsage:
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 0
 
-    def test_logs_expansions_users_and_referenced_tweets(self, tmp_path):
+    def test_logs_expansions_users_and_referenced_tweets(self, tmp_path, real_flow):
         """includes.users and includes.tweets produce two billing payloads."""
         body = json.dumps(
             {
@@ -2166,6 +2118,7 @@ class TestLogConnectorUsage:
             }
         ).encode()
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             query="expansions=author_id,referenced_tweets.id",
             body=body,
@@ -2177,7 +2130,7 @@ class TestLogConnectorUsage:
             "users.read": 2,
         }
 
-    def test_handles_unknown_includes_key(self, tmp_path):
+    def test_handles_unknown_includes_key(self, tmp_path, real_flow):
         """Unknown includes.<key> types get a synthetic <key>.read billing key."""
         body = json.dumps(
             {
@@ -2188,7 +2141,7 @@ class TestLogConnectorUsage:
                 },
             }
         ).encode()
-        flow = self._make_x_flow(tmp_path, query="expansions=author_id", body=body)
+        flow = self._make_x_flow(real_flow, tmp_path, query="expansions=author_id", body=body)
         payloads = self._call_and_get_billing(flow)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat == {
@@ -2197,7 +2150,7 @@ class TestLogConnectorUsage:
             "future_widget.read": 3,
         }
 
-    def test_logs_search_meta_result_count(self, tmp_path):
+    def test_logs_search_meta_result_count(self, tmp_path, real_flow):
         """Search response with meta.result_count -> quantity=20."""
         body = json.dumps(
             {
@@ -2206,6 +2159,7 @@ class TestLogConnectorUsage:
             }
         ).encode()
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/tweets/search/recent",
             query="query=hello&max_results=100",
@@ -2217,12 +2171,13 @@ class TestLogConnectorUsage:
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 20
 
-    def test_logs_users_by_usernames_batch(self, tmp_path):
+    def test_logs_users_by_usernames_batch(self, tmp_path, real_flow):
         """GET /2/users/by?usernames=a,b,c -> category=users.read, quantity=2."""
         body = json.dumps(
             {"data": [{"id": "1", "username": "a"}, {"id": "2", "username": "b"}]}
         ).encode()
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/users/by",
             query="usernames=a,b,c",
@@ -2234,7 +2189,7 @@ class TestLogConnectorUsage:
         assert p["category"] == "users.read"
         assert p["quantity"] == 2
 
-    def test_logs_tweet_counts_total_tweet_count(self, tmp_path):
+    def test_logs_tweet_counts_total_tweet_count(self, tmp_path, real_flow):
         """GET /2/tweets/counts/recent -> category=tweet.read, quantity=12567."""
         body = json.dumps(
             {
@@ -2246,6 +2201,7 @@ class TestLogConnectorUsage:
             }
         ).encode()
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/tweets/counts/recent",
             query="query=hello",
@@ -2256,19 +2212,20 @@ class TestLogConnectorUsage:
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 12567
 
-    def test_handles_gzip_body(self, tmp_path):
+    def test_handles_gzip_body(self, tmp_path, real_flow):
         """gzip-encoded response body decompresses before parsing."""
         raw = json.dumps({"data": [{"id": "1"}], "meta": {"result_count": 1}}).encode()
         body = gzip.compress(raw)
-        flow = self._make_x_flow(tmp_path, body=body, content_encoding="gzip")
+        flow = self._make_x_flow(real_flow, tmp_path, body=body, content_encoding="gzip")
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 1
 
-    def test_logs_write_operation_charges_one(self, tmp_path):
+    def test_logs_write_operation_charges_one(self, tmp_path, real_flow):
         """POST /2/tweets -> category=tweet.write, quantity=1."""
         body = json.dumps({"data": {"id": "99", "text": "new tweet"}}).encode()
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/tweets",
             body=body,
@@ -2281,9 +2238,10 @@ class TestLogConnectorUsage:
         assert p["category"] == "tweet.write"
         assert p["quantity"] == 1
 
-    def test_delete_method_charges_one(self, tmp_path):
+    def test_delete_method_charges_one(self, tmp_path, real_flow):
         """DELETE /2/tweets/:id -> category=tweet.write, quantity=1."""
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/tweets/123",
             body=b"",
@@ -2295,7 +2253,7 @@ class TestLogConnectorUsage:
         assert p["category"] == "tweet.write"
         assert p["quantity"] == 1
 
-    def test_expansion_with_empty_includes_array(self, tmp_path):
+    def test_expansion_with_empty_includes_array(self, tmp_path, real_flow):
         """includes.users is empty array -> no users.read billing record."""
         body = json.dumps(
             {
@@ -2303,12 +2261,12 @@ class TestLogConnectorUsage:
                 "includes": {"users": []},
             }
         ).encode()
-        flow = self._make_x_flow(tmp_path, query="expansions=author_id", body=body)
+        flow = self._make_x_flow(real_flow, tmp_path, query="expansions=author_id", body=body)
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 1
 
-    def test_empty_search_with_includes_sends_both(self, tmp_path):
+    def test_empty_search_with_includes_sends_both(self, tmp_path, real_flow):
         """Search returns 0 data but non-empty includes -> two billing records,
         primary with quantity=0."""
         body = json.dumps(
@@ -2319,6 +2277,7 @@ class TestLogConnectorUsage:
             }
         ).encode()
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/tweets/search/recent",
             query="query=test&expansions=author_id",
@@ -2332,9 +2291,10 @@ class TestLogConnectorUsage:
 
     # ---- streaming: x_ndjson_state feeds billing directly (issue #9534) ----
 
-    def test_logs_x_stream_with_ndjson_state(self, tmp_path):
+    def test_logs_x_stream_with_ndjson_state(self, tmp_path, real_flow):
         """Stream with pre-populated x_ndjson_state -> two billing payloads."""
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/tweets/search/stream",
             body=b"",
@@ -2352,9 +2312,10 @@ class TestLogConnectorUsage:
         assert by_cat["tweet.read"] == 62
         assert by_cat["users.read"] == 47
 
-    def test_logs_x_stream_empty_no_fallback(self, tmp_path):
+    def test_logs_x_stream_empty_no_fallback(self, tmp_path, real_flow):
         """Stream that delivered 0 tweets bills 0, NOT _X_UNPARSEABLE_READ_FALLBACK."""
         flow = self._make_x_flow(
+            real_flow,
             tmp_path,
             path="/2/tweets/search/stream",
             body=b"",
@@ -2372,76 +2333,78 @@ class TestLogConnectorUsage:
 
     # ---- fallback / unparseable cases ----
 
-    def test_handles_truncated_buffer(self, tmp_path):
+    def test_handles_truncated_buffer(self, tmp_path, real_flow):
         """Truncated buffer -> unparseable fallback quantity=100."""
-        flow = self._make_x_flow(tmp_path, body=b"{")
+        flow = self._make_x_flow(real_flow, tmp_path, body=b"{")
         flow.metadata["stream_buffer_state"] = {"truncated": True}
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 100
 
-    def test_handles_invalid_json(self, tmp_path):
+    def test_handles_invalid_json(self, tmp_path, real_flow):
         """Malformed body -> unparseable fallback quantity=100."""
-        flow = self._make_x_flow(tmp_path, body=b"not json")
+        flow = self._make_x_flow(real_flow, tmp_path, body=b"not json")
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 100
 
-    def test_billable_counts_fallback_only_when_no_hints(self, tmp_path):
+    def test_billable_counts_fallback_only_when_no_hints(self, tmp_path, real_flow):
         """body unparseable but ?ids= present -> uses ids_count, no fallback."""
-        flow = self._make_x_flow(tmp_path, query="ids=1,2,3", body=b"not json")
+        flow = self._make_x_flow(real_flow, tmp_path, query="ids=1,2,3", body=b"not json")
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 3
 
-    def test_billable_counts_fallback_only_when_no_max_results(self, tmp_path):
+    def test_billable_counts_fallback_only_when_no_max_results(self, tmp_path, real_flow):
         """body unparseable but ?max_results=50 present -> uses max_results."""
-        flow = self._make_x_flow(tmp_path, query="max_results=50", body=b"not json")
+        flow = self._make_x_flow(real_flow, tmp_path, query="max_results=50", body=b"not json")
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "tweet.read"
         assert p["quantity"] == 50
 
     # ---- skip cases ----
 
-    def test_skips_on_server_error(self, tmp_path):
-        flow = self._make_x_flow(tmp_path, status=500)
+    def test_skips_on_server_error(self, tmp_path, real_flow):
+        flow = self._make_x_flow(real_flow, tmp_path, status=500)
         assert self._call_and_get_billing(flow) == []
 
-    def test_skips_on_rate_limit(self, tmp_path):
-        flow = self._make_x_flow(tmp_path, status=429)
+    def test_skips_on_rate_limit(self, tmp_path, real_flow):
+        flow = self._make_x_flow(real_flow, tmp_path, status=429)
         assert self._call_and_get_billing(flow) == []
 
-    def test_skips_on_empty_permission(self, tmp_path):
+    def test_skips_on_empty_permission(self, tmp_path, real_flow):
         """Unknown-endpoint-allow has no stable pricing key."""
-        flow = self._make_x_flow(tmp_path, permission="")
+        flow = self._make_x_flow(real_flow, tmp_path, permission="")
         assert self._call_and_get_billing(flow) == []
 
-    def test_skips_on_empty_run_id(self, tmp_path):
-        flow = self._make_x_flow(tmp_path)
+    def test_skips_on_empty_run_id(self, tmp_path, real_flow):
+        flow = self._make_x_flow(real_flow, tmp_path)
         assert self._call_and_get_billing(flow, run_id="") == []
 
-    def test_skips_for_model_provider(self, tmp_path):
+    def test_skips_for_model_provider(self, tmp_path, real_flow):
         """Model providers go through maybe_report_proxy_usage instead."""
-        flow = self._make_x_flow(tmp_path)
+        flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         assert self._call_and_get_billing(flow) == []
 
-    def test_skips_for_non_billable_connector(self, tmp_path):
+    def test_skips_for_non_billable_connector(self, tmp_path, real_flow):
         """Connectors not in _BILLABLE_CONNECTORS are not logged."""
-        flow = self._make_x_flow(tmp_path)
+        flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata["firewall_name"] = "gamma"
         assert self._call_and_get_billing(flow) == []
 
-    def test_skips_when_no_response(self, tmp_path):
-        flow = self._make_x_flow(tmp_path)
+    def test_skips_when_no_response(self, tmp_path, real_flow):
+        flow = self._make_x_flow(real_flow, tmp_path)
         flow.response = None
         assert self._call_and_get_billing(flow) == []
 
     # ---- integration: response() hook wiring ----
 
-    def test_response_hook_invokes_log_connector_usage(self, tmp_path):
+    def test_response_hook_invokes_log_connector_usage(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
         """response() hook should call usage.log_connector_usage."""
-        flow = _make_http_flow(host="api.x.com", path="/2/tweets")
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
@@ -2450,13 +2413,13 @@ class TestLogConnectorUsage:
         flow.metadata["original_url"] = "https://api.x.com/2/tweets"
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_permission"] = "tweet.write"
-        flow.response = MagicMock()
-        flow.response.status_code = 200
-        flow.response.headers = {"content-type": "application/json"}
+        flow.response = tutils.tresp(
+            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
+        )
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage, "maybe_report_proxy_usage"),
             patch.object(usage, "log_connector_usage") as mock_log_connector,
         ):
@@ -2466,18 +2429,20 @@ class TestLogConnectorUsage:
 
     # ---- webhook skip ----
 
-    def test_skips_webhook_without_sandbox_token(self, tmp_path):
+    def test_skips_webhook_without_sandbox_token(self, tmp_path, real_flow):
         """When sandbox token is empty, no webhook is enqueued."""
         body = json.dumps({"data": {"id": "1", "text": "hi"}}).encode()
-        flow = self._make_x_flow(tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}")
+        flow = self._make_x_flow(
+            real_flow, tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}"
+        )
         flow.metadata["vm_sandbox_token"] = ""
         assert self._call_and_get_billing(flow) == []
 
     # ---- full pipeline: responseheaders -> stream chunks -> response (issue #9534) ----
 
-    def test_full_streaming_pipeline_filtered_stream(self, tmp_path):
+    def test_full_streaming_pipeline_filtered_stream(self, tmp_path, real_flow, mitm_ctx, headers):
         """End-to-end: responseheaders registers parser, chunks accumulate, response() logs."""
-        flow = _make_http_flow(host="api.x.com", path="/2/tweets/search/stream")
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
@@ -2488,8 +2453,7 @@ class TestLogConnectorUsage:
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_permission"] = "tweet.read"
         flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
-        flow.response = MagicMock()
-        flow.response.status_code = 200
+        flow.response = tutils.tresp(status_code=200)
         # X streams return application/json with chunked transfer, not x-ndjson.
         flow.response.headers = {"content-type": "application/json"}
         flow.response.stream = False
@@ -2513,7 +2477,7 @@ class TestLogConnectorUsage:
 
         # 3. Simulated disconnect - response() fires and logs via webhook
         with (
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch("usage.get_api_url", return_value="https://app.test"),
             patch("usage._enqueue_webhook") as mock_enqueue,
         ):
@@ -2531,23 +2495,19 @@ class TestLogConnectorUsage:
 class TestErrorUsageReporting:
     """Tests that error() hook calls maybe_report_proxy_usage."""
 
-    def setup_method(self):
-        _reset()
-
-    def test_error_calls_maybe_report(self, tmp_path):
+    def test_error_calls_maybe_report(self, tmp_path, real_flow, mitm_ctx):
         """error() should invoke maybe_report_proxy_usage."""
-        flow = _make_http_flow(host="api.anthropic.com")
+        flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.error = MagicMock()
-        flow.error.msg = "connection reset by peer"
+        flow.error = Error("connection reset by peer")
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage, "maybe_report_proxy_usage") as mock_report,
         ):
             mitm_addon.error(flow)
@@ -2658,43 +2618,34 @@ class TestDoneHook:
 
 
 class TestTlsClienthello:
-    def setup_method(self):
-        _reset()
-
-    def test_unregistered_vm_ignored(self, registry_file):
-        data = _make_tls_data(client_ip="192.168.99.99")
+    def test_unregistered_vm_ignored(self, registry_file, make_tls_data, mitm_ctx):
+        data = make_tls_data(client_ip="192.168.99.99")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         ):
             mitm_addon.tls_clienthello(data)
 
         assert data.ignore_connection is True
 
-    def test_mitm_enabled_returns_early(self, registry_file):
+    def test_mitm_enabled_returns_early(self, registry_file, make_tls_data, mitm_ctx):
         """When MITM is enabled, tls_clienthello should return without setting ignore_connection."""
-        data = _make_tls_data(client_ip="10.200.0.1", sni="blocked.com")
+        data = make_tls_data(client_ip="10.200.0.1", sni="blocked.com")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         ):
             mitm_addon.tls_clienthello(data)
 
         # MITM VM (10.200.0.1) should NOT set ignore_connection
         assert data.ignore_connection is False
 
-    def test_registered_vm_allows_mitm(self, registry_file):
+    def test_registered_vm_allows_mitm(self, registry_file, make_tls_data, mitm_ctx):
         """Registered VM does NOT set ignore_connection (allows MITM interception)."""
-        data = _make_tls_data(client_ip="10.200.0.2", sni="anything.com")
+        data = make_tls_data(client_ip="10.200.0.2", sni="anything.com")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
         ):
             mitm_addon.tls_clienthello(data)
 
@@ -2702,34 +2653,12 @@ class TestTlsClienthello:
         assert data.ignore_connection is False
 
 
-def _make_tcp_flow(client_ip="10.200.0.1"):
-    """Create a mock TCP flow."""
-    flow = MagicMock()
-    flow.client_conn.peername = (client_ip, 12345)
-    flow.server_conn.address = ("140.82.116.3", 22)
-    flow.metadata = {}
-    flow.error = None
-    # Two messages: one from client, one from server
-    client_msg = MagicMock()
-    client_msg.content = b"hello"
-    client_msg.from_client = True
-    server_msg = MagicMock()
-    server_msg.content = b"SSH-2.0-babeld"
-    server_msg.from_client = False
-    flow.messages = [client_msg, server_msg]
-    return flow
-
-
 class TestTcpStart:
-    def setup_method(self):
-        _reset()
-
-    def test_sets_metadata_for_registered_vm(self, registry_file):
-        flow = _make_tcp_flow(client_ip="10.200.0.1")
+    def test_sets_metadata_for_registered_vm(self, registry_file, mitm_ctx, real_tcp_flow):
+        flow = real_tcp_flow(client_ip="10.200.0.1")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file)),
         ):
             mitm_addon.tcp_start(flow)
 
@@ -2737,24 +2666,22 @@ class TestTcpStart:
         assert "vm_network_log_path" in flow.metadata
         assert "tcp_start_time" in flow.metadata
 
-    def test_skips_when_no_client_ip(self, registry_file):
-        flow = _make_tcp_flow()
+    def test_skips_when_no_client_ip(self, registry_file, mitm_ctx, real_tcp_flow):
+        flow = real_tcp_flow()
         flow.client_conn.peername = None
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file)),
         ):
             mitm_addon.tcp_start(flow)
 
         assert "vm_run_id" not in flow.metadata
 
-    def test_skips_when_vm_not_registered(self, registry_file):
-        flow = _make_tcp_flow(client_ip="192.168.99.99")
+    def test_skips_when_vm_not_registered(self, registry_file, mitm_ctx, real_tcp_flow):
+        flow = real_tcp_flow(client_ip="192.168.99.99")
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(registry_file)),
         ):
             mitm_addon.tcp_start(flow)
 
@@ -2762,17 +2689,14 @@ class TestTcpStart:
 
 
 class TestTcpLog:
-    def setup_method(self):
-        _reset()
-
-    def test_logs_tcp_connection(self, registry_file, tmp_path):
-        flow = _make_tcp_flow(client_ip="10.200.0.1")
+    def test_logs_tcp_connection(self, registry_file, tmp_path, mitm_ctx, real_tcp_flow):
+        flow = real_tcp_flow(client_ip="10.200.0.1")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["tcp_start_time"] = time.time() - 0.05
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
         lines = Path(log_path).read_text().splitlines()
@@ -2786,16 +2710,15 @@ class TestTcpLog:
         assert entry["response_size"] == 14  # b"SSH-2.0-babeld"
         assert "error" not in entry
 
-    def test_logs_tcp_error(self, registry_file, tmp_path):
-        flow = _make_tcp_flow(client_ip="10.200.0.1")
+    def test_logs_tcp_error(self, registry_file, tmp_path, mitm_ctx, real_tcp_flow):
+        flow = real_tcp_flow(client_ip="10.200.0.1")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["tcp_start_time"] = time.time()
-        flow.error = MagicMock()
-        flow.error.msg = "connection reset by peer"
+        flow.error = Error("connection reset by peer")
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.tcp_error(flow)
 
         lines = Path(log_path).read_text().splitlines()
@@ -2803,38 +2726,38 @@ class TestTcpLog:
         assert entry["type"] == "tcp"
         assert entry["error"] == "connection reset by peer"
 
-    def test_skips_when_no_run_id(self, tmp_path):
-        flow = _make_tcp_flow()
+    def test_skips_when_no_run_id(self, tmp_path, mitm_ctx, real_tcp_flow):
+        flow = real_tcp_flow()
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_network_log_path"] = log_path
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
         assert not Path(log_path).exists()
 
-    def test_handles_missing_server_addr(self, tmp_path):
-        flow = _make_tcp_flow()
+    def test_handles_missing_server_addr(self, tmp_path, mitm_ctx, real_tcp_flow):
+        flow = real_tcp_flow()
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["tcp_start_time"] = time.time()
         flow.server_conn = None
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
         entry = json.loads(Path(log_path).read_text().strip())
         assert entry["host"] == "unknown"
         assert entry["port"] == 0
 
-    def test_handles_missing_start_time(self, tmp_path):
-        flow = _make_tcp_flow()
+    def test_handles_missing_start_time(self, tmp_path, mitm_ctx, real_tcp_flow):
+        flow = real_tcp_flow()
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
         entry = json.loads(Path(log_path).read_text().strip())
@@ -2844,10 +2767,7 @@ class TestTcpLog:
 class TestFirewallHeaderCache:
     """Tests for get_firewall_headers caching and concurrency protection."""
 
-    def setup_method(self):
-        _reset()
-
-    async def test_concurrent_fetches_coalesce(self):
+    async def test_concurrent_fetches_coalesce(self, headers):
         """Multiple concurrent get_firewall_headers calls should make only one HTTP request."""
         fetch_count = 0
 
@@ -2873,7 +2793,7 @@ class TestFirewallHeaderCache:
         assert all(r["headers"] == {"Authorization": "Bearer token"} for r in results)
         assert all(r["cache_hit"] is False or r["cache_hit"] is True for r in results)
 
-    async def test_different_keys_fetch_independently(self):
+    async def test_different_keys_fetch_independently(self, headers):
         """Different (run_id, api_id) pairs should fetch independently."""
         fetch_count = 0
 
@@ -2896,7 +2816,7 @@ class TestFirewallHeaderCache:
 
         assert fetch_count == 2
 
-    async def test_cache_hit_skips_fetch(self):
+    async def test_cache_hit_skips_fetch(self, headers):
         """Cached entry should be returned without fetching."""
         auth._firewall_header_cache[("run-1", "api-1")] = {
             "headers": {"Authorization": "Bearer cached"},
@@ -2912,7 +2832,7 @@ class TestFirewallHeaderCache:
         assert "refreshed_connectors" not in result
         assert "refreshed_secrets" not in result
 
-    async def test_expired_cache_triggers_fetch(self):
+    async def test_expired_cache_triggers_fetch(self, headers):
         """Expired cache entry should trigger a new fetch."""
         auth._firewall_header_cache[("run-1", "api-1")] = {
             "headers": {"Authorization": "Bearer old"},
@@ -2949,7 +2869,7 @@ class TestFirewallHeaderCache:
 
         assert ("run-1", "api-1") not in auth._firewall_header_cache
 
-    def test_registry_eviction_cleans_locks(self, tmp_path):
+    def test_registry_eviction_cleans_locks(self, tmp_path, mitm_ctx, headers):
         """When a run is evicted from registry, its locks should be cleaned up too."""
         auth._firewall_header_cache[("run-old", "api-1")] = {
             "headers": {},
@@ -2962,8 +2882,7 @@ class TestFirewallHeaderCache:
         reg_path.write_text(json.dumps(registry))
 
         with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(registry_path=str(reg_path)),
         ):
             mitm_addon._registry_cache_key = (0, 0)
             mitm_addon.load_registry()
@@ -3063,13 +2982,13 @@ class TestUsagePendingCounter:
         finally:
             usage.usage_executor = old_executor
 
-    def test_decorator_pop_prevents_double_decrement(self, tmp_path):
+    def test_decorator_pop_prevents_double_decrement(self, tmp_path, real_flow):
         """If both response() and error() fire for the same flow, decrement only once."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
         usage.increment_flows()
         assert usage._in_flight_flows == 1
 
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False)
         flow.metadata["_usage_flow_tracked"] = True
 
         # Simulate response() followed by error() on the same flow.
@@ -3083,12 +3002,12 @@ class TestUsagePendingCounter:
         fake_handler(flow)  # second call: flag already popped, no decrement
         assert usage._in_flight_flows == 0  # stays at 0, not -1
 
-    def test_untracked_flow_not_decremented(self, tmp_path):
+    def test_untracked_flow_not_decremented(self, tmp_path, real_flow):
         """Flows without _usage_flow_tracked should not touch the counter."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
         usage.increment_flows()  # simulate one tracked flow in flight
 
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False)
         # No _usage_flow_tracked in metadata — this is a regular flow.
 
         @mitm_addon._track_usage_flow

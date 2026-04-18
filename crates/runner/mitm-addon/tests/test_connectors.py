@@ -20,24 +20,6 @@ from matching import (
 )
 
 
-def _make_http_flow(client_ip="10.200.0.1", host="api.github.com", port=443, path="/repos"):
-    """Create a mock HTTP flow for firewall tests."""
-    flow = MagicMock()
-    flow.id = f"flow-{id(flow)}"
-    flow.client_conn.peername = (client_ip, 12345)
-    flow.request.pretty_host = host
-    flow.request.port = port
-    flow.request.path = path
-    flow.request.pretty_url = f"https://{host}{path}"
-    flow.request.method = "GET"
-    flow.request.content = b""
-    flow.request.headers = {}
-    flow.request.query = {}
-    flow.metadata = {"vm_run_id": "test-run"}
-    flow.response = None
-    return flow
-
-
 def _wrap_firewalls(apis, name="test", ref="test"):
     """Wrap a list of API entries into a firewall entry list."""
     return [{"name": name, "ref": ref, "apis": apis}]
@@ -146,7 +128,7 @@ class TestMatchPath:
 class TestMatchFirewallRequest:
     """Tests for the three-state matching: allow, block, or None (pass-through)."""
 
-    def test_no_permissions_blocks(self):
+    def test_no_permissions_blocks(self, headers):
         """Missing permissions field → block (fail-closed)."""
         fw_configs = _wrap_firewalls(
             [
@@ -168,7 +150,7 @@ class TestMatchFirewallRequest:
         assert result.path == "/repos"
         assert result.permissions == ()
 
-    def test_permission_match_allows(self):
+    def test_permission_match_allows(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -192,7 +174,7 @@ class TestMatchFirewallRequest:
         assert result.match_info["params"] == {"owner": "octocat", "repo": "hello"}
         assert result.match_info["rule"] == "GET /repos/{owner}/{repo}"
 
-    def test_any_method_matches(self):
+    def test_any_method_matches(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -211,7 +193,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "full-access"
 
-    def test_method_case_insensitive(self):
+    def test_method_case_insensitive(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -229,7 +211,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_wrong_method_blocks(self):
+    def test_wrong_method_blocks(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -247,7 +229,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_wrong_path_blocks(self):
+    def test_wrong_path_blocks(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -265,7 +247,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_no_base_match_returns_none(self):
+    def test_no_base_match_returns_none(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -299,7 +281,7 @@ class TestMatchFirewallRequest:
             is None
         )
 
-    def test_exact_base_no_path(self):
+    def test_exact_base_no_path(self, headers):
         """URL equals base exactly (rest='') → rel_path='/' → matches root rule."""
         fw_configs = _wrap_firewalls(
             [
@@ -316,7 +298,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "root"
 
-    def test_trailing_slash_on_url(self):
+    def test_trailing_slash_on_url(self, headers):
         """URL trailing slash doesn't affect matching (split filters empty segments)."""
         fw_configs = _wrap_firewalls(
             [
@@ -335,7 +317,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_trailing_slash_on_base_config(self):
+    def test_trailing_slash_on_base_config(self, headers):
         """Base URL with trailing slash still matches (rstrip strips it)."""
         fw_configs = _wrap_firewalls(
             [
@@ -354,7 +336,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_port_boundary_rejected(self):
+    def test_port_boundary_rejected(self, headers):
         """Port in URL (rest starts with ':') is not a valid path boundary."""
         fw_configs = _wrap_firewalls(
             [
@@ -373,7 +355,7 @@ class TestMatchFirewallRequest:
         )
         assert result is None
 
-    def test_evil_domain_not_matched(self):
+    def test_evil_domain_not_matched(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -391,7 +373,7 @@ class TestMatchFirewallRequest:
         )
         assert result is None
 
-    def test_multiple_permissions_first_match_wins(self):
+    def test_multiple_permissions_first_match_wins(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -413,7 +395,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "messages-send"
 
-    def test_malformed_rules_skipped(self):
+    def test_malformed_rules_skipped(self, headers):
         """Rules without 'METHOD /path' format are silently skipped, not crash or false-allow."""
         fw_configs = _wrap_firewalls(
             [
@@ -443,7 +425,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result2, FirewallBlock)
 
-    def test_path_case_sensitive(self):
+    def test_path_case_sensitive(self, headers):
         """URL paths are case-sensitive — /REPOS must not match /repos."""
         fw_configs = _wrap_firewalls(
             [
@@ -462,7 +444,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_multiple_services_match_across(self):
+    def test_multiple_services_match_across(self, headers):
         fw_configs = [
             {
                 "name": "github",
@@ -505,7 +487,7 @@ class TestMatchFirewallRequest:
         assert isinstance(sl, FirewallAllow)
         assert sl.match_info["name"] == "slack"
 
-    def test_query_string_stripped_for_matching(self):
+    def test_query_string_stripped_for_matching(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -523,7 +505,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_fragment_stripped_for_matching(self):
+    def test_fragment_stripped_for_matching(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -541,7 +523,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_empty_permissions_list_blocks(self):
+    def test_empty_permissions_list_blocks(self, headers):
         """If permissions is present but empty, no rules can match → block."""
         fw_configs = _wrap_firewalls(
             [
@@ -560,7 +542,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_different_bases_same_permission_name(self):
+    def test_different_bases_same_permission_name(self, headers):
         """Same permission name across different api_entries — each matches its own base."""
         fw_configs = _wrap_firewalls(
             [
@@ -598,7 +580,7 @@ class TestMatchFirewallRequest:
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer files-token"
         assert result.match_info["permission"] == "full-access"
 
-    def test_same_base_different_permissions(self):
+    def test_same_base_different_permissions(self, headers):
         """Same base URL with different permissions/auth — second api_entry can match."""
         fw_configs = _wrap_firewalls(
             [
@@ -624,7 +606,7 @@ class TestMatchFirewallRequest:
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer user"
         assert result.match_info["permission"] == "send"
 
-    def test_parameterized_host_allows(self):
+    def test_parameterized_host_allows(self, headers):
         """Base URL with {subdomain} in host matches dynamically."""
         fw_configs = _wrap_firewalls(
             [
@@ -648,7 +630,7 @@ class TestMatchFirewallRequest:
         assert result.match_info["permission"] == "tickets"
         assert result.match_info["params"] == {"subdomain": "acme"}
 
-    def test_parameterized_host_blocks_no_permission(self):
+    def test_parameterized_host_blocks_no_permission(self, headers):
         """Base URL with host param matches but no rule → block."""
         fw_configs = _wrap_firewalls(
             [
@@ -670,7 +652,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallBlock)
         assert result.name == "zendesk"
 
-    def test_parameterized_host_no_match_returns_none(self):
+    def test_parameterized_host_no_match_returns_none(self, headers):
         """Different domain entirely → None (pass-through)."""
         fw_configs = _wrap_firewalls(
             [
@@ -689,7 +671,7 @@ class TestMatchFirewallRequest:
         )
         assert result is None
 
-    def test_parameterized_path_allows(self):
+    def test_parameterized_path_allows(self, headers):
         """Base URL with {param} in path matches dynamically."""
         fw_configs = _wrap_firewalls(
             [
@@ -709,7 +691,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"] == {"org": "acme", "id": "123"}
 
-    def test_parameterized_host_and_path(self):
+    def test_parameterized_host_and_path(self, headers):
         """Both host and path params extracted."""
         fw_configs = _wrap_firewalls(
             [
@@ -729,7 +711,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"] == {"tenant": "us", "org": "acme"}
 
-    def test_greedy_host_param_matches_multi_level(self):
+    def test_greedy_host_param_matches_multi_level(self, headers):
         """Greedy {sub+} in host matches multiple subdomain levels."""
         fw_configs = _wrap_firewalls(
             [
@@ -749,7 +731,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"]["sub"] == "a.b.c"
 
-    def test_greedy_star_host_param_matches_zero(self):
+    def test_greedy_star_host_param_matches_zero(self, headers):
         """Greedy {sub*} in host matches zero subdomains."""
         fw_configs = _wrap_firewalls(
             [
@@ -766,7 +748,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"]["sub"] == ""
 
-    def test_mixed_static_and_parameterized_bases(self):
+    def test_mixed_static_and_parameterized_bases(self, headers):
         """Static and parameterized bases in same config both work."""
         fw_configs = [
             {
@@ -811,7 +793,7 @@ class TestMatchFirewallRequest:
         assert zd.match_info["name"] == "zendesk"
         assert zd.match_info["params"]["sub"] == "acme"
 
-    def test_parameterized_host_with_query_string(self):
+    def test_parameterized_host_with_query_string(self, headers):
         """Parameterized base URL + query string in request."""
         fw_configs = _wrap_firewalls(
             [
@@ -831,7 +813,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"]["sub"] == "acme"
 
-    def test_parameterized_host_rejects_nonstandard_port(self):
+    def test_parameterized_host_rejects_nonstandard_port(self, headers):
         """Non-standard port must NOT match — prevents auth header leaking to rogue server."""
         fw_configs = _wrap_firewalls(
             [
@@ -1078,7 +1060,7 @@ class TestGetFirewallHeaders:
         auth._firewall_header_cache.clear()
         auth._cache_locks.clear()
 
-    async def test_cache_miss_fetches_and_caches(self):
+    async def test_cache_miss_fetches_and_caches(self, headers):
         mock_headers = {"Authorization": "Bearer fresh-token"}
         mock_result = {"headers": mock_headers}
         encrypted = "iv:tag:data"
@@ -1101,7 +1083,7 @@ class TestGetFirewallHeaders:
         assert cache_key in auth._firewall_header_cache
         assert auth._firewall_header_cache[cache_key]["headers"] == mock_headers
 
-    async def test_cache_hit_returns_cached(self):
+    async def test_cache_hit_returns_cached(self, headers):
         cache_key = ("run-1", "https://api.github.com")
         cached_headers = {"Authorization": "Bearer cached-token"}
         auth._firewall_header_cache[cache_key] = {
@@ -1118,7 +1100,7 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
 
-    async def test_cache_hit_with_valid_ttl_returns_cached(self):
+    async def test_cache_hit_with_valid_ttl_returns_cached(self, headers):
         """Cached entry with expiresAt in the future should be returned without fetching."""
         cache_key = ("run-1", "api-1")
         cached_headers = {"Authorization": "Bearer valid-token"}
@@ -1137,7 +1119,7 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
 
-    async def test_cache_evicted_when_ttl_expired(self):
+    async def test_cache_evicted_when_ttl_expired(self, headers):
         """Cached entry with expiresAt in the past should trigger a re-fetch."""
         cache_key = ("run-1", "api-1")
         auth._firewall_header_cache[cache_key] = {
@@ -1160,7 +1142,7 @@ class TestGetFirewallHeaders:
         # Verify cache was updated with new entry
         assert auth._firewall_header_cache[cache_key]["headers"] == fresh_headers
 
-    async def test_cache_with_null_expires_at_never_evicts(self):
+    async def test_cache_with_null_expires_at_never_evicts(self, headers):
         """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
         cache_key = ("run-1", "api-1")
         cached_headers = {"Authorization": "Bearer permanent-token"}
@@ -1179,7 +1161,7 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
 
-    async def test_cache_hit_includes_base_when_present(self):
+    async def test_cache_hit_includes_base_when_present(self, headers):
         """Cached entry with 'base' returns it on cache hit."""
         cache_key = ("run-1", "api-1")
         auth._firewall_header_cache[cache_key] = {
@@ -1197,7 +1179,7 @@ class TestGetFirewallHeaders:
         assert result["cache_hit"] is True
         mock_fetch.assert_not_called()
 
-    async def test_cache_hit_omits_base_when_absent(self):
+    async def test_cache_hit_omits_base_when_absent(self, headers):
         """Cached entry without 'base' does not include it in result."""
         cache_key = ("run-1", "api-1")
         auth._firewall_header_cache[cache_key] = {
@@ -1224,8 +1206,9 @@ class TestHandleFirewallRequest:
         auth._firewall_header_cache.clear()
         auth._cache_locks.clear()
 
-    async def test_success_injects_headers_and_audit_metadata(self):
-        flow = _make_http_flow()
+    async def test_success_injects_headers_and_audit_metadata(self, real_flow, headers, mitm_ctx):
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "id": "run-1:0",
             "base": "https://api.github.com",
@@ -1254,7 +1237,7 @@ class TestHandleFirewallRequest:
 
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
@@ -1280,8 +1263,9 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
 
-    async def test_failure_returns_502(self):
-        flow = _make_http_flow()
+    async def test_failure_returns_502(self, real_flow, headers, mitm_ctx):
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
         vm_info = {
             "runId": "run-1",
@@ -1297,7 +1281,7 @@ class TestHandleFirewallRequest:
                 "get_firewall_headers",
                 AsyncMock(side_effect=Exception("API unreachable")),
             ),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
@@ -1311,9 +1295,10 @@ class TestHandleFirewallRequest:
         assert "API unreachable" in body["message"]
         assert body["permission"] == "github"
 
-    async def test_no_response_set_on_success(self):
+    async def test_no_response_set_on_success(self, real_flow, headers, mitm_ctx):
         """On success, flow.response should remain None (request continues to origin)."""
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
         vm_info = {
             "runId": "run-1",
@@ -1337,15 +1322,16 @@ class TestHandleFirewallRequest:
                     }
                 ),
             ),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is None
 
-    async def test_connector_not_configured_returns_424(self):
+    async def test_connector_not_configured_returns_424(self, real_flow, headers, mitm_ctx):
         """When connector is enabled but not linked, return 424 with missing secrets."""
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
         vm_info = {
             "runId": "run-1",
@@ -1365,7 +1351,7 @@ class TestHandleFirewallRequest:
                     )
                 ),
             ),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
@@ -1380,9 +1366,10 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
 
-    async def test_missing_vars_only_returns_424(self):
+    async def test_missing_vars_only_returns_424(self, real_flow, headers, mitm_ctx):
         """When connector not configured, return 424 with connector ref."""
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://hcti.io", "auth": {"headers": {}}}
         vm_info = {
             "runId": "run-1",
@@ -1402,7 +1389,7 @@ class TestHandleFirewallRequest:
                     )
                 ),
             ),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
@@ -1413,14 +1400,15 @@ class TestHandleFirewallRequest:
         assert body["error"] == "connector_not_configured"
         assert body["connectors"] == ["htmlcsstoimage"]
 
-    async def test_missing_encrypted_secrets_returns_502(self):
+    async def test_missing_encrypted_secrets_returns_502(self, real_flow, headers, mitm_ctx):
         """When encryptedSecrets is missing from vm_info, return 502."""
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
         vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "networkLogPath": ""}
         match_info = {"name": "github", "ref": "github"}
 
-        with patch.object(auth.ctx, "log", MagicMock(), create=True):
+        with mitm_ctx():
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is not None
@@ -1438,7 +1426,7 @@ class TestHandleFirewallRequest:
 
 
 class TestFetchFirewallHeaders:
-    def test_builds_correct_request(self):
+    def test_builds_correct_request(self, headers):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps(
             {"headers": {"Authorization": "Bearer tok"}}
@@ -1470,7 +1458,7 @@ class TestFetchFirewallHeaders:
         assert call_args[1]["headers"]["Authorization"] == "Bearer tok-xyz"
         assert call_args[1]["headers"]["Content-Type"] == "application/json"
 
-    def test_includes_vercel_bypass_header(self):
+    def test_includes_vercel_bypass_header(self, headers):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
 
@@ -1487,7 +1475,7 @@ class TestFetchFirewallHeaders:
             "x-vercel-protection-bypass", "secret-bypass-value"
         )
 
-    def test_no_vercel_bypass_when_empty(self):
+    def test_no_vercel_bypass_when_empty(self, headers):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
 
@@ -1502,7 +1490,7 @@ class TestFetchFirewallHeaders:
 
         mock_req_instance.add_header.assert_not_called()
 
-    def test_includes_auth_base_in_request_body(self):
+    def test_includes_auth_base_in_request_body(self, headers):
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps(
             {"headers": {}, "base": "https://discord.com/api/webhooks/123/abc"}
@@ -1577,7 +1565,7 @@ class TestFetchFirewallHeaders:
                     "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
                 )
 
-    async def test_async_wrapper_passes_api_url_from_ctx(self):
+    async def test_async_wrapper_passes_api_url_from_ctx(self, headers):
         """fetch_firewall_headers reads api_url on the event loop and passes it to the sync fn."""
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps({"headers": {"Auth": "tok"}}).encode()
@@ -1649,9 +1637,10 @@ class TestAuthBaseUrlRewrite:
         auth._firewall_header_cache.clear()
         auth._cache_locks.clear()
 
-    async def test_url_rewrite_with_rel_path_root(self):
+    async def test_url_rewrite_with_rel_path_root(self, real_flow, headers, mitm_ctx):
         """When rel_path is '/', resolved base URL is forwarded as-is."""
-        flow = _make_http_flow(host="firewall-placeholder.vm3.ai", path="/hook")
+        flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path="/hook")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
             "auth": {"headers": {}, "base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
@@ -1682,18 +1671,21 @@ class TestAuthBaseUrlRewrite:
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.response.status_code == 200
 
-    async def test_url_rewrite_with_remaining_path(self):
+    async def test_url_rewrite_with_remaining_path(self, real_flow, headers, mitm_ctx):
         """When rel_path has content, it's appended to resolved base in forwarded URL."""
-        flow = _make_http_flow(
-            host="bitrix.internal", path="/rest/0/placeholder/crm.deal.list.json"
+        flow = real_flow(
+            with_response=False,
+            host="bitrix.internal",
+            path="/rest/0/placeholder/crm.deal.list.json",
         )
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://bitrix.internal/rest/{uid}/{code}",
             "auth": {"headers": {}, "base": "${{ secrets.BITRIX_WEBHOOK_URL }}"},
@@ -1724,7 +1716,7 @@ class TestAuthBaseUrlRewrite:
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert (
@@ -1733,12 +1725,14 @@ class TestAuthBaseUrlRewrite:
         )
         assert flow.metadata["firewall_action"] == "ALLOW"
 
-    async def test_url_rewrite_preserves_query_string(self):
+    async def test_url_rewrite_preserves_query_string(self, real_flow, headers, mitm_ctx):
         """Query string from original request is preserved in forwarded URL."""
-        flow = _make_http_flow(host="firewall-placeholder.vm3.ai", path="/hook")
-        flow.request.pretty_url = (
-            "https://firewall-placeholder.vm3.ai/discord-webhook/hook?wait=true"
+        flow = real_flow(
+            with_response=False,
+            host="firewall-placeholder.vm3.ai",
+            path="/discord-webhook/hook?wait=true",
         )
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
             "auth": {"headers": {}, "base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
@@ -1769,16 +1763,21 @@ class TestAuthBaseUrlRewrite:
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc?wait=true"
 
-    async def test_url_rewrite_resolved_base_with_trailing_slash(self):
+    async def test_url_rewrite_resolved_base_with_trailing_slash(
+        self, real_flow, headers, mitm_ctx
+    ):
         """Trailing slash on resolved base is stripped before appending rel_path."""
-        flow = _make_http_flow(
-            host="firewall-placeholder.vm3.ai", path="/bitrix/rest/0/placeholder/crm.deal.list"
+        flow = real_flow(
+            with_response=False,
+            host="firewall-placeholder.vm3.ai",
+            path="/bitrix/rest/0/placeholder/crm.deal.list",
         )
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/bitrix/rest/{uid}/{code}",
             "auth": {"headers": {}, "base": "${{ secrets.BITRIX_WEBHOOK_URL }}"},
@@ -1809,7 +1808,7 @@ class TestAuthBaseUrlRewrite:
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert (
@@ -1817,12 +1816,14 @@ class TestAuthBaseUrlRewrite:
             == "https://mycompany.bitrix24.com/rest/1/token/crm.deal.list"
         )
 
-    async def test_url_rewrite_merges_query_strings(self):
+    async def test_url_rewrite_merges_query_strings(self, real_flow, headers, mitm_ctx):
         """When resolved base has query string and original request also has one, merge with &."""
-        flow = _make_http_flow(host="firewall-placeholder.vm3.ai", path="/discord-webhook/hook")
-        flow.request.pretty_url = (
-            "https://firewall-placeholder.vm3.ai/discord-webhook/hook?wait=true"
+        flow = real_flow(
+            with_response=False,
+            host="firewall-placeholder.vm3.ai",
+            path="/discord-webhook/hook?wait=true",
         )
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
             "auth": {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
@@ -1853,14 +1854,15 @@ class TestAuthBaseUrlRewrite:
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert mock_forward.call_args[0][0] == "https://example.com/hook?token=abc&wait=true"
 
-    async def test_no_url_rewrite_when_auth_base_absent(self):
+    async def test_no_url_rewrite_when_auth_base_absent(self, real_flow, headers, mitm_ctx):
         """Without auth.base, no URL rewriting happens (existing behavior)."""
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         original_url = flow.request.url
         api_entry = {
             "base": "https://api.github.com",
@@ -1888,7 +1890,7 @@ class TestAuthBaseUrlRewrite:
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         # URL should not be modified
@@ -1899,7 +1901,7 @@ class TestAuthBaseUrlRewrite:
 class TestMatchFirewallRequestRelPath:
     """Tests that match_firewall_request includes rel_path in match_info."""
 
-    def test_rel_path_included_in_match_info(self):
+    def test_rel_path_included_in_match_info(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -1920,7 +1922,7 @@ class TestMatchFirewallRequestRelPath:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["rel_path"] == "/"
 
-    def test_rel_path_with_remaining_segments(self):
+    def test_rel_path_with_remaining_segments(self, headers):
         fw_configs = _wrap_firewalls(
             [
                 {
@@ -2011,15 +2013,28 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
     def _make_rewrite_inputs(
         self,
+        real_flow,
         *,
         path="/hook",
         pretty_url=None,
         resolved_base="https://discord.com/api/webhooks/123/abc",
         rel_path="/",
     ):
-        flow = _make_http_flow(host="firewall-placeholder.vm3.ai", path=path)
+        # ``pretty_url`` lets callers seed a specific scheme://host/path?query
+        # on the request.  We parse it back into ``real_flow`` kwargs rather
+        # than mutating the read-only ``Request.pretty_url`` property.
         if pretty_url:
-            flow.request.pretty_url = pretty_url
+            from urllib.parse import urlparse
+
+            parsed = urlparse(pretty_url)
+            host = parsed.hostname or "firewall-placeholder.vm3.ai"
+            real_path = parsed.path or "/"
+            if parsed.query:
+                real_path = f"{real_path}?{parsed.query}"
+            flow = real_flow(with_response=False, host=host, path=real_path)
+        else:
+            flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path=path)
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
             "auth": {"headers": {}, "base": "${{ secrets.WEBHOOK }}"},
@@ -2046,16 +2061,16 @@ class TestAuthBaseUrlRewriteEdgeCases:
         }
         return flow, api_entry, vm_info, match_info, token_meta
 
-    async def test_sets_auth_url_rewrite_metadata_and_response(self):
+    async def test_sets_auth_url_rewrite_metadata_and_response(self, real_flow, mitm_ctx):
         """auth_url_rewrite metadata is set and flow.response is populated via forward_request."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs()
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(real_flow)
         mock_forward = AsyncMock(
             return_value=(200, b'{"ok":true}', {"Content-Type": "application/json"})
         )
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.metadata["auth_url_rewrite"] is True
@@ -2065,9 +2080,10 @@ class TestAuthBaseUrlRewriteEdgeCases:
         call_args = mock_forward.call_args
         assert call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
 
-    async def test_no_auth_url_rewrite_metadata_when_no_base(self):
+    async def test_no_auth_url_rewrite_metadata_when_no_base(self, real_flow, headers, mitm_ctx):
         """auth_url_rewrite metadata is absent when no URL rewrite happens."""
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://api.github.com",
             "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
@@ -2092,16 +2108,17 @@ class TestAuthBaseUrlRewriteEdgeCases:
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert "auth_url_rewrite" not in flow.metadata
         # Standard header injection happened
         assert flow.request.headers["Authorization"] == "Bearer real"
 
-    async def test_forward_request_includes_auth_headers(self):
+    async def test_forward_request_includes_auth_headers(self, headers, real_flow, mitm_ctx):
         """auth.headers are included in the forwarded request to the real URL."""
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow,
             resolved_base="https://discord.com/api/webhooks/123/abc",
         )
         token_meta["headers"] = {"X-Custom": "injected-value"}
@@ -2109,7 +2126,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.metadata["auth_url_rewrite"] is True
@@ -2118,28 +2135,28 @@ class TestAuthBaseUrlRewriteEdgeCases:
         req_headers = call_args[0][2]
         assert req_headers["X-Custom"] == "injected-value"
 
-    async def test_forward_failure_returns_502(self):
+    async def test_forward_failure_returns_502(self, real_flow, mitm_ctx):
         """forward_request exception produces a 502 error response."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs()
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(real_flow)
         mock_forward = AsyncMock(side_effect=Exception("connection refused"))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["auth_url_rewrite"] is True
 
-    async def test_no_rewrite_when_resolved_base_empty_string(self):
+    async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx):
         """Empty string base from server is treated as absent — no URL rewrite."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs()
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(real_flow)
         token_meta["base"] = ""
         original_url = flow.request.url
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.request.url == original_url
@@ -2154,9 +2171,10 @@ class TestAuthBaseUrlRewriteEdgeCases:
 class TestAuthQueryInjection:
     """Tests for query parameter injection via auth.query."""
 
-    async def test_query_params_injected_on_standard_path(self):
+    async def test_query_params_injected_on_standard_path(self, real_flow, headers, mitm_ctx):
         """Resolved auth.query params are injected into flow.request.query."""
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://serpapi.com",
             "auth": {"headers": {}, "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"}},
@@ -2181,17 +2199,20 @@ class TestAuthQueryInjection:
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert "auth_url_rewrite" not in flow.metadata
         assert flow.request.query["api_key"] == "resolved-key-123"
 
-    async def test_query_param_overwrites_existing_key(self):
+    async def test_query_param_overwrites_existing_key(self, real_flow, headers, mitm_ctx):
         """auth.query overwrites a query param already present in the original request."""
-        flow = _make_http_flow(path="/search?api_key=agent-value&q=test")
-        flow.request.pretty_url = "https://serpapi.com/search?api_key=agent-value&q=test"
-        flow.request.query = {"api_key": "agent-value", "q": "test"}
+        flow = real_flow(
+            with_response=False,
+            host="serpapi.com",
+            path="/search?api_key=agent-value&q=test",
+        )
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://serpapi.com",
             "auth": {"headers": {}, "query": {"api_key": "${{ secrets.SERPAPI_TOKEN }}"}},
@@ -2216,7 +2237,7 @@ class TestAuthQueryInjection:
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         # auth.query overwrites the agent's api_key
@@ -2224,9 +2245,10 @@ class TestAuthQueryInjection:
         # Other query params are preserved
         assert flow.request.query["q"] == "test"
 
-    async def test_query_params_with_headers_simultaneously(self):
+    async def test_query_params_with_headers_simultaneously(self, real_flow, headers, mitm_ctx):
         """auth.query and auth.headers can coexist on the standard path."""
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://example.com",
             "auth": {
@@ -2254,15 +2276,16 @@ class TestAuthQueryInjection:
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.request.headers["Authorization"] == "Bearer real-token"
         assert flow.request.query["key"] == "resolved-query-value"
 
-    async def test_query_params_merged_into_rewrite_url(self):
+    async def test_query_params_merged_into_rewrite_url(self, real_flow, headers, mitm_ctx):
         """auth.query params are appended to the forwarded URL in the URL rewrite path."""
-        flow = _make_http_flow(host="firewall-placeholder.vm3.ai", path="/hook")
+        flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path="/hook")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/webhook/hook",
             "auth": {
@@ -2295,7 +2318,7 @@ class TestAuthQueryInjection:
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(auth, "forward_request", mock_forward),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.metadata["auth_url_rewrite"] is True
@@ -2305,9 +2328,10 @@ class TestAuthQueryInjection:
         assert "api_key=resolved-key-456" in forwarded_url
         assert forwarded_url.startswith("https://real-api.com/webhook/secret")
 
-    async def test_no_query_injection_when_absent(self):
+    async def test_no_query_injection_when_absent(self, real_flow, headers, mitm_ctx):
         """No query modification when auth.query is not present."""
-        flow = _make_http_flow()
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
             "base": "https://api.github.com",
             "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
@@ -2331,7 +2355,7 @@ class TestAuthQueryInjection:
         }
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.request.headers["Authorization"] == "Bearer real"
@@ -2585,7 +2609,7 @@ class TestGraphQLMatching:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_multiple_rules_first_match_wins(self):
+    def test_multiple_rules_first_match_wins(self, headers):
         """Multiple GraphQL rules — first match wins."""
         body = _gql_body("mutation { issueCreate(input: {}) { id } }", "issueCreate")
         result = matching.match_firewall_request(
@@ -3186,7 +3210,7 @@ class TestGraphQLFieldMatching:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_field_multiple_aliases(self):
+    def test_field_multiple_aliases(self, headers):
         """Multiple aliased fields are all extracted correctly."""
         body = _gql_body(
             'mutation { a: createIssue(input: {}) { id } b: closeIssue(id: "1") { id } }',
@@ -3332,7 +3356,7 @@ class TestGraphQLFieldMatching:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_field_multiple_permissions_correct_match(self):
+    def test_field_multiple_permissions_correct_match(self, headers):
         """With multiple permissions, the correct one is matched by field."""
         body = _gql_body('mutation { closeIssue(id: "1") { id } }', "CloseIssue")
         fws = _wrap_firewalls(
@@ -4166,7 +4190,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_empty_permissions_with_unknown_policy_allow(self):
+    def test_empty_permissions_with_unknown_policy_allow(self, headers):
         """Firewall with no permission rules + unknownPolicy=allow allows all."""
         fws = _wrap_firewalls(
             [
@@ -4189,7 +4213,7 @@ class TestThreeLevelMatching:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == ""
 
-    def test_overlapping_permissions_allows_if_any_not_blocked(self):
+    def test_overlapping_permissions_allows_if_any_not_blocked(self, headers):
         """Same endpoint in two permissions — one denied, one allowed → ALLOW."""
         fws = _wrap_firewalls(
             [
@@ -4217,7 +4241,7 @@ class TestThreeLevelMatching:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "repo-admin"
 
-    def test_overlapping_permissions_denies_if_all_blocked(self):
+    def test_overlapping_permissions_denies_if_all_blocked(self, headers):
         """Same endpoint in two permissions — both denied → DENY."""
         fws = _wrap_firewalls(
             [
@@ -4249,7 +4273,7 @@ class TestThreeLevelMatching:
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ("repo-read", "repo-admin")
 
-    def test_multi_firewall_different_refs(self):
+    def test_multi_firewall_different_refs(self, headers):
         """Two firewalls with different refs, each with own policies."""
         fws = [
             {
@@ -4313,7 +4337,7 @@ class TestThreeLevelMatching:
         assert result.match_info["ref"] == "slack"
         assert result.match_info["permission"] == ""
 
-    def test_different_unknown_policy_per_ref(self):
+    def test_different_unknown_policy_per_ref(self, headers):
         """unknownPolicy differs per ref — github strict, slack permissive."""
         fws = [
             {
@@ -4349,7 +4373,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_denied_known_not_overridden_by_unknown_policy(self):
+    def test_denied_known_not_overridden_by_unknown_policy(self, headers):
         """A known permission that is denied must stay denied even with unknownPolicy=allow."""
         fws = _wrap_firewalls(
             [
@@ -4375,7 +4399,7 @@ class TestThreeLevelMatching:
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ("repo-write",)
 
-    def test_denied_permission_deduped_across_rules(self):
+    def test_denied_permission_deduped_across_rules(self, headers):
         """Same permission with multiple matching rules appears once in permissions."""
         fws = _wrap_firewalls(
             [
@@ -4406,7 +4430,7 @@ class TestThreeLevelMatching:
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ("repo-read",)
 
-    def test_empty_permissions_list_denies_all_known(self):
+    def test_empty_permissions_list_denies_all_known(self, headers):
         """All permissions in deny list — all known endpoints denied."""
         fws = _wrap_firewalls(
             [
@@ -4433,7 +4457,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_ref_absent_from_policies_allows(self):
+    def test_ref_absent_from_policies_allows(self, headers):
         """Firewall ref not in networkPolicies → fully permissive."""
         fws = _wrap_firewalls(
             [
@@ -4467,7 +4491,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_multi_api_mixed_permissions(self):
+    def test_multi_api_mixed_permissions(self, headers):
         """One API has permissions, another doesn't — mixed within same firewall."""
         fws = _wrap_firewalls(
             [

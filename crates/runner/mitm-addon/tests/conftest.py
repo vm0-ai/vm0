@@ -1,12 +1,235 @@
+"""Shared pytest fixtures for mitm-addon tests.
+
+Fixtures here exist for two reasons:
+
+1. **Real mitmproxy objects in place of MagicMock**. ``real_flow`` /
+   ``headers`` produce genuine :class:`mitmproxy.http.HTTPFlow`,
+   :class:`mitmproxy.http.Request`, :class:`mitmproxy.http.Response`, and
+   :class:`mitmproxy.http.Headers` via ``mitmproxy.test`` helpers so tests
+   exercise real attribute/property semantics (``pretty_host``,
+   ``pretty_url``, ``content`` decompression, header casing, …).
+2. **Stubbing at the genuine external boundary (``mitmproxy.ctx``)**.
+   ``mitm_ctx`` replaces ``ctx.options`` and ``ctx.log`` for handler tests
+   that cannot rely on a running ``mitmdump`` process.
+"""
+
+import contextlib
 import json
+from collections.abc import Iterator
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
+from mitmproxy import http, tcp
+from mitmproxy.test import tflow, tutils
+
+import auth
+import mitm_addon
+
+
+@pytest.fixture(autouse=True)
+def _reset_module_state() -> Iterator[None]:
+    """Clear cached singletons between tests.
+
+    ``mitm_addon`` and ``auth`` cache registry data and firewall header
+    lookups in module-level dicts.  Without a reset, earlier tests leak
+    entries that change later tests' behaviour (e.g. a request from IP X
+    in test A primes ``_request_start_times`` seen by test B).
+    """
+    mitm_addon._request_start_times.clear()
+    mitm_addon._registry_cache = {}
+    mitm_addon._registry_cache_key = (0, 0)
+    auth._firewall_header_cache.clear()
+    auth._cache_locks.clear()
+    yield
+
+
+def _headers(*pairs: tuple[str, str]) -> http.Headers:
+    return http.Headers([(k.encode(), v.encode()) for k, v in pairs])
+
+
+@pytest.fixture
+def headers():
+    """Build ``mitmproxy.http.Headers`` from ``(name, value)`` string pairs."""
+    return _headers
+
+
+@pytest.fixture
+def real_flow():
+    """Factory that builds a real :class:`mitmproxy.http.HTTPFlow`.
+
+    Parameters mirror the handful of attributes the addon reads from the
+    flow: client IP, request method/host/port/path/body/headers, response
+    status/body/headers/encoding.  The returned flow has ``flow.metadata``
+    empty (addon fills it in) and, when ``with_response=False``, no
+    response attached.
+    """
+
+    def _build(
+        *,
+        client_ip: str = "10.200.0.1",
+        host: str = "example.com",
+        port: int = 443,
+        path: str = "/",
+        method: str = "GET",
+        request_body: bytes | None = None,
+        request_headers: http.Headers | None = None,
+        request_content_type: str | None = None,
+        with_response: bool = True,
+        response_status: int = 200,
+        response_body: bytes | None = None,
+        response_headers: http.Headers | None = None,
+        response_content_type: str | None = None,
+        response_encoding: str | None = None,
+        include_request_id: bool = False,
+    ) -> http.HTTPFlow:
+        if request_headers is not None:
+            req_headers = request_headers
+        else:
+            pairs: list[tuple[str, str]] = [("Host", host)]
+            if request_content_type:
+                pairs.insert(0, ("Content-Type", request_content_type))
+            req_headers = _headers(*pairs)
+        req = tutils.treq(
+            scheme=b"https",
+            method=method.encode(),
+            host=host.encode(),
+            port=port,
+            path=path.encode(),
+            headers=req_headers,
+            content=request_body,
+        )
+
+        resp: http.Response | bool
+        if with_response:
+            if response_headers is not None:
+                resp_headers = response_headers
+            else:
+                pairs = []
+                if response_content_type:
+                    pairs.append(("Content-Type", response_content_type))
+                if include_request_id:
+                    pairs.append(("X-Request-Id", "req-123"))
+                resp_headers = _headers(*pairs)
+            if response_encoding:
+                resp_headers[b"Content-Encoding"] = response_encoding.encode()
+            resp = tutils.tresp(
+                status_code=response_status,
+                headers=resp_headers,
+                content=response_body,
+            )
+        else:
+            resp = False
+
+        flow = tflow.tflow(req=req, resp=resp)
+        flow.client_conn.peername = (client_ip, 12345)
+        return flow
+
+    return _build
+
+
+class _StubTLSClient:
+    """Minimal stand-in for ``mitmproxy.connection.Client`` in TLS tests."""
+
+    def __init__(self, peername: tuple[str, int] | None, sni: str) -> None:
+        self.peername = peername
+        self.sni = sni
+
+
+class _StubTLSContext:
+    def __init__(self, client: _StubTLSClient) -> None:
+        self.client = client
+
+
+class _StubClientHelloData:
+    """Plain stub for ``mitmproxy.tls.ClientHelloData``.
+
+    ``ClientHelloData`` is constructed inside mitmproxy's TLS layer from
+    protocol state we don't have access to at test time, so we can't
+    build a real one.  The addon only reads
+    ``data.context.client.peername`` / ``data.context.client.sni`` and
+    writes ``data.ignore_connection``; a dataclass-shaped stub covers
+    that surface without pulling in MagicMock's attribute-proliferation.
+    """
+
+    def __init__(self, peername: tuple[str, int] | None, sni: str) -> None:
+        self.context = _StubTLSContext(_StubTLSClient(peername, sni))
+        self.ignore_connection = False
+
+
+@pytest.fixture
+def make_tls_data():
+    def _make(*, client_ip: str = "10.200.0.1", sni: str = "example.com") -> _StubClientHelloData:
+        return _StubClientHelloData(peername=(client_ip, 12345), sni=sni)
+
+    return _make
+
+
+@pytest.fixture
+def real_tcp_flow():
+    """Factory that builds a real :class:`mitmproxy.tcp.TCPFlow`.
+
+    Mirrors the addon's access surface: ``flow.client_conn.peername``,
+    ``flow.server_conn.address``, ``flow.metadata``, ``flow.messages``,
+    ``flow.error``.  Default messages are a 2-way client/server handshake
+    (``b"hello"`` / ``b"SSH-2.0-babeld"``) that the TCP log tests exercise.
+    """
+
+    def _build(
+        *,
+        client_ip: str = "10.200.0.1",
+        server_address: tuple[str, int] = ("140.82.116.3", 22),
+        messages: list[tcp.TCPMessage] | None = None,
+    ) -> tcp.TCPFlow:
+        flow = tflow.ttcpflow()
+        flow.client_conn.peername = (client_ip, 12345)
+        flow.server_conn.address = server_address
+        flow.error = None
+        if messages is None:
+            flow.messages = [
+                tcp.TCPMessage(True, b"hello"),
+                tcp.TCPMessage(False, b"SSH-2.0-babeld"),
+            ]
+        else:
+            flow.messages = messages
+        return flow
+
+    return _build
+
+
+@pytest.fixture
+def mitm_ctx():
+    """Stub ``mitmproxy.ctx.options`` and ``ctx.log`` for a test block.
+
+    Returns a context-manager factory: calling ``mitm_ctx(registry_path=...)``
+    patches in a stub ``Options`` object exposing the two addon-specific
+    settings plus a ``MagicMock`` log.  Yielded value is the log mock so
+    tests that need to inspect warnings can do so.
+    """
+
+    @contextlib.contextmanager
+    def _stub(
+        *,
+        registry_path: str = "/tmp/proxy-registry.json",
+        api_url: str = "https://api.vm0.ai",
+    ) -> Iterator[MagicMock]:
+        options = MagicMock()
+        options.vm0_api_url = api_url
+        options.vm0_proxy_registry_path = registry_path
+        log = MagicMock()
+        with (
+            patch.object(mitm_addon.ctx, "options", options, create=True),
+            patch.object(mitm_addon.ctx, "log", log, create=True),
+        ):
+            yield log
+
+    return _stub
 
 
 @pytest.fixture
 def registry_file(tmp_path):
     """Create a sample proxy registry JSON file and return its path."""
-    registry = {
+    registry: dict[str, Any] = {
         "vms": {
             "10.200.0.1": {
                 "runId": "run-abc-123",
