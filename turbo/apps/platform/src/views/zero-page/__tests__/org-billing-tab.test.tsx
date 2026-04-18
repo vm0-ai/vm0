@@ -6,6 +6,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import { reloadBillingStatus$ } from "../../../signals/zero-page/billing.ts";
 
 const context = testContext();
 
@@ -968,5 +969,34 @@ describe("org billing tab - downgrade flow", () => {
     await waitFor(() => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
+  });
+});
+
+describe("org billing tab - billing status refresh", () => {
+  it("should update plan display when billing status is refreshed", async () => {
+    mockAPIs();
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    // Simulate upgrade completing: update mock to pro status and trigger reload
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    context.store.set(reloadBillingStatus$);
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    // With useLastLoadable, old data remains during refresh — no flash to skeleton
+    expect(screen.queryByText("Free plan")).not.toBeInTheDocument();
   });
 });
