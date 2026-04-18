@@ -4,11 +4,8 @@
  * Mock handlers for /api/zero/logs endpoints
  */
 
-import { http, HttpResponse } from "msw";
-import type {
-  LogsListResponse,
-  LogDetail,
-} from "../../signals/zero-page/log-types.ts";
+import { logsListContract, logsByIdContract, type LogDetail } from "@vm0/core";
+import { mockApi } from "../msw-contract.ts";
 
 // Mock data for log details
 const mockLogDetails: LogDetail[] = [
@@ -62,65 +59,49 @@ const mockLogDetails: LogDetail[] = [
 
 export const appLogsHandlers = [
   // GET /api/zero/logs - List logs with basic fields
-  http.get("*/api/zero/logs", ({ request }) => {
-    const url = new URL(request.url);
-    const cursor = url.searchParams.get("cursor");
-    const limit = Number.parseInt(url.searchParams.get("limit") || "20", 10);
+  mockApi(logsListContract.list, ({ query, respond }) => {
+    const { cursor, limit } = query;
 
-    // Simple pagination logic
     const cursorIndex = cursor
-      ? mockLogDetails.findIndex((r) => {
-          return r.id === cursor;
-        }) + 1
+      ? mockLogDetails.findIndex((r) => r.id === cursor) + 1
       : 0;
     const data = mockLogDetails.slice(cursorIndex, cursorIndex + limit);
     const hasMore = cursorIndex + limit < mockLogDetails.length;
-    const nextCursor = hasMore ? data[data.length - 1]?.id || null : null;
+    const nextCursor = hasMore ? (data[data.length - 1]?.id ?? null) : null;
     const totalPages = Math.max(1, Math.ceil(mockLogDetails.length / limit));
 
-    const response: LogsListResponse = {
-      data: data.map((log) => {
-        return {
-          id: log.id,
-          sessionId: log.sessionId,
-          agentId: log.agentId,
-          displayName: null,
-          framework: log.framework,
-          triggerSource: null,
-          triggerAgentName: null,
-          scheduleId: null,
-          status: log.status,
-          prompt: log.prompt,
-          createdAt: log.createdAt,
-          startedAt: log.startedAt,
-          completedAt: log.completedAt,
-        };
-      }),
-      pagination: {
-        hasMore,
-        nextCursor,
-        totalPages,
-      },
+    return respond(200, {
+      data: data.map((log) => ({
+        id: log.id,
+        sessionId: log.sessionId,
+        agentId: log.agentId,
+        displayName: null,
+        framework: log.framework,
+        triggerSource: null,
+        triggerAgentName: null,
+        scheduleId: null,
+        status: log.status,
+        prompt: log.prompt,
+        createdAt: log.createdAt,
+        startedAt: log.startedAt,
+        completedAt: log.completedAt,
+      })),
+      pagination: { hasMore, nextCursor, totalPages },
       filters: { statuses: [], sources: [], agents: [] },
-    };
-
-    return HttpResponse.json(response);
+    });
   }),
 
   // GET /api/zero/logs/:id - Get log detail
-  http.get("*/api/zero/logs/:id", ({ params }) => {
+  mockApi(logsByIdContract.getById, ({ params, respond }) => {
     const { id } = params;
-    const logDetail = mockLogDetails.find((log) => {
-      return log.id === id;
-    });
+    const logDetail = mockLogDetails.find((log) => log.id === id);
 
     if (!logDetail) {
-      return HttpResponse.json(
-        { error: { message: "Log not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
+      return respond(404, {
+        error: { message: "Log not found", code: "NOT_FOUND" },
+      });
     }
 
-    return HttpResponse.json(logDetail);
+    return respond(200, logDetail);
   }),
 ];

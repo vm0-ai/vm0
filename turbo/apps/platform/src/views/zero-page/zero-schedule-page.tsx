@@ -53,11 +53,10 @@ import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
-  saveOrgSchedule$,
   toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
   runScheduleNow$,
@@ -67,7 +66,9 @@ import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.t
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   createDialogOpen$,
-  setCreateDialogOpen$,
+  openCreateScheduleDialog$,
+  closeCreateScheduleDialog$,
+  creatingOrgSchedule$,
   pageTogglingIds$,
   setPageTogglingIds$,
   pageRunningIds$,
@@ -75,6 +76,7 @@ import {
   pagePendingDelete$,
   setPagePendingDelete$,
 } from "../../signals/schedule-page/schedule-page-ui.ts";
+import { createOrgScheduleFromForm$ } from "../../signals/schedule-page/schedule-save-flow.ts";
 import {
   scheduleListTab$,
   setScheduleListTab$,
@@ -573,17 +575,19 @@ export function ZeroSchedulePage() {
       ? "list"
       : rawActiveListTab;
   const createOpen = useGet(createDialogOpen$);
-  const setCreateOpen = useSet(setCreateDialogOpen$);
+  const openCreateDialog = useSet(openCreateScheduleDialog$);
+  const closeCreateDialog = useSet(closeCreateScheduleDialog$);
   const togglingIds = useGet(pageTogglingIds$);
   const setTogglingIds = useSet(setPageTogglingIds$);
   const runningIds = useGet(pageRunningIds$);
   const setRunningIds = useSet(setPageRunningIds$);
   const setPendingDelete = useSet(setPagePendingDelete$);
 
-  const [saveLoadable, saveScheduleTracked] = useLoadableSet(saveOrgSchedule$);
-  const saving = saveLoadable.state === "loading";
-  const saveError =
-    saveLoadable.state === "hasError" ? String(saveLoadable.error) : null;
+  const saving = useGet(creatingOrgSchedule$);
+  const createSchedule = useSet(createOrgScheduleFromForm$);
+  const onCreateSave = onDomEventFn((values: ScheduleFormValues) => {
+    return createSchedule(values, pageSignal);
+  });
 
   const combinedSchedule = buildCombinedSchedule(entries);
 
@@ -599,43 +603,6 @@ export function ZeroSchedulePage() {
     navigate("/schedules/:scheduleId", {
       pathParams: { scheduleId: entry.id },
     });
-  };
-
-  const handleCreateSave = (values: ScheduleFormValues) => {
-    detach(
-      // eslint-disable-next-line ccstate/no-abort-swallower -- known debt: useLoadableSet's setter both sets saveError state AND rethrows; the empty .then reject handler silences the rethrow so detach does not double-log a rejection the dialog already shows. Tracked for follow-up.
-      saveScheduleTracked(
-        {
-          prompt: values.prompt.trim(),
-          description: values.description.trim() || undefined,
-          freq: values.freq,
-          date: values.date,
-          hour: values.hour,
-          minute: values.minute,
-          timezone: values.timezone,
-          intervalSeconds: values.loopMinutes * 60,
-          agentId: values.agentId,
-          ...(values.freq === "every_week"
-            ? { dayOfWeek: values.dayOfWeek }
-            : {}),
-          ...(values.freq === "every_month"
-            ? { dayOfMonth: values.dayOfMonth }
-            : {}),
-        },
-        pageSignal,
-      ).then(
-        (scheduleId) => {
-          setCreateOpen(false);
-          navigate("/schedules/:scheduleId", {
-            pathParams: { scheduleId: scheduleId },
-          });
-        },
-        (_error: unknown) => {
-          // error is already captured by useLoadableSet and displayed in the dialog via saveError
-        },
-      ),
-      Reason.DomCallback,
-    );
   };
 
   const handleToggle = (entry: CombinedEntry, enabled: boolean) => {
@@ -702,7 +669,7 @@ export function ZeroSchedulePage() {
               className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
               disabled={agents.length === 0}
               onClick={() => {
-                return setCreateOpen(true);
+                return detach(openCreateDialog(pageSignal), Reason.DomCallback);
               }}
             >
               <IconPlus size={14} stroke={2} />
@@ -771,7 +738,10 @@ export function ZeroSchedulePage() {
                   }}
                   onDelete={handleDelete}
                   onNew={() => {
-                    return setCreateOpen(true);
+                    return detach(
+                      openCreateDialog(pageSignal),
+                      Reason.DomCallback,
+                    );
                   }}
                   onRunNow={(entry) => {
                     handleRunNow(entry);
@@ -798,11 +768,10 @@ export function ZeroSchedulePage() {
       <ScheduleFormDialog
         open={createOpen}
         onClose={() => {
-          return setCreateOpen(false);
+          return closeCreateDialog();
         }}
-        onSave={handleCreateSave}
+        onSave={onCreateSave}
         saving={saving}
-        saveError={saveError}
         mode="create"
         agents={agents}
         initialValues={{

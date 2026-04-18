@@ -21,8 +21,18 @@ function makeThread(
   agentId: string;
   createdAt: string;
   updatedAt: string;
+  isRead: boolean;
+  isArchived: boolean;
 } {
-  return { id, title, agentId: AGENT_ID, createdAt, updatedAt: createdAt };
+  return {
+    id,
+    title,
+    agentId: AGENT_ID,
+    createdAt,
+    updatedAt: createdAt,
+    isRead: false,
+    isArchived: false,
+  };
 }
 
 function mockAPIs() {

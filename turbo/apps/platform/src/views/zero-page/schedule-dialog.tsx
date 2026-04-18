@@ -31,7 +31,6 @@ import {
   updateDialogForm$,
   showConfirm$,
   setShowConfirm$,
-  syncDialogOpenState$,
 } from "../../signals/schedule-page/schedule-form.ts";
 
 // ---------------------------------------------------------------------------
@@ -128,8 +127,6 @@ interface ScheduleFormDialogProps {
   initialValues?: Partial<ScheduleFormValues>;
   /** When provided, renders an agent selector dropdown. */
   agents?: { id: string; displayName?: string | null }[];
-  /** Error message displayed above the footer. */
-  saveError?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -541,7 +538,6 @@ function ScheduleFormDialogInner({
   mode,
   initialValues,
   agents,
-  saveError,
   preferredTimezone,
 }: Omit<ScheduleFormDialogProps, "open"> & {
   preferredTimezone: string | null | undefined;
@@ -735,8 +731,6 @@ function ScheduleFormDialogInner({
           />
         </div>
 
-        {saveError && <p className="text-sm text-destructive">{saveError}</p>}
-
         <DialogFooter>
           <Button
             type="button"
@@ -776,12 +770,6 @@ function ScheduleFormDialogInner({
 
 export function ScheduleFormDialog({ open, ...rest }: ScheduleFormDialogProps) {
   const preferences = useLastResolved(userPreferences$);
-
-  // Reset form when transitioning from closed to open
-  useSet(syncDialogOpenState$)(
-    open,
-    buildDefaults(rest.agents, rest.initialValues, preferences?.timezone),
-  );
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>

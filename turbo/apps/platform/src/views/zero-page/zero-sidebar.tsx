@@ -179,21 +179,45 @@ const FOOTER_NAV = [
   },
 ] as const satisfies readonly FooterNavItem[];
 
-export function ZeroSidebar() {
-  const isScrolled = useGet(isScrolled$);
-  const setIsScrolledFn = useSet(setIsScrolled$);
-  const manageCollapsed = useGet(manageSectionCollapsed$);
-  const setManageCollapsed = useSet(setManageSectionCollapsed$);
+// Leaf component: subscribes to currentChatAgentId$ so ZeroSidebar doesn't re-render on agent changes
+function ChatThreadsSectionWithKey() {
+  const currentChatAgentId = useResolved(currentChatAgentId$);
+  return <ChatThreadsSection key={currentChatAgentId} />;
+}
 
-  // Read all data from signals directly
-  const activeId = useGet(activeRoute$);
+// Leaf component: owns all dialog-related async subscriptions
+function ManagePinnedAgentsDialogContainer() {
+  const open = useGet(managePinnedDialogOpen$);
+  const setOpen = useSet(setManagePinnedDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
   const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
-  const displayNameRaw =
-    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : null;
-
+  const displayName =
+    displayNameLoadable.state === "hasData"
+      ? (displayNameLoadable.data ?? "Zero")
+      : "Zero";
   const subagentsLoadable = useLastLoadable(subagents$);
-  const subagents =
+  const subagentsData =
     subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
+  const [pinLoadable, savePinnedIdsFn] = useLoadableSet(updatePinnedAgentIds$);
+  const saving = pinLoadable.state === "loading";
+  const setPinnedIds = (ids: string[]) => {
+    detach(savePinnedIdsFn(ids, pageSignal), Reason.DomCallback);
+  };
+  return (
+    <ManagePinnedAgentsDialog
+      open={open}
+      onOpenChange={setOpen}
+      displayName={displayName}
+      subagents={subagentsData}
+      onPinnedIdsChange={setPinnedIds}
+      saving={saving}
+    />
+  );
+}
+
+// Nav content for both sidebars: subscribes to feature flags, default agent name, slack scope
+function SidebarNavContent() {
+  const activeId = useGet(activeRoute$);
   const off = useGet(sidebarOff$);
   const toggleOff = useSet(toggleSidebarOff$);
   const expanded = useGet(sidebarExpanded$);
@@ -208,30 +232,19 @@ export function ZeroSidebar() {
     setExpanded(false);
   };
   const onAccountAction = useSet(handleZeroAccountAction$);
-  const pageSignal = useGet(pageSignal$);
-  const displayName = displayNameRaw || "Zero";
-  const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
-  const savingPinned = pinLoadable.state === "loading";
-  const setPinnedIds = (ids: string[]) => {
-    detach(savePinnedIds(ids, pageSignal), Reason.DomCallback);
-  };
-  const managePinnedOpen = useGet(managePinnedDialogOpen$);
-  const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
-  // Feature gates
+  const isScrolled = useGet(isScrolled$);
+  const setIsScrolledFn = useSet(setIsScrolled$);
+  const manageCollapsed = useGet(manageSectionCollapsed$);
+  const setManageCollapsed = useSet(setManageSectionCollapsed$);
+
   const features = useLastResolved(featureSwitch$);
+  const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
-  const currentChatAgentId = useResolved(currentChatAgentId$);
 
   const manageNav = MANAGE_NAV.filter((item) => {
     return (
       item.id !== "activities" || features?.[FeatureSwitchKey.ActivityLogList]
     );
-  }).map((item) => {
-    return {
-      ...item,
-      label: item.label.replace("Zero", displayName),
-    };
   });
   const footerNav = FOOTER_NAV.filter((item) => {
     return !item.featureGate || features?.[item.featureGate];
@@ -291,7 +304,7 @@ export function ZeroSidebar() {
   ];
 
   return (
-    <VM0ClerkProvider>
+    <>
       {/* Collapsed icon-only sidebar — desktop only, shown when sidebarOff */}
       <aside
         data-sidebar-off={off || undefined}
@@ -547,7 +560,7 @@ export function ZeroSidebar() {
             }}
           >
             <PinnedAgentListSection />
-            <ChatThreadsSection key={currentChatAgentId} />
+            <ChatThreadsSectionWithKey />
           </OverlayScrollArea>
         </nav>
 
@@ -673,18 +686,15 @@ export function ZeroSidebar() {
           </div>
         </div>
       </aside>
+    </>
+  );
+}
 
-      {/* Manage pinned agents dialog */}
-      <ManagePinnedAgentsDialog
-        open={managePinnedOpen}
-        onOpenChange={setManagePinnedOpen}
-        displayName={displayName}
-        subagents={subagents}
-        onPinnedIdsChange={setPinnedIds}
-        saving={savingPinned}
-      />
-
-      {/* Billing dialog */}
+export function ZeroSidebar() {
+  return (
+    <VM0ClerkProvider>
+      <SidebarNavContent />
+      <ManagePinnedAgentsDialogContainer />
       <BillingDialog />
     </VM0ClerkProvider>
   );

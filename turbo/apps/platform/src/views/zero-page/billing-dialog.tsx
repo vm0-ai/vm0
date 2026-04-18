@@ -1,4 +1,4 @@
-// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// TODO(#8609): split AutoRechargeSection to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import {
   useGet,
@@ -6,7 +6,6 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -16,7 +15,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@vm0/ui/components/ui/dialog";
-import { Button, Input, Switch } from "@vm0/ui";
+import { Input, Switch } from "@vm0/ui";
 import { IconCheck } from "@tabler/icons-react";
 import {
   type BillingTier,
@@ -24,7 +23,6 @@ import {
   billingDialogOpen$,
   billingStatusAsync$,
   setBillingDialogOpen$,
-  startCheckout$,
   openDowngradeDialog$,
   saveAutoRecharge$,
   autoRechargeConfig$,
@@ -39,6 +37,8 @@ import {
   selectedPlanTier$,
   setSelectedPlanTier$,
 } from "../../signals/zero-page/billing-dialog-state.ts";
+import { SaveAutoRechargeButton } from "./save-auto-recharge-button.tsx";
+import { CheckoutButton } from "./checkout-button.tsx";
 
 const PLANS = [
   {
@@ -137,17 +137,16 @@ const settingsCardBorder = {
 
 export function AutoRechargeSection({
   currentTier,
-  loading: externalLoading,
+  loading = false,
   variant = "dialog",
 }: {
   currentTier: BillingTier;
-  loading: boolean;
+  loading?: boolean;
   /** `settings`: General-tab style section + card (org manage). `dialog`: compact block for billing modal. */
   variant?: "dialog" | "settings";
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [autoRechargeLoadable, save] = useLoadableSet(saveAutoRecharge$);
-  const loading = externalLoading || autoRechargeLoadable.state === "loading";
+  const save = useSet(saveAutoRecharge$);
   const configLoadable = useLastLoadable(autoRechargeConfig$);
   const config =
     configLoadable.state === "hasData"
@@ -203,13 +202,32 @@ export function AutoRechargeSection({
     );
   };
 
-  const persistIfValid = () => {
+  const getFormValues = (): {
+    enabled: boolean;
+    threshold?: number;
+    amount?: number;
+  } | null => {
     const { threshold: t, amount: a } = parseFormNumbers();
     if (!loading && (!displayEnabled || (t > 0 && a >= CREDITS_PER_DOLLAR))) {
       if (displayEnabled) {
         setPendingEnabled(null);
       }
-      saveCurrent({ enabled: displayEnabled, threshold: t, amount: a });
+      return {
+        enabled: displayEnabled,
+        ...(displayEnabled ? { threshold: t, amount: a } : {}),
+      };
+    }
+    return null;
+  };
+
+  const persistIfValid = () => {
+    const values = getFormValues();
+    if (values) {
+      saveCurrent({
+        enabled: values.enabled,
+        threshold: values.threshold,
+        amount: values.amount,
+      });
     }
   };
 
@@ -393,16 +411,10 @@ export function AutoRechargeSection({
       )}
 
       <div className="flex justify-end mt-3">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={loading}
-          onClick={() => {
-            return persistIfValid();
-          }}
-        >
-          {loading ? "Saving..." : "Save"}
-        </Button>
+        <SaveAutoRechargeButton
+          getFormValues={getFormValues}
+          pageSignal={pageSignal}
+        />
       </div>
     </div>
   );
@@ -415,12 +427,9 @@ export function BillingDialog() {
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
   const close = useSet(setBillingDialogOpen$);
-  const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const openDowngrade = useSet(openDowngradeDialog$);
   const selectedTier = useGet(selectedPlanTier$);
   const setSelectedTier = useSet(setSelectedPlanTier$);
-
-  const loading = checkoutLoadable.state === "loading";
 
   const currentTier: BillingTier = apiTierToBillingTier(status?.tier);
 
@@ -428,15 +437,6 @@ export function BillingDialog() {
   const currentOrder = TIER_ORDER[currentTier];
   const isUpgrade = selectedOrder > currentOrder;
   const isDowngrade = selectedOrder < currentOrder;
-
-  const handleAction = (e: React.MouseEvent) => {
-    if (isUpgrade && (selectedTier === "pro" || selectedTier === "team")) {
-      const newTab = e.metaKey || e.ctrlKey;
-      detach(checkout(selectedTier, newTab, pageSignal), Reason.DomCallback);
-    } else if (isDowngrade) {
-      openDowngrade();
-    }
-  };
 
   return (
     <Dialog
@@ -471,25 +471,15 @@ export function BillingDialog() {
           })}
         </div>
 
-        {(isUpgrade || isDowngrade) && (
-          <div className="flex justify-end mt-4">
-            <Button
-              disabled={loading}
-              variant={isDowngrade ? "outline" : "default"}
-              onClick={handleAction}
-            >
-              {loading
-                ? "Redirecting..."
-                : isUpgrade
-                  ? `Upgrade to ${selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}`
-                  : "Downgrade"}
-            </Button>
-          </div>
-        )}
+        <CheckoutButton
+          selectedTier={selectedTier}
+          isUpgrade={isUpgrade}
+          isDowngrade={isDowngrade}
+          pageSignal={pageSignal}
+          openDowngrade={openDowngrade}
+        />
 
-        {status && (
-          <AutoRechargeSection currentTier={currentTier} loading={loading} />
-        )}
+        {status && <AutoRechargeSection currentTier={currentTier} />}
       </DialogContent>
     </Dialog>
   );

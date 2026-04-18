@@ -701,7 +701,7 @@ export function createChatThreadSignals(
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
   const { setScrollContainer$, autoScroll$, scrollToBottom$ } =
-    createScrollSignals();
+    createScrollSignals(threadId);
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, agentPinned$ } =

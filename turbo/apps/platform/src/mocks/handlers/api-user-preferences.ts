@@ -4,8 +4,11 @@
  * Mock handlers for /api/zero/user-preferences endpoint.
  */
 
-import { http, HttpResponse } from "msw";
-import type { UserPreferencesResponse } from "@vm0/core";
+import {
+  type UserPreferencesResponse,
+  zeroUserPreferencesContract,
+} from "@vm0/core";
+import { mockApi } from "../msw-contract.ts";
 
 let mockPreferences: UserPreferencesResponse = {
   timezone: null,
@@ -30,29 +33,11 @@ export function setMockUserPreferences(
 }
 
 export const apiUserPreferencesHandlers = [
-  // GET /api/zero/user-preferences
-  http.get("*/api/zero/user-preferences", () => {
-    return HttpResponse.json(mockPreferences);
+  mockApi(zeroUserPreferencesContract.get, ({ respond }) => {
+    return respond(200, mockPreferences);
   }),
-
-  // POST /api/zero/user-preferences
-  http.post("*/api/zero/user-preferences", async ({ request }) => {
-    const body = (await request.json()) as Partial<UserPreferencesResponse>;
-
-    if (body.timezone !== undefined) {
-      mockPreferences.timezone = body.timezone;
-    }
-    if (body.pinnedAgentIds !== undefined) {
-      mockPreferences.pinnedAgentIds = body.pinnedAgentIds;
-    }
-    if (body.sendMode !== undefined) {
-      mockPreferences.sendMode = body.sendMode;
-    }
-    if (body.captureNetworkBodiesRemaining !== undefined) {
-      mockPreferences.captureNetworkBodiesRemaining =
-        body.captureNetworkBodiesRemaining;
-    }
-
-    return HttpResponse.json(mockPreferences);
+  mockApi(zeroUserPreferencesContract.update, ({ body, respond }) => {
+    Object.assign(mockPreferences, body);
+    return respond(200, mockPreferences);
   }),
 ];

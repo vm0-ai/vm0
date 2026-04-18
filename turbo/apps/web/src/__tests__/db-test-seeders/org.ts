@@ -195,27 +195,6 @@ export async function insertOrgMembersEntry(entry: {
 }
 
 /**
- * Delete an org_members_metadata row by (orgId, userId).
- *
- * @why-db-direct Deletes member metadata row;
- * no API for member metadata deletion
- */
-export async function deleteOrgMembersEntry(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .delete(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
-      ),
-    );
-}
-
-/**
  * Insert an org-level default model provider directly in the database.
  * Useful for testing credit check behavior with different provider types.
  *
@@ -256,16 +235,4 @@ export async function setOrgCredits(
       target: orgMetadata.orgId,
       set: { credits, updatedAt: new Date() },
     });
-}
-
-/**
- * Return the Drizzle DB instance from globalThis.services.
- * Useful for passing to script functions under test that need a db parameter.
- *
- * @why-db-direct Returns raw DB instance for scripts under test
- * that need a db parameter
- */
-export function getTestDb() {
-  initServices();
-  return globalThis.services.db;
 }

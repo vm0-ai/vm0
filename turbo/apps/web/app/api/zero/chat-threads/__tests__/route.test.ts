@@ -4,6 +4,7 @@ import {
   createTestRequest,
   createTestCompose,
   getOrgCacheEntry,
+  insertTestChatMessage,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -223,6 +224,165 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(data.threads[0].id).toBeDefined();
     expect(data.threads[0].createdAt).toBeDefined();
     expect(data.threads[0].updatedAt).toBeDefined();
+  });
+
+  it("reports isRead=false and isArchived=false for a thread with no messages", async () => {
+    const createRequest = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Empty thread",
+        }),
+      },
+    );
+    await POST(createRequest);
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads).toHaveLength(1);
+    expect(data.threads[0].isRead).toBe(false);
+    expect(data.threads[0].isArchived).toBe(false);
+  });
+
+  it("reports isRead based on the last message's readAt", async () => {
+    const readCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Read" }),
+      }),
+    );
+    const { id: readId } = await readCreate.json();
+    await insertTestChatMessage({
+      chatThreadId: readId,
+      role: "assistant",
+      content: "hi",
+      readAt: new Date(),
+    });
+
+    const unreadCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Unread" }),
+      }),
+    );
+    const { id: unreadId } = await unreadCreate.json();
+    await insertTestChatMessage({
+      chatThreadId: unreadId,
+      role: "assistant",
+      content: "hi",
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const readThread = data.threads.find((t: { id: string }) => {
+      return t.id === readId;
+    });
+    const unreadThread = data.threads.find((t: { id: string }) => {
+      return t.id === unreadId;
+    });
+    expect(readThread.isRead).toBe(true);
+    expect(unreadThread.isRead).toBe(false);
+  });
+
+  it("filters out threads whose last message is archived", async () => {
+    const archivedCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Archived" }),
+      }),
+    );
+    const { id: archivedId } = await archivedCreate.json();
+    await insertTestChatMessage({
+      chatThreadId: archivedId,
+      role: "assistant",
+      content: "gone",
+      archivedAt: new Date(),
+    });
+
+    const liveCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Live" }),
+      }),
+    );
+    const { id: liveId } = await liveCreate.json();
+    await insertTestChatMessage({
+      chatThreadId: liveId,
+      role: "assistant",
+      content: "still here",
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const ids = data.threads.map((t: { id: string }) => {
+      return t.id;
+    });
+    expect(ids).toContain(liveId);
+    expect(ids).not.toContain(archivedId);
+  });
+
+  it("keeps a thread visible when only an earlier message is archived", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Mixed" }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "user",
+      content: "first",
+      archivedAt: new Date(),
+    });
+    // A small delay so the second message has a strictly later createdAt.
+    await new Promise((resolve) => {
+      return setTimeout(resolve, 10);
+    });
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      role: "assistant",
+      content: "second",
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads).toHaveLength(1);
+    expect(data.threads[0].id).toBe(threadId);
+    expect(data.threads[0].isArchived).toBe(false);
   });
 });
 

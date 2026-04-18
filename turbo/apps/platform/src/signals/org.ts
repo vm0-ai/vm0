@@ -1,15 +1,10 @@
 import { command, computed, state } from "ccstate";
-import { zeroOrgContract, type OrgResponse } from "@vm0/core";
+import { zeroOrgContract } from "@vm0/core";
 import { user$ } from "./auth.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 
 const reloadOrg$ = state(0);
-
-/**
- * Re-export for backward compatibility with mocks and consumers.
- */
-export type Org = OrgResponse;
 
 /**
  * Current user's default org.

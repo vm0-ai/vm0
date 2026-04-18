@@ -1,4 +1,9 @@
-import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -113,7 +118,7 @@ function InvitationRow({
 }
 
 function CreateWorkspaceItem() {
-  const clerkLoadable = useLoadable(clerk$);
+  const clerkLoadable = useLastLoadable(clerk$);
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const creatingOrg = useGet(creatingOrg$);
   const setCreating = useSet(setCreatingOrg$);
@@ -157,7 +162,7 @@ function CreateWorkspaceItem() {
 }
 
 function OtherMembershipsList() {
-  const clerkLoadable = useLoadable(clerk$);
+  const clerkLoadable = useLastLoadable(clerk$);
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const memberships = clerk?.user?.organizationMemberships ?? [];
   const currentOrgId = clerk?.organization?.id;
@@ -203,7 +208,7 @@ function OtherMembershipsList() {
 function OrgDropdownContent() {
   const openManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
-  const clerkLoadable = useLoadable(clerk$);
+  const clerkLoadable = useLastLoadable(clerk$);
   const orgData = useLastResolved(org$);
   const pendingInvitations = useLastResolved(userInvitations$);
 
@@ -264,15 +269,27 @@ function OrgDropdownContent() {
   );
 }
 
-export function ZeroOrgSwitcher() {
-  const clerkLoadable = useLoadable(clerk$);
+function PendingInvitationsBadge() {
   const pendingInvitations = useLastResolved(userInvitations$);
+  const hasPendingInvitations =
+    pendingInvitations !== undefined && pendingInvitations.length > 0;
+  if (!hasPendingInvitations) {
+    return null;
+  }
+  return (
+    <span
+      data-testid="pending-invitations-badge"
+      className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-sidebar"
+    />
+  );
+}
+
+export function ZeroOrgSwitcher() {
+  const clerkLoadable = useLastLoadable(clerk$);
 
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const currentOrg = clerk?.organization;
   const orgName = currentOrg?.name ?? "Organization";
-  const hasPendingInvitations =
-    pendingInvitations !== undefined && pendingInvitations.length > 0;
 
   return (
     <div>
@@ -284,12 +301,7 @@ export function ZeroOrgSwitcher() {
           >
             <span className="relative shrink-0">
               <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
-              {hasPendingInvitations && (
-                <span
-                  data-testid="pending-invitations-badge"
-                  className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-sidebar"
-                />
-              )}
+              <PendingInvitationsBadge />
             </span>
             <span className="min-w-0 flex-1 text-left text-sm font-semibold leading-tight truncate">
               {orgName}

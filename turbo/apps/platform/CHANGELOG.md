@@ -1,5 +1,87 @@
 # Changelog
 
+## [0.253.0](https://github.com/vm0-ai/vm0/compare/app-v0.252.0...app-v0.253.0) (2026-04-18)
+
+
+### Features
+
+* persist chat scroll position across thread switches ([#9972](https://github.com/vm0-ai/vm0/issues/9972)) ([12bb1ea](https://github.com/vm0-ai/vm0/commit/12bb1ead32d511a007a4b78e78654733e1f7e2d0))
+* **platform:** swap streaming cursor spinner for dot-trail pulse ([#9978](https://github.com/vm0-ai/vm0/issues/9978)) ([eca20a6](https://github.com/vm0-ai/vm0/commit/eca20a6c350553ab4646822b193b05dd0b0b850f))
+
+
+### Bug Fixes
+
+* address p0/p1 issues found in pr [#9927](https://github.com/vm0-ai/vm0/issues/9927) review ([#9971](https://github.com/vm0-ai/vm0/issues/9971)) ([0f1a87c](https://github.com/vm0-ai/vm0/commit/0f1a87c903fb08a8b51c6c5a5fdb7dbd70d5f6b5))
+
+
+### Refactoring
+
+* **platform:** migrate api-integrations-slack-org.ts to mockapi helper ([#9977](https://github.com/vm0-ai/vm0/issues/9977)) ([c8676f6](https://github.com/vm0-ai/vm0/commit/c8676f6746188f8958e9a4e6bc05c052bbbc0f37))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.200.1
+
+## [0.252.0](https://github.com/vm0-ai/vm0/compare/app-v0.251.0...app-v0.252.0) (2026-04-18)
+
+
+### Features
+
+* add chatHeaderNewButton switch to swap invite with new chat ([#9963](https://github.com/vm0-ai/vm0/issues/9963)) ([c4bfa6f](https://github.com/vm0-ai/vm0/commit/c4bfa6f011f168096f6f1540cba220de9b0c5451))
+* **platform:** open mobile sidebar via left-edge swipe in PWA mode ([#9965](https://github.com/vm0-ai/vm0/issues/9965)) ([1dacf8b](https://github.com/vm0-ai/vm0/commit/1dacf8b116c99c136fd0b43313b7f23ccf65f10c))
+
+
+### Bug Fixes
+
+* **platform:** only show auto-read toggle on chat routes ([#9962](https://github.com/vm0-ai/vm0/issues/9962)) ([2de2b56](https://github.com/vm0-ai/vm0/commit/2de2b560fa650a71014086f7ddf80ba77c287b34))
+
+
+### Refactoring
+
+* **platform:** extend mockApi with typed body/query/params ([#9707](https://github.com/vm0-ai/vm0/issues/9707) Phase 0) ([#9937](https://github.com/vm0-ai/vm0/issues/9937)) ([792bef3](https://github.com/vm0-ai/vm0/commit/792bef33a6da12f15b3a60fda873d84bf897149d))
+* **platform:** migrate api-onboarding.ts to mock api helper ([#9968](https://github.com/vm0-ai/vm0/issues/9968)) ([b5d4b62](https://github.com/vm0-ai/vm0/commit/b5d4b6292a7a1b53067329e40f4aa91e8b84e6b7))
+* **platform:** migrate api-org.ts to mockapi helper ([#9961](https://github.com/vm0-ai/vm0/issues/9961)) ([88fd284](https://github.com/vm0-ai/vm0/commit/88fd2847ef3f84f512b0fad5dd91f0cd0acd07ad))
+* **platform:** migrate api-user-preferences.ts to mockapi helper ([#9966](https://github.com/vm0-ai/vm0/issues/9966)) ([0b42d25](https://github.com/vm0-ai/vm0/commit/0b42d253bf9ab3887d0b862a4e1b44e9cabdfa52))
+
+
+### Performance Improvements
+
+* react render profiling, sidebar optimization, and schedule dialog refactor ([#9927](https://github.com/vm0-ai/vm0/issues/9927)) ([4ebe2fd](https://github.com/vm0-ai/vm0/commit/4ebe2fd87b12a1467da38ff08f1fa0de6abb3a17))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.200.0
+
+## [0.251.0](https://github.com/vm0-ai/vm0/compare/app-v0.250.1...app-v0.251.0) (2026-04-18)
+
+
+### Features
+
+* **platform:** add pwa install banner and rebrand to zero ([#9925](https://github.com/vm0-ai/vm0/issues/9925)) ([d2a786d](https://github.com/vm0-ai/vm0/commit/d2a786d959f79c446fd03dcbeb4cec8341421868))
+
+
+### Bug Fixes
+
+* **zero:** resync realtime loop when tab becomes visible again ([#9938](https://github.com/vm0-ai/vm0/issues/9938)) ([3e20e86](https://github.com/vm0-ai/vm0/commit/3e20e861ef04a48f6600c2f36fda6c69bc4e7a8c))
+
+
+### Refactoring
+
+* **platform:** remove schedule save dialog banner ([#9875](https://github.com/vm0-ai/vm0/issues/9875)) ([#9929](https://github.com/vm0-ai/vm0/issues/9929)) ([8f6e1a8](https://github.com/vm0-ai/vm0/commit/8f6e1a83b8adb18cbb2ae01925ac60a78e362d0e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.199.0
+
 ## [0.250.1](https://github.com/vm0-ai/vm0/compare/app-v0.250.0...app-v0.250.1) (2026-04-18)
 
 

@@ -1,5 +1,9 @@
 import { command, computed, state, type StateArg } from "ccstate";
 import type { CombinedEntry } from "../../views/zero-page/zero-schedule-page.tsx";
+import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
+import { agents$ } from "../agent.ts";
+import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+import { createDefaultFormData, initDialogForm$ } from "./schedule-form.ts";
 
 // ---------------------------------------------------------------------------
 // Helper: creates a private state atom with exported computed (read) and
@@ -22,7 +26,38 @@ function cell<T>(initial: T) {
 // Schedule page UI state
 // ---------------------------------------------------------------------------
 
-export const { get$: createDialogOpen$, set$: setCreateDialogOpen$ } =
+const internalCreateDialogOpen$ = state(false);
+export const createDialogOpen$ = computed((get) => {
+  return get(internalCreateDialogOpen$);
+});
+
+export const openCreateScheduleDialog$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const [prefs, allAgents, status] = await Promise.all([
+      get(userPreferences$),
+      get(agents$),
+      get(zeroOnboardingStatus$),
+    ]);
+    signal.throwIfAborted();
+    const agentId = status?.defaultAgentId ?? allAgents[0]?.id;
+    if (!agentId) {
+      return;
+    }
+    const defaults = createDefaultFormData();
+    set(initDialogForm$, {
+      ...defaults,
+      timezone: prefs?.timezone ?? defaults.timezone,
+      agentId,
+    });
+    set(internalCreateDialogOpen$, true);
+  },
+);
+
+export const closeCreateScheduleDialog$ = command(({ set }) => {
+  set(internalCreateDialogOpen$, false);
+});
+
+export const { get$: creatingOrgSchedule$, set$: setCreatingOrgSchedule$ } =
   cell(false);
 
 export const { get$: pageTogglingIds$, set$: setPageTogglingIds$ } = cell<

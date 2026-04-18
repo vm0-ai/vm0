@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { users } from "../../db/schema/user";
 import { userCache } from "../../db/schema/user-cache";
@@ -36,30 +35,6 @@ export async function seedUserCacheEntry(
       target: userCache.userId,
       set: { email, name: name ?? null, cachedAt: new Date() },
     });
-}
-
-/**
- * Insert a user row for testing.
- * @why-db-direct Bootstraps user record with emailUnsubscribed flag; no user-creation API exists for tests
- */
-export async function insertUserRow(
-  userId: string,
-  emailUnsubscribed: boolean,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .insert(users)
-    .values({ id: userId, emailUnsubscribed })
-    .onConflictDoNothing();
-}
-
-/**
- * Delete a user row by userId.
- * @why-db-direct No API route exists for deleting from the users table
- */
-export async function deleteUserRow(userId: string): Promise<void> {
-  initServices();
-  await globalThis.services.db.delete(users).where(eq(users.id, userId));
 }
 
 /**

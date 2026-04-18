@@ -37,6 +37,8 @@ function makeThread(
   agentId: string;
   createdAt: string;
   updatedAt: string;
+  isRead: boolean;
+  isArchived: boolean;
 } {
   return {
     id,
@@ -44,6 +46,8 @@ function makeThread(
     agentId: DEFAULT_AGENT_ID,
     createdAt,
     updatedAt: createdAt,
+    isRead: false,
+    isArchived: false,
   };
 }
 
@@ -78,6 +82,8 @@ function mockBaseAPIs(options?: {
     agentId: string;
     createdAt: string;
     updatedAt: string;
+    isRead: boolean;
+    isArchived: boolean;
   }[];
   agents?: {
     id: string;

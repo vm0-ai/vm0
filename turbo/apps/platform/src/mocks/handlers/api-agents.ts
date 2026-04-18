@@ -5,12 +5,24 @@
  * Default behavior: user has one agent.
  */
 
-import { http, HttpResponse } from "msw";
+import {
+  zeroTeamContract,
+  zeroComposesListContract,
+  zeroComposesByIdContract,
+  zeroUserConnectorsContract,
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+  zeroSchedulesMainContract,
+  chatThreadsContract,
+  chatThreadByIdContract,
+  chatThreadMessagesContract,
+} from "@vm0/core";
+import { mockApi } from "../msw-contract.ts";
 
 export const apiAgentsHandlers = [
   // GET /api/zero/team
-  http.get("*/api/zero/team", () => {
-    return HttpResponse.json([
+  mockApi(zeroTeamContract.list, ({ respond }) => {
+    return respond(200, [
       {
         id: "c0000000-0000-4000-a000-000000000001",
         displayName: null,
@@ -24,8 +36,8 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/zero/composes/list
-  http.get("*/api/zero/composes/list", () => {
-    return HttpResponse.json({
+  mockApi(zeroComposesListContract.list, ({ respond }) => {
+    return respond(200, {
       composes: [
         {
           id: "c0000000-0000-4000-a000-000000000001",
@@ -41,13 +53,8 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/zero/composes/:id (kept for backwards compat with other tests)
-  http.get("*/api/zero/composes/:id", ({ params }) => {
-    // Skip if it matches a sub-route like "list"
-    if (params.id === "list") {
-      return;
-    }
-
-    return HttpResponse.json({
+  mockApi(zeroComposesByIdContract.getById, ({ params, respond }) => {
+    return respond(200, {
       id: params.id,
       name: "zero",
       headVersionId: "version_1",
@@ -61,27 +68,18 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/zero/agents/:id/user-connectors
-  http.get("*/api/zero/agents/:id/user-connectors", () => {
-    return HttpResponse.json({ enabledTypes: [] });
+  mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+    return respond(200, { enabledTypes: [] });
   }),
 
   // PUT /api/zero/agents/:id/user-connectors
-  http.put("*/api/zero/agents/:id/user-connectors", async ({ request }) => {
-    const body = (await request.json()) as { enabledTypes: string[] };
-    return HttpResponse.json({ enabledTypes: body.enabledTypes ?? [] });
+  mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
+    return respond(200, { enabledTypes: body.enabledTypes });
   }),
 
-  // GET /api/zero/agents/:name
-  http.get("*/api/zero/agents/:name", ({ params }) => {
-    // Skip if it matches sub-routes like "instructions"
-    if (
-      params.name === "instructions" ||
-      (typeof params.name === "string" && params.name.includes("/"))
-    ) {
-      return;
-    }
-
-    return HttpResponse.json({
+  // GET /api/zero/agents/:id
+  mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+    return respond(200, {
       agentId: "c0000000-0000-4000-a000-000000000001",
       ownerId: "test-user-123",
       description: null,
@@ -89,52 +87,45 @@ export const apiAgentsHandlers = [
       sound: null,
       avatarUrl: null,
       permissionPolicies: null,
+      customSkills: [],
     });
   }),
 
-  // GET /api/zero/agents/:name/instructions
-  http.get("*/api/zero/agents/:name/instructions", () => {
-    return HttpResponse.json({
+  // GET /api/zero/agents/:id/instructions
+  mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+    return respond(200, {
       content: null,
       filename: null,
     });
   }),
 
   // GET /api/zero/schedules
-  http.get("*/api/zero/schedules", () => {
-    return HttpResponse.json({ schedules: [] });
+  mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
+    return respond(200, { schedules: [] });
   }),
 
   // GET /api/zero/chat-threads
-  http.get("*/api/zero/chat-threads", () => {
-    return HttpResponse.json({ threads: [] });
+  mockApi(chatThreadsContract.list, ({ respond }) => {
+    return respond(200, { threads: [] });
   }),
 
   // POST /api/zero/chat-threads (create new thread)
-  http.post("*/api/zero/chat-threads", () => {
-    return HttpResponse.json(
-      {
-        id: "b0000000-0000-4000-a000-000000000001",
-        title: null,
-        createdAt: "2026-03-10T00:00:00Z",
-      },
-      { status: 201 },
-    );
+  mockApi(chatThreadsContract.create, ({ respond }) => {
+    return respond(201, {
+      id: "b0000000-0000-4000-a000-000000000001",
+      title: null,
+      createdAt: "2026-03-10T00:00:00Z",
+    });
   }),
 
-  // GET /api/zero/chat-threads/:id/messages (paged messages)
-  http.get("*/api/zero/chat-threads/:id/messages", ({ request }) => {
-    const url = new URL(request.url);
-    // If sinceId is provided, return no new messages to avoid duplicate keys.
-    if (url.searchParams.get("sinceId")) {
-      return HttpResponse.json({ messages: [], hasMore: false });
-    }
-    return HttpResponse.json({ messages: [], hasMore: false });
+  // GET /api/zero/chat-threads/:threadId/messages (paged messages)
+  mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+    return respond(200, { messages: [], hasMore: false });
   }),
 
   // GET /api/zero/chat-threads/:id (thread detail)
-  http.get("*/api/zero/chat-threads/:id", () => {
-    return HttpResponse.json({
+  mockApi(chatThreadByIdContract.get, ({ respond }) => {
+    return respond(200, {
       id: "b0000000-0000-4000-a000-000000000001",
       title: null,
       agentId: "c0000000-0000-4000-a000-000000000001",
@@ -149,7 +140,7 @@ export const apiAgentsHandlers = [
   }),
 
   // PATCH /api/zero/chat-threads/:id (update draft)
-  http.patch("*/api/zero/chat-threads/:id", () => {
-    return new HttpResponse(null, { status: 204 });
+  mockApi(chatThreadByIdContract.patch, ({ respond }) => {
+    return respond(204);
   }),
 ];

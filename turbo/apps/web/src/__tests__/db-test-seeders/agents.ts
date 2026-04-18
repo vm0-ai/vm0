@@ -393,6 +393,8 @@ export async function insertTestChatMessage(params: {
   role: "user" | "assistant";
   content: string | null;
   runId?: string | null;
+  readAt?: Date | null;
+  archivedAt?: Date | null;
 }): Promise<{ id: string; createdAt: Date }> {
   initServices();
   const [row] = await globalThis.services.db
@@ -402,6 +404,8 @@ export async function insertTestChatMessage(params: {
       role: params.role,
       content: params.content,
       runId: params.runId ?? null,
+      readAt: params.readAt ?? null,
+      archivedAt: params.archivedAt ?? null,
     })
     .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
   if (!row) {

@@ -7,17 +7,14 @@ export {
   setDefaultAgentByComposeId,
   deleteOrgCacheEntry,
   insertOrgMembersEntry,
-  deleteOrgMembersEntry,
   insertOrgDefaultModelProvider,
   setOrgCredits,
-  getTestDb,
 } from "../db-test-seeders/org";
 
 // Re-exports: read-only assertions
 export {
   getOrgDefaultAgent,
   getOrgCacheEntry,
-  getOrgRow,
   getOrgMembersEntry,
   countOrgRows,
   getOrgCredits,

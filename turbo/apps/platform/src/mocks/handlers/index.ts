@@ -17,7 +17,7 @@ import {
 import { apiSecretsHandlers, resetMockSecrets } from "./api-secrets.ts";
 import { apiVariablesHandlers, resetMockVariables } from "./api-variables.ts";
 import { exampleHandlers } from "./example.ts";
-import { appLogsHandlers } from "./v1-runs.ts";
+import { appLogsHandlers } from "./api-logs.ts";
 import {
   apiIntegrationsSlackOrgHandlers,
   resetMockSlackOrgIntegration,

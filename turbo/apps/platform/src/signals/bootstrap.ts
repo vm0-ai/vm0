@@ -48,6 +48,7 @@ import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
 import { setupRealtime$ } from "./realtime.ts";
+import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -319,6 +320,7 @@ export const bootstrap$ = command(
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
       set(setupInstallPrompt$, signal),
+      set(setupPwaEdgeSwipe$, signal),
       set(startSkeletonCycling$, signal),
       (async () => {
         await set(setupClerk$, signal);

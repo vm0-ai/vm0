@@ -1,8 +1,9 @@
-import { http, HttpResponse } from "msw";
+import { platformRealtimeTokenContract } from "@vm0/core";
+import { mockApi } from "../msw-contract.ts";
 
 export const apiRealtimeHandlers = [
-  http.post("*/api/zero/realtime/token", () => {
-    return HttpResponse.json({
+  mockApi(platformRealtimeTokenContract.create, ({ respond }) => {
+    return respond(200, {
       keyName: "mock-key",
       clientId: "test-user-123",
       timestamp: Date.now(),

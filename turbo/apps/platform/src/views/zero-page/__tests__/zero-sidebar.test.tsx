@@ -18,6 +18,8 @@ function mockAPIs({
       agentId: "c0000000-0000-4000-a000-000000000001",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
+      isRead: false,
+      isArchived: false,
     },
     {
       id: "thread-2",
@@ -25,6 +27,8 @@ function mockAPIs({
       agentId: "c0000000-0000-4000-a000-000000000001",
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
+      isRead: false,
+      isArchived: false,
     },
   ],
 }: {
@@ -34,6 +38,8 @@ function mockAPIs({
     agentId: string;
     createdAt: string;
     updatedAt: string;
+    isRead: boolean;
+    isArchived: boolean;
   }[];
 } = {}) {
   server.use(

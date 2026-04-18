@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { command, createStore } from "ccstate";
 import { setAblyLoop$, setupRealtime$ } from "../realtime.ts";
-import { triggerAblyEvent, resetAblySubscriptions } from "../../mocks/ably.ts";
+import {
+  triggerAblyEvent,
+  resetAblySubscriptions,
+  hasSubscription,
+} from "../../mocks/ably.ts";
 import { server } from "../../mocks/server.ts";
 import { apiRealtimeHandlers } from "../../mocks/handlers/api-realtime.ts";
 import { mockUser, clearMockedAuth } from "../../__tests__/mock-auth.ts";
@@ -63,11 +67,14 @@ describe("setAblyLoop$ with mock Ably", () => {
       controller.signal,
     );
 
-    // First call happens immediately inside setAblyLoop$ (calls === 1).
-    // The loop then waits on deferred.promise.
-    // Fire events to drive the next iterations.
+    // First call happens immediately inside setAblyLoop$ (calls === 1), then
+    // the loop subscribes and waits on deferred.promise. Match real Ably
+    // semantics: don't fire server-side events until the subscription is
+    // confirmed — otherwise events arrive before the callback is registered
+    // and get dropped on the floor.
     await vi.waitFor(() => {
       expect(calls).toBe(1);
+      expect(hasSubscription("test-topic")).toBeTruthy();
     });
 
     triggerAblyEvent("test-topic"); // calls === 2, returns false → loop continues

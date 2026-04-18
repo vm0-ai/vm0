@@ -35,6 +35,13 @@ const chatThreadListItemSchema = z.object({
   agentId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * Read state of the thread's last message. `false` when the thread has no
+   * messages yet or the last message has not been marked read.
+   * Threads whose last message is archived are filtered out server-side.
+   */
+  isRead: z.boolean(),
+  isArchived: z.boolean(),
 });
 
 const toolSummaryEntrySchema = z.object({

@@ -122,3 +122,42 @@ describe("auto-read toggle - double-click returns to off (AR-005)", () => {
     expect(context.store.get(autoReadEnabled$)).toBeFalsy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// AR-006: mobile top bar toggle hidden on non-chat routes even with audioIO on
+// ---------------------------------------------------------------------------
+
+describe("auto-read toggle - mobile top bar hides toggle on non-chat routes (AR-006)", () => {
+  it("does not render the mobile top bar Toggle auto-read button on /agents even when audioIO is enabled", async () => {
+    setMockFeatureSwitches({ audioIO: true });
+    detachedSetupPage({ context, path: "/agents" });
+
+    // Wait for the mobile top bar to render (menu button is always present)
+    await waitFor(() => {
+      expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
+    });
+
+    // The only place the toggle renders outside chat thread pages is the
+    // mobile top bar; on /agents (a non-chat route) it must be absent.
+    expect(screen.queryAllByLabelText("Toggle auto-read")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AR-007: mobile top bar toggle shown on chat routes with audioIO on
+// ---------------------------------------------------------------------------
+
+describe("auto-read toggle - mobile top bar shows toggle on chat routes (AR-007)", () => {
+  it("renders the mobile top bar Toggle auto-read button on the home chat route when audioIO is enabled", async () => {
+    setMockFeatureSwitches({ audioIO: true });
+    detachedSetupPage({ context, path: "/" });
+
+    // The home route (isChatRoute === true) should render the toggle in the
+    // mobile top bar when audioIO is on.
+    await waitFor(() => {
+      expect(
+        screen.getAllByLabelText("Toggle auto-read").length,
+      ).toBeGreaterThan(0);
+    });
+  });
+});

@@ -109,6 +109,8 @@ interface ThreadListItem {
   agentId: string;
   createdAt: string;
   updatedAt: string;
+  isRead: boolean;
+  isArchived: boolean;
 }
 
 interface MockLifecycleControl {

@@ -450,7 +450,11 @@ function ConnectorsPopoverButton({
 // Voice input mic button
 // ---------------------------------------------------------------------------
 
-function MicButton({ onSend }: { onSend: (text: string) => void }) {
+function MicButton({
+  onTranscribed,
+}: {
+  onTranscribed: (text: string) => void;
+}) {
   const available = useLastResolved(audioIOAvailable$) ?? false;
   const recording = useGet(sttRecording$);
   const transcribing = useGet(sttTranscribing$);
@@ -470,7 +474,7 @@ function MicButton({ onSend }: { onSend: (text: string) => void }) {
       detach(
         stopAndTranscribe(signal).then((text) => {
           if (text) {
-            onSend(text);
+            onTranscribed(text);
           }
         }),
         Reason.DomCallback,
@@ -867,7 +871,15 @@ export function ZeroChatComposer({
                 />
               </div>
               <div className="flex items-center gap-2">
-                <MicButton onSend={onSend} />
+                <MicButton
+                  onTranscribed={(text) => {
+                    const base = input;
+                    const separator =
+                      base.length > 0 && !base.endsWith(" ") ? " " : "";
+                    onInputChange(base + separator + text);
+                    onDraftChange?.();
+                  }}
+                />
                 {sending && onCancel ? (
                   <Button
                     size="sm"

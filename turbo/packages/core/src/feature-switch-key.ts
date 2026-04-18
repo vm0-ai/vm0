@@ -45,4 +45,6 @@ export enum FeatureSwitchKey {
   ScheduleRunHistory = "scheduleRunHistory",
   SlackAgentSwitch = "slackAgentSwitch",
   TestOauthConnector = "testOauthConnector",
+  ChatHeaderNewButton = "chatHeaderNewButton",
+  InlineThinkingDot = "inlineThinkingDot",
 }

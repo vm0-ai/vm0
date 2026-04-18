@@ -33,6 +33,8 @@ function mockBaseAPIs(
       agentId: string;
       createdAt: string;
       updatedAt: string;
+      isRead: boolean;
+      isArchived: boolean;
     }[];
     agents?: {
       id: string;
@@ -86,6 +88,8 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
           agentId: DEFAULT_AGENT_ID,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
+          isRead: false,
+          isArchived: false,
         },
         {
           id: "thread-2",
@@ -93,6 +97,8 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
           agentId: DEFAULT_AGENT_ID,
           createdAt: "2026-03-09T00:00:00Z",
           updatedAt: "2026-03-09T00:00:00Z",
+          isRead: false,
+          isArchived: false,
         },
       ],
     });
@@ -156,6 +162,8 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
           agentId: DEFAULT_AGENT_ID,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
+          isRead: false,
+          isArchived: false,
         },
         {
           id: "thread-2",
@@ -163,6 +171,8 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
           agentId: DEFAULT_AGENT_ID,
           createdAt: "2026-03-09T00:00:00Z",
           updatedAt: "2026-03-09T00:00:00Z",
+          isRead: false,
+          isArchived: false,
         },
       ],
     });
@@ -200,6 +210,8 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
           agentId: DEFAULT_AGENT_ID,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
+          isRead: false,
+          isArchived: false,
         },
       ],
     });

@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -603,7 +603,7 @@ function ScheduleInstructionEditorBlock({
 
 function ScheduleRunHistoryTab() {
   const pageSignal = useGet(pageSignal$);
-  const dataLoadable = useLoadable(scheduleRunData$);
+  const dataLoadable = useLastLoadable(scheduleRunData$);
   const hasPrev = useGet(scheduleRunHasPrev$);
   const currentPage = useGet(scheduleRunCurrentPage$);
   const rowsPerPage = useGet(scheduleRunLimit$);
@@ -615,7 +615,9 @@ function ScheduleRunHistoryTab() {
 
   const statusFilter = useGet(scheduleRunStatusFilter$);
   const setStatusFilter = useSet(setScheduleRunStatusFilter$);
-  const availableStatusesLoadable = useLoadable(scheduleRunAvailableStatuses$);
+  const availableStatusesLoadable = useLastLoadable(
+    scheduleRunAvailableStatuses$,
+  );
 
   const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
   const hasNext =
@@ -958,26 +960,16 @@ function ScheduleDetailView({
   );
 }
 
-export function ZeroScheduleDetailPage() {
-  const params = useGet(pathParams$);
-  const scheduleId =
-    params && typeof params === "object" && "scheduleId" in params
-      ? String(params.scheduleId)
-      : null;
-
-  const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
-  const entries: OrgScheduleEntry[] =
-    entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
-
-  const agentsLoadable = useLoadable(agents$);
-  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-
-  const schedulesLoaded = useGet(allOrgSchedulesLoaded$);
-  const slackData = useLoadable(slackOrgData$);
-  const deleteSchedule = useSet(deleteOrgSchedule$);
-  const navigate = useSet(detachedNavigateTo$);
+function ScheduleActionsContainer({
+  entry,
+  dimmed,
+  agents,
+}: {
+  entry: CombinedEntry;
+  dimmed: boolean;
+  agents: ScheduleAgentOption[];
+}) {
   const pageSignal = useGet(pageSignal$);
-
   const [savingLoadable, saveScheduleTracked] =
     useLoadableSet(saveOrgSchedule$);
   const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
@@ -985,32 +977,12 @@ export function ZeroScheduleDetailPage() {
   );
   const [runningLoadable, runScheduleNowTracked] =
     useLoadableSet(runScheduleNow$);
+  const deleteSchedule = useSet(deleteOrgSchedule$);
+  const navigate = useSet(detachedNavigateTo$);
+
   const saving = savingLoadable.state === "loading";
   const toggling = togglingLoadable.state === "loading";
   const running = runningLoadable.state === "loading";
-  const combinedSchedule = buildCombinedSchedule(entries);
-
-  if (!scheduleId) {
-    return <ScheduleNotFound />;
-  }
-
-  if (
-    !schedulesLoaded ||
-    entriesLoadable.state !== "hasData" ||
-    slackData.state !== "hasData"
-  ) {
-    return <ScheduleDetailSkeleton />;
-  }
-
-  const entry = combinedSchedule.find((e) => {
-    return e.id === scheduleId;
-  });
-
-  if (!entry) {
-    return <ScheduleNotFound />;
-  }
-
-  const dimmed = entry.enabled === false;
 
   const handleSettingsSave = async (
     params: ZeroScheduleSaveParams & { agentId: string },
@@ -1090,5 +1062,51 @@ export function ZeroScheduleDetailPage() {
       onDelete={handleDelete}
       onInstructionSavePrompt={handleInstructionSavePrompt}
     />
+  );
+}
+
+export function ZeroScheduleDetailPage() {
+  const params = useGet(pathParams$);
+  const scheduleId =
+    params && typeof params === "object" && "scheduleId" in params
+      ? String(params.scheduleId)
+      : null;
+
+  const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
+  const entries: OrgScheduleEntry[] =
+    entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+
+  const agentsLoadable = useLastLoadable(agents$);
+  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
+
+  const schedulesLoaded = useGet(allOrgSchedulesLoaded$);
+  const slackData = useLastLoadable(slackOrgData$);
+
+  const combinedSchedule = buildCombinedSchedule(entries);
+
+  if (!scheduleId) {
+    return <ScheduleNotFound />;
+  }
+
+  if (
+    !schedulesLoaded ||
+    entriesLoadable.state !== "hasData" ||
+    slackData.state !== "hasData"
+  ) {
+    return <ScheduleDetailSkeleton />;
+  }
+
+  const entry = combinedSchedule.find((e) => {
+    return e.id === scheduleId;
+  });
+
+  if (!entry) {
+    return <ScheduleNotFound />;
+  }
+
+  const dimmed = entry.enabled === false;
+
+  return (
+    <ScheduleActionsContainer entry={entry} dimmed={dimmed} agents={agents} />
   );
 }
