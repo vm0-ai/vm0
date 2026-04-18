@@ -10,7 +10,7 @@
     "./styles/globals.css": "./src/styles/globals.css"
   },
   "scripts": {
-    "lint": "oxlint && eslint . --max-warnings 0",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "generate:component": "turbo gen react-component",
     "check-types": "tsc --noEmit",
     "test": "vitest run",
@@ -32,6 +32,7 @@
     "eslint": "^9.34.0",
     "happy-dom": "^20.8.9",
     "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "0.21.1",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.3",
     "typescript": "5.9.3",

@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "oxlint && eslint . --max-warnings 0",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
@@ -60,6 +60,7 @@
     "happy-dom": "^20.8.9",
     "msw": "^2.13.2",
     "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "0.21.1",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.1",

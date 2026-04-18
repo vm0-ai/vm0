@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { localStorageSignals } from "../external/local-storage.ts";
 
 // ---------------------------------------------------------------------------
 // Sidebar search state
@@ -71,28 +72,44 @@ export const setPendingDeleteThreadId$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Session list collapse state (RecentChatSection)
+// Session list collapse state (RecentChatSection) — persisted in localStorage
 // ---------------------------------------------------------------------------
-const internalSessionListCollapsed$ = state(false);
+const {
+  get$: sessionListCollapsedRaw$,
+  set$: setSessionListCollapsedRaw$,
+  clear$: clearSessionListCollapsed$,
+} = localStorageSignals("sessionListCollapsed");
 export const sessionListCollapsed$ = computed((get) => {
-  return get(internalSessionListCollapsed$);
+  return get(sessionListCollapsedRaw$) !== null;
 });
 export const setSessionListCollapsed$ = command(
   ({ set }, collapsed: boolean) => {
-    set(internalSessionListCollapsed$, collapsed);
+    if (collapsed) {
+      set(setSessionListCollapsedRaw$, "1");
+    } else {
+      set(clearSessionListCollapsed$);
+    }
   },
 );
 
 // ---------------------------------------------------------------------------
-// Manage section collapse state (ZeroSidebar)
+// Manage section collapse state (ZeroSidebar) — persisted in localStorage
 // ---------------------------------------------------------------------------
-const internalManageSectionCollapsed$ = state(false);
+const {
+  get$: manageSectionCollapsedRaw$,
+  set$: setManageSectionCollapsedRaw$,
+  clear$: clearManageSectionCollapsed$,
+} = localStorageSignals("manageCollapsed");
 export const manageSectionCollapsed$ = computed((get) => {
-  return get(internalManageSectionCollapsed$);
+  return get(manageSectionCollapsedRaw$) !== null;
 });
 export const setManageSectionCollapsed$ = command(
   ({ set }, collapsed: boolean) => {
-    set(internalManageSectionCollapsed$, collapsed);
+    if (collapsed) {
+      set(setManageSectionCollapsedRaw$, "1");
+    } else {
+      set(clearManageSectionCollapsed$);
+    }
   },
 );
 
@@ -108,14 +125,22 @@ export const setChatListOpen$ = command(({ set }, open: boolean) => {
 });
 
 // ---------------------------------------------------------------------------
-// Agent card / pinned section collapse state (TalkToSection)
+// Agent card / pinned section collapse state (TalkToSection) — persisted in localStorage
 // ---------------------------------------------------------------------------
-const internalAgentCardCollapsed$ = state(false);
+const {
+  get$: agentCardCollapsedRaw$,
+  set$: setAgentCardCollapsedRaw$,
+  clear$: clearAgentCardCollapsed$,
+} = localStorageSignals("pinnedCollapsed");
 export const agentCardCollapsed$ = computed((get) => {
-  return get(internalAgentCardCollapsed$);
+  return get(agentCardCollapsedRaw$) !== null;
 });
 export const setAgentCardCollapsed$ = command(({ set }, collapsed: boolean) => {
-  set(internalAgentCardCollapsed$, collapsed);
+  if (collapsed) {
+    set(setAgentCardCollapsedRaw$, "1");
+  } else {
+    set(clearAgentCardCollapsed$);
+  }
 });
 
 // ---------------------------------------------------------------------------
