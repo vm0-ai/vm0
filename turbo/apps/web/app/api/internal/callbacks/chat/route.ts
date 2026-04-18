@@ -103,14 +103,12 @@ async function loadPriorTitleContext(
     if (m.runId === currentRunId) continue;
     if (m.content === null) continue;
     if (m.role !== "user" && m.role !== "assistant") continue;
+    // The send-time user message is persisted with a null runId, so the
+    // runId filter above doesn't catch it. Drop any user message whose
+    // content matches the current prompt — a duplicate in a prior round
+    // carries no extra signal for the title prompt.
+    if (m.role === "user" && m.content === currentPrompt) continue;
     prior.push({ role: m.role, content: m.content });
-  }
-  // Drop the trailing user message when it matches the current run's prompt —
-  // it was inserted at send time with a null runId, so the runId filter above
-  // does not catch it.
-  const last = prior[prior.length - 1];
-  if (last && last.role === "user" && last.content === currentPrompt) {
-    prior.pop();
   }
   return prior.slice(-10);
 }
