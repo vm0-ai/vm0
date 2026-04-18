@@ -49,9 +49,9 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@typescript-eslint/rule-tester": "^8.58.1",
-    "@typescript-eslint/type-utils": "^8.58.1",
-    "@typescript-eslint/utils": "^8.58.1",
+    "@typescript-eslint/rule-tester": "^8.58.2",
+    "@typescript-eslint/type-utils": "^8.58.2",
+    "@typescript-eslint/utils": "^8.58.2",
     "@vitejs/plugin-react": "^6.0.1",
     "@vm0/eslint-config": "workspace:*",
     "eslint": "^9.34.0",
@@ -63,7 +63,7 @@
     "oxlint-tsgolint": "0.21.1",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.58.1",
+    "typescript-eslint": "^8.58.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.4"
   }
