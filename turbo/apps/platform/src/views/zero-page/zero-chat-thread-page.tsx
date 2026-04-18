@@ -477,9 +477,17 @@ function InlineStreamingCursor({
   return (
     <span
       aria-hidden
-      className="absolute -bottom-0.5 right-0 pointer-events-none animate-in fade-in duration-200"
+      className="pointer-events-none absolute -bottom-2 left-0 flex gap-1.5 animate-in fade-in duration-200"
     >
-      <IconLoader2 size={12} className="animate-spin text-foreground/50" />
+      {Array.from({ length: 8 }).map((_, i) => {
+        return (
+          <span
+            key={i}
+            className="zero-dot-trail-item inline-block size-1 rounded-full bg-foreground/50"
+            style={{ animationDelay: `${i * 120}ms` }}
+          />
+        );
+      })}
     </span>
   );
 }
