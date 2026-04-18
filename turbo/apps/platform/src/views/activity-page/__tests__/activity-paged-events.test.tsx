@@ -6,7 +6,6 @@ import { FeatureSwitchKey } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -120,10 +119,8 @@ describe("activity paged events", () => {
     // Confirm pagination was exercised (at least 2 event fetches)
     expect(eventFetchCount).toBeGreaterThanOrEqual(2);
 
-    // Trigger Ably event to unblock the polling loop so it re-checks status
-    triggerAblyEvent("thread:a0000000-0000-4000-a000-000000000099");
-
-    // Wait for completion
+    // Polling loop auto-iterates in VITEST (setLoop yields via setTimeout(0))
+    // and eventually re-checks status, picking up the "completed" transition.
     await waitFor(() => {
       expect(screen.getByText("Done")).toBeInTheDocument();
     });

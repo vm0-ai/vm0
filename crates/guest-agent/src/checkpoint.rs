@@ -5,6 +5,7 @@ use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::http;
+use crate::memory;
 use crate::paths;
 use crate::urls;
 use bytes::Bytes;
@@ -17,14 +18,23 @@ use std::path::Path;
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Create a checkpoint after a successful run.
-pub async fn create_checkpoint() -> Result<(), AgentError> {
+///
+/// `memory_boot_fp` is the memory-mount fingerprint captured at init time. If
+/// it's still equal to the current fingerprint, the memory content is
+/// unchanged and the storages/prepare+commit round-trips can be skipped.
+pub async fn create_checkpoint(
+    memory_boot_fp: &memory::MemoryBootFingerprint,
+) -> Result<(), AgentError> {
     let start = std::time::Instant::now();
-    let result = create_checkpoint_impl(start).await;
+    let result = create_checkpoint_impl(start, memory_boot_fp).await;
     record_sandbox_op("checkpoint_total", start.elapsed(), result.is_ok(), None);
     result
 }
 
-async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentError> {
+async fn create_checkpoint_impl(
+    start: std::time::Instant,
+    memory_boot_fp: &memory::MemoryBootFingerprint,
+) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Creating checkpoint...");
 
     // Read session ID
@@ -223,8 +233,10 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
                 env::artifact_volume_name(),
                 env::artifact_mount_path()
             );
+            let files = artifact::walk_files(env::artifact_mount_path()).await?;
             let snapshot = artifact::create_snapshot(
                 env::artifact_mount_path(),
+                files,
                 env::artifact_volume_name(),
                 "artifact",
                 env::run_id(),
@@ -254,6 +266,42 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
                 );
                 return Ok(None);
             }
+            // Walk once. If the fingerprint matches the boot snapshot and we
+            // have a parent version to echo, the memory content is
+            // byte-identical to what the sandbox booted with — the server's
+            // HEAD already represents this exact state, so the storages
+            // /prepare + /commit round-trips (~1s combined) would be a pure
+            // no-op. Skip them and echo the parent `memory_version_id` so
+            // `agentSession.memoryName` stays associated for future resumes.
+            // Covers:
+            //   - "never used memory" (empty at boot, empty now)
+            //   - "memory preserved verbatim" (N files at boot, same N files now)
+            //   - "write-then-delete / edit-then-revert" (end state matches boot)
+            // The `memory_version_id` non-empty guard ensures the skip
+            // payload's shape matches the normal path (a real version hash).
+            // Wipe, partial-edit, and first-run-without-parent fall through
+            // to create_snapshot with the pre-walked files (no second walk).
+            let files = artifact::walk_files(env::memory_mount_path()).await?;
+            let skip_check_start = std::time::Instant::now();
+            if let Some(boot_fp) = memory_boot_fp.as_ref()
+                && !env::memory_version_id().is_empty()
+                && &artifact::fingerprint_from_files(&files) == boot_fp
+            {
+                log_info!(
+                    LOG_TAG,
+                    "Memory unchanged since boot, skipping storage API calls"
+                );
+                record_sandbox_op(
+                    "memory_snapshot_skipped",
+                    skip_check_start.elapsed(),
+                    true,
+                    None,
+                );
+                return Ok(Some(json!({
+                    "memoryName": env::memory_name(),
+                    "memoryVersion": env::memory_version_id(),
+                })));
+            }
             log_info!(
                 LOG_TAG,
                 "Creating VAS snapshot for memory '{}' at {}",
@@ -262,6 +310,7 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
             );
             let snapshot = artifact::create_snapshot(
                 env::memory_mount_path(),
+                files,
                 env::memory_name(),
                 "memory",
                 env::run_id(),

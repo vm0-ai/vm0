@@ -1,13 +1,13 @@
 //! VAS artifact upload — SHA-256 hashing, tar.gz creation, S3 presigned upload.
 //!
-//! Flow:
-//! 1. Walk directory, compute SHA-256 per file (skip `.git`, `.vm0`)
-//! 2. POST `/storages/prepare` with file list → get presigned URLs
-//! 3. If deduplicated, POST `/storages/commit` to update HEAD
-//! 4. Create tar.gz archive
-//! 5. Create manifest.json
-//! 6. PUT archive + manifest to S3
-//! 7. POST `/storages/commit`
+//! Flow (caller first walks the mount via [`walk_files`], then invokes
+//! [`create_snapshot`] with the pre-walked file list):
+//! 1. POST `/storages/prepare` with file list → get presigned URLs
+//! 2. If deduplicated, POST `/storages/commit` to update HEAD
+//! 3. Create tar.gz archive
+//! 4. Create manifest.json
+//! 5. PUT archive + manifest to S3
+//! 6. POST `/storages/commit`
 
 use crate::constants;
 use crate::error::AgentError;
@@ -24,10 +24,10 @@ use std::path::Path;
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 #[derive(Serialize, Clone)]
-struct FileEntry {
-    path: String,
-    hash: String,
-    size: u64,
+pub(crate) struct FileEntry {
+    pub(crate) path: String,
+    pub(crate) hash: String,
+    pub(crate) size: u64,
 }
 
 #[derive(Deserialize)]
@@ -55,13 +55,32 @@ struct CommitResponse {
     success: Option<bool>,
 }
 
-pub struct SnapshotResult {
-    pub version_id: String,
+pub(crate) struct SnapshotResult {
+    pub(crate) version_id: String,
 }
 
-/// Create a VAS snapshot using direct S3 upload.
-pub async fn create_snapshot(
+/// Walk `mount_path` in a blocking task and collect `FileEntry` records,
+/// recording the hash-compute op and emitting a "Found N files" log. Exposed
+/// so the checkpoint step can pre-walk once, decide whether to skip, and reuse
+/// the result for `create_snapshot` without a second walk.
+pub(crate) async fn walk_files(mount_path: &str) -> Result<Vec<FileEntry>, AgentError> {
+    log_info!(LOG_TAG, "Computing file hashes...");
+    let hash_start = std::time::Instant::now();
+    let mount = mount_path.to_string();
+    let files = tokio::task::spawn_blocking(move || collect_file_metadata(&mount))
+        .await
+        .map_err(|e| AgentError::Execution(format!("hash task panicked: {e}")))?;
+    record_sandbox_op("artifact_hash_compute", hash_start.elapsed(), true, None);
+    log_info!(LOG_TAG, "Found {} files", files.len());
+    Ok(files)
+}
+
+/// Create a VAS snapshot using direct S3 upload. Caller provides the
+/// pre-walked file list (see [`walk_files`]) — this lets the checkpoint step
+/// share one walk between its skip-check fingerprint and the snapshot upload.
+pub(crate) async fn create_snapshot(
     mount_path: &str,
+    files: Vec<FileEntry>,
     storage_name: &str,
     storage_type: &str,
     run_id: &str,
@@ -73,17 +92,7 @@ pub async fn create_snapshot(
         "Creating direct upload snapshot for '{storage_name}'"
     );
 
-    // Step 1: Collect file metadata (blocking I/O)
-    log_info!(LOG_TAG, "Computing file hashes...");
-    let hash_start = std::time::Instant::now();
-    let mount = mount_path.to_string();
-    let files = tokio::task::spawn_blocking(move || collect_file_metadata(&mount))
-        .await
-        .map_err(|e| AgentError::Execution(format!("hash task panicked: {e}")))?;
-    record_sandbox_op("artifact_hash_compute", hash_start.elapsed(), true, None);
-    log_info!(LOG_TAG, "Found {} files", files.len());
-
-    // Step 2: Prepare
+    // Step 1: Prepare
     log_info!(LOG_TAG, "Calling prepare endpoint...");
     let prep_start = std::time::Instant::now();
     let mut prep_payload = json!({
@@ -129,7 +138,7 @@ pub async fn create_snapshot(
     };
     record_sandbox_op("artifact_prepare_api", prep_start.elapsed(), true, None);
 
-    // Step 3: Deduplication check
+    // Step 2: Deduplication check
     if prep.existing.unwrap_or(false) {
         log_info!(
             LOG_TAG,
@@ -167,7 +176,7 @@ pub async fn create_snapshot(
         return Ok(SnapshotResult { version_id });
     }
 
-    // Step 4: Get presigned URLs
+    // Step 3: Get presigned URLs
     let uploads = prep
         .uploads
         .ok_or_else(|| AgentError::Checkpoint("No upload URLs in prepare response".into()))?;
@@ -180,7 +189,7 @@ pub async fn create_snapshot(
         .ok_or_else(|| AgentError::Checkpoint("No manifest upload info".into()))?
         .presigned_url;
 
-    // Step 5: Create archive + manifest in temp dir
+    // Step 4: Create archive + manifest in temp dir
     let temp_dir = tempfile::tempdir().map_err(AgentError::Io)?;
     let archive_path = temp_dir.path().join("archive.tar.gz");
     let manifest_path = temp_dir.path().join("manifest.json");
@@ -213,7 +222,7 @@ pub async fn create_snapshot(
     )
     .map_err(|e| AgentError::Checkpoint(format!("Failed to write manifest: {e}")))?;
 
-    // Step 6: Upload to S3
+    // Step 5: Upload to S3
     log_info!(LOG_TAG, "Uploading archive to S3...");
     let s3_start = std::time::Instant::now();
     if let Err(e) = http::put_presigned_file(&archive_url, &archive_path, "application/gzip").await
@@ -232,7 +241,7 @@ pub async fn create_snapshot(
     }
     record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), true, None);
 
-    // Step 7: Commit
+    // Step 6: Commit
     log_info!(LOG_TAG, "Calling commit endpoint...");
     let commit_start = std::time::Instant::now();
     let mut commit_payload = json!({
@@ -283,10 +292,35 @@ pub async fn create_snapshot(
 }
 
 /// Walk directory and compute SHA-256 for each file, skipping `.git` and `.vm0`.
-fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
+pub(crate) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
     let mut files = Vec::new();
     walk_dir(dir_path, "", &mut files);
     files
+}
+
+/// Deterministic 32-byte fingerprint of a pre-walked file set: SHA-256 over
+/// the path-sorted sequence of `(path, hash, size)` triples. Cheap — the
+/// per-file content hashing was already done by [`collect_file_metadata`].
+pub(crate) fn fingerprint_from_files(files: &[FileEntry]) -> [u8; 32] {
+    let mut sorted: Vec<&FileEntry> = files.iter().collect();
+    sorted.sort_by(|a, b| a.path.cmp(&b.path));
+    let mut hasher = Sha256::new();
+    for f in &sorted {
+        hasher.update(f.path.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(f.hash.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(f.size.to_le_bytes());
+        hasher.update(b"\0");
+    }
+    hasher.finalize().into()
+}
+
+/// Convenience: walk `dir_path` and compute its fingerprint. Equivalent to
+/// `fingerprint_from_files(&collect_file_metadata(dir_path))`, used at boot
+/// time where there's no snapshot upload to share the walk with.
+pub(crate) fn compute_directory_fingerprint(dir_path: &str) -> [u8; 32] {
+    fingerprint_from_files(&collect_file_metadata(dir_path))
 }
 
 fn walk_dir(current: &str, relative: &str, out: &mut Vec<FileEntry>) {
@@ -651,5 +685,89 @@ mod tests {
     fn collect_file_metadata_nonexistent_dir() {
         let files = collect_file_metadata("/nonexistent/path/that/does/not/exist");
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn fingerprint_stable_for_identical_content() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        std::fs::write(a.path().join("m.md"), "hello").unwrap();
+        std::fs::write(b.path().join("m.md"), "hello").unwrap();
+        let fa = compute_directory_fingerprint(a.path().to_str().unwrap());
+        let fb = compute_directory_fingerprint(b.path().to_str().unwrap());
+        assert_eq!(fa, fb);
+    }
+
+    #[test]
+    fn fingerprint_changes_on_content_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("m.md"), "v1").unwrap();
+        let f1 = compute_directory_fingerprint(dir.path().to_str().unwrap());
+        std::fs::write(dir.path().join("m.md"), "v2-edited").unwrap();
+        let f2 = compute_directory_fingerprint(dir.path().to_str().unwrap());
+        assert_ne!(f1, f2);
+    }
+
+    #[test]
+    fn fingerprint_changes_on_file_added() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("m.md"), "same").unwrap();
+        let f1 = compute_directory_fingerprint(dir.path().to_str().unwrap());
+        std::fs::write(dir.path().join("extra.md"), "new").unwrap();
+        let f2 = compute_directory_fingerprint(dir.path().to_str().unwrap());
+        assert_ne!(f1, f2);
+    }
+
+    #[test]
+    fn fingerprint_changes_on_file_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "x").unwrap();
+        std::fs::write(dir.path().join("b.md"), "y").unwrap();
+        let f1 = compute_directory_fingerprint(dir.path().to_str().unwrap());
+        std::fs::remove_file(dir.path().join("b.md")).unwrap();
+        let f2 = compute_directory_fingerprint(dir.path().to_str().unwrap());
+        assert_ne!(f1, f2);
+    }
+
+    #[test]
+    fn fingerprint_ignores_git_and_vm0() {
+        let with_extras = tempfile::tempdir().unwrap();
+        let without = tempfile::tempdir().unwrap();
+        std::fs::write(with_extras.path().join("m.md"), "same").unwrap();
+        std::fs::create_dir(with_extras.path().join(".git")).unwrap();
+        std::fs::write(with_extras.path().join(".git/HEAD"), "x").unwrap();
+        std::fs::create_dir(with_extras.path().join(".vm0")).unwrap();
+        std::fs::write(with_extras.path().join(".vm0/cfg"), "y").unwrap();
+        std::fs::write(without.path().join("m.md"), "same").unwrap();
+        assert_eq!(
+            compute_directory_fingerprint(with_extras.path().to_str().unwrap()),
+            compute_directory_fingerprint(without.path().to_str().unwrap()),
+        );
+    }
+
+    #[test]
+    fn fingerprint_empty_dir_matches_nonexistent() {
+        let dir = tempfile::tempdir().unwrap();
+        let fp_empty = compute_directory_fingerprint(dir.path().to_str().unwrap());
+        let fp_missing = compute_directory_fingerprint("/nonexistent/for/fingerprint");
+        assert_eq!(fp_empty, fp_missing);
+    }
+
+    #[test]
+    fn fingerprint_order_independent() {
+        // `walk_dir` uses filesystem order, which isn't guaranteed. The
+        // fingerprint sorts by path before hashing — verify that matters by
+        // checking two sets with the same content produce the same hash even
+        // if created in different orders.
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        std::fs::write(a.path().join("z.md"), "last").unwrap();
+        std::fs::write(a.path().join("a.md"), "first").unwrap();
+        std::fs::write(b.path().join("a.md"), "first").unwrap();
+        std::fs::write(b.path().join("z.md"), "last").unwrap();
+        assert_eq!(
+            compute_directory_fingerprint(a.path().to_str().unwrap()),
+            compute_directory_fingerprint(b.path().to_str().unwrap()),
+        );
     }
 }

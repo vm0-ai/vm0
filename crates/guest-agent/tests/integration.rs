@@ -15,6 +15,11 @@ use tokio_util::sync::CancellationToken;
 /// Shared mock server — env vars are set once before any `LazyLock` in the
 /// library is accessed, so `env::api_url()`, `urls::*`, etc. all resolve to
 /// the mock server's address.
+///
+/// Memory vars are set here too (not per-test) because `env::memory_*()`
+/// values are cached via `LazyLock` — they can only be read once and cannot
+/// be changed later. `VM0_MEMORY_VERSION_ID` is set to a deterministic
+/// sentinel so the checkpoint skip test can assert the payload echoes it.
 static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
     let server = MockServer::start();
     unsafe {
@@ -24,6 +29,10 @@ static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
         std::env::set_var("VM0_WORKING_DIR", "/tmp/test-workdir");
         std::env::set_var("VM0_PROMPT", "test prompt");
         std::env::set_var("VERCEL_PROTECTION_BYPASS", "test-bypass-value");
+        std::env::set_var("VM0_MEMORY_DRIVER", "vas");
+        std::env::set_var("VM0_MEMORY_NAME", "test-memory");
+        std::env::set_var("VM0_MEMORY_MOUNT_PATH", "/tmp/vm0-test-memory-mount");
+        std::env::set_var("VM0_MEMORY_VERSION_ID", "parent-hash-abc");
     }
     server
 });
@@ -922,4 +931,190 @@ async fn final_upload_is_incremental_between_calls() {
     catchup_mock.delete_async().await;
     let _ = std::fs::remove_file(ops_file);
     let _ = std::fs::remove_file(pos_file);
+}
+
+// =========================================================================
+// Group 9: Checkpoint — memory-unchanged skip
+// =========================================================================
+
+#[tokio::test]
+async fn create_checkpoint_skips_storages_api_when_memory_unchanged_since_boot() {
+    // Captures a boot fingerprint of an empty memory mount, leaves the mount
+    // untouched, then calls create_checkpoint. The fingerprint should match
+    // on recompute, so /storages/prepare + /commit (~1s combined) must be
+    // skipped. The checkpoint payload echoes the parent `memoryVersion` to
+    // preserve `agentSession.memoryName` for future resumes.
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    // Reset memory mount and capture boot fingerprint (mirrors what
+    // `main.rs::execute` does before the CLI runs).
+    let mount = guest_agent::env::memory_mount_path();
+    let _ = std::fs::remove_dir_all(mount);
+    std::fs::create_dir_all(mount).unwrap();
+    let boot_fp = guest_agent::memory::capture_boot_fingerprint().await;
+    assert!(boot_fp.is_some(), "boot fingerprint should capture");
+
+    // Session files required by create_checkpoint.
+    let session_id_path = guest_agent::paths::session_id_file();
+    let history_path_file = guest_agent::paths::session_history_path_file();
+    let history_file = "/tmp/vm0-session-history-content-test-run-001.jsonl";
+    std::fs::write(session_id_path, "test-session-id").unwrap();
+    std::fs::write(history_path_file, history_file).unwrap();
+    std::fs::write(history_file, "{\"type\":\"user\"}\n").unwrap();
+
+    // Mocks.
+    let prepare_history_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({ "existing": true }));
+    });
+    // Match memoryName + parent-hash echo in one shot: if these fields aren't
+    // in the body, this mock won't match and the call-count check below fails.
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .body_includes("\"memoryName\":\"test-memory\"")
+            .body_includes("\"memoryVersion\":\"parent-hash-abc\"");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({ "checkpointId": "ckpt-123" }));
+    });
+    // These two must NOT be hit.
+    let storages_prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/storages/prepare");
+        then.status(200);
+    });
+    let storages_commit_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/storages/commit");
+        then.status(200);
+    });
+
+    let result = guest_agent::checkpoint::create_checkpoint(&boot_fp).await;
+    assert!(result.is_ok(), "create_checkpoint failed: {result:?}");
+
+    prepare_history_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    storages_prepare_mock.assert_calls_async(0).await;
+    storages_commit_mock.assert_calls_async(0).await;
+
+    // Cleanup.
+    prepare_history_mock.delete_async().await;
+    checkpoint_mock.delete_async().await;
+    storages_prepare_mock.delete_async().await;
+    storages_commit_mock.delete_async().await;
+    let _ = std::fs::remove_file(session_id_path);
+    let _ = std::fs::remove_file(history_path_file);
+    let _ = std::fs::remove_file(history_file);
+    let _ = std::fs::remove_dir_all(mount);
+}
+
+#[tokio::test]
+async fn capture_boot_fingerprint_returns_none_when_mount_missing() {
+    // Guards the precondition used by `main::execute`: if the memory mount
+    // isn't there, capture returns None so the checkpoint skip gate stays
+    // closed and the normal path (which also early-returns on missing mount)
+    // runs.
+    let _guard = TEST_MUTEX.lock().unwrap();
+    // Force MOCK_SERVER init so `env::memory_*()` LazyLocks see the test env
+    // vars before this test reads them (otherwise, if this test runs before
+    // any other, the LazyLocks freeze to empty strings).
+    let _ = &*MOCK_SERVER;
+    let mount = guest_agent::env::memory_mount_path();
+    let _ = std::fs::remove_dir_all(mount);
+    assert!(
+        guest_agent::memory::capture_boot_fingerprint()
+            .await
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn create_checkpoint_calls_storages_api_when_memory_changed_since_boot() {
+    // Captures an empty-mount fingerprint, then writes a file before calling
+    // create_checkpoint. The fingerprint recomputed at checkpoint must differ,
+    // so the skip gate must NOT fire: /storages/prepare + /commit must be
+    // hit. Uses the dedup-hit branch (prepare returns existing:true) to keep
+    // the test small — no S3 mocks needed.
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    // Reset mount, capture boot fingerprint of empty mount.
+    let mount = guest_agent::env::memory_mount_path();
+    let _ = std::fs::remove_dir_all(mount);
+    std::fs::create_dir_all(mount).unwrap();
+    let boot_fp = guest_agent::memory::capture_boot_fingerprint().await;
+    assert!(boot_fp.is_some());
+
+    // Mutate: add a file, so the checkpoint-time fingerprint differs.
+    std::fs::write(format!("{mount}/new.md"), "written during run").unwrap();
+
+    // Session files.
+    let session_id_path = guest_agent::paths::session_id_file();
+    let history_path_file = guest_agent::paths::session_history_path_file();
+    let history_file = "/tmp/vm0-session-history-content-test-run-001.jsonl";
+    std::fs::write(session_id_path, "test-session-id").unwrap();
+    std::fs::write(history_path_file, history_file).unwrap();
+    std::fs::write(history_file, "{\"type\":\"user\"}\n").unwrap();
+
+    let prepare_history_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({ "existing": true }));
+    });
+    // Dedup-hit: prepare returns existing:true with a new versionId, so no
+    // S3 upload is needed. commit then updates HEAD.
+    let storages_prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/storages/prepare");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({ "versionId": "new-hash-xyz", "existing": true }));
+    });
+    let storages_commit_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/storages/commit");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "success": true,
+                "versionId": "new-hash-xyz",
+                "storageName": "test-memory",
+                "size": 0,
+                "fileCount": 0,
+                "deduplicated": true,
+            }));
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .body_includes("\"memoryName\":\"test-memory\"")
+            .body_includes("\"memoryVersion\":\"new-hash-xyz\"");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({ "checkpointId": "ckpt-changed" }));
+    });
+
+    let result = guest_agent::checkpoint::create_checkpoint(&boot_fp).await;
+    assert!(result.is_ok(), "create_checkpoint failed: {result:?}");
+
+    prepare_history_mock.assert_calls_async(1).await;
+    storages_prepare_mock.assert_calls_async(1).await;
+    storages_commit_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+
+    prepare_history_mock.delete_async().await;
+    storages_prepare_mock.delete_async().await;
+    storages_commit_mock.delete_async().await;
+    checkpoint_mock.delete_async().await;
+    let _ = std::fs::remove_file(session_id_path);
+    let _ = std::fs::remove_file(history_path_file);
+    let _ = std::fs::remove_file(history_file);
+    let _ = std::fs::remove_dir_all(mount);
 }

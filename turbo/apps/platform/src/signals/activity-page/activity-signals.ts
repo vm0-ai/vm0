@@ -10,7 +10,7 @@ import { createCursorPagination } from "../cursor-pagination.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { createRunLoop } from "../zero-page/polling.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import { setLoop } from "../utils.ts";
 import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
@@ -263,12 +263,15 @@ export const setupActivityLogLoop$ = command(
     // would be a no-op.
     await delay(0, { signal });
     set(scrollToBottomActivityDetail$);
-    const loopBody$ = command(({ set }, sig: AbortSignal) => {
-      const finished = set(run.checkFinished$, sig);
-      set(autoScrollActivityDetail$);
-      return finished;
-    });
-    await set(setAblyLoop$, `thread:${runId}`, loopBody$, signal);
+    await setLoop(
+      (sig) => {
+        const finished = set(run.checkFinished$, sig);
+        set(autoScrollActivityDetail$);
+        return finished;
+      },
+      10_000,
+      signal,
+    );
   },
 );
 

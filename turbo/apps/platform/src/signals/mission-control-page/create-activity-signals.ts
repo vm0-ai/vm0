@@ -1,6 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { createRunLoop } from "../zero-page/polling.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import { setLoop } from "../utils.ts";
 import type { LogDetail, AgentEvent } from "../zero-page/log-types.ts";
 
 // ---------------------------------------------------------------------------
@@ -52,7 +52,13 @@ export function createActivitySignals(runId: string): ActivitySignals {
   });
 
   const startPolling$ = command(async ({ set }, signal: AbortSignal) => {
-    await set(setAblyLoop$, `thread:${runId}`, runLoop.checkFinished$, signal);
+    await setLoop(
+      (sig) => {
+        return set(runLoop.checkFinished$, sig);
+      },
+      10_000,
+      signal,
+    );
   });
 
   const focusInput$ = command(() => {});

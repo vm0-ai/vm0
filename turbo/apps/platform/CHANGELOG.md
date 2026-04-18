@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.250.1](https://github.com/vm0-ai/vm0/compare/app-v0.250.0...app-v0.250.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* **zero:** prevent chat scroll jump to top on new message arrival ([#9930](https://github.com/vm0-ai/vm0/issues/9930)) ([0d08cb7](https://github.com/vm0-ai/vm0/commit/0d08cb77d51a4fa62419990ccd67f38f969b324e))
+
+
+### Refactoring
+
+* drop thread/run-updated/tasks realtime signals, poll in non-chat views ([#9920](https://github.com/vm0-ai/vm0/issues/9920)) ([#9935](https://github.com/vm0-ai/vm0/issues/9935)) ([312eefb](https://github.com/vm0-ai/vm0/commit/312eefb33f74d1cd3619fd44a3c716c30c87f3b0))
+* **platform:** add contract-driven mockApi helper (pilot for [#9707](https://github.com/vm0-ai/vm0/issues/9707)) ([#9928](https://github.com/vm0-ai/vm0/issues/9928)) ([451b832](https://github.com/vm0-ai/vm0/commit/451b8324a208646b87a77b43139b4fcb26990fb0))
+
 ## [0.250.0](https://github.com/vm0-ai/vm0/compare/app-v0.249.1...app-v0.250.0) (2026-04-18)
 
 

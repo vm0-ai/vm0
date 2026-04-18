@@ -26,12 +26,7 @@ import {
   type FirewallPolicies,
   type ConnectorType,
 } from "@vm0/core";
-import {
-  publishCancelNotification,
-  publishUserSignal,
-} from "../realtime/client";
-import { getOrgMemberUserIds } from "../realtime/audience";
-import { chatMessages } from "../../../db/schema/chat-message";
+import { publishCancelNotification } from "../realtime/client";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
 
 const log = logger("service:run");
@@ -527,24 +522,6 @@ export async function dispatchCancelSideEffects(
         }
       : undefined,
   );
-
-  await publishUserSignal([result.userId], `thread:${result.runId}`);
-  await publishUserSignal([result.userId], `runUpdated:${result.runId}`);
-
-  const [msg] = await globalThis.services.db
-    .select({ chatThreadId: chatMessages.chatThreadId })
-    .from(chatMessages)
-    .where(eq(chatMessages.runId, result.runId))
-    .limit(1);
-  if (msg?.chatThreadId) {
-    await publishUserSignal(
-      [result.userId],
-      `chatThreadRunUpdated:${msg.chatThreadId}`,
-    );
-  }
-
-  const orgMembers = await getOrgMemberUserIds(result.orgId);
-  await publishUserSignal(orgMembers, `tasks:${result.orgId}`);
 
   return shouldDrain;
 }

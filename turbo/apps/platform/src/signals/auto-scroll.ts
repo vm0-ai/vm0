@@ -4,6 +4,19 @@ import { logger } from "./log.ts";
 
 const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD = 10;
+const USER_INPUT_WINDOW_MS = 200;
+
+function isUserScrollKey(key: string): boolean {
+  return (
+    key === "PageUp" ||
+    key === "PageDown" ||
+    key === "ArrowUp" ||
+    key === "ArrowDown" ||
+    key === "Home" ||
+    key === "End" ||
+    key === " "
+  );
+}
 
 function scrollInfo(el: HTMLElement) {
   const top = Math.round(el.scrollTop);
@@ -35,6 +48,17 @@ export function createScrollSignals() {
       L.debug("container bound");
 
       let lastKnownScrollTop = el.scrollTop;
+      let lastUserInputAt = 0;
+
+      const markUserInput = () => {
+        lastUserInputAt = performance.now();
+      };
+
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (isUserScrollKey(e.key)) {
+          markUserInput();
+        }
+      };
 
       const onScroll = () => {
         const distanceFromBottom =
@@ -46,11 +70,27 @@ export function createScrollSignals() {
             L.debug("re-enabled (at bottom)", scrollInfo(el));
           }
         } else if (el.scrollTop < lastKnownScrollTop) {
-          const wasDisabled = get(autoScrollDisabled$);
-          set(autoScrollDisabled$, true);
-          if (!wasDisabled) {
+          // Only treat a scrollTop decrease as "user scrolled up" when it
+          // coincides with a recent user input. The browser can also decrease
+          // scrollTop on its own — when content below the viewport shrinks it
+          // clamps to the new max, and scroll anchoring can nudge position on
+          // layout changes. Those programmatic shifts should not disable
+          // auto-scroll; we want ResizeObserver to snap back to the bottom.
+          const userRecent =
+            performance.now() - lastUserInputAt < USER_INPUT_WINDOW_MS;
+          if (userRecent) {
+            const wasDisabled = get(autoScrollDisabled$);
+            set(autoScrollDisabled$, true);
+            if (!wasDisabled) {
+              L.debug(
+                "DISABLED (scrolled up)",
+                scrollInfo(el),
+                `lastKnown=${Math.round(lastKnownScrollTop)}`,
+              );
+            }
+          } else {
             L.debug(
-              "DISABLED (scrolled up)",
+              "scrollTop decreased without user input (ignored)",
               scrollInfo(el),
               `lastKnown=${Math.round(lastKnownScrollTop)}`,
             );
@@ -60,6 +100,10 @@ export function createScrollSignals() {
       };
 
       el.addEventListener("scroll", onScroll, { passive: true });
+      el.addEventListener("wheel", markUserInput, { passive: true });
+      el.addEventListener("touchmove", markUserInput, { passive: true });
+      el.addEventListener("pointerdown", markUserInput, { passive: true });
+      el.addEventListener("keydown", onKeyDown, { passive: true });
 
       const resizeObserver = new ResizeObserver(() => {
         const disabled = get(autoScrollDisabled$);
@@ -79,6 +123,10 @@ export function createScrollSignals() {
         L.debug("container unbound (abort)");
         resizeObserver.disconnect();
         el.removeEventListener("scroll", onScroll);
+        el.removeEventListener("wheel", markUserInput);
+        el.removeEventListener("touchmove", markUserInput);
+        el.removeEventListener("pointerdown", markUserInput);
+        el.removeEventListener("keydown", onKeyDown);
         set(internalScrollContainer$, null);
       });
     }),

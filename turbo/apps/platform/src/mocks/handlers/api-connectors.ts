@@ -4,13 +4,14 @@
  * Mock handlers for /api/zero/connectors endpoint (connectors via zero layer).
  */
 
-import { http, HttpResponse } from "msw";
 import {
   CONNECTOR_TYPES,
   type ConnectorResponse,
-  type ConnectorListResponse,
   type ConnectorType,
+  zeroConnectorsByTypeContract,
+  zeroConnectorsMainContract,
 } from "@vm0/core";
+import { mockApi } from "../msw-contract.ts";
 
 const ALL_CONNECTOR_TYPES = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
 
@@ -21,33 +22,29 @@ export function resetMockConnectors(): void {
 }
 
 export const apiConnectorsHandlers = [
-  // GET /api/zero/connectors - List all connectors (zero proxy)
-  http.get("*/api/zero/connectors", () => {
-    const response: ConnectorListResponse = {
+  mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+    return respond(200, {
       connectors: mockConnectors,
       configuredTypes: ALL_CONNECTOR_TYPES,
       connectorProvidedSecretNames: [],
-    };
-    return HttpResponse.json(response);
+    });
   }),
 
-  // DELETE /api/zero/connectors/:type - Disconnect a connector (zero proxy)
-  http.delete("*/api/zero/connectors/:type", ({ params }) => {
+  mockApi(zeroConnectorsByTypeContract.delete, ({ params, respond }) => {
     const type = params.type as string;
     const existing = mockConnectors.find((c) => {
       return c.type === type;
     });
 
     if (!existing) {
-      return HttpResponse.json(
-        { error: { message: "Connector not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
+      return respond(404, {
+        error: { message: "Connector not found", code: "NOT_FOUND" },
+      });
     }
 
     mockConnectors = mockConnectors.filter((c) => {
       return c.type !== type;
     });
-    return new HttpResponse(null, { status: 204 });
+    return respond(204);
   }),
 ];

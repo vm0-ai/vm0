@@ -12,7 +12,6 @@ import {
   taskSignals$,
 } from "../../../signals/mission-control-page/mission-control-tasks.ts";
 import { createAndShowChatTask$ } from "../../../signals/mission-control-page/mission-control.ts";
-import { triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 
@@ -490,9 +489,8 @@ describe("mission control page", () => {
       }),
     ).toBeTruthy();
 
-    // Trigger the tasks loop to poll again — the TTL check prunes the stale entry.
-    triggerAblyEvent("tasks:org_default");
-
+    // The tasks loop auto-polls (setLoop yields via setTimeout(0) in VITEST);
+    // the TTL check eventually prunes the stale entry.
     await waitFor(async () => {
       const signals = await context.store.get(taskSignals$);
       expect(
@@ -1403,10 +1401,8 @@ describe("mission control page", () => {
       }),
     );
 
-    // Trigger the tasks loop to poll again — it discovers the new latestRunId
-    // and calls refreshPanel$, swapping the panel entry to run-refresh-v2.
-    triggerAblyEvent("tasks:org_default");
-
+    // The tasks loop auto-polls — it discovers the new latestRunId and calls
+    // refreshPanel$, swapping the panel entry to run-refresh-v2.
     await waitFor(() => {
       expect(screen.getByText("Prompt from run v2")).toBeInTheDocument();
     });

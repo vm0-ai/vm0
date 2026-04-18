@@ -90,11 +90,17 @@ export default [
       "ccstate/prefer-user-event": [
         "error",
         {
-          // scroll events cannot be simulated by userEvent; allow dispatchEvent
-          // with new Event("scroll") for tests that verify auto-scroll behaviour.
+          // scroll and wheel events cannot be simulated by userEvent; allow
+          // dispatchEvent with these event types for tests that verify
+          // auto-scroll behaviour (including the user-input gate check).
           // beforeinstallprompt and appinstalled are browser-generated PWA events
           // that cannot be triggered via userEvent.
-          allowedEventTypes: ["scroll", "beforeinstallprompt", "appinstalled"],
+          allowedEventTypes: [
+            "appinstalled",
+            "beforeinstallprompt",
+            "scroll",
+            "wheel",
+          ],
         },
       ],
       "ccstate/no-test-delay": "error",

@@ -3,7 +3,6 @@ import {
   useSet,
   useLastLoadable,
   useLastResolved,
-  useLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -218,7 +217,7 @@ export function ZeroChatThreadPageInner({
   thread: ChatThreadSignals;
   autoFocus?: boolean;
 }) {
-  const groupsLoadable = useLoadable(thread.groupedChatMessages$);
+  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const sessionError =
     threadDataLoadable.state === "hasError"

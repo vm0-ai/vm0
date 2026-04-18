@@ -7,17 +7,14 @@ import {
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentSessions } from "../../db/schema/agent-session";
+import { chatMessages } from "../../db/schema/chat-message";
 import { chatThreads } from "../../db/schema/chat-thread";
 import { conversations } from "../../db/schema/conversation";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { composeJobs } from "../../db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
-import {
-  insertChatMessage,
-  getMessagesByThreadId,
-  insertAssistantEventMessages,
-} from "../../lib/zero/chat-thread/chat-message-service";
+import { getMessagesByThreadId } from "../../lib/zero/chat-thread/chat-message-service";
 
 /**
  * @why-db-direct Creates compose + zero_agents WITHOUT a version — API always
@@ -385,19 +382,32 @@ export async function insertTestChatThread(
  *
  * @why-db-direct Chat messages are created by the run flow and event
  * consumers, not a standalone API endpoint. Tests need direct seeding.
+ * Bypasses insertChatMessage so seeding does not fan out Ably publishes
+ * that would pollute assertions.
  */
 export async function insertTestChatMessage(params: {
   chatThreadId: string;
+  // Accepted for API parity with insertChatMessage but unused here — seeding
+  // intentionally skips realtime publishes.
+  userId?: string;
   role: "user" | "assistant";
   content: string | null;
   runId?: string | null;
 }): Promise<{ id: string; createdAt: Date }> {
-  return insertChatMessage({
-    chatThreadId: params.chatThreadId,
-    role: params.role,
-    content: params.content,
-    runId: params.runId ?? null,
-  });
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: params.chatThreadId,
+      role: params.role,
+      content: params.content,
+      runId: params.runId ?? null,
+    })
+    .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
+  if (!row) {
+    throw new Error("Failed to seed chat message");
+  }
+  return row;
 }
 
 /**
@@ -425,7 +435,8 @@ export async function addTestRunToThread(
   _userId: string,
   prompt?: string,
 ): Promise<void> {
-  await insertChatMessage({
+  initServices();
+  await globalThis.services.db.insert(chatMessages).values({
     chatThreadId: threadId,
     role: "user",
     content: prompt ?? "test prompt",
@@ -441,12 +452,36 @@ export async function addTestRunToThread(
  * Insert event-backed assistant messages for a run.
  *
  * @why-db-direct Event-backed messages are inserted by the chat-assistant
- * event consumer, not an API endpoint. Tests need direct seeding.
+ * event consumer, not an API endpoint. Tests need direct seeding. Bypasses
+ * insertAssistantEventMessages so seeding does not fan out Ably publishes
+ * that would pollute assertions.
  */
 export async function insertTestAssistantEventMessages(
   runId: string,
   threadId: string,
+  // Accepted for API parity with insertAssistantEventMessages but unused —
+  // seeding intentionally skips realtime publishes.
+  _userId: string,
   items: { sequenceNumber: number; content: string }[],
 ): Promise<number> {
-  return insertAssistantEventMessages(runId, threadId, items);
+  if (items.length === 0) return 0;
+  initServices();
+  const rows = await globalThis.services.db
+    .insert(chatMessages)
+    .values(
+      items.map((item) => {
+        return {
+          chatThreadId: threadId,
+          runId,
+          role: "assistant" as const,
+          content: item.content,
+          sequenceNumber: item.sequenceNumber,
+        };
+      }),
+    )
+    .onConflictDoNothing({
+      target: [chatMessages.runId, chatMessages.sequenceNumber],
+    })
+    .returning({ id: chatMessages.id });
+  return rows.length;
 }
