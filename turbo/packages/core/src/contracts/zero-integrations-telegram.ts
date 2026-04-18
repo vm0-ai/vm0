@@ -51,6 +51,10 @@ const telegramRegisterResponseSchema = z.object({
 /**
  * Zero integrations Telegram contract
  * Covers all five Telegram integration endpoints.
+ *
+ * Path note: these endpoints use /api/integrations/ and /api/telegram/ (not /api/zero/)
+ * because they are served by the platform app directly, not the Zero sub-application.
+ * This is intentional and matches the real server routing.
  */
 export const zeroIntegrationsTelegramContract = c.router({
   getStatus: {
