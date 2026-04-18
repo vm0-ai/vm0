@@ -720,11 +720,16 @@ describe("POST /api/internal/callbacks/chat", () => {
       vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
       reloadEnv();
 
+      // The callback hits OpenRouter twice (title + notification summary);
+      // keep the first request so assertions target the title-generation call.
       let capturedBody: unknown;
       const { handler } = http.post(
         "https://openrouter.ai/api/v1/chat/completions",
         async ({ request }) => {
-          capturedBody = await request.json();
+          const body = await request.json();
+          if (capturedBody === undefined) {
+            capturedBody = body;
+          }
           return HttpResponse.json({
             choices: [{ message: { content: "Working with JSON" } }],
           });

@@ -108,7 +108,7 @@ export interface TitleContextMessage {
  * recent exchange more than older rounds while still using history for
  * continuity.
  */
-export interface ChatTitleInput {
+interface ChatTitleInput {
   /** The user's most recent message. */
   currentUserMessage: string;
   /** The assistant's reply to `currentUserMessage`, when it has been produced. */
