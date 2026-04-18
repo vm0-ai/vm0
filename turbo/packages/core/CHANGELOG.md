@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.199.0](https://github.com/vm0-ai/vm0/compare/core-v8.198.0...core-v8.199.0) (2026-04-18)
+
+
+### Features
+
+* **platform:** add pwa install banner and rebrand to zero ([#9925](https://github.com/vm0-ai/vm0/issues/9925)) ([d2a786d](https://github.com/vm0-ai/vm0/commit/d2a786d959f79c446fd03dcbeb4cec8341421868))
+
 ## [8.198.0](https://github.com/vm0-ai/vm0/compare/core-v8.197.0...core-v8.198.0) (2026-04-18)
 
 

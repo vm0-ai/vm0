@@ -53,6 +53,9 @@ export const closeCreateScheduleDialog$ = command(({ set }) => {
   set(internalCreateDialogOpen$, false);
 });
 
+export const { get$: creatingOrgSchedule$, set$: setCreatingOrgSchedule$ } =
+  cell(false);
+
 export const { get$: pageTogglingIds$, set$: setPageTogglingIds$ } = cell<
   Set<string>
 >(new Set());

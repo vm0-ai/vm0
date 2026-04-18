@@ -7,7 +7,6 @@ import {
   insertAssistantEventMessages,
   getChatThreadIdForRun,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
-import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("event-consumer:chat-assistant");
@@ -105,11 +104,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const { chatThreadId: threadId, userId } = thread;
-  const written = await insertAssistantEventMessages(runId, threadId, items);
-
-  if (written > 0) {
-    await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
-  }
+  const written = await insertAssistantEventMessages(
+    runId,
+    threadId,
+    userId,
+    items,
+  );
 
   log.debug("Chat assistant consumer processed", {
     runId,

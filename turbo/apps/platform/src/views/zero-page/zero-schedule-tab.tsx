@@ -14,7 +14,6 @@ interface ZeroScheduleTabProps {
   entries: ScheduleEntry[];
   loading?: boolean;
   scheduleError?: string | null;
-  saveError?: string | null;
   onSave: (params: ZeroScheduleSaveParams) => Promise<void>;
   onDelete: (name: string) => Promise<void>;
   onToggleEnabled: (params: {
@@ -68,7 +67,6 @@ export function ZeroScheduleTab({
   entries,
   loading,
   scheduleError,
-  saveError,
   onSave,
   onDelete,
   onToggleEnabled,
@@ -121,7 +119,6 @@ export function ZeroScheduleTab({
         onOpenDetails={onOpenDetails}
         saving={saving}
         defaultTimezone={userTimezone ?? undefined}
-        saveError={saveError}
       />
     </div>
   );

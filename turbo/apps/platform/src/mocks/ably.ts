@@ -36,7 +36,13 @@ export function hasSubscription(topic: string): boolean {
 }
 
 const fakeChannel = {
-  subscribe(topic: string, callback: Callback): void {
+  // Mirror real Ably: subscribe is async (server roundtrip) and the server
+  // won't deliver events to this callback until the subscription has been
+  // confirmed. Register the callback only after the returned promise
+  // resolves so tests don't accidentally race with a callback that fires
+  // before the subscribe await in consumer code has returned.
+  async subscribe(topic: string, callback: Callback): Promise<void> {
+    await Promise.resolve();
     let cbs = subscriptions.get(topic);
     if (!cbs) {
       cbs = new Set();

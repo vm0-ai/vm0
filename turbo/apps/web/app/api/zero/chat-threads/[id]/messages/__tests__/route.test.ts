@@ -116,11 +116,13 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
 
     await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "user",
       content: "Hello",
     });
     await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "assistant",
       content: "Hi there",
     });
@@ -157,16 +159,19 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
 
     const msg1 = await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "user",
       content: "First",
     });
     await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "assistant",
       content: "Second",
     });
     await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "user",
       content: "Third",
     });
@@ -199,16 +204,19 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     // Insert 3 messages, then request with limit=2
     await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "user",
       content: "A",
     });
     await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "assistant",
       content: "B",
     });
     await insertTestChatMessage({
       chatThreadId: threadId,
+      userId: testUserId,
       role: "user",
       content: "C",
     });
@@ -268,7 +276,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
       prompt: "test",
     });
     await addTestRunToThread(threadId, runId, testUserId, "test");
-    await insertTestAssistantEventMessages(runId, threadId, [
+    await insertTestAssistantEventMessages(runId, threadId, testUserId, [
       { sequenceNumber: 0, content: "Partial response" },
     ]);
     await transitionRunStatus(

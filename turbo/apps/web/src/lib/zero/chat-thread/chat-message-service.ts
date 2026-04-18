@@ -6,16 +6,24 @@ import {
 import { chatThreads } from "../../../db/schema/chat-thread";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { zeroRuns } from "../../../db/schema/zero-run";
+import { publishUserSignal } from "../../infra/realtime/client";
 
 /**
- * Insert a user message. Called immediately on send, before run dispatch.
+ * Insert a chat message (user row on send, or assistant row on terminal
+ * callback / direct integration) and fan out the `chatThreadMessageCreated`
+ * realtime signal to the thread owner.
  *
  * When `id` is provided, it is used as the primary key so the client can
  * reconcile an optimistic row by matching on id. Otherwise the DB default
  * (`defaultRandom()`) is used.
+ *
+ * Publishing the signal here (instead of at each call site) ensures the
+ * cancel / failure paths — which insert via the chat callback — also notify
+ * the frontend, so the cancelled message surfaces without a page refresh.
  */
 export async function insertChatMessage(params: {
   chatThreadId: string;
+  userId: string;
   role: "user" | "assistant";
   content: string | null;
   runId: string | null;
@@ -39,6 +47,12 @@ export async function insertChatMessage(params: {
   if (!row) {
     throw new Error("Failed to insert chat message");
   }
+
+  await publishUserSignal(
+    [params.userId],
+    `chatThreadMessageCreated:${params.chatThreadId}`,
+  );
+
   return row;
 }
 
@@ -58,6 +72,7 @@ export async function insertChatMessage(params: {
 export async function insertAssistantEventMessages(
   runId: string,
   threadId: string,
+  userId: string,
   items: { sequenceNumber: number; content: string; runEventId?: string }[],
 ): Promise<number> {
   if (items.length === 0) {
@@ -83,6 +98,10 @@ export async function insertAssistantEventMessages(
     })
     .returning({ id: chatMessages.id });
 
+  if (rows.length > 0) {
+    await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+  }
+
   return rows.length;
 }
 
@@ -105,6 +124,27 @@ export async function getChatThreadIdForRun(
     .limit(1);
   if (!row?.chatThreadId) return null;
   return { chatThreadId: row.chatThreadId, userId: row.userId };
+}
+
+/**
+ * Emit the `chatThreadRunUpdated:${threadId}` realtime signal so chat
+ * subscribers reload the thread when a run transitions to a terminal state.
+ *
+ * Reads the authoritative `zero_runs.chatThreadId` mapping rather than
+ * reverse-looking-up `chat_messages`, so the signal fires even when no
+ * assistant row has been written yet (e.g., cancel before the first token).
+ *
+ * No-op for non-chat runs (cron / schedule triggers).
+ */
+export async function publishChatThreadRunUpdated(
+  runId: string,
+): Promise<void> {
+  const chatThread = await getChatThreadIdForRun(runId);
+  if (!chatThread) return;
+  await publishUserSignal(
+    [chatThread.userId],
+    `chatThreadRunUpdated:${chatThread.chatThreadId}`,
+  );
 }
 
 /**

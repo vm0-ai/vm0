@@ -34,7 +34,6 @@ export enum FeatureSwitchKey {
   ActivityLogList = "activityLogList",
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
-  MobileChatListPage = "mobileChatListPage",
   Lab = "lab",
   AuditLink = "auditLink",
   PhoneIntegration = "phoneIntegration",

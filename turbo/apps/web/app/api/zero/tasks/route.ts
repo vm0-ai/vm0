@@ -11,9 +11,6 @@ import {
   archiveTask,
   unarchiveTask,
 } from "../../../../src/lib/zero/task/task-service";
-import { publishUserSignal } from "../../../../src/lib/infra/realtime/client";
-import { getOrgMemberUserIds } from "../../../../src/lib/infra/realtime/audience";
-import { after } from "next/server";
 
 const router = tsr.router(tasksContract, {
   list: async ({ query, headers }) => {
@@ -78,12 +75,6 @@ const router = tsr.router(tasksContract, {
       body.runId,
     );
 
-    // Notify org members that task list changed
-    after(async () => {
-      const members = await getOrgMemberUserIds(orgId);
-      await publishUserSignal(members, `tasks:${orgId}`);
-    });
-
     return { status: 200 as const, body: { ok: true as const } };
   },
 
@@ -111,12 +102,6 @@ const router = tsr.router(tasksContract, {
     }
 
     await unarchiveTask(authCtx.userId, orgId, body.taskId, body.taskType);
-
-    // Notify org members that task list changed
-    after(async () => {
-      const members = await getOrgMemberUserIds(orgId);
-      await publishUserSignal(members, `tasks:${orgId}`);
-    });
 
     return { status: 200 as const, body: { ok: true as const } };
   },

@@ -11,8 +11,6 @@ import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { dispatchToEventConsumers } from "../../../../../src/lib/infra/event-consumer";
-import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
-import { after } from "next/server";
 
 const log = logger("webhook:events");
 
@@ -86,11 +84,6 @@ const router = tsr.router(webhookEventsContract, {
     log.debug(
       `Events ${firstSequence}-${lastSequence} dispatched for run ${body.runId} (${Date.now() - dispatchStart}ms)`,
     );
-
-    // Notify run owner that new events are available
-    after(() => {
-      return publishUserSignal([userId], `thread:${body.runId}`);
-    });
 
     return {
       status: 200 as const,

@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.251.0](https://github.com/vm0-ai/vm0/compare/app-v0.250.1...app-v0.251.0) (2026-04-18)
+
+
+### Features
+
+* **platform:** add pwa install banner and rebrand to zero ([#9925](https://github.com/vm0-ai/vm0/issues/9925)) ([d2a786d](https://github.com/vm0-ai/vm0/commit/d2a786d959f79c446fd03dcbeb4cec8341421868))
+
+
+### Bug Fixes
+
+* **zero:** resync realtime loop when tab becomes visible again ([#9938](https://github.com/vm0-ai/vm0/issues/9938)) ([3e20e86](https://github.com/vm0-ai/vm0/commit/3e20e861ef04a48f6600c2f36fda6c69bc4e7a8c))
+
+
+### Refactoring
+
+* **platform:** remove schedule save dialog banner ([#9875](https://github.com/vm0-ai/vm0/issues/9875)) ([#9929](https://github.com/vm0-ai/vm0/issues/9929)) ([8f6e1a8](https://github.com/vm0-ai/vm0/commit/8f6e1a83b8adb18cbb2ae01925ac60a78e362d0e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.199.0
+
+## [0.250.1](https://github.com/vm0-ai/vm0/compare/app-v0.250.0...app-v0.250.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* **zero:** prevent chat scroll jump to top on new message arrival ([#9930](https://github.com/vm0-ai/vm0/issues/9930)) ([0d08cb7](https://github.com/vm0-ai/vm0/commit/0d08cb77d51a4fa62419990ccd67f38f969b324e))
+
+
+### Refactoring
+
+* drop thread/run-updated/tasks realtime signals, poll in non-chat views ([#9920](https://github.com/vm0-ai/vm0/issues/9920)) ([#9935](https://github.com/vm0-ai/vm0/issues/9935)) ([312eefb](https://github.com/vm0-ai/vm0/commit/312eefb33f74d1cd3619fd44a3c716c30c87f3b0))
+* **platform:** add contract-driven mockApi helper (pilot for [#9707](https://github.com/vm0-ai/vm0/issues/9707)) ([#9928](https://github.com/vm0-ai/vm0/issues/9928)) ([451b832](https://github.com/vm0-ai/vm0/commit/451b8324a208646b87a77b43139b4fcb26990fb0))
+
 ## [0.250.0](https://github.com/vm0-ai/vm0/compare/app-v0.249.1...app-v0.250.0) (2026-04-18)
 
 

@@ -63,6 +63,7 @@ const router = tsr.router(integrationsChatMessageContract, {
 
     const message = await insertChatMessage({
       chatThreadId: threadId,
+      userId,
       role: "assistant",
       content: body.text,
       runId: null,
