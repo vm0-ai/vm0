@@ -37,7 +37,6 @@ async fn run() -> i32 {
         let masker = masker::SecretMasker::from_env();
         log_info!(LOG_TAG, "▷ Cleanup");
         final_telemetry(&masker).await;
-        log_info!(LOG_TAG, "✓ Cleanup complete");
         log_info!(LOG_TAG, "Background processes stopped");
         log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
         return 1;
@@ -231,14 +230,7 @@ async fn execute(
         // records would never reach the server. The delta here is small (~10
         // records) so this adds ~300 ms to the critical path instead of the full
         // ~1 s we avoided by parallelizing.
-        //
-        // Not wrapped in `final_telemetry` because any `record_sandbox_op` it
-        // wrote would never reach the server (no third upload to pick it up);
-        // a failure log is the only operator-visible signal worth emitting.
-        if telemetry::final_upload(masker).await.is_err() {
-            log_error!(LOG_TAG, "Final telemetry catch-up upload failed");
-        }
-        log_info!(LOG_TAG, "✓ Cleanup complete");
+        let _ = telemetry::final_upload(masker).await;
     } else {
         if cli_exit_code == 0 && exit_code == 0 {
             log_info!(LOG_TAG, "claude-code completed successfully");
@@ -247,7 +239,6 @@ async fn execute(
         }
         log_info!(LOG_TAG, "▷ Cleanup");
         final_telemetry(masker).await;
-        log_info!(LOG_TAG, "✓ Cleanup complete");
     }
 
     exit_code
