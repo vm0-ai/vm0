@@ -461,6 +461,114 @@ describe("POST /api/internal/callbacks/chat", () => {
     });
   });
 
+  describe("Run-Updated Signal", () => {
+    beforeEach(() => {
+      vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+      reloadEnv();
+    });
+
+    it("should publish chatThreadRunUpdated on completed", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `chatThreadRunUpdated:${threadId}`,
+        null,
+      );
+    });
+
+    it("should publish chatThreadRunUpdated on failed", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
+      });
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: "boom",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `chatThreadRunUpdated:${threadId}`,
+        null,
+      );
+    });
+
+    it("should NOT publish chatThreadRunUpdated on progress", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "progress",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockAblyPublish).not.toHaveBeenCalledWith(
+        `chatThreadRunUpdated:${threadId}`,
+        null,
+      );
+    });
+
+    it("should NOT publish when run has no zero_runs mapping", async () => {
+      // Seed a run without linking it to a chat thread (so zero_runs.chatThreadId is null)
+      const { runId } = await seedTestRun(user.userId, agentId, {
+        status: "completed",
+      });
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/chat",
+        payload: { threadId: "orphan-thread-id", agentId },
+      });
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId: "orphan-thread-id", agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockAblyPublish).not.toHaveBeenCalledWith(
+        expect.stringMatching(/^chatThreadRunUpdated:/),
+        null,
+      );
+    });
+  });
+
   describe("Title Generation", () => {
     function mockOpenRouter(title: string) {
       const { handler, mocked } = http.post(

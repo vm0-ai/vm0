@@ -8,7 +8,6 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
-import { getChatThreadIdForRun } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { eq, and } from "drizzle-orm";
 import {
   transitionRunStatus,
@@ -26,8 +25,6 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
-import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client";
-import { getOrgMemberUserIds } from "../../../../../src/lib/infra/realtime/audience";
 import { after } from "next/server";
 import { env } from "../../../../../src/env";
 
@@ -40,7 +37,6 @@ function scheduleTerminalSideEffects(
   runId: string,
   status: "completed" | "failed",
   orgId: string,
-  userId: string,
   errorMsg?: string,
 ): void {
   after(async () => {
@@ -48,24 +44,6 @@ function scheduleTerminalSideEffects(
       return drainOrgQueue(orgId, dispatchQueuedZeroRun);
     });
     await processOrgCredits(orgId);
-
-    // Notify run owner that run state changed
-    await publishUserSignal([userId], `thread:${runId}`);
-    await publishUserSignal([userId], `runUpdated:${runId}`);
-
-    // Resolve chat thread from the authoritative zero_runs.chatThreadId mapping
-    // so this signal fires even when no chat_messages row has been written yet.
-    const chatThread = await getChatThreadIdForRun(runId);
-    if (chatThread) {
-      await publishUserSignal(
-        [userId],
-        `chatThreadRunUpdated:${chatThread.chatThreadId}`,
-      );
-    }
-
-    // Notify org members that task list may have changed
-    const orgMembers = await getOrgMemberUserIds(orgId);
-    await publishUserSignal(orgMembers, `tasks:${orgId}`);
   });
 }
 
@@ -188,7 +166,6 @@ const router = tsr.router(webhookCompleteContract, {
             body.runId,
             "failed",
             run.orgId,
-            userId,
             "Checkpoint for run not found",
           );
         }
@@ -275,7 +252,6 @@ const router = tsr.router(webhookCompleteContract, {
       body.runId,
       finalStatus,
       run.orgId,
-      userId,
       errorMessage,
     );
 

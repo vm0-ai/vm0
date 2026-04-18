@@ -6,6 +6,7 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
   insertChatMessage,
   insertAssistantEventMessages,
+  publishChatThreadRunUpdated,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import {
   generateChatTitle,
@@ -225,6 +226,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       errorMessage,
     );
   }
+
+  // Notify chat subscribers that the run transitioned to a terminal state.
+  // Fires once per terminal callback (completed / failed — cancel maps to
+  // failed via dispatchTerminalSideEffects), covering the case where no
+  // assistant row was written yet.
+  await publishChatThreadRunUpdated(runId);
 
   return NextResponse.json({ success: true });
 }

@@ -4,7 +4,6 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -100,22 +99,9 @@ describe("activity detail polling with initially empty events", () => {
       ).toBeInTheDocument();
     });
 
-    // Drive the Ably-based polling loop. Each triggerAblyEvent unblocks the
-    // deferred promise inside setAblyLoop$. We must wait for the loop body
-    // to finish (which creates a new deferred) before firing the next event.
-    const topic = "thread:a0000000-0000-4000-a000-000000000099";
-
-    triggerAblyEvent(topic);
-    await waitFor(() => {
-      expect(eventFetchCount).toBeGreaterThanOrEqual(2);
-    });
-
-    triggerAblyEvent(topic);
-    await waitFor(() => {
-      expect(eventFetchCount).toBeGreaterThanOrEqual(3);
-    });
-
-    // Wait for polling to pick up the events
+    // The polling loop auto-iterates (setLoop yields via setTimeout(0) in
+    // VITEST, so each iteration runs as fast as React can flush). Wait for
+    // the events to arrive naturally.
     await waitFor(() => {
       expect(screen.getByText("Polled response arrived")).toBeInTheDocument();
     });
@@ -123,8 +109,7 @@ describe("activity detail polling with initially empty events", () => {
     // Confirm the telemetry endpoint was called multiple times (re-fetched after empty)
     expect(eventFetchCount).toBeGreaterThanOrEqual(3);
 
-    // Trigger one more event to let the loop detect terminal status
-    triggerAblyEvent(topic);
+    // And the loop eventually detects terminal status.
     await waitFor(() => {
       expect(screen.getByText("Done")).toBeInTheDocument();
     });

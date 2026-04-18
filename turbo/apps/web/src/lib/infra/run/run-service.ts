@@ -26,12 +26,7 @@ import {
   type FirewallPolicies,
   type ConnectorType,
 } from "@vm0/core";
-import {
-  publishCancelNotification,
-  publishUserSignal,
-} from "../realtime/client";
-import { getOrgMemberUserIds } from "../realtime/audience";
-import { getChatThreadIdForRun } from "../../zero/chat-thread/chat-message-service";
+import { publishCancelNotification } from "../realtime/client";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
 
 const log = logger("service:run");
@@ -527,23 +522,6 @@ export async function dispatchCancelSideEffects(
         }
       : undefined,
   );
-
-  await publishUserSignal([result.userId], `thread:${result.runId}`);
-  await publishUserSignal([result.userId], `runUpdated:${result.runId}`);
-
-  // Resolve chat thread from the authoritative zero_runs.chatThreadId mapping
-  // so the run-level signal fires even when no chat_messages row exists yet
-  // (e.g., user cancels before the first assistant token).
-  const chatThread = await getChatThreadIdForRun(result.runId);
-  if (chatThread) {
-    await publishUserSignal(
-      [result.userId],
-      `chatThreadRunUpdated:${chatThread.chatThreadId}`,
-    );
-  }
-
-  const orgMembers = await getOrgMemberUserIds(result.orgId);
-  await publishUserSignal(orgMembers, `tasks:${result.orgId}`);
 
   return shouldDrain;
 }

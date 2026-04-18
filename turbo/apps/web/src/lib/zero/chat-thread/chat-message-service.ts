@@ -127,6 +127,27 @@ export async function getChatThreadIdForRun(
 }
 
 /**
+ * Emit the `chatThreadRunUpdated:${threadId}` realtime signal so chat
+ * subscribers reload the thread when a run transitions to a terminal state.
+ *
+ * Reads the authoritative `zero_runs.chatThreadId` mapping rather than
+ * reverse-looking-up `chat_messages`, so the signal fires even when no
+ * assistant row has been written yet (e.g., cancel before the first token).
+ *
+ * No-op for non-chat runs (cron / schedule triggers).
+ */
+export async function publishChatThreadRunUpdated(
+  runId: string,
+): Promise<void> {
+  const chatThread = await getChatThreadIdForRun(runId);
+  if (!chatThread) return;
+  await publishUserSignal(
+    [chatThread.userId],
+    `chatThreadRunUpdated:${chatThread.chatThreadId}`,
+  );
+}
+
+/**
  * Get all messages for a thread with run status, ordered by createdAt ASC.
  */
 export async function getMessagesByThreadId(chatThreadId: string): Promise<

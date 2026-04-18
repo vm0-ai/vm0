@@ -2,8 +2,14 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { tasksContract, type TaskItem } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
-import { detach, jsonParseOr, onRef, Reason, resetSignal } from "../utils.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import {
+  detach,
+  jsonParseOr,
+  onRef,
+  Reason,
+  resetSignal,
+  setLoop,
+} from "../utils.ts";
 import { clerk$ } from "../auth.ts";
 import {
   createChatThreadSignals,
@@ -353,8 +359,7 @@ export const setupTasksLoop$ = command(
   async ({ set, get }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
-    const orgId = clerk.organization?.id;
-    if (!orgId) {
+    if (!clerk.organization?.id) {
       throw new Error("setupTasksLoop$ called without active organization");
     }
 
@@ -444,7 +449,13 @@ export const setupTasksLoop$ = command(
       },
     );
 
-    await set(setAblyLoop$, `tasks:${orgId}`, tasksLoopBody$, signal);
+    await setLoop(
+      (sig) => {
+        return set(tasksLoopBody$, sig);
+      },
+      10_000,
+      signal,
+    );
   },
 );
 
