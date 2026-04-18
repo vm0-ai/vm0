@@ -8,6 +8,12 @@
 #
 # Uses the zero run path (not CLI run) because allowedConnectorTypes is only
 # populated from user_connectors table in the zero/platform run flow.
+#
+# Uses `linear` (not `github`): the CI test user is shared across e2e tests
+# and t42 setup_file seeds a real CI_GITHUB_TOKEN into the github connector.
+# That would let the proxy resolve auth and return 200 instead of 424. Linear
+# is not linked by any other e2e test, so it reliably exercises the missing-
+# secret branch.
 
 load '../../helpers/setup'
 
@@ -77,7 +83,7 @@ agents:
     framework: claude-code
     working_dir: /home/user/workspace
     environment:
-      GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+      LINEAR_TOKEN: \${{ secrets.LINEAR_TOKEN }}
 EOF
 
     run $VM0_CLI compose --yes --json "$TEST_DIR/vm0.yaml"
@@ -92,16 +98,16 @@ EOF
         return 1
     }
 
-    # Step 2: Enable github connector WITHOUT linking it (no secrets).
-    run enable_test_connector "$COMPOSE_ID" "github"
+    # Step 2: Enable linear connector WITHOUT linking it (no secrets).
+    run enable_test_connector "$COMPOSE_ID" "linear"
     echo "$output"
     assert_success
 
     # Step 3: Run via zero path (reads user_connectors for allowedConnectorTypes).
-    # The agent curls api.github.com — proxy matches github firewall, tries
+    # The agent curls api.linear.app — proxy matches linear firewall, tries
     # to resolve auth, discovers secret is missing, returns 424.
     run $ZERO_CLI run "$COMPOSE_ID" \
-        "curl -s -w '\n%{http_code}' https://api.github.com/repos/vm0-ai/vm0"
+        "curl -s -w '\n%{http_code}' https://api.linear.app/graphql"
 
     echo "$output"
     assert_success
