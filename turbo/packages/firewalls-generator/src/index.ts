@@ -80,6 +80,7 @@ import { generate as generateMercury } from "./mercury";
 import { generate as generateMetabase } from "./metabase";
 import { generate as generateMetaAds } from "./meta-ads";
 import { generate as generateMinimax } from "./minimax";
+import { generate as generateMiro } from "./miro";
 import { generate as generateMonday } from "./monday";
 import { generate as generateMsg9 } from "./msg9";
 import { generate as generateNeon } from "./neon";
@@ -214,6 +215,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   metabase: generateMetabase,
   "meta-ads": generateMetaAds,
   minimax: generateMinimax,
+  miro: generateMiro,
   monday: generateMonday,
   msg9: generateMsg9,
   neon: generateNeon,
