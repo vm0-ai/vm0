@@ -7,6 +7,7 @@ import {
   insertChatMessage,
   insertAssistantEventMessages,
   publishChatThreadRunUpdated,
+  getMessagesByThreadId,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import {
   generateChatTitle,
@@ -87,6 +88,34 @@ async function queryAssistantEvents(
 }
 
 /**
+ * Load the prior conversation turns to feed into title generation, excluding
+ * the current exchange (this run's assistant events and the matching user
+ * message). Returns up to the last 10 messages (~5 rounds), oldest → newest.
+ */
+async function loadPriorTitleContext(
+  threadId: string,
+  currentRunId: string,
+  currentPrompt: string,
+): Promise<TitleContextMessage[]> {
+  const messages = await getMessagesByThreadId(threadId);
+  const prior: TitleContextMessage[] = [];
+  for (const m of messages) {
+    if (m.runId === currentRunId) continue;
+    if (m.content === null) continue;
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    prior.push({ role: m.role, content: m.content });
+  }
+  // Drop the trailing user message when it matches the current run's prompt —
+  // it was inserted at send time with a null runId, so the runId filter above
+  // does not catch it.
+  const last = prior[prior.length - 1];
+  if (last && last.role === "user" && last.content === currentPrompt) {
+    prior.pop();
+  }
+  return prior.slice(-10);
+}
+
+/**
  * Handle completed run: final sweep for any events the consumer missed,
  * then generate title and push notification.
  */
@@ -112,15 +141,16 @@ async function handleCompleted(
   // Generate run summary (best-effort — errors handled internally)
   await saveRunSummary(runId, "chat", prompt, lastResultText ?? "");
 
-  // Generate and update chat thread title (best-effort — title is non-critical)
+  // Generate and update chat thread title (best-effort — title is non-critical).
+  // Pass prior rounds in addition to the current exchange so the title stays
+  // consistent across the thread instead of flipping each turn.
   try {
-    const previousMessages: TitleContextMessage[] = lastResultText
-      ? [{ role: "assistant", content: lastResultText }]
-      : [];
-    const title = await generateChatTitle(
-      prompt,
-      previousMessages.length > 0 ? previousMessages : undefined,
-    );
+    const priorRounds = await loadPriorTitleContext(threadId, runId, prompt);
+    const title = await generateChatTitle({
+      currentUserMessage: prompt,
+      currentAssistantReply: lastResultText ?? undefined,
+      priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
+    });
     if (title) {
       await updateChatThreadTitle(threadId, title);
     }

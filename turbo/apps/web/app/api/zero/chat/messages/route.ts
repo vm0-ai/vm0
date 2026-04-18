@@ -179,12 +179,15 @@ const router = tsr.router(chatMessagesContract, {
         continueFromSchedulePrompt,
       } = await resolveThread(authCtx.userId, body.agentId, body.threadId);
 
-      // Only generate title when prompt has actual user text
+      // Only generate title when prompt has actual user text. The
+      // assistant reply is not yet available at send time — the chat
+      // callback regenerates the title with the full current exchange
+      // once the run completes.
       if (body.hasTextContent !== false) {
-        void generateChatTitle(
-          body.prompt,
-          previousContext.length > 0 ? previousContext : undefined,
-        )
+        void generateChatTitle({
+          currentUserMessage: body.prompt,
+          priorRounds: previousContext.length > 0 ? previousContext : undefined,
+        })
           .then((title) => {
             if (title) {
               return updateChatThreadTitle(threadId, title);

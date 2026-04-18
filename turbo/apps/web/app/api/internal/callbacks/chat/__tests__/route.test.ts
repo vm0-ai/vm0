@@ -15,6 +15,7 @@ import {
   createSignedCallbackRequest,
   addTestRunToThread,
   getTestChatMessagesByThread,
+  insertTestAssistantEventMessages,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../../../../src/env";
@@ -681,6 +682,87 @@ describe("POST /api/internal/callbacks/chat", () => {
       // Thread title should remain unchanged (error was caught)
       const title = await getThreadTitle(threadId);
       expect(title).toBe("Test thread");
+    });
+
+    it("should feed the current exchange and prior rounds into the title prompt", async () => {
+      // Seed a previous run in the thread so loadPriorTitleContext has
+      // something to include as history.
+      const { threadId, runId, secret } = await setupRunAndThread();
+
+      const { runId: priorRunId } = await seedTestRun(user.userId, agentId, {
+        status: "completed",
+      });
+      await addTestRunToThread(
+        threadId,
+        priorRunId,
+        user.userId,
+        "How do I parse JSON?",
+      );
+      await insertTestAssistantEventMessages(
+        priorRunId,
+        threadId,
+        user.userId,
+        [{ sequenceNumber: 0, content: "Use JSON.parse(str)." }],
+      );
+
+      // Current run's assistant events.
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          sequenceNumber: 0,
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Try JSON.stringify(value)." }],
+            },
+          },
+        },
+      ]);
+
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+
+      let capturedBody: unknown;
+      const { handler } = http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json({
+            choices: [{ message: { content: "Working with JSON" } }],
+          });
+        },
+      );
+      server.use(handler);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const body = capturedBody as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const userContent = body.messages[1]!.content;
+      // Prior round surfaces (older user message + assistant reply).
+      expect(userContent).toContain("Previous conversation");
+      expect(userContent).toContain("How do I parse JSON?");
+      expect(userContent).toContain("Use JSON.parse(str).");
+      // Current exchange is labeled separately.
+      expect(userContent).toContain("Most recent user message:\ntest prompt");
+      expect(userContent).toContain(
+        "Most recent assistant reply:\nTry JSON.stringify(value).",
+      );
+      // The current user prompt should not appear inside the prior-rounds
+      // section — loadPriorTitleContext drops it.
+      const priorSection = userContent.split("Most recent user message:")[0]!;
+      expect(priorSection).not.toContain("test prompt");
     });
 
     it("should skip title generation when OPENROUTER_API_KEY is not set", async () => {
