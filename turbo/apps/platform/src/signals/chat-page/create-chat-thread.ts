@@ -45,6 +45,7 @@ export interface ChatThreadSignals {
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
   scrollToBottom$: Command<void, []>;
+  scrollToTop$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<
@@ -700,7 +701,7 @@ export function createChatThreadSignals(
   draft: DraftSignals,
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const { setScrollContainer$, autoScroll$, scrollToBottom$ } =
+  const { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ } =
     createScrollSignals(threadId);
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
@@ -807,6 +808,7 @@ export function createChatThreadSignals(
     setScrollContainer$,
     autoScroll$,
     scrollToBottom$,
+    scrollToTop$,
     draft,
     composerFileInput$,
     setComposerFileInput$,
