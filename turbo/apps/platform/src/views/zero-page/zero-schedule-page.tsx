@@ -653,7 +653,7 @@ export function ZeroSchedulePage() {
               className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
               disabled={agents.length === 0}
               onClick={() => {
-                return detach(openCreateDialog(), Reason.DomCallback);
+                return detach(openCreateDialog(pageSignal), Reason.DomCallback);
               }}
             >
               <IconPlus size={14} stroke={2} />
@@ -722,7 +722,10 @@ export function ZeroSchedulePage() {
                   }}
                   onDelete={handleDelete}
                   onNew={() => {
-                    return detach(openCreateDialog(), Reason.DomCallback);
+                    return detach(
+                      openCreateDialog(pageSignal),
+                      Reason.DomCallback,
+                    );
                   }}
                   onRunNow={(entry) => {
                     handleRunNow(entry);

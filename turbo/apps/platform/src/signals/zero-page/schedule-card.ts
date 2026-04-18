@@ -46,6 +46,7 @@ export const setAddScheduleOpen$ = command(
     set(addScheduleOpenState$, open);
     if (open) {
       const prefs = await get(userPreferences$);
+      signal.throwIfAborted();
       const defaults = createDefaultFormData();
       set(initDialogForm$, {
         ...defaults,

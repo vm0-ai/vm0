@@ -27,22 +27,23 @@ function cell<T>(initial: T) {
 // ---------------------------------------------------------------------------
 
 const internalCreateDialogOpen$ = state(false);
-export const createDialogOpen$ = computed((get) =>
-  get(internalCreateDialogOpen$),
-);
+export const createDialogOpen$ = computed((get) => {
+  return get(internalCreateDialogOpen$);
+});
 
 export const openCreateScheduleDialog$ = command(
-  async ({ get, set }, agentId?: string) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const [prefs, allAgents, status] = await Promise.all([
       get(userPreferences$),
       get(agents$),
       get(zeroOnboardingStatus$),
     ]);
+    signal.throwIfAborted();
     const defaults = createDefaultFormData();
     set(initDialogForm$, {
       ...defaults,
       timezone: prefs?.timezone ?? defaults.timezone,
-      agentId: agentId ?? status?.defaultAgentId ?? allAgents[0]?.id ?? "",
+      agentId: status?.defaultAgentId ?? allAgents[0]?.id ?? "",
     });
     set(internalCreateDialogOpen$, true);
   },

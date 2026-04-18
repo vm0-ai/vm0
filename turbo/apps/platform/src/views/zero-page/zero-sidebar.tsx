@@ -248,10 +248,12 @@ function SidebarNavContent() {
   });
   const footerNav = FOOTER_NAV.filter((item) => {
     return !item.featureGate || features?.[item.featureGate];
-  }).map((item) => ({
-    ...item,
-    label: item.label.replace("Zero", defaultDisplayName),
-  }));
+  }).map((item) => {
+    return {
+      ...item,
+      label: item.label.replace("Zero", defaultDisplayName),
+    };
+  });
   const footerNavRegular = footerNav.filter((item) => {
     return !item.featureGate;
   });
