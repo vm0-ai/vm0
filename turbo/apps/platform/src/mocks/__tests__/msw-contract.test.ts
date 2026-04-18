@@ -79,10 +79,13 @@ describe("mockApi contract helper", () => {
   it("exposes typed query params to the handler", async () => {
     let seenAction: string | undefined;
     server.use(
-      mockApi(zeroIntegrationsSlackContract.disconnect, ({ query, respond }) => {
-        seenAction = query.action;
-        return respond(200, { ok: true });
-      }),
+      mockApi(
+        zeroIntegrationsSlackContract.disconnect,
+        ({ query, respond }) => {
+          seenAction = query.action;
+          return respond(200, { ok: true });
+        },
+      ),
     );
 
     const response = await fetch(
