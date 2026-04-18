@@ -1,6 +1,12 @@
 import { command, computed, state, type StateArg } from "ccstate";
 import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
 import { fetchSlackChannels$ } from "./slack-channels.ts";
+import { userPreferences$ } from "./settings/user-preferences.ts";
+import {
+  createDefaultFormData,
+  initDialogForm$,
+  type ScheduleFormData,
+} from "../../signals/schedule-page/schedule-form.ts";
 
 // ---------------------------------------------------------------------------
 // Helper: creates a private state atom with exported computed (read) and
@@ -36,9 +42,15 @@ export const addScheduleOpen$ = computed((get) => {
   return get(addScheduleOpenState$);
 });
 export const setAddScheduleOpen$ = command(
-  async ({ set }, open: boolean, signal: AbortSignal) => {
+  async ({ get, set }, open: boolean, signal: AbortSignal) => {
     set(addScheduleOpenState$, open);
     if (open) {
+      const prefs = await get(userPreferences$);
+      const defaults = createDefaultFormData();
+      set(initDialogForm$, {
+        ...defaults,
+        timezone: prefs?.timezone ?? defaults.timezone,
+      });
       await set(fetchSlackChannels$, signal);
     }
   },
@@ -55,6 +67,19 @@ export const setEditingScheduleId$ = command(
     if (id !== null) {
       await set(fetchSlackChannels$, signal);
     }
+  },
+);
+
+export const openEditScheduleDialog$ = command(
+  async (
+    { set },
+    id: string,
+    initialValues: ScheduleFormData,
+    signal: AbortSignal,
+  ) => {
+    set(editingScheduleIdState$, id);
+    set(initDialogForm$, initialValues);
+    await set(fetchSlackChannels$, signal);
   },
 );
 

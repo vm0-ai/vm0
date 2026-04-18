@@ -12,6 +12,7 @@ import {
   setAddScheduleOpen$,
   editingScheduleId$,
   setEditingScheduleId$,
+  openEditScheduleDialog$,
   togglingIds$,
   setTogglingIds$,
   runningIds$,
@@ -275,6 +276,7 @@ export function ZeroScheduleCard({
   const setAddScheduleOpen = useSet(setAddScheduleOpen$);
   const editingScheduleId = useGet(editingScheduleId$);
   const setEditingScheduleId = useSet(setEditingScheduleId$);
+  const openEditDialog = useSet(openEditScheduleDialog$);
   const togglingIds = useGet(togglingIds$);
   const setTogglingIds = useSet(setTogglingIds$);
 
@@ -294,7 +296,27 @@ export function ZeroScheduleCard({
   const setDeleting = useSet(setDeletingSchedule$);
 
   const openEditSchedule = (entry: ScheduleEntry) => {
-    detach(setEditingScheduleId(entry.id, signal), Reason.DomCallback);
+    const parsed = parseScheduleTimeString(entry.time);
+    detach(
+      openEditDialog(
+        entry.id,
+        {
+          prompt: entry.prompt,
+          description: entry.description ?? "",
+          agentId: "",
+          freq: parsed.freq,
+          date: parsed.date,
+          hour: parsed.hour,
+          minute: parsed.minute,
+          timezone: entry.timezone ?? parsed.timezone,
+          loopMinutes: parsed.loopMinutes,
+          dayOfWeek: "1",
+          dayOfMonth: "1",
+        },
+        signal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const handleToggle = onToggleEnabled

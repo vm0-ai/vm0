@@ -31,7 +31,6 @@ import {
   updateDialogForm$,
   showConfirm$,
   setShowConfirm$,
-  syncDialogOpenState$,
 } from "../../signals/schedule-page/schedule-form.ts";
 
 // ---------------------------------------------------------------------------
@@ -776,12 +775,6 @@ function ScheduleFormDialogInner({
 
 export function ScheduleFormDialog({ open, ...rest }: ScheduleFormDialogProps) {
   const preferences = useLastResolved(userPreferences$);
-
-  // Reset form when transitioning from closed to open
-  useSet(syncDialogOpenState$)(
-    open,
-    buildDefaults(rest.agents, rest.initialValues, preferences?.timezone),
-  );
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>

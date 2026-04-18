@@ -18,7 +18,7 @@ export interface ScheduleFormData {
   prompt: string;
 }
 
-function createDefaultFormData(): ScheduleFormData {
+export function createDefaultFormData(): ScheduleFormData {
   return {
     freq: "every_day",
     date: new Date().toISOString().slice(0, 10),
@@ -151,27 +151,13 @@ const internalSettingsFormInitId$ = state<string | null>(null);
 const internalInstructionInitKey$ = state<string | null>(null);
 
 // ---------------------------------------------------------------------------
-// Dialog form initialization tracking
+// Dialog form initialization (called from useEffect when dialog opens)
 // ---------------------------------------------------------------------------
 
-const internalDialogWasOpen$ = state(false);
-
-// ---------------------------------------------------------------------------
-// Dialog form open/close transition sync
-// ---------------------------------------------------------------------------
-
-export const syncDialogOpenState$ = command(
-  ({ get, set }, open: boolean, formData: ScheduleFormData) => {
-    const wasOpen = get(internalDialogWasOpen$);
-    if (open && !wasOpen) {
-      set(internalDialogWasOpen$, true);
-      set(internalDialogForm$, formData);
-      set(internalShowConfirm$, false);
-    } else if (!open && wasOpen) {
-      set(internalDialogWasOpen$, false);
-    }
-  },
-);
+export const initDialogForm$ = command(({ set }, data: ScheduleFormData) => {
+  set(internalDialogForm$, data);
+  set(internalShowConfirm$, false);
+});
 
 // ---------------------------------------------------------------------------
 // Settings form entry sync (detail page)
