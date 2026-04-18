@@ -1,4 +1,4 @@
-// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// TODO(#8609): split AutoRechargeSection to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import {
   useGet,
@@ -6,7 +6,6 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -16,7 +15,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@vm0/ui/components/ui/dialog";
-import { Button, Input, Switch } from "@vm0/ui";
+import { Input, Switch } from "@vm0/ui";
 import { IconCheck } from "@tabler/icons-react";
 import {
   type BillingTier,
@@ -24,7 +23,6 @@ import {
   billingDialogOpen$,
   billingStatusAsync$,
   setBillingDialogOpen$,
-  startCheckout$,
   openDowngradeDialog$,
   saveAutoRecharge$,
   autoRechargeConfig$,
@@ -39,6 +37,8 @@ import {
   selectedPlanTier$,
   setSelectedPlanTier$,
 } from "../../signals/zero-page/billing-dialog-state.ts";
+import { SaveAutoRechargeButton } from "./save-auto-recharge-button.tsx";
+import { CheckoutButton } from "./checkout-button.tsx";
 
 const PLANS = [
   {
@@ -134,36 +134,6 @@ const CREDITS_PER_DOLLAR = 1000;
 const settingsCardBorder = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
-
-function SaveAutoRechargeButton({
-  getFormValues,
-  pageSignal,
-}: {
-  getFormValues: () => {
-    enabled: boolean;
-    threshold?: number;
-    amount?: number;
-  } | null;
-  pageSignal: AbortSignal;
-}) {
-  const [loadable, save] = useLoadableSet(saveAutoRecharge$);
-  const loading = loadable.state === "loading";
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={loading}
-      onClick={() => {
-        const values = getFormValues();
-        if (values) {
-          detach(save(values, pageSignal), Reason.DomCallback);
-        }
-      }}
-    >
-      {loading ? "Saving..." : "Save"}
-    </Button>
-  );
-}
 
 export function AutoRechargeSection({
   currentTier,
@@ -446,52 +416,6 @@ export function AutoRechargeSection({
           pageSignal={pageSignal}
         />
       </div>
-    </div>
-  );
-}
-
-function CheckoutButton({
-  selectedTier,
-  isUpgrade,
-  isDowngrade,
-  pageSignal,
-  openDowngrade,
-}: {
-  selectedTier: BillingTier;
-  isUpgrade: boolean;
-  isDowngrade: boolean;
-  pageSignal: AbortSignal;
-  openDowngrade: () => void;
-}) {
-  const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
-  const loading = checkoutLoadable.state === "loading";
-
-  if (!isUpgrade && !isDowngrade) {
-    return null;
-  }
-
-  const handleAction = (e: React.MouseEvent) => {
-    if (isUpgrade && (selectedTier === "pro" || selectedTier === "team")) {
-      const newTab = e.metaKey || e.ctrlKey;
-      detach(checkout(selectedTier, newTab, pageSignal), Reason.DomCallback);
-    } else if (isDowngrade) {
-      openDowngrade();
-    }
-  };
-
-  return (
-    <div className="flex justify-end mt-4">
-      <Button
-        disabled={loading}
-        variant={isDowngrade ? "outline" : "default"}
-        onClick={handleAction}
-      >
-        {loading
-          ? "Redirecting..."
-          : isUpgrade
-            ? `Upgrade to ${selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}`
-            : "Downgrade"}
-      </Button>
     </div>
   );
 }
