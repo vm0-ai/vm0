@@ -5,31 +5,18 @@
  * Default behavior: user has a connected org Slack workspace.
  */
 
-import { http, HttpResponse } from "msw";
+import {
+  type SlackOrgStatus,
+  zeroIntegrationsSlackContract,
+  zeroSlackChannelsContract,
+} from "@vm0/core";
+import { mockApi } from "../msw-contract.ts";
 
-interface MockSlackOrgData {
-  isConnected: boolean;
-  isInstalled: boolean;
-  workspaceName: string | null;
-  isAdmin: boolean;
-  installUrl?: string | null;
-  connectUrl?: string | null;
-  defaultAgentId: string | null;
-  agentOrgSlug: string | null;
-  environment: {
-    requiredSecrets: string[];
-    requiredVars: string[];
-    missingSecrets: string[];
-    missingVars: string[];
-  };
-}
-
-let mockSlackOrgData: MockSlackOrgData = {
+let mockSlackOrgData: SlackOrgStatus = {
   isConnected: true,
   isInstalled: true,
   workspaceName: "Test Org Workspace",
   isAdmin: true,
-  defaultAgentId: "default-agent",
   agentOrgSlug: "test-org",
   environment: {
     requiredSecrets: [],
@@ -45,7 +32,6 @@ export function resetMockSlackOrgIntegration(): void {
     isInstalled: true,
     workspaceName: "Test Org Workspace",
     isAdmin: true,
-    defaultAgentId: "default-agent",
     agentOrgSlug: "test-org",
     environment: {
       requiredSecrets: [],
@@ -58,25 +44,32 @@ export function resetMockSlackOrgIntegration(): void {
 
 export const apiIntegrationsSlackOrgHandlers = [
   // GET /api/zero/integrations/slack
-  http.get("*/api/zero/integrations/slack", () => {
-    return HttpResponse.json(mockSlackOrgData);
+  mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
+    return respond(200, mockSlackOrgData);
   }),
 
   // DELETE /api/zero/integrations/slack
-  http.delete("*/api/zero/integrations/slack", () => {
-    mockSlackOrgData = { ...mockSlackOrgData, isConnected: false };
-    return HttpResponse.json({ ok: true });
+  mockApi(zeroIntegrationsSlackContract.disconnect, ({ query, respond }) => {
+    if (query.action === "uninstall") {
+      mockSlackOrgData = {
+        ...mockSlackOrgData,
+        isConnected: false,
+        isInstalled: false,
+      };
+    } else {
+      mockSlackOrgData = { ...mockSlackOrgData, isConnected: false };
+    }
+    return respond(200, { ok: true });
   }),
 
   // GET /api/zero/slack/channels
-  http.get("*/api/zero/slack/channels", () => {
+  mockApi(zeroSlackChannelsContract.list, ({ respond }) => {
     if (!mockSlackOrgData.isInstalled) {
-      return HttpResponse.json(
-        { error: { message: "No Slack installation", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
+      return respond(404, {
+        error: { message: "No Slack installation", code: "NOT_FOUND" },
+      });
     }
-    return HttpResponse.json({
+    return respond(200, {
       channels: [
         { id: "C-GENERAL", name: "general" },
         { id: "C-ALERTS", name: "alerts" },
