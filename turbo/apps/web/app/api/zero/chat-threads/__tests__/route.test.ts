@@ -346,6 +346,113 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(ids).not.toContain(archivedId);
   });
 
+  it("orders threads by the latest message's createdAt desc", async () => {
+    const olderCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Older" }),
+      }),
+    );
+    const { id: olderId } = await olderCreate.json();
+    await insertTestChatMessage({
+      chatThreadId: olderId,
+      role: "user",
+      content: "first",
+    });
+
+    await new Promise((resolve) => {
+      return setTimeout(resolve, 10);
+    });
+
+    const newerCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Newer" }),
+      }),
+    );
+    const { id: newerId } = await newerCreate.json();
+    await insertTestChatMessage({
+      chatThreadId: newerId,
+      role: "user",
+      content: "second",
+    });
+
+    const initial = await (
+      await GET(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+        ),
+      )
+    ).json();
+    expect(
+      initial.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual([newerId, olderId]);
+
+    // A new message on the older thread should bump it to the top.
+    await new Promise((resolve) => {
+      return setTimeout(resolve, 10);
+    });
+    await insertTestChatMessage({
+      chatThreadId: olderId,
+      role: "assistant",
+      content: "reply",
+    });
+
+    const after = await (
+      await GET(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+        ),
+      )
+    ).json();
+    expect(
+      after.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual([olderId, newerId]);
+  });
+
+  it("orders empty threads by their own createdAt desc", async () => {
+    const firstCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "First" }),
+      }),
+    );
+    const { id: firstId } = await firstCreate.json();
+
+    await new Promise((resolve) => {
+      return setTimeout(resolve, 10);
+    });
+
+    const secondCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Second" }),
+      }),
+    );
+    const { id: secondId } = await secondCreate.json();
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(
+      data.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual([secondId, firstId]);
+  });
+
   it("keeps a thread visible when only an earlier message is archived", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
