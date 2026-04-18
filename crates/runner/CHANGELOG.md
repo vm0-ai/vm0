@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.85.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.85.2...runner-rs-v0.85.3) (2026-04-18)
+
+
+### Bug Fixes
+
+* **mitm-addon:** warn on log_proxy_entry write failure ([#10009](https://github.com/vm0-ai/vm0/issues/10009)) ([1ed578f](https://github.com/vm0-ai/vm0/commit/1ed578fc209a03eec76bd46ad53030fd74399eaf)), closes [#9932](https://github.com/vm0-ai/vm0/issues/9932)
+
 ## [0.85.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.85.1...runner-rs-v0.85.2) (2026-04-18)
 
 

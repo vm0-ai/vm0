@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.201.1](https://github.com/vm0-ai/vm0/compare/core-v8.201.0...core-v8.201.1) (2026-04-18)
+
+
+### Refactoring
+
+* **platform:** migrate api-integrations-telegram.ts to mockapi helper ([#10006](https://github.com/vm0-ai/vm0/issues/10006)) ([1681580](https://github.com/vm0-ai/vm0/commit/1681580d9c0745306e9df4bf11315e24a26a63ba))
+
+
+### Performance Improvements
+
+* **lint:** migrate type-aware rules from typescript-eslint to oxlint-tsgolint ([#10000](https://github.com/vm0-ai/vm0/issues/10000)) ([6d95566](https://github.com/vm0-ai/vm0/commit/6d95566836bc2b993090249c0c5c5f37b047ac2d))
+
 ## [8.201.0](https://github.com/vm0-ai/vm0/compare/core-v8.200.1...core-v8.201.0) (2026-04-18)
 
 

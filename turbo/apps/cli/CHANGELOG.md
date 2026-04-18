@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.122.5](https://github.com/vm0-ai/vm0/compare/cli-v9.122.4...cli-v9.122.5) (2026-04-18)
+
+
+### Performance Improvements
+
+* **lint:** migrate type-aware rules from typescript-eslint to oxlint-tsgolint ([#10000](https://github.com/vm0-ai/vm0/issues/10000)) ([6d95566](https://github.com/vm0-ai/vm0/commit/6d95566836bc2b993090249c0c5c5f37b047ac2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.201.1
+
 ## [9.122.4](https://github.com/vm0-ai/vm0/compare/cli-v9.122.3...cli-v9.122.4) (2026-04-18)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.257.0](https://github.com/vm0-ai/vm0/compare/web-v12.256.0...web-v12.257.0) (2026-04-18)
+
+
+### Features
+
+* **web:** sort chat threads by latest message time ([#10003](https://github.com/vm0-ai/vm0/issues/10003)) ([f7440c7](https://github.com/vm0-ai/vm0/commit/f7440c74252be88532bbfbcdded3a472b6a07c21))
+
+
+### Performance Improvements
+
+* **lint:** migrate type-aware rules from typescript-eslint to oxlint-tsgolint ([#10000](https://github.com/vm0-ai/vm0/issues/10000)) ([6d95566](https://github.com/vm0-ai/vm0/commit/6d95566836bc2b993090249c0c5c5f37b047ac2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.201.1
+
 ## [12.256.0](https://github.com/vm0-ai/vm0/compare/web-v12.255.6...web-v12.256.0) (2026-04-18)
 
 

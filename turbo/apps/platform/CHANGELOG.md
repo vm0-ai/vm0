@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.255.0](https://github.com/vm0-ai/vm0/compare/app-v0.254.0...app-v0.255.0) (2026-04-18)
+
+
+### Features
+
+* **platform:** persist sidebar pinned/manage/sessionList collapse state in localStorage ([#10002](https://github.com/vm0-ai/vm0/issues/10002)) ([27fb174](https://github.com/vm0-ai/vm0/commit/27fb174a4e06a49c127c9bdc6746a9936a02778a))
+
+
+### Bug Fixes
+
+* **platform:** hide chat working indicator until displayName and allFinished resolve ([#10007](https://github.com/vm0-ai/vm0/issues/10007)) ([1205f1e](https://github.com/vm0-ai/vm0/commit/1205f1ea19c4a75e6c11969d187619c0702e7865))
+* **platform:** scroll chat to bottom before hiding skeleton ([#9995](https://github.com/vm0-ai/vm0/issues/9995)) ([f027529](https://github.com/vm0-ai/vm0/commit/f027529c909beb6317aa0ff6905a05a15c7524b9))
+
+
+### Refactoring
+
+* **platform:** migrate api-integrations-telegram.ts to mockapi helper ([#10006](https://github.com/vm0-ai/vm0/issues/10006)) ([1681580](https://github.com/vm0-ai/vm0/commit/1681580d9c0745306e9df4bf11315e24a26a63ba))
+
+
+### Performance Improvements
+
+* **lint:** migrate type-aware rules from typescript-eslint to oxlint-tsgolint ([#10000](https://github.com/vm0-ai/vm0/issues/10000)) ([6d95566](https://github.com/vm0-ai/vm0/commit/6d95566836bc2b993090249c0c5c5f37b047ac2d))
+* **zero-schedule-page:** reduce re-renders from async subscriptions ([#10001](https://github.com/vm0-ai/vm0/issues/10001)) ([e8ed7ef](https://github.com/vm0-ai/vm0/commit/e8ed7ef196efd265e2ae343852c533627ec189b6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.201.1
+
 ## [0.254.0](https://github.com/vm0-ai/vm0/compare/app-v0.253.0...app-v0.254.0) (2026-04-18)
 
 
