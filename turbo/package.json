@@ -12,6 +12,8 @@
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
+    "test:perf": "VITEST_PERF=1 vitest --run",
+    "profile-tests": "bash scripts/profile-tests.sh",
     "knip": "knip",
     "knip:fix": "knip --fix --allow-remove-files",
     "knip:production": "knip --production --strict",

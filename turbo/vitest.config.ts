@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import PerfReporter from "./vitest-perf-reporter.ts";
 
 export default defineConfig({
   test: {
@@ -24,7 +25,9 @@ export default defineConfig({
 
     reporters: process.env.CI
       ? ["default", "github-actions", "junit"]
-      : ["default"],
+      : process.env.VITEST_PERF
+        ? ["default", new PerfReporter()]
+        : ["default"],
 
     outputFile: {
       junit: "junit.xml",
