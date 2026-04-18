@@ -130,6 +130,48 @@ describe("createScrollSignals - autoScroll$ gate", () => {
   });
 });
 
+// VC-SCROLL-011: browser-initiated scrollTop decrease (no user input) does NOT
+// disable auto-scroll. The scroll anchor or layout clamping can shift scrollTop
+// without any user gesture; those shifts must be ignored so that subsequent
+// autoScroll$ calls can still snap to the bottom.
+describe("createScrollSignals - browser-initiated scroll does not disable auto-scroll", () => {
+  it("auto-scroll stays enabled when scrollTop decreases without a user input event (VC-SCROLL-011)", () => {
+    const container = document.createElement("div");
+    const inner = document.createElement("div");
+    container.appendChild(inner);
+    document.body.appendChild(container);
+
+    Object.defineProperty(container, "scrollHeight", {
+      get: () => {
+        return 1000;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      get: () => {
+        return 300;
+      },
+      configurable: true,
+    });
+
+    const { setScrollContainer$, autoScroll$ } = createScrollSignals();
+    context.store.set(setScrollContainer$, container);
+
+    // Simulate scrollTop decreasing due to browser layout (no wheel/pointer/key
+    // event precedes the scroll). This mimics scroll-anchor clamping or content
+    // shrinkage — NOT a deliberate user scroll-up.
+    container.scrollTop = 500;
+    container.dispatchEvent(new Event("scroll"));
+    // No user-input event fired here — purely browser-initiated
+    container.scrollTop = 200;
+    container.dispatchEvent(new Event("scroll"));
+
+    // autoScroll$ should still execute — auto-scroll was NOT disabled
+    context.store.set(autoScroll$);
+    expect(container.scrollTop).toBe(1000);
+  });
+});
+
 // VC-SCROLL-005: scrollToBottom$ always works regardless of disabled state
 describe("createScrollSignals - scrollToBottom$ unconditional", () => {
   it("scrolls to bottom even when auto-scroll is disabled (VC-SCROLL-005)", () => {

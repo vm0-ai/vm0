@@ -11,27 +11,88 @@ const CA_COMBINED: &str = "mitmproxy-ca.pem";
 ///
 /// Generates a self-signed RSA 4096 CA via openssl if the files don't
 /// already exist. Idempotent — safe to call on every build.
+///
+/// Also locks down permissions unconditionally on every call (not just on
+/// first-ever generation) so legacy runners that shipped with looser perms
+/// get migrated automatically.
 pub async fn ensure(home: &HomePaths) -> RunnerResult<()> {
     let ca_dir = home.ca_dir();
     let cert = ca_dir.join(CA_CERT);
     let key = ca_dir.join(CA_KEY);
     let combined = ca_dir.join(CA_COMBINED);
 
-    if exists(&cert).await? && exists(&key).await? && exists(&combined).await? {
-        tracing::info!("CA certificates already exist, skipping generation");
-        return Ok(());
-    }
-
-    tokio::fs::create_dir_all(&ca_dir)
+    // Create dir with 0o700 on first run. `recursive(true)` is a no-op on an
+    // already-existing dir; we chmod explicitly below to migrate legacy perms.
+    let mut builder = tokio::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    builder.mode(0o700);
+    builder
+        .create(&ca_dir)
         .await
         .map_err(|e| RunnerError::Internal(format!("create ca dir: {e}")))?;
 
+    // Symlink guard + unconditional chmod to migrate legacy `0o755` dirs.
+    // The symlink check prevents an attacker-placed symlink from redirecting
+    // our chmod at an arbitrary path.
+    //
+    // TOCTOU note: there's a tiny window between `symlink_metadata` and
+    // `set_permissions` where `ca_dir` could in principle be swapped for a
+    // symlink. We accept this because the parent dir (`/var/lib/vm0-runner/`)
+    // is runner-owned in deployed configurations — a local attacker who can
+    // write to the parent has already escalated past the trust boundary this
+    // check is defending.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = tokio::fs::symlink_metadata(&ca_dir)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("stat ca dir: {e}")))?;
+        if !meta.file_type().is_dir() {
+            return Err(RunnerError::Internal(format!(
+                "{} is not a directory (refusing to chmod through symlink)",
+                ca_dir.display()
+            )));
+        }
+        tokio::fs::set_permissions(&ca_dir, std::fs::Permissions::from_mode(0o700))
+            .await
+            .map_err(|e| RunnerError::Internal(format!("chmod ca dir: {e}")))?;
+    }
+
+    // Fast path: all three files already exist. Still migrate their perms so
+    // runners upgraded from versions that wrote `0o644` key/combined get fixed.
+    if exists(&cert).await? && exists(&key).await? && exists(&combined).await? {
+        tracing::info!("CA certificates already exist, skipping generation");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            tokio::fs::set_permissions(&cert, std::fs::Permissions::from_mode(0o644))
+                .await
+                .map_err(|e| RunnerError::Internal(format!("chmod CA cert: {e}")))?;
+            tokio::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600))
+                .await
+                .map_err(|e| RunnerError::Internal(format!("chmod CA key: {e}")))?;
+            tokio::fs::set_permissions(&combined, std::fs::Permissions::from_mode(0o600))
+                .await
+                .map_err(|e| RunnerError::Internal(format!("chmod CA combined: {e}")))?;
+        }
+        return Ok(());
+    }
+
     tracing::info!("generating proxy CA certificate...");
 
-    // Generate RSA 4096 private key
+    // Generate RSA 4096 private key. Immediately chmod 0o600 — older openssl
+    // releases don't default to 0600.
     run_openssl(&["genrsa", "-out", &key.to_string_lossy(), "4096"]).await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600))
+            .await
+            .map_err(|e| RunnerError::Internal(format!("chmod CA key: {e}")))?;
+    }
 
-    // Generate self-signed certificate (10 years)
+    // Generate self-signed certificate (10 years). Cert is non-sensitive.
     run_openssl(&[
         "req",
         "-new",
@@ -51,7 +112,7 @@ pub async fn ensure(home: &HomePaths) -> RunnerResult<()> {
     ])
     .await?;
 
-    // Create combined PEM (cert + key) for mitmproxy
+    // Create combined PEM (cert + key) for mitmproxy.
     let cert_content = tokio::fs::read(&cert)
         .await
         .map_err(|e| RunnerError::Internal(format!("read CA cert: {e}")))?;
@@ -60,17 +121,32 @@ pub async fn ensure(home: &HomePaths) -> RunnerResult<()> {
         .map_err(|e| RunnerError::Internal(format!("read CA key: {e}")))?;
     let mut combined_content = cert_content;
     combined_content.extend_from_slice(&key_content);
-    tokio::fs::write(&combined, &combined_content)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write CA combined: {e}")))?;
 
-    // Set permissions: key and combined = 600, cert = 644
+    // Write combined with mode 0o600 on creation. `create(true).truncate(true)`
+    // (not `create_new`) preserves idempotence if a partial prior state left
+    // the combined file behind. The explicit `set_permissions` below covers
+    // that case, where truncation retains pre-existing (wrong) perms.
+    {
+        use tokio::io::AsyncWriteExt;
+        let mut opts = tokio::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        opts.mode(0o600);
+        let mut f = opts
+            .open(&combined)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("open CA combined: {e}")))?;
+        f.write_all(&combined_content)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("write CA combined: {e}")))?;
+        f.flush()
+            .await
+            .map_err(|e| RunnerError::Internal(format!("flush CA combined: {e}")))?;
+    }
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600))
-            .await
-            .map_err(|e| RunnerError::Internal(format!("chmod CA key: {e}")))?;
         tokio::fs::set_permissions(&combined, std::fs::Permissions::from_mode(0o600))
             .await
             .map_err(|e| RunnerError::Internal(format!("chmod CA combined: {e}")))?;
@@ -114,6 +190,12 @@ mod tests {
     use super::*;
     use crate::paths::HomePaths;
 
+    #[cfg(unix)]
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
     #[tokio::test]
     async fn ensure_generates_ca_files() {
         let dir = tempfile::tempdir().unwrap();
@@ -126,7 +208,6 @@ mod tests {
         assert!(ca_dir.join(CA_KEY).exists(), "key should exist");
         assert!(ca_dir.join(CA_COMBINED).exists(), "combined should exist");
 
-        // Combined should contain both cert and key
         let combined = std::fs::read_to_string(ca_dir.join(CA_COMBINED)).unwrap();
         assert!(combined.contains("BEGIN CERTIFICATE"));
         assert!(
@@ -142,9 +223,106 @@ mod tests {
         ensure(&home).await.unwrap();
         let cert1 = std::fs::read(home.ca_dir().join(CA_CERT)).unwrap();
 
-        // Second call should not regenerate
         ensure(&home).await.unwrap();
         let cert2 = std::fs::read(home.ca_dir().join(CA_CERT)).unwrap();
         assert_eq!(cert1, cert2, "cert should not change on second call");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ensure_sets_restrictive_permissions_on_fresh_generation() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+
+        ensure(&home).await.unwrap();
+
+        let ca_dir = home.ca_dir();
+        assert_eq!(mode_of(&ca_dir), 0o700, "ca_dir should be 0700");
+        assert_eq!(mode_of(&ca_dir.join(CA_KEY)), 0o600, "key should be 0600");
+        assert_eq!(
+            mode_of(&ca_dir.join(CA_COMBINED)),
+            0o600,
+            "combined should be 0600"
+        );
+        assert_eq!(mode_of(&ca_dir.join(CA_CERT)), 0o644, "cert should be 0644");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ensure_migrates_legacy_loose_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+        let ca_dir = home.ca_dir();
+
+        // Simulate legacy runner: 0755 dir, 0644 key + combined.
+        std::fs::create_dir_all(&ca_dir).unwrap();
+        std::fs::set_permissions(&ca_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(ca_dir.join(CA_CERT), b"fake cert").unwrap();
+        std::fs::write(ca_dir.join(CA_KEY), b"fake key").unwrap();
+        std::fs::write(ca_dir.join(CA_COMBINED), b"fake combined").unwrap();
+        for name in [CA_CERT, CA_KEY, CA_COMBINED] {
+            std::fs::set_permissions(ca_dir.join(name), std::fs::Permissions::from_mode(0o644))
+                .unwrap();
+        }
+
+        ensure(&home).await.unwrap();
+
+        assert_eq!(mode_of(&ca_dir), 0o700, "ca_dir should be migrated to 0700");
+        assert_eq!(
+            mode_of(&ca_dir.join(CA_KEY)),
+            0o600,
+            "key should be migrated to 0600"
+        );
+        assert_eq!(
+            mode_of(&ca_dir.join(CA_COMBINED)),
+            0o600,
+            "combined should be migrated to 0600"
+        );
+        assert_eq!(
+            mode_of(&ca_dir.join(CA_CERT)),
+            0o644,
+            "cert should remain 0644"
+        );
+
+        // Contents untouched (no regeneration).
+        assert_eq!(
+            std::fs::read(ca_dir.join(CA_KEY)).unwrap(),
+            b"fake key",
+            "key contents preserved"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ensure_regenerates_combined_when_partial_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+
+        // Leave a stale combined file with wrong perms behind from a prior run.
+        let ca_dir = home.ca_dir();
+        std::fs::create_dir_all(&ca_dir).unwrap();
+        std::fs::write(ca_dir.join(CA_COMBINED), b"stale").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            ca_dir.join(CA_COMBINED),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+
+        // Partial state (cert+key missing) → regenerate. Must not panic with EEXIST.
+        ensure(&home).await.unwrap();
+
+        assert_eq!(
+            mode_of(&ca_dir.join(CA_COMBINED)),
+            0o600,
+            "regenerated combined should be 0600"
+        );
+        let combined = std::fs::read_to_string(ca_dir.join(CA_COMBINED)).unwrap();
+        assert!(
+            combined.contains("BEGIN CERTIFICATE"),
+            "combined should contain real cert, not stale placeholder"
+        );
     }
 }

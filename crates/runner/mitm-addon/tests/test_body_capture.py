@@ -2,7 +2,9 @@
 
 import base64
 import json
-from unittest.mock import MagicMock
+
+from mitmproxy import http
+from mitmproxy.test import tflow, tutils
 
 from body_utils import (
     STREAM_BUFFER_LIMIT,
@@ -14,6 +16,50 @@ from body_utils import (
     add_capture_fields,
 )
 from usage import extract_usage_from_json
+
+
+def _headers(*pairs: tuple[str, str]) -> http.Headers:
+    """Construct mitmproxy Headers from (name, value) string pairs."""
+    return http.Headers([(k.encode(), v.encode()) for k, v in pairs])
+
+
+def _make_flow(
+    *,
+    request_body: bytes | None = None,
+    response_body: bytes | None = None,
+    request_ct: str = "application/json",
+    response_ct: str = "application/json",
+    response_encoding: str | None = None,
+    with_response: bool = True,
+) -> http.HTTPFlow:
+    """Build a real mitmproxy HTTPFlow with request/response fixtures.
+
+    Defaults mirror the shape used throughout the body-capture tests:
+    a JSON POST to ``api.example.com`` and, unless ``with_response=False``,
+    a JSON 200 response whose headers include ``X-Request-Id``.
+    """
+    req = tutils.treq(
+        method=b"POST",
+        host=b"api.example.com",
+        path=b"/",
+        headers=_headers(("Content-Type", request_ct), ("Host", "api.example.com")),
+        content=request_body,
+    )
+
+    resp: http.Response | bool
+    if with_response:
+        resp_header_pairs = [("Content-Type", response_ct), ("X-Request-Id", "req-123")]
+        if response_encoding:
+            resp_header_pairs.append(("Content-Encoding", response_encoding))
+        resp = tutils.tresp(
+            status_code=200,
+            headers=_headers(*resp_header_pairs),
+            content=response_body,
+        )
+    else:
+        resp = False
+
+    return tflow.tflow(req=req, resp=resp)
 
 
 class TestIsTextContent:
@@ -151,20 +197,12 @@ class TestIsSensitiveHeader:
 
 
 class TestRedactHeaders:
-    def _make_headers(self, pairs):
-        """Create a mock that returns pairs only when called with multi=True."""
-        headers = MagicMock()
-        headers.items.side_effect = lambda multi=False: iter(pairs) if multi else iter([])
-        return headers
-
     def test_redacts_sensitive_keeps_others(self):
-        headers = self._make_headers(
-            [
-                ("Content-Type", "application/json"),
-                ("Authorization", "Bearer sk-secret-123"),
-                ("Host", "api.example.com"),
-                ("Cookie", "session=abc"),
-            ]
+        headers = _headers(
+            ("Content-Type", "application/json"),
+            ("Authorization", "Bearer sk-secret-123"),
+            ("Host", "api.example.com"),
+            ("Cookie", "session=abc"),
         )
         result = _redact_headers(headers)
         assert result["Content-Type"] == "application/json"
@@ -172,36 +210,21 @@ class TestRedactHeaders:
         assert result["Host"] == "api.example.com"
         assert result["Cookie"] == "***"
 
+    def test_duplicate_headers_keeps_first(self):
+        headers = _headers(
+            ("Set-Cookie", "a=1"),
+            ("Set-Cookie", "b=2"),
+            ("Host", "example.com"),
+        )
+        result = _redact_headers(headers)
+        assert result["Set-Cookie"] == "***"
+        assert result["Host"] == "example.com"
+        assert len(result) == 2
+
 
 class TestAddCaptureFields:
-    def _make_flow(
-        self,
-        request_body=None,
-        response_body=None,
-        request_ct="application/json",
-        response_ct="application/json",
-    ):
-        flow = MagicMock()
-        flow.request.content = request_body
-        flow.request.headers = MagicMock()
-        flow.request.headers.get.return_value = request_ct
-        req_pairs = [("Content-Type", request_ct), ("Host", "api.example.com")]
-        flow.request.headers.items.side_effect = lambda multi=False: (
-            iter(req_pairs) if multi else iter([])
-        )
-        flow.response = MagicMock()
-        flow.response.content = response_body
-        flow.response.headers = MagicMock()
-        flow.response.headers.get.return_value = response_ct
-        res_pairs = [("Content-Type", response_ct), ("X-Request-Id", "req-123")]
-        flow.response.headers.items.side_effect = lambda multi=False: (
-            iter(res_pairs) if multi else iter([])
-        )
-        flow.metadata = {}
-        return flow
-
     def test_captures_request_body(self):
-        flow = self._make_flow(request_body=b'{"prompt": "hello"}')
+        flow = _make_flow(request_body=b'{"prompt": "hello"}')
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["request_body"] == '{"prompt": "hello"}'
@@ -209,14 +232,14 @@ class TestAddCaptureFields:
         assert "request_body_truncated" not in entry
 
     def test_captures_response_body(self):
-        flow = self._make_flow(response_body=b'{"result": "ok"}')
+        flow = _make_flow(response_body=b'{"result": "ok"}')
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "ok"}'
         assert entry["response_body_encoding"] == "utf-8"
 
     def test_captures_request_headers(self):
-        flow = self._make_flow()
+        flow = _make_flow()
         entry = {}
         add_capture_fields(flow, entry)
         assert "request_headers" in entry
@@ -224,7 +247,7 @@ class TestAddCaptureFields:
         assert entry["request_headers"]["Host"] == "api.example.com"
 
     def test_captures_response_headers(self):
-        flow = self._make_flow()
+        flow = _make_flow()
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_headers" in entry
@@ -232,11 +255,10 @@ class TestAddCaptureFields:
         assert entry["response_headers"]["X-Request-Id"] == "req-123"
 
     def test_response_headers_redacts_sensitive(self):
-        flow = self._make_flow()
-        flow.response.headers.items.side_effect = lambda multi=False: (
-            iter([("Set-Cookie", "session=abc"), ("Content-Type", "text/html")])
-            if multi
-            else iter([])
+        flow = _make_flow()
+        flow.response.headers = _headers(
+            ("Set-Cookie", "session=abc"),
+            ("Content-Type", "text/html"),
         )
         entry = {}
         add_capture_fields(flow, entry)
@@ -244,15 +266,14 @@ class TestAddCaptureFields:
         assert entry["response_headers"]["Content-Type"] == "text/html"
 
     def test_no_response_headers_when_no_response(self):
-        flow = self._make_flow()
-        flow.response = None
+        flow = _make_flow(with_response=False)
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_headers" not in entry
 
     def test_truncates_large_request_body(self):
         body = b"x" * (STREAM_BUFFER_LIMIT + 1000)
-        flow = self._make_flow(request_body=body, request_ct="text/plain")
+        flow = _make_flow(request_body=body, request_ct="text/plain")
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["request_body_truncated"] is True
@@ -260,16 +281,14 @@ class TestAddCaptureFields:
 
     def test_truncates_large_response_body(self):
         body = b"y" * (STREAM_BUFFER_LIMIT + 1000)
-        flow = self._make_flow(response_body=body, response_ct="text/plain")
+        flow = _make_flow(response_body=body, response_ct="text/plain")
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["response_body_truncated"] is True
         assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
 
     def test_no_body_fields_when_empty(self):
-        flow = self._make_flow(request_body=None, response_body=None)
-        # response.content is None
-        flow.response.content = None
+        flow = _make_flow(request_body=None, response_body=None)
         entry = {}
         add_capture_fields(flow, entry)
         assert "request_body" not in entry
@@ -280,12 +299,12 @@ class TestAddCaptureFields:
         assert "response_headers" in entry  # headers captured despite empty body
 
     def test_response_decompression_error_skips_body(self):
-        import zlib
-
-        flow = self._make_flow(request_body=b"ok")
-        # Simulate ZlibError when accessing response content
-        type(flow.response).content = property(
-            lambda self: (_ for _ in ()).throw(zlib.error("decompression failed"))
+        # Content-Encoding: gzip + non-gzip bytes makes flow.response.content
+        # raise ValueError, which add_capture_fields is expected to catch.
+        flow = _make_flow(
+            request_body=b"ok",
+            response_body=b"not gzip at all",
+            response_encoding="gzip",
         )
         entry = {}
         add_capture_fields(flow, entry)
@@ -295,7 +314,7 @@ class TestAddCaptureFields:
         assert entry["response_body_encoding"] == "binary"  # marked as binary
 
     def test_binary_request_body_marks_encoding(self):
-        flow = self._make_flow(request_body=b"\x89PNG\r\n", request_ct="image/png")
+        flow = _make_flow(request_body=b"\x89PNG\r\n", request_ct="image/png")
         entry = {}
         add_capture_fields(flow, entry)
         assert "request_body" not in entry
@@ -303,9 +322,7 @@ class TestAddCaptureFields:
         assert "request_headers" in entry  # headers still captured
 
     def test_binary_response_body_marks_encoding(self):
-        flow = self._make_flow(
-            response_body=b"\x00\x01\x02", response_ct="application/octet-stream"
-        )
+        flow = _make_flow(response_body=b"\x00\x01\x02", response_ct="application/octet-stream")
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body" not in entry
@@ -313,7 +330,7 @@ class TestAddCaptureFields:
 
     def test_request_body_exactly_at_limit_not_truncated(self):
         body = b"x" * STREAM_BUFFER_LIMIT
-        flow = self._make_flow(request_body=body, request_ct="text/plain")
+        flow = _make_flow(request_body=body, request_ct="text/plain")
         entry = {}
         add_capture_fields(flow, entry)
         assert "request_body_truncated" not in entry
@@ -321,28 +338,16 @@ class TestAddCaptureFields:
 
     def test_response_body_exactly_at_limit_not_truncated(self):
         body = b"y" * STREAM_BUFFER_LIMIT
-        flow = self._make_flow(response_body=body, response_ct="text/plain")
+        flow = _make_flow(response_body=body, response_ct="text/plain")
         entry = {}
         add_capture_fields(flow, entry)
         assert "response_body_truncated" not in entry
         assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
 
-    def test_duplicate_headers_keeps_first(self):
-        headers = MagicMock()
-        headers.items.return_value = [
-            ("Set-Cookie", "a=1"),
-            ("Set-Cookie", "b=2"),
-            ("Host", "example.com"),
-        ]
-        result = _redact_headers(headers)
-        assert result["Set-Cookie"] == "***"
-        assert result["Host"] == "example.com"
-        assert len(result) == 2
-
     def test_truncation_preserves_utf8_boundary(self):
         # Body is STREAM_BUFFER_LIMIT + a 3-byte char "€" (\xe2\x82\xac)
         body = b"x" * STREAM_BUFFER_LIMIT + "\u20ac".encode("utf-8")
-        flow = self._make_flow(request_body=body, request_ct="text/plain")
+        flow = _make_flow(request_body=body, request_ct="text/plain")
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["request_body_truncated"] is True
@@ -351,7 +356,7 @@ class TestAddCaptureFields:
         assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT  # all ASCII before the €
 
     def test_text_request_with_binary_response(self):
-        flow = self._make_flow(
+        flow = _make_flow(
             request_body=b'{"q": "test"}',
             response_body=b"\x89PNG\r\n",
             request_ct="application/json",
@@ -364,7 +369,7 @@ class TestAddCaptureFields:
         assert entry["response_body_encoding"] == "binary"
 
     def test_both_bodies_binary(self):
-        flow = self._make_flow(
+        flow = _make_flow(
             request_body=b"\x89PNG",
             response_body=b"\x1f\x8b\x08",
             request_ct="image/png",
@@ -380,7 +385,7 @@ class TestAddCaptureFields:
         assert "response_headers" in entry
 
     def test_both_request_and_response(self):
-        flow = self._make_flow(
+        flow = _make_flow(
             request_body=b'{"q": "test"}',
             response_body=b'{"a": "result"}',
         )
@@ -392,7 +397,7 @@ class TestAddCaptureFields:
 
     def test_captures_response_body_from_stream_buffer(self):
         """When stream_buffer is present, response body should be read from it."""
-        flow = self._make_flow(response_body=b"should-be-ignored")
+        flow = _make_flow(response_body=b"should-be-ignored")
         body = b'{"streamed": true}'
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {"truncated": False}
@@ -404,7 +409,7 @@ class TestAddCaptureFields:
 
     def test_empty_stream_buffer_skips_body(self):
         """Empty stream_buffer (e.g. synthetic 403) should not produce body fields."""
-        flow = self._make_flow()
+        flow = _make_flow()
         flow.metadata["stream_buffer"] = bytearray()
         flow.metadata["stream_buffer_state"] = {"truncated": False}
         entry = {}
@@ -416,7 +421,7 @@ class TestAddCaptureFields:
     def test_stream_buffer_truncated_marks_truncation(self):
         """When stream_buffer was truncated, response_body_truncated should be set."""
         body = b"x" * STREAM_BUFFER_LIMIT
-        flow = self._make_flow()
+        flow = _make_flow()
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {"truncated": True}
         entry = {}
@@ -429,10 +434,7 @@ class TestAddCaptureFields:
 
         original = b'{"result": "ok"}'
         compressed = gzip.compress(original)
-        flow = self._make_flow(response_ct="application/json")
-        flow.response.headers.get.side_effect = lambda k, d="": (
-            "gzip" if k == "content-encoding" else "application/json" if k == "content-type" else d
-        )
+        flow = _make_flow(response_ct="application/json", response_encoding="gzip")
         flow.metadata["stream_buffer"] = bytearray(compressed)
         flow.metadata["stream_buffer_state"] = {"truncated": False}
         entry = {}
@@ -444,26 +446,28 @@ class TestAddCaptureFields:
 class TestDecompression:
     """Integration tests for decompression through add_capture_fields."""
 
-    def _make_flow_with_compressed_buffer(self, data, encoding, content_type="application/json"):
-        flow = MagicMock()
-        flow.request.content = None
-        flow.request.headers = MagicMock()
-        flow.request.headers.get.return_value = "application/json"
-        flow.request.headers.items.side_effect = lambda multi=False: iter([])
-        flow.response = MagicMock()
-        flow.response.headers = MagicMock()
-        flow.response.headers.get.side_effect = lambda k, d="": (
-            encoding if k == "content-encoding" else content_type if k == "content-type" else d
+    def _make_flow_with_compressed_buffer(
+        self, data: bytes, encoding: str, content_type: str = "application/json"
+    ) -> http.HTTPFlow:
+        resp_header_pairs = [("Content-Type", content_type)]
+        if encoding:
+            resp_header_pairs.append(("Content-Encoding", encoding))
+        flow = tflow.tflow(
+            req=tutils.treq(
+                method=b"POST",
+                host=b"api.example.com",
+                path=b"/",
+                headers=_headers(("Content-Type", "application/json")),
+                content=None,
+            ),
+            resp=tutils.tresp(
+                status_code=200,
+                headers=_headers(*resp_header_pairs),
+                content=b"",
+            ),
         )
-        flow.response.headers.items.side_effect = lambda multi=False: (
-            iter([("Content-Type", content_type), ("Content-Encoding", encoding)])
-            if multi
-            else iter([])
-        )
-        flow.metadata = {
-            "stream_buffer": bytearray(data),
-            "stream_buffer_state": {"truncated": False},
-        }
+        flow.metadata["stream_buffer"] = bytearray(data)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
         return flow
 
     def test_no_encoding_captures_plain_text(self):
@@ -618,8 +622,7 @@ class TestExtractUsageFromJson:
 
         original = b'{"model":"test","usage":{"input_tokens":42}}'
         compressed = gzip.compress(original)
-        headers = MagicMock()
-        headers.get = lambda k, d="": "gzip" if k == "content-encoding" else d
+        headers = _headers(("Content-Encoding", "gzip"))
         result = extract_usage_from_json(compressed, headers)
         assert result["model"] == "test"
         assert result["input_tokens"] == 42
@@ -664,8 +667,7 @@ class TestExtractUsageFromJson:
             }
         ).encode()
         compressed = gzip.compress(payload)
-        headers = MagicMock()
-        headers.get = lambda k, d="": "gzip" if k == "content-encoding" else d
+        headers = _headers(("Content-Encoding", "gzip"))
         result = extract_usage_from_json(compressed, headers)
         assert result is not None
         assert result["input_tokens"] == 50

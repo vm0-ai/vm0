@@ -179,3 +179,190 @@ describe("zero chat thread page - scroll fires for each new thread", () => {
     expect(scrollContainer).not.toBeNull();
   });
 });
+
+// CHAT-SCROLL-007: browser-initiated scrollTop decrease (no user input event)
+// does NOT disable auto-scroll. This is the core regression guard for the PR
+// fix: scroll anchoring or content shrinkage can decrease scrollTop without
+// any user gesture; the scroll listener must ignore those shifts.
+describe("zero chat thread page - browser-initiated scroll does not disable auto-scroll", () => {
+  it("auto-scroll still fires after a scrollTop decrease with no preceding user input (CHAT-SCROLL-007)", async () => {
+    mockThread("thread-browser-scroll", [
+      { role: "user", content: "Browser scroll test message" },
+      { role: "assistant", content: "Browser scroll test reply" },
+    ]);
+
+    // Capture the ResizeObserver callback installed by createScrollSignals so
+    // we can fire it manually to simulate a content-resize event. This avoids
+    // reaching into the signal store and tests through the same code path that
+    // fires in production when the inner content grows.
+    //
+    // Only capture the first observer constructed — createScrollSignals builds
+    // exactly one ResizeObserver per container bind, and we want that specific
+    // callback. Using a first-capture guard prevents any additional observers
+    // created by unrelated code in the render path from overwriting it.
+    let capturedResizeCallback: ResizeObserverCallback | null = null;
+    const originalRO = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) {
+        if (capturedResizeCallback === null) {
+          capturedResizeCallback = cb;
+        }
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+
+    // Intercept the scroll container as it mounts and give it a non-zero
+    // scrollHeight so we can distinguish a real scroll from a no-op.
+    const mutationObserver = new MutationObserver(() => {
+      const el = document.querySelector<HTMLElement>("[data-scroll-container]");
+      if (!el) {
+        return;
+      }
+      Object.defineProperty(el, "scrollHeight", {
+        get: () => {
+          return 900;
+        },
+        configurable: true,
+      });
+      Object.defineProperty(el, "clientHeight", {
+        get: () => {
+          return 300;
+        },
+        configurable: true,
+      });
+    });
+    mutationObserver.observe(document.body, { childList: true, subtree: true });
+
+    try {
+      detachedSetupPage({ context, path: "/chats/thread-browser-scroll" });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Browser scroll test message"),
+        ).toBeInTheDocument();
+      });
+
+      const scrollContainer = document.querySelector<HTMLElement>(
+        "[data-scroll-container]",
+      );
+      expect(scrollContainer).not.toBeNull();
+
+      // Simulate a browser-initiated scrollTop decrease (no wheel/pointer/key
+      // event fires before the scroll). This mimics scroll-anchor clamping or
+      // content shrinkage — NOT a deliberate user gesture.
+      scrollContainer!.scrollTop = 400;
+      scrollContainer!.dispatchEvent(new Event("scroll"));
+      // Decrease without any user-input event:
+      scrollContainer!.scrollTop = 100;
+      scrollContainer!.dispatchEvent(new Event("scroll"));
+
+      // Auto-scroll should NOT have been disabled. Prove it by firing the
+      // ResizeObserver callback (the same path the browser uses when inner
+      // content grows during streaming). If disabled, scrollTop stays at 100;
+      // if enabled, the callback snaps it to scrollHeight.
+      expect(capturedResizeCallback).not.toBeNull();
+      capturedResizeCallback!([], {} as ResizeObserver);
+      expect(scrollContainer!.scrollTop).toBe(scrollContainer!.scrollHeight);
+    } finally {
+      mutationObserver.disconnect();
+      globalThis.ResizeObserver = originalRO;
+    }
+  });
+});
+
+// CHAT-SCROLL-008: useLastLoadable keeps previously-loaded messages visible
+// while groupedChatMessages$ is in a loading state. The regression scenario is
+// loaded → reloading → loaded: when the user navigates to a second thread,
+// groupedChatMessages$ for the new thread returns a new Promise (initial fetch
+// is pending). Without useLastLoadable (i.e. plain useLoadable), the component
+// immediately receives state="loading" for the new atom, drops groups to [],
+// and renders ChatSkeleton — wiping the previous thread's messages from the DOM
+// before the new ones arrive. useLastLoadable keeps the previous data visible
+// until the new promise settles.
+describe("zero chat thread page - messages remain visible during re-fetch", () => {
+  it("previously-loaded messages stay visible while the next thread's groupedChatMessages$ is pending (CHAT-SCROLL-008)", async () => {
+    // Thread A resolves immediately.
+    mockThread("thread-ll-a", [
+      { role: "user", content: "Thread A message" },
+      { role: "assistant", content: "Thread A reply" },
+    ]);
+
+    // Thread B has a deferred messages response so we can observe the
+    // intermediate state while groupedChatMessages$ is in loading state.
+    let resolveThreadBMessages!: () => void;
+    const threadBMessagesResponse = HttpResponse.json({
+      messages: [
+        {
+          id: "msg-b-1",
+          role: "user",
+          content: "Thread B message",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      hasMore: false,
+    });
+
+    server.use(
+      http.get(
+        "*/api/zero/chat-threads/thread-ll-b/messages",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("sinceId")) {
+            return HttpResponse.json({ messages: [], hasMore: false });
+          }
+          // Initial fetch is deferred — keeps groupedChatMessages$ in loading state.
+          return new Promise<typeof threadBMessagesResponse>((resolve) => {
+            resolveThreadBMessages = () => {
+              resolve(threadBMessagesResponse);
+            };
+          });
+        },
+      ),
+      http.get("*/api/zero/chat-threads/thread-ll-b", () => {
+        return HttpResponse.json({
+          id: "thread-ll-b",
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          chatMessages: [],
+          latestSessionId: null,
+          activeRunIds: [],
+          unsavedRuns: [],
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-ll-a" });
+
+    // Wait for thread A's messages to load and render.
+    await waitFor(() => {
+      expect(screen.getByText("Thread A message")).toBeInTheDocument();
+    });
+
+    // Navigate to thread B — groupedChatMessages$ for the new thread instance
+    // starts in a loading state (the deferred fetch above is still pending).
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-ll-b" },
+    });
+
+    // While thread B's initial messages fetch is pending, thread A's messages
+    // must remain in the DOM. With plain useLoadable the component would
+    // immediately switch to state="loading", drop groups=[], and show
+    // ChatSkeleton instead — this assertion would fail. useLastLoadable keeps
+    // the previous resolved data visible until the new promise settles.
+    await waitFor(() => {
+      expect(screen.getByText("Thread A message")).toBeInTheDocument();
+    });
+
+    // Resolve thread B's fetch — messages should now appear and thread A's
+    // messages should be replaced by thread B's.
+    resolveThreadBMessages();
+
+    await waitFor(() => {
+      expect(screen.getByText("Thread B message")).toBeInTheDocument();
+    });
+  });
+});
