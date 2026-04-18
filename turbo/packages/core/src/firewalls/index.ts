@@ -135,6 +135,7 @@ import { salesforceFirewall } from "./salesforce.generated";
 import { scrapeninjaFirewall } from "./scrapeninja.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
+import { shopifyFirewall } from "./shopify.generated";
 import { shortioFirewall } from "./shortio.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackFirewall } from "./slack.generated";
@@ -289,6 +290,7 @@ const CONNECTOR_FIREWALLS = {
   scrapeninja: scrapeninjaFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
+  shopify: shopifyFirewall,
   shortio: shortioFirewall,
   similarweb: similarwebFirewall,
   slack: slackFirewall,

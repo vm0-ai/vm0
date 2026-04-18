@@ -110,6 +110,7 @@ import { generate as generateScrapeninja } from "./scrapeninja";
 import { generate as generateSalesforce } from "./salesforce";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
+import { generate as generateShopify } from "./shopify";
 import { generate as generateShortio } from "./shortio";
 import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
@@ -244,6 +245,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   scrapeninja: generateScrapeninja,
   sentry: generateSentry,
   serpapi: generateSerpapi,
+  shopify: generateShopify,
   shortio: generateShortio,
   similarweb: generateSimilarweb,
   slack: generateSlack,

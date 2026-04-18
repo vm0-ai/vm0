@@ -138,6 +138,7 @@ const CONNECTOR_ICON_COLORFUL = {
   reportei: true,
   salesforce: true,
   serpapi: true,
+  shopify: true,
   shortio: true,
   similarweb: true,
   slack: true,

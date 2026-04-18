@@ -95,6 +95,7 @@ import { reporteiHandler } from "./providers/reportei-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
 import { runwayHandler } from "./providers/runway-handler";
 import { salesforceHandler } from "./providers/salesforce-handler";
+import { shopifyHandler } from "./providers/shopify-handler";
 import { shortioHandler } from "./providers/shortio-handler";
 import { strapiHandler } from "./providers/strapi-handler";
 import { streakHandler } from "./providers/streak-handler";
@@ -277,6 +278,7 @@ export const PROVIDER_HANDLERS: Record<
   zeptomail: zeptomailHandler,
   runway: runwayHandler,
   salesforce: salesforceHandler,
+  shopify: shopifyHandler,
   shortio: shortioHandler,
   streak: streakHandler,
   supadata: supadataHandler,
