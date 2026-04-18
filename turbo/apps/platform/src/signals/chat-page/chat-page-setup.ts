@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { animationFrame } from "signal-timers";
 import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -76,7 +77,30 @@ export const setupChatPage$ = command(
 
     await get(thread.groupedChatMessages$);
     signal.throwIfAborted();
+
+    // Wait one animation frame so React flushes the message DOM before we
+    // scroll. The list is mounted with visibility:hidden under the skeleton,
+    // so scrollHeight is already correct — we just need the commit to land.
+    await new Promise<void>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      const onAbort = () => {
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      animationFrame(
+        () => {
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        },
+        { signal },
+      );
+    });
+    signal.throwIfAborted();
     set(thread.scrollToBottom$);
+    set(thread.hideSkeleton$);
 
     await set(thread.loadPagedMessages$, signal);
   },

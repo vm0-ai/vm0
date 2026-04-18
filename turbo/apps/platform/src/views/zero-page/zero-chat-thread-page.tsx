@@ -233,51 +233,67 @@ export function ZeroChatThreadPageInner({
   const messagesLoading = groupsLoadable.state === "loading";
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
+  const skeletonVisible = useGet(thread.skeletonVisible$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       <ChatThreadHeader thread={thread} />
 
-      <div
-        ref={setScrollContainer}
-        data-scroll-container
-        className="flex-1 overflow-y-auto [scrollbar-gutter:stable] min-h-0"
-      >
-        <main className="px-4 sm:px-6 py-4 items-center @container">
-          <div
-            data-message-container
-            className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
-          >
-            {sessionError && (
-              <div className="flex-1 flex items-center justify-center py-16">
-                <div className="flex items-center gap-2 text-destructive">
-                  <IconAlertCircle size={16} />
-                  <p className="text-sm">{sessionError}</p>
+      <div className="flex-1 min-h-0 relative">
+        <div
+          ref={setScrollContainer}
+          data-scroll-container
+          className="absolute inset-0 overflow-y-auto [scrollbar-gutter:stable]"
+        >
+          <main className="px-4 sm:px-6 py-4 items-center @container">
+            <div
+              data-message-container
+              className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
+              style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
+            >
+              {sessionError && (
+                <div className="flex-1 flex items-center justify-center py-16">
+                  <div className="flex items-center gap-2 text-destructive">
+                    <IconAlertCircle size={16} />
+                    <p className="text-sm">{sessionError}</p>
+                  </div>
                 </div>
+              )}
+              {!sessionError &&
+                groups.length === 0 &&
+                !messagesLoading &&
+                !skeletonVisible && (
+                  <div className="flex-1 flex items-center justify-center py-16">
+                    <p className="text-sm text-muted-foreground">
+                      Send a message to start the conversation
+                    </p>
+                  </div>
+                )}
+              {groups.map((group) => {
+                return (
+                  <PagedGroupRow
+                    key={group.beginMessageId}
+                    group={group}
+                    thread={thread}
+                  />
+                );
+              })}
+              <ThinkingIndicator thread={thread} />
+            </div>
+          </main>
+        </div>
+        {skeletonVisible && !sessionError && (
+          <div
+            data-chat-skeleton
+            className="absolute inset-0 overflow-hidden pointer-events-none"
+          >
+            <main className="px-4 sm:px-6 py-4 items-center @container">
+              <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
+                <ChatSkeleton />
               </div>
-            )}
-            {!sessionError && groups.length === 0 && messagesLoading && (
-              <ChatSkeleton />
-            )}
-            {!sessionError && groups.length === 0 && !messagesLoading && (
-              <div className="flex-1 flex items-center justify-center py-16">
-                <p className="text-sm text-muted-foreground">
-                  Send a message to start the conversation
-                </p>
-              </div>
-            )}
-            {groups.map((group) => {
-              return (
-                <PagedGroupRow
-                  key={group.beginMessageId}
-                  group={group}
-                  thread={thread}
-                />
-              );
-            })}
-            <ThinkingIndicator thread={thread} />
+            </main>
           </div>
-        </main>
+        )}
       </div>
 
       <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
