@@ -43,10 +43,8 @@ def _make_flow(
         host=b"api.example.com",
         path=b"/",
         headers=_headers(("Content-Type", request_ct), ("Host", "api.example.com")),
-        content=request_body if request_body is not None else b"",
+        content=request_body,
     )
-    if request_body is None:
-        req.content = None
 
     resp: http.Response | bool
     if with_response:
@@ -56,10 +54,8 @@ def _make_flow(
         resp = tutils.tresp(
             status_code=200,
             headers=_headers(*resp_header_pairs),
-            content=response_body if response_body is not None else b"",
+            content=response_body,
         )
-        if response_body is None:
-            resp.content = None
     else:
         resp = False
 
