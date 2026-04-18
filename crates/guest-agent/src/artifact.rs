@@ -55,8 +55,8 @@ struct CommitResponse {
     success: Option<bool>,
 }
 
-pub struct SnapshotResult {
-    pub version_id: String,
+pub(crate) struct SnapshotResult {
+    pub(crate) version_id: String,
 }
 
 /// Walk `mount_path` in a blocking task and collect `FileEntry` records,
@@ -78,7 +78,7 @@ pub(crate) async fn walk_files(mount_path: &str) -> Result<Vec<FileEntry>, Agent
 /// Create a VAS snapshot using direct S3 upload. Caller provides the
 /// pre-walked file list (see [`walk_files`]) — this lets the checkpoint step
 /// share one walk between its skip-check fingerprint and the snapshot upload.
-pub async fn create_snapshot(
+pub(crate) async fn create_snapshot(
     mount_path: &str,
     files: Vec<FileEntry>,
     storage_name: &str,

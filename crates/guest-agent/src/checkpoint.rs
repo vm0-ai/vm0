@@ -266,21 +266,25 @@ async fn create_checkpoint_impl(
                 );
                 return Ok(None);
             }
-            // Walk once. If the fingerprint matches the boot snapshot, the
-            // memory content is byte-identical to what the sandbox booted
-            // with — the server's HEAD already represents this exact state,
-            // so the storages /prepare + /commit round-trips (~1s combined)
-            // would be a pure no-op. Skip them and echo the parent
-            // `memory_version_id` so `agentSession.memoryName` stays
-            // associated for future resumes. Covers:
+            // Walk once. If the fingerprint matches the boot snapshot and we
+            // have a parent version to echo, the memory content is
+            // byte-identical to what the sandbox booted with — the server's
+            // HEAD already represents this exact state, so the storages
+            // /prepare + /commit round-trips (~1s combined) would be a pure
+            // no-op. Skip them and echo the parent `memory_version_id` so
+            // `agentSession.memoryName` stays associated for future resumes.
+            // Covers:
             //   - "never used memory" (empty at boot, empty now)
             //   - "memory preserved verbatim" (N files at boot, same N files now)
             //   - "write-then-delete / edit-then-revert" (end state matches boot)
-            // Wipe and partial-edit cases fall through to create_snapshot
-            // with the pre-walked files (no second walk).
+            // The `memory_version_id` non-empty guard ensures the skip
+            // payload's shape matches the normal path (a real version hash).
+            // Wipe, partial-edit, and first-run-without-parent fall through
+            // to create_snapshot with the pre-walked files (no second walk).
             let files = artifact::walk_files(env::memory_mount_path()).await?;
             let skip_check_start = std::time::Instant::now();
             if let Some(boot_fp) = memory_boot_fp.as_ref()
+                && !env::memory_version_id().is_empty()
                 && &artifact::fingerprint_from_files(&files) == boot_fp
             {
                 log_info!(
