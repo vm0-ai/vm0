@@ -5,12 +5,12 @@
  * Default behavior: onboarding is complete (all flags true).
  */
 
-import { http, HttpResponse } from "msw";
+import { onboardingStatusContract } from "@vm0/core";
+import { mockApi } from "../msw-contract.ts";
 
 export const apiOnboardingHandlers = [
-  // GET /api/zero/onboarding/status - Get onboarding status
-  http.get("*/api/zero/onboarding/status", () => {
-    return HttpResponse.json({
+  mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+    return respond(200, {
       needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
