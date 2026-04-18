@@ -46,6 +46,12 @@ export interface ChatThreadSignals {
   autoScroll$: Command<void, []>;
   scrollToBottom$: Command<void, []>;
   scrollToTop$: Command<void, []>;
+  // ── Initial-load skeleton ────────────────────────────────────────────────
+  // True until the page setup has fetched messages and scrolled into place.
+  // Keeps the list mounted (visibility:hidden) while the skeleton covers the
+  // viewport, so the first paint the user sees is already at the bottom.
+  skeletonVisible$: Computed<boolean>;
+  hideSkeleton$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<
@@ -576,6 +582,17 @@ export const ensureDraft$ = command(
   },
 );
 
+function createSkeletonSignals() {
+  const internalSkeletonVisible$ = state(true);
+  const skeletonVisible$ = computed((get) => {
+    return get(internalSkeletonVisible$);
+  });
+  const hideSkeleton$ = command(({ set }) => {
+    set(internalSkeletonVisible$, false);
+  });
+  return { skeletonVisible$, hideSkeleton$ };
+}
+
 function createInputRef() {
   const internalInputRef$ = state<HTMLElement | null>(null);
   const setInputRef$ = onRef(
@@ -703,6 +720,7 @@ export function createChatThreadSignals(
   const { threadData$, reloadThread$ } = createThreadData(threadId);
   const { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ } =
     createScrollSignals(threadId);
+  const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, agentPinned$ } =
@@ -809,6 +827,8 @@ export function createChatThreadSignals(
     autoScroll$,
     scrollToBottom$,
     scrollToTop$,
+    skeletonVisible$,
+    hideSkeleton$,
     draft,
     composerFileInput$,
     setComposerFileInput$,

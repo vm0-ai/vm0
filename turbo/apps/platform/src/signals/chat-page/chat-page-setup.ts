@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { animationFrame } from "signal-timers";
 import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -78,7 +79,17 @@ export const setupChatPage$ = command(
 
     await get(thread.groupedChatMessages$);
     signal.throwIfAborted();
-    set(thread.scrollToBottom$);
+
+    // The list is mounted with visibility:hidden under the skeleton so
+    // scrollHeight is already correct; wait one frame for React to commit
+    // the message DOM, then scroll and reveal in the same tick.
+    animationFrame(
+      () => {
+        set(thread.scrollToBottom$);
+        set(thread.hideSkeleton$);
+      },
+      { signal },
+    );
 
     await set(thread.loadPagedMessages$, signal);
   },

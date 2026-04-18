@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.254.0](https://github.com/vm0-ai/vm0/compare/app-v0.253.0...app-v0.254.0) (2026-04-18)
+
+
+### Features
+
+* **chat-threads:** track read/archive state on messages and hide archived threads ([#9976](https://github.com/vm0-ai/vm0/issues/9976)) ([56b2af5](https://github.com/vm0-ai/vm0/commit/56b2af51ec5fe9026a2860b095f69e2cf68cbd7f))
+
+
+### Bug Fixes
+
+* **composer:** mic transcription appends to draft instead of sending ([#9984](https://github.com/vm0-ai/vm0/issues/9984)) ([4948388](https://github.com/vm0-ai/vm0/commit/49483883e145b13acaf0f219118aa7ad9cd256dc))
+* **platform:** restore chat scroll position at container bind time ([#9993](https://github.com/vm0-ai/vm0/issues/9993)) ([c98890e](https://github.com/vm0-ai/vm0/commit/c98890e390b3d83d533b3f8fcf70055f1dda27e3))
+
+
+### Refactoring
+
+* **platform:** migrate api-agents.ts to mock-api helper ([#9942](https://github.com/vm0-ai/vm0/issues/9942)) ([#9996](https://github.com/vm0-ai/vm0/issues/9996)) ([5638b99](https://github.com/vm0-ai/vm0/commit/5638b997637b54e43c33b70fc41c15fac5f6fad9))
+* **platform:** migrate api-billing.ts to mock-api helper ([#9992](https://github.com/vm0-ai/vm0/issues/9992)) ([516fb59](https://github.com/vm0-ai/vm0/commit/516fb5946b0d183aaba95fac58ad9ffba62f9ae0))
+* **platform:** migrate api-feature-switches.ts to mockapi helper ([#9998](https://github.com/vm0-ai/vm0/issues/9998)) ([0839e5c](https://github.com/vm0-ai/vm0/commit/0839e5c9bdc786d3b0897643a7a87918bcf94bcb))
+* **platform:** migrate api-integrations-slack-connect.ts to mockapi helper ([#9955](https://github.com/vm0-ai/vm0/issues/9955)) ([32d8457](https://github.com/vm0-ai/vm0/commit/32d84573cbb103a9d23efea1b612b798329ee539))
+* **platform:** migrate v1-runs.ts (logs) to mockApi helper ([#9986](https://github.com/vm0-ai/vm0/issues/9986)) ([e142c7b](https://github.com/vm0-ai/vm0/commit/e142c7b71bac2d463baeb919aada1dd42dd49969))
+
+
+### Performance Improvements
+
+* **platform:** push async subscriptions down into leaf components ([#9985](https://github.com/vm0-ai/vm0/issues/9985)) ([639d3bb](https://github.com/vm0-ai/vm0/commit/639d3bbf6223939554d8f4591fdfd6ff7f40466b))
+* **platform:** reduce re-renders in billing dialog and auto-recharge section ([#9979](https://github.com/vm0-ai/vm0/issues/9979)) ([93976ad](https://github.com/vm0-ai/vm0/commit/93976ad9f823e6bdef9eb7d94e28a0a92fe8adca))
+* **platform:** reduce re-renders in zero-schedule-detail-page ([#9997](https://github.com/vm0-ai/vm0/issues/9997)) ([7f8c3ca](https://github.com/vm0-ai/vm0/commit/7f8c3ca04bcab484a8436a7e6fd1a9a40cb68640)), closes [#9957](https://github.com/vm0-ai/vm0/issues/9957)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.201.0
+
 ## [0.253.0](https://github.com/vm0-ai/vm0/compare/app-v0.252.0...app-v0.253.0) (2026-04-18)
 
 

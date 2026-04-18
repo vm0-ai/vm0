@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.256.0](https://github.com/vm0-ai/vm0/compare/web-v12.255.6...web-v12.256.0) (2026-04-18)
+
+
+### Features
+
+* **chat-threads:** track read/archive state on messages and hide archived threads ([#9976](https://github.com/vm0-ai/vm0/issues/9976)) ([56b2af5](https://github.com/vm0-ai/vm0/commit/56b2af51ec5fe9026a2860b095f69e2cf68cbd7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.201.0
+
 ## [12.255.6](https://github.com/vm0-ai/vm0/compare/web-v12.255.5...web-v12.255.6) (2026-04-18)
 
 

@@ -469,11 +469,81 @@ function ScheduleCalendarSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
+// Leaf component: owns the delete-schedule mutation state and dialog
+// ---------------------------------------------------------------------------
+
+function DeleteScheduleDialogContainer() {
+  const [deleteLoadable, deleteSchedule] = useLoadableSet(deleteOrgSchedule$);
+  const deleting = deleteLoadable.state === "loading";
+  const pendingDelete = useGet(pagePendingDelete$);
+  const setPendingDelete = useSet(setPagePendingDelete$);
+  const pageSignal = useGet(pageSignal$);
+
+  const confirmDelete = () => {
+    const entry = pendingDelete;
+    if (entry?.name === undefined) {
+      return;
+    }
+    detach(
+      deleteSchedule(
+        { name: entry.name, agentId: entry.agentId },
+        pageSignal,
+      ).then(() => {
+        setPendingDelete(null);
+      }),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <Dialog
+      open={pendingDelete !== null}
+      onOpenChange={(open) => {
+        if (!open && !deleting) {
+          setPendingDelete(null);
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete schedule?</DialogTitle>
+          <DialogDescription>
+            This will permanently delete the schedule{" "}
+            <span className="font-medium text-foreground">
+              {pendingDelete?.name}
+            </span>
+            . This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            disabled={deleting}
+            onClick={() => {
+              return setPendingDelete(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={deleting}
+            onClick={confirmDelete}
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
 export function ZeroSchedulePage() {
-  const statusLoadable = useLoadable(zeroOnboardingStatus$);
+  const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const defaultComposeId =
     statusLoadable.state === "hasData"
       ? statusLoadable.data.defaultAgentId
@@ -483,14 +553,12 @@ export function ZeroSchedulePage() {
   const entries: OrgScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
-  const agentsLoadable = useLoadable(agents$);
+  const agentsLoadable = useLastLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
   const loaded = useGet(allOrgSchedulesLoaded$);
   const isInitialLoading = !loaded;
 
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
-  const [deleteLoadable, deleteSchedule] = useLoadableSet(deleteOrgSchedule$);
-  const deleting = deleteLoadable.state === "loading";
   const runScheduleNow = useSet(runScheduleNow$);
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
@@ -513,7 +581,6 @@ export function ZeroSchedulePage() {
   const setTogglingIds = useSet(setPageTogglingIds$);
   const runningIds = useGet(pageRunningIds$);
   const setRunningIds = useSet(setPageRunningIds$);
-  const pendingDelete = useGet(pagePendingDelete$);
   const setPendingDelete = useSet(setPagePendingDelete$);
 
   const saving = useGet(creatingOrgSchedule$);
@@ -581,22 +648,6 @@ export function ZeroSchedulePage() {
 
   const handleDelete = (entry: CombinedEntry) => {
     setPendingDelete(entry);
-  };
-
-  const confirmDelete = () => {
-    const entry = pendingDelete;
-    if (entry?.name === undefined) {
-      return;
-    }
-    detach(
-      deleteSchedule(
-        { name: entry.name, agentId: entry.agentId },
-        pageSignal,
-      ).then(() => {
-        setPendingDelete(null);
-      }),
-      Reason.DomCallback,
-    );
   };
 
   return (
@@ -727,45 +778,7 @@ export function ZeroSchedulePage() {
           agentId: defaultComposeId ?? agents[0]?.id ?? "",
         }}
       />
-      <Dialog
-        open={pendingDelete !== null}
-        onOpenChange={(open) => {
-          if (!open && !deleting) {
-            setPendingDelete(null);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete schedule?</DialogTitle>
-            <DialogDescription>
-              This will permanently delete the schedule{" "}
-              <span className="font-medium text-foreground">
-                {pendingDelete?.name}
-              </span>
-              . This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={deleting}
-              onClick={() => {
-                return setPendingDelete(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={deleting}
-              onClick={confirmDelete}
-            >
-              {deleting ? "Deleting…" : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteScheduleDialogContainer />
     </div>
   );
 }

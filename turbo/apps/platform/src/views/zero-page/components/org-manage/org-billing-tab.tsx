@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconExternalLink,
@@ -484,7 +484,7 @@ export function OrgBillingTab() {
   const reloadBilling = useSet(reloadBillingStatus$);
   const openDowngrade = useSet(openDowngradeDialog$);
   const [portalLoadable, portal] = useLoadableSet(startDowngrade$);
-  const statusLoadable = useLoadable(billingStatusAsync$);
+  const statusLoadable = useLastLoadable(billingStatusAsync$);
   const loading = portalLoadable.state === "loading";
 
   const status =

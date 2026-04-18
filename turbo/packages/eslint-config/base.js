@@ -106,19 +106,7 @@ export const config = [
   },
   {
     files: ["**/*.ts", "**/*.tsx"],
-    languageOptions: {
-      parserOptions: {
-        projectService: {
-          allowDefaultProject: ["*.config.ts", "*.config.mjs", "*.config.js"],
-        },
-      },
-    },
     rules: {
-      "@typescript-eslint/no-floating-promises": [
-        "error",
-        { ignoreVoid: false },
-      ],
-      "@typescript-eslint/no-misused-promises": "error",
       "@typescript-eslint/naming-convention": [
         "error",
         // Variables and parameters: camelCase, UPPER_CASE, or PascalCase

@@ -1,9 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "./test-helpers.ts";
 import {
   installBannerVisible$,
   iosInstallModalOpen$,
-  setIsIOSSafari$,
   setupInstallPrompt$,
   triggerInstall$,
   closeIosInstallModal$,
@@ -12,13 +11,30 @@ import {
 
 const context = testContext();
 
-interface BeforeInstallPromptEventLike extends Event {
-  readonly platforms: readonly string[];
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+class BeforeInstallPromptEvent extends Event {
+  readonly platforms: readonly string[] = [];
   readonly userChoice: Promise<{
     outcome: "accepted" | "dismissed";
     platform: string;
   }>;
-  prompt(): Promise<void>;
+  readonly prompt: () => Promise<void>;
+
+  constructor(
+    promptFn: () => Promise<void> = vi
+      .fn<() => Promise<void>>()
+      .mockResolvedValue(undefined),
+  ) {
+    super("beforeinstallprompt", { cancelable: true, bubbles: false });
+    this.userChoice = Promise.resolve({
+      outcome: "accepted" as const,
+      platform: "",
+    });
+    this.prompt = promptFn;
+  }
 }
 
 function mockMatchMedia(standalone: boolean) {
@@ -34,82 +50,35 @@ function mockMatchMedia(standalone: boolean) {
   } as MediaQueryList);
 }
 
-/**
- * Set up install prompt listeners and return helpers that trigger the
- * beforeinstallprompt and appinstalled events directly without going
- * through window.dispatchEvent.
- */
-function captureWindowListeners(signal: AbortSignal): {
-  fireBeforeInstallPrompt: (event: BeforeInstallPromptEventLike) => void;
-  fireAppInstalled: () => void;
-} {
-  let promptHandler: ((e: Event) => void) | null = null;
-  let installedHandler: (() => void) | null = null;
-
-  const origAddEventListener = window.addEventListener.bind(window);
-  vi.spyOn(window, "addEventListener").mockImplementation(
-    (
-      type: string,
-      listener: EventListenerOrEventListenerObject,
-      ...rest: unknown[]
-    ) => {
-      if (type === "beforeinstallprompt") {
-        promptHandler = listener as (e: Event) => void;
-      } else if (type === "appinstalled") {
-        installedHandler = listener as () => void;
-      }
-      return origAddEventListener(
-        type,
-        listener as EventListener,
-        ...(rest as [boolean?]),
-      );
-    },
-  );
-
-  context.store.set(setupInstallPrompt$, signal);
-
-  return {
-    fireBeforeInstallPrompt(event: BeforeInstallPromptEventLike) {
-      promptHandler?.(event);
-    },
-    fireAppInstalled() {
-      installedHandler?.();
-    },
-  };
-}
-
-function makePromptEvent(
-  promptFn = vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
-): BeforeInstallPromptEventLike {
-  const e = new Event("beforeinstallprompt") as BeforeInstallPromptEventLike;
-  Object.assign(e, {
-    platforms: [],
-    userChoice: Promise.resolve({ outcome: "accepted" as const, platform: "" }),
-    prompt: promptFn,
-  });
-  return e;
+function mockIOSSafari(isIOS: boolean) {
+  const ua = isIOS
+    ? "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+    : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
 }
 
 describe("installBannerVisible$", () => {
   it("is false by default (no deferred prompt, not iOS Safari)", () => {
     mockMatchMedia(false);
+    mockIOSSafari(false);
     expect(context.store.get(installBannerVisible$)).toBeFalsy();
   });
 
   it("is false when running in standalone mode", () => {
     mockMatchMedia(true);
+    mockIOSSafari(true);
     expect(context.store.get(installBannerVisible$)).toBeFalsy();
   });
 
   it("is true when on iOS Safari (no deferred prompt)", () => {
     mockMatchMedia(false);
-    context.store.set(setIsIOSSafari$, true);
+    mockIOSSafari(true);
     expect(context.store.get(installBannerVisible$)).toBeTruthy();
   });
 
   it("is false after banner is dismissed", () => {
     mockMatchMedia(false);
-    context.store.set(setIsIOSSafari$, true);
+    mockIOSSafari(true);
     expect(context.store.get(installBannerVisible$)).toBeTruthy();
 
     context.store.set(dismissInstallBanner$);
@@ -118,10 +87,10 @@ describe("installBannerVisible$", () => {
 
   it("is true when a deferred install prompt is captured via setupInstallPrompt$", () => {
     mockMatchMedia(false);
-    context.store.set(setIsIOSSafari$, false);
+    mockIOSSafari(false);
 
-    const { fireBeforeInstallPrompt } = captureWindowListeners(context.signal);
-    fireBeforeInstallPrompt(makePromptEvent());
+    context.store.set(setupInstallPrompt$, context.signal);
+    window.dispatchEvent(new BeforeInstallPromptEvent());
 
     expect(context.store.get(installBannerVisible$)).toBeTruthy();
   });
@@ -134,14 +103,14 @@ describe("iosInstallModalOpen$", () => {
 
   it("opens when triggerInstall$ is called on iOS Safari with no deferred prompt", async () => {
     mockMatchMedia(false);
-    context.store.set(setIsIOSSafari$, true);
+    mockIOSSafari(true);
     await context.store.set(triggerInstall$, context.signal);
     expect(context.store.get(iosInstallModalOpen$)).toBeTruthy();
   });
 
   it("closes via closeIosInstallModal$", async () => {
     mockMatchMedia(false);
-    context.store.set(setIsIOSSafari$, true);
+    mockIOSSafari(true);
     await context.store.set(triggerInstall$, context.signal);
     expect(context.store.get(iosInstallModalOpen$)).toBeTruthy();
 
@@ -151,7 +120,7 @@ describe("iosInstallModalOpen$", () => {
 
   it("does not open when not iOS Safari and no deferred prompt", async () => {
     mockMatchMedia(false);
-    context.store.set(setIsIOSSafari$, false);
+    mockIOSSafari(false);
     await context.store.set(triggerInstall$, context.signal);
     expect(context.store.get(iosInstallModalOpen$)).toBeFalsy();
   });
@@ -160,12 +129,14 @@ describe("iosInstallModalOpen$", () => {
 describe("triggerInstall$ with deferred prompt", () => {
   it("calls prompt() and clears banner after install", async () => {
     mockMatchMedia(false);
+    mockIOSSafari(false);
 
     const mockPromptFn = vi
       .fn<() => Promise<void>>()
       .mockResolvedValue(undefined);
-    const { fireBeforeInstallPrompt } = captureWindowListeners(context.signal);
-    fireBeforeInstallPrompt(makePromptEvent(mockPromptFn));
+
+    context.store.set(setupInstallPrompt$, context.signal);
+    window.dispatchEvent(new BeforeInstallPromptEvent(mockPromptFn));
 
     expect(context.store.get(installBannerVisible$)).toBeTruthy();
 
@@ -179,14 +150,13 @@ describe("triggerInstall$ with deferred prompt", () => {
 describe("setupInstallPrompt$", () => {
   it("clears deferred prompt on appinstalled event", () => {
     mockMatchMedia(false);
-    context.store.set(setIsIOSSafari$, false);
+    mockIOSSafari(false);
 
-    const { fireBeforeInstallPrompt, fireAppInstalled } =
-      captureWindowListeners(context.signal);
-    fireBeforeInstallPrompt(makePromptEvent());
+    context.store.set(setupInstallPrompt$, context.signal);
+    window.dispatchEvent(new BeforeInstallPromptEvent());
     expect(context.store.get(installBannerVisible$)).toBeTruthy();
 
-    fireAppInstalled();
+    window.dispatchEvent(new Event("appinstalled"));
     expect(context.store.get(installBannerVisible$)).toBeFalsy();
   });
 });

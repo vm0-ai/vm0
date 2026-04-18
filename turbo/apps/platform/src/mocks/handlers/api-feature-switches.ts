@@ -4,7 +4,9 @@
  * Mock handlers for /api/zero/feature-switches endpoint.
  */
 
-import { http, HttpResponse } from "msw";
+import { zeroFeatureSwitchesContract } from "@vm0/core";
+
+import { mockApi } from "../msw-contract.ts";
 
 let mockSwitches: Record<string, boolean> = {};
 
@@ -19,17 +21,12 @@ export function setMockFeatureSwitches(
 }
 
 export const apiFeatureSwitchesHandlers = [
-  // GET /api/zero/feature-switches
-  http.get("*/api/zero/feature-switches", () => {
-    return HttpResponse.json({ switches: mockSwitches });
+  mockApi(zeroFeatureSwitchesContract.get, ({ respond }) => {
+    return respond(200, { switches: mockSwitches });
   }),
 
-  // POST /api/zero/feature-switches
-  http.post("*/api/zero/feature-switches", async ({ request }) => {
-    const body = (await request.json()) as {
-      switches: Record<string, boolean>;
-    };
+  mockApi(zeroFeatureSwitchesContract.update, ({ body, respond }) => {
     mockSwitches = { ...mockSwitches, ...body.switches };
-    return HttpResponse.json({ switches: mockSwitches });
+    return respond(200, { switches: mockSwitches });
   }),
 ];

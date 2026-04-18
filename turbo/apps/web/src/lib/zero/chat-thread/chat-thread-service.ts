@@ -50,7 +50,11 @@ export async function createChatThread(
 }
 
 /**
- * List chat threads for a user + agent compose, ordered by updatedAt desc.
+ * List chat threads for a user + agent compose, ordered by the latest
+ * message's createdAt desc (threads with no messages fall back to the
+ * thread's own createdAt). This reflects real conversation activity —
+ * `chat_threads.updatedAt` only changes on title/draft edits, not on new
+ * messages, so sorting by it would bury actively-used threads.
  *
  * Joins each thread to its most recent message and returns that message's
  * read/archive state. Threads whose last message is archived are hidden
@@ -73,6 +77,7 @@ export async function listChatThreads(
   const lastMessage = globalThis.services.db
     .select({
       chatThreadId: chatMessages.chatThreadId,
+      createdAt: chatMessages.createdAt,
       readAt: chatMessages.readAt,
       archivedAt: chatMessages.archivedAt,
       rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${chatMessages.chatThreadId} ORDER BY ${chatMessages.createdAt} DESC)`.as(
@@ -103,7 +108,9 @@ export async function listChatThreads(
         isNull(lastMessage.archivedAt),
       ),
     )
-    .orderBy(desc(chatThreads.updatedAt));
+    .orderBy(
+      desc(sql`COALESCE(${lastMessage.createdAt}, ${chatThreads.createdAt})`),
+    );
 
   return threads;
 }

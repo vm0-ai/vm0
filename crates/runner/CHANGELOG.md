@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.85.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.85.1...runner-rs-v0.85.2) (2026-04-18)
+
+
+### Bug Fixes
+
+* **runner:** tighten ca file and directory permissions ([#9994](https://github.com/vm0-ai/vm0/issues/9994)) ([26f493a](https://github.com/vm0-ai/vm0/commit/26f493ab7ca585d18c46d160b61a8caf5e2a4ff0))
+
+
+### Refactoring
+
+* **mitm-addon:** use real mitmproxy fixtures in test_body_capture ([#9987](https://github.com/vm0-ai/vm0/issues/9987)) ([5389082](https://github.com/vm0-ai/vm0/commit/5389082069ab4443d0bcde85b40aa33797525a08))
+
 ## [0.85.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.85.0...runner-rs-v0.85.1) (2026-04-18)
 
 ## [0.85.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.84.0...runner-rs-v0.85.0) (2026-04-18)

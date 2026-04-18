@@ -24,12 +24,6 @@ function detectIOSSafari(): boolean {
 
 const deferredPrompt$ = state<BeforeInstallPromptEvent | null>(null);
 const iosModalOpen$ = state(false);
-const isIOSSafari$ = state(detectIOSSafari());
-
-/** Override iOS Safari detection in tests. */
-export const setIsIOSSafari$ = command(({ set }, value: boolean) => {
-  set(isIOSSafari$, value);
-});
 
 const { get$: dismissedRaw$, set$: setDismissed$ } = localStorageSignals(
   "zero-install-banner-dismissed",
@@ -45,7 +39,7 @@ export const installBannerVisible$ = computed((get) => {
   if (get(deferredPrompt$)) {
     return true;
   }
-  return get(isIOSSafari$);
+  return detectIOSSafari();
 });
 
 export const iosInstallModalOpen$ = computed((get) => {
@@ -79,7 +73,7 @@ export const triggerInstall$ = command(
       set(deferredPrompt$, null);
       return;
     }
-    if (get(isIOSSafari$)) {
+    if (detectIOSSafari()) {
       set(iosModalOpen$, true);
     }
   },

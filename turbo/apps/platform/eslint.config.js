@@ -98,6 +98,9 @@ export default [
           allowedEventTypes: [
             "appinstalled",
             "beforeinstallprompt",
+            // Custom class used in pwa-install tests to carry the prompt()
+            // callback; cannot be replaced by userEvent (browser-generated PWA event).
+            "beforeinstallpromptevent",
             "scroll",
             "wheel",
           ],
