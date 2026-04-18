@@ -53,6 +53,7 @@ import { generate as generateGarminConnect } from "./garmin-connect";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
 import { generate as generateGranola } from "./granola";
+import { generate as generateGreenhouse } from "./greenhouse";
 import { generate as generateHeygen } from "./heygen";
 import { generate as generateHtmlcsstoimage } from "./htmlcsstoimage";
 import { generate as generateHubspot } from "./hubspot";
@@ -187,6 +188,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   github: generateGitHub,
   gitlab: generateGitlab,
   granola: generateGranola,
+  greenhouse: generateGreenhouse,
   heygen: generateHeygen,
   htmlcsstoimage: generateHtmlcsstoimage,
   hubspot: generateHubspot,
