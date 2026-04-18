@@ -700,23 +700,145 @@ function OrbitIllustration() {
 // Full-page layout wrapper — reads step/navigation state from signals
 // ---------------------------------------------------------------------------
 
-function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
-  const onAccountAction = useSet(handleZeroAccountAction$);
-  const stepKey = useLastResolved(onboardingStepKey$) ?? "workspace";
+function OnboardingProgressBar() {
   const currentStep = useLastResolved(onboardingCurrentStepIndex$) ?? 0;
   const visibleSteps = useLastResolved(onboardingVisibleSteps$) ?? [];
+  return (
+    <ProgressBar totalSteps={visibleSteps.length} currentStep={currentStep} />
+  );
+}
+
+function OnboardingFooterNav() {
   const showBack = useLastResolved(onboardingShowBack$) ?? false;
   const showNext = useLastResolved(onboardingShowNext$) ?? false;
   const nextDisabled = useLastResolved(onboardingNextDisabled$) ?? false;
   const stepBack = useSet(onboardingStepBack$);
   const stepNext = useSet(onboardingStepNext$);
   const pageSignal = useGet(pageSignal$);
+  return (
+    <div className="shrink-0 border-t border-border/40 flex items-center justify-between px-5 sm:px-10 py-5">
+      <div>
+        {showBack && (
+          <Button
+            variant="ghost"
+            className="rounded-lg text-muted-foreground"
+            onClick={() => {
+              detach(stepBack(pageSignal), Reason.DomCallback);
+            }}
+          >
+            Back
+          </Button>
+        )}
+      </div>
+      <div>
+        {showNext && (
+          <Button
+            onClick={() => {
+              detach(stepNext(pageSignal), Reason.DomCallback);
+            }}
+            className="rounded-lg min-w-[100px]"
+            disabled={nextDisabled}
+          >
+            Next
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OnboardingOrbitPanel() {
   const effectiveConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
+  return (
+    <>
+      <OrbitIllustration />
+      <p className="text-sm text-foreground text-center leading-relaxed mt-6 max-w-[300px]">
+        {effectiveConnectors.length === 0
+          ? "Pick your tools and Zero will handle the rest, securely."
+          : `${effectiveConnectors.length} app${effectiveConnectors.length === 1 ? "" : "s"} selected. Zero will securely manage ${effectiveConnectors.length === 1 ? "it" : "them"} for you so you don\u2019t have to.`}
+      </p>
+      <p className="text-[11px] text-muted-foreground text-center mt-4">
+        Sandboxed VMs&ensp;|&ensp;No credential exposure&ensp;|&ensp;Full audit
+        trail&ensp;|&ensp;Open source
+      </p>
+      <ComplianceTrustBadges />
+    </>
+  );
+}
+
+function OnboardingIllustrationPanel() {
+  const stepKey = useLastResolved(onboardingStepKey$) ?? "workspace";
   const illustration = getStepIllustration(stepKey);
   const showOrbit = stepKey === "connectors";
   const showChat = stepKey === "workspace";
 
+  return (
+    <div
+      className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${showChat ? "pt-[8%]" : "justify-center"}`}
+    >
+      {/* Decorative circles (non-orbit, non-chat steps) */}
+      {!showOrbit && !showChat && (
+        <div className="absolute inset-0 pointer-events-none" aria-hidden>
+          <div className="absolute top-[15%] left-[10%] h-48 w-48 rounded-full border border-border/20" />
+          <div className="absolute top-[25%] left-[20%] h-64 w-64 rounded-full border border-border/15" />
+          <div className="absolute bottom-[20%] right-[5%] h-40 w-40 rounded-full border border-border/20" />
+          <div className="absolute top-[60%] left-[5%] h-32 w-32 rounded-full border border-border/10" />
+        </div>
+      )}
+
+      <div className="relative z-10 flex flex-col items-center">
+        {showChat ? (
+          <ChatPreview />
+        ) : showOrbit ? (
+          <OnboardingOrbitPanel />
+        ) : (
+          <>
+            <img
+              src={zeroAnimatedSrc}
+              alt=""
+              role="presentation"
+              className="h-24 w-24 object-contain mb-8"
+            />
+            <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
+              {illustration.title}
+            </h3>
+            {illustration.subtitle && (
+              <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
+                {illustration.subtitle}
+              </p>
+            )}
+            {illustration.showSlackPreview && (
+              <div className="mt-4 w-full flex justify-center">
+                <img
+                  src={slackPreviewImg}
+                  alt="Zero working in Slack"
+                  className="w-full max-w-[380px]"
+                />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Account dropdown — bottom-left of left panel */}
+      <div className="absolute bottom-6 left-4 z-20">
+        <OnboardingAccountDropdown />
+      </div>
+    </div>
+  );
+}
+
+function OnboardingAccountDropdown() {
+  const onAccountAction = useSet(handleZeroAccountAction$);
+  return (
+    <VM0ClerkProvider>
+      <AccountDropdown onAccountAction={onAccountAction} hidePreferences />
+    </VM0ClerkProvider>
+  );
+}
+
+function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="zero-app flex h-dvh bg-muted/30 relative">
       {/* VM0 logo — top left */}
@@ -764,85 +886,14 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Left panel — brand / illustration */}
-      <div
-        className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${showChat ? "pt-[8%]" : "justify-center"}`}
-      >
-        {/* Decorative circles (non-orbit, non-chat steps) */}
-        {!showOrbit && !showChat && (
-          <div className="absolute inset-0 pointer-events-none" aria-hidden>
-            <div className="absolute top-[15%] left-[10%] h-48 w-48 rounded-full border border-border/20" />
-            <div className="absolute top-[25%] left-[20%] h-64 w-64 rounded-full border border-border/15" />
-            <div className="absolute bottom-[20%] right-[5%] h-40 w-40 rounded-full border border-border/20" />
-            <div className="absolute top-[60%] left-[5%] h-32 w-32 rounded-full border border-border/10" />
-          </div>
-        )}
-
-        <div className="relative z-10 flex flex-col items-center">
-          {showChat ? (
-            <ChatPreview />
-          ) : showOrbit ? (
-            <>
-              <OrbitIllustration />
-              <p className="text-sm text-foreground text-center leading-relaxed mt-6 max-w-[300px]">
-                {effectiveConnectors.length === 0
-                  ? "Pick your tools and Zero will handle the rest, securely."
-                  : `${effectiveConnectors.length} app${effectiveConnectors.length === 1 ? "" : "s"} selected. Zero will securely manage ${effectiveConnectors.length === 1 ? "it" : "them"} for you so you don\u2019t have to.`}
-              </p>
-              <p className="text-[11px] text-muted-foreground text-center mt-4">
-                Sandboxed VMs&ensp;|&ensp;No credential
-                exposure&ensp;|&ensp;Full audit trail&ensp;|&ensp;Open source
-              </p>
-              <ComplianceTrustBadges />
-            </>
-          ) : (
-            <>
-              <img
-                src={zeroAnimatedSrc}
-                alt=""
-                role="presentation"
-                className="h-24 w-24 object-contain mb-8"
-              />
-              <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
-                {illustration.title}
-              </h3>
-              {illustration.subtitle && (
-                <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
-                  {illustration.subtitle}
-                </p>
-              )}
-              {illustration.showSlackPreview && (
-                <div className="mt-4 w-full flex justify-center">
-                  <img
-                    src={slackPreviewImg}
-                    alt="Zero working in Slack"
-                    className="w-full max-w-[380px]"
-                  />
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Account dropdown — bottom-left of left panel */}
-        <div className="absolute bottom-6 left-4 z-20">
-          <VM0ClerkProvider>
-            <AccountDropdown
-              onAccountAction={onAccountAction}
-              hidePreferences
-            />
-          </VM0ClerkProvider>
-        </div>
-      </div>
+      <OnboardingIllustrationPanel />
 
       {/* Right panel — form */}
       <div className="flex flex-1 flex-col min-w-0 bg-background items-center">
         <div className="flex flex-col w-full max-w-[750px] flex-1 min-h-0">
           {/* Progress bar */}
           <div className="shrink-0 px-5 sm:px-10 pt-8 pb-4">
-            <ProgressBar
-              totalSteps={visibleSteps.length}
-              currentStep={currentStep}
-            />
+            <OnboardingProgressBar />
           </div>
 
           {/* Content */}
@@ -851,34 +902,7 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
           </main>
 
           {/* Footer */}
-          <div className="shrink-0 border-t border-border/40 flex items-center justify-between px-5 sm:px-10 py-5">
-            <div>
-              {showBack && (
-                <Button
-                  variant="ghost"
-                  className="rounded-lg text-muted-foreground"
-                  onClick={() => {
-                    detach(stepBack(pageSignal), Reason.DomCallback);
-                  }}
-                >
-                  Back
-                </Button>
-              )}
-            </div>
-            <div>
-              {showNext && (
-                <Button
-                  onClick={() => {
-                    detach(stepNext(pageSignal), Reason.DomCallback);
-                  }}
-                  className="rounded-lg min-w-[100px]"
-                  disabled={nextDisabled}
-                >
-                  Next
-                </Button>
-              )}
-            </div>
-          </div>
+          <OnboardingFooterNav />
         </div>
       </div>
     </div>

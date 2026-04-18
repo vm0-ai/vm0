@@ -48,39 +48,62 @@ import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
 
-export function PinnedAgentListSection() {
-  const activeRoute = useGet(activeRoute$);
-  const chatThreadId = useGet(currentChatThreadId$);
-  const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
+function UnpinButton({
+  agentId,
+  isPrimarySelected,
+}: {
+  agentId: string;
+  isPrimarySelected: boolean;
+}) {
+  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const savingPinned = pinLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const next = pinnedIds.filter((id): id is string => {
+                return id !== null && id !== agentId;
+              });
+              detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
+            }}
+            disabled={savingPinned}
+            className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
+              isPrimarySelected
+                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+            }`}
+            aria-label="Remove from list"
+          >
+            <IconX size={12} stroke={2} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          <p className="text-xs">Remove from list</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function AgentListDialogContainer() {
+  const open = useGet(chatListOpen$);
+  const onOpenChange = useSet(setChatListOpen$);
   const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData"
       ? (displayNameLoadable.data ?? "Zero")
       : "Zero";
-  const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
-  const pinnedIds = (useLastResolved(pinnedAgentIds$) ?? []).filter(
-    (id): id is string => {
-      return id !== null;
-    },
-  );
   const subagents = useLastResolved(subagents$) ?? [];
-
-  const chatListOpen = useGet(chatListOpen$);
-  const setChatListOpenFn = useSet(setChatListOpen$);
-  const collapsed = useGet(agentCardCollapsed$);
-  const setCollapsed = useSet(setAgentCardCollapsed$);
-  const reloadAgents = useSet(reloadAgents$);
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
-  const savingPinned = pinLoadable.state === "loading";
   const createNewChat = useSet(createNewChatThread$);
   const navigateToChat = useSet(navigateToChat$);
   const setExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
-
-  const onPinnedIdsChange = (ids: string[]) => {
-    detach(savePinnedIds(ids, pageSignal), Reason.DomCallback);
-  };
-
   const onNewChat = (agentId: string | null) => {
     detach(
       createNewChat(agentId, pageSignal).then((threadId) => {
@@ -92,6 +115,27 @@ export function PinnedAgentListSection() {
     );
     setExpanded(false);
   };
+  return (
+    <AgentListDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      displayName={displayName}
+      subagents={subagents}
+      onNewChat={onNewChat}
+    />
+  );
+}
+
+export function PinnedAgentListSection() {
+  const activeRoute = useGet(activeRoute$);
+  const chatThreadId = useGet(currentChatThreadId$);
+  const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
+  const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
+
+  const setChatListOpenFn = useSet(setChatListOpen$);
+  const collapsed = useGet(agentCardCollapsed$);
+  const setCollapsed = useSet(setAgentCardCollapsed$);
+  const reloadAgents = useSet(reloadAgents$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
 
   return (
@@ -184,35 +228,10 @@ export function PinnedAgentListSection() {
                   </Link>
                   {agent.id !== defaultAgentId && (
                     <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-                      <TooltipProvider delayDuration={200}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onPinnedIdsChange(
-                                  pinnedIds.filter((id) => {
-                                    return id !== agent.id;
-                                  }),
-                                );
-                              }}
-                              disabled={savingPinned}
-                              className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-                                isPrimarySelected
-                                  ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                                  : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-                              }`}
-                              aria-label="Remove from list"
-                            >
-                              <IconX size={12} stroke={2} />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="right">
-                            <p className="text-xs">Remove from list</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <UnpinButton
+                        agentId={agent.id}
+                        isPrimarySelected={isPrimarySelected}
+                      />
                     </div>
                   )}
                 </div>
@@ -221,13 +240,7 @@ export function PinnedAgentListSection() {
         </div>
       )}
 
-      <AgentListDialog
-        open={chatListOpen}
-        onOpenChange={setChatListOpenFn}
-        displayName={displayName}
-        subagents={subagents}
-        onNewChat={onNewChat}
-      />
+      <AgentListDialogContainer />
     </div>
   );
 }

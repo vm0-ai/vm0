@@ -2,12 +2,12 @@ import type { ReactNode } from "react";
 import {
   useGet,
   useSet,
-  useLoadable,
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
 import { IconMenu2, IconUserPlus, IconVolume2 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
+import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
@@ -68,6 +68,80 @@ function AgentAvatarInTopBar() {
   );
 }
 
+function VoiceChatStatusLeaf() {
+  const vcStatus = useGet(vcStatus$);
+  const vcReconnectAttempt = useGet(vcReconnectAttempt$);
+  if (vcStatus === "idle") {
+    return null;
+  }
+  return (
+    <StatusBadge status={vcStatus} reconnectAttempt={vcReconnectAttempt} />
+  );
+}
+
+function AutoReadToggleLeaf() {
+  const features = useLastResolved(featureSwitch$);
+  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
+  const autoRead = useGet(autoReadEnabled$);
+  const toggleAutoReadFn = useSet(toggleAutoRead$);
+  if (!audioIOEnabled) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        toggleAutoReadFn();
+      }}
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+        autoRead
+          ? "text-primary bg-primary/10"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+      )}
+      aria-label="Toggle auto-read"
+    >
+      <IconVolume2 size={16} stroke={1.5} />
+    </button>
+  );
+}
+
+function InviteButtonLeaf() {
+  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
+  const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
+  const setTab = useSet(setActiveOrgManageTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const openManage = useSet(setOrgManageDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
+  if (!isAdmin) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setTab("members");
+        setSubPage(false);
+        detach(openManage(true, pageSignal), Reason.DomCallback);
+      }}
+      className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
+    >
+      <IconUserPlus size={14} stroke={1.5} />
+      Invite
+    </button>
+  );
+}
+
+function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
+  const inChatRoute = isChatRoute(activeId);
+  return (
+    <>
+      {inChatRoute && <AutoReadToggleLeaf />}
+      {inChatRoute && <InviteButtonLeaf />}
+    </>
+  );
+}
+
 function MobileTopBar() {
   const setExpanded = useSet(setSidebarExpanded$);
 
@@ -76,21 +150,6 @@ function MobileTopBar() {
     breadcrumbLoadable.state === "hasData" ? breadcrumbLoadable.data : null;
 
   const activeId = useGet(activeRoute$);
-  const isAdminLoadable = useLoadable(isOrgAdmin$);
-  const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
-  const setTab = useSet(setActiveOrgManageTab$);
-  const setSubPage = useSet(setBillingSubPage$);
-  const openManage = useSet(setOrgManageDialogOpen$);
-  const pageSignal = useGet(pageSignal$);
-  const features = useLastResolved(featureSwitch$);
-  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
-  const autoRead = useGet(autoReadEnabled$);
-  const toggleAutoReadFn = useSet(toggleAutoRead$);
-  const vcStatus = useGet(vcStatus$);
-  const vcReconnectAttempt = useGet(vcReconnectAttempt$);
-
-  const showInvite = isChatRoute(activeId) && isAdmin;
-  const showVoiceChatStatus = activeId === "voiceChat" && vcStatus !== "idle";
 
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
@@ -124,47 +183,12 @@ function MobileTopBar() {
                 </>
               )}
             </div>
-            {showVoiceChatStatus && (
-              <StatusBadge
-                status={vcStatus}
-                reconnectAttempt={vcReconnectAttempt}
-              />
-            )}
+            {activeId === "voiceChat" && <VoiceChatStatusLeaf />}
           </div>
         </div>
       )}
       {!breadcrumb && <div className="flex-1" />}
-      {audioIOEnabled && isChatRoute(activeId) && (
-        <button
-          type="button"
-          onClick={() => {
-            toggleAutoReadFn();
-          }}
-          className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-            autoRead
-              ? "text-primary bg-primary/10"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-          )}
-          aria-label="Toggle auto-read"
-        >
-          <IconVolume2 size={16} stroke={1.5} />
-        </button>
-      )}
-      {showInvite && (
-        <button
-          type="button"
-          onClick={() => {
-            setTab("members");
-            setSubPage(false);
-            detach(openManage(true, pageSignal), Reason.DomCallback);
-          }}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
-        >
-          <IconUserPlus size={14} stroke={1.5} />
-          Invite
-        </button>
-      )}
+      <MobileTopBarActions activeId={activeId} />
     </div>
   );
 }
