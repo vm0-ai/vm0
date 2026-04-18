@@ -12,7 +12,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "oxlint && eslint . --max-warnings 0",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
@@ -20,6 +20,7 @@
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "0.21.1",
     "typescript": "5.9.3",
     "vitest": "^4.1.4"
   },
