@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.3...guest-agent-v0.21.4) (2026-04-18)
+
+
+### Performance Improvements
+
+* **guest-agent:** parallelize final telemetry upload with checkpoint ([#9894](https://github.com/vm0-ai/vm0/issues/9894)) ([d799d98](https://github.com/vm0-ai/vm0/commit/d799d981f153f4d09cabe60faae8fbc30e4732d3))
+* **guest-agent:** skip storages api when memory unchanged since boot ([#9921](https://github.com/vm0-ai/vm0/issues/9921)) ([e33ec2c](https://github.com/vm0-ai/vm0/commit/e33ec2c6faf747b3d1e6c68796d35f501c4bc218))
+
 ## [0.21.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.2...guest-agent-v0.21.3) (2026-04-17)
 
 

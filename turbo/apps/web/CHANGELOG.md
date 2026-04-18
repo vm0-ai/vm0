@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.255.3](https://github.com/vm0-ai/vm0/compare/web-v12.255.2...web-v12.255.3) (2026-04-18)
+
+
+### Bug Fixes
+
+* **zero:** notify chat thread on run cancel and failure ([#9926](https://github.com/vm0-ai/vm0/issues/9926)) ([f67c064](https://github.com/vm0-ai/vm0/commit/f67c0644bec9f418d2710f039350e98291bc8cab))
+
+
+### Refactoring
+
+* drop thread/run-updated/tasks realtime signals, poll in non-chat views ([#9920](https://github.com/vm0-ai/vm0/issues/9920)) ([#9935](https://github.com/vm0-ai/vm0/issues/9935)) ([312eefb](https://github.com/vm0-ai/vm0/commit/312eefb33f74d1cd3619fd44a3c716c30c87f3b0))
+
 ## [12.255.2](https://github.com/vm0-ai/vm0/compare/web-v12.255.1...web-v12.255.2) (2026-04-18)
 
 
