@@ -41,8 +41,8 @@ def log_proxy_entry(proxy_log_path: str, level: str, message: str, **extra: obje
             os.write(fd, (json.dumps(entry) + "\n").encode())
         finally:
             os.close(fd)
-    except Exception:
-        pass
+    except Exception as e:
+        ctx.log.warn(f"Failed to write proxy log: {e}")
 
 
 def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
