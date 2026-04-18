@@ -102,6 +102,7 @@
     "generate:metabase": "tsx src/index.ts metabase",
     "generate:meta-ads": "tsx src/index.ts meta-ads",
     "generate:minimax": "tsx src/index.ts minimax",
+    "generate:mixpanel": "tsx src/index.ts mixpanel",
     "generate:monday": "tsx src/index.ts monday",
     "generate:neon": "tsx src/index.ts neon",
     "generate:notion": "tsx src/index.ts notion",

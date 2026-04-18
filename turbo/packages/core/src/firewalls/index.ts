@@ -106,6 +106,7 @@ import { mercuryFirewall } from "./mercury.generated";
 import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
 import { minimaxFirewall } from "./minimax.generated";
+import { mixpanelFirewall } from "./mixpanel.generated";
 import { mondayFirewall } from "./monday.generated";
 import { msg9Firewall } from "./msg9.generated";
 import { neonFirewall } from "./neon.generated";
@@ -260,6 +261,7 @@ const CONNECTOR_FIREWALLS = {
   metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,
   minimax: minimaxFirewall,
+  mixpanel: mixpanelFirewall,
   monday: mondayFirewall,
   msg9: msg9Firewall,
   neon: neonFirewall,

@@ -85,6 +85,7 @@ import { metabaseHandler } from "./providers/metabase-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { minioHandler } from "./providers/minio-handler";
 import { minimaxHandler } from "./providers/minimax-handler";
+import { mixpanelHandler } from "./providers/mixpanel-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { msg9Handler } from "./providers/msg9-handler";
 import { neonHandler } from "./providers/neon-handler";
@@ -228,6 +229,7 @@ export const PROVIDER_HANDLERS: Record<
   mercury: mercuryHandler,
   minio: minioHandler,
   minimax: minimaxHandler,
+  mixpanel: mixpanelHandler,
   monday: mondayHandler,
   msg9: msg9Handler,
   neon: neonHandler,
