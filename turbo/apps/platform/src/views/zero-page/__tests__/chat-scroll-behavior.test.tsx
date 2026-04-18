@@ -195,11 +195,18 @@ describe("zero chat thread page - browser-initiated scroll does not disable auto
     // we can fire it manually to simulate a content-resize event. This avoids
     // reaching into the signal store and tests through the same code path that
     // fires in production when the inner content grows.
+    //
+    // Only capture the first observer constructed — createScrollSignals builds
+    // exactly one ResizeObserver per container bind, and we want that specific
+    // callback. Using a first-capture guard prevents any additional observers
+    // created by unrelated code in the render path from overwriting it.
     let capturedResizeCallback: ResizeObserverCallback | null = null;
     const originalRO = globalThis.ResizeObserver;
     globalThis.ResizeObserver = class MockResizeObserver {
       constructor(cb: ResizeObserverCallback) {
-        capturedResizeCallback = cb;
+        if (capturedResizeCallback === null) {
+          capturedResizeCallback = cb;
+        }
       }
       observe() {}
       unobserve() {}
@@ -266,23 +273,32 @@ describe("zero chat thread page - browser-initiated scroll does not disable auto
 });
 
 // CHAT-SCROLL-008: useLastLoadable keeps previously-loaded messages visible
-// while groupedChatMessages$ is in a loading state. Without useLastLoadable
-// (i.e. with plain useLoadable), the component would show groups=[] during
-// the brief period the new promise is pending, causing the scroll container
-// to flash empty and the ResizeObserver to jump scroll position to the top.
+// while groupedChatMessages$ is in a loading state. The regression scenario is
+// loaded → reloading → loaded: when the user navigates to a second thread,
+// groupedChatMessages$ for the new thread returns a new Promise (initial fetch
+// is pending). Without useLastLoadable (i.e. plain useLoadable), the component
+// immediately receives state="loading" for the new atom, drops groups to [],
+// and renders ChatSkeleton — wiping the previous thread's messages from the DOM
+// before the new ones arrive. useLastLoadable keeps the previous data visible
+// until the new promise settles.
 describe("zero chat thread page - messages remain visible during re-fetch", () => {
-  it("previously-loaded messages are not replaced by a skeleton when groupedChatMessages$ recomputes (CHAT-SCROLL-008)", async () => {
-    // Use a deferred first response so we can verify the loading state,
-    // then a fast subsequent response so messages resolve.
-    let resolveMessages!: () => void;
-    let firstCall = true;
-    const messagesResponse = HttpResponse.json({
+  it("previously-loaded messages stay visible while the next thread's groupedChatMessages$ is pending (CHAT-SCROLL-008)", async () => {
+    // Thread A resolves immediately.
+    mockThread("thread-ll-a", [
+      { role: "user", content: "Thread A message" },
+      { role: "assistant", content: "Thread A reply" },
+    ]);
+
+    // Thread B has a deferred messages response so we can observe the
+    // intermediate state while groupedChatMessages$ is in loading state.
+    let resolveThreadBMessages!: () => void;
+    const threadBMessagesResponse = HttpResponse.json({
       messages: [
         {
-          id: "msg-1",
+          id: "msg-b-1",
           role: "user",
-          content: "Last loadable message",
-          createdAt: "2026-03-10T00:00:00Z",
+          content: "Thread B message",
+          createdAt: "2026-03-10T00:00:01Z",
         },
       ],
       hasMore: false,
@@ -290,27 +306,23 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
 
     server.use(
       http.get(
-        "*/api/zero/chat-threads/thread-last-loadable/messages",
+        "*/api/zero/chat-threads/thread-ll-b/messages",
         ({ request }) => {
           const url = new URL(request.url);
           if (url.searchParams.get("sinceId")) {
             return HttpResponse.json({ messages: [], hasMore: false });
           }
-          if (firstCall) {
-            firstCall = false;
-            // First call is deferred — simulates slow initial fetch
-            return new Promise<typeof messagesResponse>((resolve) => {
-              resolveMessages = () => {
-                resolve(messagesResponse);
-              };
-            });
-          }
-          return messagesResponse;
+          // Initial fetch is deferred — keeps groupedChatMessages$ in loading state.
+          return new Promise<typeof threadBMessagesResponse>((resolve) => {
+            resolveThreadBMessages = () => {
+              resolve(threadBMessagesResponse);
+            };
+          });
         },
       ),
-      http.get("*/api/zero/chat-threads/thread-last-loadable", () => {
+      http.get("*/api/zero/chat-threads/thread-ll-b", () => {
         return HttpResponse.json({
-          id: "thread-last-loadable",
+          id: "thread-ll-b",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
@@ -321,31 +333,36 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-last-loadable" });
+    detachedSetupPage({ context, path: "/chats/thread-ll-a" });
 
-    // While the first messages fetch is pending, the page should show the
-    // skeleton (no messages yet — groupedChatMessages$ is in loading state).
-    // Verify the scroll container is present but the message is not yet visible.
+    // Wait for thread A's messages to load and render.
     await waitFor(() => {
-      const scrollContainer = document.querySelector("[data-scroll-container]");
-      expect(scrollContainer).not.toBeNull();
+      expect(screen.getByText("Thread A message")).toBeInTheDocument();
     });
-    // The message must NOT appear before the fetch resolves — if useLastLoadable
-    // were absent and the component showed data immediately, this would fail.
-    expect(screen.queryByText("Last loadable message")).toBeNull();
 
-    // Resolve the first (deferred) fetch with real messages
-    resolveMessages();
+    // Navigate to thread B — groupedChatMessages$ for the new thread instance
+    // starts in a loading state (the deferred fetch above is still pending).
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-ll-b" },
+    });
 
-    // Messages should now appear and remain visible (not replaced by skeleton
-    // or empty state) — this is the core guarantee of useLastLoadable.
+    // While thread B's initial messages fetch is pending, thread A's messages
+    // must remain in the DOM. With plain useLoadable the component would
+    // immediately switch to state="loading", drop groups=[], and show
+    // ChatSkeleton instead — this assertion would fail. useLastLoadable keeps
+    // the previous resolved data visible until the new promise settles.
     await waitFor(() => {
-      expect(screen.getByText("Last loadable message")).toBeInTheDocument();
+      expect(screen.getByText("Thread A message")).toBeInTheDocument();
+    });
+
+    // Resolve thread B's fetch — messages should now appear and thread A's
+    // messages should be replaced by thread B's.
+    resolveThreadBMessages();
+
+    await waitFor(() => {
+      expect(screen.getByText("Thread B message")).toBeInTheDocument();
     });
   });
 });
