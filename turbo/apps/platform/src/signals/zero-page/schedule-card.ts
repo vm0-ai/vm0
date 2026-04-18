@@ -81,6 +81,7 @@ export const openEditScheduleDialog$ = command(
     set(editingScheduleIdState$, id);
     set(initDialogForm$, initialValues);
     await set(fetchSlackChannels$, signal);
+    signal.throwIfAborted();
   },
 );
 

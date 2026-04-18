@@ -162,7 +162,7 @@ async function openEditDialog(user: ReturnType<typeof userEvent.setup>) {
 
 function getOpenListboxOption(text: string): HTMLElement {
   const listbox = screen.getByRole("listbox");
-  return within(listbox).getByText(text);
+  return within(listbox).getByRole("option", { name: text });
 }
 
 async function switchFrequency(

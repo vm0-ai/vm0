@@ -39,11 +39,15 @@ export const openCreateScheduleDialog$ = command(
       get(zeroOnboardingStatus$),
     ]);
     signal.throwIfAborted();
+    const agentId = status?.defaultAgentId ?? allAgents[0]?.id;
+    if (!agentId) {
+      return;
+    }
     const defaults = createDefaultFormData();
     set(initDialogForm$, {
       ...defaults,
       timezone: prefs?.timezone ?? defaults.timezone,
-      agentId: status?.defaultAgentId ?? allAgents[0]?.id ?? "",
+      agentId,
     });
     set(internalCreateDialogOpen$, true);
   },
