@@ -215,7 +215,7 @@ function NewChatButton({ pageSignal }: { pageSignal: AbortSignal }) {
       data-testid="chat-header-new-button"
     >
       <IconPlus size={14} stroke={1.5} />
-      NEW
+      New
     </Button>
   );
 }
