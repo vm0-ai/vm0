@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.249.1](https://github.com/vm0-ai/vm0/compare/app-v0.249.0...app-v0.249.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* show pin button on touch devices in Talk to and Manage pinned dialogs ([#9902](https://github.com/vm0-ai/vm0/issues/9902)) ([6c293f0](https://github.com/vm0-ai/vm0/commit/6c293f07bb18907af28733130b11cb0871301db5))
+* **zero:** apollo connector icon invisible in dark mode ([#9907](https://github.com/vm0-ai/vm0/issues/9907)) ([70a04b6](https://github.com/vm0-ai/vm0/commit/70a04b6380307672bdb126b7c4f880e22c5755c3)), closes [#9906](https://github.com/vm0-ai/vm0/issues/9906)
+
 ## [0.249.0](https://github.com/vm0-ai/vm0/compare/app-v0.248.0...app-v0.249.0) (2026-04-18)
 
 
