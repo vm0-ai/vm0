@@ -2438,6 +2438,18 @@ const CONNECTOR_TYPES_DEF = {
           },
         },
       },
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to your [Stripe Dashboard](https://dashboard.stripe.com/apikeys)\n2. Go to **Developers > API keys**\n3. Reveal the **Secret key** (starts with `sk_live_` or `sk_test_`) or create a **Restricted key** (`rk_live_...`) with the scopes you need\n4. Copy the key",
+        secrets: {
+          STRIPE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk_live_...",
+          },
+        },
+      },
     },
     defaultAuthMethod: "oauth",
     oauth: {
