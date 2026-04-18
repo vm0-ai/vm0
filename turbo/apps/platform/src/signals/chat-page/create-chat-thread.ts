@@ -1,5 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { delay } from "signal-timers";
+import { animationFrame, delay } from "signal-timers";
 import { onRef, resetSignal } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
@@ -599,6 +599,7 @@ function createRunTracking(
   reloadThread$: Command<void, []>,
   threadData$: Computed<Promise<ChatThread | null>>,
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>,
+  autoScroll$: Command<void, []>,
 ) {
   const allFinished$ = computed(async (get) => {
     const thread = await get(threadData$);
@@ -624,6 +625,12 @@ function createRunTracking(
 
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
         await set(fetchNextPage$, sig);
+        animationFrame(
+          () => {
+            set(autoScroll$);
+          },
+          { signal },
+        );
         return false;
       });
 
@@ -721,6 +728,7 @@ export function createChatThreadSignals(
     reloadThread$,
     threadData$,
     fetchNextPage$,
+    autoScroll$,
   );
 
   const sendMessage$ = command(
@@ -751,6 +759,12 @@ export function createChatThreadSignals(
         content: result.fullPrompt,
         createdAt: new Date().toISOString(),
       });
+      animationFrame(
+        () => {
+          set(scrollToBottom$);
+        },
+        { signal },
+      );
 
       const client = get(zeroClient$)(chatMessagesContract);
       const [, sendResult] = await Promise.all([
