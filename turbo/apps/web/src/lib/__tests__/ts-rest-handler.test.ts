@@ -1,6 +1,21 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const captureException = vi.fn();
+vi.mock("@sentry/nextjs", () => {
+  return {
+    captureException: (...args: unknown[]) => {
+      return captureException(...args);
+    },
+    flush: vi.fn().mockResolvedValue(true),
+  };
+});
+
 import { createSafeErrorHandler } from "../ts-rest-handler";
 import { badRequest, notFound, forbidden } from "../shared/errors";
+
+beforeEach(() => {
+  captureException.mockReset();
+});
 
 describe("createSafeErrorHandler", () => {
   const handler = createSafeErrorHandler("test-route");
@@ -39,5 +54,24 @@ describe("createSafeErrorHandler", () => {
     const body = await response!.json();
     expect(body.error.code).toBe("INTERNAL_ERROR");
     expect(body.error.message).not.toContain("database");
+  });
+
+  it("reports unknown 5xx errors to Sentry with route tag", () => {
+    const err = new Error("db timeout");
+    handler(err);
+    expect(captureException).toHaveBeenCalledTimes(1);
+    const [capturedErr, ctx] = captureException.mock.calls[0];
+    expect(capturedErr).toBe(err);
+    expect(ctx).toMatchObject({
+      tags: { route: "test-route" },
+      mechanism: { type: "ts-rest-handler", handled: true },
+    });
+  });
+
+  it("does NOT report typed ApiError (4xx) to Sentry", () => {
+    handler(badRequest("bad input"));
+    handler(notFound("missing"));
+    handler(forbidden("nope"));
+    expect(captureException).not.toHaveBeenCalled();
   });
 });
