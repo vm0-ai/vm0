@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.250.0](https://github.com/vm0-ai/vm0/compare/app-v0.249.1...app-v0.250.0) (2026-04-18)
+
+
+### Features
+
+* **platform:** show voice chat status badge inline with title ([#9915](https://github.com/vm0-ai/vm0/issues/9915)) ([acd03cd](https://github.com/vm0-ai/vm0/commit/acd03cd79e3a863dca2b3f47a3227f8a6b5be9ed))
+
 ## [0.249.1](https://github.com/vm0-ai/vm0/compare/app-v0.249.0...app-v0.249.1) (2026-04-18)
 
 

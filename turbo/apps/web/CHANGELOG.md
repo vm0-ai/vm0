@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.255.2](https://github.com/vm0-ai/vm0/compare/web-v12.255.1...web-v12.255.2) (2026-04-18)
+
+
+### Bug Fixes
+
+* **developer-support:** isolate per-run failures in activity log assembly ([#9851](https://github.com/vm0-ai/vm0/issues/9851)) ([2c9d52d](https://github.com/vm0-ai/vm0/commit/2c9d52d5372b2ec9142368069838dba466467241))
+
 ## [12.255.1](https://github.com/vm0-ai/vm0/compare/web-v12.255.0...web-v12.255.1) (2026-04-18)
 
 
