@@ -41,6 +41,7 @@ import { axiomFirewall } from "./axiom.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brevoFirewall } from "./brevo.generated";
+import { bufferFirewall } from "./buffer.generated";
 import { brightDataFirewall } from "./bright-data.generated";
 import { browserbaseFirewall } from "./browserbase.generated";
 import { browserlessFirewall } from "./browserless.generated";
@@ -193,6 +194,7 @@ const CONNECTOR_FIREWALLS = {
   bitrix: bitrixFirewall,
   "brave-search": braveSearchFirewall,
   brevo: brevoFirewall,
+  buffer: bufferFirewall,
   "bright-data": brightDataFirewall,
   browserbase: browserbaseFirewall,
   browserless: browserlessFirewall,
