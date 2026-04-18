@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@clerk/testing':
-        specifier: ^2.0.12
-        version: 2.0.16(@playwright/test@1.59.1)
+        specifier: ^2.0.17
+        version: 2.0.17(@playwright/test@1.59.1)
       '@playwright/test':
         specifier: ^1.59.1
         version: 1.59.1
@@ -27,8 +27,8 @@ importers:
 
 packages:
 
-  '@clerk/backend@3.2.12':
-    resolution: {integrity: sha512-pTuD3+3IvLrjx9XMYdbqpttTltrWc7npxkOIDzhtID5/+IOomxZAzsnxU1G1hvOeBoR1Jl68ZgKQw66aZ+DRFQ==}
+  '@clerk/backend@3.2.13':
+    resolution: {integrity: sha512-E4ir94gs9Cxh+v20SGVLXblb0coVUd2La5o1Lmz7olNOBimMEsZ7T6MpGFNJveEH1sQ+HhSf1a1uLm9pMiK/tg==}
     engines: {node: '>=20.9.0'}
 
   '@clerk/shared@4.8.2':
@@ -43,8 +43,8 @@ packages:
       react-dom:
         optional: true
 
-  '@clerk/testing@2.0.16':
-    resolution: {integrity: sha512-w+wJiGjcc7I0hATgAR32AJPyTIr6k85WMmBBUyWWwKUKyQPCUg5gN1I+adnrEDXC2XUAyFxu0AEC4YADWkRXqA==}
+  '@clerk/testing@2.0.17':
+    resolution: {integrity: sha512-jUnBMlJafcCNyuJzLiFY+uK9nRmhxG0vlDq052dl0Oy3DvpIya5f6GySetPr8/KO5HrcVoxH/hZLmhoZicJ6/A==}
     engines: {node: '>=20.9.0'}
     peerDependencies:
       '@playwright/test': ^1
@@ -297,7 +297,7 @@ packages:
 
 snapshots:
 
-  '@clerk/backend@3.2.12':
+  '@clerk/backend@3.2.13':
     dependencies:
       '@clerk/shared': 4.8.2
       standardwebhooks: 1.0.0
@@ -314,9 +314,9 @@ snapshots:
       js-cookie: 3.0.5
       std-env: 3.10.0
 
-  '@clerk/testing@2.0.16(@playwright/test@1.59.1)':
+  '@clerk/testing@2.0.17(@playwright/test@1.59.1)':
     dependencies:
-      '@clerk/backend': 3.2.12
+      '@clerk/backend': 3.2.13
       '@clerk/shared': 4.8.2
       dotenv: 17.2.2
     optionalDependencies:
