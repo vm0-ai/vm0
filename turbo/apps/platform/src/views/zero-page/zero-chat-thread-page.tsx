@@ -6,6 +6,7 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   IconAlertCircle,
   IconLoader2,
@@ -307,6 +308,7 @@ function ChatThreadComposer({
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const handleInputChange = (text: string) => {
     setInput(text);
@@ -319,7 +321,9 @@ function ChatThreadComposer({
 
   const handleSend = (text: string) => {
     setInput("");
-    detach(send(text, pageSignal), Reason.DomCallback);
+    // Use rootSignal so in-run page navigation (e.g. IPA internal nav) doesn't
+    // cancel the pending send.
+    detach(send(text, rootSignal), Reason.DomCallback);
   };
 
   return (
