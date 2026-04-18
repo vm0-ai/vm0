@@ -90,9 +90,10 @@ export default [
       "ccstate/prefer-user-event": [
         "error",
         {
-          // scroll events cannot be simulated by userEvent; allow dispatchEvent
-          // with new Event("scroll") for tests that verify auto-scroll behaviour.
-          allowedEventTypes: ["scroll"],
+          // scroll and wheel events cannot be simulated by userEvent; allow
+          // dispatchEvent with these event types for tests that verify
+          // auto-scroll behaviour (including the user-input gate check).
+          allowedEventTypes: ["scroll", "wheel"],
         },
       ],
       "ccstate/no-test-delay": "error",

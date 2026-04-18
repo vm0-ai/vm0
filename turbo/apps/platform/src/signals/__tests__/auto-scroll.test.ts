@@ -85,9 +85,12 @@ describe("createScrollSignals - autoScroll$ gate", () => {
     const { setScrollContainer$, autoScroll$ } = createScrollSignals();
     context.store.set(setScrollContainer$, container);
 
-    // Simulate user scrolling down then up to disable auto-scroll
+    // Simulate user scrolling down then up to disable auto-scroll.
+    // Fire a wheel event first so the scroll listener recognizes the
+    // subsequent decrease in scrollTop as a genuine user interaction.
     container.scrollTop = 500;
     container.dispatchEvent(new Event("scroll"));
+    container.dispatchEvent(new Event("wheel"));
     container.scrollTop = 200;
     container.dispatchEvent(new Event("scroll"));
 
@@ -151,9 +154,10 @@ describe("createScrollSignals - scrollToBottom$ unconditional", () => {
     const { setScrollContainer$, scrollToBottom$ } = createScrollSignals();
     context.store.set(setScrollContainer$, container);
 
-    // Disable auto-scroll by scrolling up
+    // Disable auto-scroll by scrolling up (with wheel event to mimic real user input)
     container.scrollTop = 500;
     container.dispatchEvent(new Event("scroll"));
+    container.dispatchEvent(new Event("wheel"));
     container.scrollTop = 200;
     container.dispatchEvent(new Event("scroll"));
 
