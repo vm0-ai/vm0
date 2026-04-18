@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@clerk/testing':
-        specifier: ^2.0.12
-        version: 2.0.16(@playwright/test@1.59.1)
+        specifier: ^2.0.17
+        version: 2.0.17(@playwright/test@1.59.1)
       '@playwright/test':
         specifier: ^1.59.1
         version: 1.59.1
@@ -18,8 +18,8 @@ importers:
         specifier: ^25.6.0
         version: 25.6.0
       dotenv:
-        specifier: ^17.4.1
-        version: 17.4.1
+        specifier: ^17.4.2
+        version: 17.4.2
     devDependencies:
       tsx:
         specifier: ^4.21.0
@@ -27,8 +27,8 @@ importers:
 
 packages:
 
-  '@clerk/backend@3.2.12':
-    resolution: {integrity: sha512-pTuD3+3IvLrjx9XMYdbqpttTltrWc7npxkOIDzhtID5/+IOomxZAzsnxU1G1hvOeBoR1Jl68ZgKQw66aZ+DRFQ==}
+  '@clerk/backend@3.2.13':
+    resolution: {integrity: sha512-E4ir94gs9Cxh+v20SGVLXblb0coVUd2La5o1Lmz7olNOBimMEsZ7T6MpGFNJveEH1sQ+HhSf1a1uLm9pMiK/tg==}
     engines: {node: '>=20.9.0'}
 
   '@clerk/shared@4.8.2':
@@ -43,8 +43,8 @@ packages:
       react-dom:
         optional: true
 
-  '@clerk/testing@2.0.16':
-    resolution: {integrity: sha512-w+wJiGjcc7I0hATgAR32AJPyTIr6k85WMmBBUyWWwKUKyQPCUg5gN1I+adnrEDXC2XUAyFxu0AEC4YADWkRXqA==}
+  '@clerk/testing@2.0.17':
+    resolution: {integrity: sha512-jUnBMlJafcCNyuJzLiFY+uK9nRmhxG0vlDq052dl0Oy3DvpIya5f6GySetPr8/KO5HrcVoxH/hZLmhoZicJ6/A==}
     engines: {node: '>=20.9.0'}
     peerDependencies:
       '@playwright/test': ^1
@@ -233,8 +233,8 @@ packages:
     resolution: {integrity: sha512-Sf2LSQP+bOlhKWWyhFsn0UsfdK/kCWRv1iuA2gXAwt3dyNabr6QSj00I2V10pidqz69soatm9ZwZvpQMTIOd5Q==}
     engines: {node: '>=12'}
 
-  dotenv@17.4.1:
-    resolution: {integrity: sha512-k8DaKGP6r1G30Lx8V4+pCsLzKr8vLmV2paqEj1Y55GdAgJuIqpRp5FfajGF8KtwMxCz9qJc6wUIJnm053d/WCw==}
+  dotenv@17.4.2:
+    resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
 
   esbuild@0.27.2:
@@ -297,7 +297,7 @@ packages:
 
 snapshots:
 
-  '@clerk/backend@3.2.12':
+  '@clerk/backend@3.2.13':
     dependencies:
       '@clerk/shared': 4.8.2
       standardwebhooks: 1.0.0
@@ -314,9 +314,9 @@ snapshots:
       js-cookie: 3.0.5
       std-env: 3.10.0
 
-  '@clerk/testing@2.0.16(@playwright/test@1.59.1)':
+  '@clerk/testing@2.0.17(@playwright/test@1.59.1)':
     dependencies:
-      '@clerk/backend': 3.2.12
+      '@clerk/backend': 3.2.13
       '@clerk/shared': 4.8.2
       dotenv: 17.2.2
     optionalDependencies:
@@ -419,7 +419,7 @@ snapshots:
 
   dotenv@17.2.2: {}
 
-  dotenv@17.4.1: {}
+  dotenv@17.4.2: {}
 
   esbuild@0.27.2:
     optionalDependencies:
