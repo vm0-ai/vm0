@@ -15,6 +15,7 @@ import { apifyHandler } from "./providers/apify-handler";
 import { pikaHandler } from "./providers/pika-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
+import { attioHandler } from "./providers/attio-handler";
 import { atlassianHandler } from "./providers/atlassian-handler";
 import { bitrixHandler } from "./providers/bitrix-handler";
 import { braveSearchHandler } from "./providers/brave-search-handler";
@@ -162,6 +163,7 @@ export const PROVIDER_HANDLERS: Record<
   pika: pikaHandler,
   axiom: axiomHandler,
   asana: asanaHandler,
+  attio: attioHandler,
   atlassian: atlassianHandler,
   bitrix: bitrixHandler,
   "brave-search": braveSearchHandler,

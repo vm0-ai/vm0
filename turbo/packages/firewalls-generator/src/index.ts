@@ -14,6 +14,7 @@ import { generate as generateAirtable } from "./airtable";
 import { generate as generateApollo } from "./apollo";
 import { generate as generateApify } from "./apify";
 import { generate as generateAsana } from "./asana";
+import { generate as generateAttio } from "./attio";
 import { generate as generateAtlassian } from "./atlassian";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBitrix } from "./bitrix";
@@ -148,6 +149,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   apollo: generateApollo,
   apify: generateApify,
   asana: generateAsana,
+  attio: generateAttio,
   atlassian: generateAtlassian,
   axiom: generateAxiom,
   bitrix: generateBitrix,
