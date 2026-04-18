@@ -153,7 +153,7 @@ export async function submitDiagnosticBundle(
           runId: r.id,
           error: String(err),
         });
-        return { error: String(err), runId: r.id };
+        return { ok: false as const, error: String(err), runId: r.id };
       });
     }),
   );

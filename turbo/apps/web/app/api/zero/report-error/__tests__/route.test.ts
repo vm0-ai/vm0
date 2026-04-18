@@ -576,16 +576,21 @@ describe("POST /api/zero/report-error", () => {
     );
 
     // Force per-run failure for the first run by returning a non-array from
-    // the agent-events Axiom query — assembleActivityLog then throws on
-    // events.map(...) and the bundle must isolate that failure.
-    // Call order: bundle (3 calls: agentEvents, systemLog, networkLog),
-    // then per run (3 calls each: queryAgentEvents, queryNetworkLogs,
-    // queryRunContext). Index 4 is run[0]'s queryAgentEvents.
-    context.mocks.axiom.queryAxiom
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce(null as unknown as never[]);
+    // the per-run agent-events Axiom query — assembleActivityLog then throws
+    // on events.map(...) and the bundle must isolate that failure.
+    //
+    // The per-run query uses `runId == "<id>"` (exact match on a single run),
+    // while the bundle-level agentEvents query uses `runId in (...)`. We
+    // discriminate on that semantic difference rather than hand-counting call
+    // order so the test stays pinned to the right invocation even if future
+    // refactors reorder axiom queries.
+    const STALE_AXIOM_RESPONSE = null as unknown as never[];
+    context.mocks.axiom.queryAxiom.mockImplementation(async (apl: string) => {
+      if (apl.includes(`runId == "${firstRunId}"`) && apl.includes("agent")) {
+        return STALE_AXIOM_RESPONSE;
+      }
+      return [];
+    });
 
     const response = await postReportError({
       runId: failedRunId,
@@ -605,10 +610,11 @@ describe("POST /api/zero/report-error", () => {
       return JSON.parse(e.getData().toString("utf-8"));
     });
     const erroredEntry = contents.find((c) => {
-      return typeof c.error === "string";
+      return c.ok === false;
     });
     expect(erroredEntry).toBeDefined();
     expect(erroredEntry.runId).toBe(firstRunId);
+    expect(typeof erroredEntry.error).toBe("string");
   });
 
   // -------------------------------------------------------------------------
