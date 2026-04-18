@@ -35,6 +35,13 @@ pub async fn ensure(home: &HomePaths) -> RunnerResult<()> {
     // Symlink guard + unconditional chmod to migrate legacy `0o755` dirs.
     // The symlink check prevents an attacker-placed symlink from redirecting
     // our chmod at an arbitrary path.
+    //
+    // TOCTOU note: there's a tiny window between `symlink_metadata` and
+    // `set_permissions` where `ca_dir` could in principle be swapped for a
+    // symlink. We accept this because the parent dir (`/var/lib/vm0-runner/`)
+    // is runner-owned in deployed configurations — a local attacker who can
+    // write to the parent has already escalated past the trust boundary this
+    // check is defending.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
