@@ -171,50 +171,29 @@ describe("chat page keyboard shortcuts", () => {
       }),
     );
 
-    // Force a non-zero scrollHeight on the container as soon as it mounts so
-    // we can observe scrollToBottom$ setting scrollTop = scrollHeight.
-    const observer = new MutationObserver(() => {
-      const el = document.querySelector<HTMLElement>("[data-scroll-container]");
-      if (!el) {
-        return;
-      }
-      Object.defineProperty(el, "scrollHeight", {
-        get: () => {
-          return 1200;
-        },
-        configurable: true,
-      });
-      Object.defineProperty(el, "clientHeight", {
-        get: () => {
-          return 400;
-        },
-        configurable: true,
-      });
+    detachedSetupPage({ context, path: "/chats/thread-scroll" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scroll shortcut test")).toBeInTheDocument();
     });
-    observer.observe(document.body, { childList: true, subtree: true });
 
-    try {
-      detachedSetupPage({ context, path: "/chats/thread-scroll" });
+    const scrollContainer = document.querySelector<HTMLElement>(
+      "[data-scroll-container]",
+    );
+    expect(scrollContainer).not.toBeNull();
 
-      await waitFor(() => {
-        expect(screen.getByText("Scroll shortcut test")).toBeInTheDocument();
-      });
+    // Patch scrollHeight to a non-zero value so scrollToBottom$ sets
+    // scrollTop = scrollHeight. In JSDOM scrollHeight is always 0.
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      get: () => 1200,
+      configurable: true,
+    });
+    scrollContainer!.scrollTop = 0;
+    await user.keyboard("{Control>}{ArrowDown}{/Control}");
 
-      const scrollContainer = document.querySelector<HTMLElement>(
-        "[data-scroll-container]",
-      );
-      expect(scrollContainer).not.toBeNull();
-
-      // Reset to top, then fire the shortcut.
-      scrollContainer!.scrollTop = 0;
-      await user.keyboard("{Control>}{ArrowDown}{/Control}");
-
-      await waitFor(() => {
-        expect(scrollContainer!.scrollTop).toBe(1200);
-      });
-    } finally {
-      observer.disconnect();
-    }
+    await waitFor(() => {
+      expect(scrollContainer!.scrollTop).toBe(1200);
+    });
   });
 
   it("mod+up scrolls the message list to the top", async () => {
