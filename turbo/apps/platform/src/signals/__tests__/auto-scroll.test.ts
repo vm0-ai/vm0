@@ -372,4 +372,79 @@ describe("createScrollSignals - scroll position persistence", () => {
     context.store.set(scrollToBottom$);
     expect(second.scrollTop).toBe(1000);
   });
+
+  it("restores saved position when ResizeObserver fires before scrollToBottom$ (VC-SCROLL-011)", () => {
+    const threadId = `thread-${Math.random().toString(36).slice(2)}`;
+
+    // Seed a saved position against a normal-sized container.
+    const first = mountContainer(threadId);
+    {
+      const { setScrollContainer$ } = createScrollSignals(threadId);
+      context.store.set(setScrollContainer$, first);
+
+      first.scrollTop = 700;
+      first.dispatchEvent(new Event("scroll"));
+      first.dispatchEvent(new Event("wheel"));
+      first.scrollTop = 250;
+      first.dispatchEvent(new Event("scroll"));
+    }
+
+    // Simulate the real chat-page flow: ResizeObserver fires as messages
+    // render — BEFORE the caller gets to invoke scrollToBottom$ (which is
+    // awaited behind groupedChatMessages$ in chat-page-setup).
+    let roCallback: ResizeObserverCallback | null = null;
+    const originalRO = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) {
+        roCallback = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+
+    try {
+      const second = document.createElement("div");
+      const inner = document.createElement("div");
+      second.appendChild(inner);
+      document.body.appendChild(second);
+
+      let scrollHeight = 300;
+      Object.defineProperty(second, "scrollHeight", {
+        get: () => {
+          return scrollHeight;
+        },
+        configurable: true,
+      });
+      Object.defineProperty(second, "clientHeight", {
+        get: () => {
+          return 300;
+        },
+        configurable: true,
+      });
+
+      const { setScrollContainer$, scrollToBottom$ } =
+        createScrollSignals(threadId);
+      context.store.set(setScrollContainer$, second);
+
+      // Messages render, ResizeObserver fires. Must NOT scroll to bottom
+      // (which would trigger onScroll → clearCachedScrollTop and wipe the
+      // restore target).
+      scrollHeight = 1000;
+      if (!roCallback) {
+        throw new Error("ResizeObserver callback not captured");
+      }
+      (roCallback as ResizeObserverCallback)(
+        [],
+        {} as unknown as ResizeObserver,
+      );
+
+      // chat-page-setup fires scrollToBottom$ after awaiting messages.
+      context.store.set(scrollToBottom$);
+
+      expect(second.scrollTop).toBe(250);
+    } finally {
+      globalThis.ResizeObserver = originalRO;
+    }
+  });
 });
