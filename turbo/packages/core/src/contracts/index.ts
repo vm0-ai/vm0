@@ -850,3 +850,10 @@ export {
   zeroPhoneSetupContract,
   type PhoneStatusResponse,
 } from "./zero-phone";
+export {
+  zeroIntegrationsTelegramContract,
+  type ZeroIntegrationsTelegramContract,
+  type TelegramStatusResponse,
+  type TelegramRegisterResponse,
+  type TelegramLinkStatusResponse,
+} from "./zero-integrations-telegram";
