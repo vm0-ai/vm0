@@ -107,6 +107,8 @@
     "apps/web/src/lib/infra/storage/volume-upload.ts",
     "scripts/rebuild-snapshots.ts",
     "scripts/rebuild-snapshots-from-db.ts",
+    "scripts/analyze-cpuprofile.mjs",
+    "scripts/analyze-call-frequency.mjs",
     "apps/web/scripts/migrations/001-backfill-clerk-orgs/**",
     "apps/web/scripts/migrations/002-backfill-clerk-metadata/**",
     "apps/web/scripts/migrations/003-sync-clerk-slugs/**",

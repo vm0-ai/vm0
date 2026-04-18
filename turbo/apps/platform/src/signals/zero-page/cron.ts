@@ -2,6 +2,8 @@
 // Shared cron / one-time schedule utilities
 // ---------------------------------------------------------------------------
 
+import { getGmtOffset } from "@vm0/core";
+
 type ScheduleTimeOption =
   | "every-weekday"
   | "every-day"
@@ -116,18 +118,6 @@ const TIMEZONE_LABELS: Readonly<Record<string, string>> = Object.freeze({
   "Australia/Sydney": "Australian Eastern Time (AET)",
   "Pacific/Auckland": "New Zealand Time (NZST)",
 });
-
-function getGmtOffset(iana: string): string {
-  const parts = new Intl.DateTimeFormat("en", {
-    timeZone: iana,
-    timeZoneName: "longOffset",
-  }).formatToParts(new Date());
-  return (
-    parts.find((p) => {
-      return p.type === "timeZoneName";
-    })?.value ?? "GMT+00:00"
-  );
-}
 
 /** Returns a human-readable label for an IANA timezone string, prefixed with GMT offset. */
 export function getTimezoneLabel(iana: string): string {
