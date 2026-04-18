@@ -130,6 +130,7 @@
     "generate:scrapeninja": "tsx src/index.ts scrapeninja",
     "generate:sentry": "tsx src/index.ts sentry",
     "generate:serpapi": "tsx src/index.ts serpapi",
+    "generate:shopify": "tsx src/index.ts shopify",
     "generate:shortio": "tsx src/index.ts shortio",
     "generate:similarweb": "tsx src/index.ts similarweb",
     "generate:slack": "tsx src/index.ts slack",
