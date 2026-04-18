@@ -855,3 +855,71 @@ async fn send_event_failure_writes_error_flag() {
     // Clean up
     let _ = std::fs::remove_file(flag_path);
 }
+
+// =========================================================================
+// Group 8: final_upload delta semantics
+//
+// These back the parallel-checkpoint-with-catch-up pattern in `main.rs`:
+// on the happy path, the first `final_upload` runs concurrently with
+// `checkpoint::create_checkpoint` and reads the `sandbox_ops` log before
+// checkpoint's sub-op records are written; a second `final_upload` after
+// the join picks up the delta. If `final_upload` ever stopped being
+// incremental — re-reading from offset 0 — that pattern would duplicate
+// records; if position-tracking broke in the other direction, checkpoint
+// sub-ops would be lost entirely.
+// =========================================================================
+
+#[tokio::test]
+async fn final_upload_is_incremental_between_calls() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    // Reset per-run telemetry state so this test drives sandbox_ops
+    // deterministically (other tests in this file don't record sandbox_ops,
+    // but be defensive against cross-test leakage).
+    let ops_file = guest_common::telemetry::sandbox_ops_log();
+    let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+
+    // Two mocks, registered in this order. httpmock matches by ID ascending
+    // and returns the first hit, so `first_op_mock` wins when the payload
+    // contains that substring; `catchup_mock` catches subsequent POSTs.
+    let first_op_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes("first_op");
+        then.status(200);
+    });
+    let catchup_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(200);
+    });
+
+    let masker = SecretMasker::from_raw("");
+
+    // Pre-checkpoint record → parallel-pass upload captures it.
+    guest_common::telemetry::record_sandbox_op("first_op", Duration::from_millis(10), true, None);
+    guest_agent::telemetry::final_upload(&masker)
+        .await
+        .expect("first upload should succeed");
+
+    // Simulates a checkpoint sub-op written AFTER the parallel pass read
+    // the sandbox_ops file. The catch-up must pick it up.
+    guest_common::telemetry::record_sandbox_op("second_op", Duration::from_millis(20), true, None);
+    guest_agent::telemetry::final_upload(&masker)
+        .await
+        .expect("catch-up upload should succeed");
+
+    // The first upload carried `first_op` and matched `first_op_mock`.
+    // The catch-up MUST NOT have carried `first_op` (position tracking
+    // advanced past it) — otherwise `first_op_mock` would have matched
+    // twice and `catchup_mock` zero times.
+    first_op_mock.assert_calls_async(1).await;
+    catchup_mock.assert_calls_async(1).await;
+
+    first_op_mock.delete_async().await;
+    catchup_mock.delete_async().await;
+    let _ = std::fs::remove_file(ops_file);
+    let _ = std::fs::remove_file(pos_file);
+}
