@@ -144,6 +144,7 @@ import { slackWebhookHandler } from "./providers/slack-webhook-handler";
 import { v0Handler } from "./providers/v0-handler";
 import { wixHandler } from "./providers/wix-handler";
 import { zeptomailHandler } from "./providers/zeptomail-handler";
+import { zoomHandler } from "./providers/zoom-handler";
 import { testOauthHandler } from "./providers/test-oauth-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -287,6 +288,7 @@ export const PROVIDER_HANDLERS: Record<
   zapier: zapierHandler,
   zapsign: zapsignHandler,
   zendesk: zendeskHandler,
+  zoom: zoomHandler,
   pdforge: pdforgeHandler,
   "slack-webhook": slackWebhookHandler,
   v0: v0Handler,
