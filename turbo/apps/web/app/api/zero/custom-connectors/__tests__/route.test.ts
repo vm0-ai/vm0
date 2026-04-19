@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
-import { DELETE as DELETE_BY_ID } from "../[id]/route";
+import { DELETE as DELETE_BY_ID, PATCH as PATCH_BY_ID } from "../[id]/route";
 import {
   PUT as PUT_SECRET,
   DELETE as DELETE_SECRET,
@@ -220,6 +220,110 @@ describe("DELETE /api/zero/custom-connectors/:id", () => {
       createTestRequest(url(`/${id}`), { method: "DELETE" }),
     );
     expect(delRes.status).toBe(403);
+  });
+});
+
+describe("PATCH /api/zero/custom-connectors/:id", () => {
+  beforeEach(() => {
+    return context.setupMocks();
+  });
+
+  it("renames a connector as admin", async () => {
+    const userId = uniqueId("zcc-patch");
+    await setupAdminOrg(userId);
+    const created = await createSampleConnector();
+    const { id } = await created.json();
+
+    const res = await PATCH_BY_ID(
+      createTestRequest(url(`/${id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: "Renamed" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBe(id);
+    expect(data.displayName).toBe("Renamed");
+
+    // GET should reflect the rename.
+    const listRes = await GET(createTestRequest(url(), { method: "GET" }));
+    const listData = await listRes.json();
+    expect(listData.connectors[0].displayName).toBe("Renamed");
+  });
+
+  it("rejects non-admin rename", async () => {
+    const adminId = uniqueId("zcc-patch-admin");
+    await setupAdminOrg(adminId);
+    const created = await createSampleConnector();
+    const { id } = await created.json();
+
+    mockClerk({
+      userId: uniqueId("zcc-patch-member"),
+      orgId: `org_mock_${adminId}`,
+      orgRole: "org:member",
+    });
+
+    const res = await PATCH_BY_ID(
+      createTestRequest(url(`/${id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: "Hacked" }),
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for unknown id", async () => {
+    const userId = uniqueId("zcc-patch-404");
+    await setupAdminOrg(userId);
+    const fakeId = "00000000-0000-0000-0000-000000000000";
+
+    const res = await PATCH_BY_ID(
+      createTestRequest(url(`/${fakeId}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: "Whatever" }),
+      }),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when patching a connector from another org", async () => {
+    // Create in org A as admin
+    const adminA = uniqueId("zcc-patch-crossorg-a");
+    await setupAdminOrg(adminA);
+    const created = await createSampleConnector();
+    const { id } = await created.json();
+
+    // Switch to a different org as admin there
+    const adminB = uniqueId("zcc-patch-crossorg-b");
+    await setupAdminOrg(adminB);
+
+    const res = await PATCH_BY_ID(
+      createTestRequest(url(`/${id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: "Cross-org" }),
+      }),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects empty displayName with 400", async () => {
+    const userId = uniqueId("zcc-patch-empty");
+    await setupAdminOrg(userId);
+    const created = await createSampleConnector();
+    const { id } = await created.json();
+
+    const res = await PATCH_BY_ID(
+      createTestRequest(url(`/${id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: "" }),
+      }),
+    );
+    expect(res.status).toBe(400);
   });
 });
 

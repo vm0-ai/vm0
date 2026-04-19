@@ -696,11 +696,13 @@ export {
   customConnectorListResponseSchema,
   createCustomConnectorBodySchema,
   setCustomConnectorSecretBodySchema,
+  patchCustomConnectorBodySchema,
   type ZeroCustomConnectorsContract,
   type ZeroCustomConnectorByIdContract,
   type ZeroCustomConnectorSecretContract,
   type CustomConnectorResponse,
   type CreateCustomConnectorBody,
+  type PatchCustomConnectorBody,
 } from "./zero-custom-connectors";
 export {
   zeroAgentCustomConnectorsContract,
