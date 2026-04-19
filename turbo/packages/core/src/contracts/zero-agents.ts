@@ -144,6 +144,7 @@ export const zeroAgentsByIdContract = c.router({
     body: zeroAgentMetadataRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,

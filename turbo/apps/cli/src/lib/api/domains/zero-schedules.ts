@@ -27,6 +27,8 @@ export async function deployZeroSchedule(body: {
   appendSystemPrompt?: string;
   volumeVersions?: Record<string, string>;
   enabled?: boolean;
+  modelProviderId?: string | null;
+  selectedModel?: string | null;
 }): Promise<DeployScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesMainContract, config);

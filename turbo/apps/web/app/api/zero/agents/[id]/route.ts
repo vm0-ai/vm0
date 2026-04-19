@@ -21,7 +21,8 @@ import {
   requireAdminPermission,
 } from "../../../../../src/lib/zero/require-agent-permission";
 import { deleteComposeById } from "../../../../../src/lib/infra/agent-compose/compose-service";
-import { isConflict } from "../../../../../src/lib/shared/errors";
+import { isBadRequest, isConflict } from "../../../../../src/lib/shared/errors";
+import { validateModelSelection } from "../../../../../src/lib/zero/model-provider/validate-model-selection";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents:id");
@@ -170,6 +171,24 @@ const router = tsr.router(zeroAgentsByIdContract, {
       : requireAdminPermission(member, "update agent configuration");
     if (forbidden) return forbidden;
 
+    try {
+      await validateModelSelection({
+        orgId: org.orgId,
+        modelProviderId: body.modelProviderId,
+        selectedModel: body.selectedModel,
+      });
+    } catch (error) {
+      if (isBadRequest(error)) {
+        return {
+          status: 400 as const,
+          body: {
+            error: { message: error.message, code: "BAD_REQUEST" },
+          },
+        };
+      }
+      throw error;
+    }
+
     // Use provided customSkills if present, otherwise keep existing
     const customSkills = body.customSkills ?? existing.customSkills ?? [];
 
@@ -275,6 +294,24 @@ const router = tsr.router(zeroAgentsByIdContract, {
       "update agent profile",
     );
     if (forbidden) return forbidden;
+
+    try {
+      await validateModelSelection({
+        orgId: org.orgId,
+        modelProviderId: body.modelProviderId,
+        selectedModel: body.selectedModel,
+      });
+    } catch (error) {
+      if (isBadRequest(error)) {
+        return {
+          status: 400 as const,
+          body: {
+            error: { message: error.message, code: "BAD_REQUEST" },
+          },
+        };
+      }
+      throw error;
+    }
 
     // Update metadata — only overwrite fields explicitly provided
     const now = new Date();

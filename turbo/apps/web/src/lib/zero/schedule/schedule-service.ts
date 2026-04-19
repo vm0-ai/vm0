@@ -12,6 +12,7 @@ import { createZeroRun } from "../zero-run-service";
 import { buildSchedulePrompt } from "../integration-prompt";
 import { generateScheduleDescription } from "../ai/lightweight-model";
 import { adaptScheduleTrigger } from "./adapt-schedule-trigger";
+import { validateModelSelection } from "../model-provider/validate-model-selection";
 
 const log = logger("service:schedule");
 
@@ -394,6 +395,13 @@ export async function deploySchedule(
 
   // Reject one-time schedules with past atTime when enabled
   validateAtTimeNotPast(request);
+
+  // Validate model provider + model pair against org + provider type
+  await validateModelSelection({
+    orgId,
+    modelProviderId: request.modelProviderId,
+    selectedModel: request.selectedModel,
+  });
 
   // Auto-generate description if not provided (undefined/null means not provided;
   // empty string means the user explicitly cleared it — skip auto-generation)

@@ -1,5 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import {
+  MODEL_PROVIDER_TYPES,
+  allowsCustomModel,
+  getModels,
+  type ModelProviderType,
+} from "@vm0/core";
 import { listZeroOrgModelProviders } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
 
@@ -45,6 +51,20 @@ export const listCommand = new Command()
             ? chalk.dim(` [${provider.selectedModel}]`)
             : "";
           console.log(`    ${provider.type}${defaultTag}${modelTag}`);
+          console.log(chalk.dim(`      ID: ${provider.id}`));
+          if (provider.type in MODEL_PROVIDER_TYPES) {
+            const type = provider.type as ModelProviderType;
+            const available = getModels(type) ?? [];
+            if (available.length > 0) {
+              console.log(
+                chalk.dim(`      Available models: ${available.join(", ")}`),
+              );
+            } else if (allowsCustomModel(type)) {
+              console.log(
+                chalk.dim("      Available models: (custom — any model name)"),
+              );
+            }
+          }
           console.log(
             chalk.dim(
               `      Updated: ${new Date(provider.updatedAt).toLocaleString()}`,
@@ -56,6 +76,12 @@ export const listCommand = new Command()
 
       console.log(
         chalk.dim(`Total: ${result.modelProviders.length} provider(s)`),
+      );
+      console.log();
+      console.log(
+        chalk.dim(
+          "Use a provider ID with: zero agent edit <agent-id> --model-provider <id> --model <name>",
+        ),
       );
     }),
   );
