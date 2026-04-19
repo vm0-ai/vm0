@@ -1862,6 +1862,13 @@ class TestIsXStreamPath:
 class TestLogConnectorUsage:
     """Tests for log_connector_usage helper (issue #9504)."""
 
+    @pytest.fixture(autouse=True)
+    def _sync_executor(self, sync_usage_executor):
+        """All tests here route billing through ``_call_and_get_billing`` which
+        inspects ``_opener.open`` inline; the sync executor makes that work
+        without each test needing its own ``fresh_usage_executor`` + shutdown.
+        """
+
     def _make_x_flow(
         self,
         real_flow,
@@ -1900,19 +1907,11 @@ class TestLogConnectorUsage:
     def _call_and_get_billing(self, flow, run_id="run-abc-123"):
         """Call log_connector_usage and return the webhook payload(s).
 
-        Mocks the urllib boundary (``usage._opener``) rather than an internal
-        helper.  ``usage_executor`` is swapped for a synchronous stub so
-        payloads appear on ``_opener.open`` by the time we inspect it without
-        every caller needing ``fresh_usage_executor``.
+        Relies on the class-level ``_sync_executor`` autouse fixture to
+        route submissions inline; only the urllib boundary is mocked here.
         """
-
-        class _SyncExecutor:
-            def submit(self, fn, *args, **kwargs):
-                fn(*args, **kwargs)
-
         with (
             patch.object(usage, "get_api_url", return_value="https://app.test"),
-            patch.object(usage, "usage_executor", _SyncExecutor()),
             patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
         ):
             mock_opener.open.return_value = MagicMock()
@@ -2443,8 +2442,9 @@ class TestUsageWebhookDelivery:
             usage.maybe_report_proxy_usage(flow, "run-1")
             usage.usage_executor.shutdown(wait=True)
 
-        # 2 attempts (max_retries=1) → cleanup called once per attempt.
-        assert http_err.close.call_count == 2  # urllib HTTPError cleanup contract (#9991)
+        # Cleanup must run once per HTTPError — tracks attempt count so the
+        # invariant survives future changes to max_retries.
+        assert http_err.close.call_count == mock_opener.open.call_count  # (#9991)
 
     def test_adds_vercel_bypass_header(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
