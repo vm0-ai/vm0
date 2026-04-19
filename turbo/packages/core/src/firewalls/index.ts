@@ -41,10 +41,10 @@ import { axiomFirewall } from "./axiom.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brevoFirewall } from "./brevo.generated";
-import { bufferFirewall } from "./buffer.generated";
 import { brightDataFirewall } from "./bright-data.generated";
 import { browserbaseFirewall } from "./browserbase.generated";
 import { browserlessFirewall } from "./browserless.generated";
+import { bufferFirewall } from "./buffer.generated";
 import { calComFirewall } from "./cal-com.generated";
 import { calendlyFirewall } from "./calendly.generated";
 import { canvaFirewall } from "./canva.generated";
@@ -204,10 +204,10 @@ const CONNECTOR_FIREWALLS = {
   bitrix: bitrixFirewall,
   "brave-search": braveSearchFirewall,
   brevo: brevoFirewall,
-  buffer: bufferFirewall,
   "bright-data": brightDataFirewall,
   browserbase: browserbaseFirewall,
   browserless: browserlessFirewall,
+  buffer: bufferFirewall,
   "cal-com": calComFirewall,
   calendly: calendlyFirewall,
   canva: canvaFirewall,
