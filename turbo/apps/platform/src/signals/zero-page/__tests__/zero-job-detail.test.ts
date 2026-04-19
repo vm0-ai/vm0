@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../__tests__/test-helpers";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroSchedulesMainContract,
+  zeroSchedulesByNameContract,
+  zeroSchedulesEnableContract,
+  type ScheduleResponse,
+} from "@vm0/core";
 import { detachedSetupPage } from "../../../__tests__/page-helper";
 import {
   zeroJobDetail$,
@@ -146,6 +154,7 @@ function mockSchedules() {
 }
 
 function registerStandardHandlers() {
+  setMockSchedules(mockSchedules().schedules as ScheduleResponse[]);
   server.use(
     http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
       return HttpResponse.json(mockAgentResponse());
@@ -156,9 +165,6 @@ function registerStandardHandlers() {
         return HttpResponse.json(mockInstructions());
       },
     ),
-    http.get("http://localhost:3000/api/zero/schedules", () => {
-      return HttpResponse.json(mockSchedules());
-    }),
     http.get(
       "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
       () => {
