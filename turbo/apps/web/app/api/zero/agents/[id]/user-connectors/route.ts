@@ -130,6 +130,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
     }
 
     const db = globalThis.services.db;
+    const uniqueTypes = Array.from(new Set(body.enabledTypes));
 
     // Replace full list atomically
     await db.transaction(async (tx) => {
@@ -143,9 +144,9 @@ const router = tsr.router(zeroUserConnectorsContract, {
           ),
         );
 
-      if (body.enabledTypes.length > 0) {
+      if (uniqueTypes.length > 0) {
         await tx.insert(userConnectors).values(
-          body.enabledTypes.map((connectorType) => {
+          uniqueTypes.map((connectorType) => {
             return {
               orgId: org.orgId,
               userId,
@@ -177,7 +178,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
 
     return {
       status: 200 as const,
-      body: { enabledTypes: body.enabledTypes },
+      body: { enabledTypes: uniqueTypes },
     };
   },
 });

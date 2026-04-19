@@ -153,6 +153,30 @@ describe("User Connectors API", () => {
       expect(getData.enabledTypes).toEqual(["linear"]);
     });
 
+    it("should dedupe duplicate entries in enabledTypes", async () => {
+      const agentId = await createAgent();
+
+      const res = await putUserConnectors(
+        agentId,
+        { enabledTypes: ["slack", "github", "slack"] },
+        testCliToken,
+      );
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.enabledTypes).toEqual(
+        expect.arrayContaining(["slack", "github"]),
+      );
+      expect(data.enabledTypes).toHaveLength(2);
+
+      const getRes = await getUserConnectors(agentId, testCliToken);
+      const getData = await getRes.json();
+      expect(getData.enabledTypes).toEqual(
+        expect.arrayContaining(["slack", "github"]),
+      );
+      expect(getData.enabledTypes).toHaveLength(2);
+    });
+
     it("should clear all permissions with empty array", async () => {
       const agentId = await createAgent();
 
