@@ -147,11 +147,12 @@ describe("VM0 managed model provider", () => {
 
     it("should have all VM0 provider models mapped", () => {
       const vm0Models = [
-        "claude-sonnet-4-6",
-        "claude-opus-4-6",
         "claude-opus-4-7",
-        "kimi-k2.5",
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
         "glm-5.1",
+        "kimi-k2.5",
         "MiniMax-M2.7",
       ];
       for (const model of vm0Models) {
