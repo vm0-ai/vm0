@@ -3641,6 +3641,7 @@ const CONNECTOR_TYPES_DEF = {
     environmentMapping: {
       STABILITY_TOKEN: "$secrets.STABILITY_TOKEN",
     },
+    featureFlag: FeatureSwitchKey.StabilityAiConnector,
     helpText:
       "Connect your Stability AI account to generate images using Stable Diffusion models",
     authMethods: {
