@@ -85,6 +85,8 @@ describe("avatar maker - saving state", () => {
     const user = userEvent.setup();
     mockAPIs();
     server.use(
+      // mockApi cannot return 500 (not in contract responses); 404 triggers
+      // the same "update failed" error path and is sufficient for this test.
       mockApi(zeroAgentsByIdContract.update, ({ respond }) => {
         return respond(404, {
           error: { message: "Not found", code: "NOT_FOUND" },

@@ -8,7 +8,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
@@ -60,14 +59,6 @@ function mockPermissionRequests(
 function setupMemberContext(agentOverrides?: Record<string, unknown>) {
   setMockOrg({ role: "member" });
   server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "user-12345678",
-        name: "User 12345678",
-        role: "member",
-      });
-    }),
     mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
       return respond(
         200,

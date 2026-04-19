@@ -3,8 +3,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
   zeroUserConnectorsContract,
@@ -12,9 +10,9 @@ import {
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -24,7 +22,6 @@ function mockAPIs() {
       return HttpResponse.json([
         {
           id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
           displayName: null,
           description: null,
           sound: null,
@@ -34,7 +31,6 @@ function mockAPIs() {
         },
         {
           id: "agent-detail-id",
-          name: "my-agent",
           displayName: "My Agent",
           description: "A helpful agent",
           sound: null,
@@ -97,38 +93,6 @@ function mockAPIsWithConnectors() {
     },
   ]);
   server.use(
-    http.get("*/api/zero/connectors", () => {
-      return HttpResponse.json({
-        connectors: [
-          {
-            id: "d0000001-0000-4000-a000-000000000001",
-            type: "slack",
-            authMethod: "oauth",
-            externalId: null,
-            externalUsername: "testuser",
-            externalEmail: null,
-            oauthScopes: ["channels:read", "chat:write"],
-            needsReconnect: false,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
-          },
-          {
-            id: "d0000002-0000-4000-a000-000000000002",
-            type: "linear",
-            authMethod: "oauth",
-            externalId: null,
-            externalUsername: "linearuser",
-            externalEmail: null,
-            oauthScopes: [],
-            needsReconnect: false,
-            createdAt: "2026-01-02T00:00:00Z",
-            updatedAt: "2026-01-02T00:00:00Z",
-          },
-        ],
-        configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
-        connectorProvidedSecretNames: [],
-      });
-    }),
     mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes: ["slack"] });
     }),
