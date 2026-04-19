@@ -1,5 +1,4 @@
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import {
   createChatMessage,
@@ -7,6 +6,21 @@ import {
   updateChatRun,
 } from "../../../mocks/mock-helpers.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  chatThreadsContract,
+  chatThreadByIdContract,
+  chatThreadMessagesContract,
+  chatMessagesContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+  zeroRunsCancelContract,
+  zeroRunsByIdContract,
+  zeroQueuePositionContract,
+  zeroTeamContract,
+  zeroAgentsByIdContract,
+  type RunStatus,
+} from "@vm0/core";
 
 import { fill } from "../../../__tests__/page-helper.ts";
 
@@ -17,8 +31,8 @@ export const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 
 export function mockSubagentThread(threadId: string) {
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
+    mockApi(zeroTeamContract.list, ({ respond }) =>
+      respond(200, [
         {
           id: DEFAULT_AGENT_ID,
           displayName: null,
@@ -37,13 +51,13 @@ export function mockSubagentThread(threadId: string) {
           headVersionId: "version_2",
           updatedAt: "2024-01-01T00:00:00Z",
         },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads/:id/messages", () => {
-      return HttpResponse.json({ messages: [], hasMore: false });
-    }),
-    http.get("*/api/zero/chat-threads/:id", () => {
-      return HttpResponse.json({
+      ]),
+    ),
+    mockApi(chatThreadMessagesContract.list, ({ respond }) =>
+      respond(200, { messages: [], hasMore: false }),
+    ),
+    mockApi(chatThreadByIdContract.get, ({ respond }) =>
+      respond(200, {
         id: threadId,
         title: null,
         agentId: SUB_AGENT_ID,
@@ -52,12 +66,14 @@ export function mockSubagentThread(threadId: string) {
         activeRunIds: [],
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-      });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/agents/:id", ({ params }) => {
+        draftContent: null,
+        draftAttachments: null,
+      }),
+    ),
+    mockApi(chatThreadsContract.list, ({ respond }) =>
+      respond(200, { threads: [] }),
+    ),
+    mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
       const agents: Record<
         string,
         {
@@ -68,6 +84,7 @@ export function mockSubagentThread(threadId: string) {
           sound: null;
           avatarUrl: string | null;
           permissionPolicies: null;
+          customSkills: string[];
         }
       > = {
         [DEFAULT_AGENT_ID]: {
@@ -78,6 +95,7 @@ export function mockSubagentThread(threadId: string) {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          customSkills: [],
         },
         [SUB_AGENT_ID]: {
           agentId: SUB_AGENT_ID,
@@ -87,13 +105,16 @@ export function mockSubagentThread(threadId: string) {
           sound: null,
           avatarUrl: "https://example.com/avatar.png",
           permissionPolicies: null,
+          customSkills: [],
         },
       };
-      const agent = agents[params.id as string];
+      const agent = agents[params.id];
       if (!agent) {
-        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
       }
-      return HttpResponse.json(agent);
+      return respond(200, agent);
     }),
   );
 }
@@ -118,7 +139,7 @@ interface ThreadListItem {
 }
 
 interface MockLifecycleControl {
-  setRunStatus: (status: string) => void;
+  setRunStatus: (status: RunStatus) => void;
   setQueuePosition: (n: number) => void;
   setEvents: (e: AgentEvent[]) => void;
   setThreadList: (list: ThreadListItem[]) => void;
@@ -143,7 +164,7 @@ export function mockChatLifecycle(options?: {
   const threadId = options?.threadId ?? "thread-test-1";
   const chatMessages = options?.chatMessages ?? [];
 
-  let runStatus = "running";
+  let runStatus: RunStatus = "running";
   let runError: string | null = null;
   let events: AgentEvent[] = [];
   let queuePosition = 0;
@@ -160,9 +181,8 @@ export function mockChatLifecycle(options?: {
 
   server.use(
     // Paged messages endpoint — cursor-aware, version-aware mock.
-    http.get("*/api/zero/chat-threads/:id/messages", ({ request }) => {
-      const url = new URL(request.url);
-      const sinceId = url.searchParams.get("sinceId");
+    mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+      const sinceId = query.sinceId;
 
       const assistantId = `msg-assistant-run-v${assistantVersion}`;
 
@@ -210,18 +230,18 @@ export function mockChatLifecycle(options?: {
         if (assistantVersion > lastDeliveredVersion && runAssociated) {
           lastDeliveredVersion = assistantVersion;
           const lastMsg = pagedMessages[pagedMessages.length - 1]!;
-          return HttpResponse.json({
+          return respond(200, {
             messages: [lastMsg],
             hasMore: false,
           });
         }
-        return HttpResponse.json({ messages: [], hasMore: false });
+        return respond(200, { messages: [], hasMore: false });
       }
 
       lastDeliveredVersion = assistantVersion;
-      return HttpResponse.json({ messages: pagedMessages, hasMore: false });
+      return respond(200, { messages: pagedMessages, hasMore: false });
     }),
-    http.get("*/api/zero/chat-threads/:id", () => {
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
       const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
       const seedActiveRunIds = chatMessages
         .filter((m): m is typeof m & { runId: string; status: string } => {
@@ -237,7 +257,7 @@ export function mockChatLifecycle(options?: {
       const lifecycleActiveRunIds =
         runAssociated && !terminal.has(runStatus) ? ["run-test-1"] : [];
       const activeRunIds = [...seedActiveRunIds, ...lifecycleActiveRunIds];
-      return HttpResponse.json({
+      return respond(200, {
         id: threadId,
         title: threadTitle,
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -246,23 +266,22 @@ export function mockChatLifecycle(options?: {
         activeRunIds,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
+        draftContent: null,
+        draftAttachments: null,
       });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: threadList });
-    }),
-    http.post("*/api/zero/chat-threads", () => {
-      return HttpResponse.json(
-        { id: threadId, title: null, createdAt: "2026-03-10T00:00:00Z" },
-        { status: 201 },
-      );
-    }),
-    http.post("*/api/zero/chat-threads/:id/mark-read", () => {
-      return HttpResponse.json({ lastReadAt: new Date().toISOString() });
-    }),
+    mockApi(chatThreadsContract.list, ({ respond }) =>
+      respond(200, { threads: threadList }),
+    ),
+    mockApi(chatThreadsContract.create, ({ respond }) =>
+      respond(201, {
+        id: threadId,
+        title: null,
+        createdAt: "2026-03-10T00:00:00Z",
+      }),
+    ),
     // Unified chat message endpoint (creates thread + run + association)
-    http.post("*/api/zero/chat/messages", async ({ request }) => {
-      const body = (await request.json()) as { prompt?: string };
+    mockApi(chatMessagesContract.send, async ({ body, respond }) => {
       if (body.prompt) {
         runPrompt = body.prompt;
       }
@@ -270,18 +289,15 @@ export function mockChatLifecycle(options?: {
       runAssociated = true;
       createChatRun(threadId);
       createChatMessage(threadId);
-      return HttpResponse.json(
-        {
-          runId: "run-test-1",
-          threadId,
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        { status: 201 },
-      );
+      return respond(201, {
+        runId: "run-test-1",
+        threadId,
+        status: "pending",
+        createdAt: "2026-03-10T00:00:00Z",
+      });
     }),
-    http.get("*/api/zero/logs/:id", () => {
-      return HttpResponse.json({
+    mockApi(logsByIdContract.getById, ({ respond }) =>
+      respond(200, {
         id: "a0000000-0000-4000-a000-000000000001",
         sessionId: "session-1",
         agentId: "zero",
@@ -300,24 +316,24 @@ export function mockChatLifecycle(options?: {
         startedAt: "2026-03-10T00:00:01Z",
         completedAt: null,
         artifact: { name: null, version: null },
-      });
-    }),
-    http.get("*/api/zero/runs/:id/telemetry/agent", () => {
-      return HttpResponse.json({
+      }),
+    ),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+      respond(200, {
         events,
         hasMore: false,
         framework: "claude-code",
-      });
-    }),
-    http.post("*/api/zero/runs/:id/cancel", () => {
-      return HttpResponse.json({
+      }),
+    ),
+    mockApi(zeroRunsCancelContract.cancel, ({ respond }) =>
+      respond(200, {
         id: "a0000000-0000-4000-a000-000000000001",
         status: "cancelled",
         message: "Run cancelled",
-      });
-    }),
-    http.get("*/api/zero/runs/:id", () => {
-      return HttpResponse.json({
+      }),
+    ),
+    mockApi(zeroRunsByIdContract.getById, ({ respond }) =>
+      respond(200, {
         runId: "a0000000-0000-4000-a000-000000000001",
         agentComposeVersionId: null,
         status: runStatus,
@@ -325,11 +341,11 @@ export function mockChatLifecycle(options?: {
         appendSystemPrompt: null,
         result: { agentSessionId: "session-1", output: resultContent },
         createdAt: "2026-03-10T00:00:00Z",
-      });
-    }),
-    http.get("*/api/zero/queue-position", () => {
-      return HttpResponse.json({ position: queuePosition });
-    }),
+      }),
+    ),
+    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
+      respond(200, { position: queuePosition, total: 0 }),
+    ),
   );
 
   return {
