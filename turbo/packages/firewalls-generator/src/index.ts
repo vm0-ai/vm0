@@ -84,6 +84,7 @@ import { generate as generateLangfuse } from "./langfuse";
 import { generate as generateLine } from "./line";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
+import { generate as generateLuma } from "./luma";
 import { generate as generateMailchimp } from "./mailchimp";
 import { generate as generateMake } from "./make";
 import { generate as generateMailsac } from "./mailsac";
@@ -239,6 +240,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   line: generateLine,
   linear: generateLinear,
   loops: generateLoops,
+  luma: generateLuma,
   mailchimp: generateMailchimp,
   make: generateMake,
   mailsac: generateMailsac,

@@ -90,6 +90,7 @@ import { langfuseHandler } from "./providers/langfuse-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { loopsHandler } from "./providers/loops-handler";
+import { lumaHandler } from "./providers/luma-handler";
 import { mailsacHandler } from "./providers/mailsac-handler";
 import { makeHandler } from "./providers/make-handler";
 import { manusHandler } from "./providers/manus-handler";
@@ -252,6 +253,7 @@ export const PROVIDER_HANDLERS: Record<
   line: lineHandler,
   linear: linearHandler,
   loops: loopsHandler,
+  luma: lumaHandler,
   mailsac: mailsacHandler,
   make: makeHandler,
   manus: manusHandler,
