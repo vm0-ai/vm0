@@ -21,8 +21,7 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { zeroSchedulesEnableContract, type ScheduleResponse } from "@vm0/core";
+import type { ScheduleResponse } from "@vm0/core";
 
 const context = testContext();
 
@@ -509,15 +508,10 @@ describe("pagination component", () => {
 
 describe("loading switch component", () => {
   it("switch toggle disables the schedule (INFRA-D-026)", async () => {
-    let enabled = true;
-    setMockSchedules([createMockSchedule({ enabled })]);
+    setMockSchedules([createMockSchedule({ enabled: true })]);
     server.use(
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
-      }),
-      mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
-        enabled = false;
-        return respond(200, createMockSchedule({ enabled: false }));
       }),
     );
 
@@ -538,15 +532,10 @@ describe("loading switch component", () => {
   });
 
   it("switch toggle re-enables the schedule (INFRA-D-027)", async () => {
-    let enabled = false;
-    setMockSchedules([createMockSchedule({ enabled })]);
+    setMockSchedules([createMockSchedule({ enabled: false })]);
     server.use(
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
-      }),
-      mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
-        enabled = true;
-        return respond(200, createMockSchedule({ enabled: true }));
       }),
     );
 
@@ -567,19 +556,10 @@ describe("loading switch component", () => {
   });
 
   it("switch toggle round-trips: disable then re-enable (INFRA-D-028)", async () => {
-    let enabled = true;
-    setMockSchedules([createMockSchedule({ enabled })]);
+    setMockSchedules([createMockSchedule({ enabled: true })]);
     server.use(
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
-      }),
-      mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
-        enabled = false;
-        return respond(200, createMockSchedule({ enabled: false }));
-      }),
-      mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
-        enabled = true;
-        return respond(200, createMockSchedule({ enabled: true }));
       }),
     );
 
