@@ -14,6 +14,6 @@ export const zepHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "ZEP_API_KEY";
+    return "ZEP_TOKEN";
   },
 };
