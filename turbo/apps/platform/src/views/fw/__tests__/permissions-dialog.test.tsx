@@ -3,8 +3,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import {
-  CONNECTOR_TYPES,
   type ConnectorType,
+  type FirewallPolicies,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
   zeroAgentPermissionPoliciesContract,
@@ -21,13 +21,7 @@ const context = testContext();
 function mockAPIs({
   connectorType = "slack" as ConnectorType,
   ownerId = "test-user-123",
-  permissionPolicies = null as Record<
-    string,
-    {
-      policies: Record<string, "allow" | "deny" | "ask">;
-      unknownPolicy?: "allow" | "deny" | "ask";
-    }
-  > | null,
+  permissionPolicies = null as FirewallPolicies | null,
 } = {}) {
   server.use(
     http.get("*/api/zero/team", () => {
@@ -74,26 +68,6 @@ function mockAPIs({
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [] });
-    }),
-    http.get("*/api/zero/connectors", () => {
-      return HttpResponse.json({
-        connectors: [
-          {
-            id: "d0000001-0000-4000-a000-000000000001",
-            type: connectorType,
-            authMethod: "oauth",
-            externalId: null,
-            externalUsername: "testuser",
-            externalEmail: null,
-            oauthScopes: [],
-            needsReconnect: false,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
-          },
-        ],
-        configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
-        connectorProvidedSecretNames: [],
-      });
     }),
     mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes: [connectorType] });

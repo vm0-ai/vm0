@@ -7,6 +7,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
+  type ZeroAgentRequest,
   zeroAgentsMainContract,
   zeroAgentInstructionsContract,
 } from "@vm0/core";
@@ -65,19 +66,19 @@ describe("create agent dialog - avatar", () => {
 
   it("should send chosen avatar when creating agent", async () => {
     const user = userEvent.setup();
-    let capturedPayload: Record<string, unknown> | null = null;
+    let capturedPayload: ZeroAgentRequest | null = null;
 
     mockTeamWithSubagent();
     server.use(
       mockApi(zeroAgentsMainContract.create, ({ body, respond }) => {
-        capturedPayload = body as Record<string, unknown>;
+        capturedPayload = body;
         return respond(201, {
           agentId: "new-agent-id",
           ownerId: "test-user-123",
           description: null,
-          displayName: (capturedPayload.displayName as string | null) ?? null,
+          displayName: body.displayName ?? null,
           sound: null,
-          avatarUrl: (capturedPayload.avatarUrl as string | null) ?? null,
+          avatarUrl: body.avatarUrl ?? null,
           permissionPolicies: null,
           customSkills: [],
         });
@@ -113,19 +114,19 @@ describe("create agent dialog - avatar", () => {
 
   it("should submit via Enter key with avatar", async () => {
     const user = userEvent.setup();
-    let capturedPayload: Record<string, unknown> | null = null;
+    let capturedPayload: ZeroAgentRequest | null = null;
 
     mockTeamWithSubagent();
     server.use(
       mockApi(zeroAgentsMainContract.create, ({ body, respond }) => {
-        capturedPayload = body as Record<string, unknown>;
+        capturedPayload = body;
         return respond(201, {
           agentId: "new-agent-id",
           ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,
-          avatarUrl: (capturedPayload.avatarUrl as string | null) ?? null,
+          avatarUrl: body.avatarUrl ?? null,
           permissionPolicies: null,
           customSkills: [],
         });

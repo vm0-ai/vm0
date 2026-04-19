@@ -12,6 +12,7 @@ import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
+  type ZeroAgentMetadataRequest,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/core";
@@ -247,12 +248,12 @@ describe("zero settings tab - avatar", () => {
 
   it("saves avatar when applied from avatar maker (AGENT-D-047)", async () => {
     const user = userEvent.setup();
-    let capturedPayload: Record<string, unknown> | null = null;
+    let capturedPayload: ZeroAgentMetadataRequest | null = null;
     mockAPIs({ avatarUrl: "preset:0" });
 
     server.use(
       mockApi(zeroAgentsByIdContract.updateMetadata, ({ body, respond }) => {
-        capturedPayload = body as Record<string, unknown>;
+        capturedPayload = body;
         return respond(200, agentDetail({ avatarUrl: body.avatarUrl }));
       }),
     );
