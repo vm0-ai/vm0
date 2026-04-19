@@ -621,6 +621,21 @@ describe("POST /api/zero/report-error", () => {
   // Plain.com integration
   // -------------------------------------------------------------------------
 
+  it("should return 500 with INTERNAL_ERROR when an unexpected error occurs", async () => {
+    const { runId } = await setupFailedRun(userId);
+
+    context.mocks.s3.uploadS3Buffer.mockRejectedValueOnce(
+      new Error("S3 upload failed"),
+    );
+
+    const response = await postReportError({ runId, title: "Bug" });
+    expect(response.status).toBe(500);
+
+    const data = await response.json();
+    expect(data.error.code).toBe("INTERNAL_ERROR");
+    expect(data.error.message).not.toContain("S3 upload failed");
+  });
+
   it("should route to Plain and skip email when PLAIN_API_KEY is set and Plain succeeds", async () => {
     vi.stubEnv("PLAIN_API_KEY", "plainkey_test_abc");
     reloadEnv();

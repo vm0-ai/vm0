@@ -45,6 +45,7 @@ export interface ChatThreadSignals {
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
   scrollToBottom$: Command<void, []>;
+  scrollToTop$: Command<void, []>;
   // ── Initial-load skeleton ────────────────────────────────────────────────
   // True until the page setup has fetched messages and scrolled into place.
   // Keeps the list mounted (visibility:hidden) while the skeleton covers the
@@ -717,7 +718,7 @@ export function createChatThreadSignals(
   draft: DraftSignals,
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const { setScrollContainer$, autoScroll$, scrollToBottom$ } =
+  const { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ } =
     createScrollSignals(threadId);
   const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
   const { composerFileInput$, setComposerFileInput$ } =
@@ -825,6 +826,7 @@ export function createChatThreadSignals(
     setScrollContainer$,
     autoScroll$,
     scrollToBottom$,
+    scrollToTop$,
     skeletonVisible$,
     hideSkeleton$,
     draft,

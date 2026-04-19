@@ -102,36 +102,70 @@ export interface TitleContextMessage {
 }
 
 /**
+ * Inputs for generating a chat thread title.
+ *
+ * The prompt labels each slot separately so the model can weigh the most
+ * recent exchange more than older rounds while still using history for
+ * continuity.
+ */
+interface ChatTitleInput {
+  /** The user's most recent message. */
+  currentUserMessage: string;
+  /** The assistant's reply to `currentUserMessage`, when it has been produced. */
+  currentAssistantReply?: string;
+  /** Earlier turns in the thread, ordered oldest → newest. */
+  priorRounds?: TitleContextMessage[];
+}
+
+/**
+ * Cap per-message content when composing the title-generation prompt.
+ * Keeps the OpenRouter request small even on long conversations.
+ */
+const TITLE_CONTEXT_CHAR_CAP = 150;
+/** Keep the last 5 rounds (~10 messages) of prior history. */
+const TITLE_PRIOR_MESSAGE_CAP = 10;
+
+/**
  * Generate a short title for a chat thread from conversation context.
  *
- * Accepts previous conversation history and the current user prompt.
  * Returns null if the lightweight model is unavailable.
  */
 export async function generateChatTitle(
-  currentPrompt: string,
-  previousMessages?: TitleContextMessage[],
+  input: ChatTitleInput,
 ): Promise<string | null> {
-  let context = "";
-  if (previousMessages && previousMessages.length > 0) {
-    // Include up to the last 10 messages for context, truncated to keep input small
-    const recent = previousMessages.slice(-10);
-    context = recent
+  const sections: string[] = [];
+
+  if (input.priorRounds && input.priorRounds.length > 0) {
+    const recent = input.priorRounds.slice(-TITLE_PRIOR_MESSAGE_CAP);
+    const history = recent
       .map((m) => {
-        return `${m.role}: ${m.content.slice(0, 200)}`;
+        return `${m.role}: ${m.content.slice(0, TITLE_CONTEXT_CHAR_CAP)}`;
       })
       .join("\n");
-    context = `Previous conversation:\n${context}\n\n`;
+    sections.push(
+      `Previous conversation (last ${recent.length} messages, for continuity):\n${history}`,
+    );
+  }
+
+  sections.push(
+    `Most recent user message:\n${input.currentUserMessage.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
+  );
+
+  if (input.currentAssistantReply) {
+    sections.push(
+      `Most recent assistant reply:\n${input.currentAssistantReply.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
+    );
   }
 
   return generateText([
     {
       role: "system",
       content:
-        "Generate a short, descriptive title (max 60 chars) for a chat conversation. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
+        "Generate a short, descriptive title (max 60 chars) for a chat conversation. Weight the most recent exchange highest, but use the earlier rounds to keep the title consistent as the thread evolves. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
     },
     {
       role: "user",
-      content: `${context}Current message: ${currentPrompt}`,
+      content: sections.join("\n\n"),
     },
   ]);
 }

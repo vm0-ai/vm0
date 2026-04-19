@@ -30,7 +30,7 @@
     "@vitest/coverage-v8": "^4.1.4",
     "@vitest/ui": "^4.1.4",
     "@vm0/firewalls-generator": "workspace:*",
-    "dotenv-cli": "^7.4.2",
+    "dotenv-cli": "^11.0.0",
     "e2b": "^2.10.3",
     "knip": "^5.63.1",
     "prettier": "^3.6.2",

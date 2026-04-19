@@ -17,7 +17,9 @@ describe("generateChatTitle", () => {
     // OPENROUTER_API_KEY is not stubbed by default in test setup
     const { generateChatTitle } = await import("../lightweight-model");
 
-    const result = await generateChatTitle("Hello, how are you?");
+    const result = await generateChatTitle({
+      currentUserMessage: "Hello, how are you?",
+    });
 
     expect(result).toBeNull();
   });
@@ -33,7 +35,9 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    const result = await generateChatTitle("Help me set up my project");
+    const result = await generateChatTitle({
+      currentUserMessage: "Help me set up my project",
+    });
 
     expect(result).toBe("Project Setup Help");
     expect(handler.mocked).toHaveBeenCalledTimes(1);
@@ -50,7 +54,9 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    const result = await generateChatTitle("Some user message");
+    const result = await generateChatTitle({
+      currentUserMessage: "Some user message",
+    });
 
     expect(result).toBe("Padded Title");
   });
@@ -66,9 +72,9 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    await expect(generateChatTitle("Hello")).rejects.toThrow(
-      "OpenRouter returned empty content",
-    );
+    await expect(
+      generateChatTitle({ currentUserMessage: "Hello" }),
+    ).rejects.toThrow("OpenRouter returned empty content");
     expect(handler.mocked).toHaveBeenCalledTimes(1);
   });
 
@@ -83,9 +89,9 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    await expect(generateChatTitle("Hello")).rejects.toThrow(
-      "OpenRouter returned empty content",
-    );
+    await expect(
+      generateChatTitle({ currentUserMessage: "Hello" }),
+    ).rejects.toThrow("OpenRouter returned empty content");
   });
 
   it.each([
@@ -107,7 +113,9 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    expect(await generateChatTitle("msg")).toBe(expected);
+    expect(await generateChatTitle({ currentUserMessage: "msg" })).toBe(
+      expected,
+    );
   });
 
   it("should throw on HTTP error", async () => {
@@ -121,12 +129,12 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    await expect(generateChatTitle("Hello")).rejects.toThrow(
-      "OpenRouter request failed: 429",
-    );
+    await expect(
+      generateChatTitle({ currentUserMessage: "Hello" }),
+    ).rejects.toThrow("OpenRouter request failed: 429");
   });
 
-  it("should include previous context when provided", async () => {
+  it("should label current user message, assistant reply, and prior rounds separately", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
 
@@ -139,17 +147,87 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    await generateChatTitle("Fix my bug", [
-      { role: "user", content: "Hello" },
-      { role: "assistant", content: "Hi, how can I help?" },
-    ]);
+    await generateChatTitle({
+      currentUserMessage: "Fix my bug",
+      currentAssistantReply: "Try logging the request body first.",
+      priorRounds: [
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi, how can I help?" },
+      ],
+    });
 
     const body = capturedBody as {
       messages: Array<{ role: string; content: string }>;
     };
     expect(body.messages).toHaveLength(2);
-    expect(body.messages[1]!.content).toContain("Previous conversation:");
-    expect(body.messages[1]!.content).toContain("Current message: Fix my bug");
+    const userContent = body.messages[1]!.content;
+    expect(userContent).toContain("Previous conversation");
+    expect(userContent).toContain("user: Hello");
+    expect(userContent).toContain("assistant: Hi, how can I help?");
+    expect(userContent).toContain("Most recent user message:\nFix my bug");
+    expect(userContent).toContain(
+      "Most recent assistant reply:\nTry logging the request body first.",
+    );
+  });
+
+  it("should cap prior rounds at the last 10 messages", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    let capturedBody: unknown;
+    const handler = http.post(OPENROUTER_URL, async ({ request }) => {
+      capturedBody = await request.json();
+      return HttpResponse.json(openRouterResponse("Title"));
+    });
+    server.use(handler.handler);
+
+    const { generateChatTitle } = await import("../lightweight-model");
+
+    const priorRounds = Array.from({ length: 14 }, (_, i) => {
+      return {
+        role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+        content: `msg-${i}`,
+      };
+    });
+
+    await generateChatTitle({
+      currentUserMessage: "latest",
+      priorRounds,
+    });
+
+    const body = capturedBody as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userContent = body.messages[1]!.content;
+    expect(userContent).toContain("last 10 messages");
+    expect(userContent).not.toContain("msg-0");
+    expect(userContent).not.toContain("msg-3");
+    expect(userContent).toContain("msg-4");
+    expect(userContent).toContain("msg-13");
+  });
+
+  it("should omit the assistant reply section when not provided", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    let capturedBody: unknown;
+    const handler = http.post(OPENROUTER_URL, async ({ request }) => {
+      capturedBody = await request.json();
+      return HttpResponse.json(openRouterResponse("Title"));
+    });
+    server.use(handler.handler);
+
+    const { generateChatTitle } = await import("../lightweight-model");
+
+    await generateChatTitle({ currentUserMessage: "hello there" });
+
+    const body = capturedBody as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userContent = body.messages[1]!.content;
+    expect(userContent).toContain("Most recent user message:\nhello there");
+    expect(userContent).not.toContain("Most recent assistant reply");
+    expect(userContent).not.toContain("Previous conversation");
   });
 
   it("should strip surrounding quotes from title", async () => {
@@ -163,7 +241,9 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    expect(await generateChatTitle("msg")).toBe("Some Quoted Title");
+    expect(await generateChatTitle({ currentUserMessage: "msg" })).toBe(
+      "Some Quoted Title",
+    );
   });
 
   it("should strip horizontal rules from title", async () => {
@@ -177,7 +257,9 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    expect(await generateChatTitle("msg")).toBe("Some Title");
+    expect(await generateChatTitle({ currentUserMessage: "msg" })).toBe(
+      "Some Title",
+    );
   });
 });
 

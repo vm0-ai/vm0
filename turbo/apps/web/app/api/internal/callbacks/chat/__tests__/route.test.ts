@@ -15,6 +15,7 @@ import {
   createSignedCallbackRequest,
   addTestRunToThread,
   getTestChatMessagesByThread,
+  insertTestAssistantEventMessages,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../../../../src/env";
@@ -681,6 +682,177 @@ describe("POST /api/internal/callbacks/chat", () => {
       // Thread title should remain unchanged (error was caught)
       const title = await getThreadTitle(threadId);
       expect(title).toBe("Test thread");
+    });
+
+    it("should feed the current exchange and prior rounds into the title prompt", async () => {
+      // Seed a previous run in the thread so loadPriorTitleContext has
+      // something to include as history.
+      const { threadId, runId, secret } = await setupRunAndThread();
+
+      const { runId: priorRunId } = await seedTestRun(user.userId, agentId, {
+        status: "completed",
+      });
+      await addTestRunToThread(
+        threadId,
+        priorRunId,
+        user.userId,
+        "How do I parse JSON?",
+      );
+      await insertTestAssistantEventMessages(
+        priorRunId,
+        threadId,
+        user.userId,
+        [{ sequenceNumber: 0, content: "Use JSON.parse(str)." }],
+      );
+
+      // Current run's assistant events.
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          sequenceNumber: 0,
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Try JSON.stringify(value)." }],
+            },
+          },
+        },
+      ]);
+
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+
+      // The callback hits OpenRouter multiple times (run summary + title +
+      // notification summary); capture the title-generation call by matching
+      // its system prompt.
+      let capturedBody: unknown;
+      const { handler } = http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            messages: Array<{ role: string; content: string }>;
+          };
+          const systemContent = body.messages[0]?.content ?? "";
+          if (systemContent.includes("Generate a short, descriptive title")) {
+            capturedBody = body;
+          }
+          return HttpResponse.json({
+            choices: [{ message: { content: "Working with JSON" } }],
+          });
+        },
+      );
+      server.use(handler);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const body = capturedBody as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const userContent = body.messages[1]!.content;
+      // Prior round surfaces (older user message + assistant reply).
+      expect(userContent).toContain("Previous conversation");
+      expect(userContent).toContain("How do I parse JSON?");
+      expect(userContent).toContain("Use JSON.parse(str).");
+      // Current exchange is labeled separately.
+      expect(userContent).toContain("Most recent user message:\ntest prompt");
+      expect(userContent).toContain(
+        "Most recent assistant reply:\nTry JSON.stringify(value).",
+      );
+      // The current user prompt should not appear inside the prior-rounds
+      // section — loadPriorTitleContext filters it out by runId.
+      const priorSection = userContent.split("Most recent user message:")[0]!;
+      expect(priorSection).not.toContain("test prompt");
+    });
+
+    it("should preserve a prior user message that repeats the current prompt", async () => {
+      // Regression: filtering must be structural (by runId), not by content.
+      // A legitimately repeated phrase ("continue", "thanks") from an earlier
+      // round must still surface as history.
+      const { threadId, runId, secret } = await setupRunAndThread();
+
+      const { runId: priorRunId } = await seedTestRun(user.userId, agentId, {
+        status: "completed",
+      });
+      // Prior user message has the SAME content as the current prompt.
+      await addTestRunToThread(
+        threadId,
+        priorRunId,
+        user.userId,
+        "test prompt",
+      );
+      await insertTestAssistantEventMessages(
+        priorRunId,
+        threadId,
+        user.userId,
+        [{ sequenceNumber: 0, content: "Earlier assistant reply." }],
+      );
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          sequenceNumber: 0,
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Current assistant reply." }],
+            },
+          },
+        },
+      ]);
+
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+
+      let capturedBody: unknown;
+      const { handler } = http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            messages: Array<{ role: string; content: string }>;
+          };
+          const systemContent = body.messages[0]?.content ?? "";
+          if (systemContent.includes("Generate a short, descriptive title")) {
+            capturedBody = body;
+          }
+          return HttpResponse.json({
+            choices: [{ message: { content: "Repeated prompt" } }],
+          });
+        },
+      );
+      server.use(handler);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const body = capturedBody as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const userContent = body.messages[1]!.content;
+      const priorSection = userContent.split("Most recent user message:")[0]!;
+      // The prior round (same content as current prompt) must survive the
+      // filter — it's excluded only when its runId matches the current run.
+      expect(priorSection).toContain("Previous conversation");
+      expect(priorSection).toContain("test prompt");
+      expect(priorSection).toContain("Earlier assistant reply.");
     });
 
     it("should skip title generation when OPENROUTER_API_KEY is not set", async () => {
