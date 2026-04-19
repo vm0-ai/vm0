@@ -39,8 +39,8 @@ function url(path = ""): string {
 
 async function createSampleConnector(overrides: Record<string, unknown> = {}) {
   const body = {
-    displayName: "Stripe",
-    prefixes: ["https://api.stripe.com/"],
+    displayName: "Example",
+    prefixes: ["https://api.example.com/"],
     headerName: "Authorization",
     headerTemplate: "Bearer {{secret}}",
     ...overrides,
@@ -89,7 +89,7 @@ describe("GET /api/zero/custom-connectors", () => {
     const data = await res.json();
     expect(data.connectors).toHaveLength(1);
     expect(data.connectors[0].id).toBe(connector.id);
-    expect(data.connectors[0].displayName).toBe("Stripe");
+    expect(data.connectors[0].displayName).toBe("Example");
     expect(data.connectors[0].hasSecret).toBe(false);
   });
 });
@@ -106,9 +106,9 @@ describe("POST /api/zero/custom-connectors", () => {
     const res = await createSampleConnector();
     expect(res.status).toBe(201);
     const data = await res.json();
-    expect(data.slug).toMatch(/^api-stripe-com-/);
-    expect(data.displayName).toBe("Stripe");
-    expect(data.prefixes).toEqual(["https://api.stripe.com/"]);
+    expect(data.slug).toMatch(/^api-example-com-/);
+    expect(data.displayName).toBe("Example");
+    expect(data.prefixes).toEqual(["https://api.example.com/"]);
     expect(data.hasSecret).toBe(false);
   });
 
@@ -150,6 +150,22 @@ describe("POST /api/zero/custom-connectors", () => {
       prefixes: ["http://api.example.com/"],
     });
     expect(res.status).toBe(400);
+  });
+
+  it("rejects prefix whose host collides with a built-in connector", async () => {
+    const userId = uniqueId("zcc-host-conflict");
+    await setupAdminOrg(userId);
+
+    const res = await createSampleConnector({
+      displayName: "Fake GitHub",
+      prefixes: ["https://api.github.com/v3/"],
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    // Message should name both the conflicting host and the built-in connector
+    // so the admin knows which built-in is shadowing their attempt.
+    expect(data.error.message).toContain("api.github.com");
+    expect(data.error.message).toContain("GitHub");
   });
 });
 

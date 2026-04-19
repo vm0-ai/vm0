@@ -598,6 +598,11 @@ export function resolveFirewallPolicies(
  * Used to reject org custom connectors whose prefix host collides with a
  * built-in. The returned map lets callers produce a user-facing error that
  * names the conflicting built-in.
+ *
+ * Bases that embed runtime template variables (e.g. `${{ vars.JIRA_DOMAIN }}`)
+ * or otherwise fail URL parsing are skipped — there's no fixed host to
+ * compare against, and the conflict check is best-effort anyway (mitm-level
+ * matching remains the final line of defense).
  */
 export function getAllBuiltinConnectorHosts(): Map<
   string,
@@ -609,7 +614,13 @@ export function getAllBuiltinConnectorHosts(): Map<
     FirewallConfig,
   ][]) {
     for (const api of firewall.apis) {
-      const host = new URL(api.base).host;
+      if (api.base.includes("${{")) continue;
+      let host: string;
+      try {
+        host = new URL(api.base).host;
+      } catch {
+        continue;
+      }
       if (!hosts.has(host)) {
         hosts.set(host, type);
       }

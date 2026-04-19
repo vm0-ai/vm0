@@ -1,4 +1,8 @@
 import { eq, and } from "drizzle-orm";
+import {
+  getAllBuiltinConnectorHosts,
+  getBuiltinConnectorDisplayName,
+} from "@vm0/core";
 import { orgCustomConnectors } from "../../../db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "../../../db/schema/org-custom-connector-secret";
 import { encryptSecretValue } from "../../shared/crypto";
@@ -93,6 +97,21 @@ function validateInput(input: CustomConnectorInput): {
   for (const p of prefixes) {
     if (seen.has(p)) throw badRequest(`Duplicate prefix: ${p}`);
     seen.add(p);
+  }
+  // Reject prefixes whose host collides with a built-in connector. Mitm-level
+  // matching is still the final line of defense; this early rejection gives
+  // admins a clear message at create time instead of a silent shadow.
+  const builtinHosts = getAllBuiltinConnectorHosts();
+  for (const p of prefixes) {
+    const host = new URL(p).host;
+    const builtinType = builtinHosts.get(host);
+    if (builtinType) {
+      throw badRequest(
+        `Host "${host}" is already managed by the ${getBuiltinConnectorDisplayName(
+          builtinType,
+        )} connector`,
+      );
+    }
   }
   const headerName = input.headerName.trim();
   if (!HEADER_NAME_REGEX.test(headerName)) {
