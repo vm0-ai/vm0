@@ -197,16 +197,18 @@ describe("schedule dialog - save error (SCHED-D-047)", () => {
   it("surfaces save failure via toast and keeps dialog open", async () => {
     const user = userEvent.setup();
     server.use(
-      http.post("*/api/zero/schedules", () => {
-        return HttpResponse.json({ error: "Server error" }, { status: 500 });
-      }),
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
+        respond(400, {
+          error: { message: "Server error", code: "BAD_REQUEST" },
+        }),
+      ),
     );
     await openCreateDialog(user);
     const promptInput = screen.getByLabelText("Prompt");
     await fill(promptInput, "My task");
     await user.click(screen.getByText("Create"));
     await waitFor(() => {
-      expect(screen.getByText(/HTTP 500/i)).toBeInTheDocument();
+      expect(screen.getByText(/HTTP 400/i)).toBeInTheDocument();
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });

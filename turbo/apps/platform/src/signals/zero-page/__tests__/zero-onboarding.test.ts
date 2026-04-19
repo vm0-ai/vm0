@@ -138,12 +138,9 @@ describe("completeZeroOnboarding$", () => {
 
   it("should treat 409 conflict as success", async () => {
     server.use(
-      http.post("*/api/zero/onboarding/setup", () => {
-        return HttpResponse.json(
-          { agentId: "d0000000-0000-4000-a000-000000000002" },
-          { status: 409 },
-        );
-      }),
+      mockApi(onboardingSetupContract.setup, ({ respond }) =>
+        respond(409, { agentId: "d0000000-0000-4000-a000-000000000002" }),
+      ),
     );
 
     detachedSetupPage({ context, path: "/", withoutRender: true });
