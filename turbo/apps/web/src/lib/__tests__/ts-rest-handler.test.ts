@@ -1,21 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import * as Sentry from "@sentry/nextjs";
 
-const captureException = vi.fn();
 vi.mock("@sentry/nextjs", () => {
   return {
-    captureException: (...args: unknown[]) => {
-      return captureException(...args);
-    },
+    captureException: vi.fn(),
     flush: vi.fn().mockResolvedValue(true),
   };
 });
 
 import { createSafeErrorHandler } from "../ts-rest-handler";
 import { badRequest, notFound, forbidden } from "../shared/errors";
-
-beforeEach(() => {
-  captureException.mockReset();
-});
 
 describe("createSafeErrorHandler", () => {
   const handler = createSafeErrorHandler("test-route");
@@ -63,8 +57,8 @@ describe("createSafeErrorHandler", () => {
     expect(response!.status).toBe(500);
     const body = await response!.json();
     expect(body.error.code).toBe("INTERNAL_ERROR");
-    expect(captureException).toHaveBeenCalledTimes(1);
-    expect(captureException).toHaveBeenCalledWith(err, {
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(Sentry.captureException)).toHaveBeenCalledWith(err, {
       mechanism: { type: "ts-rest-handler", handled: true },
       captureContext: { tags: { route: "test-route" } },
     });
