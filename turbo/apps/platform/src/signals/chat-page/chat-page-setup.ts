@@ -14,6 +14,7 @@ import {
   ensureDraft$,
 } from "./create-chat-thread.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
+import { setupChatPageKeyboard$ } from "./chat-keyboard.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -36,6 +37,7 @@ export const setupChatPage$ = command(
       ),
     );
     set(updateDocumentTitle$, "Chat");
+    set(setupChatPageKeyboard$, signal);
 
     await set(hideAppSkeleton$, signal);
 

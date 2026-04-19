@@ -83,8 +83,34 @@ function formatMessage(args: unknown[]): string {
 }
 
 /**
+ * Serialize an Error instance into a plain object. Error's built-in
+ * properties (name, message, stack, cause) are non-enumerable, so spreading
+ * an Error loses them. This explicitly copies them plus any additional
+ * enumerable own properties (e.g. code, statusCode on custom errors).
+ */
+function serializeError(err: Error): Record<string, unknown> {
+  const serialized: Record<string, unknown> = {
+    name: err.name,
+    message: err.message,
+    stack: err.stack,
+  };
+  if (err.cause !== undefined) {
+    serialized.cause =
+      err.cause instanceof Error ? serializeError(err.cause) : err.cause;
+  }
+  for (const [key, value] of Object.entries(err)) {
+    if (!(key in serialized)) {
+      serialized[key] = value;
+    }
+  }
+  return serialized;
+}
+
+/**
  * Extract structured fields from log arguments.
  * If second argument is an object, use it as fields.
+ * If second argument is an Error, wrap it under `error` with non-enumerable
+ * properties (name/message/stack/cause) explicitly serialized.
  * Otherwise, wrap remaining arguments in an 'args' field.
  */
 function extractFields(args: unknown[]): Record<string, unknown> {
@@ -95,7 +121,11 @@ function extractFields(args: unknown[]): Record<string, unknown> {
     typeof fields[0] === "object" &&
     fields[0] !== null
   ) {
-    return fields[0] as Record<string, unknown>;
+    const value = fields[0];
+    if (value instanceof Error) {
+      return { error: serializeError(value) };
+    }
+    return value as Record<string, unknown>;
   }
   return { args: fields };
 }

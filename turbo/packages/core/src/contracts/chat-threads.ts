@@ -181,6 +181,28 @@ export const chatThreadByIdContract = c.router({
 });
 
 /**
+ * Mark a chat thread as read (Slack-style watermark).
+ * Separate contract so it can be served by its own route file.
+ */
+export const chatThreadMarkReadContract = c.router({
+  markRead: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/mark-read",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: z.object({
+      cursor: z.string().datetime().optional(),
+    }),
+    responses: {
+      200: z.object({ lastReadAt: z.string() }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Mark a chat thread as read up to the given cursor",
+  },
+});
+
+/**
  * Chat messages contract (/api/zero/chat/messages)
  * Unified endpoint: create thread (if needed) + run + association in one call.
  */
@@ -257,6 +279,7 @@ export const chatThreadMessagesContract = c.router({
 
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
+export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 

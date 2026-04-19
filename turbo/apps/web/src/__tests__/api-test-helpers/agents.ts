@@ -27,11 +27,13 @@ export {
   getTestChatMessagesByThread,
   addTestRunToThread,
   insertTestAssistantEventMessages,
+  setTestChatThreadLastReadAt,
 } from "../db-test-seeders/agents";
 
 export {
   getTestAgentSessionWithConversation,
   getTestAgentComposeName,
+  getTestChatThreadLastReadAt,
 } from "../db-test-assertions/agents";
 
 // ---------------------------------------------------------------------------

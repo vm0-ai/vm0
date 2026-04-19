@@ -26,7 +26,7 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .uc-filter-label {
@@ -39,33 +39,28 @@
 }
 
 .uc-pill {
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: 8px 16px;
+  font-size: 14px;
   font-weight: 500;
   border: 0.7px solid hsl(var(--gray-200));
-  border-radius: 999px;
-  background: transparent;
-  color: hsl(var(--muted-foreground));
+  border-radius: 8px;
+  background: hsl(var(--gray-0));
+  color: hsl(var(--foreground));
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
 }
 
 .uc-pill:hover {
-  border-color: #ed4e01;
-  color: #ed4e01;
+  border-color: hsl(var(--gray-300));
+  background: hsl(var(--gray-50));
 }
 
-.uc-pill--active {
-  background: #ed4e01;
-  color: #ffffff;
-  border-color: #ed4e01;
-}
-
+.uc-pill--active,
 .uc-pill--active:hover {
-  background: #ff6a1f;
-  border-color: #ff6a1f;
-  color: #ffffff;
+  background: hsl(var(--foreground));
+  color: hsl(var(--gray-0));
+  border-color: hsl(var(--foreground));
 }
 
 /* ---------------------------------------------------------------------------

@@ -285,6 +285,7 @@ export {
 export {
   chatThreadsContract,
   chatThreadByIdContract,
+  chatThreadMarkReadContract,
   chatMessagesContract,
   chatThreadMessagesContract,
   chatThreadListItemSchema,
@@ -297,6 +298,7 @@ export {
   type SummaryEntry,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
+  type ChatThreadMarkReadContract,
   type ChatMessagesContract,
   type ChatThreadMessagesContract,
   type ChatThreadListItem,

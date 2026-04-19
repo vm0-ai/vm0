@@ -2,11 +2,22 @@
 
 import Image from "next/image";
 import { useTranslations } from "next-intl";
+import { useMemo, useState } from "react";
 import { Link } from "../../../navigation";
 import Footer from "../../components/Footer";
 import Particles from "../../components/Particles";
 import { USE_CASES } from "./data";
-import type { UseCase, ConnectorRef, AvatarConfig } from "./data";
+import type { UseCase, ConnectorRef, AvatarConfig, Role } from "./data";
+
+type RoleFilter = Role | "all";
+
+const ROLE_FILTERS: RoleFilter[] = [
+  "all",
+  "everyone",
+  "engineering",
+  "product",
+  "ops",
+];
 
 const AVATAR_BASE = "/assets/avatar";
 
@@ -113,6 +124,14 @@ function UseCaseCard({
 
 export default function UseCasesGalleryClient() {
   const t = useTranslations("useCases");
+  const [activeRole, setActiveRole] = useState<RoleFilter>("all");
+
+  const visibleUseCases = useMemo(() => {
+    if (activeRole === "all") return USE_CASES;
+    return USE_CASES.filter((uc) => {
+      return uc.roles.includes(activeRole);
+    });
+  }, [activeRole]);
 
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
@@ -126,10 +145,35 @@ export default function UseCasesGalleryClient() {
         </div>
       </section>
 
+      {/* Role filter */}
+      <section style={{ paddingBottom: "32px" }}>
+        <div className="container">
+          <div className="uc-filter-row" role="tablist" aria-label={t("role")}>
+            {ROLE_FILTERS.map((role) => {
+              const isActive = activeRole === role;
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`uc-pill${isActive ? " uc-pill--active" : ""}`}
+                  onClick={() => {
+                    setActiveRole(role);
+                  }}
+                >
+                  {t(`filter.${role}`)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {/* Card grid */}
       <section style={{ paddingBottom: "120px" }}>
         <div className="uc-grid">
-          {USE_CASES.map((uc) => {
+          {visibleUseCases.map((uc) => {
             return (
               <UseCaseCard
                 key={uc.slug}

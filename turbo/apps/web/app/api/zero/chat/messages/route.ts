@@ -179,12 +179,15 @@ const router = tsr.router(chatMessagesContract, {
         continueFromSchedulePrompt,
       } = await resolveThread(authCtx.userId, body.agentId, body.threadId);
 
-      // Only generate title when prompt has actual user text
+      // Only generate title when prompt has actual user text. The
+      // assistant reply is not yet available at send time — the chat
+      // callback regenerates the title with the full current exchange
+      // once the run completes.
       if (body.hasTextContent !== false) {
-        void generateChatTitle(
-          body.prompt,
-          previousContext.length > 0 ? previousContext : undefined,
-        )
+        void generateChatTitle({
+          currentUserMessage: body.prompt,
+          priorRounds: previousContext.length > 0 ? previousContext : undefined,
+        })
           .then((title) => {
             if (title) {
               return updateChatThreadTitle(threadId, title);
@@ -232,12 +235,14 @@ const router = tsr.router(chatMessagesContract, {
       // Only file IDs are stored — metadata is resolved at query time from S3.
       // insertChatMessage also publishes chatThreadMessageCreated internally,
       // so the paged-messages view picks up the new row.
+      // Stamp with the runId so the callback's prior-context filter can
+      // exclude this message structurally (by runId) instead of by content.
       await insertChatMessage({
         chatThreadId: threadId,
         userId: authCtx.userId,
         role: "user",
         content: body.prompt,
-        runId: null,
+        runId: result.runId,
         attachFiles: body.attachFiles?.map((f) => {
           return f.id;
         }),

@@ -11,11 +11,13 @@ import {
 import {
   currentChatThreadId$,
   reloadChatThreads$,
+  patchThreadRead$,
   type ChatThread,
 } from "../agent-chat.ts";
 import {
   chatMessagesContract,
   chatThreadByIdContract,
+  chatThreadMarkReadContract,
   chatThreadMessagesContract,
   zeroRunsCancelContract,
   type PersistedAttachment,
@@ -45,6 +47,7 @@ export interface ChatThreadSignals {
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
   scrollToBottom$: Command<void, []>;
+  scrollToTop$: Command<void, []>;
   // ── Initial-load skeleton ────────────────────────────────────────────────
   // True until the page setup has fetched messages and scrolled into place.
   // Keeps the list mounted (visibility:hidden) while the skeleton covers the
@@ -613,6 +616,7 @@ function createInputRef() {
 // ---------------------------------------------------------------------------
 
 function createRunTracking(
+  threadId: string,
   reloadThread$: Command<void, []>,
   threadData$: Computed<Promise<ChatThread | null>>,
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>,
@@ -626,6 +630,19 @@ function createRunTracking(
     return thread.activeRunIds.length === 0;
   });
 
+  const markThreadRead$ = command(async ({ get, set }, sig: AbortSignal) => {
+    const client = get(zeroClient$)(chatThreadMarkReadContract);
+    await accept(
+      client.markRead({
+        params: { id: threadId },
+        body: {},
+        fetchOptions: { signal: sig },
+      }),
+      [200],
+    );
+    set(patchThreadRead$, threadId);
+  });
+
   const loadPagedMessages$ = command(
     async ({ get, set }, signal: AbortSignal) => {
       const thread = await get(threadData$);
@@ -634,14 +651,34 @@ function createRunTracking(
         throw new Error("invalid thread");
       }
 
-      const threadId = thread.id;
       L.debug("loadPagedMessages$ start", {
         threadId,
         activeRunIds: thread.activeRunIds,
       });
 
+      // Mark thread as read on open (focus-gated)
+      if (document.visibilityState !== "visible") {
+        await new Promise<void>((resolve) => {
+          const handler = () => {
+            if (document.visibilityState === "visible") {
+              document.removeEventListener("visibilitychange", handler);
+              resolve();
+            }
+          };
+          document.addEventListener("visibilitychange", handler, {
+            signal,
+          });
+        });
+        signal.throwIfAborted();
+      }
+      await set(markThreadRead$, signal);
+
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
         await set(fetchNextPage$, sig);
+        // Advance read cursor when a new message arrives while focused
+        if (document.visibilityState === "visible") {
+          await set(markThreadRead$, sig);
+        }
         animationFrame(
           () => {
             set(autoScroll$);
@@ -653,6 +690,11 @@ function createRunTracking(
 
       const onRunChanged$ = command(({ set }) => {
         set(reloadThread$);
+        return false;
+      });
+
+      const onReadCursorUpdated$ = command(({ set }) => {
+        set(patchThreadRead$, threadId);
         return false;
       });
 
@@ -675,6 +717,12 @@ function createRunTracking(
           onRunChanged$,
           signal,
         ),
+        set(
+          setAblyLoop$,
+          `chatThreadReadCursorUpdated:${threadId}`,
+          onReadCursorUpdated$,
+          signal,
+        ),
       ]);
 
       signal.throwIfAborted();
@@ -690,7 +738,6 @@ function createRunTracking(
 
     const client = get(zeroClient$)(zeroRunsCancelContract);
     const before = thread.activeRunIds;
-    const threadId = thread.id;
     L.debug("cancelRun$ start", { threadId, pendingRunIds: before });
 
     await Promise.all(
@@ -717,7 +764,7 @@ export function createChatThreadSignals(
   draft: DraftSignals,
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const { setScrollContainer$, autoScroll$, scrollToBottom$ } =
+  const { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ } =
     createScrollSignals(threadId);
   const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
   const { composerFileInput$, setComposerFileInput$ } =
@@ -743,6 +790,7 @@ export function createChatThreadSignals(
   const prepareUserMessage$ = createPrepareUserMessage(draft);
 
   const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking(
+    threadId,
     reloadThread$,
     threadData$,
     fetchNextPage$,
@@ -825,6 +873,7 @@ export function createChatThreadSignals(
     setScrollContainer$,
     autoScroll$,
     scrollToBottom$,
+    scrollToTop$,
     skeletonVisible$,
     hideSkeleton$,
     draft,

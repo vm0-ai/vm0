@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.257.0](https://github.com/vm0-ai/vm0/compare/app-v0.256.0...app-v0.257.0) (2026-04-19)
+
+
+### Features
+
+* add buffer connector ([#10024](https://github.com/vm0-ai/vm0/issues/10024)) ([631cce7](https://github.com/vm0-ai/vm0/commit/631cce7e4ac7bb3284ef8be3039336b53847185a))
+* add coda connector ([#10020](https://github.com/vm0-ai/vm0/issues/10020)) ([36f0bdf](https://github.com/vm0-ai/vm0/commit/36f0bdf8025ab498a0eb5fc81a0691e8d75de241))
+* add dropbox-sign connector ([#10022](https://github.com/vm0-ai/vm0/issues/10022)) ([35eef8a](https://github.com/vm0-ai/vm0/commit/35eef8ab2dda16fc5f38c56db6a89e9e6c3e7075))
+* add greenhouse connector ([#10021](https://github.com/vm0-ai/vm0/issues/10021)) ([d8661de](https://github.com/vm0-ai/vm0/commit/d8661ded0a2c73479c5ed19b15bef41aaf5037b3))
+* add miro connector ([#10019](https://github.com/vm0-ai/vm0/issues/10019)) ([1913dac](https://github.com/vm0-ai/vm0/commit/1913dac818876f6d62ff0aebff6f3af058061187))
+* add pandadoc connector ([#10023](https://github.com/vm0-ai/vm0/issues/10023)) ([6ed9884](https://github.com/vm0-ai/vm0/commit/6ed9884e2241d4a002310efd252baa4b6f9e0f6c))
+* add zoom connector ([#10018](https://github.com/vm0-ai/vm0/issues/10018)) ([3ef5838](https://github.com/vm0-ai/vm0/commit/3ef5838b90bdcb2ac76ce7945afdf18c7c92058e))
+* **chat:** add thread read indicator with slack-style watermark ([#10054](https://github.com/vm0-ai/vm0/issues/10054)) ([57682ff](https://github.com/vm0-ai/vm0/commit/57682ff7c7b98a5f62b90c41ee6a08d65b5e6ca7))
+* **chat:** escape first thread to agent chat page via mod+shift+up ([#10050](https://github.com/vm0-ai/vm0/issues/10050)) ([2ae20ad](https://github.com/vm0-ai/vm0/commit/2ae20ad1137c32d111e63642af0e00bb86f04b46))
+
+
+### Bug Fixes
+
+* **chat:** avoid default-avatar flicker in chat header during load ([#10052](https://github.com/vm0-ai/vm0/issues/10052)) ([612b89c](https://github.com/vm0-ai/vm0/commit/612b89c28a3d490fd43a3f41c679d9524f208af1))
+
+
+### Refactoring
+
+* drop new-chat dedup, use useLoadableSet to gate the new button ([#10047](https://github.com/vm0-ai/vm0/issues/10047)) ([cf22963](https://github.com/vm0-ai/vm0/commit/cf22963dbd5b64bbe3237e66e276ce0a56cf4086))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.203.0
+
+## [0.256.0](https://github.com/vm0-ai/vm0/compare/app-v0.255.0...app-v0.256.0) (2026-04-19)
+
+
+### Features
+
+* add duffel connector ([#10016](https://github.com/vm0-ai/vm0/issues/10016)) ([34b2d35](https://github.com/vm0-ai/vm0/commit/34b2d3584b6d1659baeb36b941973094e04d0aaf))
+* add klaviyo connector ([#10014](https://github.com/vm0-ai/vm0/issues/10014)) ([0fc1ad4](https://github.com/vm0-ai/vm0/commit/0fc1ad4d1c8b1114578ff2632f1d6a318b2fa813))
+* add typeform connector ([#10015](https://github.com/vm0-ai/vm0/issues/10015)) ([c823646](https://github.com/vm0-ai/vm0/commit/c82364633a268ee090707c3a9192ce95616ad583))
+* **platform:** add chat page keyboard shortcuts ([#10008](https://github.com/vm0-ai/vm0/issues/10008)) ([82bd6c1](https://github.com/vm0-ai/vm0/commit/82bd6c14569c7c5fa00a060e7f1c61b0bfa526fe))
+* **shopify:** add shopify connector ([#10012](https://github.com/vm0-ai/vm0/issues/10012)) ([427d0d7](https://github.com/vm0-ai/vm0/commit/427d0d7ab5d17e53027e1ed4228202dac14ecb7a))
+
+
+### Refactoring
+
+* **platform:** extract chat-test-helpers ably triggers into mock-helpers module ([#9707](https://github.com/vm0-ai/vm0/issues/9707) phase 2) ([#10017](https://github.com/vm0-ai/vm0/issues/10017)) ([651f7c8](https://github.com/vm0-ai/vm0/commit/651f7c89fa52d0e2d8f98729dcfa920894744653))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.202.0
+
 ## [0.255.0](https://github.com/vm0-ai/vm0/compare/app-v0.254.0...app-v0.255.0) (2026-04-18)
 
 

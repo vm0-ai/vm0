@@ -69,10 +69,32 @@ export default async function UseCasesPage({ params }: PageProps) {
     }),
   };
 
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: `${BASE_URL}/${locale}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Use Cases",
+        item: `${BASE_URL}/${locale}/use-cases`,
+      },
+    ],
+  };
+
   return (
     <>
       <script type="application/ld+json" suppressHydrationWarning>
         {JSON.stringify(itemListJsonLd)}
+      </script>
+      <script type="application/ld+json" suppressHydrationWarning>
+        {JSON.stringify(breadcrumbJsonLd)}
       </script>
       <UseCasesGalleryClient />
     </>

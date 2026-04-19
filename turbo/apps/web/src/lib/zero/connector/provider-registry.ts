@@ -16,6 +16,7 @@ import { apifyHandler } from "./providers/apify-handler";
 import { pikaHandler } from "./providers/pika-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
+import { attioHandler } from "./providers/attio-handler";
 import { atlassianHandler } from "./providers/atlassian-handler";
 import { bitrixHandler } from "./providers/bitrix-handler";
 import { braveSearchHandler } from "./providers/brave-search-handler";
@@ -23,6 +24,7 @@ import { brevoHandler } from "./providers/brevo-handler";
 import { brightDataHandler } from "./providers/bright-data-handler";
 import { browserbaseHandler } from "./providers/browserbase-handler";
 import { browserlessHandler } from "./providers/browserless-handler";
+import { bufferHandler } from "./providers/buffer-handler";
 import { calComHandler } from "./providers/cal-com-handler";
 import { calendlyHandler } from "./providers/calendly-handler";
 import { canvaHandler } from "./providers/canva-handler";
@@ -31,6 +33,7 @@ import { clickupHandler } from "./providers/clickup-handler";
 import { cloudflareHandler } from "./providers/cloudflare-handler";
 import { cloudinaryHandler } from "./providers/cloudinary-handler";
 import { closeHandler } from "./providers/close-handler";
+import { codaHandler } from "./providers/coda-handler";
 import { cronlyticHandler } from "./providers/cronlytic-handler";
 import { customerIoHandler } from "./providers/customer-io-handler";
 import { deelHandler } from "./providers/deel-handler";
@@ -45,6 +48,8 @@ import { docusignHandler } from "./providers/docusign-handler";
 import { db9Handler } from "./providers/db9-handler";
 import { drive9Handler } from "./providers/drive9-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
+import { dropboxSignHandler } from "./providers/dropbox-sign-handler";
+import { duffelHandler } from "./providers/duffel-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { exploriumHandler } from "./providers/explorium-handler";
 import { falHandler } from "./providers/fal-handler";
@@ -55,6 +60,7 @@ import { gammaHandler } from "./providers/gamma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { gitlabHandler } from "./providers/gitlab-handler";
 import { granolaHandler } from "./providers/granola-handler";
+import { greenhouseHandler } from "./providers/greenhouse-handler";
 import { githubHandler } from "./providers/github-handler";
 import { heygenHandler } from "./providers/heygen-handler";
 import { huggingFaceHandler } from "./providers/hugging-face-handler";
@@ -74,6 +80,7 @@ import { intercomHandler } from "./providers/intercom-handler";
 import { jamHandler } from "./providers/jam-handler";
 import { jiraHandler } from "./providers/jira-handler";
 import { jotformHandler } from "./providers/jotform-handler";
+import { klaviyoHandler } from "./providers/klaviyo-handler";
 import { kommoHandler } from "./providers/kommo-handler";
 import { larkHandler } from "./providers/lark-handler";
 import { lineHandler } from "./providers/line-handler";
@@ -86,6 +93,8 @@ import { metabaseHandler } from "./providers/metabase-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { minioHandler } from "./providers/minio-handler";
 import { minimaxHandler } from "./providers/minimax-handler";
+import { miroHandler } from "./providers/miro-handler";
+import { mixpanelHandler } from "./providers/mixpanel-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { msg9Handler } from "./providers/msg9-handler";
 import { neonHandler } from "./providers/neon-handler";
@@ -96,6 +105,7 @@ import { reporteiHandler } from "./providers/reportei-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
 import { runwayHandler } from "./providers/runway-handler";
 import { salesforceHandler } from "./providers/salesforce-handler";
+import { shopifyHandler } from "./providers/shopify-handler";
 import { shortioHandler } from "./providers/shortio-handler";
 import { strapiHandler } from "./providers/strapi-handler";
 import { streakHandler } from "./providers/streak-handler";
@@ -103,6 +113,7 @@ import { supadataHandler } from "./providers/supadata-handler";
 import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
 import { twentyHandler } from "./providers/twenty-handler";
+import { typeformHandler } from "./providers/typeform-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
 import { zapierHandler } from "./providers/zapier-handler";
 import { zapsignHandler } from "./providers/zapsign-handler";
@@ -124,6 +135,7 @@ import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
 import { prismaPostgresHandler } from "./providers/prisma-postgres-handler";
 import { pdf4meHandler } from "./providers/pdf4me-handler";
+import { pandadocHandler } from "./providers/pandadoc-handler";
 import { pdfcoHandler } from "./providers/pdfco-handler";
 import { perplexityHandler } from "./providers/perplexity-handler";
 import { pushinatorHandler } from "./providers/pushinator-handler";
@@ -145,6 +157,7 @@ import { slackWebhookHandler } from "./providers/slack-webhook-handler";
 import { v0Handler } from "./providers/v0-handler";
 import { wixHandler } from "./providers/wix-handler";
 import { zeptomailHandler } from "./providers/zeptomail-handler";
+import { zoomHandler } from "./providers/zoom-handler";
 import { testOauthHandler } from "./providers/test-oauth-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -164,6 +177,7 @@ export const PROVIDER_HANDLERS: Record<
   pika: pikaHandler,
   axiom: axiomHandler,
   asana: asanaHandler,
+  attio: attioHandler,
   atlassian: atlassianHandler,
   bitrix: bitrixHandler,
   "brave-search": braveSearchHandler,
@@ -171,6 +185,7 @@ export const PROVIDER_HANDLERS: Record<
   "bright-data": brightDataHandler,
   browserbase: browserbaseHandler,
   browserless: browserlessHandler,
+  buffer: bufferHandler,
   "cal-com": calComHandler,
   calendly: calendlyHandler,
   canva: canvaHandler,
@@ -179,6 +194,7 @@ export const PROVIDER_HANDLERS: Record<
   cloudflare: cloudflareHandler,
   cloudinary: cloudinaryHandler,
   close: closeHandler,
+  coda: codaHandler,
   cronlytic: cronlyticHandler,
   "customer-io": customerIoHandler,
   deel: deelHandler,
@@ -193,6 +209,8 @@ export const PROVIDER_HANDLERS: Record<
   db9: db9Handler,
   drive9: drive9Handler,
   dropbox: dropboxHandler,
+  "dropbox-sign": dropboxSignHandler,
+  duffel: duffelHandler,
   elevenlabs: elevenlabsHandler,
   explorium: exploriumHandler,
   fal: falHandler,
@@ -203,6 +221,7 @@ export const PROVIDER_HANDLERS: Record<
   "garmin-connect": garminConnectHandler,
   gitlab: gitlabHandler,
   granola: granolaHandler,
+  greenhouse: greenhouseHandler,
   github: githubHandler,
   gmail: gmailHandler,
   heygen: heygenHandler,
@@ -230,6 +249,8 @@ export const PROVIDER_HANDLERS: Record<
   mercury: mercuryHandler,
   minio: minioHandler,
   minimax: minimaxHandler,
+  miro: miroHandler,
+  mixpanel: mixpanelHandler,
   monday: mondayHandler,
   msg9: msg9Handler,
   neon: neonHandler,
@@ -244,6 +265,7 @@ export const PROVIDER_HANDLERS: Record<
   jam: jamHandler,
   jira: jiraHandler,
   jotform: jotformHandler,
+  klaviyo: klaviyoHandler,
   kommo: kommoHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
@@ -258,6 +280,7 @@ export const PROVIDER_HANDLERS: Record<
   "meta-ads": metaAdsHandler,
   posthog: posthogHandler,
   "prisma-postgres": prismaPostgresHandler,
+  pandadoc: pandadocHandler,
   pdf4me: pdf4meHandler,
   pdfco: pdfcoHandler,
   perplexity: perplexityHandler,
@@ -279,16 +302,19 @@ export const PROVIDER_HANDLERS: Record<
   zeptomail: zeptomailHandler,
   runway: runwayHandler,
   salesforce: salesforceHandler,
+  shopify: shopifyHandler,
   shortio: shortioHandler,
   streak: streakHandler,
   supadata: supadataHandler,
   tavily: tavilyHandler,
   tldv: tldvHandler,
   twenty: twentyHandler,
+  typeform: typeformHandler,
   youtube: youtubeHandler,
   zapier: zapierHandler,
   zapsign: zapsignHandler,
   zendesk: zendeskHandler,
+  zoom: zoomHandler,
   pdforge: pdforgeHandler,
   "slack-webhook": slackWebhookHandler,
   v0: v0Handler,

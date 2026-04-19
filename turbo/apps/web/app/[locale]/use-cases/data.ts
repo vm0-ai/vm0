@@ -191,11 +191,6 @@ const PLAUSIBLE: ConnectorRef = {
   icon: "/assets/connectors/plausible.svg",
 };
 
-const REDDIT: ConnectorRef = {
-  id: "reddit",
-  label: "Reddit",
-  icon: "/assets/connectors/reddit.svg",
-};
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -511,38 +506,6 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "upgrade-agent",
-    color: "#be9a7c",
-    avatar: {
-      rotation: 1,
-      skin: 4,
-      hairStyle: 2,
-      hairColor: 4,
-      expression: 4,
-      intensity: "d",
-    },
-    roles: ["engineering"],
-    capability: "multi-tool",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, VM0],
-    integrations: [
-      { connector: VM0, required: true },
-      { connector: SLACK, required: false },
-    ],
-    relatedSlugs: [
-      "file-bugs-from-slack",
-      "tech-debt-scan",
-      "product-health-briefing",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "tech-debt-scan",
     color: "#7c9ebe",
     avatar: {
@@ -558,7 +521,7 @@ export const USE_CASES: UseCase[] = [
     model: "Claude 4 Sonnet",
     connectors: [GITHUB],
     integrations: [{ connector: GITHUB, required: true }],
-    relatedSlugs: ["sentry-triage", "file-bugs-from-slack", "upgrade-agent"],
+    relatedSlugs: ["sentry-triage", "file-bugs-from-slack", "pr-review"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 1,
@@ -855,7 +818,7 @@ export const USE_CASES: UseCase[] = [
       { connector: ANTHROPIC_MANAGED_AGENTS, required: true },
       { connector: GITHUB, required: true },
     ],
-    relatedSlugs: ["tech-debt-scan", "upgrade-agent", "file-bugs-from-slack"],
+    relatedSlugs: ["tech-debt-scan", "pr-review", "file-bugs-from-slack"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
@@ -1079,70 +1042,6 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "office-ac-control",
-    color: "#6a9abe",
-    avatar: {
-      rotation: 2,
-      skin: 1,
-      hairStyle: 5,
-      hairColor: 2,
-      expression: 5,
-      intensity: "h",
-    },
-    roles: ["everyone", "ops"],
-    capability: "instant",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, VM0],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: VM0, required: true },
-    ],
-    relatedSlugs: [
-      "phone-call-automation",
-      "employee-onboarding",
-      "document-decisions",
-    ],
-    stepCount: 3,
-    nextActionCount: 2,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "phone-call-automation",
-    color: "#ae6b8c",
-    avatar: {
-      rotation: 4,
-      skin: 3,
-      hairStyle: 1,
-      hairColor: 4,
-      expression: 3,
-      intensity: "m",
-    },
-    roles: ["everyone", "ops"],
-    capability: "instant",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, VM0],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: VM0, required: true },
-    ],
-    relatedSlugs: [
-      "office-ac-control",
-      "employee-onboarding",
-      "kol-cold-outreach",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "marketing-content-automation",
     color: "#9a7cbe",
     avatar: {
@@ -1323,11 +1222,10 @@ export const USE_CASES: UseCase[] = [
     roles: ["product", "ops"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
-    connectors: [X_TWITTER, SLACK, REDDIT, NOTION],
+    connectors: [X_TWITTER, SLACK, NOTION],
     integrations: [
       { connector: X_TWITTER, required: true },
       { connector: SLACK, required: true },
-      { connector: REDDIT, required: false },
       { connector: NOTION, required: false },
     ],
     relatedSlugs: [
@@ -1337,7 +1235,7 @@ export const USE_CASES: UseCase[] = [
     ],
     stepCount: 3,
     nextActionCount: 4,
-    integrationCount: 4,
+    integrationCount: 3,
     tipCount: 3,
     promptVariantCount: 4,
     slackPreviewCount: 2,

@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Script from "next/script";
 import { getTranslations } from "next-intl/server";
 import {
   getPosts,
@@ -95,9 +94,9 @@ export default async function BlogPage({ params }: BlogPageProps) {
 
   return (
     <>
-      <Script
-        id="json-ld-breadcrumb"
+      <script
         type="application/ld+json"
+        suppressHydrationWarning
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <Suspense
