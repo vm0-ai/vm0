@@ -76,9 +76,6 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
-      http.get("*/api/zero/tasks", () => {
-        return HttpResponse.json({ tasks: [] });
-      }),
       http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json({
           session: {
@@ -132,9 +129,6 @@ describe("voiceBanner — error on session creation (MC-VC-004)", () => {
     setMockFeatureSwitches({ voiceChat: true });
 
     server.use(
-      http.get("*/api/zero/tasks", () => {
-        return HttpResponse.json({ tasks: [] });
-      }),
       http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json(
           {
@@ -178,9 +172,6 @@ describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
     setMockFeatureSwitches({ voiceChat: true });
 
     server.use(
-      http.get("*/api/zero/tasks", () => {
-        return HttpResponse.json({ tasks: [] });
-      }),
       http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json(
           { error: { message: "fail", code: "BAD_REQUEST" } },

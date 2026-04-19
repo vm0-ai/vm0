@@ -8,6 +8,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setCalendarSelectedDay$ } from "../../../signals/schedule-page/schedule-page-ui.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
 
@@ -148,10 +149,8 @@ function onceSchedule(
 }
 
 function mockScheduleAPI(schedules: ScheduleResponse[]) {
+  setMockSchedules(schedules);
   server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules });
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),

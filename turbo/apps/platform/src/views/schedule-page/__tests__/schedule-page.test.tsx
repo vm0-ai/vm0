@@ -4,6 +4,8 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import type { ScheduleResponse } from "@vm0/core";
 
 const context = testContext();
 
@@ -20,41 +22,33 @@ describe("schedule page", () => {
   });
 
   it("should render schedule entries when data is present", async () => {
-    server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({
-          schedules: [
-            {
-              id: "f0000002-0000-4000-a000-000000000001",
-              agentId: "c0000000-0000-4000-a000-000000000001",
-              displayName: null,
-              name: "test-schedule",
-              triggerType: "cron",
-              cronExpression: "0 9 * * *",
-              atTime: null,
-              intervalSeconds: null,
-              timezone: "UTC",
-              prompt: "Daily standup summary",
-              description: null,
-              enabled: true,
-              nextRunAt: null,
-              lastRunAt: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-              userId: "test-user-123",
-              appendSystemPrompt: null,
-              vars: null,
-              secretNames: null,
-              artifactName: null,
-              artifactVersion: null,
-              volumeVersions: null,
-              retryStartedAt: null,
-              consecutiveFailures: 0,
-            },
-          ],
-        });
-      }),
-    );
+    setMockSchedules([
+      {
+        id: "f0000002-0000-4000-a000-000000000001",
+        agentId: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        userId: "test-user-123",
+        name: "test-schedule",
+        triggerType: "cron",
+        cronExpression: "0 9 * * *",
+        atTime: null,
+        intervalSeconds: null,
+        timezone: "UTC",
+        prompt: "Daily standup summary",
+        description: null,
+        enabled: true,
+        nextRunAt: null,
+        lastRunAt: null,
+        createdAt: "2026-03-01T00:00:00Z",
+        updatedAt: "2026-03-01T00:00:00Z",
+        appendSystemPrompt: null,
+        vars: null,
+        secretNames: null,
+        volumeVersions: null,
+        retryStartedAt: null,
+        consecutiveFailures: 0,
+      } as ScheduleResponse,
+    ]);
 
     detachedSetupPage({ context, path: "/schedules" });
 

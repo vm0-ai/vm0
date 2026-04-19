@@ -5,7 +5,12 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import type { UserPreferencesResponse } from "@vm0/core";
+import {
+  type UserPreferencesResponse,
+  zeroUserPreferencesContract,
+} from "@vm0/core";
+import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -22,11 +27,7 @@ function createMockPreferences(
 }
 
 function mockPreferencesAPI(prefs = createMockPreferences()) {
-  server.use(
-    http.get("*/api/zero/user-preferences", () => {
-      return HttpResponse.json(prefs);
-    }),
-  );
+  setMockUserPreferences(prefs);
 }
 
 function renderPreferencesPage() {
@@ -78,15 +79,11 @@ describe("zero preferences page - send mode interaction", () => {
     const user = userEvent.setup();
     let capturedBody: Record<string, unknown> | null = null;
 
+    setMockUserPreferences(createMockPreferences({ sendMode: "enter" }));
     server.use(
-      http.get("*/api/zero/user-preferences", () => {
-        return HttpResponse.json(createMockPreferences({ sendMode: "enter" }));
-      }),
-      http.post("*/api/zero/user-preferences", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
-          createMockPreferences({ sendMode: "cmd-enter" }),
-        );
+      mockApi(zeroUserPreferencesContract.update, async ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(200, createMockPreferences({ sendMode: "cmd-enter" }));
       }),
     );
 
@@ -136,13 +133,12 @@ describe("zero preferences page - timezone update", () => {
     const user = userEvent.setup();
     let capturedBody: Record<string, unknown> | null = null;
 
+    setMockUserPreferences(createMockPreferences({ timezone: "UTC" }));
     server.use(
-      http.get("*/api/zero/user-preferences", () => {
-        return HttpResponse.json(createMockPreferences({ timezone: "UTC" }));
-      }),
-      http.post("*/api/zero/user-preferences", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
+      mockApi(zeroUserPreferencesContract.update, async ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(
+          200,
           createMockPreferences({ timezone: "America/New_York" }),
         );
       }),

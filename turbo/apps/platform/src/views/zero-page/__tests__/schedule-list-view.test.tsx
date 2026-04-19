@@ -7,6 +7,13 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroSchedulesEnableContract,
+  zeroScheduleRunContract,
+  type ScheduleResponse,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -56,10 +63,8 @@ function createDisabledSchedule() {
 }
 
 function mockScheduleAPI(schedules = [createEnabledSchedule()]) {
+  setMockSchedules(schedules as ScheduleResponse[]);
   server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules });
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -176,16 +181,14 @@ describe("schedule list view - enabled/disabled indicator (SCHED-D-084)", () => 
 describe("schedule list view - running action indicator (SCHED-D-085)", () => {
   it("shows Starting indicator in run menu while a run is in progress", async () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
+    setMockSchedules([createEnabledSchedule() as ScheduleResponse]);
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({ schedules: [createEnabledSchedule()] });
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
-      http.post("*/api/zero/schedules/run", async () => {
+      mockApi(zeroScheduleRunContract.run, async ({ respond }) => {
         await hangDeferred.promise;
-        return HttpResponse.json({ runId: "run-1" }, { status: 201 });
+        return respond(201, { runId: "run-1" });
       }),
     );
     const user = userEvent.setup();
@@ -313,13 +316,15 @@ describe("schedule list view - toggle switch (SCHED-D-088)", () => {
     const user = userEvent.setup();
     let capturedAction: string | null = null;
 
+    setMockSchedules([createDisabledSchedule() as ScheduleResponse]);
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({ schedules: [createDisabledSchedule()] });
+      mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
+        capturedAction = "enable";
+        return respond(200, createDisabledSchedule() as ScheduleResponse);
       }),
-      http.post("*/api/zero/schedules/:name/:action", ({ params }) => {
-        capturedAction = params["action"] as string;
-        return HttpResponse.json(createDisabledSchedule());
+      mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
+        capturedAction = "disable";
+        return respond(200, createDisabledSchedule() as ScheduleResponse);
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -387,16 +392,14 @@ describe("schedule list view - run now action (SCHED-D-090)", () => {
     const user = userEvent.setup();
     let capturedBody: { scheduleId?: string } | null = null;
 
+    setMockSchedules([createEnabledSchedule() as ScheduleResponse]);
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({ schedules: [createEnabledSchedule()] });
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
-      http.post("*/api/zero/schedules/run", async ({ request }) => {
-        capturedBody = (await request.json()) as { scheduleId?: string };
-        return HttpResponse.json({ runId: "run-1" }, { status: 201 });
+      mockApi(zeroScheduleRunContract.run, async ({ body, respond }) => {
+        capturedBody = body as { scheduleId?: string };
+        return respond(201, { runId: "run-1" });
       }),
     );
 
