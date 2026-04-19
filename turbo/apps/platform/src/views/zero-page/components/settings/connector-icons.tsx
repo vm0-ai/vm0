@@ -141,6 +141,7 @@ const CONNECTOR_ICON_COLORFUL = {
   pandadoc: true,
   pdf4me: true,
   pdfco: true,
+  pinecone: true,
   plain: true,
   plausible: true,
   podchaser: true,

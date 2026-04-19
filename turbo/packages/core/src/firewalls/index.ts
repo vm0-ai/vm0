@@ -137,6 +137,7 @@ import { outlookMailFirewall } from "./outlook-mail.generated";
 import { pandadocFirewall } from "./pandadoc.generated";
 import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
+import { pineconeFirewall } from "./pinecone.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { pipedriveFirewall } from "./pipedrive.generated";
@@ -320,6 +321,7 @@ const CONNECTOR_FIREWALLS = {
   pandadoc: pandadocFirewall,
   pdf4me: pdf4meFirewall,
   pdfco: pdfcoFirewall,
+  pinecone: pineconeFirewall,
   pdforge: pdforgeFirewall,
   perplexity: perplexityFirewall,
   pipedrive: pipedriveFirewall,
