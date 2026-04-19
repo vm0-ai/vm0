@@ -15,6 +15,7 @@ import {
   zeroSchedulesMainContract,
   chatThreadsContract,
   chatThreadByIdContract,
+  chatThreadMarkReadContract,
   chatThreadMessagesContract,
 } from "@vm0/core";
 import { mockApi } from "../msw-contract.ts";
@@ -142,5 +143,10 @@ export const apiAgentsHandlers = [
   // PATCH /api/zero/chat-threads/:id (update draft)
   mockApi(chatThreadByIdContract.patch, ({ respond }) => {
     return respond(204);
+  }),
+
+  // POST /api/zero/chat-threads/:id/mark-read
+  mockApi(chatThreadMarkReadContract.markRead, ({ respond }) => {
+    return respond(200, { lastReadAt: new Date().toISOString() });
   }),
 ];

@@ -244,17 +244,29 @@ export function createScrollSignals(id?: string) {
   const scrollToBottom$ = command(({ get }) => {
     const scrollEl = get(internalScrollContainer$);
     if (!scrollEl) {
-      L.debug("scrollToBottom$ SKIPPED (no container)");
       return;
     }
     if (restoreState.suppressNextScrollToBottom) {
       restoreState.suppressNextScrollToBottom = false;
-      L.debug("scrollToBottom$ → skipped (restore in progress)");
       return;
     }
-    L.debug("scrollToBottom$ → scrolling to bottom", scrollInfo(scrollEl));
     scrollEl.scrollTop = scrollEl.scrollHeight;
   });
 
-  return { setScrollContainer$, autoScroll$, scrollToBottom$ };
+  // Scrolling to top is an explicit opt-out of auto-scroll — disable it so
+  // ResizeObserver doesn't snap back to the bottom when new messages arrive.
+  const scrollToTop$ = command(({ get, set }) => {
+    const scrollEl = get(internalScrollContainer$);
+    if (!scrollEl) {
+      return;
+    }
+    set(autoScrollDisabled$, true);
+    restoreState.suppressNextScrollToBottom = false;
+    if (id !== undefined) {
+      set(setCachedScrollTop$, id, 0);
+    }
+    scrollEl.scrollTop = 0;
+  });
+
+  return { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ };
 }

@@ -5,6 +5,7 @@ import {
   createTestCompose,
   getOrgCacheEntry,
   insertTestChatMessage,
+  setTestChatThreadLastReadAt,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -226,7 +227,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(data.threads[0].updatedAt).toBeDefined();
   });
 
-  it("reports isRead=false and isArchived=false for a thread with no messages", async () => {
+  it("reports isRead=true and isArchived=false for a thread with no messages", async () => {
     const createRequest = createTestRequest(
       "http://localhost:3000/api/zero/chat-threads",
       {
@@ -249,11 +250,13 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
 
     expect(response.status).toBe(200);
     expect(data.threads).toHaveLength(1);
-    expect(data.threads[0].isRead).toBe(false);
+    // Empty threads are considered read (Slack semantics)
+    expect(data.threads[0].isRead).toBe(true);
     expect(data.threads[0].isArchived).toBe(false);
   });
 
-  it("reports isRead based on the last message's readAt", async () => {
+  it("reports isRead based on last_read_at watermark", async () => {
+    // Thread with last_read_at >= last message → read
     const readCreate = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -266,9 +269,11 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       chatThreadId: readId,
       role: "assistant",
       content: "hi",
-      readAt: new Date(),
     });
+    // Set last_read_at to now (after the message was created)
+    await setTestChatThreadLastReadAt(readId, new Date());
 
+    // Thread with last_read_at IS NULL → unread
     const unreadCreate = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -282,6 +287,8 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       role: "assistant",
       content: "hi",
     });
+    // Explicitly null out last_read_at so message is newer than cursor
+    await setTestChatThreadLastReadAt(unreadId, null);
 
     const response = await GET(
       createTestRequest(

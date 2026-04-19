@@ -67,10 +67,12 @@ export async function generatePlatformUserToken(
 /**
  * Publish an invalidation signal to specific users' channels.
  * Used by server-side code to notify frontend clients that data has changed.
+ * An optional `payload` can be included for richer signals (e.g. read cursors).
  */
 export async function publishUserSignal(
   userIds: string[],
   topic: string,
+  payload: unknown = null,
 ): Promise<void> {
   const client = getAblyClient();
   if (!client) {
@@ -81,7 +83,7 @@ export async function publishUserSignal(
   await Promise.all(
     userIds.map(async (userId) => {
       const channel = client.channels.get(getUserChannelName(userId));
-      await channel.publish(topic, null);
+      await channel.publish(topic, payload);
     }),
   );
   log.debug(`Published signal "${topic}" to ${userIds.length} user(s)`);

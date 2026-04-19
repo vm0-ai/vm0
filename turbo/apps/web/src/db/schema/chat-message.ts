@@ -55,7 +55,6 @@ export const chatMessages = pgTable(
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
     attachFiles: jsonb("attach_files").$type<ChatMessageAttachFiles>(),
-    readAt: timestamp("read_at"),
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

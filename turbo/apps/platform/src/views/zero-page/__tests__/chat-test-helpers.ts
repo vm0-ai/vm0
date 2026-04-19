@@ -1,7 +1,11 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
-import { triggerAblyEvent } from "../../../mocks/ably.ts";
+import {
+  createChatMessage,
+  createChatRun,
+  updateChatRun,
+} from "../../../mocks/mock-helpers.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 
 import { fill } from "../../../__tests__/page-helper.ts";
@@ -253,6 +257,9 @@ export function mockChatLifecycle(options?: {
         { status: 201 },
       );
     }),
+    http.post("*/api/zero/chat-threads/:id/mark-read", () => {
+      return HttpResponse.json({ lastReadAt: new Date().toISOString() });
+    }),
     // Unified chat message endpoint (creates thread + run + association)
     http.post("*/api/zero/chat/messages", async ({ request }) => {
       const body = (await request.json()) as { prompt?: string };
@@ -261,8 +268,8 @@ export function mockChatLifecycle(options?: {
       }
       options?.onRunCreate?.();
       runAssociated = true;
-      triggerAblyEvent(`chatThreadRunCreated:${threadId}`);
-      triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
+      createChatRun(threadId);
+      createChatMessage(threadId);
       return HttpResponse.json(
         {
           runId: "run-test-1",
@@ -356,21 +363,21 @@ export function mockChatLifecycle(options?: {
           },
         ];
       }
-      triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
-      triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
+      updateChatRun(threadId);
+      createChatMessage(threadId);
     },
     failRun: (error: string) => {
       runStatus = "failed";
       runError = error;
       assistantVersion++;
-      triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
-      triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
+      updateChatRun(threadId);
+      createChatMessage(threadId);
     },
     cancelRun: () => {
       runStatus = "cancelled";
       assistantVersion++;
-      triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
-      triggerAblyEvent(`chatThreadMessageCreated:${threadId}`);
+      updateChatRun(threadId);
+      createChatMessage(threadId);
     },
   };
 }

@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.258.0](https://github.com/vm0-ai/vm0/compare/web-v12.257.0...web-v12.258.0) (2026-04-19)
+
+
+### Features
+
+* add duffel connector ([#10016](https://github.com/vm0-ai/vm0/issues/10016)) ([34b2d35](https://github.com/vm0-ai/vm0/commit/34b2d3584b6d1659baeb36b941973094e04d0aaf))
+* add klaviyo connector ([#10014](https://github.com/vm0-ai/vm0/issues/10014)) ([0fc1ad4](https://github.com/vm0-ai/vm0/commit/0fc1ad4d1c8b1114578ff2632f1d6a318b2fa813))
+* add typeform connector ([#10015](https://github.com/vm0-ai/vm0/issues/10015)) ([c823646](https://github.com/vm0-ai/vm0/commit/c82364633a268ee090707c3a9192ce95616ad583))
+* **chat:** use last 5 rounds for thread title generation ([#10004](https://github.com/vm0-ai/vm0/issues/10004)) ([9c899df](https://github.com/vm0-ai/vm0/commit/9c899df763a5a71633c11c9711b1557ed6501eec))
+* **shopify:** add shopify connector ([#10012](https://github.com/vm0-ai/vm0/issues/10012)) ([427d0d7](https://github.com/vm0-ai/vm0/commit/427d0d7ab5d17e53027e1ed4228202dac14ecb7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.202.0
+
 ## [12.257.0](https://github.com/vm0-ai/vm0/compare/web-v12.256.0...web-v12.257.0) (2026-04-18)
 
 

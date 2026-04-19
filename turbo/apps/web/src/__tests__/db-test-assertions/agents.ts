@@ -5,6 +5,7 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { agentSessions } from "../../db/schema/agent-session";
+import { chatThreads } from "../../db/schema/chat-thread";
 import { zeroAgents } from "../../db/schema/zero-agent";
 
 /**
@@ -133,6 +134,26 @@ export async function getTestAgentSessionWithConversation(
     conversationId: session.conversationId ?? null,
     memoryName: session.memoryName ?? null,
   };
+}
+
+/**
+ * Read the last_read_at value for a chat thread.
+ *
+ * @why-db-direct No API route exposes last_read_at directly. Tests that
+ * need to assert the exact DB state after a mark-read call require
+ * direct read access.
+ */
+export async function getTestChatThreadLastReadAt(
+  threadId: string,
+): Promise<Date | null | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ lastReadAt: chatThreads.lastReadAt })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  if (!row) return undefined;
+  return row.lastReadAt;
 }
 
 /**

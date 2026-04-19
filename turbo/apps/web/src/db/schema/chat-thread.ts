@@ -47,6 +47,13 @@ export const chatThreads = pgTable(
      * Null when no draft attachments are saved.
      */
     draftAttachments: jsonb("draft_attachments").$type<PersistedAttachment[]>(),
+    /**
+     * Slack-style watermark: the last timestamp up to which the user has read
+     * messages in this thread. Forward-only — never rewound.
+     * NULL means the thread has never been explicitly marked read.
+     * Used to derive `isRead` in the thread list query.
+     */
+    lastReadAt: timestamp("last_read_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -56,6 +63,10 @@ export const chatThreads = pgTable(
         table.userId,
         table.agentComposeId,
         table.updatedAt.desc(),
+      ),
+      index("idx_chat_threads_user_last_read").on(
+        table.userId,
+        table.lastReadAt,
       ),
     ];
   },

@@ -1,4 +1,4 @@
-import { eq, and, desc, inArray, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, isNull, sql, or, lt } from "drizzle-orm";
 import { chatThreads } from "../../../db/schema/chat-thread";
 import { chatMessages } from "../../../db/schema/chat-message";
 import { zeroRuns } from "../../../db/schema/zero-run";
@@ -70,7 +70,7 @@ export async function listChatThreads(
     title: string | null;
     createdAt: Date;
     updatedAt: Date;
-    lastMessageReadAt: Date | null;
+    isRead: boolean;
     lastMessageArchivedAt: Date | null;
   }>
 > {
@@ -78,7 +78,6 @@ export async function listChatThreads(
     .select({
       chatThreadId: chatMessages.chatThreadId,
       createdAt: chatMessages.createdAt,
-      readAt: chatMessages.readAt,
       archivedAt: chatMessages.archivedAt,
       rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${chatMessages.chatThreadId} ORDER BY ${chatMessages.createdAt} DESC)`.as(
         "rn",
@@ -93,7 +92,11 @@ export async function listChatThreads(
       title: chatThreads.title,
       createdAt: chatThreads.createdAt,
       updatedAt: chatThreads.updatedAt,
-      lastMessageReadAt: lastMessage.readAt,
+      isRead: sql<boolean>`CASE
+        WHEN ${lastMessage.createdAt} IS NULL THEN true
+        WHEN ${chatThreads.lastReadAt} IS NULL THEN false
+        ELSE ${chatThreads.lastReadAt} >= ${lastMessage.createdAt}
+      END`,
       lastMessageArchivedAt: lastMessage.archivedAt,
     })
     .from(chatThreads)
@@ -113,6 +116,53 @@ export async function listChatThreads(
     );
 
   return threads;
+}
+
+/**
+ * Advance the read cursor for a thread to `cursor` (default: server NOW()).
+ * Forward-only: if the stored cursor is already >= cursor, it is not rewound.
+ * Always returns the current `last_read_at` value after the operation.
+ */
+export async function markThreadRead(
+  userId: string,
+  threadId: string,
+  cursor?: Date,
+): Promise<Date> {
+  const effectiveCursor = cursor
+    ? new Date(Math.min(cursor.getTime(), Date.now()))
+    : new Date();
+
+  const [updated] = await globalThis.services.db
+    .update(chatThreads)
+    .set({ lastReadAt: effectiveCursor })
+    .where(
+      and(
+        eq(chatThreads.id, threadId),
+        eq(chatThreads.userId, userId),
+        or(
+          isNull(chatThreads.lastReadAt),
+          lt(chatThreads.lastReadAt, effectiveCursor),
+        ),
+      ),
+    )
+    .returning({ lastReadAt: chatThreads.lastReadAt });
+
+  if (updated?.lastReadAt) {
+    return updated.lastReadAt;
+  }
+
+  // Guard rejected (cursor didn't advance) — return current value
+  const [current] = await globalThis.services.db
+    .select({ lastReadAt: chatThreads.lastReadAt })
+    .from(chatThreads)
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .limit(1);
+
+  if (!current) {
+    throw notFound("Chat thread not found");
+  }
+
+  return current.lastReadAt ?? new Date(0);
 }
 
 /**

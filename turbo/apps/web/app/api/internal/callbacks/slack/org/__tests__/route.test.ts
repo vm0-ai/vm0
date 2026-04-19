@@ -17,10 +17,8 @@ import {
 } from "../../../../../../../src/__tests__/db-test-seeders/slack";
 import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
-
-// The staff org ID whose FNV-1a hash (afce210e) is listed in STAFF_ORG_ID_HASHES,
-// enabling the AuditLink feature switch for that org.
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
+import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
@@ -402,10 +400,12 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   it("includes audit link block when AuditLink switch is on", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    // Use the staff orgId whose hash is in STAFF_ORG_ID_HASHES, enabling AuditLink
+    // Enable AuditLink for the test user via a DB override
+    await seedUserFeatureSwitches(user.orgId, user.userId, {
+      [FeatureSwitchKey.AuditLink]: true,
+    });
     const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
-      orgId: STAFF_ORG_ID,
     });
     await completeTestRun(user.userId, runId);
 

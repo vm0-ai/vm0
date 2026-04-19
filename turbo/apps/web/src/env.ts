@@ -111,6 +111,9 @@ function initEnv() {
       // Strava OAuth (for connector)
       STRAVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       STRAVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Zoom OAuth (for connector)
+      ZOOM_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+      ZOOM_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
       // Stripe Billing (platform subscription billing — separate from the Stripe connector)
       STRIPE_SECRET_KEY: z.string().min(1).optional(),
       STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -304,6 +307,8 @@ function initEnv() {
       SPOTIFY_OAUTH_CLIENT_SECRET: process.env.SPOTIFY_OAUTH_CLIENT_SECRET,
       STRAVA_OAUTH_CLIENT_ID: process.env.STRAVA_OAUTH_CLIENT_ID,
       STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
+      ZOOM_OAUTH_CLIENT_ID: process.env.ZOOM_OAUTH_CLIENT_ID,
+      ZOOM_OAUTH_CLIENT_SECRET: process.env.ZOOM_OAUTH_CLIENT_SECRET,
       POSTHOG_OAUTH_CLIENT_ID: process.env.POSTHOG_OAUTH_CLIENT_ID,
       POSTHOG_OAUTH_CLIENT_SECRET: process.env.POSTHOG_OAUTH_CLIENT_SECRET,
       STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,

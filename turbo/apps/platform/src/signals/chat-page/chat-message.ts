@@ -7,7 +7,6 @@ import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import {
   currentChatThreadId$,
   chatThreads$,
-  currentChatThread$,
   reloadChatThreads$,
 } from "../agent-chat.ts";
 import {
@@ -89,15 +88,7 @@ export const startNewZeroSession$ = command(({ set }) => {
   set(resetTalkSendSignal$);
 });
 
-const internalCreatingPromise$ = state<Promise<string | null> | undefined>(
-  undefined,
-);
-
-export const creatingNewSession$ = computed(async (get) => {
-  await get(internalCreatingPromise$);
-});
-
-const internalCreateNewChatSession$ = command(
+export const createNewChatThread$ = command(
   async (
     { get, set },
     agentComposeId: string | null,
@@ -111,29 +102,6 @@ const internalCreateNewChatSession$ = command(
       return null;
     }
 
-    // A1: If currently viewing an empty thread for this agent, reuse it
-    const currentThread = await get(currentChatThread$);
-    if (
-      currentThread &&
-      currentThread.agentId === resolvedComposeId &&
-      currentThread.title === null
-    ) {
-      set(startNewZeroSession$);
-      return currentThread.id;
-    }
-
-    // A2: If the first thread in the list is empty, reuse it
-    const threads = await get(chatThreads$);
-    const firstThread = threads[0];
-    if (
-      firstThread?.title === null &&
-      firstThread.agentId === resolvedComposeId
-    ) {
-      set(startNewZeroSession$);
-      return firstThread.id;
-    }
-
-    // Fallback: create a new thread
     set(startNewZeroSession$);
 
     const createClient = get(zeroClient$);
@@ -141,18 +109,6 @@ const internalCreateNewChatSession$ = command(
 
     set(reloadChatThreads$);
     return thread.id;
-  },
-);
-
-export const createNewChatThread$ = command(
-  (
-    { set },
-    agentComposeId: string | null,
-    signal: AbortSignal,
-  ): Promise<string | null> => {
-    const promise = set(internalCreateNewChatSession$, agentComposeId, signal);
-    set(internalCreatingPromise$, promise);
-    return promise;
   },
 );
 

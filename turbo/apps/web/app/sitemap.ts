@@ -8,9 +8,10 @@ const locales = ["en", "de", "es", "ja"] as const;
 const defaultLocale = "en";
 const baseUrl = "https://www.vm0.ai";
 
-// Static dates per route category — avoids false "always modified" signals
-const STATIC_DATE = new Date("2025-01-01");
-const BLOG_DATE = new Date("2025-06-01");
+// Build-time date bumps on every deploy so the sitemap stays fresh without
+// anyone having to remember to edit a constant. Marketing pages are generated
+// from code, so "last build = last changed" is a reasonable proxy.
+const BUILD_DATE = new Date();
 
 /**
  * Build hreflang alternates map for a localized path.
@@ -29,36 +30,51 @@ function buildAlternates(
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Pre-fetch blog posts once so we can both emit post URLs and derive a
+  // realistic lastmod for the /blog index from the most recent post.
+  const defaultPosts = isBlogEnabled()
+    ? await getPosts(defaultLocale).catch(() => {
+        return [];
+      })
+    : [];
+
+  const latestPostDate = defaultPosts.reduce<Date>((latest, post) => {
+    const postDate = new Date(post.publishedAt);
+    return postDate > latest ? postDate : latest;
+  }, new Date(0));
+  const blogIndexLastModified =
+    latestPostDate.getTime() > 0 ? latestPostDate : BUILD_DATE;
+
   const localizedRoutes = [
     {
       path: "",
       priority: 1,
       changeFrequency: "weekly" as const,
-      lastModified: STATIC_DATE,
+      lastModified: BUILD_DATE,
     },
     {
       path: "/pricing",
       priority: 0.9,
       changeFrequency: "monthly" as const,
-      lastModified: STATIC_DATE,
+      lastModified: BUILD_DATE,
     },
     {
       path: "/security",
       priority: 0.8,
       changeFrequency: "monthly" as const,
-      lastModified: STATIC_DATE,
+      lastModified: BUILD_DATE,
     },
     {
       path: "/blog",
       priority: 0.8,
       changeFrequency: "weekly" as const,
-      lastModified: BLOG_DATE,
+      lastModified: blogIndexLastModified,
     },
     {
       path: "/use-cases",
       priority: 0.9,
       changeFrequency: "monthly" as const,
-      lastModified: STATIC_DATE,
+      lastModified: BUILD_DATE,
     },
   ];
 
@@ -67,19 +83,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       path: "/privacy-policy",
       priority: 0.3,
       changeFrequency: "yearly" as const,
-      lastModified: STATIC_DATE,
+      lastModified: BUILD_DATE,
     },
     {
       path: "/terms-of-use",
       priority: 0.3,
       changeFrequency: "yearly" as const,
-      lastModified: STATIC_DATE,
+      lastModified: BUILD_DATE,
     },
     {
       path: "/support",
       priority: 0.5,
       changeFrequency: "monthly" as const,
-      lastModified: STATIC_DATE,
+      lastModified: BUILD_DATE,
     },
   ];
 
@@ -115,7 +131,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const locale of locales) {
       urls.push({
         url: `${baseUrl}/${locale}/use-cases/${useCase.slug}`,
-        lastModified: STATIC_DATE,
+        lastModified: BUILD_DATE,
         changeFrequency: "monthly",
         priority: 0.7,
         alternates: { languages: alternates },
@@ -124,14 +140,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   // Blog post pages — only when blog is enabled
-  if (isBlogEnabled()) {
+  if (defaultPosts.length > 0) {
     const blogBaseUrl = getBlogBaseUrl();
-
-    // Collect unique slugs from default locale, then check each slug's
-    // available translations to avoid emitting URLs that would 404.
-    const defaultPosts = await getPosts(defaultLocale).catch(() => {
-      return [];
-    });
 
     for (const post of defaultPosts) {
       const available = await getPostAvailableLocales(post.slug, locales);
