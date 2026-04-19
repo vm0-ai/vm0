@@ -62,6 +62,16 @@ async fn create_checkpoint_impl(
             return Err(AgentError::Checkpoint(msg));
         }
     };
+    if session_id.is_empty() {
+        log_error!(LOG_TAG, "Session ID is empty");
+        record_sandbox_op(
+            "session_id_read",
+            session_id_start.elapsed(),
+            false,
+            Some("Empty"),
+        );
+        return Err(AgentError::Checkpoint("Session ID is empty".into()));
+    }
     record_sandbox_op("session_id_read", session_id_start.elapsed(), true, None);
 
     // Read session history path
