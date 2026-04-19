@@ -29,6 +29,7 @@ import { generate as generateChatwoot } from "./chatwoot";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
 import { generate as generateCloudflare } from "./cloudflare";
+import { generate as generateCoda } from "./coda";
 import { generate as generateCronlytic } from "./cronlytic";
 import { generate as generateCustomerIo } from "./customer-io";
 import { generate as generateDeepseek } from "./deepseek";
@@ -43,6 +44,7 @@ import { generate as generateDb9 } from "./db9";
 import { generate as generateDrive9 } from "./drive9";
 import { generate as generateDropbox } from "./dropbox";
 import { generate as generateDropboxSign } from "./dropbox-sign";
+import { generate as generateDuffel } from "./duffel";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateExplorium } from "./explorium";
 import { generate as generateFal } from "./fal";
@@ -54,6 +56,7 @@ import { generate as generateGarminConnect } from "./garmin-connect";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
 import { generate as generateGranola } from "./granola";
+import { generate as generateGreenhouse } from "./greenhouse";
 import { generate as generateHeygen } from "./heygen";
 import { generate as generateHtmlcsstoimage } from "./htmlcsstoimage";
 import { generate as generateHubspot } from "./hubspot";
@@ -68,6 +71,7 @@ import { generate as generateIntervalsIcu } from "./intervals-icu";
 import { generate as generateJam } from "./jam";
 import { generate as generateJira } from "./jira";
 import { generate as generateJotform } from "./jotform";
+import { generate as generateKlaviyo } from "./klaviyo";
 import { generate as generateKommo } from "./kommo";
 import { generate as generateLark } from "./lark";
 import { generate as generateLine } from "./line";
@@ -81,6 +85,7 @@ import { generate as generateMercury } from "./mercury";
 import { generate as generateMetabase } from "./metabase";
 import { generate as generateMetaAds } from "./meta-ads";
 import { generate as generateMinimax } from "./minimax";
+import { generate as generateMiro } from "./miro";
 import { generate as generateMonday } from "./monday";
 import { generate as generateMsg9 } from "./msg9";
 import { generate as generateNeon } from "./neon";
@@ -111,6 +116,7 @@ import { generate as generateScrapeninja } from "./scrapeninja";
 import { generate as generateSalesforce } from "./salesforce";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
+import { generate as generateShopify } from "./shopify";
 import { generate as generateShortio } from "./shortio";
 import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
@@ -127,6 +133,7 @@ import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTwenty } from "./twenty";
+import { generate as generateTypeform } from "./typeform";
 import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateWebflow } from "./webflow";
@@ -138,6 +145,7 @@ import { generate as generateZapier } from "./zapier";
 import { generate as generateZapsign } from "./zapsign";
 import { generate as generateZendesk } from "./zendesk";
 import { generate as generateZeptomail } from "./zeptomail";
+import { generate as generateZoom } from "./zoom";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
@@ -164,6 +172,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   clickup: generateClickup,
   close: generateClose,
   cloudflare: generateCloudflare,
+  coda: generateCoda,
   cronlytic: generateCronlytic,
   "customer-io": generateCustomerIo,
   deel: generateDeel,
@@ -178,6 +187,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   drive9: generateDrive9,
   dropbox: generateDropbox,
   "dropbox-sign": generateDropboxSign,
+  duffel: generateDuffel,
   elevenlabs: generateElevenlabs,
   explorium: generateExplorium,
   fal: generateFal,
@@ -189,6 +199,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   github: generateGitHub,
   gitlab: generateGitlab,
   granola: generateGranola,
+  greenhouse: generateGreenhouse,
   heygen: generateHeygen,
   htmlcsstoimage: generateHtmlcsstoimage,
   hubspot: generateHubspot,
@@ -203,6 +214,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   jam: generateJam,
   jira: generateJira,
   jotform: generateJotform,
+  klaviyo: generateKlaviyo,
   kommo: generateKommo,
   lark: generateLark,
   line: generateLine,
@@ -216,6 +228,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   metabase: generateMetabase,
   "meta-ads": generateMetaAds,
   minimax: generateMinimax,
+  miro: generateMiro,
   monday: generateMonday,
   msg9: generateMsg9,
   neon: generateNeon,
@@ -246,6 +259,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   scrapeninja: generateScrapeninja,
   sentry: generateSentry,
   serpapi: generateSerpapi,
+  shopify: generateShopify,
   shortio: generateShortio,
   similarweb: generateSimilarweb,
   slack: generateSlack,
@@ -262,6 +276,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tldv: generateTldv,
   todoist: generateTodoist,
   twenty: generateTwenty,
+  typeform: generateTypeform,
   v0: generateV0,
   vercel: generateVercel,
   webflow: generateWebflow,
@@ -273,6 +288,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   zapsign: generateZapsign,
   zendesk: generateZendesk,
   zeptomail: generateZeptomail,
+  zoom: generateZoom,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),

@@ -272,6 +272,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ZoomConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.SlackAgentSwitch]: {
     maintainer: "yuma@vm0.ai",
     description:

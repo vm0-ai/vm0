@@ -80,6 +80,7 @@ const CONNECTOR_ICON_COLORFUL = {
   close: true,
   cloudflare: true,
   cloudinary: true,
+  coda: true,
   cronlytic: true,
   "customer-io": true,
   deepseek: true,
@@ -104,6 +105,7 @@ const CONNECTOR_ICON_COLORFUL = {
   "google-meet": true,
   "google-sheets": true,
   granola: true,
+  greenhouse: true,
   heygen: true,
   hubspot: true,
   "hugging-face": true,
@@ -139,6 +141,7 @@ const CONNECTOR_ICON_COLORFUL = {
   reportei: true,
   salesforce: true,
   serpapi: true,
+  shopify: true,
   shortio: true,
   similarweb: true,
   slack: true,
@@ -158,6 +161,7 @@ const CONNECTOR_ICON_COLORFUL = {
   zapier: true,
   zapsign: true,
   zeptomail: true,
+  zoom: true,
 } as const;
 
 function connectorIconSkipsDarkInvert(type: ConnectorType): boolean {

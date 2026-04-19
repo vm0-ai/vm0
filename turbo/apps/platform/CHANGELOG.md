@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.256.0](https://github.com/vm0-ai/vm0/compare/app-v0.255.0...app-v0.256.0) (2026-04-19)
+
+
+### Features
+
+* add duffel connector ([#10016](https://github.com/vm0-ai/vm0/issues/10016)) ([34b2d35](https://github.com/vm0-ai/vm0/commit/34b2d3584b6d1659baeb36b941973094e04d0aaf))
+* add klaviyo connector ([#10014](https://github.com/vm0-ai/vm0/issues/10014)) ([0fc1ad4](https://github.com/vm0-ai/vm0/commit/0fc1ad4d1c8b1114578ff2632f1d6a318b2fa813))
+* add typeform connector ([#10015](https://github.com/vm0-ai/vm0/issues/10015)) ([c823646](https://github.com/vm0-ai/vm0/commit/c82364633a268ee090707c3a9192ce95616ad583))
+* **platform:** add chat page keyboard shortcuts ([#10008](https://github.com/vm0-ai/vm0/issues/10008)) ([82bd6c1](https://github.com/vm0-ai/vm0/commit/82bd6c14569c7c5fa00a060e7f1c61b0bfa526fe))
+* **shopify:** add shopify connector ([#10012](https://github.com/vm0-ai/vm0/issues/10012)) ([427d0d7](https://github.com/vm0-ai/vm0/commit/427d0d7ab5d17e53027e1ed4228202dac14ecb7a))
+
+
+### Refactoring
+
+* **platform:** extract chat-test-helpers ably triggers into mock-helpers module ([#9707](https://github.com/vm0-ai/vm0/issues/9707) phase 2) ([#10017](https://github.com/vm0-ai/vm0/issues/10017)) ([651f7c8](https://github.com/vm0-ai/vm0/commit/651f7c89fa52d0e2d8f98729dcfa920894744653))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.202.0
+
 ## [0.255.0](https://github.com/vm0-ai/vm0/compare/app-v0.254.0...app-v0.255.0) (2026-04-18)
 
 

@@ -2,9 +2,9 @@ import {
   useGet,
   useSet,
   useLastResolved,
-  useLoadable,
   useLastLoadable,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconSearch,
   IconX,
@@ -35,7 +35,6 @@ import {
   chatThreads$,
   deleteChatThread$,
   createNewChatThread$,
-  creatingNewSession$,
 } from "../../signals/chat-page/chat-message.ts";
 import {
   currentChatAgentId$,
@@ -214,9 +213,9 @@ function ChatThreads() {
 
 function ChatThreadsTitle() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
-  const creatingLoadable = useLoadable(creatingNewSession$);
+  const [creatingLoadable, createNewChat] =
+    useLoadableSet(createNewChatThread$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const createNewChat = useSet(createNewChatThread$);
   const pageSignal = useGet(pageSignal$);
 
   const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);

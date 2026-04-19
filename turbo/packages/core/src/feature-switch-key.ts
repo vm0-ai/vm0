@@ -47,4 +47,5 @@ export enum FeatureSwitchKey {
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
   InlineThinkingDot = "inlineThinkingDot",
+  ZoomConnector = "zoomConnector",
 }
