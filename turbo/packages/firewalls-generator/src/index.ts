@@ -144,6 +144,7 @@ import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateWebflow } from "./webflow";
 import { generate as generateWix } from "./wix";
+import { generate as generateWorkos } from "./workos";
 import { generate as generateWrike } from "./wrike";
 import { generate as generateX } from "./x";
 import { generate as generateXero } from "./xero";
@@ -293,6 +294,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   vercel: generateVercel,
   webflow: generateWebflow,
   wix: generateWix,
+  workos: generateWorkos,
   wrike: generateWrike,
   x: generateX,
   xero: generateXero,
