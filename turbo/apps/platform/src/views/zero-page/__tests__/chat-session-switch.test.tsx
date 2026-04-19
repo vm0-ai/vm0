@@ -21,7 +21,7 @@ describe("chat session switch", () => {
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
         if (query.sinceId) {
-          return respond(200, { messages: [], hasMore: false });
+          return respond(200, { messages: [] });
         }
         const id = params.threadId;
         if (id === "thread-completed") {
@@ -40,7 +40,6 @@ describe("chat session switch", () => {
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ],
-            hasMore: false,
           });
         }
         // thread-running
@@ -61,7 +60,6 @@ describe("chat session switch", () => {
               createdAt: "2026-03-10T00:00:01Z",
             },
           ],
-          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
@@ -164,7 +162,7 @@ describe("chat session switch", () => {
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
         if (query.sinceId) {
-          return respond(200, { messages: [], hasMore: false });
+          return respond(200, { messages: [] });
         }
         const id = params.threadId;
         return respond(200, {
@@ -182,7 +180,6 @@ describe("chat session switch", () => {
               createdAt: "2026-03-10T00:00:01Z",
             },
           ],
-          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {

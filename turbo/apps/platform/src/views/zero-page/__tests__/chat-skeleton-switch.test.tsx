@@ -19,7 +19,7 @@ describe("chat skeleton on switch", () => {
         chatThreadMessagesContract.list,
         async ({ params, query, respond }) => {
           if (query.sinceId) {
-            return respond(200, { messages: [], hasMore: false });
+            return respond(200, { messages: [] });
           }
           const id = params.threadId;
           if (id === "thread-b") {
@@ -40,7 +40,6 @@ describe("chat skeleton on switch", () => {
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ],
-            hasMore: false,
           });
         },
       ),

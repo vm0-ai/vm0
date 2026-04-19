@@ -7,7 +7,12 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
+import {
+  chatThreadsContract,
+  chatThreadByIdContract,
+  zeroTeamContract,
+  zeroAgentsByIdContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -36,6 +41,56 @@ function mockSubagentAPIs() {
   ];
 
   server.use(
+    mockApi(zeroTeamContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          displayName: "Zero",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "subagent-compose-id",
+          displayName: "Helper Bot",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_2",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      if (params.id === "subagent-compose-id") {
+        return respond(200, {
+          agentId: "subagent-compose-id",
+          ownerId: "test-user",
+          displayName: "Helper Bot",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: null,
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+        });
+      }
+      return respond(200, {
+        agentId: "c0000000-0000-4000-a000-000000000001",
+        ownerId: "test-user",
+        displayName: "Zero",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        permissionPolicies: null,
+        customSkills: [],
+        modelProviderId: null,
+        selectedModel: null,
+      });
+    }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads });
     }),

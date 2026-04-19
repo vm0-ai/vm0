@@ -88,6 +88,7 @@ function mockBaseAPIs(options?: {
     updatedAt: string;
     isRead: boolean;
     isArchived: boolean;
+    running: boolean;
   }[];
   agents?: {
     id: string;

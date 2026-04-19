@@ -40,7 +40,7 @@ function mockThreadList(threads: { id: string; title: string }[]) {
 function mockEmptyMessages(threadId: string) {
   server.use(
     mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-      return respond(200, { messages: [], hasMore: false });
+      return respond(200, { messages: [] });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {

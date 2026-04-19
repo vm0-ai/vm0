@@ -23,9 +23,9 @@ function makeThreadMocks(
   server.use(
     mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
       if (query.sinceId) {
-        return respond(200, { messages: [], hasMore: false });
+        return respond(200, { messages: [] });
       }
-      return respond(200, { messages, hasMore: false });
+      return respond(200, { messages });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {

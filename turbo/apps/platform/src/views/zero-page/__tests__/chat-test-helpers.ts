@@ -54,7 +54,7 @@ export function mockSubagentThread(threadId: string) {
       ]);
     }),
     mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-      return respond(200, { messages: [], hasMore: false });
+      return respond(200, { messages: [] });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
@@ -233,14 +233,13 @@ export function mockChatLifecycle(options?: {
           const lastMsg = pagedMessages[pagedMessages.length - 1]!;
           return respond(200, {
             messages: [lastMsg],
-            hasMore: false,
           });
         }
-        return respond(200, { messages: [], hasMore: false });
+        return respond(200, { messages: [] });
       }
 
       lastDeliveredVersion = assistantVersion;
-      return respond(200, { messages: pagedMessages, hasMore: false });
+      return respond(200, { messages: pagedMessages });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);

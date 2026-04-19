@@ -10,7 +10,7 @@ import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 const context = testContext();
 
 describe("activity page error", () => {
-  it("should show error state when /api/zero/logs returns 500", async () => {
+  it("should show error state when /api/zero/logs returns 403", async () => {
     setMockComposesList([]);
     server.use(
       mockApi(logsListContract.list, ({ respond }) => {

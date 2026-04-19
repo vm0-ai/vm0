@@ -27,7 +27,7 @@ function registerThreadMocks(registry: Map<string, ThreadEntry>) {
     mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
       const messages = snapshot.get(params.threadId) ?? [];
       if (query.sinceId) {
-        return respond(200, { messages: [], hasMore: false });
+        return respond(200, { messages: [] });
       }
       return respond(200, {
         messages: messages.map((m, i) => {
@@ -37,7 +37,6 @@ function registerThreadMocks(registry: Map<string, ThreadEntry>) {
             createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
           };
         }),
-        hasMore: false,
       });
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
@@ -319,7 +318,7 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
             const msgs =
               params.threadId === "thread-ll-a" ? threadLLAMessages : [];
             if (query.sinceId) {
-              return respond(200, { messages: [], hasMore: false });
+              return respond(200, { messages: [] });
             }
             return respond(200, {
               messages: msgs.map((m, i) => {
@@ -329,11 +328,10 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
                   createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
                 };
               }),
-              hasMore: false,
             });
           }
           if (query.sinceId) {
-            return respond(200, { messages: [], hasMore: false });
+            return respond(200, { messages: [] });
           }
           // Initial fetch is deferred — keeps groupedChatMessages$ in loading state.
           await new Promise<void>((resolve) => {
@@ -348,7 +346,6 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ],
-            hasMore: false,
           });
         },
       ),
@@ -418,7 +415,7 @@ describe("zero chat thread page - scrolls before hiding skeleton", () => {
     server.use(
       mockApi(chatThreadMessagesContract.list, async ({ query, respond }) => {
         if (query.sinceId) {
-          return respond(200, { messages: [], hasMore: false });
+          return respond(200, { messages: [] });
         }
         // Defer the initial page so we can observe the skeleton overlay
         // covering the message container with visibility:hidden beneath it.
@@ -438,7 +435,6 @@ describe("zero chat thread page - scrolls before hiding skeleton", () => {
               createdAt: "2026-03-10T00:00:01Z",
             },
           ],
-          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ respond }) => {

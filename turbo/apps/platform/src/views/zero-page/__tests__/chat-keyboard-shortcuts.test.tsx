@@ -19,7 +19,7 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 function mockEmptyMessages(threadId: string) {
   server.use(
     mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-      return respond(200, { messages: [], hasMore: false });
+      return respond(200, { messages: [] });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
@@ -171,7 +171,7 @@ describe("chat page keyboard shortcuts", () => {
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
         if (query.sinceId) {
-          return respond(200, { messages: [], hasMore: false });
+          return respond(200, { messages: [] });
         }
         return respond(200, {
           messages: [
@@ -182,7 +182,6 @@ describe("chat page keyboard shortcuts", () => {
               createdAt: "2026-03-10T00:00:00Z",
             },
           ],
-          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ respond }) => {
@@ -234,7 +233,7 @@ describe("chat page keyboard shortcuts", () => {
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
         if (query.sinceId) {
-          return respond(200, { messages: [], hasMore: false });
+          return respond(200, { messages: [] });
         }
         return respond(200, {
           messages: [
@@ -245,7 +244,6 @@ describe("chat page keyboard shortcuts", () => {
               createdAt: "2026-03-10T00:00:00Z",
             },
           ],
-          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ respond }) => {

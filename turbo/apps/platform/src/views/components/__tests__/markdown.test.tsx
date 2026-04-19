@@ -27,7 +27,7 @@ describe("chat-d-064: markdown content renders from props", () => {
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
         if (query.sinceId) {
-          return respond(200, { messages: [], hasMore: false });
+          return respond(200, { messages: [] });
         }
         return respond(200, {
           messages: [
@@ -38,7 +38,6 @@ describe("chat-d-064: markdown content renders from props", () => {
               createdAt: "2026-01-01T00:00:00Z",
             },
           ],
-          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ respond }) => {
@@ -71,7 +70,7 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
         if (query.sinceId) {
-          return respond(200, { messages: [], hasMore: false });
+          return respond(200, { messages: [] });
         }
         return respond(200, {
           messages: [
@@ -82,7 +81,6 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
               createdAt: "2026-01-01T00:00:00Z",
             },
           ],
-          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ respond }) => {
@@ -129,7 +127,7 @@ describe("chat-d-066: markdown links open in new tab", () => {
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
         if (query.sinceId) {
-          return respond(200, { messages: [], hasMore: false });
+          return respond(200, { messages: [] });
         }
         return respond(200, {
           messages: [
@@ -140,7 +138,6 @@ describe("chat-d-066: markdown links open in new tab", () => {
               createdAt: "2026-01-01T00:00:00Z",
             },
           ],
-          hasMore: false,
         });
       }),
       mockApi(chatThreadByIdContract.get, ({ respond }) => {

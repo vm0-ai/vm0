@@ -33,7 +33,7 @@ function mockAPIs() {
     }),
     mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
       if (query.sinceId) {
-        return respond(200, { messages: [], hasMore: false });
+        return respond(200, { messages: [] });
       }
       return respond(200, {
         messages: [
@@ -50,7 +50,6 @@ function mockAPIs() {
             createdAt: "2026-03-10T00:00:01Z",
           },
         ],
-        hasMore: false,
       });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {

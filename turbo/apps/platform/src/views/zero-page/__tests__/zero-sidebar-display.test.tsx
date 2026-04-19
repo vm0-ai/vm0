@@ -16,14 +16,12 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
-import { zeroIntegrationsSlackContract } from "@vm0/core";
+import { chatThreadsContract, zeroIntegrationsSlackContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core";
 
 const context = testContext();
 

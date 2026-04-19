@@ -27,7 +27,7 @@ function setupBaseHandlers(threadId: string) {
       return respond(200, { threads: [] });
     }),
     mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-      return respond(200, { messages: [], hasMore: false });
+      return respond(200, { messages: [] });
     }),
     mockApi(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
