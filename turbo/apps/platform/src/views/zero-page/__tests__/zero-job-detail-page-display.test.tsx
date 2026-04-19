@@ -6,6 +6,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
 
@@ -284,16 +285,7 @@ describe("zero job detail page - tab visibility", () => {
   it("should hide Profile and Instructions tabs for non-owner non-admin", async () => {
     mockAPIs();
     // Override org to "member" role and user to non-owner
-    server.use(
-      http.get("*/api/zero/org", () => {
-        return HttpResponse.json({
-          id: "org_default",
-          slug: "default-org",
-          name: "Default Org",
-          role: "member",
-        });
-      }),
-    );
+    setMockOrg({ role: "member" });
     detachedSetupPage({
       context,
       path: "/agents/my-agent",
@@ -315,16 +307,7 @@ describe("zero job detail page - tab visibility", () => {
 
   it("should coerce ?tab=profile to authorization for non-owner non-admin", async () => {
     mockAPIs();
-    server.use(
-      http.get("*/api/zero/org", () => {
-        return HttpResponse.json({
-          id: "org_default",
-          slug: "default-org",
-          name: "Default Org",
-          role: "member",
-        });
-      }),
-    );
+    setMockOrg({ role: "member" });
     detachedSetupPage({
       context,
       path: "/agents/my-agent?tab=profile",

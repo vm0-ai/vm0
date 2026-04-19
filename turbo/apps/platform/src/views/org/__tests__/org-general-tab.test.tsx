@@ -1,49 +1,25 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
-import { createDeferredPromise } from "../../../signals/utils.ts";
 import { refreshOrg$ } from "../../../signals/org.ts";
+import {
+  setMockOrg,
+  resetMockOrg,
+  setMockOrgLogo,
+  resetMockOrgLogo,
+} from "../../../mocks/handlers/api-org.ts";
+import { zeroOrgContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
-function mockAPIs(overrides?: { slug?: string; name?: string; role?: string }) {
-  const org = {
-    id: "org_1",
-    slug: overrides?.slug ?? "test-org",
-    name: overrides?.name ?? "Test Org",
-    role: overrides?.role ?? "admin",
-  };
-  server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json(org);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-  );
-  return org;
-}
+beforeEach(() => {
+  resetMockOrg();
+  resetMockOrgLogo();
+});
 
 async function openGeneralTab() {
   detachedSetupPage({ context, path: "/?settings=general" });
@@ -55,12 +31,8 @@ async function openGeneralTab() {
 describe("org general tab - display", () => {
   // ORG-D-008
   it("logo preview image is displayed", async () => {
-    mockAPIs({ slug: "my-org" });
-    server.use(
-      http.get("*/api/zero/org/logo", () => {
-        return HttpResponse.json({ logoUrl: "https://example.com/logo.png" });
-      }),
-    );
+    setMockOrg({ slug: "my-org" });
+    setMockOrgLogo("https://example.com/logo.png");
     await openGeneralTab();
     const logo = await screen.findByAltText("my-org");
     expect(logo).toBeInTheDocument();
@@ -69,7 +41,7 @@ describe("org general tab - display", () => {
 
   // ORG-D-009
   it("organization name is displayed", async () => {
-    mockAPIs({ name: "Acme Corp" });
+    setMockOrg({ name: "Acme Corp" });
     await openGeneralTab();
     const nameInput = await screen.findByDisplayValue("Acme Corp");
     expect(nameInput).toBeInTheDocument();
@@ -77,7 +49,7 @@ describe("org general tab - display", () => {
 
   // ORG-D-010
   it("organization slug is displayed", async () => {
-    mockAPIs({ slug: "acme-corp" });
+    setMockOrg({ slug: "acme-corp" });
     await openGeneralTab();
     const slugInput = await screen.findByDisplayValue("acme-corp");
     expect(slugInput).toBeInTheDocument();
@@ -86,16 +58,24 @@ describe("org general tab - display", () => {
   // ORG-D-011
   it("loading skeletons are shown while data loads", async () => {
     // First load org so the dialog opens normally
-    mockAPIs({ slug: "test-org" });
+    setMockOrg({ slug: "test-org" });
     await openGeneralTab();
     // Wait for content to be rendered
     await screen.findByDisplayValue("test-org");
 
-    // Now trigger a refresh with a slow (deferred) org response
-    const orgDeferred = createDeferredPromise<Response>(context.signal);
+    // Now trigger a refresh with a never-resolving org response
     server.use(
-      http.get("*/api/zero/org", () => {
-        return orgDeferred.promise;
+      mockApi(zeroOrgContract.get, async ({ respond }) => {
+        // Never resolves — keeps loading state visible
+        await new Promise<void>(() => {
+          /* intentionally never resolves */
+        });
+        return respond(200, {
+          id: "org_1",
+          slug: "test-org",
+          name: "Test Org",
+          role: "admin",
+        });
       }),
     );
     context.store.set(refreshOrg$);
@@ -109,28 +89,20 @@ describe("org general tab - display", () => {
         screen.getByRole("status", { name: "Loading" }),
       ).toBeInTheDocument();
     });
-
-    // Resolve deferred to allow clean teardown
-    orgDeferred.resolve(
-      HttpResponse.json({
-        id: "org_1",
-        slug: "test-org",
-        name: "Test Org",
-        role: "admin",
-      }) as unknown as Response,
-    );
   });
 
   // ORG-D-012
   it("error messages shown during save failure", async () => {
     const user = userEvent.setup();
-    mockAPIs({ slug: "old-slug" });
+    setMockOrg({ slug: "old-slug" });
     server.use(
-      http.put("*/api/zero/org", () => {
-        return HttpResponse.json(
-          { error: { message: "Slug already taken", code: "CONFLICT" } },
-          { status: 409 },
-        );
+      mockApi(zeroOrgContract.update, ({ respond }) => {
+        return respond(409, {
+          error: {
+            message: "Slug already taken",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        });
       }),
     );
     await openGeneralTab();
@@ -147,7 +119,7 @@ describe("org general tab - display", () => {
     const user = userEvent.setup();
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock-preview");
     vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
-    mockAPIs({ slug: "test-org" });
+    setMockOrg({ slug: "test-org", name: "Test Org" });
     await openGeneralTab();
     // Wait for admin inputs to load
     await screen.findByDisplayValue("Test Org");
@@ -164,7 +136,7 @@ describe("org general tab - display", () => {
 describe("org general tab - interaction", () => {
   // ORG-I-015
   it("name input field is editable", async () => {
-    mockAPIs({ name: "Old Name" });
+    setMockOrg({ name: "Old Name" });
     await openGeneralTab();
     const nameInput = await screen.findByDisplayValue("Old Name");
     await fill(nameInput, "New Name");
@@ -173,7 +145,7 @@ describe("org general tab - interaction", () => {
 
   // ORG-I-016
   it("slug input field is editable", async () => {
-    mockAPIs({ slug: "old-slug" });
+    setMockOrg({ slug: "old-slug" });
     await openGeneralTab();
     const slugInput = await screen.findByDisplayValue("old-slug");
     await fill(slugInput, "new-slug");
@@ -184,26 +156,18 @@ describe("org general tab - interaction", () => {
   it("save changes button submits form", async () => {
     const user = userEvent.setup();
     const requestBody = vi.fn();
-    mockAPIs({ name: "Old Name", slug: "test-org" });
+    setMockOrg({ name: "Old Name", slug: "test-org" });
     server.use(
-      http.put("*/api/zero/org", async ({ request }) => {
-        requestBody(await request.json());
+      mockApi(zeroOrgContract.update, ({ body, respond }) => {
+        requestBody(body);
         // After a successful save, update the GET handler to return the new name
         // so the org refresh reflects the change and hasChanges becomes false
-        server.use(
-          http.get("*/api/zero/org", () => {
-            return HttpResponse.json({
-              id: "org_1",
-              slug: "test-org",
-              name: "New Name",
-              role: "admin",
-            });
-          }),
-        );
-        return HttpResponse.json({
+        setMockOrg({ name: "New Name", slug: "test-org" });
+        return respond(200, {
           id: "org_1",
           slug: "test-org",
           name: "New Name",
+          role: "admin",
         });
       }),
     );
@@ -221,7 +185,7 @@ describe("org general tab - interaction", () => {
   // ORG-I-018
   it("discard button reverts changes", async () => {
     const user = userEvent.setup();
-    mockAPIs({ name: "Original Name" });
+    setMockOrg({ name: "Original Name" });
     await openGeneralTab();
     const nameInput = await screen.findByDisplayValue("Original Name");
     await fill(nameInput, "Changed Name");
@@ -234,7 +198,7 @@ describe("org general tab - interaction", () => {
   // ORG-I-019
   it("leave workspace button opens confirmation dialog", async () => {
     const user = userEvent.setup();
-    mockAPIs({ role: "member" });
+    setMockOrg({ role: "member" });
     await openGeneralTab();
     await waitFor(() => {
       expect(
@@ -256,7 +220,7 @@ describe("org general tab - interaction", () => {
   // ORG-I-020
   it("delete workspace button opens confirmation dialog requiring slug", async () => {
     const user = userEvent.setup();
-    mockAPIs({ slug: "acme-org" });
+    setMockOrg({ slug: "acme-org" });
     await openGeneralTab();
     // Wait for page to load
     await screen.findByDisplayValue("acme-org");
@@ -277,7 +241,7 @@ describe("org general tab - interaction", () => {
 describe("org general tab - validation", () => {
   it("delete workspace requires typing exact slug", async () => {
     const user = userEvent.setup();
-    mockAPIs({ slug: "my-workspace" });
+    setMockOrg({ slug: "my-workspace" });
     await openGeneralTab();
     await screen.findByDisplayValue("my-workspace");
     const deleteWorkspaceBtn = screen.getAllByRole("button").find((el) => {

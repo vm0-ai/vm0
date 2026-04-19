@@ -1,11 +1,20 @@
-import { test, expect } from "vitest";
+import { test, expect, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
+import {
+  setMockUsageMembers,
+  resetMockUsageMembers,
+} from "../../../mocks/handlers/api-usage.ts";
+import {
+  zeroUsageMembersContract,
+  zeroMemberCreditCapContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -38,11 +47,16 @@ function makeMember(
   };
 }
 
-function mockAPIs(options?: {
+beforeEach(() => {
+  resetMockOrg();
+  resetMockUsageMembers();
+});
+
+function setupMockAPIs(options?: {
   period?: { start: string; end: string } | null;
   members?: MockMember[];
   errorUsage?: boolean;
-  role?: string;
+  role?: "admin" | "member";
 }) {
   const period =
     options?.period !== undefined
@@ -51,61 +65,24 @@ function mockAPIs(options?: {
   const members = options?.members ?? [];
   const role = options?.role ?? "admin";
 
-  server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "user-12345678",
-        name: "User 12345678",
-        role,
-      });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-    http.get("*/api/zero/org/members", () => {
-      return HttpResponse.json({
-        members: [],
-        pendingInvitations: [],
-        membershipRequests: [],
-      });
-    }),
-    http.get("*/api/zero/usage/members", () => {
-      if (options?.errorUsage === true) {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Server error",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          },
-          { status: 500 },
-        );
-      }
-      return HttpResponse.json({ period, members });
-    }),
-    http.put("*/api/zero/org/members/credit-cap", async ({ request }) => {
-      await request.json();
-      return HttpResponse.json({ ok: true });
-    }),
-  );
+  setMockOrg({
+    id: "org_1",
+    slug: "user-12345678",
+    name: "User 12345678",
+    role,
+  });
+
+  if (options?.errorUsage === true) {
+    server.use(
+      mockApi(zeroUsageMembersContract.get, ({ respond }) => {
+        return respond(500, {
+          error: { message: "Server error", code: "INTERNAL_SERVER_ERROR" },
+        });
+      }),
+    );
+  } else {
+    setMockUsageMembers({ period, members });
+  }
 }
 
 async function openUsageTab() {
@@ -126,7 +103,7 @@ test("shows credit balance with formatted numbers in usage tab", async () => {
     subscriptionStatus: "active",
     hasSubscription: true,
   });
-  mockAPIs({ members: [makeMember("user-a", "alice@example.com", 5000)] });
+  setupMockAPIs({ members: [makeMember("user-a", "alice@example.com", 5000)] });
   await openUsageTab();
   await waitFor(() => {
     const info = screen.getByTestId("credit-balance-info");
@@ -142,7 +119,7 @@ test("shows member email and credits in usage list", async () => {
     subscriptionStatus: "active",
     hasSubscription: true,
   });
-  mockAPIs({
+  setupMockAPIs({
     members: [
       makeMember("user-a", "alice@example.com", 500, null),
       makeMember("user-b", "bob@example.com", 1200, null),
@@ -165,7 +142,9 @@ test("shows editable credit cap input for admins", async () => {
     subscriptionStatus: "active",
     hasSubscription: true,
   });
-  mockAPIs({ members: [makeMember("user-a", "alice@example.com", 500, 3000)] });
+  setupMockAPIs({
+    members: [makeMember("user-a", "alice@example.com", 500, 3000)],
+  });
   await openUsageTab();
   await waitFor(() => {
     expect(screen.getByPlaceholderText("No limit")).toBeInTheDocument();
@@ -180,7 +159,7 @@ test("redirects non-admins to general tab when usage tab is requested", async ()
     subscriptionStatus: "active",
     hasSubscription: true,
   });
-  mockAPIs({
+  setupMockAPIs({
     members: [makeMember("user-a", "alice@example.com", 500, 3000)],
     role: "member",
   });
@@ -206,15 +185,17 @@ test("credit cap input accepts value and saves via unsaved bar", async () => {
     hasSubscription: true,
   });
   let capturedCap: number | null = null;
-  mockAPIs({ members: [makeMember("user-a", "alice@example.com", 500, null)] });
+  setupMockAPIs({
+    members: [makeMember("user-a", "alice@example.com", 500, null)],
+  });
   server.use(
-    http.put("*/api/zero/org/members/credit-cap", async ({ request }) => {
-      const body = (await request.json()) as {
-        userId: string;
-        creditCap: number | null;
-      };
+    mockApi(zeroMemberCreditCapContract.set, ({ body, respond }) => {
       capturedCap = body.creditCap;
-      return HttpResponse.json({ ok: true });
+      return respond(200, {
+        userId: body.userId,
+        creditCap: body.creditCap,
+        creditEnabled: true,
+      });
     }),
   );
   await openUsageTab();
@@ -241,7 +222,7 @@ test("shows error state when usage API fails in usage tab", async () => {
     subscriptionStatus: "active",
     hasSubscription: true,
   });
-  mockAPIs({ errorUsage: true });
+  setupMockAPIs({ errorUsage: true });
   await openUsageTab();
   await waitFor(() => {
     expect(screen.getByTestId("usage-tab-error")).toBeInTheDocument();

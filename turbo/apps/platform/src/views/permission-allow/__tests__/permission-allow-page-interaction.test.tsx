@@ -21,6 +21,7 @@ import {
 } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
 
@@ -62,15 +63,8 @@ function mockPermissionRequests(
 }
 
 function setupMemberContext(agentOverrides?: Record<string, unknown>) {
+  setMockOrg({ role: "member" });
   server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "user-12345678",
-        name: "User 12345678",
-        role: "member",
-      });
-    }),
     http.get("*/api/zero/agents/:name", ({ params }) => {
       if (
         params.name === "instructions" ||

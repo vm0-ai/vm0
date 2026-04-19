@@ -1,22 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOrgContract } from "@vm0/core";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
+import { mockApi } from "../../mocks/msw-contract.ts";
 
 const context = testContext();
 
 describe("zeroClient$ 401 redirect", () => {
   it("should redirect to sign-in when API returns 401", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/org", () => {
-        return HttpResponse.json(
-          { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-          { status: 401 },
-        );
+      mockApi(zeroOrgContract.get, ({ respond }) => {
+        return respond(401, {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        });
       }),
     );
 
@@ -44,11 +43,10 @@ describe("zeroClient$ 401 redirect", () => {
     });
 
     server.use(
-      http.get("http://localhost:3000/api/zero/org", () => {
-        return HttpResponse.json(
-          { error: { message: "Forbidden", code: "FORBIDDEN" } },
-          { status: 403 },
-        );
+      mockApi(zeroOrgContract.get, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Forbidden", code: "NOT_FOUND" },
+        });
       }),
     );
 
@@ -58,7 +56,7 @@ describe("zeroClient$ 401 redirect", () => {
     const client = createClient(zeroOrgContract);
     const result = await client.get();
 
-    expect(result.status).toBe(403);
+    expect(result.status).toBe(404);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
@@ -78,18 +76,19 @@ describe("zeroClient$ 401 redirect", () => {
 
     const authHeaders: string[] = [];
     server.use(
-      http.get("http://localhost:3000/api/zero/org", ({ request }) => {
+      mockApi(zeroOrgContract.get, ({ request, respond }) => {
         authHeaders.push(request.headers.get("authorization") ?? "");
         if (authHeaders.length === 1) {
-          return HttpResponse.json(
-            { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
-            { status: 401 },
-          );
+          return respond(401, {
+            error: { message: "Unauthorized", code: "UNAUTHORIZED" },
+          });
         }
-        return HttpResponse.json(
-          { id: "org_1", name: "Org", slug: "org-1", imageUrl: "" },
-          { status: 200 },
-        );
+        return respond(200, {
+          id: "org_1",
+          name: "Org",
+          slug: "org-1",
+          role: "admin",
+        });
       }),
     );
 
@@ -124,12 +123,11 @@ describe("zeroClient$ 401 redirect", () => {
 
     const authHeaders: string[] = [];
     server.use(
-      http.get("http://localhost:3000/api/zero/org", ({ request }) => {
+      mockApi(zeroOrgContract.get, ({ request, respond }) => {
         authHeaders.push(request.headers.get("authorization") ?? "");
-        return HttpResponse.json(
-          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
-          { status: 401 },
-        );
+        return respond(401, {
+          error: { message: "Unauthorized", code: "UNAUTHORIZED" },
+        });
       }),
     );
 
@@ -161,12 +159,11 @@ describe("zeroClient$ 401 redirect", () => {
 
     const authHeaders: string[] = [];
     server.use(
-      http.get("http://localhost:3000/api/zero/org", ({ request }) => {
+      mockApi(zeroOrgContract.get, ({ request, respond }) => {
         authHeaders.push(request.headers.get("authorization") ?? "");
-        return HttpResponse.json(
-          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
-          { status: 401 },
-        );
+        return respond(401, {
+          error: { message: "Unauthorized", code: "UNAUTHORIZED" },
+        });
       }),
     );
 
@@ -193,12 +190,11 @@ describe("zeroClient$ 401 redirect", () => {
 
     const authHeaders: string[] = [];
     server.use(
-      http.get("http://localhost:3000/api/zero/org", ({ request }) => {
+      mockApi(zeroOrgContract.get, ({ request, respond }) => {
         authHeaders.push(request.headers.get("authorization") ?? "");
-        return HttpResponse.json(
-          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
-          { status: 401 },
-        );
+        return respond(401, {
+          error: { message: "Unauthorized", code: "UNAUTHORIZED" },
+        });
       }),
     );
 

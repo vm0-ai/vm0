@@ -9,7 +9,20 @@ import {
   apiConnectorsHandlers,
   resetMockConnectors,
 } from "./api-connectors.ts";
-import { apiOrgHandlers } from "./api-org.ts";
+import { apiOrgHandlers, resetMockOrg, resetMockOrgLogo } from "./api-org.ts";
+import {
+  apiOrgMembersHandlers,
+  resetMockOrgMembers,
+} from "./api-org-members.ts";
+import {
+  apiOrgDomainsHandlers,
+  resetMockOrgDomains,
+} from "./api-org-domains.ts";
+import {
+  apiUsageHandlers,
+  resetMockUsageMembers,
+  resetMockMemberCreditCaps,
+} from "./api-usage.ts";
 import {
   apiOrgModelProvidersHandlers,
   resetMockOrgModelProviders,
@@ -52,6 +65,9 @@ import { apiPermissionPoliciesHandlers } from "./api-permission-policies.ts";
 export const handlers = [
   ...apiConnectorsHandlers,
   ...apiOrgHandlers,
+  ...apiOrgMembersHandlers,
+  ...apiOrgDomainsHandlers,
+  ...apiUsageHandlers,
   ...apiOrgModelProvidersHandlers,
   ...apiSecretsHandlers,
   ...apiVariablesHandlers,
@@ -84,4 +100,10 @@ export function resetAllMockHandlers(): void {
   resetAblySubscriptions();
   resetMockPermissionRequests();
   resetMockComposesList();
+  resetMockOrg();
+  resetMockOrgLogo();
+  resetMockOrgMembers();
+  resetMockOrgDomains();
+  resetMockUsageMembers();
+  resetMockMemberCreditCaps();
 }

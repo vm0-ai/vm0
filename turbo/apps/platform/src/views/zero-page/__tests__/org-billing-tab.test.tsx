@@ -1,38 +1,25 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { reloadBillingStatus$ } from "../../../signals/zero-page/billing.ts";
+import {
+  zeroBillingStatusContract,
+  zeroBillingAutoRechargeContract,
+  zeroBillingCheckoutContract,
+  zeroBillingPortalContract,
+  zeroBillingDowngradeContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
-function mockAPIs() {
-  server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-  );
+// All default API state (chat-threads, team, org/logo) is covered by global handlers.
+function mockAPIs(): void {
+  // No-op: all required endpoints are covered by global default handlers.
 }
 
 async function openBillingTab() {
@@ -318,9 +305,9 @@ describe("org billing tab - auto-recharge section", () => {
     const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           enabled: true,
           threshold: 2000,
           amount: 10_000,
@@ -377,9 +364,9 @@ describe("org billing tab - auto-recharge section", () => {
   it("should send correct data when saving auto-recharge config", async () => {
     let capturedBody: unknown = null;
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           enabled: true,
           threshold: 2000,
           amount: 10_000,
@@ -606,8 +593,13 @@ describe("org billing tab - renewal date display", () => {
 describe("org billing tab - billing states", () => {
   it("should show error state when billing status fails to load", async () => {
     server.use(
-      http.get("*/api/zero/billing/status", () => {
-        return HttpResponse.json({}, { status: 500 });
+      mockApi(zeroBillingStatusContract.get, ({ respond }) => {
+        return respond(500, {
+          error: {
+            message: "Internal server error",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        });
       }),
     );
     mockAPIs();
@@ -633,9 +625,9 @@ describe("org billing tab - plan card actions", () => {
     const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
-      http.post("*/api/zero/billing/checkout", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           url: "https://checkout.stripe.com/test?tier=pro",
         });
       }),
@@ -678,8 +670,8 @@ describe("org billing tab - stripe portal", () => {
   it("should redirect to Stripe portal URL when Manage button is clicked", async () => {
     const user = userEvent.setup();
     server.use(
-      http.post("*/api/zero/billing/portal", () => {
-        return HttpResponse.json({
+      mockApi(zeroBillingPortalContract.create, ({ respond }) => {
+        return respond(200, {
           url: "https://billing.stripe.com/test-portal",
         });
       }),
@@ -843,9 +835,9 @@ describe("org billing tab - downgrade flow", () => {
     const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
-      http.post("*/api/zero/billing/downgrade", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({ success: true, effectiveDate: null });
+      mockApi(zeroBillingDowngradeContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, { success: true, effectiveDate: null });
       }),
     );
 
@@ -888,9 +880,9 @@ describe("org billing tab - downgrade flow", () => {
     const user = userEvent.setup();
     let apiCalled = false;
     server.use(
-      http.post("*/api/zero/billing/downgrade", () => {
+      mockApi(zeroBillingDowngradeContract.create, ({ respond }) => {
         apiCalled = true;
-        return HttpResponse.json({ success: true, effectiveDate: null });
+        return respond(200, { success: true, effectiveDate: null });
       }),
     );
 

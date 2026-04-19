@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 
 const context = testContext();
 
@@ -80,17 +81,13 @@ describe("zero chat page - pin button", () => {
 describe("zero chat page - invite button", () => {
   it("invite button opens manage dialog on members tab (CHAT-I-012)", async () => {
     const user = userEvent.setup();
-    server.use(
-      http.get("*/api/zero/org/members", () => {
-        return HttpResponse.json({
-          slug: "test-org",
-          role: "admin",
-          members: [],
-          pendingInvitations: [],
-          createdAt: "2026-01-01T00:00:00Z",
-        });
-      }),
-    );
+    setMockOrgMembers({
+      slug: "test-org",
+      role: "admin",
+      members: [],
+      pendingInvitations: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
     mockChatAPI();
     detachedSetupPage({ context, path: "/" });
 

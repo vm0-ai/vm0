@@ -1,7 +1,6 @@
-import { expect, test } from "vitest";
+import { expect, test, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
@@ -10,6 +9,16 @@ import type {
   OrgPendingInvitation,
   OrgMembershipRequest,
 } from "../../../signals/external/org-members.ts";
+import {
+  setMockOrgMembers,
+  resetMockOrgMembers,
+} from "../../../mocks/handlers/api-org-members.ts";
+import {
+  zeroOrgMembersContract,
+  zeroOrgInviteContract,
+  zeroOrgMembershipRequestsContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -70,26 +79,23 @@ const membershipRequest = {
   createdAt: "2026-03-05T00:00:00Z",
 } as const satisfies OrgMembershipRequest;
 
-function mockMembersAPI(options?: {
+beforeEach(() => {
+  resetMockOrgMembers();
+});
+
+function setupMembersAPI(options?: {
   members?: OrgMember[];
   pendingInvitations?: OrgPendingInvitation[];
   membershipRequests?: OrgMembershipRequest[];
 }) {
-  server.use(
-    http.get("*/api/zero/org/members", () => {
-      return HttpResponse.json({
-        slug: "user-12345678",
-        role: "admin",
-        members: options?.members ?? [adminMember, regularMember],
-        pendingInvitations: options?.pendingInvitations ?? [],
-        membershipRequests: options?.membershipRequests ?? [],
-        createdAt: "2026-01-01T00:00:00Z",
-      });
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-  );
+  setMockOrgMembers({
+    slug: "user-12345678",
+    role: "admin",
+    members: options?.members ?? [adminMember, regularMember],
+    pendingInvitations: options?.pendingInvitations ?? [],
+    membershipRequests: options?.membershipRequests ?? [],
+    createdAt: "2026-01-01T00:00:00Z",
+  });
 }
 
 function renderMembersTab() {
@@ -98,7 +104,7 @@ function renderMembersTab() {
 
 // ORG-D-022
 test("shows member name and email in member row", async () => {
-  mockMembersAPI({ members: [regularMember] });
+  setupMembersAPI({ members: [regularMember] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("Regular Member")).toBeInTheDocument();
@@ -108,7 +114,7 @@ test("shows member name and email in member row", async () => {
 
 // ORG-D-023
 test("shows profile image when available and initial letter fallback when not", async () => {
-  mockMembersAPI({ members: [adminMember, memberWithImage] });
+  setupMembersAPI({ members: [adminMember, memberWithImage] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByRole("img", { name: "Image User" })).toBeInTheDocument();
@@ -119,7 +125,7 @@ test("shows profile image when available and initial letter fallback when not", 
 
 // ORG-D-024
 test("shows pending invitations in the member list", async () => {
-  mockMembersAPI({ pendingInvitations: [pendingInvitation] });
+  setupMembersAPI({ pendingInvitations: [pendingInvitation] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("invited@example.com")).toBeInTheDocument();
@@ -128,7 +134,7 @@ test("shows pending invitations in the member list", async () => {
 
 // ORG-D-025
 test("shows membership requests with Accept and Reject buttons", async () => {
-  mockMembersAPI({ membershipRequests: [membershipRequest] });
+  setupMembersAPI({ membershipRequests: [membershipRequest] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByTitle("Accept request")).toBeInTheDocument();
@@ -138,7 +144,7 @@ test("shows membership requests with Accept and Reject buttons", async () => {
 
 // ORG-D-026
 test("shows current user indicator on the current user row", async () => {
-  mockMembersAPI({ members: [adminMember] });
+  setupMembersAPI({ members: [adminMember] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByTestId("current-user-indicator")).toBeInTheDocument();
@@ -147,7 +153,7 @@ test("shows current user indicator on the current user row", async () => {
 
 // ORG-C-028
 test("shows empty state when no members match search", async () => {
-  mockMembersAPI({ members: [regularMember] });
+  setupMembersAPI({ members: [regularMember] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("Regular Member")).toBeInTheDocument();
@@ -162,7 +168,7 @@ test("shows empty state when no members match search", async () => {
 
 // ORG-I-029
 test("filters member list when search input is used", async () => {
-  mockMembersAPI({ members: [adminMember, regularMember] });
+  setupMembersAPI({ members: [adminMember, regularMember] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
@@ -179,7 +185,7 @@ test("filters member list when search input is used", async () => {
 // ORG-I-030
 test("opens invite dialog when Add member button is clicked", async () => {
   const user = userEvent.setup();
-  mockMembersAPI();
+  setupMembersAPI();
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
@@ -200,15 +206,11 @@ test("opens invite dialog when Add member button is clicked", async () => {
 test("sends invite with typed email when Send invitation is clicked", async () => {
   const user = userEvent.setup();
   let capturedEmail: string | null = null;
-  mockMembersAPI();
+  setupMembersAPI();
   server.use(
-    http.post("*/api/zero/org/invite", async ({ request }) => {
-      const body = (await request.json()) as unknown as {
-        email: string;
-        role: string;
-      };
+    mockApi(zeroOrgInviteContract.invite, ({ body, respond }) => {
       capturedEmail = body.email;
-      return HttpResponse.json({ message: "ok" });
+      return respond(200, { message: "ok" });
     }),
   );
   await renderMembersTab();
@@ -241,15 +243,11 @@ test("sends invite with typed email when Send invitation is clicked", async () =
 test("sends invite with Admin role when Admin is selected in role dropdown", async () => {
   const user = userEvent.setup();
   let capturedRole: string | null = null;
-  mockMembersAPI();
+  setupMembersAPI();
   server.use(
-    http.post("*/api/zero/org/invite", async ({ request }) => {
-      const body = (await request.json()) as unknown as {
-        email: string;
-        role: string;
-      };
-      capturedRole = body.role;
-      return HttpResponse.json({ message: "ok" });
+    mockApi(zeroOrgInviteContract.invite, ({ body, respond }) => {
+      capturedRole = body.role ?? "member";
+      return respond(200, { message: "ok" });
     }),
   );
   await renderMembersTab();
@@ -287,14 +285,11 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
 test("sends role update when Make admin is clicked in member action menu", async () => {
   const user = userEvent.setup();
   let capturedRoleUpdate: { email: string; role: string } | null = null;
-  mockMembersAPI({ members: [adminMember, regularMember] });
+  setupMembersAPI({ members: [adminMember, regularMember] });
   server.use(
-    http.patch("*/api/zero/org/members", async ({ request }) => {
-      capturedRoleUpdate = (await request.json()) as unknown as {
-        email: string;
-        role: string;
-      };
-      return HttpResponse.json({ message: "ok" });
+    mockApi(zeroOrgMembersContract.updateRole, ({ body, respond }) => {
+      capturedRoleUpdate = body;
+      return respond(200, { message: "ok" });
     }),
   );
   await renderMembersTab();
@@ -317,7 +312,7 @@ test("sends role update when Make admin is clicked in member action menu", async
 // ORG-I-034
 test("shows self-demote confirmation dialog when admin switches to member", async () => {
   const user = userEvent.setup();
-  mockMembersAPI({ members: [adminMember, secondAdmin, regularMember] });
+  setupMembersAPI({ members: [adminMember, secondAdmin, regularMember] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByTestId("current-user-indicator")).toBeInTheDocument();
@@ -337,7 +332,7 @@ test("shows self-demote confirmation dialog when admin switches to member", asyn
 // ORG-I-035
 test("shows revoke invitation confirmation dialog when revoke is clicked", async () => {
   const user = userEvent.setup();
-  mockMembersAPI({ pendingInvitations: [pendingInvitation] });
+  setupMembersAPI({ pendingInvitations: [pendingInvitation] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("invited@example.com")).toBeInTheDocument();
@@ -358,12 +353,11 @@ test("shows revoke invitation confirmation dialog when revoke is clicked", async
 test("sends accept request when Accept button is clicked", async () => {
   const user = userEvent.setup();
   let capturedRequestId: string | null = null;
-  mockMembersAPI({ membershipRequests: [membershipRequest] });
+  setupMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
-    http.post("*/api/zero/org/membership-requests", async ({ request }) => {
-      const body = (await request.json()) as unknown as { requestId: string };
+    mockApi(zeroOrgMembershipRequestsContract.accept, ({ body, respond }) => {
       capturedRequestId = body.requestId;
-      return HttpResponse.json({ message: "ok" });
+      return respond(200, { message: "ok" });
     }),
   );
   await renderMembersTab();
@@ -380,12 +374,11 @@ test("sends accept request when Accept button is clicked", async () => {
 test("sends reject request when Reject button is clicked", async () => {
   const user = userEvent.setup();
   let capturedRequestId: string | null = null;
-  mockMembersAPI({ membershipRequests: [membershipRequest] });
+  setupMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
-    http.delete("*/api/zero/org/membership-requests", async ({ request }) => {
-      const body = (await request.json()) as unknown as { requestId: string };
+    mockApi(zeroOrgMembershipRequestsContract.reject, ({ body, respond }) => {
       capturedRequestId = body.requestId;
-      return HttpResponse.json({ message: "ok" });
+      return respond(200, { message: "ok" });
     }),
   );
   await renderMembersTab();

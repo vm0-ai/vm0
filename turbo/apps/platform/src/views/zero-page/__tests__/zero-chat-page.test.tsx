@@ -3,6 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
@@ -394,16 +395,7 @@ describe("zero chat page - connector label casing", () => {
 
 describe("zero chat page - invite button", () => {
   it("renders invite button in DOM even when user is not admin", async () => {
-    server.use(
-      http.get("*/api/zero/org", () => {
-        return HttpResponse.json({
-          id: "org_1",
-          slug: "user-12345678",
-          name: "User 12345678",
-          role: "member",
-        });
-      }),
-    );
+    setMockOrg({ role: "member" });
 
     await renderChatPage();
 

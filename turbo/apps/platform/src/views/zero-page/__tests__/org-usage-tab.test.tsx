@@ -1,11 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import {
+  setMockUsageMembers,
+  resetMockUsageMembers,
+} from "../../../mocks/handlers/api-usage.ts";
+import {
+  zeroUsageMembersContract,
+  zeroMemberCreditCapContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -20,53 +28,39 @@ interface MockMember {
   creditCap: number | null;
 }
 
-function mockAPIs(members: MockMember[]) {
+beforeEach(() => {
+  resetMockUsageMembers();
+});
+
+function setupMockAPIs(members: MockMember[]) {
   const capStore: Record<string, number | null> = {};
   for (const m of members) {
     capStore[m.userId] = m.creditCap;
   }
 
+  setMockUsageMembers({
+    period: { start: "2026-03-01", end: "2026-03-31" },
+    members: members.map((m) => {
+      return { ...m, creditCap: capStore[m.userId] ?? m.creditCap };
+    }),
+  });
+
+  // Override credit-cap PUT to track changes and reflect in usage response
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-    http.get("*/api/zero/usage/members", () => {
-      // Return members with current cap values from capStore
-      const updatedMembers = members.map((m) => {
-        return {
-          ...m,
-          creditCap: capStore[m.userId] ?? m.creditCap,
-        };
-      });
-      return HttpResponse.json({
-        period: { start: "2026-03-01", end: "2026-03-31" },
-        members: updatedMembers,
-      });
-    }),
-    http.put("*/api/zero/org/members/credit-cap", async ({ request }) => {
-      const body = (await request.json()) as {
-        userId: string;
-        creditCap: number | null;
-      };
+    mockApi(zeroMemberCreditCapContract.set, ({ body, respond }) => {
       capStore[body.userId] = body.creditCap;
-      return HttpResponse.json({ ok: true });
+      // Update the usage members mock to reflect the new cap
+      setMockUsageMembers({
+        period: { start: "2026-03-01", end: "2026-03-31" },
+        members: members.map((m) => {
+          return { ...m, creditCap: capStore[m.userId] ?? m.creditCap };
+        }),
+      });
+      return respond(200, {
+        userId: body.userId,
+        creditCap: body.creditCap,
+        creditEnabled: true,
+      });
     }),
   );
 
@@ -96,7 +90,7 @@ describe("org usage tab - credit balance display", () => {
       hasSubscription: true,
     });
 
-    mockAPIs([
+    setupMockAPIs([
       {
         userId: "user-a",
         email: "alice@example.com",
@@ -127,7 +121,7 @@ describe("org usage tab - member usage table", () => {
       hasSubscription: true,
     });
 
-    mockAPIs([
+    setupMockAPIs([
       {
         userId: "user-a",
         email: "alice@example.com",
@@ -166,7 +160,7 @@ describe("org usage tab - member usage table", () => {
       hasSubscription: true,
     });
 
-    mockAPIs([]);
+    setupMockAPIs([]);
 
     await openUsageTab();
 
@@ -185,7 +179,7 @@ describe("org usage tab - inline cap editing", () => {
       hasSubscription: true,
     });
 
-    const capStore = mockAPIs([
+    const capStore = setupMockAPIs([
       {
         userId: "user-a",
         email: "alice@example.com",
@@ -232,7 +226,7 @@ describe("org usage tab - inline cap editing", () => {
       hasSubscription: true,
     });
 
-    mockAPIs([
+    setupMockAPIs([
       {
         userId: "user-a",
         email: "alice@example.com",
@@ -276,8 +270,8 @@ describe("org usage tab - free tier", () => {
     });
 
     server.use(
-      http.get("*/api/zero/usage/members", () => {
-        return HttpResponse.json({ period: null, members: [] });
+      mockApi(zeroUsageMembersContract.get, ({ respond }) => {
+        return respond(200, { period: null, members: [] });
       }),
     );
 
@@ -297,8 +291,8 @@ describe("org usage tab - free tier", () => {
     });
 
     server.use(
-      http.get("*/api/zero/usage/members", () => {
-        return HttpResponse.json({ period: null, members: [] });
+      mockApi(zeroUsageMembersContract.get, ({ respond }) => {
+        return respond(200, { period: null, members: [] });
       }),
     );
 

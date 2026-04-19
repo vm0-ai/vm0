@@ -7,6 +7,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type { PermissionAccessRequestResponse } from "@vm0/core";
 import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
 
@@ -20,16 +21,7 @@ function mockPermissionRequests(
 }
 
 function mockMemberOrg() {
-  server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "user-12345678",
-        name: "User 12345678",
-        role: "member",
-      });
-    }),
-  );
+  setMockOrg({ role: "member" });
 }
 
 function mockAgentWithPolicy(

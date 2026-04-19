@@ -1,48 +1,29 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import {
+  setMockOrg,
+  resetMockOrg,
+  setMockOrgLogo,
+  resetMockOrgLogo,
+} from "../../../mocks/handlers/api-org.ts";
+import {
+  zeroOrgContract,
+  zeroOrgLeaveContract,
+  zeroOrgDeleteContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
-function mockAPIs(overrides?: { slug?: string; name?: string; role?: string }) {
-  const org = {
-    id: "org_1",
-    slug: overrides?.slug ?? "test-org",
-    name: overrides?.name ?? "Test Org",
-    role: overrides?.role ?? "admin",
-  };
-  server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json(org);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-  );
-  return org;
-}
+beforeEach(() => {
+  resetMockOrg();
+  resetMockOrgLogo();
+});
 
 async function openGeneralTab() {
   detachedSetupPage({ context, path: "/?settings=general" });
@@ -53,7 +34,7 @@ async function openGeneralTab() {
 
 describe("org general tab - profile section", () => {
   it("should show name and slug inputs for admin", async () => {
-    mockAPIs({ name: "My Org", slug: "my-org" });
+    setMockOrg({ name: "My Org", slug: "my-org", role: "admin" });
     await openGeneralTab();
 
     const nameInput = await screen.findByDisplayValue("My Org");
@@ -64,7 +45,7 @@ describe("org general tab - profile section", () => {
   });
 
   it("should show name and slug as read-only text for non-admin", async () => {
-    mockAPIs({ name: "My Org", slug: "my-org", role: "member" });
+    setMockOrg({ name: "My Org", slug: "my-org", role: "member" });
     await openGeneralTab();
 
     await waitFor(() => {
@@ -78,7 +59,7 @@ describe("org general tab - profile section", () => {
   });
 
   it("should show save/discard buttons when slug is changed", async () => {
-    mockAPIs({ slug: "old-slug" });
+    setMockOrg({ slug: "old-slug" });
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("old-slug");
@@ -90,7 +71,7 @@ describe("org general tab - profile section", () => {
 
   it("should discard slug changes when clicking Discard", async () => {
     const user = userEvent.setup();
-    mockAPIs({ slug: "original-slug" });
+    setMockOrg({ slug: "original-slug" });
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("original-slug");
@@ -107,14 +88,15 @@ describe("org general tab - profile section", () => {
   it("should send slug in PUT request when saving slug change", async () => {
     const user = userEvent.setup();
     const requestBody = vi.fn();
-    mockAPIs({ name: "Test Org", slug: "old-slug" });
+    setMockOrg({ name: "Test Org", slug: "old-slug" });
     server.use(
-      http.put("*/api/zero/org", async ({ request }) => {
-        requestBody(await request.json());
-        return HttpResponse.json({
+      mockApi(zeroOrgContract.update, ({ body, respond }) => {
+        requestBody(body);
+        return respond(200, {
           id: "org_1",
           slug: "new-slug",
           name: "Test Org",
+          role: "admin",
         });
       }),
     );
@@ -137,14 +119,15 @@ describe("org general tab - profile section", () => {
   it("should send both name and slug when both are changed", async () => {
     const user = userEvent.setup();
     const requestBody = vi.fn();
-    mockAPIs({ name: "Old Name", slug: "old-slug" });
+    setMockOrg({ name: "Old Name", slug: "old-slug" });
     server.use(
-      http.put("*/api/zero/org", async ({ request }) => {
-        requestBody(await request.json());
-        return HttpResponse.json({
+      mockApi(zeroOrgContract.update, ({ body, respond }) => {
+        requestBody(body);
+        return respond(200, {
           id: "org_1",
           slug: "new-slug",
           name: "New Name",
+          role: "admin",
         });
       }),
     );
@@ -170,18 +153,15 @@ describe("org general tab - profile section", () => {
 
   it("should show inline error when save fails", async () => {
     const user = userEvent.setup();
-    mockAPIs({ slug: "old-slug" });
+    setMockOrg({ slug: "old-slug" });
     server.use(
-      http.put("*/api/zero/org", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Slug is already taken",
-              code: "INTERNAL_SERVER_ERROR",
-            },
+      mockApi(zeroOrgContract.update, ({ respond }) => {
+        return respond(409, {
+          error: {
+            message: "Slug is already taken",
+            code: "INTERNAL_SERVER_ERROR",
           },
-          { status: 409 },
-        );
+        });
       }),
     );
 
@@ -199,18 +179,15 @@ describe("org general tab - profile section", () => {
 
   it("should clear inline error on discard", async () => {
     const user = userEvent.setup();
-    mockAPIs({ slug: "old-slug" });
+    setMockOrg({ slug: "old-slug" });
     server.use(
-      http.put("*/api/zero/org", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Slug is already taken",
-              code: "INTERNAL_SERVER_ERROR",
-            },
+      mockApi(zeroOrgContract.update, ({ respond }) => {
+        return respond(409, {
+          error: {
+            message: "Slug is already taken",
+            code: "INTERNAL_SERVER_ERROR",
           },
-          { status: 409 },
-        );
+        });
       }),
     );
 
@@ -231,18 +208,12 @@ describe("org general tab - profile section", () => {
   });
 
   it("should load and display logo for non-admin members", async () => {
-    mockAPIs({ role: "member" });
-    server.use(
-      http.get("*/api/zero/org/logo", () => {
-        return HttpResponse.json({
-          logoUrl: "https://example.com/logo.png",
-        });
-      }),
-    );
+    setMockOrg({ role: "member" });
+    setMockOrgLogo("https://example.com/logo.png");
 
     await openGeneralTab();
 
-    const logo = await screen.findByAltText("test-org");
+    const logo = await screen.findByAltText("user-12345678");
     expect(logo).toBeInTheDocument();
     expect(logo).toHaveAttribute("src", "https://example.com/logo.png");
   });
@@ -250,14 +221,15 @@ describe("org general tab - profile section", () => {
   it("should not send slug when only name is changed", async () => {
     const user = userEvent.setup();
     const requestBody = vi.fn();
-    mockAPIs({ name: "Old Name", slug: "keep-slug" });
+    setMockOrg({ name: "Old Name", slug: "keep-slug" });
     server.use(
-      http.put("*/api/zero/org", async ({ request }) => {
-        requestBody(await request.json());
-        return HttpResponse.json({
+      mockApi(zeroOrgContract.update, ({ body, respond }) => {
+        requestBody(body);
+        return respond(200, {
           id: "org_1",
           slug: "keep-slug",
           name: "New Name",
+          role: "admin",
         });
       }),
     );
@@ -289,11 +261,11 @@ describe("org general tab - danger zone", () => {
   it("leaves workspace: clears active org then navigates to choose-organization", async () => {
     const user = userEvent.setup();
     const leaveCalled = vi.fn();
-    mockAPIs({ role: "member", slug: "my-org" });
+    setMockOrg({ role: "member", slug: "my-org" });
     server.use(
-      http.post("*/api/zero/org/leave", () => {
+      mockApi(zeroOrgLeaveContract.leave, ({ respond }) => {
         leaveCalled();
-        return HttpResponse.json({ message: "ok" });
+        return respond(200, { message: "ok" });
       }),
     );
 
@@ -338,11 +310,11 @@ describe("org general tab - danger zone", () => {
   it("deletes workspace: clears active org then navigates to choose-organization", async () => {
     const user = userEvent.setup();
     const deleteCalled = vi.fn();
-    mockAPIs({ role: "admin", slug: "my-org" });
+    setMockOrg({ role: "admin", slug: "my-org" });
     server.use(
-      http.post("*/api/zero/org/delete", () => {
+      mockApi(zeroOrgDeleteContract.delete, ({ respond }) => {
         deleteCalled();
-        return HttpResponse.json({ message: "ok" });
+        return respond(200, { message: "ok" });
       }),
     );
 
@@ -389,14 +361,13 @@ describe("org general tab - danger zone", () => {
   it("does not clear active org or navigate when leave API fails", async () => {
     const user = userEvent.setup();
     const leaveCalled = vi.fn();
-    mockAPIs({ role: "member", slug: "my-org" });
+    setMockOrg({ role: "member", slug: "my-org" });
     server.use(
-      http.post("*/api/zero/org/leave", () => {
+      mockApi(zeroOrgLeaveContract.leave, ({ respond }) => {
         leaveCalled();
-        return HttpResponse.json(
-          { error: { message: "boom", code: "INTERNAL_SERVER_ERROR" } },
-          { status: 500 },
-        );
+        return respond(500, {
+          error: { message: "boom", code: "INTERNAL_SERVER_ERROR" },
+        });
       }),
     );
 

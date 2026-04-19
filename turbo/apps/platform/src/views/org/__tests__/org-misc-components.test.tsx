@@ -12,7 +12,7 @@
  * Internal: real signals, components, rendering
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -24,29 +24,23 @@ import {
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
 
-function mockBaseAPIs() {
-  server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "test-org",
-        name: "Test Org",
-        role: "admin",
-      });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-  );
+beforeEach(() => {
+  resetMockOrg();
+  setMockOrg({
+    id: "org_1",
+    slug: "test-org",
+    name: "Test Org",
+    role: "admin",
+  });
+});
+
+// All default API state (org, chat-threads, team, org/logo) is covered by global handlers.
+function mockBaseAPIs(): void {
+  // No-op: all required endpoints are covered by global default handlers.
 }
 
 // ---------------------------------------------------------------------------
@@ -331,19 +325,6 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
 // ---------------------------------------------------------------------------
 
 async function openSetupPrompt(user: ReturnType<typeof userEvent.setup>) {
-  mockBaseAPIs();
-  server.use(
-    http.get("*/api/zero/model-providers", () => {
-      return HttpResponse.json({ modelProviders: [] });
-    }),
-    http.get("*/api/zero/org/members", () => {
-      return HttpResponse.json({
-        members: [],
-        pendingInvitations: [],
-        membershipRequests: [],
-      });
-    }),
-  );
   detachedSetupPage({ context, path: "/?settings=providers" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();

@@ -7,7 +7,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -18,6 +17,11 @@ import {
 import { setBillingDialogOpen$ } from "../../../signals/zero-page/billing.ts";
 import { setSelectedPlanTier$ } from "../../../signals/zero-page/billing-dialog-state.ts";
 import { mockBillingPageAPIs } from "./billing-dialog-test-helpers.ts";
+import {
+  zeroBillingAutoRechargeContract,
+  zeroBillingCheckoutContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -98,11 +102,11 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
   it("disables the Save button while the save is in progress", async () => {
     let resolveSave!: () => void;
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", () => {
-        return new Promise<Response>((resolve) => {
+      mockApi(zeroBillingAutoRechargeContract.update, ({ respond }) => {
+        return new Promise((resolve) => {
           resolveSave = () => {
             resolve(
-              HttpResponse.json({
+              respond(200, {
                 enabled: true,
                 threshold: 5000,
                 amount: 10_000,
@@ -311,11 +315,11 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
   it("disables the Upgrade button while checkout is in progress", async () => {
     let resolveCheckout!: () => void;
     server.use(
-      http.post("*/api/zero/billing/checkout", () => {
-        return new Promise<Response>((resolve) => {
+      mockApi(zeroBillingCheckoutContract.create, ({ respond }) => {
+        return new Promise((resolve) => {
           resolveCheckout = () => {
             resolve(
-              HttpResponse.json({
+              respond(200, {
                 url: "https://checkout.stripe.com/test?tier=team",
               }),
             );

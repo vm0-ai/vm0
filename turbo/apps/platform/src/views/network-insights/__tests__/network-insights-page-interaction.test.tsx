@@ -11,6 +11,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
 
@@ -564,16 +565,7 @@ describe("network insights page - team credit usage card", () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     // Override org API to return member role
-    server.use(
-      http.get("*/api/zero/org", () => {
-        return HttpResponse.json({
-          id: "org_1",
-          slug: "user-12345678",
-          name: "User 12345678",
-          role: "member",
-        });
-      }),
-    );
+    setMockOrg({ role: "member" });
 
     detachedSetupPage({ context, path: "/insights" });
 
