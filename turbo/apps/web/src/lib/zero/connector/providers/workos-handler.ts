@@ -14,6 +14,6 @@ export const workosHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "WORKOS_API_KEY";
+    return "WORKOS_TOKEN";
   },
 };
