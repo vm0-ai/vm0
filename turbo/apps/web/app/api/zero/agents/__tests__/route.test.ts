@@ -1532,6 +1532,155 @@ describe("Zero Agents API", () => {
     });
   });
 
+  describe("model selection validation", () => {
+    it("should reject PUT with modelProviderId from a different org", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        {
+          modelProviderId: "00000000-0000-4000-8000-000000000001",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("not found in this org");
+    });
+
+    it("should reject PATCH with modelProviderId from a different org", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await patchAgent(
+        created.agentId,
+        {
+          modelProviderId: "00000000-0000-4000-8000-000000000001",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("not found in this org");
+    });
+
+    it("should reject PUT with model not in provider allowlist", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        {
+          modelProviderId: provider.id,
+          selectedModel: "gpt-4-not-a-claude-model",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("gpt-4-not-a-claude-model");
+      expect(data.error.message).toContain("not available");
+    });
+
+    it("should reject PATCH with model not in provider allowlist", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await patchAgent(
+        created.agentId,
+        {
+          modelProviderId: provider.id,
+          selectedModel: "gpt-4-not-a-claude-model",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("gpt-4-not-a-claude-model");
+      expect(data.error.message).toContain("not available");
+    });
+
+    it("should accept PUT with valid modelProviderId and model", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        {
+          modelProviderId: provider.id,
+          selectedModel: "claude-sonnet-4-6",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.modelProviderId).toBe(provider.id);
+      expect(data.selectedModel).toBe("claude-sonnet-4-6");
+    });
+
+    it("should accept PATCH with valid modelProviderId and model", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await patchAgent(
+        created.agentId,
+        {
+          modelProviderId: provider.id,
+          selectedModel: "claude-sonnet-4-6",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.modelProviderId).toBe(provider.id);
+      expect(data.selectedModel).toBe("claude-sonnet-4-6");
+    });
+
+    it("should accept PUT with null modelProviderId to clear override", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      // Set provider first
+      await putAgent(
+        created.agentId,
+        { modelProviderId: provider.id, selectedModel: "claude-sonnet-4-6" },
+        testCliToken,
+      );
+
+      // Clear it
+      const response = await putAgent(
+        created.agentId,
+        { modelProviderId: null, selectedModel: null },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.modelProviderId).toBeNull();
+      expect(data.selectedModel).toBeNull();
+    });
+  });
+
   describe("schedule run integration", () => {
     it("should execute schedule for agent created via POST /api/zero/agents", async () => {
       // Regression: serverSideCompose was called without instructions param,

@@ -25,6 +25,7 @@ import {
   ApiRequestError,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { parseModelFlag } from "../../../lib/domain/model-provider/shared";
 
 const FREQUENCY_CHOICES = [
   { title: "Daily", value: "daily" as const, description: "Run every day" },
@@ -137,12 +138,6 @@ interface SetupOptions {
   enable?: boolean;
   modelProvider?: string;
   model?: string;
-}
-
-function parseModelFlag(value: string | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === "default") return null;
-  return value;
 }
 
 interface ExistingScheduleDefaults {

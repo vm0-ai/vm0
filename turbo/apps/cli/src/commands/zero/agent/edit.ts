@@ -8,6 +8,7 @@ import {
   updateZeroAgentInstructions,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { parseModelFlag } from "../../../lib/domain/model-provider/shared";
 
 interface AgentEditOptions {
   displayName?: string;
@@ -19,12 +20,6 @@ interface AgentEditOptions {
   instructionsFile?: string;
   modelProvider?: string;
   model?: string;
-}
-
-function parseModelFlag(value: string | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === "default") return null;
-  return value;
 }
 
 function hasAgentFieldUpdate(options: AgentEditOptions): boolean {

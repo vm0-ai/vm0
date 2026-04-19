@@ -443,3 +443,19 @@ export async function promptForSecrets(
 export function collectSecrets(value: string, previous: string[]): string[] {
   return previous.concat([value]);
 }
+
+/**
+ * Parse a CLI model/model-provider flag value.
+ *
+ * Returns:
+ *   - `undefined` when the flag was not provided (preserve existing value)
+ *   - `null` when the user passed "default" (clear the override, inherit from org)
+ *   - the string value otherwise (set the specific model/provider)
+ */
+export function parseModelFlag(
+  value: string | undefined,
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === "default") return null;
+  return value;
+}
