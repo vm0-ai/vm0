@@ -184,6 +184,8 @@ describe("fw-d-007: loading state shows while agent loads", () => {
 describe("fw-d-008: error state shows when agent load fails", () => {
   it("shows an error state when the agent API returns an error", async () => {
     server.use(
+      // mockApi cannot be used here: 500 is not declared in zeroAgentsByIdContract.responses,
+      // so this raw handler is the only way to simulate a server error for this test.
       http.get("*/api/zero/agents/:id", () => {
         return HttpResponse.json(
           { error: { message: "Internal Server Error", code: "INTERNAL" } },

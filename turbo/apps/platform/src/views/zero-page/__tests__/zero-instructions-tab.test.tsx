@@ -129,6 +129,8 @@ describe("zero instructions tab - display", () => {
           customSkills: [],
         });
       }),
+      // mockApi cannot be used here: 500 is not declared in zeroAgentInstructionsContract.responses,
+      // so this raw handler is the only way to simulate a server error for this test.
       http.get("*/api/zero/agents/:id/instructions", () => {
         return HttpResponse.json(
           { error: { message: "Internal server error", code: "SERVER_ERROR" } },

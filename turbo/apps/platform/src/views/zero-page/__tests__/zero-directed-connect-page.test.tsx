@@ -64,7 +64,7 @@ function mockAgentWithName(agentId: string, displayName: string) {
   );
 }
 
-function mockUserConnectors(_agentId: string, enabledTypes: string[] = []) {
+function mockUserConnectors(enabledTypes: string[] = []) {
   server.use(
     mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes });
@@ -327,7 +327,7 @@ describe("directed connect page", () => {
 
   it("auto-authorizes agent after API token connect when agentId is present", async () => {
     const user = userEvent.setup();
-    mockUserConnectors(AGENT_ID);
+    mockUserConnectors();
 
     let authorizeCalled = false;
     server.use(
