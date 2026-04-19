@@ -14,6 +14,6 @@ export const groqHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "GROQ_API_KEY";
+    return "GROQ_TOKEN";
   },
 };
