@@ -5,18 +5,19 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { type SlackOrgStatus, zeroIntegrationsSlackContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
-function mockSlackAPI(overrides: Record<string, unknown> = {}) {
-  const defaults = {
+function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
+  const defaults: SlackOrgStatus = {
     isConnected: true,
     isInstalled: true,
     workspaceName: "Test Workspace",
     isAdmin: true,
     installUrl: "/api/zero/integrations/slack/install",
     connectUrl: "/api/zero/integrations/slack/connect",
-    defaultAgentId: "zero",
     agentOrgSlug: "test-org",
     environment: {
       requiredSecrets: [],
@@ -27,8 +28,8 @@ function mockSlackAPI(overrides: Record<string, unknown> = {}) {
   };
 
   server.use(
-    http.get("*/api/zero/integrations/slack", () => {
-      return HttpResponse.json({ ...defaults, ...overrides });
+    mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
+      return respond(200, { ...defaults, ...overrides });
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -280,13 +281,15 @@ describe("zero works page - uninstall confirmation dialog", () => {
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     server.use(
-      http.delete("*/api/zero/integrations/slack", ({ request }) => {
-        const url = new URL(request.url);
-        if (url.searchParams.get("action") === "uninstall") {
-          uninstallCalled = true;
-        }
-        return HttpResponse.json({ ok: true });
-      }),
+      mockApi(
+        zeroIntegrationsSlackContract.disconnect,
+        ({ query, respond }) => {
+          if (query.action === "uninstall") {
+            uninstallCalled = true;
+          }
+          return respond(200, { ok: true });
+        },
+      ),
     );
 
     await renderWorksPage();
@@ -366,13 +369,15 @@ describe("zero works page - disconnect", () => {
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     server.use(
-      http.delete("*/api/zero/integrations/slack", ({ request }) => {
-        const url = new URL(request.url);
-        if (!url.searchParams.get("action")) {
-          disconnectCalled = true;
-        }
-        return HttpResponse.json({ ok: true });
-      }),
+      mockApi(
+        zeroIntegrationsSlackContract.disconnect,
+        ({ query, respond }) => {
+          if (!query.action) {
+            disconnectCalled = true;
+          }
+          return respond(200, { ok: true });
+        },
+      ),
     );
 
     await renderWorksPage();

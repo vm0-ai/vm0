@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -11,6 +10,8 @@ import {
 } from "../slack-connect-signals.ts";
 import { updateSearchParams$ } from "../../route.ts";
 import { setMockSlackConnectData } from "../../../mocks/handlers/api-integrations-slack-connect.ts";
+import { zeroSlackConnectContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -45,9 +46,9 @@ describe("slack-connect-page signals", () => {
     it("should stay idle when not connected", async () => {
       let checkCalled = false;
       server.use(
-        http.get("*/api/zero/integrations/slack/connect", () => {
+        mockApi(zeroSlackConnectContract.getStatus, ({ respond }) => {
           checkCalled = true;
-          return HttpResponse.json({ isConnected: false, isAdmin: false });
+          return respond(200, { isConnected: false, isAdmin: false });
         }),
       );
       await setup("/settings/slack?w=ws1&u=user1");

@@ -12,6 +12,15 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  type PermissionAccessRequestResponse,
+  zeroAgentPermissionPoliciesContract,
+  permissionAccessRequestsListContract,
+  permissionAccessRequestsResolveContract,
+  permissionAccessRequestsCreateContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
 
 const context = testContext();
 
@@ -46,12 +55,10 @@ function mockAgent(overrides?: Record<string, unknown>) {
   );
 }
 
-function mockPermissionRequests(requests: unknown[] = []) {
-  server.use(
-    http.get("*/api/zero/permission-access-requests", () => {
-      return HttpResponse.json(requests);
-    }),
-  );
+function mockPermissionRequests(
+  requests: PermissionAccessRequestResponse[] = [],
+) {
+  setMockPermissionRequests(requests);
 }
 
 function setupMemberContext(agentOverrides?: Record<string, unknown>) {
@@ -81,7 +88,9 @@ function setupMemberContext(agentOverrides?: Record<string, unknown>) {
   );
 }
 
-function pendingRequest(overrides?: Record<string, unknown>) {
+function pendingRequest(
+  overrides?: Partial<PermissionAccessRequestResponse>,
+): PermissionAccessRequestResponse {
   return {
     id: REQUEST_ID,
     agentId: AGENT_ID,
@@ -109,10 +118,13 @@ describe("permission allow page - admin doctor mode", () => {
   it("fw-d-018: Confirm button saves the policy", async () => {
     let savedBody: unknown;
     server.use(
-      http.put("*/api/zero/permission-policies", async ({ request }) => {
-        savedBody = await request.json();
-        return HttpResponse.json(defaultAgentResponse());
-      }),
+      mockApi(
+        zeroAgentPermissionPoliciesContract.update,
+        ({ body, respond }) => {
+          savedBody = body;
+          return respond(200, defaultAgentResponse());
+        },
+      ),
     );
     mockAgent();
     mockPermissionRequests();
@@ -141,8 +153,9 @@ describe("permission allow page - admin doctor mode", () => {
 
   it("fw-d-019: Confirm shows result card after save", async () => {
     server.use(
-      http.put("*/api/zero/permission-policies", () => {
-        return HttpResponse.json(
+      mockApi(zeroAgentPermissionPoliciesContract.update, ({ respond }) => {
+        return respond(
+          200,
           defaultAgentResponse({
             permissionPolicies: {
               slack: { policies: { "channels:read": "deny" } },
@@ -174,8 +187,9 @@ describe("permission allow page - admin doctor mode", () => {
 
   it("fw-d-020: shows Permissions denied card for deny action", async () => {
     server.use(
-      http.put("*/api/zero/permission-policies", () => {
-        return HttpResponse.json(
+      mockApi(zeroAgentPermissionPoliciesContract.update, ({ respond }) => {
+        return respond(
+          200,
           defaultAgentResponse({
             permissionPolicies: {
               slack: { policies: { "channels:read": "deny" } },
@@ -216,21 +230,22 @@ describe("permission allow page - admin doctor mode", () => {
 
 describe("permission allow page - admin request mode", () => {
   it("fw-d-021: Approve change button approves pending request", async () => {
-    let requestStatus = "pending";
+    let requestStatus: PermissionAccessRequestResponse["status"] = "pending";
     server.use(
-      http.put("*/api/zero/permission-access-requests", () => {
-        requestStatus = "approved";
-        return HttpResponse.json({
-          ...pendingRequest(),
-          status: "approved",
-          resolvedBy: "test-user-123",
-          resolvedAt: "2026-04-03T00:00:00Z",
-        });
-      }),
-      http.get("*/api/zero/permission-access-requests", () => {
-        return HttpResponse.json([
-          { ...pendingRequest(), status: requestStatus },
-        ]);
+      mockApi(
+        permissionAccessRequestsResolveContract.resolve,
+        ({ respond }) => {
+          requestStatus = "approved";
+          return respond(200, {
+            ...pendingRequest(),
+            status: "approved",
+            resolvedBy: "test-user-123",
+            resolvedAt: "2026-04-03T00:00:00Z",
+          });
+        },
+      ),
+      mockApi(permissionAccessRequestsListContract.list, ({ respond }) => {
+        return respond(200, [{ ...pendingRequest(), status: requestStatus }]);
       }),
     );
     mockAgent();
@@ -253,21 +268,22 @@ describe("permission allow page - admin request mode", () => {
   });
 
   it("fw-d-022: Deny change button rejects pending request", async () => {
-    let requestStatus = "pending";
+    let requestStatus: PermissionAccessRequestResponse["status"] = "pending";
     server.use(
-      http.put("*/api/zero/permission-access-requests", () => {
-        requestStatus = "rejected";
-        return HttpResponse.json({
-          ...pendingRequest(),
-          status: "rejected",
-          resolvedBy: "test-user-123",
-          resolvedAt: "2026-04-03T00:00:00Z",
-        });
-      }),
-      http.get("*/api/zero/permission-access-requests", () => {
-        return HttpResponse.json([
-          { ...pendingRequest(), status: requestStatus },
-        ]);
+      mockApi(
+        permissionAccessRequestsResolveContract.resolve,
+        ({ respond }) => {
+          requestStatus = "rejected";
+          return respond(200, {
+            ...pendingRequest(),
+            status: "rejected",
+            resolvedBy: "test-user-123",
+            resolvedAt: "2026-04-03T00:00:00Z",
+          });
+        },
+      ),
+      mockApi(permissionAccessRequestsListContract.list, ({ respond }) => {
+        return respond(200, [{ ...pendingRequest(), status: requestStatus }]);
       }),
     );
     mockAgent();
@@ -318,29 +334,26 @@ describe("permission allow page - member request form", () => {
   it("fw-d-027: Request approval button sends the request", async () => {
     let requestBody: unknown;
     server.use(
-      http.post(
-        "*/api/zero/permission-access-requests",
-        async ({ request }) => {
-          requestBody = await request.json();
-          return HttpResponse.json(
-            {
-              id: "d1111111-0000-4000-a000-000000000002",
-              agentId: AGENT_ID,
-              connectorRef: "slack",
-              permission: "channels:read",
-              action: "deny",
-              method: null,
-              path: null,
-              reason: null,
-              status: "pending",
-              requesterUserId: "test-user-123",
-              requesterName: "Test User",
-              resolvedBy: null,
-              resolvedAt: null,
-              createdAt: "2026-04-03T00:00:00Z",
-            },
-            { status: 201 },
-          );
+      mockApi(
+        permissionAccessRequestsCreateContract.create,
+        ({ body, respond }) => {
+          requestBody = body;
+          return respond(201, {
+            id: "d1111111-0000-4000-a000-000000000002",
+            agentId: AGENT_ID,
+            connectorRef: "slack",
+            permission: "channels:read",
+            action: "deny",
+            method: null,
+            path: null,
+            reason: null,
+            status: "pending",
+            requesterUserId: "test-user-123",
+            requesterName: "Test User",
+            resolvedBy: null,
+            resolvedAt: null,
+            createdAt: "2026-04-03T00:00:00Z",
+          });
         },
       ),
     );
@@ -423,31 +436,28 @@ describe("permission allow page - member request form", () => {
   });
 
   it("fw-d-031: Pre-filled reason can be edited before submission", async () => {
-    let requestBody: Record<string, unknown> | undefined;
+    let requestBody: unknown;
     server.use(
-      http.post(
-        "*/api/zero/permission-access-requests",
-        async ({ request }) => {
-          requestBody = (await request.json()) as Record<string, unknown>;
-          return HttpResponse.json(
-            {
-              id: "d0000000-0000-4000-a000-000000000099",
-              agentId: AGENT_ID,
-              connectorRef: "slack",
-              permission: "channels:read",
-              action: "deny",
-              method: null,
-              path: null,
-              reason: "Edited reason",
-              status: "pending",
-              requesterUserId: "user_abc",
-              requesterName: null,
-              resolvedBy: null,
-              resolvedAt: null,
-              createdAt: "2026-04-03T00:00:00Z",
-            },
-            { status: 201 },
-          );
+      mockApi(
+        permissionAccessRequestsCreateContract.create,
+        ({ body, respond }) => {
+          requestBody = body;
+          return respond(201, {
+            id: "d0000000-0000-4000-a000-000000000099",
+            agentId: AGENT_ID,
+            connectorRef: "slack",
+            permission: "channels:read",
+            action: "deny",
+            method: null,
+            path: null,
+            reason: "Edited reason",
+            status: "pending",
+            requesterUserId: "user_abc",
+            requesterName: null,
+            resolvedBy: null,
+            resolvedAt: null,
+            createdAt: "2026-04-03T00:00:00Z",
+          });
         },
       ),
     );

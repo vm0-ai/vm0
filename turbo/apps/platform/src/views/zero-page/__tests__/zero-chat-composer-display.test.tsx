@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
@@ -11,6 +11,7 @@ import {
   sendMessageInUI,
   PLACEHOLDER,
 } from "./chat-test-helpers.ts";
+import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
 
@@ -22,27 +23,21 @@ function mockChatAPI() {
   );
 }
 
-function mockConnectedConnectors(types: string[]) {
-  server.use(
-    http.get("*/api/zero/connectors", () => {
-      return HttpResponse.json({
-        connectors: types.map((type, i) => {
-          return {
-            id: `d000000${i}-0000-4000-a000-000000000001`,
-            type,
-            authMethod: "oauth",
-            externalId: null,
-            externalUsername: `user-${type}`,
-            externalEmail: null,
-            oauthScopes: [],
-            needsReconnect: false,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
-          };
-        }),
-        configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
-        connectorProvidedSecretNames: [],
-      });
+function mockConnectedConnectors(types: ConnectorType[]) {
+  setMockConnectors(
+    types.map((type, i) => {
+      return {
+        id: `d000000${i}-0000-4000-a000-000000000001`,
+        type,
+        authMethod: "oauth",
+        externalId: null,
+        externalUsername: `user-${type}`,
+        externalEmail: null,
+        oauthScopes: [],
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      };
     }),
   );
 }
@@ -200,15 +195,7 @@ describe("chat-d-020: connectors popover after load", () => {
   it("should render the Add connectors button in the popover after connectors load", async () => {
     const user = userEvent.setup();
     mockChatAPI();
-    server.use(
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json({
-          connectors: [],
-          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
-          connectorProvidedSecretNames: [],
-        });
-      }),
-    );
+    setMockConnectors([]);
 
     detachedSetupPage({ context, path: "/" });
 

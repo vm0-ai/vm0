@@ -9,6 +9,7 @@ import type {
   LogEntry,
   LogsListResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -78,26 +79,22 @@ describe("zeroActivityPage", () => {
   });
 
   it("should render agent filter options from availableAgentsLoadable", async () => {
+    setMockComposesList([
+      {
+        id: "agent-1",
+        name: "agent-1",
+        displayName: "My Agent",
+        description: null,
+        sound: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     server.use(
       http.get("*/api/zero/logs", () => {
         return HttpResponse.json(
           makeLogsResponse([makeLog()], {}, { agents: ["agent-1"] }),
         );
-      }),
-      http.get("*/api/zero/composes/list", () => {
-        return HttpResponse.json({
-          composes: [
-            {
-              id: "agent-1",
-              name: "agent-1",
-              displayName: "My Agent",
-              description: null,
-              sound: null,
-              headVersionId: "version_1",
-              updatedAt: "2024-01-01T00:00:00Z",
-            },
-          ],
-        });
       }),
     );
     detachedSetupPage({ context, path: "/activities" });
@@ -226,6 +223,17 @@ describe("zeroActivityPage", () => {
 
   it("should filter log table when agent filter changes", async () => {
     const captured = { name: null as string | null };
+    setMockComposesList([
+      {
+        id: "agent-1",
+        name: "agent-1",
+        displayName: "My Agent",
+        description: null,
+        sound: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     server.use(
       http.get("*/api/zero/logs", ({ request }) => {
         const url = new URL(request.url);
@@ -238,21 +246,6 @@ describe("zeroActivityPage", () => {
         return HttpResponse.json(
           makeLogsResponse(logs, {}, { agents: ["agent-1"] }),
         );
-      }),
-      http.get("*/api/zero/composes/list", () => {
-        return HttpResponse.json({
-          composes: [
-            {
-              id: "agent-1",
-              name: "agent-1",
-              displayName: "My Agent",
-              description: null,
-              sound: null,
-              headVersionId: "version_1",
-              updatedAt: "2024-01-01T00:00:00Z",
-            },
-          ],
-        });
       }),
     );
     detachedSetupPage({ context, path: "/activities" });

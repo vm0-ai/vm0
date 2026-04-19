@@ -6,6 +6,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
+import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
 
@@ -272,39 +273,33 @@ describe("zero chat page - connectors popover", () => {
 
   it("should sort connected connectors by added status in popover", async () => {
     // Set up: axiom and github are org-connected, only axiom is added to agent
+    setMockConnectors([
+      {
+        id: crypto.randomUUID(),
+        type: "axiom",
+        authMethod: "api-token",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: null,
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: crypto.randomUUID(),
+        type: "github",
+        authMethod: "oauth",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: ["repo"],
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+    ]);
     server.use(
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json({
-          connectors: [
-            {
-              id: crypto.randomUUID(),
-              type: "axiom",
-              authMethod: "api-token",
-              externalId: null,
-              externalUsername: null,
-              externalEmail: null,
-              oauthScopes: null,
-              needsReconnect: false,
-              createdAt: "2026-01-01T00:00:00Z",
-              updatedAt: "2026-01-01T00:00:00Z",
-            },
-            {
-              id: crypto.randomUUID(),
-              type: "github",
-              authMethod: "oauth",
-              externalId: null,
-              externalUsername: null,
-              externalEmail: null,
-              oauthScopes: ["repo"],
-              needsReconnect: false,
-              createdAt: "2026-01-01T00:00:00Z",
-              updatedAt: "2026-01-01T00:00:00Z",
-            },
-          ],
-          configuredTypes: ["axiom", "github"],
-          connectorProvidedSecretNames: [],
-        });
-      }),
       http.get(
         "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
         () => {
@@ -365,28 +360,22 @@ describe("zero chat page - connector label casing", () => {
           return HttpResponse.json({ enabledTypes: ["axiom"] });
         },
       ),
-      // Axiom must be connected at org level for it to appear in the popover
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json({
-          connectors: [
-            {
-              id: crypto.randomUUID(),
-              authMethod: "api-token",
-              externalId: null,
-              externalUsername: null,
-              externalEmail: null,
-              oauthScopes: null,
-              needsReconnect: false,
-              createdAt: "2026-01-01T00:00:00Z",
-              updatedAt: "2026-01-01T00:00:00Z",
-              type: "axiom",
-            },
-          ],
-          configuredTypes: ["axiom"],
-          connectorProvidedSecretNames: [],
-        });
-      }),
     );
+    // Axiom must be connected at org level for it to appear in the popover
+    setMockConnectors([
+      {
+        id: crypto.randomUUID(),
+        authMethod: "api-token",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: null,
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        type: "axiom",
+      },
+    ]);
     mockChatAPI();
     detachedSetupPage({ context, path: "/" });
 

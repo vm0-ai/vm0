@@ -17,8 +17,31 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
+  type ComposeListItem,
 } from "@vm0/core";
 import { mockApi } from "../msw-contract.ts";
+
+const DEFAULT_COMPOSES_LIST: ComposeListItem[] = [
+  {
+    id: "c0000000-0000-4000-a000-000000000001",
+    name: "zero",
+    displayName: null,
+    description: null,
+    sound: null,
+    headVersionId: "version_1",
+    updatedAt: "2024-01-01T00:00:00Z",
+  },
+];
+
+let mockComposesList: ComposeListItem[] = [...DEFAULT_COMPOSES_LIST];
+
+export function setMockComposesList(composes: ComposeListItem[]): void {
+  mockComposesList = composes;
+}
+
+export function resetMockComposesList(): void {
+  mockComposesList = [...DEFAULT_COMPOSES_LIST];
+}
 
 export const apiAgentsHandlers = [
   // GET /api/zero/team
@@ -38,19 +61,7 @@ export const apiAgentsHandlers = [
 
   // GET /api/zero/composes/list
   mockApi(zeroComposesListContract.list, ({ respond }) => {
-    return respond(200, {
-      composes: [
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ],
-    });
+    return respond(200, { composes: mockComposesList });
   }),
 
   // GET /api/zero/composes/:id (kept for backwards compat with other tests)

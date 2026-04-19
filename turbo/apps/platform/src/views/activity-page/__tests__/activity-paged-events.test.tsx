@@ -10,6 +10,7 @@ import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -59,10 +60,8 @@ describe("activity paged events", () => {
       createdAt: "2026-03-10T14:56:10Z",
     };
 
+    setMockComposesList([]);
     server.use(
-      http.get("*/api/zero/composes/list", () => {
-        return HttpResponse.json({ composes: [] });
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
@@ -129,10 +128,8 @@ describe("activity paged events", () => {
   it("should stop polling when navigating away from the run page", async () => {
     let eventFetchCount = 0;
 
+    setMockComposesList([]);
     server.use(
-      http.get("*/api/zero/composes/list", () => {
-        return HttpResponse.json({ composes: [] });
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),

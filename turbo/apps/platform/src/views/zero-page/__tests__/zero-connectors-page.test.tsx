@@ -10,11 +10,12 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
+import { zeroConnectorsByTypeContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -99,9 +100,9 @@ describe("connectors page", () => {
     });
 
     server.use(
-      http.delete("*/api/zero/connectors/:type", async () => {
+      mockApi(zeroConnectorsByTypeContract.delete, async ({ respond }) => {
         await deletePromise;
-        return new HttpResponse(null, { status: 204 });
+        return respond(204);
       }),
     );
 
@@ -140,8 +141,10 @@ describe("connectors page", () => {
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
     server.use(
-      http.delete("*/api/zero/connectors/:type", () => {
-        return new HttpResponse(null, { status: 500 });
+      mockApi(zeroConnectorsByTypeContract.delete, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Failed to disconnect", code: "NOT_FOUND" },
+        });
       }),
     );
 
