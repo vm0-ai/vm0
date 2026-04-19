@@ -2877,7 +2877,7 @@ const CONNECTOR_TYPES_DEF = {
   pinecone: {
     label: "Pinecone",
     environmentMapping: {
-      PINECONE_API_KEY: "$secrets.PINECONE_API_KEY",
+      PINECONE_TOKEN: "$secrets.PINECONE_TOKEN",
     },
     helpText:
       "Connect your Pinecone account for vector database operations, semantic search, and managing embeddings",
@@ -2887,7 +2887,7 @@ const CONNECTOR_TYPES_DEF = {
         helpText:
           "1. Log in to [Pinecone](https://app.pinecone.io)\n2. Go to **API Keys** in the left sidebar\n3. Copy your default API key or create a new one",
         secrets: {
-          PINECONE_API_KEY: {
+          PINECONE_TOKEN: {
             label: "API Key",
             required: true,
             placeholder: "pcsk_...",

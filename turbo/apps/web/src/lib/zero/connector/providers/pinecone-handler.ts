@@ -14,6 +14,6 @@ export const pineconeHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "PINECONE_API_KEY";
+    return "PINECONE_TOKEN";
   },
 };
