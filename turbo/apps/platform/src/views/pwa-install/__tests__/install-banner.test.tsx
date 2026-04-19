@@ -16,13 +16,17 @@
  * Related commit: feat(platform): add pwa install banner and rebrand to zero (#9925)
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -86,7 +90,9 @@ describe("install banner - install opens iOS modal (PWA-D-002)", () => {
     await user.click(installButton);
 
     await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Install Zero" }),
+      ).toBeInTheDocument();
     });
   });
 });
