@@ -671,13 +671,13 @@ function createRunTracking(
         });
         signal.throwIfAborted();
       }
-      set(markThreadRead$, signal);
+      await set(markThreadRead$, signal);
 
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
         await set(fetchNextPage$, sig);
         // Advance read cursor when a new message arrives while focused
         if (document.visibilityState === "visible") {
-          set(markThreadRead$, sig);
+          await set(markThreadRead$, sig);
         }
         animationFrame(
           () => {
