@@ -12,6 +12,8 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroInsightsContract, type InsightsResponse } from "@vm0/core";
 
 const context = testContext();
 
@@ -27,24 +29,23 @@ const day2Ago = daysAgoIso(2);
 const day20Ago = daysAgoIso(20);
 const day25Ago = daysAgoIso(25);
 
-function mockInsightsAPI(days: Record<string, unknown>[] = []) {
+function mockInsightsAPI(days: InsightsResponse["days"] = []) {
+  const totalCredits = days.reduce((s, d) => {
+    return s + (d.creditsUsed ?? 0);
+  }, 0);
+  const totalRuns = days.reduce((s, d) => {
+    return (
+      s +
+      (d.agents ?? []).reduce((rs, a) => {
+        return rs + (a.runs ?? 0);
+      }, 0)
+    );
+  }, 0);
+  const lastUpdated = days.length > 0 ? new Date().toISOString() : null;
   server.use(
-    http.get("*/api/zero/insights", () => {
-      const totalCredits = days.reduce((s, d) => {
-        return s + ((d.creditsUsed as number) ?? 0);
-      }, 0);
-      const totalRuns = days.reduce((s, d) => {
-        const agents = (d.agents as { runs: number }[]) ?? [];
-        return (
-          s +
-          agents.reduce((rs, a) => {
-            return rs + (a.runs ?? 0);
-          }, 0)
-        );
-      }, 0);
-      const lastUpdated = days.length > 0 ? new Date().toISOString() : null;
-      return HttpResponse.json({ days, totalCredits, totalRuns, lastUpdated });
-    }),
+    mockApi(zeroInsightsContract.get, ({ respond }) =>
+      respond(200, { days, totalCredits, totalRuns, lastUpdated }),
+    ),
   );
 }
 
@@ -484,7 +485,7 @@ describe("network insights page - data refetch", () => {
   it("should fetch fresh data when navigating to insights page", async () => {
     let callCount = 0;
     server.use(
-      http.get("*/api/zero/insights", () => {
+      mockApi(zeroInsightsContract.get, ({ respond }) => {
         callCount++;
         const agents =
           callCount <= 1
@@ -504,8 +505,8 @@ describe("network insights page - data refetch", () => {
                   credits: 20,
                 },
               ];
-        return HttpResponse.json({
-          days: [sampleDay(day1Ago, { agents })],
+        return respond(200, {
+          days: [sampleDay(day1Ago, { agents }) as InsightsResponse["days"][0]],
           totalCredits: 10,
           totalRuns: 1,
           lastUpdated: new Date().toISOString(),

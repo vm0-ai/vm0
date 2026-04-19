@@ -12,18 +12,19 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
+import {
+  setMockComposesList,
+  setMockTeam,
+} from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
 function mockAPIs() {
   setMockComposesList([]);
+  setMockTeam([]);
   server.use(
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([]);
     }),
   );
 }

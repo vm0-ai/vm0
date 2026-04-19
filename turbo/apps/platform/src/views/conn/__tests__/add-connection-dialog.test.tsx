@@ -11,7 +11,11 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { type ConnectorType, zeroConnectorsMainContract } from "@vm0/core";
+import {
+  type ConnectorType,
+  zeroConnectorsMainContract,
+  zeroSecretsContract,
+} from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -145,22 +149,17 @@ describe("connect modal - interactions", () => {
     let submittedSecret: { name: string; value: string } | undefined;
 
     server.use(
-      http.post("*/api/zero/secrets", async ({ request }) => {
-        submittedSecret = (await request.json()) as {
-          name: string;
-          value: string;
-        };
-        return HttpResponse.json(
-          {
-            id: crypto.randomUUID(),
-            name: submittedSecret.name,
-            type: "user",
-            description: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          { status: 201 },
-        );
+      mockApi(zeroSecretsContract.set, async ({ body, respond }) => {
+        submittedSecret = { name: body.name, value: body.value };
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          type: "user",
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
       }),
     );
 

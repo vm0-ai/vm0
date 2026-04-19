@@ -17,6 +17,9 @@ import type {
   LogEntry,
   LogsListResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroSchedulesEnableContract, type ScheduleResponse } from "@vm0/core";
 
 const context = testContext();
 
@@ -523,18 +526,17 @@ describe("pagination component", () => {
 describe("loading switch component", () => {
   it("switch toggle disables the schedule (INFRA-D-026)", async () => {
     let enabled = true;
+    setMockSchedules([createMockSchedule({ enabled }) as ScheduleResponse]);
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({
-          schedules: [createMockSchedule({ enabled })],
-        });
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
-      http.post("*/api/zero/schedules/*/disable", () => {
+      mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
         enabled = false;
-        return HttpResponse.json(createMockSchedule({ enabled: false }));
+        return respond(
+          200,
+          createMockSchedule({ enabled: false }) as ScheduleResponse,
+        );
       }),
     );
 
@@ -556,18 +558,17 @@ describe("loading switch component", () => {
 
   it("switch toggle re-enables the schedule (INFRA-D-027)", async () => {
     let enabled = false;
+    setMockSchedules([createMockSchedule({ enabled }) as ScheduleResponse]);
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({
-          schedules: [createMockSchedule({ enabled })],
-        });
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
-      http.post("*/api/zero/schedules/*/enable", () => {
+      mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
         enabled = true;
-        return HttpResponse.json(createMockSchedule({ enabled: true }));
+        return respond(
+          200,
+          createMockSchedule({ enabled: true }) as ScheduleResponse,
+        );
       }),
     );
 
@@ -589,22 +590,24 @@ describe("loading switch component", () => {
 
   it("switch toggle round-trips: disable then re-enable (INFRA-D-028)", async () => {
     let enabled = true;
+    setMockSchedules([createMockSchedule({ enabled }) as ScheduleResponse]);
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({
-          schedules: [createMockSchedule({ enabled })],
-        });
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
-      http.post("*/api/zero/schedules/*/disable", () => {
+      mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
         enabled = false;
-        return HttpResponse.json(createMockSchedule({ enabled: false }));
+        return respond(
+          200,
+          createMockSchedule({ enabled: false }) as ScheduleResponse,
+        );
       }),
-      http.post("*/api/zero/schedules/*/enable", () => {
+      mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
         enabled = true;
-        return HttpResponse.json(createMockSchedule({ enabled: true }));
+        return respond(
+          200,
+          createMockSchedule({ enabled: true }) as ScheduleResponse,
+        );
       }),
     );
 

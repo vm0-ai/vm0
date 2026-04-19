@@ -6,6 +6,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { zeroComposesMainContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -33,10 +34,8 @@ function createMockTeamWithSubagents() {
 }
 
 function mockAPIs() {
+  setMockTeam(createMockTeamWithSubagents());
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json(createMockTeamWithSubagents());
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -74,9 +73,6 @@ function mockAPIs() {
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
       return HttpResponse.json({ content: null, filename: null });
-    }),
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json([]);
     }),
   );
 }

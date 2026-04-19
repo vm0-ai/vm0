@@ -60,9 +60,6 @@ function mockAPIs({
     http.get("*/api/zero/agents/:name/instructions", () => {
       return HttpResponse.json({ content: null, filename: null });
     }),
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [] });
-    }),
     http.get("*/api/zero/agents/:id/user-connectors", () => {
       return HttpResponse.json({ enabledTypes: ["slack"] });
     }),

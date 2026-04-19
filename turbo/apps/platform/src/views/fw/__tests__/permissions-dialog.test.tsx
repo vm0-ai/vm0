@@ -11,6 +11,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -22,31 +23,27 @@ function mockAPIs({
     { policies: Record<string, string>; unknownPolicy?: string }
   > | null,
 } = {}) {
+  setMockTeam([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "agent-detail-id",
+      displayName: "My Agent",
+      description: "A helpful agent",
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_2",
+      updatedAt: "2024-01-02T00:00:00Z",
+    },
+  ]);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "agent-detail-id",
-          name: "my-agent",
-          displayName: "My Agent",
-          description: "A helpful agent",
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_2",
-          updatedAt: "2024-01-02T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -65,9 +62,6 @@ function mockAPIs({
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
       return HttpResponse.json({ content: null, filename: null });
-    }),
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [] });
     }),
     http.get("*/api/zero/agents/:id/user-connectors", () => {
       return HttpResponse.json({ enabledTypes: [connectorType] });
