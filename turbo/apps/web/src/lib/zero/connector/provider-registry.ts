@@ -84,6 +84,7 @@ import { jotformHandler } from "./providers/jotform-handler";
 import { klaviyoHandler } from "./providers/klaviyo-handler";
 import { kommoHandler } from "./providers/kommo-handler";
 import { larkHandler } from "./providers/lark-handler";
+import { langfuseHandler } from "./providers/langfuse-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { loopsHandler } from "./providers/loops-handler";
@@ -240,6 +241,7 @@ export const PROVIDER_HANDLERS: Record<
   "google-meet": googleMeetHandler,
   "google-sheets": googleSheetsHandler,
   lark: larkHandler,
+  langfuse: langfuseHandler,
   line: lineHandler,
   linear: linearHandler,
   loops: loopsHandler,
