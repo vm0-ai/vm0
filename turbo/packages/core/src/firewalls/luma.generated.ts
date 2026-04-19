@@ -10,14 +10,14 @@ export const lumaFirewall = {
   name: "luma",
   description: "Luma AI Dream Machine",
   placeholders: {
-    LUMAAI_API_KEY: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC",
+    LUMA_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC",
   },
   apis: [
     {
       base: "https://api.lumalabs.ai",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.LUMAAI_API_KEY }}",
+          Authorization: "Bearer ${{ secrets.LUMA_TOKEN }}",
         },
       },
       permissions: [],
