@@ -38,38 +38,6 @@ function mockTwoAgents() {
     },
   ]);
   server.use(
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
-        needsOnboarding: false,
-        isAdmin: true,
-        hasOrg: true,
-        hasDefaultAgent: true,
-        defaultAgentId: "agent-foo-id",
-        defaultAgentMetadata: { displayName: "foo" },
-      });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "agent-foo-id",
-          displayName: "foo",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "agent-bar-id",
-          displayName: "bar",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_2",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/agents/:id", ({ params }) => {
       const agents: Record<
         string,

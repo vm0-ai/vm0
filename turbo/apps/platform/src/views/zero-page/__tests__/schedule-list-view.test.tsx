@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -48,11 +47,6 @@ function createDisabledSchedule(): ScheduleResponse {
 
 function mockScheduleAPI(schedules = [createEnabledSchedule()]) {
   setMockSchedules(schedules);
-  server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules });
-    }),
-  );
 }
 
 describe("schedule list view - empty state (SCHED-D-080)", () => {
@@ -171,9 +165,6 @@ describe("schedule list view - running action indicator (SCHED-D-085)", () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
     setMockSchedules([createEnabledSchedule()]);
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({ schedules: [createEnabledSchedule()] });
-      }),
       mockApi(zeroScheduleRunContract.run, async ({ respond }) => {
         await hangDeferred.promise;
         return respond(201, { runId: "run-1" });
@@ -375,15 +366,12 @@ describe("schedule list view - more actions dropdown (SCHED-D-089)", () => {
 describe("schedule list view - run now action (SCHED-D-090)", () => {
   it("calls the run API with the schedule id when Run now is clicked", async () => {
     const user = userEvent.setup();
-    let capturedBody: { scheduleId?: string } | null = null;
+    let capturedScheduleId: string | null = null;
 
     setMockSchedules([createEnabledSchedule()]);
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({ schedules: [createEnabledSchedule()] });
-      }),
       mockApi(zeroScheduleRunContract.run, ({ body, respond }) => {
-        capturedBody = body as { scheduleId?: string };
+        capturedScheduleId = body.scheduleId;
         return respond(201, { runId: "run-1" });
       }),
     );
@@ -417,12 +405,9 @@ describe("schedule list view - run now action (SCHED-D-090)", () => {
     );
 
     await waitFor(() => {
-      expect(capturedBody).toBeTruthy();
+      expect(capturedScheduleId).toBeTruthy();
     });
-    expect(capturedBody).toHaveProperty(
-      "scheduleId",
-      "f0000001-0000-4000-a000-000000000001",
-    );
+    expect(capturedScheduleId).toBe("f0000001-0000-4000-a000-000000000001");
   });
 });
 

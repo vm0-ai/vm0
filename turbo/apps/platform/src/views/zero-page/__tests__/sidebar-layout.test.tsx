@@ -13,8 +13,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -28,21 +26,17 @@ const context = testContext();
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function mockBaseAPIs() {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: DEFAULT_AGENT_ID,
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-  );
+  setMockTeam([
+    {
+      id: DEFAULT_AGENT_ID,
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
 }
 
 describe("sidebar layout - breadcrumb section text (SIDEBAR-D-045)", () => {
@@ -76,21 +70,6 @@ describe("sidebar layout - breadcrumb name renders (SIDEBAR-D-046)", () => {
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: DEFAULT_AGENT_ID,
-            displayName: "My Agent",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
-    );
 
     detachedSetupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}` });
 
@@ -171,21 +150,6 @@ describe("sidebar layout - breadcrumb section link navigates (SIDEBAR-D-051)", (
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: DEFAULT_AGENT_ID,
-            displayName: "My Agent",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
-    );
 
     detachedSetupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}` });
 

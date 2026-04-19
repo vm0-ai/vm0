@@ -109,9 +109,6 @@ function mockBaseAPIs(options?: {
 
   setMockTeam(agents);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json(agents);
-    }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads });
     }),
@@ -342,9 +339,6 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
 
     setMockTeam([makeDefaultAgent()]);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([makeDefaultAgent()]);
-      }),
       mockApi(chatThreadsContract.list, ({ respond }) => {
         return respond(200, { threads });
       }),

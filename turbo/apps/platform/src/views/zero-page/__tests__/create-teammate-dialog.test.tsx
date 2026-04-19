@@ -30,30 +30,6 @@ function mockTeamWithSubagent() {
       updatedAt: "2024-01-02T00:00:00Z",
     },
   ]);
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "sub-agent-1",
-          displayName: "Research Agent",
-          description: "Finds info",
-          sound: null,
-          avatarUrl: "preset:2",
-          headVersionId: "version_2",
-          updatedAt: "2024-01-02T00:00:00Z",
-        },
-      ]);
-    }),
-  );
 }
 
 async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {

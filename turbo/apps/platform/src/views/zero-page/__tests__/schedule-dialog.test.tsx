@@ -50,11 +50,6 @@ function mockDeployResponse(): {
 
 function mockCreateModeAPIs() {
   setMockSchedules([mockScheduleForList()]);
-  server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [mockScheduleForList()] });
-    }),
-  );
 }
 
 async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
@@ -100,9 +95,6 @@ function mockEditModeAPIs() {
     }),
     http.get("*/api/zero/agents/my-agent/instructions", () => {
       return HttpResponse.json({ content: null, filename: null });
-    }),
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [mockScheduleForList()] });
     }),
   );
 }
@@ -180,7 +172,7 @@ describe("schedule dialog - save error (SCHED-D-047)", () => {
     await fill(promptInput, "My task");
     await user.click(screen.getByText("Create"));
     await waitFor(() => {
-      expect(screen.getByText(/HTTP 400/i)).toBeInTheDocument();
+      expect(screen.getByText(/Server error/i)).toBeInTheDocument();
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });

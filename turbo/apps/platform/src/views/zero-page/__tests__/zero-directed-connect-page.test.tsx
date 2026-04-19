@@ -17,6 +17,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
   zeroSecretsContract,
+  zeroUserConnectorsContract,
 } from "@vm0/core";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -61,13 +62,13 @@ function mockAgentWithName(agentId: string, displayName: string) {
   ]);
 }
 
-function mockUserConnectors(agentId: string, enabledTypes: string[] = []) {
+function mockUserConnectors(_agentId: string, enabledTypes: string[] = []) {
   server.use(
-    http.get(`*/api/zero/agents/${agentId}/user-connectors`, () => {
-      return HttpResponse.json({ enabledTypes });
+    mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes });
     }),
-    http.put(`*/api/zero/agents/${agentId}/user-connectors`, () => {
-      return HttpResponse.json({ enabledTypes });
+    mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
+      return respond(200, { enabledTypes });
     }),
   );
 }

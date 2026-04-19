@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -77,11 +76,6 @@ function mockDeployResponse(): {
 
 function mockScheduleAPI(schedules = createMockSchedules()) {
   setMockSchedules(schedules);
-  server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules });
-    }),
-  );
 }
 
 function renderSchedulePage() {
@@ -144,59 +138,6 @@ describe("zero schedule page - agent labels", () => {
         prompt: "Summarize yesterday's threads",
       }),
     ]);
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            displayName: "Zero",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            userId: "test-user-123",
-            appendSystemPrompt: null,
-            vars: null,
-            secretNames: null,
-            artifactName: null,
-            artifactVersion: null,
-            volumeVersions: null,
-            retryStartedAt: null,
-            consecutiveFailures: 0,
-          },
-          {
-            id: "e0000000-0000-4000-a000-000000000002",
-            displayName: "Research Agent",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v2",
-            updatedAt: "2024-01-02T00:00:00Z",
-            userId: "test-user-123",
-            appendSystemPrompt: null,
-            vars: null,
-            secretNames: null,
-            artifactName: null,
-            artifactVersion: null,
-            volumeVersions: null,
-            retryStartedAt: null,
-            consecutiveFailures: 0,
-          },
-        ]);
-      }),
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({
-          schedules: [
-            {
-              ...createMockSchedules()[0],
-              agentId: "e0000000-0000-4000-a000-000000000002",
-              displayName: "Research Agent",
-            },
-          ],
-        });
-      }),
-    );
     await renderSchedulePage();
 
     // The agent column should show "Research Agent" (from schedule displayName)
@@ -235,59 +176,6 @@ describe("zero schedule page - agent labels", () => {
         prompt: "Summarize yesterday's threads",
       }),
     ]);
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            userId: "test-user-123",
-            appendSystemPrompt: null,
-            vars: null,
-            secretNames: null,
-            artifactName: null,
-            artifactVersion: null,
-            volumeVersions: null,
-            retryStartedAt: null,
-            consecutiveFailures: 0,
-          },
-          {
-            id: "e0000000-0000-4000-a000-000000000003",
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v2",
-            updatedAt: "2024-01-02T00:00:00Z",
-            userId: "test-user-123",
-            appendSystemPrompt: null,
-            vars: null,
-            secretNames: null,
-            artifactName: null,
-            artifactVersion: null,
-            volumeVersions: null,
-            retryStartedAt: null,
-            consecutiveFailures: 0,
-          },
-        ]);
-      }),
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({
-          schedules: [
-            {
-              ...createMockSchedules()[0],
-              agentId: "e0000000-0000-4000-a000-000000000003",
-              displayName: null,
-            },
-          ],
-        });
-      }),
-    );
     await renderSchedulePage();
 
     // Falls back to raw agent id when displayName is null
@@ -512,12 +400,12 @@ describe("zero schedule page - create dialog", () => {
 
   it("should save a new schedule via API", async () => {
     const user = userEvent.setup();
-    let capturedBody: Record<string, unknown> | null = null;
+    let capturedPrompt: string | null = null;
 
     setMockSchedules(createMockSchedules());
     server.use(
       mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-        capturedBody = body as Record<string, unknown>;
+        capturedPrompt = body.prompt;
         return respond(201, mockDeployResponse());
       }),
     );
@@ -547,9 +435,9 @@ describe("zero schedule page - create dialog", () => {
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
-      expect(capturedBody).toBeTruthy();
+      expect(capturedPrompt).toBeTruthy();
     });
-    expect(capturedBody).toHaveProperty("prompt", "Daily standup summary");
+    expect(capturedPrompt).toBe("Daily standup summary");
   });
 });
 
@@ -978,11 +866,11 @@ describe("zero schedule page - create dialog timezone default", () => {
     const user = userEvent.setup();
     setMockUserPreferences({ timezone: "Asia/Tokyo" });
 
-    let capturedBody: Record<string, unknown> | null = null;
+    let capturedTimezone: string | null = null;
     setMockSchedules(createMockSchedules());
     server.use(
       mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-        capturedBody = body as Record<string, unknown>;
+        capturedTimezone = body.timezone;
         return respond(201, mockDeployResponse());
       }),
     );
@@ -1007,9 +895,9 @@ describe("zero schedule page - create dialog timezone default", () => {
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
-      expect(capturedBody).toBeTruthy();
+      expect(capturedTimezone).toBeTruthy();
     });
-    expect(capturedBody).toHaveProperty("timezone", "Asia/Tokyo");
+    expect(capturedTimezone).toBe("Asia/Tokyo");
   });
 
   it("should fall back to local timezone in submitted request when preference not set", async () => {
@@ -1017,11 +905,11 @@ describe("zero schedule page - create dialog timezone default", () => {
     // timezone is null by default (reset via resetAllMockHandlers in afterEach)
     const localTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    let capturedBody: Record<string, unknown> | null = null;
+    let capturedTimezone: string | null = null;
     setMockSchedules(createMockSchedules());
     server.use(
       mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
-        capturedBody = body as Record<string, unknown>;
+        capturedTimezone = body.timezone;
         return respond(201, mockDeployResponse());
       }),
     );
@@ -1045,8 +933,8 @@ describe("zero schedule page - create dialog timezone default", () => {
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
-      expect(capturedBody).toBeTruthy();
+      expect(capturedTimezone).toBeTruthy();
     });
-    expect(capturedBody).toHaveProperty("timezone", localTimezone);
+    expect(capturedTimezone).toBe(localTimezone);
   });
 });

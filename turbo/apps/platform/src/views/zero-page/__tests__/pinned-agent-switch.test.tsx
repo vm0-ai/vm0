@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
@@ -43,39 +41,6 @@ function mockPinnedAgents() {
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: DEFAULT_AGENT_ID,
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "agent-alpha",
-          displayName: "Alpha Bot",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_2",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "agent-beta",
-          displayName: "Beta Bot",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_3",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-  );
   setMockUserPreferences({ pinnedAgentIds: ["agent-alpha", "agent-beta"] });
 }
 

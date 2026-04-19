@@ -14,7 +14,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { chatThreadsContract, zeroIntegrationsSlackContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -66,9 +65,6 @@ function mockBaseAPIs(
 
   setMockTeam(agents);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json(agents);
-    }),
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads });
     }),
@@ -125,19 +121,6 @@ describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
   it("shows skeleton placeholders while chat threads are loading", async () => {
     const deferred = createDeferredPromise<void>(context.signal);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: DEFAULT_AGENT_ID,
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
       mockApi(chatThreadsContract.list, async ({ respond }) => {
         await deferred.promise;
         return respond(200, { threads: [] });

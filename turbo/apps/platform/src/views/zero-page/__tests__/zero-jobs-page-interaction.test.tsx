@@ -34,11 +34,6 @@ function mockTeamAPI(
   }[] = [],
 ) {
   setMockTeam([DEFAULT_AGENT, ...extraAgents]);
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([DEFAULT_AGENT, ...extraAgents]);
-    }),
-  );
 }
 
 async function openDialog(user: ReturnType<typeof userEvent.setup>) {
@@ -158,22 +153,6 @@ describe("zero jobs page - avatar display", () => {
         updatedAt: "2024-01-02T00:00:00Z",
       },
     ]);
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          DEFAULT_AGENT,
-          {
-            id: "avatar-agent-id",
-            displayName: "Avatar Agent",
-            description: "Has a custom SVG avatar",
-            sound: null,
-            avatarUrl: "svg:r2s1h4c3f2m",
-            headVersionId: "version_av",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-        ]);
-      }),
-    );
     detachedSetupPage({ context, path: "/agents" });
 
     // Agent with SVG avatar should render an avatar image
@@ -196,22 +175,6 @@ describe("zero jobs page - avatar display", () => {
         updatedAt: "2024-01-02T00:00:00Z",
       },
     ]);
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          DEFAULT_AGENT,
-          {
-            id: "no-avatar-agent-id",
-            displayName: "No Avatar Agent",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_no",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-        ]);
-      }),
-    );
     detachedSetupPage({ context, path: "/agents" });
 
     // Even without an avatar URL, a fallback SVG avatar should render
@@ -237,22 +200,6 @@ describe("zero jobs page - navigation", () => {
         updatedAt: "2024-01-02T00:00:00Z",
       },
     ]);
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          DEFAULT_AGENT,
-          {
-            id: "nav-agent-id",
-            displayName: "Nav Agent",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_nav",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-        ]);
-      }),
-    );
     detachedSetupPage({ context, path: "/agents" });
 
     const card = await waitFor(() => {
