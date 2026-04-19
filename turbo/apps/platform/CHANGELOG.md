@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.261.0](https://github.com/vm0-ai/vm0/compare/app-v0.260.0...app-v0.261.0) (2026-04-19)
+
+
+### Features
+
+* ship full UX for org custom connectors (admin CRUD, per-agent auth, UI) ([#10118](https://github.com/vm0-ai/vm0/issues/10118)) ([8c9f382](https://github.com/vm0-ai/vm0/commit/8c9f3829c92dcac8feab6d259828424efdfed1b9)), closes [#10099](https://github.com/vm0-ai/vm0/issues/10099)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.207.0
+
 ## [0.260.0](https://github.com/vm0-ai/vm0/compare/app-v0.259.0...app-v0.260.0) (2026-04-19)
 
 
