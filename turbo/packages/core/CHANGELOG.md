@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.206.0](https://github.com/vm0-ai/vm0/compare/core-v8.205.0...core-v8.206.0) (2026-04-19)
+
+
+### Features
+
+* add kimi/glm/minimax models to vm0 managed provider ([#10106](https://github.com/vm0-ai/vm0/issues/10106)) ([1619955](https://github.com/vm0-ai/vm0/commit/1619955f3a949352a20282c490776b0bc74df1b1))
+
+
+### Bug Fixes
+
+* **firewall:** allow api entries with empty permissions ([#10103](https://github.com/vm0-ai/vm0/issues/10103)) ([e7781cf](https://github.com/vm0-ai/vm0/commit/e7781cfe8a0880d352f4ab487aa185ea14f15dd1))
+
 ## [8.205.0](https://github.com/vm0-ai/vm0/compare/core-v8.204.0...core-v8.205.0) (2026-04-19)
 
 

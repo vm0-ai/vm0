@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.86.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.0...runner-rs-v0.86.1) (2026-04-19)
+
+
+### Refactoring
+
+* **mitm-addon:** remove remaining private-entry test sites ([#10101](https://github.com/vm0-ai/vm0/issues/10101)) ([#10112](https://github.com/vm0-ai/vm0/issues/10112)) ([9aadbed](https://github.com/vm0-ai/vm0/commit/9aadbedff1f8a7435a8bf2cb4addf03efe376f30))
+
 ## [0.86.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.85.4...runner-rs-v0.86.0) (2026-04-19)
 
 

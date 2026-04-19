@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.260.0](https://github.com/vm0-ai/vm0/compare/app-v0.259.0...app-v0.260.0) (2026-04-19)
+
+
+### Features
+
+* add kimi/glm/minimax models to vm0 managed provider ([#10106](https://github.com/vm0-ai/vm0/issues/10106)) ([1619955](https://github.com/vm0-ai/vm0/commit/1619955f3a949352a20282c490776b0bc74df1b1))
+
+
+### Bug Fixes
+
+* **platform:** avoid empty select item value in model provider picker ([#10123](https://github.com/vm0-ai/vm0/issues/10123)) ([879ee88](https://github.com/vm0-ai/vm0/commit/879ee88558f177327228156bade1d90167666111))
+
+
+### Refactoring
+
+* **platform:** migrate voice-chat/voice-io/uploads server.use() overrides to mockApi (Phase 3 / [#10083](https://github.com/vm0-ai/vm0/issues/10083)) ([#10104](https://github.com/vm0-ai/vm0/issues/10104)) ([798c0e7](https://github.com/vm0-ai/vm0/commit/798c0e74943b6468eb5c4f9ff3dbcaf164ff80eb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.206.0
+
 ## [0.259.0](https://github.com/vm0-ai/vm0/compare/app-v0.258.0...app-v0.259.0) (2026-04-19)
 
 
