@@ -150,6 +150,7 @@ import { generate as generateXero } from "./xero";
 import { generate as generateZapier } from "./zapier";
 import { generate as generateZapsign } from "./zapsign";
 import { generate as generateZendesk } from "./zendesk";
+import { generate as generateZep } from "./zep";
 import { generate as generateZeptomail } from "./zeptomail";
 import { generate as generateZoom } from "./zoom";
 import { createGoogleGenerator, googleServiceNames } from "./google";
@@ -299,6 +300,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   zapier: generateZapier,
   zapsign: generateZapsign,
   zendesk: generateZendesk,
+  zep: generateZep,
   zeptomail: generateZeptomail,
   zoom: generateZoom,
   ...Object.fromEntries(

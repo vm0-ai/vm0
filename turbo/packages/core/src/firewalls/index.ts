@@ -176,6 +176,7 @@ import { youtubeFirewall } from "./youtube.generated";
 import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
 import { zendeskFirewall } from "./zendesk.generated";
+import { zepFirewall } from "./zep.generated";
 import { zeptomailFirewall } from "./zeptomail.generated";
 import { zoomFirewall } from "./zoom.generated";
 
@@ -345,6 +346,7 @@ const CONNECTOR_FIREWALLS = {
   zapier: zapierFirewall,
   zapsign: zapsignFirewall,
   zendesk: zendeskFirewall,
+  zep: zepFirewall,
   zeptomail: zeptomailFirewall,
   zoom: zoomFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
