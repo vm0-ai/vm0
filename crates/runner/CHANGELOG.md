@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.85.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.85.3...runner-rs-v0.85.4) (2026-04-19)
+
+
+### Refactoring
+
+* **mitm-addon:** delete redundant tests and annotate kept assertions ([#9991](https://github.com/vm0-ai/vm0/issues/9991)) ([#10079](https://github.com/vm0-ai/vm0/issues/10079)) ([beaba54](https://github.com/vm0-ai/vm0/commit/beaba5468a40d64d7af2b8f7af8e6a637a926784))
+* **mitm-addon:** promote shared fixtures and drop test-local flow mocks ([#10011](https://github.com/vm0-ai/vm0/issues/10011)) ([0eef5d9](https://github.com/vm0-ai/vm0/commit/0eef5d978d8cd39b06154f2618b62cda51b2a0a6))
+* **mitm-addon:** rewrite dispatcher and usage-report tests with outcome assertions ([#9991](https://github.com/vm0-ai/vm0/issues/9991)) ([#10080](https://github.com/vm0-ai/vm0/issues/10080)) ([3015a32](https://github.com/vm0-ai/vm0/commit/3015a32fbf6e182c579ae068942b982a06d19d46))
+
 ## [0.85.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.85.2...runner-rs-v0.85.3) (2026-04-18)
 
 
