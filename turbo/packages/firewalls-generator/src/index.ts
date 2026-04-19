@@ -117,6 +117,7 @@ import { generate as generateQdrant } from "./qdrant";
 import { generate as generateQiita } from "./qiita";
 import { generate as generateReddit } from "./reddit";
 import { generate as generateReportei } from "./reportei";
+import { generate as generateReplicate } from "./replicate";
 import { generate as generateResend } from "./resend";
 import { generate as generateRevenuecat } from "./revenuecat";
 import { generate as generateRunway } from "./runway";
@@ -270,6 +271,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   qiita: generateQiita,
   reddit: generateReddit,
   reportei: generateReportei,
+  replicate: generateReplicate,
   resend: generateResend,
   revenuecat: generateRevenuecat,
   runway: generateRunway,

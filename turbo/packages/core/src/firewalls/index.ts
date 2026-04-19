@@ -143,6 +143,7 @@ import { qdrantFirewall } from "./qdrant.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { redditFirewall } from "./reddit.generated";
 import { reporteiFirewall } from "./reportei.generated";
+import { replicateFirewall } from "./replicate.generated";
 import { resendFirewall } from "./resend.generated";
 import { revenuecatFirewall } from "./revenuecat.generated";
 import { runwayFirewall } from "./runway.generated";
@@ -316,6 +317,7 @@ const CONNECTOR_FIREWALLS = {
   qiita: qiitaFirewall,
   reddit: redditFirewall,
   reportei: reporteiFirewall,
+  replicate: replicateFirewall,
   resend: resendFirewall,
   revenuecat: revenuecatFirewall,
   runway: runwayFirewall,
