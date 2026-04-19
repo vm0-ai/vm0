@@ -176,6 +176,7 @@ import { zeptomailHandler } from "./providers/zeptomail-handler";
 import { zoomHandler } from "./providers/zoom-handler";
 import { n8nHandler } from "./providers/n8n-handler";
 import { testOauthHandler } from "./providers/test-oauth-handler";
+import { wandbHandler } from "./providers/wandb-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
 
@@ -354,6 +355,7 @@ export const PROVIDER_HANDLERS: Record<
   wix: wixHandler,
   n8n: n8nHandler,
   "test-oauth": testOauthHandler,
+  wandb: wandbHandler,
 };
 
 /**

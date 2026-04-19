@@ -167,6 +167,7 @@ const CONNECTOR_ICON_COLORFUL = {
   tldv: true,
   todoist: true,
   together: true,
+  wandb: true,
   webflow: true,
   workos: true,
   wrike: true,
