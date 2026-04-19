@@ -117,6 +117,7 @@ import { mailchimpFirewall } from "./mailchimp.generated";
 import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { manusFirewall } from "./manus.generated";
+import { mem0Firewall } from "./mem0.generated";
 import { mercuryFirewall } from "./mercury.generated";
 import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
@@ -296,6 +297,7 @@ const CONNECTOR_FIREWALLS = {
   make: makeFirewall,
   mailsac: mailsacFirewall,
   manus: manusFirewall,
+  mem0: mem0Firewall,
   mercury: mercuryFirewall,
   metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,

@@ -90,6 +90,7 @@ import { generate as generateMailchimp } from "./mailchimp";
 import { generate as generateMake } from "./make";
 import { generate as generateMailsac } from "./mailsac";
 import { generate as generateManus } from "./manus";
+import { generate as generateMem0 } from "./mem0";
 import { generate as generateMercury } from "./mercury";
 import { generate as generateMetabase } from "./metabase";
 import { generate as generateMetaAds } from "./meta-ads";
@@ -249,6 +250,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   make: generateMake,
   mailsac: generateMailsac,
   manus: generateManus,
+  mem0: generateMem0,
   mercury: generateMercury,
   metabase: generateMetabase,
   "meta-ads": generateMetaAds,
