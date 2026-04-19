@@ -197,22 +197,21 @@ export async function getMessagesByThreadId(chatThreadId: string): Promise<
 }
 
 /**
- * Get messages for a thread after a given cursor message, ordered by
- * (created_at ASC, sequence_number ASC).
+ * Fetch chat messages for a thread, rendered in natural chronological order
+ * (createdAt ASC, sequenceNumber ASC).
  *
- * Cursor-based paginated query for chat messages.
- * Returns messages after the given sinceId in natural order
- * (createdAt ASC, sequenceNumber ASC). When sinceId is undefined,
- * returns from the beginning of the thread.
- *
- * Fetches limit+1 rows to determine hasMore without an extra COUNT query.
+ * - When `sinceId` is provided: returns up to `limit` messages strictly after
+ *   the cursor, forward-paginating through the thread.
+ * - When `sinceId` is omitted: returns the *latest* `limit` messages,
+ *   re-sorted ASC for rendering. This anchors the initial view at the most
+ *   recent activity rather than the thread's beginning.
  */
 export async function getMessagesSince(
   chatThreadId: string,
   sinceId: string | undefined,
   limit: number,
-): Promise<{
-  messages: Array<{
+): Promise<
+  Array<{
     id: string;
     role: string;
     content: string | null;
@@ -222,50 +221,49 @@ export async function getMessagesSince(
     createdAt: Date;
     runStatus: string | null;
     runError: string | null;
-  }>;
-  hasMore: boolean;
-}> {
+  }>
+> {
   const db = globalThis.services.db;
 
-  let cursorCondition;
-  if (sinceId) {
-    cursorCondition = sql`(
-      ${chatMessages.createdAt},
-      COALESCE(${chatMessages.sequenceNumber}, -1)
-    ) > (
-      SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
-      FROM ${chatMessages}
-      WHERE ${chatMessages.id} = ${sinceId}
-    )`;
+  const columns = {
+    id: chatMessages.id,
+    role: chatMessages.role,
+    content: chatMessages.content,
+    runId: chatMessages.runId,
+    error: chatMessages.error,
+    sequenceNumber: chatMessages.sequenceNumber,
+    createdAt: chatMessages.createdAt,
+    runStatus: agentRuns.status,
+    runError: agentRuns.error,
+  };
+
+  if (sinceId === undefined) {
+    const rows = await db
+      .select(columns)
+      .from(chatMessages)
+      .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+      .where(eq(chatMessages.chatThreadId, chatThreadId))
+      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+      .limit(limit);
+    return rows.reverse();
   }
 
-  const conditions = [eq(chatMessages.chatThreadId, chatThreadId)];
-  if (cursorCondition) {
-    conditions.push(cursorCondition);
-  }
+  const cursorCondition = sql`(
+    ${chatMessages.createdAt},
+    COALESCE(${chatMessages.sequenceNumber}, -1)
+  ) > (
+    SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
+    FROM ${chatMessages}
+    WHERE ${chatMessages.id} = ${sinceId}
+  )`;
 
-  const rows = await db
-    .select({
-      id: chatMessages.id,
-      role: chatMessages.role,
-      content: chatMessages.content,
-      runId: chatMessages.runId,
-      error: chatMessages.error,
-      sequenceNumber: chatMessages.sequenceNumber,
-      createdAt: chatMessages.createdAt,
-      runStatus: agentRuns.status,
-      runError: agentRuns.error,
-    })
+  return db
+    .select(columns)
     .from(chatMessages)
     .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
-    .where(and(...conditions))
+    .where(and(eq(chatMessages.chatThreadId, chatThreadId), cursorCondition))
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber))
-    .limit(limit + 1);
-
-  const hasMore = rows.length > limit;
-  const messages = hasMore ? rows.slice(0, limit) : rows;
-
-  return { messages, hasMore };
+    .limit(limit);
 }
 
 /**

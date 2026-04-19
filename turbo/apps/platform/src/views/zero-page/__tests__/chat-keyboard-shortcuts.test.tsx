@@ -14,7 +14,7 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 function mockEmptyMessages(threadId: string) {
   server.use(
     http.get(`*/api/zero/chat-threads/${threadId}/messages`, () => {
-      return HttpResponse.json({ messages: [], hasMore: false });
+      return HttpResponse.json({ messages: [] });
     }),
     http.get(`*/api/zero/chat-threads/${threadId}`, () => {
       return HttpResponse.json({
@@ -167,7 +167,7 @@ describe("chat page keyboard shortcuts", () => {
         ({ request }) => {
           const url = new URL(request.url);
           if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
+            return HttpResponse.json({ messages: [] });
           }
           return HttpResponse.json({
             messages: [
@@ -178,7 +178,6 @@ describe("chat page keyboard shortcuts", () => {
                 createdAt: "2026-03-10T00:00:00Z",
               },
             ],
-            hasMore: false,
           });
         },
       ),
@@ -232,7 +231,7 @@ describe("chat page keyboard shortcuts", () => {
         ({ request }) => {
           const url = new URL(request.url);
           if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
+            return HttpResponse.json({ messages: [] });
           }
           return HttpResponse.json({
             messages: [
@@ -243,7 +242,6 @@ describe("chat page keyboard shortcuts", () => {
                 createdAt: "2026-03-10T00:00:00Z",
               },
             ],
-            hasMore: false,
           });
         },
       ),

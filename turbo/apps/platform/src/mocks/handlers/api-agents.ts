@@ -121,7 +121,7 @@ export const apiAgentsHandlers = [
 
   // GET /api/zero/chat-threads/:threadId/messages (paged messages)
   mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-    return respond(200, { messages: [], hasMore: false });
+    return respond(200, { messages: [] });
   }),
 
   // GET /api/zero/chat-threads/:id (thread detail)

@@ -30,7 +30,7 @@ const router = tsr.router(chatThreadMessagesContract, {
       // Ownership check — throws notFound if user doesn't own the thread
       await getChatThread(params.threadId, userId);
 
-      const { messages: rows, hasMore } = await getMessagesSince(
+      const rows = await getMessagesSince(
         params.threadId,
         query.sinceId,
         query.limit,
@@ -57,7 +57,7 @@ const router = tsr.router(chatThreadMessagesContract, {
 
       return {
         status: 200 as const,
-        body: { messages, hasMore },
+        body: { messages },
       };
     } catch (error) {
       if (isNotFound(error)) {

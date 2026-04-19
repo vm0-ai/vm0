@@ -22,7 +22,7 @@ function setupBaseHandlers(threadId: string) {
       return HttpResponse.json({ threads: [] });
     }),
     http.get(`*/api/zero/chat-threads/${threadId}/messages`, () => {
-      return HttpResponse.json({ messages: [], hasMore: false });
+      return HttpResponse.json({ messages: [] });
     }),
     http.get(`*/api/zero/chat-threads/${threadId}`, () => {
       return HttpResponse.json({
