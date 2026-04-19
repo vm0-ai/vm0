@@ -49,10 +49,19 @@ async fn create_checkpoint_impl(
         );
         return Err(AgentError::Checkpoint("No session ID found".into()));
     }
-    let session_id = std::fs::read_to_string(session_id_path)
-        .map_err(|e| AgentError::Checkpoint(format!("Failed to read session ID: {e}")))?
-        .trim()
-        .to_string();
+    let session_id = match std::fs::read_to_string(session_id_path) {
+        Ok(s) => s.trim().to_string(),
+        Err(e) => {
+            let msg = format!("Failed to read session ID: {e}");
+            record_sandbox_op(
+                "session_id_read",
+                session_id_start.elapsed(),
+                false,
+                Some(&msg),
+            );
+            return Err(AgentError::Checkpoint(msg));
+        }
+    };
     record_sandbox_op("session_id_read", session_id_start.elapsed(), true, None);
 
     // Read session history path
@@ -70,12 +79,19 @@ async fn create_checkpoint_impl(
             "No session history path found".into(),
         ));
     }
-    let raw_path = std::fs::read_to_string(history_path_file)
-        .map_err(|e| AgentError::Checkpoint(format!("Failed to read history path: {e}")))?
-        .trim()
-        .to_string();
-
-    let session_history_path = raw_path;
+    let session_history_path = match std::fs::read_to_string(history_path_file) {
+        Ok(s) => s.trim().to_string(),
+        Err(e) => {
+            let msg = format!("Failed to read history path: {e}");
+            record_sandbox_op(
+                "session_history_read",
+                history_read_start.elapsed(),
+                false,
+                Some(&msg),
+            );
+            return Err(AgentError::Checkpoint(msg));
+        }
+    };
 
     // Read session history
     if !Path::new(&session_history_path).exists() {
