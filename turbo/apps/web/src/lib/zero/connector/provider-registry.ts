@@ -161,6 +161,7 @@ import { revenuecatHandler } from "./providers/revenuecat-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
 import { spotifyHandler } from "./providers/spotify-handler";
+import { workosHandler } from "./providers/workos-handler";
 import { wrikeHandler } from "./providers/wrike-handler";
 import { xeroHandler } from "./providers/xero-handler";
 import { pdforgeHandler } from "./providers/pdforge-handler";
@@ -317,6 +318,7 @@ export const PROVIDER_HANDLERS: Record<
   scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
   spotify: spotifyHandler,
+  workos: workosHandler,
   wrike: wrikeHandler,
   x: xHandler,
   xero: xeroHandler,

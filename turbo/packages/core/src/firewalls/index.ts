@@ -181,6 +181,7 @@ import { v0Firewall } from "./v0.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { webflowFirewall } from "./webflow.generated";
 import { wixFirewall } from "./wix.generated";
+import { workosFirewall } from "./workos.generated";
 import { wrikeFirewall } from "./wrike.generated";
 import { xFirewall } from "./x.generated";
 import { xeroFirewall } from "./xero.generated";
@@ -361,6 +362,7 @@ const CONNECTOR_FIREWALLS = {
   vercel: vercelFirewall,
   webflow: webflowFirewall,
   wix: wixFirewall,
+  workos: workosFirewall,
   wrike: wrikeFirewall,
   x: xFirewall,
   xero: xeroFirewall,

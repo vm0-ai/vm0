@@ -165,6 +165,7 @@ const CONNECTOR_ICON_COLORFUL = {
   todoist: true,
   together: true,
   webflow: true,
+  workos: true,
   wrike: true,
   xero: true,
   youtube: true,
