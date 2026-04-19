@@ -209,17 +209,16 @@ describe("zero-job-detail signals", () => {
     it("should pass agent name directly to API", async () => {
       let capturedUrl = "";
       server.use(
-        mockApi(zeroAgentsByIdContract.get, ({ request, respond }) => {
-          capturedUrl = request.url;
-          return respond(200, {
-            ...mockAgentResponse(),
-          });
-        }),
-        mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
-          return respond(200, mockInstructions());
-        }),
-        mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
-          return respond(200, { enabledTypes: [] });
+        http.get("http://localhost:3000/api/zero/agents/*", ({ request }) => {
+          const url = request.url;
+          if (url.includes("/instructions")) {
+            return HttpResponse.json(mockInstructions());
+          }
+          if (url.includes("/user-connectors")) {
+            return HttpResponse.json({ enabledTypes: [] });
+          }
+          capturedUrl = url;
+          return HttpResponse.json(mockAgentResponse());
         }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
