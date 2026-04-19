@@ -191,11 +191,6 @@ const PLAUSIBLE: ConnectorRef = {
   icon: "/assets/connectors/plausible.svg",
 };
 
-const REDDIT: ConnectorRef = {
-  id: "reddit",
-  label: "Reddit",
-  icon: "/assets/connectors/reddit.svg",
-};
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -1323,11 +1318,10 @@ export const USE_CASES: UseCase[] = [
     roles: ["product", "ops"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
-    connectors: [X_TWITTER, SLACK, REDDIT, NOTION],
+    connectors: [X_TWITTER, SLACK, NOTION],
     integrations: [
       { connector: X_TWITTER, required: true },
       { connector: SLACK, required: true },
-      { connector: REDDIT, required: false },
       { connector: NOTION, required: false },
     ],
     relatedSlugs: [
@@ -1337,7 +1331,7 @@ export const USE_CASES: UseCase[] = [
     ],
     stepCount: 3,
     nextActionCount: 4,
-    integrationCount: 4,
+    integrationCount: 3,
     tipCount: 3,
     promptVariantCount: 4,
     slackPreviewCount: 2,
