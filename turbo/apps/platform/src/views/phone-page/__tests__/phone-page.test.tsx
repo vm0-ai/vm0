@@ -19,9 +19,6 @@ function mockPhoneStatusAPI(overrides: Record<string, unknown> = {}) {
     http.get("*/api/zero/phone/status", () => {
       return HttpResponse.json({ ...defaults, ...overrides });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 

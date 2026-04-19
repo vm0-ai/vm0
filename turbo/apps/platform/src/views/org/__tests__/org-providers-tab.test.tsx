@@ -55,9 +55,6 @@ function mockAPIs(options?: {
     http.get("*/api/zero/model-providers", () => {
       return HttpResponse.json({ modelProviders: providers });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([]);
     }),

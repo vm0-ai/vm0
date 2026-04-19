@@ -10,6 +10,8 @@ import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { logsByIdContract, zeroRunAgentEventsContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -49,21 +51,17 @@ function mockActivityDetailAPI() {
   };
 
   server.use(
-    http.get("*/api/zero/logs/:id", ({ params }) => {
-      if (params["id"] === "a0000000-0000-4000-a000-000000000001") {
-        return HttpResponse.json(logDetail);
+    mockApi(logsByIdContract.getById, ({ params, respond }) => {
+      if (params.id === "a0000000-0000-4000-a000-000000000001") {
+        return respond(200, logDetail);
       }
-      return HttpResponse.json(
-        { error: { message: "Not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
     }),
-    http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-      return HttpResponse.json(eventsResponse);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+      respond(200, eventsResponse),
+    ),
   );
 }
 
@@ -154,19 +152,12 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
-      }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
-          events: [],
-          hasMore: false,
-          framework: "claude-code",
-        });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+      mockApi(logsByIdContract.getById, ({ respond }) =>
+        respond(200, logDetail),
+      ),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
+      ),
     );
 
     detachedSetupPage({
@@ -209,19 +200,12 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
-      }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
-          events: [],
-          hasMore: false,
-          framework: "claude-code",
-        });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+      mockApi(logsByIdContract.getById, ({ respond }) =>
+        respond(200, logDetail),
+      ),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
+      ),
     );
 
     detachedSetupPage({
@@ -297,15 +281,12 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
-      }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json(eventsResponse);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+      mockApi(logsByIdContract.getById, ({ respond }) =>
+        respond(200, logDetail),
+      ),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+        respond(200, eventsResponse),
+      ),
     );
 
     detachedSetupPage({
@@ -354,19 +335,12 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
-      }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
-          events: [],
-          hasMore: false,
-          framework: "claude-code",
-        });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+      mockApi(logsByIdContract.getById, ({ respond }) =>
+        respond(200, logDetail),
+      ),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
+      ),
     );
 
     detachedSetupPage({
@@ -408,19 +382,12 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
-      }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
-          events: [],
-          hasMore: false,
-          framework: "claude-code",
-        });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+      mockApi(logsByIdContract.getById, ({ respond }) =>
+        respond(200, logDetail),
+      ),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
+      ),
     );
 
     detachedSetupPage({
@@ -463,19 +430,12 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
-      }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
-          events: [],
-          hasMore: false,
-          framework: "claude-code",
-        });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+      mockApi(logsByIdContract.getById, ({ respond }) =>
+        respond(200, logDetail),
+      ),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
+      ),
     );
 
     detachedSetupPage({

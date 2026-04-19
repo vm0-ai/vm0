@@ -35,9 +35,6 @@ function mockAPIs() {
     http.get("*/api/zero/team", () => {
       return HttpResponse.json(createMockTeamWithSubagents());
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/composes", () => {
       return HttpResponse.json({
         id: "agent-2",

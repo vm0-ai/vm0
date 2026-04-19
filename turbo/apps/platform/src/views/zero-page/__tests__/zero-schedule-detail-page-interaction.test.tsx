@@ -150,9 +150,9 @@ describe("zero schedule detail page - toggle switch changes enabled state (SCHED
           schedules: [createMockSchedule({ enabled: true })],
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+      mockApi(chatThreadsContract.list, ({ respond }) =>
+        respond(200, { threads: [] }),
+      ),
     );
 
     const user = userEvent.setup();
@@ -239,9 +239,9 @@ describe("zero schedule detail page - instruction save button saves instructions
           schedules: [createMockSchedule(saved ? { prompt: newPrompt } : {})],
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+      mockApi(chatThreadsContract.list, ({ respond }) =>
+        respond(200, { threads: [] }),
+      ),
       http.post("*/api/zero/schedules", () => {
         saved = true;
         return HttpResponse.json(
@@ -405,7 +405,7 @@ describe("zero schedule detail page - rows per page select changes page size (SC
           pagination: {
             hasMore: false,
             nextCursor: null,
-            totalPages: 1,
+            totalPages: 2,
           },
           filters: { statuses: [], sources: [], agents: [] },
         });

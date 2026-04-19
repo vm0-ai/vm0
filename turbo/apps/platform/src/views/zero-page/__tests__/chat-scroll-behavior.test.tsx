@@ -6,20 +6,43 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadMessagesContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
+
+// Registry for per-thread mock data. Built up via addThread(), then registered
+// by commitThreadMocks() as a single pair of handlers that dispatch by threadId.
+const threadRegistry = new Map<
+  string,
+  { role: "user" | "assistant"; content: string }[]
+>();
+
+function addThread(
+  threadId: string,
+  messages: { role: "user" | "assistant"; content: string }[],
+) {
+  threadRegistry.set(threadId, messages);
+}
 
 function mockThread(
   threadId: string,
   messages: { role: "user" | "assistant"; content: string }[],
 ) {
+  threadRegistry.clear();
+  threadRegistry.set(threadId, messages);
+  commitThreadMocks();
+}
+
+function commitThreadMocks() {
+  const snapshot = new Map(threadRegistry);
   server.use(
-    http.get(`*/api/zero/chat-threads/${threadId}/messages`, ({ request }) => {
-      const url = new URL(request.url);
-      if (url.searchParams.get("sinceId")) {
-        return HttpResponse.json({ messages: [], hasMore: false });
+    mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
+      const messages = snapshot.get(params.threadId) ?? [];
+      if (query.sinceId) {
+        return respond(200, { messages: [], hasMore: false });
       }
-      return HttpResponse.json({
+      return respond(200, {
         messages: messages.map((m, i) => {
           return {
             id: `msg-${i + 1}`,
@@ -30,9 +53,10 @@ function mockThread(
         hasMore: false,
       });
     }),
-    http.get(`*/api/zero/chat-threads/${threadId}`, () => {
-      return HttpResponse.json({
-        id: threadId,
+    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+      const messages = snapshot.get(params.id) ?? [];
+      return respond(200, {
+        id: params.id,
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: messages.map((m, i) => {
@@ -43,13 +67,11 @@ function mockThread(
         }),
         latestSessionId: null,
         activeRunIds: [],
-        unsavedRuns: [],
+        draftContent: null,
+        draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
   );
 }
@@ -151,12 +173,14 @@ describe("zero chat thread page - scrolls to bottom after completed chat opens",
 // setScrollContainer$), so switching threads re-registers the container
 describe("zero chat thread page - scroll fires for each new thread", () => {
   it("scroll container is present after navigating to a second thread (CHAT-SCROLL-005)", async () => {
-    mockThread("thread-scroll-nav-a", [
+    threadRegistry.clear();
+    addThread("thread-scroll-nav-a", [
       { role: "user", content: "Thread nav-A message" },
     ]);
-    mockThread("thread-scroll-nav-b", [
+    addThread("thread-scroll-nav-b", [
       { role: "user", content: "Thread nav-B message" },
     ]);
+    commitThreadMocks();
 
     detachedSetupPage({ context, path: "/chats/thread-scroll-nav-a" });
 
@@ -293,43 +317,63 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
     // Thread B has a deferred messages response so we can observe the
     // intermediate state while groupedChatMessages$ is in loading state.
     let resolveThreadBMessages!: () => void;
-    const threadBMessagesResponse = HttpResponse.json({
-      messages: [
-        {
-          id: "msg-b-1",
-          role: "user",
-          content: "Thread B message",
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-      ],
-      hasMore: false,
-    });
 
+    // Add thread-ll-b to registry with deferred messages (special handling below)
+    // We need a registry-aware handler that defers only for thread-ll-b
+    threadRegistry.set("thread-ll-b", []);
     server.use(
-      http.get(
-        "*/api/zero/chat-threads/thread-ll-b/messages",
-        ({ request }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
+      mockApi(
+        chatThreadMessagesContract.list,
+        async ({ params, query, respond }) => {
+          if (params.threadId !== "thread-ll-b") {
+            // Delegate to thread-a's data from registry
+            const msgs = threadRegistry.get(params.threadId) ?? [];
+            if (query.sinceId) {
+              return respond(200, { messages: [], hasMore: false });
+            }
+            return respond(200, {
+              messages: msgs.map((m, i) => ({
+                id: `msg-${i + 1}`,
+                ...m,
+                createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
+              })),
+              hasMore: false,
+            });
+          }
+          if (query.sinceId) {
+            return respond(200, { messages: [], hasMore: false });
           }
           // Initial fetch is deferred — keeps groupedChatMessages$ in loading state.
-          return new Promise<typeof threadBMessagesResponse>((resolve) => {
-            resolveThreadBMessages = () => {
-              resolve(threadBMessagesResponse);
-            };
+          await new Promise<void>((resolve) => {
+            resolveThreadBMessages = resolve;
+          });
+          return respond(200, {
+            messages: [
+              {
+                id: "msg-b-1",
+                role: "user",
+                content: "Thread B message",
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            hasMore: false,
           });
         },
       ),
-      http.get("*/api/zero/chat-threads/thread-ll-b", () => {
-        return HttpResponse.json({
-          id: "thread-ll-b",
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        const msgs = threadRegistry.get(params.id) ?? [];
+        return respond(200, {
+          id: params.id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [],
+          chatMessages: msgs.map((m, i) => ({
+            ...m,
+            createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
+          })),
           latestSessionId: null,
           activeRunIds: [],
-          unsavedRuns: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -378,51 +422,45 @@ describe("zero chat thread page - scrolls before hiding skeleton", () => {
     const messagesDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
-      http.get(
-        "*/api/zero/chat-threads/thread-pre-scroll/messages",
-        async ({ request }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
-          }
-          // Defer the initial page so we can observe the skeleton overlay
-          // covering the message container with visibility:hidden beneath it.
-          await messagesDeferred.promise;
-          return HttpResponse.json({
-            messages: [
-              {
-                id: "msg-pre-1",
-                role: "user" as const,
-                content: "Pre-scroll user message",
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              {
-                id: "msg-pre-2",
-                role: "assistant" as const,
-                content: "Pre-scroll assistant reply",
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ],
-            hasMore: false,
-          });
-        },
-      ),
-      http.get("*/api/zero/chat-threads/thread-pre-scroll", () => {
-        return HttpResponse.json({
+      mockApi(chatThreadMessagesContract.list, async ({ query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [], hasMore: false });
+        }
+        // Defer the initial page so we can observe the skeleton overlay
+        // covering the message container with visibility:hidden beneath it.
+        await messagesDeferred.promise;
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-pre-1",
+              role: "user" as const,
+              content: "Pre-scroll user message",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-pre-2",
+              role: "assistant" as const,
+              content: "Pre-scroll assistant reply",
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+          hasMore: false,
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) =>
+        respond(200, {
           id: "thread-pre-scroll",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
-          unsavedRuns: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
-        });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+        }),
+      ),
     );
 
     // Intercept the scroll container as soon as it mounts and give it a

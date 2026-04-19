@@ -11,38 +11,22 @@
 
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { openQueueDrawer$ } from "../../../signals/queue-page/queue-drawer-state.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroRunsQueueContract } from "@vm0/core";
 
 const context = testContext();
 
 function mockHomeAPIs() {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
+  // Global handlers cover chat-threads and team routes
 }
 
 function queueResponse(overrides?: {
   concurrency?: {
-    tier: string;
+    tier: "free" | "pro" | "team";
     limit: number;
     active: number;
     available: number;
@@ -50,7 +34,7 @@ function queueResponse(overrides?: {
 }) {
   return {
     concurrency: overrides?.concurrency ?? {
-      tier: "free",
+      tier: "free" as const,
       limit: 1,
       active: 1,
       available: 0,
@@ -70,9 +54,9 @@ function openDrawer() {
 describe("queue drawer", () => {
   it("shows title when opened", async () => {
     server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(queueResponse());
-      }),
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
+        respond(200, queueResponse()),
+      ),
     );
     await openDrawer();
 
@@ -85,13 +69,14 @@ describe("queue drawer", () => {
 
   it("shows Free label and limitation for free tier", async () => {
     server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
+        respond(
+          200,
           queueResponse({
             concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
           }),
-        );
-      }),
+        ),
+      ),
     );
     await openDrawer();
 
@@ -103,13 +88,14 @@ describe("queue drawer", () => {
 
   it("shows Pro upsell for free tier", async () => {
     server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
+        respond(
+          200,
           queueResponse({
             concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
           }),
-        );
-      }),
+        ),
+      ),
     );
     await openDrawer();
 
@@ -125,13 +111,14 @@ describe("queue drawer", () => {
 
   it("shows Team upsell for pro tier", async () => {
     server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
+        respond(
+          200,
           queueResponse({
             concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
           }),
-        );
-      }),
+        ),
+      ),
     );
     await openDrawer();
 
@@ -148,13 +135,14 @@ describe("queue drawer", () => {
 
   it("shows no upsell for team tier", async () => {
     server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
+        respond(
+          200,
           queueResponse({
             concurrency: { tier: "team", limit: 5, active: 3, available: 2 },
           }),
-        );
-      }),
+        ),
+      ),
     );
     await openDrawer();
 

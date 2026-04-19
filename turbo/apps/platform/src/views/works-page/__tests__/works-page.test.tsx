@@ -30,9 +30,6 @@ function mockSlackAPI(overrides: Record<string, unknown> = {}) {
     http.get("*/api/zero/integrations/slack", () => {
       return HttpResponse.json({ ...defaults, ...overrides });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 

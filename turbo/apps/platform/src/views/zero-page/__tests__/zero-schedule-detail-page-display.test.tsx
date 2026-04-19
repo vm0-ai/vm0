@@ -6,7 +6,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core";
+import { chatThreadsContract, logsListContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -155,8 +155,8 @@ describe("zero schedule detail page - instruction editor (SCHED-D-016)", () => {
 describe("zero schedule detail page - run history table with pagination (SCHED-D-017)", () => {
   it("should render run history table rows and pagination controls", async () => {
     server.use(
-      http.get("*/api/zero/logs", () => {
-        return HttpResponse.json({
+      mockApi(logsListContract.list, ({ respond }) =>
+        respond(200, {
           data: [
             {
               id: "b0000001-0000-4000-a000-000000000001",
@@ -180,8 +180,8 @@ describe("zero schedule detail page - run history table with pagination (SCHED-D
             sources: ["schedule"],
             agents: [],
           },
-        });
-      }),
+        }),
+      ),
     );
     mockAPIs();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });

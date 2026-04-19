@@ -12,14 +12,16 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract } from "@vm0/core";
 
 const context = testContext();
 
 function mockAPIs() {
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
+    mockApi(chatThreadsContract.list, ({ respond }) =>
+      respond(200, { threads: [] }),
+    ),
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([]);
     }),
