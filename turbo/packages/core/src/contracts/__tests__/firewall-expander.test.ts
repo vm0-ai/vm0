@@ -752,13 +752,13 @@ describe("validateBaseUrl", () => {
   it("should reject empty param name in host", () => {
     expect(() => {
       return validateBaseUrl("https://{}.example.com", "fw");
-    }).toThrow("empty parameter name in host");
+    }).toThrow(/empty parameter name/);
   });
 
   it("should reject empty param name in path", () => {
     expect(() => {
       return validateBaseUrl("https://api.example.com/{}", "fw");
-    }).toThrow("empty parameter name in path");
+    }).toThrow(/empty parameter name/);
   });
 
   it("should reject duplicate param names in host", () => {
@@ -791,16 +791,18 @@ describe("validateBaseUrl", () => {
     }).toThrow("scheme must not contain parameters");
   });
 
-  it("should reject partial param in host segment", () => {
+  it("should accept mixed {param}{literal} segment in host", () => {
+    // Per #10078 — mixed segments are valid; a single parameter per segment
+    // with optional literal prefix and/or suffix.
     expect(() => {
       return validateBaseUrl("https://api-{version}.example.com", "fw");
-    }).toThrow('host segment "api-{version}" contains "{"');
+    }).not.toThrow();
   });
 
-  it("should reject partial param in path segment", () => {
+  it("should accept mixed {param}{literal} segment in path", () => {
     expect(() => {
       return validateBaseUrl("https://api.example.com/v1-{version}", "fw");
-    }).toThrow('path segment "v1-{version}" contains "{"');
+    }).not.toThrow();
   });
 });
 
