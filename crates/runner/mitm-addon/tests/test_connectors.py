@@ -1056,10 +1056,6 @@ class TestAnthropicFirewallScope:
 
 
 class TestGetFirewallHeaders:
-    def setup_method(self):
-        auth._firewall_header_cache.clear()
-        auth._cache_locks.clear()
-
     async def test_cache_miss_fetches_and_caches(self, headers):
         mock_headers = {"Authorization": "Bearer fresh-token"}
         mock_result = {"headers": mock_headers}
@@ -1202,10 +1198,6 @@ class TestGetFirewallHeaders:
 
 
 class TestHandleFirewallRequest:
-    def setup_method(self):
-        auth._firewall_header_cache.clear()
-        auth._cache_locks.clear()
-
     async def test_success_injects_headers_and_audit_metadata(self, real_flow, headers, mitm_ctx):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -1633,10 +1625,6 @@ class TestForwardRequestSecurity:
 class TestAuthBaseUrlRewrite:
     """Tests for auth.base URL rewriting via forward_request in handle_firewall_request."""
 
-    def setup_method(self):
-        auth._firewall_header_cache.clear()
-        auth._cache_locks.clear()
-
     async def test_url_rewrite_with_rel_path_root(self, real_flow, headers, mitm_ctx):
         """When rel_path is '/', resolved base URL is forwarded as-is."""
         flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path="/hook")
@@ -2006,10 +1994,6 @@ class TestBuildRewriteUrl:
 
 class TestAuthBaseUrlRewriteEdgeCases:
     """Integration tests for auth.base URL rewriting via forward_request."""
-
-    def setup_method(self):
-        auth._firewall_header_cache.clear()
-        auth._cache_locks.clear()
 
     def _make_rewrite_inputs(
         self,

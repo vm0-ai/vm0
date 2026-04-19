@@ -197,14 +197,24 @@ def real_tcp_flow():
     return _build
 
 
+class _StubOptions:
+    """Plain stand-in for the two addon-specific ``ctx.options`` fields."""
+
+    def __init__(self, *, registry_path: str, api_url: str) -> None:
+        self.vm0_proxy_registry_path = registry_path
+        self.vm0_api_url = api_url
+
+
 @pytest.fixture
 def mitm_ctx():
     """Stub ``mitmproxy.ctx.options`` and ``ctx.log`` for a test block.
 
     Returns a context-manager factory: calling ``mitm_ctx(registry_path=...)``
     patches in a stub ``Options`` object exposing the two addon-specific
-    settings plus a ``MagicMock`` log.  Yielded value is the log mock so
-    tests that need to inspect warnings can do so.
+    settings plus a ``MagicMock`` log.  The log stays on MagicMock so tests
+    that need to assert on warn/debug calls can do so; ``options`` doesn't
+    get that treatment because the addon only ever reads two named
+    attributes from it.
     """
 
     @contextlib.contextmanager
@@ -213,9 +223,7 @@ def mitm_ctx():
         registry_path: str = "/tmp/proxy-registry.json",
         api_url: str = "https://api.vm0.ai",
     ) -> Iterator[MagicMock]:
-        options = MagicMock()
-        options.vm0_api_url = api_url
-        options.vm0_proxy_registry_path = registry_path
+        options = _StubOptions(registry_path=registry_path, api_url=api_url)
         log = MagicMock()
         with (
             patch.object(mitm_addon.ctx, "options", options, create=True),
@@ -224,6 +232,33 @@ def mitm_ctx():
             yield log
 
     return _stub
+
+
+@pytest.fixture
+def fresh_usage_executor():
+    """Swap ``usage.usage_executor`` for a throw-away pool for one test.
+
+    Tests that call ``shutdown(wait=True)`` to flush pending webhook
+    reports need a fresh executor afterwards so later tests still see a
+    live pool.  This fixture owns the lifecycle: a new
+    :class:`ThreadPoolExecutor` is installed before the test and the
+    original is restored after, regardless of whether the test shut it
+    down.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    import usage
+
+    original = usage.usage_executor
+    usage.usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
+    try:
+        yield usage.usage_executor
+    finally:
+        try:
+            usage.usage_executor.shutdown(wait=True)
+        except RuntimeError:
+            pass
+        usage.usage_executor = original
 
 
 @pytest.fixture

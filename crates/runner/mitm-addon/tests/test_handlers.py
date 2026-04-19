@@ -1317,14 +1317,6 @@ class TestResponseHeadersSseParser:
 class TestResponseUsageReporting:
     """Tests for usage extraction and reporting in response() hook."""
 
-    def teardown_method(self):
-        try:
-            usage.usage_executor.submit(lambda: None)
-        except RuntimeError:
-            usage.usage_executor = usage.ThreadPoolExecutor(
-                max_workers=4, thread_name_prefix="usage"
-            )
-
     def test_reports_proxy_usage_from_sse(self, tmp_path, real_flow, mitm_ctx, headers):
         """When proxy_usage is set by SSE parser, it should trigger a usage report."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -1479,7 +1471,9 @@ class TestResponseUsageReporting:
         # maybe_report_proxy_usage is always called; it checks firewall_name internally
         mock_report.assert_called_once()
 
-    def test_full_path_response_to_opener(self, tmp_path, real_flow, mitm_ctx, headers):
+    def test_full_path_response_to_opener(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
         """Integration: response() → _maybe_report → _enqueue → _retry → _opener.
 
         Only _opener is mocked — verifies wiring between all intermediate layers.
@@ -1513,9 +1507,6 @@ class TestResponseUsageReporting:
             # Flush the executor to ensure the background POST completes
             usage.usage_executor.shutdown(wait=True)
 
-        # Restore executor
-        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
-
         # Verify the webhook POST reached _opener with correct payload
         mock_opener.open.assert_called_once()
         req = mock_opener.open.call_args[0][0]
@@ -1525,7 +1516,7 @@ class TestResponseUsageReporting:
         assert body["usage"]["input_tokens"] == 100
         assert body["usage"]["output_tokens"] == 500
 
-    def test_full_path_error_to_opener(self, tmp_path, real_flow, mitm_ctx):
+    def test_full_path_error_to_opener(self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor):
         """Integration: error() → _maybe_report → _enqueue → _retry → _opener.
 
         Verifies that error() hook delivers partial usage all the way to _opener.
@@ -1554,15 +1545,15 @@ class TestResponseUsageReporting:
             mitm_addon.error(flow)
             usage.usage_executor.shutdown(wait=True)
 
-        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
-
         mock_opener.open.assert_called_once()
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
         assert body["runId"] == "run-int-002"
         assert body["usage"]["input_tokens"] == 80
 
-    def test_uses_flow_id_when_message_id_missing(self, tmp_path, real_flow, mitm_ctx, headers):
+    def test_uses_flow_id_when_message_id_missing(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
         """Missing message_id in proxy_usage falls back to flow.id.
 
         Without a stable per-flow key, server-side dedup of usage webhook
@@ -1597,14 +1588,14 @@ class TestResponseUsageReporting:
             mitm_addon.response(flow)
             usage.usage_executor.shutdown(wait=True)
 
-        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
-
         mock_opener.open.assert_called_once()
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
         assert body["usage"]["message_id"] == "flow-uuid-xyz-123"
 
-    def test_preserves_message_id_from_response(self, tmp_path, real_flow, mitm_ctx, headers):
+    def test_preserves_message_id_from_response(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
         """When proxy_usage already has a message_id, flow.id fallback
         must not override it."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -1634,8 +1625,6 @@ class TestResponseUsageReporting:
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
             usage.usage_executor.shutdown(wait=True)
-
-        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
 
         mock_opener.open.assert_called_once()
         req = mock_opener.open.call_args[0][0]
@@ -2560,16 +2549,7 @@ class TestReportUsageWithRetry:
 class TestEnqueueWebhook:
     """Tests for _enqueue_webhook (ThreadPoolExecutor submission)."""
 
-    def teardown_method(self):
-        """Ensure executor is always restored even if a test fails mid-way."""
-        try:
-            usage.usage_executor.submit(lambda: None)
-        except RuntimeError:
-            usage.usage_executor = usage.ThreadPoolExecutor(
-                max_workers=4, thread_name_prefix="usage"
-            )
-
-    def test_enqueue_copies_payload_dict(self):
+    def test_enqueue_copies_payload_dict(self, fresh_usage_executor):
         """Mutating the original dict after enqueue should not affect the submitted task."""
         original = {"input_tokens": 100}
         captured = []
@@ -2596,7 +2576,7 @@ class TestEnqueueWebhook:
         assert args[1] == "url"
         assert args[2] == "tok"
 
-    def test_enqueue_falls_back_to_sync_after_shutdown(self):
+    def test_enqueue_falls_back_to_sync_after_shutdown(self, fresh_usage_executor):
         """After executor shutdown, _enqueue_webhook should deliver synchronously with retry."""
         usage.usage_executor.shutdown(wait=True)
 
@@ -2958,29 +2938,23 @@ class TestUsagePendingCounter:
         content = (tmp_path / "usage-pending").read_text()
         assert content == "0:0"
 
-    def test_enqueue_increments_and_drains_reports(self, tmp_path):
+    def test_enqueue_increments_and_drains_reports(self, tmp_path, fresh_usage_executor):
         """_enqueue_webhook increments pending; executor drain decrements to 0."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
 
-        # Replace executor with a fresh one for isolation.
-        old_executor = usage.usage_executor
-        usage.usage_executor = usage.ThreadPoolExecutor(max_workers=1, thread_name_prefix="test")
-        try:
-            with patch.object(usage, "_post_webhook"):
-                usage._enqueue_webhook(
-                    "http://localhost/webhook",
-                    "tok",
-                    {"model": "x"},
-                    str(tmp_path / "p.log"),
-                    "usage",
-                )
-                usage.usage_executor.shutdown(wait=True)
-            # After executor drains, counter must be back to 0.
-            assert usage._pending_reports == 0
-            content = (tmp_path / "usage-pending").read_text()
-            assert content == "0:0"
-        finally:
-            usage.usage_executor = old_executor
+        with patch.object(usage, "_post_webhook"):
+            usage._enqueue_webhook(
+                "http://localhost/webhook",
+                "tok",
+                {"model": "x"},
+                str(tmp_path / "p.log"),
+                "usage",
+            )
+            usage.usage_executor.shutdown(wait=True)
+        # After executor drains, counter must be back to 0.
+        assert usage._pending_reports == 0
+        content = (tmp_path / "usage-pending").read_text()
+        assert content == "0:0"
 
     def test_decorator_pop_prevents_double_decrement(self, tmp_path, real_flow):
         """If both response() and error() fire for the same flow, decrement only once."""
@@ -3017,25 +2991,20 @@ class TestUsagePendingCounter:
         fake_handler(flow)
         assert usage._in_flight_flows == 1  # unchanged
 
-    def test_sync_fallback_decrements_reports(self, tmp_path):
+    def test_sync_fallback_decrements_reports(self, tmp_path, fresh_usage_executor):
         """When executor is shut down, sync fallback must still decrement."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
 
         # Shut down the executor so _enqueue_webhook takes the sync fallback.
         usage.usage_executor.shutdown(wait=True)
-        try:
-            with patch.object(usage, "_post_webhook"):
-                usage._enqueue_webhook(
-                    "http://localhost/webhook",
-                    "tok",
-                    {"model": "x"},
-                    str(tmp_path / "p.log"),
-                    "usage",
-                )
-            assert usage._pending_reports == 0
-            content = (tmp_path / "usage-pending").read_text()
-            assert content == "0:0"
-        finally:
-            usage.usage_executor = usage.ThreadPoolExecutor(
-                max_workers=4, thread_name_prefix="usage"
+        with patch.object(usage, "_post_webhook"):
+            usage._enqueue_webhook(
+                "http://localhost/webhook",
+                "tok",
+                {"model": "x"},
+                str(tmp_path / "p.log"),
+                "usage",
             )
+        assert usage._pending_reports == 0
+        content = (tmp_path / "usage-pending").read_text()
+        assert content == "0:0"
