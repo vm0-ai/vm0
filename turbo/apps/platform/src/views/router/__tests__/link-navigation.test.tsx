@@ -19,9 +19,9 @@ const context = testContext();
 
 function mockAPIs() {
   server.use(
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads: [] }),
-    ),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: [] });
+    }),
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([]);
     }),

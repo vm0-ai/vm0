@@ -31,8 +31,8 @@ export const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 
 export function mockSubagentThread(threadId: string) {
   server.use(
-    mockApi(zeroTeamContract.list, ({ respond }) =>
-      respond(200, [
+    mockApi(zeroTeamContract.list, ({ respond }) => {
+      return respond(200, [
         {
           id: DEFAULT_AGENT_ID,
           displayName: null,
@@ -51,13 +51,13 @@ export function mockSubagentThread(threadId: string) {
           headVersionId: "version_2",
           updatedAt: "2024-01-01T00:00:00Z",
         },
-      ]),
-    ),
-    mockApi(chatThreadMessagesContract.list, ({ respond }) =>
-      respond(200, { messages: [], hasMore: false }),
-    ),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+      ]);
+    }),
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [], hasMore: false });
+    }),
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: threadId,
         title: null,
         agentId: SUB_AGENT_ID,
@@ -68,11 +68,11 @@ export function mockSubagentThread(threadId: string) {
         updatedAt: "2026-03-10T00:00:00Z",
         draftContent: null,
         draftAttachments: null,
-      }),
-    ),
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads: [] }),
-    ),
+      });
+    }),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: [] });
+    }),
     mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
       const agents: Record<
         string,
@@ -270,18 +270,18 @@ export function mockChatLifecycle(options?: {
         draftAttachments: null,
       });
     }),
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads: threadList }),
-    ),
-    mockApi(chatThreadsContract.create, ({ respond }) =>
-      respond(201, {
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: threadList });
+    }),
+    mockApi(chatThreadsContract.create, ({ respond }) => {
+      return respond(201, {
         id: threadId,
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
+      });
+    }),
     // Unified chat message endpoint (creates thread + run + association)
-    mockApi(chatMessagesContract.send, async ({ body, respond }) => {
+    mockApi(chatMessagesContract.send, ({ body, respond }) => {
       if (body.prompt) {
         runPrompt = body.prompt;
       }
@@ -296,8 +296,8 @@ export function mockChatLifecycle(options?: {
         createdAt: "2026-03-10T00:00:00Z",
       });
     }),
-    mockApi(logsByIdContract.getById, ({ respond }) =>
-      respond(200, {
+    mockApi(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, {
         id: "a0000000-0000-4000-a000-000000000001",
         sessionId: "session-1",
         agentId: "zero",
@@ -316,24 +316,24 @@ export function mockChatLifecycle(options?: {
         startedAt: "2026-03-10T00:00:01Z",
         completedAt: null,
         artifact: { name: null, version: null },
-      }),
-    ),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-      respond(200, {
+      });
+    }),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, {
         events,
         hasMore: false,
         framework: "claude-code",
-      }),
-    ),
-    mockApi(zeroRunsCancelContract.cancel, ({ respond }) =>
-      respond(200, {
+      });
+    }),
+    mockApi(zeroRunsCancelContract.cancel, ({ respond }) => {
+      return respond(200, {
         id: "a0000000-0000-4000-a000-000000000001",
         status: "cancelled",
         message: "Run cancelled",
-      }),
-    ),
-    mockApi(zeroRunsByIdContract.getById, ({ respond }) =>
-      respond(200, {
+      });
+    }),
+    mockApi(zeroRunsByIdContract.getById, ({ respond }) => {
+      return respond(200, {
         runId: "a0000000-0000-4000-a000-000000000001",
         agentComposeVersionId: null,
         status: runStatus,
@@ -341,11 +341,11 @@ export function mockChatLifecycle(options?: {
         appendSystemPrompt: null,
         result: { agentSessionId: "session-1", output: resultContent },
         createdAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
-    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
-      respond(200, { position: queuePosition, total: 0 }),
-    ),
+      });
+    }),
+    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) => {
+      return respond(200, { position: queuePosition, total: 0 });
+    }),
   );
 
   return {

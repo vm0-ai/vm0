@@ -54,7 +54,9 @@ function makeLogsResponse(
 
 function mockLogsAPI(response: LogsListResponse) {
   server.use(
-    mockApi(logsListContract.list, ({ respond }) => respond(200, response)),
+    mockApi(logsListContract.list, ({ respond }) => {
+      return respond(200, response);
+    }),
   );
 }
 
@@ -176,13 +178,13 @@ describe("log-table", () => {
           error: { message: "Not found", code: "NOT_FOUND" },
         });
       }),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, {
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "claude-code",
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/activities" });

@@ -18,8 +18,8 @@ const AGENT_ID = "agent-alpha";
 
 function mockThreadList(threads: { id: string; title: string }[]) {
   server.use(
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, {
         threads: threads.map((t) => {
           return {
             id: t.id,
@@ -31,18 +31,18 @@ function mockThreadList(threads: { id: string; title: string }[]) {
             isArchived: false,
           };
         }),
-      }),
-    ),
+      });
+    }),
   );
 }
 
 function mockEmptyMessages(threadId: string) {
   server.use(
-    mockApi(chatThreadMessagesContract.list, ({ respond }) =>
-      respond(200, { messages: [], hasMore: false }),
-    ),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [], hasMore: false });
+    }),
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: threadId,
         title: `Thread ${threadId}`,
         agentId: AGENT_ID,
@@ -53,8 +53,8 @@ function mockEmptyMessages(threadId: string) {
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
+      });
+    }),
   );
 }
 

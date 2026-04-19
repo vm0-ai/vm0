@@ -43,8 +43,8 @@ function mockChatWithActivityLink() {
         hasMore: false,
       });
     }),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: "thread-with-activity",
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -55,8 +55,8 @@ function mockChatWithActivityLink() {
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:05Z",
-      }),
-    ),
+      });
+    }),
   );
 }
 
@@ -106,9 +106,9 @@ function mockActivityDetailAPIs() {
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-      respond(200, eventsResponse),
-    ),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, eventsResponse);
+    }),
   );
 }
 

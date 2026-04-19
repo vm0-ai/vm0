@@ -54,9 +54,9 @@ function openDrawer() {
 describe("queue drawer", () => {
   it("shows title when opened", async () => {
     server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
-        respond(200, queueResponse()),
-      ),
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
+        return respond(200, queueResponse());
+      }),
     );
     await openDrawer();
 
@@ -69,14 +69,14 @@ describe("queue drawer", () => {
 
   it("shows Free label and limitation for free tier", async () => {
     server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
-        respond(
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
+        return respond(
           200,
           queueResponse({
             concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
           }),
-        ),
-      ),
+        );
+      }),
     );
     await openDrawer();
 
@@ -88,14 +88,14 @@ describe("queue drawer", () => {
 
   it("shows Pro upsell for free tier", async () => {
     server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
-        respond(
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
+        return respond(
           200,
           queueResponse({
             concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
           }),
-        ),
-      ),
+        );
+      }),
     );
     await openDrawer();
 
@@ -111,14 +111,14 @@ describe("queue drawer", () => {
 
   it("shows Team upsell for pro tier", async () => {
     server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
-        respond(
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
+        return respond(
           200,
           queueResponse({
             concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
           }),
-        ),
-      ),
+        );
+      }),
     );
     await openDrawer();
 
@@ -135,14 +135,14 @@ describe("queue drawer", () => {
 
   it("shows no upsell for team tier", async () => {
     server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
-        respond(
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
+        return respond(
           200,
           queueResponse({
             concurrency: { tier: "team", limit: 5, active: 3, available: 2 },
           }),
-        ),
-      ),
+        );
+      }),
     );
     await openDrawer();
 

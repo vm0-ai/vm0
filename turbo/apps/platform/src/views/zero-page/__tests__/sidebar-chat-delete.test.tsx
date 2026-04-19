@@ -46,9 +46,9 @@ function mockAPIs() {
   let lastDeletedId: string | null = null;
 
   server.use(
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads }),
-    ),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads });
+    }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       const thread = threads.find((t) => {
         return t.id === params.id;
@@ -203,9 +203,9 @@ describe("sidebar chat delete", () => {
     ];
 
     server.use(
-      mockApi(chatThreadsContract.list, ({ respond }) =>
-        respond(200, { threads }),
-      ),
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, { threads });
+      }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         const thread = threads.find((t) => {
           return t.id === params.id;

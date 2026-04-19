@@ -94,8 +94,8 @@ describe("chat session switch", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, {
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "a0000000-0000-4000-a000-000000000099",
           sessionId: "session-1",
           agentId: "zero",
@@ -114,17 +114,17 @@ describe("chat session switch", () => {
           startedAt: "2026-03-10T00:00:01Z",
           completedAt: null,
           artifact: { name: null, version: null },
-        }),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, {
+        });
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "claude-code",
-        }),
-      ),
-      mockApi(zeroRunsByIdContract.getById, ({ respond }) =>
-        respond(200, {
+        });
+      }),
+      mockApi(zeroRunsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           runId: "run-active",
           agentComposeVersionId: null,
           status: "running",
@@ -132,11 +132,11 @@ describe("chat session switch", () => {
           appendSystemPrompt: null,
           result: { agentSessionId: "session-1", output: "" },
           createdAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
-      mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
-        respond(200, { position: 0, total: 0 }),
-      ),
+        });
+      }),
+      mockApi(zeroQueuePositionContract.getPosition, ({ respond }) => {
+        return respond(200, { position: 0, total: 0 });
+      }),
     );
 
     // Start on a completed thread (no active polling)
@@ -185,8 +185,8 @@ describe("chat session switch", () => {
           hasMore: false,
         });
       }),
-      mockApi(chatThreadByIdContract.get, ({ params, respond }) =>
-        respond(200, {
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
           id: params.id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
@@ -197,8 +197,8 @@ describe("chat session switch", () => {
           draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/chats/session-alpha" });

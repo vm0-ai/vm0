@@ -46,9 +46,9 @@ function mockAPIs(overrides: Record<string, unknown> = {}) {
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [createMockSchedule(overrides)] });
     }),
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads: [] }),
-    ),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: [] });
+    }),
   );
 }
 
@@ -155,8 +155,8 @@ describe("zero schedule detail page - instruction editor (SCHED-D-016)", () => {
 describe("zero schedule detail page - run history table with pagination (SCHED-D-017)", () => {
   it("should render run history table rows and pagination controls", async () => {
     server.use(
-      mockApi(logsListContract.list, ({ respond }) =>
-        respond(200, {
+      mockApi(logsListContract.list, ({ respond }) => {
+        return respond(200, {
           data: [
             {
               id: "b0000001-0000-4000-a000-000000000001",
@@ -180,8 +180,8 @@ describe("zero schedule detail page - run history table with pagination (SCHED-D
             sources: ["schedule"],
             agents: [],
           },
-        }),
-      ),
+        });
+      }),
     );
     mockAPIs();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });

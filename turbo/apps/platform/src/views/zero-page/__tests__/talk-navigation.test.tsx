@@ -22,16 +22,16 @@ const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 function mockChatAPIs() {
   server.use(
     // Unified chat message endpoint (creates thread + run + association)
-    mockApi(chatMessagesContract.send, ({ respond }) =>
-      respond(201, {
+    mockApi(chatMessagesContract.send, ({ respond }) => {
+      return respond(201, {
         runId: "run-abc-123",
         threadId: "new-thread-id-123",
         status: "pending",
         createdAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+      });
+    }),
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: "new-thread-id-123",
         title: "Hello",
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -42,17 +42,17 @@ function mockChatAPIs() {
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-      respond(200, {
+      });
+    }),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, {
         events: [],
         hasMore: false,
         framework: "claude-code",
-      }),
-    ),
-    mockApi(zeroRunsByIdContract.getById, ({ params, respond }) =>
-      respond(200, {
+      });
+    }),
+    mockApi(zeroRunsByIdContract.getById, ({ params, respond }) => {
+      return respond(200, {
         runId: params.id,
         agentComposeVersionId: null,
         status: "completed",
@@ -60,11 +60,11 @@ function mockChatAPIs() {
         appendSystemPrompt: null,
         result: { agentSessionId: "session-1" },
         createdAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
+      });
+    }),
     // Return terminal status so polling loop stops immediately
-    mockApi(logsByIdContract.getById, ({ respond }) =>
-      respond(200, {
+    mockApi(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, {
         id: "a0000000-0000-4000-a000-000000000098",
         sessionId: "session-1",
         agentId: "zero",
@@ -83,8 +83,8 @@ function mockChatAPIs() {
         startedAt: "2026-03-10T00:00:01Z",
         completedAt: "2026-03-10T00:00:05Z",
         artifact: { name: null, version: null },
-      }),
-    ),
+      });
+    }),
   );
 }
 

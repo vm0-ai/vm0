@@ -11,13 +11,12 @@ import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
-const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "t0000000-0000-4000-a000-000000000001";
 
 function mockAgentsWithThreads() {
   server.use(
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, {
         threads: [
           {
             id: THREAD_ID,
@@ -29,10 +28,10 @@ function mockAgentsWithThreads() {
             isArchived: false,
           },
         ],
-      }),
-    ),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+      });
+    }),
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: THREAD_ID,
         title: "My test conversation",
         agentId: "agent-alpha",
@@ -43,8 +42,8 @@ function mockAgentsWithThreads() {
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
+      });
+    }),
   );
   setMockUserPreferences({ pinnedAgentIds: ["agent-alpha"] });
 }

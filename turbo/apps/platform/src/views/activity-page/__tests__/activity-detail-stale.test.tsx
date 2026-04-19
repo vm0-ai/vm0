@@ -4,17 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  logsListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import {
-  logsListContract,
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
 
 const context = testContext();
 
@@ -76,10 +76,9 @@ function mockAPIs() {
       sessionId: "session_1",
       agentId: "e0000000-0000-4000-a000-000000000010",
       displayName: "Agent One",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "completed",
-      triggerSource: "web",
+      status: "completed" as const,
+      triggerSource: "web" as const,
       triggerAgentName: null,
       scheduleId: null,
       prompt: "Test prompt",
@@ -92,10 +91,9 @@ function mockAPIs() {
       sessionId: "session_2",
       agentId: "e0000000-0000-4000-a000-000000000010",
       displayName: "Agent Two",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "completed",
-      triggerSource: "cli",
+      status: "completed" as const,
+      triggerSource: "cli" as const,
       triggerAgentName: null,
       scheduleId: null,
       prompt: "Test prompt",
@@ -106,13 +104,13 @@ function mockAPIs() {
   ];
 
   server.use(
-    mockApi(logsListContract.list, ({ respond }) =>
-      respond(200, {
+    mockApi(logsListContract.list, ({ respond }) => {
+      return respond(200, {
         data: listData,
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
         filters: { statuses: [], sources: [], agents: [] },
-      }),
-    ),
+      });
+    }),
     mockApi(logsByIdContract.getById, ({ params, respond }) => {
       if (params.id === "a0000000-0000-4000-a000-000000000001") {
         return respond(200, detail1);

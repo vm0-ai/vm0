@@ -34,8 +34,8 @@ function mockChatSessionAPIs() {
         hasMore: false,
       });
     }),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: "session-thread-1",
         title: "Session navigation test",
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -46,8 +46,8 @@ function mockChatSessionAPIs() {
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
-      }),
-    ),
+      });
+    }),
   );
 }
 

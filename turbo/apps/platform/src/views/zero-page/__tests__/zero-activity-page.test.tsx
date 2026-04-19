@@ -61,7 +61,9 @@ function makeLogsResponse(
 
 function mockLogsAPI(response: LogsListResponse) {
   server.use(
-    mockApi(logsListContract.list, ({ respond }) => respond(200, response)),
+    mockApi(logsListContract.list, ({ respond }) => {
+      return respond(200, response);
+    }),
   );
 }
 
@@ -79,12 +81,12 @@ describe("zeroActivityPage", () => {
 
   it("should render agent filter options from availableAgentsLoadable", async () => {
     server.use(
-      mockApi(logsListContract.list, ({ respond }) =>
-        respond(
+      mockApi(logsListContract.list, ({ respond }) => {
+        return respond(
           200,
           makeLogsResponse([makeLog()], {}, { agents: ["agent-1"] }),
-        ),
-      ),
+        );
+      }),
       http.get("*/api/zero/composes/list", () => {
         return HttpResponse.json({
           composes: [
@@ -178,14 +180,14 @@ describe("zeroActivityPage", () => {
 
   it("should render error state when data loading fails", async () => {
     server.use(
-      mockApi(logsListContract.list, ({ respond }) =>
-        respond(403, {
+      mockApi(logsListContract.list, ({ respond }) => {
+        return respond(403, {
           error: {
             message: "Internal server error",
             code: "INTERNAL_SERVER_ERROR",
           },
-        }),
-      ),
+        });
+      }),
     );
     detachedSetupPage({ context, path: "/activities" });
 

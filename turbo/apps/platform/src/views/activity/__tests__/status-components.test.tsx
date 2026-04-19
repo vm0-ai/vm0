@@ -53,13 +53,13 @@ function mockDetailAPI(
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-      respond(200, {
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, {
         events,
         hasMore: false,
         framework: "claude-code",
-      }),
-    ),
+      });
+    }),
   );
 }
 

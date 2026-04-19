@@ -23,14 +23,14 @@ const context = testContext();
  */
 function setupBaseHandlers(threadId: string) {
   server.use(
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads: [] }),
-    ),
-    mockApi(chatThreadMessagesContract.list, ({ respond }) =>
-      respond(200, { messages: [], hasMore: false }),
-    ),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: [] });
+    }),
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [], hasMore: false });
+    }),
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: threadId,
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -41,8 +41,8 @@ function setupBaseHandlers(threadId: string) {
         draftAttachments: null,
         createdAt: "2026-04-13T00:00:00Z",
         updatedAt: "2026-04-13T00:00:00Z",
-      }),
-    ),
+      });
+    }),
   );
 }
 
@@ -58,7 +58,7 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       let patchBody: unknown = null;
 
       server.use(
-        mockApi(chatThreadByIdContract.patch, async ({ body, respond }) => {
+        mockApi(chatThreadByIdContract.patch, ({ body, respond }) => {
           patchBody = body;
           return respond(204);
         }),
@@ -158,7 +158,7 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       let patchBody: unknown = null;
 
       server.use(
-        mockApi(chatThreadByIdContract.patch, async ({ body, respond }) => {
+        mockApi(chatThreadByIdContract.patch, ({ body, respond }) => {
           patchBody = body;
           return respond(204);
         }),

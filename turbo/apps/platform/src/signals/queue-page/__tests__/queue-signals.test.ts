@@ -31,9 +31,9 @@ describe("cancelQueueRun$", () => {
     let cancelCalledWith: string | null = null;
 
     server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
-        respond(200, mockQueueResponse()),
-      ),
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
+        return respond(200, mockQueueResponse());
+      }),
       mockApi(zeroRunsCancelContract.cancel, ({ params, respond }) => {
         cancelCalledWith = params.id;
         return respond(200, {
@@ -53,12 +53,14 @@ describe("cancelQueueRun$", () => {
 
   it("should throw on non-ok cancel response", async () => {
     server.use(
-      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
-        respond(200, mockQueueResponse()),
-      ),
-      mockApi(zeroRunsCancelContract.cancel, ({ respond }) =>
-        respond(403, { error: { message: "Forbidden", code: "FORBIDDEN" } }),
-      ),
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
+        return respond(200, mockQueueResponse());
+      }),
+      mockApi(zeroRunsCancelContract.cancel, ({ respond }) => {
+        return respond(403, {
+          error: { message: "Forbidden", code: "FORBIDDEN" },
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/", withoutRender: true });

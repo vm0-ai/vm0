@@ -4,11 +4,10 @@ import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey, chatThreadsContract } from "@vm0/core";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -58,9 +57,9 @@ function mockAPIs({
         },
       ]);
     }),
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads }),
-    ),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads });
+    }),
     http.get("*/api/zero/agents/:id", () => {
       return HttpResponse.json({
         agentId: "c0000000-0000-4000-a000-000000000001",

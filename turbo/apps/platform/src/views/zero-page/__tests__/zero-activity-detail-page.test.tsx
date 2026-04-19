@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { logsByIdContract, zeroRunAgentEventsContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -59,9 +61,9 @@ function mockActivityDetailAPI() {
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-      respond(200, eventsResponse),
-    ),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, eventsResponse);
+    }),
   );
 }
 
@@ -152,12 +154,16 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, logDetail),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
-      ),
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
     );
 
     detachedSetupPage({
@@ -200,12 +206,16 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, logDetail),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
-      ),
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
     );
 
     detachedSetupPage({
@@ -281,12 +291,12 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, logDetail),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, eventsResponse),
-      ),
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, eventsResponse);
+      }),
     );
 
     detachedSetupPage({
@@ -335,12 +345,16 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, logDetail),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
-      ),
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
     );
 
     detachedSetupPage({
@@ -382,12 +396,16 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, logDetail),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
-      ),
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
     );
 
     detachedSetupPage({
@@ -430,12 +448,16 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, logDetail),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, { events: [], hasMore: false, framework: "claude-code" }),
-      ),
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
     );
 
     detachedSetupPage({

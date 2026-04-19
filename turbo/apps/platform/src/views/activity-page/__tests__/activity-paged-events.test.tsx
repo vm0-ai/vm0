@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  logsListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type {
@@ -10,11 +15,6 @@ import type {
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import {
-  logsListContract,
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
 
 const context = testContext();
 
@@ -27,7 +27,7 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
     framework: "claude-code",
     modelProvider: null,
     selectedModel: null,
-    triggerSource: "web",
+    triggerSource: "web" as const,
     triggerAgentName: null,
     scheduleId: null,
     status: "running",
@@ -65,14 +65,14 @@ describe("activity paged events", () => {
     };
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(
           200,
           makeLogDetail({
             status: eventFetchCount < 2 ? "running" : "completed",
           }),
-        ),
-      ),
+        );
+      }),
       mockApi(
         zeroRunAgentEventsContract.getAgentEvents,
         ({ query, respond }) => {
@@ -132,18 +132,17 @@ describe("activity paged events", () => {
     let eventFetchCount = 0;
 
     server.use(
-      mockApi(logsListContract.list, ({ respond }) =>
-        respond(200, {
+      mockApi(logsListContract.list, ({ respond }) => {
+        return respond(200, {
           data: [
             {
               id: "a0000000-0000-4000-a000-000000000099",
               sessionId: "session_test",
               agentId: "e0000000-0000-4000-a000-000000000010",
               displayName: "Test Agent",
-              orgSlug: "test",
               framework: "claude-code",
               status: "running",
-              triggerSource: "web",
+              triggerSource: "web" as const,
               triggerAgentName: null,
               scheduleId: null,
               prompt: "Test prompt",
@@ -154,11 +153,11 @@ describe("activity paged events", () => {
           ],
           pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
           filters: { statuses: [], sources: [], agents: [] },
-        }),
-      ),
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, makeLogDetail({ status: "running" })),
-      ),
+        });
+      }),
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, makeLogDetail({ status: "running" }));
+      }),
       mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
         eventFetchCount++;
         return respond(200, {

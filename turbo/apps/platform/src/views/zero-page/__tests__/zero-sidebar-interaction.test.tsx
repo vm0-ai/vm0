@@ -107,9 +107,9 @@ function mockBaseAPIs(options?: {
     http.get("*/api/zero/team", () => {
       return HttpResponse.json(agents);
     }),
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads }),
-    ),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads });
+    }),
     http.get("*/api/zero/agents/:id", ({ params }) => {
       const agents: Record<
         string,
@@ -266,15 +266,15 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
     mockBaseAPIs();
 
     server.use(
-      mockApi(chatThreadsContract.create, ({ respond }) =>
-        respond(201, {
+      mockApi(chatThreadsContract.create, ({ respond }) => {
+        return respond(201, {
           id: "new-thread-id",
           title: null,
           createdAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, {
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "new-thread-id",
           title: null,
           agentId: DEFAULT_AGENT_ID,
@@ -285,8 +285,8 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
           draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
+        });
+      }),
     );
 
     // Start on /agents so the new chat button triggers thread creation (not route navigation)
@@ -339,9 +339,9 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([makeDefaultAgent()]);
       }),
-      mockApi(chatThreadsContract.list, ({ respond }) =>
-        respond(200, { threads }),
-      ),
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, { threads });
+      }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         const thread = threads.find((t) => {
           return t.id === params.id;

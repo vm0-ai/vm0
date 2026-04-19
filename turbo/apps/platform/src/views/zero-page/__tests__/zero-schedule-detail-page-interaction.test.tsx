@@ -46,9 +46,9 @@ function mockAPIs(overrides: Record<string, unknown> = {}) {
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [createMockSchedule(overrides)] });
     }),
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads: [] }),
-    ),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: [] });
+    }),
   );
 }
 
@@ -150,9 +150,9 @@ describe("zero schedule detail page - toggle switch changes enabled state (SCHED
           schedules: [createMockSchedule({ enabled: true })],
         });
       }),
-      mockApi(chatThreadsContract.list, ({ respond }) =>
-        respond(200, { threads: [] }),
-      ),
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, { threads: [] });
+      }),
     );
 
     const user = userEvent.setup();
@@ -239,9 +239,9 @@ describe("zero schedule detail page - instruction save button saves instructions
           schedules: [createMockSchedule(saved ? { prompt: newPrompt } : {})],
         });
       }),
-      mockApi(chatThreadsContract.list, ({ respond }) =>
-        respond(200, { threads: [] }),
-      ),
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, { threads: [] });
+      }),
       http.post("*/api/zero/schedules", () => {
         saved = true;
         return HttpResponse.json(

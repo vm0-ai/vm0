@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -11,31 +10,19 @@ import { chatThreadMessagesContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
-// Registry for per-thread mock data. Built up via addThread(), then registered
-// by commitThreadMocks() as a single pair of handlers that dispatch by threadId.
-const threadRegistry = new Map<
-  string,
-  { role: "user" | "assistant"; content: string }[]
->();
-
-function addThread(
-  threadId: string,
-  messages: { role: "user" | "assistant"; content: string }[],
-) {
-  threadRegistry.set(threadId, messages);
-}
+type ThreadEntry = { role: "user" | "assistant"; content: string }[];
 
 function mockThread(
   threadId: string,
-  messages: { role: "user" | "assistant"; content: string }[],
-) {
-  threadRegistry.clear();
-  threadRegistry.set(threadId, messages);
-  commitThreadMocks();
+  messages: ThreadEntry,
+): Map<string, ThreadEntry> {
+  const registry = new Map([[threadId, messages]]);
+  registerThreadMocks(registry);
+  return registry;
 }
 
-function commitThreadMocks() {
-  const snapshot = new Map(threadRegistry);
+function registerThreadMocks(registry: Map<string, ThreadEntry>) {
+  const snapshot = new Map(registry);
   server.use(
     mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
       const messages = snapshot.get(params.threadId) ?? [];
@@ -173,14 +160,17 @@ describe("zero chat thread page - scrolls to bottom after completed chat opens",
 // setScrollContainer$), so switching threads re-registers the container
 describe("zero chat thread page - scroll fires for each new thread", () => {
   it("scroll container is present after navigating to a second thread (CHAT-SCROLL-005)", async () => {
-    threadRegistry.clear();
-    addThread("thread-scroll-nav-a", [
-      { role: "user", content: "Thread nav-A message" },
+    const registry = new Map<string, ThreadEntry>([
+      [
+        "thread-scroll-nav-a",
+        [{ role: "user", content: "Thread nav-A message" }],
+      ],
+      [
+        "thread-scroll-nav-b",
+        [{ role: "user", content: "Thread nav-B message" }],
+      ],
     ]);
-    addThread("thread-scroll-nav-b", [
-      { role: "user", content: "Thread nav-B message" },
-    ]);
-    commitThreadMocks();
+    registerThreadMocks(registry);
 
     detachedSetupPage({ context, path: "/chats/thread-scroll-nav-a" });
 
@@ -309,34 +299,36 @@ describe("zero chat thread page - browser-initiated scroll does not disable auto
 describe("zero chat thread page - messages remain visible during re-fetch", () => {
   it("previously-loaded messages stay visible while the next thread's groupedChatMessages$ is pending (CHAT-SCROLL-008)", async () => {
     // Thread A resolves immediately.
-    mockThread("thread-ll-a", [
+    const threadLLAMessages: ThreadEntry = [
       { role: "user", content: "Thread A message" },
       { role: "assistant", content: "Thread A reply" },
-    ]);
+    ];
+    mockThread("thread-ll-a", threadLLAMessages);
 
     // Thread B has a deferred messages response so we can observe the
     // intermediate state while groupedChatMessages$ is in loading state.
     let resolveThreadBMessages!: () => void;
 
-    // Add thread-ll-b to registry with deferred messages (special handling below)
-    // We need a registry-aware handler that defers only for thread-ll-b
-    threadRegistry.set("thread-ll-b", []);
+    // Override with a dispatcher-aware handler for both threads
     server.use(
       mockApi(
         chatThreadMessagesContract.list,
         async ({ params, query, respond }) => {
           if (params.threadId !== "thread-ll-b") {
-            // Delegate to thread-a's data from registry
-            const msgs = threadRegistry.get(params.threadId) ?? [];
+            // Delegate to thread-a's data
+            const msgs =
+              params.threadId === "thread-ll-a" ? threadLLAMessages : [];
             if (query.sinceId) {
               return respond(200, { messages: [], hasMore: false });
             }
             return respond(200, {
-              messages: msgs.map((m, i) => ({
-                id: `msg-${i + 1}`,
-                ...m,
-                createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
-              })),
+              messages: msgs.map((m, i) => {
+                return {
+                  id: `msg-${i + 1}`,
+                  ...m,
+                  createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
+                };
+              }),
               hasMore: false,
             });
           }
@@ -361,15 +353,17 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
         },
       ),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
-        const msgs = threadRegistry.get(params.id) ?? [];
+        const msgs = params.id === "thread-ll-a" ? threadLLAMessages : [];
         return respond(200, {
           id: params.id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: msgs.map((m, i) => ({
-            ...m,
-            createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
-          })),
+          chatMessages: msgs.map((m, i) => {
+            return {
+              ...m,
+              createdAt: `2026-03-10T00:00:${String(i).padStart(2, "0")}Z`,
+            };
+          }),
           latestSessionId: null,
           activeRunIds: [],
           draftContent: null,
@@ -447,8 +441,8 @@ describe("zero chat thread page - scrolls before hiding skeleton", () => {
           hasMore: false,
         });
       }),
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, {
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-pre-scroll",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
@@ -459,8 +453,8 @@ describe("zero chat thread page - scrolls before hiding skeleton", () => {
           draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
+        });
+      }),
     );
 
     // Intercept the scroll container as soon as it mounts and give it a

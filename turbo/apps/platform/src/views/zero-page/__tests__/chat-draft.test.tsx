@@ -14,8 +14,8 @@ const context = testContext();
 
 function mockThreads() {
   server.use(
-    mockApi(chatThreadByIdContract.get, ({ params, respond }) =>
-      respond(200, {
+    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
         id: params.id,
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -26,8 +26,8 @@ function mockThreads() {
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
+      });
+    }),
   );
 }
 
@@ -110,8 +110,8 @@ describe("chat draft persistence across thread navigation", () => {
     let uploadRequestResolve: ((value: Response) => void) | null = null;
 
     server.use(
-      mockApi(chatThreadByIdContract.get, ({ params, respond }) =>
-        respond(200, {
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
           id: params.id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
@@ -122,8 +122,8 @@ describe("chat draft persistence across thread navigation", () => {
           draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
+        });
+      }),
       http.post("*/api/zero/uploads", () => {
         // Signal that the upload request has arrived
         resolveUpload?.();

@@ -42,9 +42,8 @@ function createMockLogs() {
       id: "a0000000-0000-4000-a000-000000000001",
       sessionId: "session-1",
       agentId: "zero",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "completed",
+      status: "completed" as const,
       createdAt: "2026-03-10T14:56:00Z",
       startedAt: "2026-03-10T14:56:01Z",
       completedAt: "2026-03-10T14:56:04Z",
@@ -54,9 +53,8 @@ function createMockLogs() {
       id: "a0000000-0000-4000-a000-000000000002",
       sessionId: "session-2",
       agentId: "zero",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "failed",
+      status: "failed" as const,
       createdAt: "2026-03-10T14:46:00Z",
     },
     {
@@ -64,9 +62,8 @@ function createMockLogs() {
       id: "a0000000-0000-4000-a000-000000000003",
       sessionId: "session-3",
       agentId: "zero",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "running",
+      status: "running" as const,
       createdAt: "2026-03-10T14:36:00Z",
     },
   ];
@@ -84,7 +81,7 @@ function createMockLogDetail() {
     triggerSource: "web" as const,
     triggerAgentName: null,
     scheduleId: null,
-    status: "completed",
+    status: "completed" as const,
     prompt: "Summarize today's activity",
     appendSystemPrompt: null,
     error: null,
@@ -130,13 +127,13 @@ describe("zero-activity signals", () => {
 
     it("should handle empty response", async () => {
       server.use(
-        mockApi(logsListContract.list, ({ respond }) =>
-          respond(200, {
+        mockApi(logsListContract.list, ({ respond }) => {
+          return respond(200, {
             data: [],
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
             filters: { statuses: [], sources: [], agents: [] },
-          }),
-        ),
+          });
+        }),
       );
 
       await setup();
@@ -148,14 +145,14 @@ describe("zero-activity signals", () => {
 
     it("should throw on API error", async () => {
       server.use(
-        mockApi(logsListContract.list, ({ respond }) =>
-          respond(403, {
+        mockApi(logsListContract.list, ({ respond }) => {
+          return respond(403, {
             error: {
               message: "Internal server error",
               code: "INTERNAL_SERVER_ERROR",
             },
-          }),
-        ),
+          });
+        }),
       );
 
       await setup();
@@ -168,8 +165,8 @@ describe("zero-activity signals", () => {
 
     it("should report hasPrev as false on first page", async () => {
       server.use(
-        mockApi(logsListContract.list, ({ respond }) =>
-          respond(200, {
+        mockApi(logsListContract.list, ({ respond }) => {
+          return respond(200, {
             data: createMockLogs(),
             pagination: {
               hasMore: true,
@@ -177,8 +174,8 @@ describe("zero-activity signals", () => {
               totalPages: 2,
             },
             filters: { statuses: [], sources: [], agents: [] },
-          }),
-        ),
+          });
+        }),
       );
 
       await setup();
@@ -224,13 +221,13 @@ describe("zero-activity signals", () => {
             error: { message: "Not found", code: "NOT_FOUND" },
           });
         }),
-        mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-          respond(200, {
+        mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+          return respond(200, {
             events: [],
             hasMore: false,
             framework: "claude-code",
-          }),
-        ),
+          });
+        }),
       );
 
       await setupPage({

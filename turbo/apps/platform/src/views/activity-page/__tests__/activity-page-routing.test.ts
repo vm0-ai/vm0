@@ -4,17 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  logsListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import {
-  logsListContract,
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-} from "@vm0/core";
 
 const context = testContext();
 
@@ -25,10 +25,9 @@ function mockActivityAPIs() {
       sessionId: "session-1",
       agentId: "test-agent",
       displayName: "Test Agent",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "completed",
-      triggerSource: "web",
+      status: "completed" as const,
+      triggerSource: "web" as const,
       triggerAgentName: null,
       scheduleId: null,
       prompt: "Test prompt",
@@ -46,7 +45,7 @@ function mockActivityAPIs() {
     framework: "claude-code",
     modelProvider: null,
     selectedModel: null,
-    triggerSource: "web",
+    triggerSource: "web" as const,
     triggerAgentName: null,
     scheduleId: null,
     status: "completed",
@@ -75,13 +74,13 @@ function mockActivityAPIs() {
   };
 
   server.use(
-    mockApi(logsListContract.list, ({ respond }) =>
-      respond(200, {
+    mockApi(logsListContract.list, ({ respond }) => {
+      return respond(200, {
         data: logs,
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
         filters: { statuses: [], sources: [], agents: [] },
-      }),
-    ),
+      });
+    }),
     mockApi(logsByIdContract.getById, ({ params, respond }) => {
       if (params.id === "a0000000-0000-4000-a000-000000000001") {
         return respond(200, logDetail);
@@ -90,9 +89,9 @@ function mockActivityAPIs() {
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-      respond(200, eventsResponse),
-    ),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, eventsResponse);
+    }),
   );
 }
 
@@ -168,18 +167,17 @@ describe("activity page routing", () => {
 
   it("should display 'Agent (displayName)' for delegated runs with triggerAgentName", async () => {
     server.use(
-      mockApi(logsListContract.list, ({ respond }) =>
-        respond(200, {
+      mockApi(logsListContract.list, ({ respond }) => {
+        return respond(200, {
           data: [
             {
               id: "b0000000-0000-4000-a000-000000000001",
               sessionId: "session-delegated",
               agentId: "child-agent",
               displayName: "Child Agent",
-              orgSlug: "test",
               framework: "claude-code",
               status: "completed",
-              triggerSource: "agent",
+              triggerSource: "agent" as const,
               triggerAgentName: "Parent Bot",
               scheduleId: null,
               prompt: "Test prompt",
@@ -190,8 +188,8 @@ describe("activity page routing", () => {
           ],
           pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
           filters: { statuses: [], sources: [], agents: [] },
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({

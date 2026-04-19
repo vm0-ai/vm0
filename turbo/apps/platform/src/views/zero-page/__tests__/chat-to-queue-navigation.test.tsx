@@ -37,8 +37,8 @@ function mockChatThread() {
         hasMore: false,
       });
     }),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: "thread-1",
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -60,21 +60,21 @@ function mockChatThread() {
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
-      }),
-    ),
+      });
+    }),
   );
 }
 
 function mockQueueAPIs() {
   server.use(
-    mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
-      respond(200, {
+    mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(200, {
         concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
         runningTasks: [],
         queue: [],
         estimatedTimePerRun: null,
-      }),
-    ),
+      });
+    }),
   );
 }
 

@@ -50,8 +50,8 @@ describe("cancelled message ordering after page refresh", () => {
           hasMore: false,
         });
       }),
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, {
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-ordering",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
@@ -62,8 +62,8 @@ describe("cancelled message ordering after page refresh", () => {
           draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:01:01Z",
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/chats/thread-ordering" });

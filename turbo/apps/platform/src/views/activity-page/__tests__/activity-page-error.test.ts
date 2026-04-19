@@ -11,11 +11,11 @@ const context = testContext();
 describe("activity page error", () => {
   it("should show error state when /api/zero/logs returns 500", async () => {
     server.use(
-      mockApi(logsListContract.list, ({ respond }) =>
-        respond(403, {
+      mockApi(logsListContract.list, ({ respond }) => {
+        return respond(403, {
           error: { message: "Internal Server Error", code: "INTERNAL" },
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/activities" });

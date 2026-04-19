@@ -65,7 +65,9 @@ function makeLogsResponse(
 
 function mockLogsAPI(response: LogsListResponse) {
   server.use(
-    mockApi(logsListContract.list, ({ respond }) => respond(200, response)),
+    mockApi(logsListContract.list, ({ respond }) => {
+      return respond(200, response);
+    }),
   );
 }
 

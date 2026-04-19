@@ -9,16 +9,18 @@ import { chatThreadMessagesContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
-const THREAD_BASE = {
-  title: null,
-  agentId: "c0000000-0000-4000-a000-000000000001",
-  latestSessionId: null,
-  activeRunIds: [],
-  draftContent: null,
-  draftAttachments: null,
-  createdAt: "2026-01-01T00:00:00Z",
-  updatedAt: "2026-01-01T00:00:00Z",
-} as const;
+function makeThreadBase() {
+  return {
+    title: null,
+    agentId: "c0000000-0000-4000-a000-000000000001",
+    latestSessionId: null,
+    activeRunIds: [] as string[],
+    draftContent: null,
+    draftAttachments: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
+}
 
 describe("chat-d-064: markdown content renders from props", () => {
   it("should parse markdown and render as formatted HTML", async () => {
@@ -39,10 +41,10 @@ describe("chat-d-064: markdown content renders from props", () => {
           hasMore: false,
         });
       }),
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, {
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-markdown",
-          ...THREAD_BASE,
+          ...makeThreadBase(),
           chatMessages: [
             {
               role: "assistant",
@@ -50,8 +52,8 @@ describe("chat-d-064: markdown content renders from props", () => {
               createdAt: "2026-01-01T00:00:00Z",
             },
           ],
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/chats/thread-markdown" });
@@ -83,10 +85,10 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
           hasMore: false,
         });
       }),
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, {
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-theme",
-          ...THREAD_BASE,
+          ...makeThreadBase(),
           chatMessages: [
             {
               role: "assistant",
@@ -94,8 +96,8 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
               createdAt: "2026-01-01T00:00:00Z",
             },
           ],
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/chats/thread-theme" });
@@ -141,10 +143,10 @@ describe("chat-d-066: markdown links open in new tab", () => {
           hasMore: false,
         });
       }),
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, {
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-link",
-          ...THREAD_BASE,
+          ...makeThreadBase(),
           chatMessages: [
             {
               role: "assistant",
@@ -152,8 +154,8 @@ describe("chat-d-066: markdown links open in new tab", () => {
               createdAt: "2026-01-01T00:00:00Z",
             },
           ],
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/chats/thread-link" });

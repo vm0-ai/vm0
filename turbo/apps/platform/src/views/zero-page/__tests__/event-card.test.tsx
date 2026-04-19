@@ -57,9 +57,9 @@ function mockDetailAPI(events: AgentEvent[]) {
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-      respond(200, eventsResponse),
-    ),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, eventsResponse);
+    }),
   );
 }
 

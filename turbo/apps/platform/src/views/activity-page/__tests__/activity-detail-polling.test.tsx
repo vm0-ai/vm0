@@ -41,15 +41,15 @@ describe("activity detail polling with initially empty events", () => {
     let eventFetchCount = 0;
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(
           200,
           makeLogDetail({
             // Stay "running" so polling continues
             status: eventFetchCount < 3 ? "running" : "completed",
           }),
-        ),
-      ),
+        );
+      }),
       mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
         eventFetchCount++;
 

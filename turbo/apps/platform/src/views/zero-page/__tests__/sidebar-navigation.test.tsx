@@ -34,11 +34,11 @@ function mockSubagentAPIs() {
   ];
 
   server.use(
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads }),
-    ),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads });
+    }),
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: "thread-sub-1",
         title: "Subagent thread",
         agentId: "subagent-compose-id",
@@ -60,9 +60,9 @@ function mockSubagentAPIs() {
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
-      }),
-    ),
-    mockApi(chatThreadsContract.create, async ({ body, respond }) => {
+      });
+    }),
+    mockApi(chatThreadsContract.create, ({ body, respond }) => {
       const now = new Date().toISOString();
       const newThread = {
         id: "new-thread-id",
@@ -169,8 +169,8 @@ describe("sidebar new chat navigation", () => {
     // fetchZeroSessionList$ is always called after navigation so the list must
     // include the new thread (title: null) for "New chat" to appear in the sidebar.
     server.use(
-      mockApi(chatThreadsContract.list, ({ respond }) =>
-        respond(200, {
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, {
           threads: [
             {
               id: "new-thread-id",
@@ -182,10 +182,10 @@ describe("sidebar new chat navigation", () => {
               isArchived: false,
             },
           ],
-        }),
-      ),
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, {
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "new-thread-id",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
@@ -196,8 +196,8 @@ describe("sidebar new chat navigation", () => {
           draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/agents" });

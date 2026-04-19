@@ -15,8 +15,8 @@ const context = testContext();
 
 function mockAPIs() {
   server.use(
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, {
         threads: [
           {
             id: "thread-abc-123",
@@ -28,8 +28,8 @@ function mockAPIs() {
             isArchived: false,
           },
         ],
-      }),
-    ),
+      });
+    }),
     mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
       if (query.sinceId) {
         return respond(200, { messages: [], hasMore: false });
@@ -52,8 +52,8 @@ function mockAPIs() {
         hasMore: false,
       });
     }),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: "thread-abc-123",
         title: "Test conversation",
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -64,8 +64,8 @@ function mockAPIs() {
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
+      });
+    }),
   );
 }
 

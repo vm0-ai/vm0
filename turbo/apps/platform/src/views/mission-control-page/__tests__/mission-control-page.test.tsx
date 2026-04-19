@@ -2,20 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+  zeroRunsByIdContract,
+  zeroQueuePositionContract,
+  chatThreadByIdContract,
+  type RunStatus,
+} from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import {
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-  zeroRunsByIdContract,
-  zeroQueuePositionContract,
-  chatThreadsContract,
-  chatThreadByIdContract,
-} from "@vm0/core";
 import {
   addOptimisticTask$,
   taskSignals$,
@@ -63,11 +63,11 @@ function mockTasksAPI(
   );
 }
 
-function mockActivityAPIs(_runId?: string, overrides?: { status?: string }) {
-  const status = overrides?.status ?? "completed";
+function mockActivityAPIs(_runId?: string, overrides?: { status?: RunStatus }) {
+  const status: RunStatus = overrides?.status ?? "completed";
   server.use(
-    mockApi(logsByIdContract.getById, ({ respond }) =>
-      respond(200, {
+    mockApi(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, {
         id: "00000000-0000-4000-a000-000000000001",
         displayName: "Test Agent",
         status,
@@ -86,29 +86,29 @@ function mockActivityAPIs(_runId?: string, overrides?: { status?: string }) {
         startedAt: "2026-04-10T10:00:01Z",
         completedAt: status === "completed" ? "2026-04-10T10:00:05Z" : null,
         artifact: { name: null, version: null },
-      }),
-    ),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-      respond(200, {
+      });
+    }),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, {
         events: [],
         hasMore: false,
         framework: "unknown",
-      }),
-    ),
-    mockApi(zeroRunsByIdContract.getById, ({ respond }) =>
-      respond(200, {
+      });
+    }),
+    mockApi(zeroRunsByIdContract.getById, ({ respond }) => {
+      return respond(200, {
         runId: "00000000-0000-4000-a000-000000000001",
         agentComposeVersionId: null,
         status,
         prompt: "",
         appendSystemPrompt: null,
-        result: null,
+        result: undefined,
         createdAt: "2026-04-10T10:00:00Z",
-      }),
-    ),
-    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
-      respond(200, { position: 0, total: 0 }),
-    ),
+      });
+    }),
+    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) => {
+      return respond(200, { position: 0, total: 0 });
+    }),
   );
 }
 
@@ -177,8 +177,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      mockApi(chatThreadByIdContract.get, ({ respond }) =>
-        respond(200, {
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-abc",
           title: null,
           agentId: "00000000-0000-4000-a000-000000000000",
@@ -189,8 +189,8 @@ describe("mission control page", () => {
           draftAttachments: null,
           createdAt: "2026-04-10T10:00:00Z",
           updatedAt: "2026-04-10T10:00:00Z",
-        }),
-      ),
+        });
+      }),
     );
 
     const user = userEvent.setup();
@@ -561,8 +561,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, {
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000001",
           displayName: "Test Agent",
           status: "completed",
@@ -581,11 +581,15 @@ describe("mission control page", () => {
           startedAt: "2026-04-10T10:00:01Z",
           completedAt: "2026-04-10T10:00:05Z",
           artifact: { name: null, version: null },
-        }),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, { events: [], hasMore: false, framework: "anthropic" }),
-      ),
+        });
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
     );
 
     const user = userEvent.setup();
@@ -619,8 +623,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, {
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000002",
           displayName: "Test Agent",
           status: "completed",
@@ -639,10 +643,10 @@ describe("mission control page", () => {
           startedAt: "2026-04-10T10:00:01Z",
           completedAt: "2026-04-10T10:00:05Z",
           artifact: { name: null, version: null },
-        }),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, {
+        });
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [
             {
               sequenceNumber: 1,
@@ -653,8 +657,8 @@ describe("mission control page", () => {
           ],
           hasMore: false,
           framework: "anthropic",
-        }),
-      ),
+        });
+      }),
     );
 
     const user = userEvent.setup();
@@ -692,8 +696,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, {
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000003",
           displayName: "Test Agent",
           status: "running",
@@ -712,11 +716,15 @@ describe("mission control page", () => {
           startedAt: "2026-04-10T10:00:01Z",
           completedAt: null,
           artifact: { name: null, version: null },
-        }),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, { events: [], hasMore: false, framework: "anthropic" }),
-      ),
+        });
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
     );
 
     const user = userEvent.setup();
@@ -756,8 +764,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, {
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000004",
           displayName: "Test Agent",
           status: "completed",
@@ -776,11 +784,15 @@ describe("mission control page", () => {
           startedAt: "2026-04-10T10:00:01Z",
           completedAt: "2026-04-10T10:00:05Z",
           artifact: { name: null, version: null },
-        }),
-      ),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, { events: [], hasMore: false, framework: "anthropic" }),
-      ),
+        });
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
     );
 
     const user = userEvent.setup();
@@ -1346,9 +1358,13 @@ describe("mission control page", () => {
           artifact: { name: null, version: null },
         });
       }),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-        respond(200, { events: [], hasMore: false, framework: "anthropic" }),
-      ),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
     );
 
     const user = userEvent.setup();
@@ -1412,8 +1428,8 @@ describe("mission control page", () => {
     // Track how many times polling is called — after close, no more calls
     let pollCallCount = 0;
     server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) =>
-        respond(200, {
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000099",
           displayName: "Test Agent",
           status: "running",
@@ -1432,8 +1448,8 @@ describe("mission control page", () => {
           startedAt: "2026-04-10T10:00:01Z",
           completedAt: null,
           artifact: { name: null, version: null },
-        }),
-      ),
+        });
+      }),
       mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
         pollCallCount++;
         return respond(200, {

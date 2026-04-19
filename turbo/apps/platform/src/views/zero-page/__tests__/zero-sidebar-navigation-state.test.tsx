@@ -104,9 +104,9 @@ function mockBaseAPIs(options?: {
     http.get("*/api/zero/team", () => {
       return HttpResponse.json(agents);
     }),
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads }),
-    ),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads });
+    }),
   );
 }
 

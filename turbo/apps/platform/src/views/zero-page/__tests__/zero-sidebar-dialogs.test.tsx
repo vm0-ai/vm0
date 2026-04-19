@@ -51,11 +51,11 @@ function mockAPIsWithSubagents({
         },
       ]);
     }),
-    mockApi(chatThreadsContract.list, ({ respond }) =>
-      respond(200, { threads: [] }),
-    ),
-    mockApi(chatThreadByIdContract.get, ({ respond }) =>
-      respond(200, {
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: [] });
+    }),
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: "new-thread-from-dialog",
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -66,15 +66,15 @@ function mockAPIsWithSubagents({
         draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
-    mockApi(chatThreadsContract.create, ({ respond }) =>
-      respond(201, {
+      });
+    }),
+    mockApi(chatThreadsContract.create, ({ respond }) => {
+      return respond(201, {
         id: "new-thread-from-dialog",
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
+      });
+    }),
     http.get("*/api/zero/user-preferences", () => {
       return HttpResponse.json({
         timezone: null,

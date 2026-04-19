@@ -1,22 +1,22 @@
 import { assert, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey, type RunContextResponse } from "@vm0/core";
-import type {
-  LogDetail,
-  AgentEventsResponse,
-} from "../../../signals/zero-page/log-types.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
+  FeatureSwitchKey,
+  type RunContextResponse,
   logsByIdContract,
   zeroRunAgentEventsContract,
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
 } from "@vm0/core";
+import type {
+  LogDetail,
+  AgentEventsResponse,
+} from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -86,9 +86,9 @@ function setupBaseMocks() {
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
-      respond(200, makeEventsResponse()),
-    ),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, makeEventsResponse());
+    }),
   );
 }
 
@@ -124,12 +124,16 @@ describe("zeroActivityDetailPageInteraction", () => {
     setupBaseMocks();
 
     server.use(
-      mockApi(zeroRunContextContract.getContext, ({ respond }) =>
-        respond(404, { error: { message: "Not found", code: "NOT_FOUND" } }),
-      ),
-      mockApi(zeroRunNetworkLogsContract.getNetworkLogs, ({ respond }) =>
-        respond(404, { error: { message: "Not found", code: "NOT_FOUND" } }),
-      ),
+      mockApi(zeroRunContextContract.getContext, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
+      }),
+      mockApi(zeroRunNetworkLogsContract.getNetworkLogs, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
+      }),
     );
 
     const createObjectURLSpy = vi
@@ -192,9 +196,9 @@ describe("zeroActivityDetailPageInteraction", () => {
     };
 
     server.use(
-      mockApi(zeroRunContextContract.getContext, ({ respond }) =>
-        respond(200, contextResponse),
-      ),
+      mockApi(zeroRunContextContract.getContext, ({ respond }) => {
+        return respond(200, contextResponse);
+      }),
     );
 
     const user = userEvent.setup();
