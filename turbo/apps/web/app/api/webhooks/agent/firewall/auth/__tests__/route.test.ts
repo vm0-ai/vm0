@@ -593,6 +593,243 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.headers.Authorization).toBe(expected);
       expect(data.resolvedSecrets).toEqual([]);
     });
+
+    it('should resolve basic("literal", secrets.X) with literal username', async () => {
+      const encrypted = encryptTestSecrets({
+        GITHUB_TOKEN: "gho_real_token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization:
+                '${{ basic("x-access-token", secrets.GITHUB_TOKEN) }}',
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("x-access-token:gho_real_token").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual(["GITHUB_TOKEN"]);
+    });
+
+    it('should resolve basic(secrets.X, "literal") with literal password', async () => {
+      const encrypted = encryptTestSecrets({ USER: "alice" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: '${{ basic(secrets.USER, "fixed-pass") }}',
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("alice:fixed-pass").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual(["USER"]);
+    });
+
+    it('should resolve basic("user", "pass") with both literals', async () => {
+      const encrypted = encryptTestSecrets({ UNUSED: "x" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: '${{ basic("admin", "hunter2") }}',
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("admin:hunter2").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual([]);
+    });
+
+    it("should resolve empty literals", async () => {
+      const encrypted = encryptTestSecrets({ UNUSED: "x" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: '${{ basic("", "") }}',
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from(":").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual([]);
+    });
+
+    it("should resolve basic(vars.X, literal) without tracking vars as secrets", async () => {
+      const encrypted = encryptTestSecrets({ UNUSED: "x" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: '${{ basic(vars.USER, "pw") }}',
+            },
+            vars: { USER: "alice" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("alice:pw").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual([]);
+    });
+
+    it("should not interpolate template syntax inside basic() literals", async () => {
+      const encrypted = encryptTestSecrets({ FOO: "secret-value", TOKEN: "t" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization:
+                '${{ basic("${{ secrets.FOO }}", secrets.TOKEN) }}',
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // Literal should stay as "${{ secrets.FOO }}" — not replaced with "secret-value"
+      const expected = `Basic ${Buffer.from("${{ secrets.FOO }}:t").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual(["TOKEN"]);
+    });
+
+    it("should not treat literal content looking like secrets.X as a reference", async () => {
+      // Regression: a literal whose content happens to match "secrets.FAKE"
+      // must NOT be extracted as a referenced secret or resolved against
+      // encryptedSecrets. Only secrets.REAL (actual reference) is resolved.
+      const encrypted = encryptTestSecrets({ REAL: "real-value" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: '${{ basic("secrets.FAKE", secrets.REAL) }}',
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("secrets.FAKE:real-value").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual(["REAL"]);
+    });
+
+    it("should leave malformed basic() templates unchanged", async () => {
+      // Literal regex forbids embedded " — the template fails to match and
+      // passes through to the header as plain text rather than producing
+      // an ambiguous partial replacement.
+      const encrypted = encryptTestSecrets({ X: "x" });
+      const malformed = '${{ basic("oops"quoted", secrets.X) }}';
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: malformed,
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe(malformed);
+      expect(data.resolvedSecrets).toEqual([]);
+    });
+
+    it("should handle mixed simple and basic templates in one header", async () => {
+      // Pass order: basic() resolves first, then ${{ secrets.X }} / ${{ vars.X }}.
+      // Both patterns in the same header must both resolve correctly.
+      const encrypted = encryptTestSecrets({ A: "aaa", B: "bbb" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              "X-Combo":
+                'prefix ${{ secrets.A }} middle ${{ basic("u", secrets.B) }} suffix',
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const basicPart = `Basic ${Buffer.from("u:bbb").toString("base64")}`;
+      expect(data.headers["X-Combo"]).toBe(
+        `prefix aaa middle ${basicPart} suffix`,
+      );
+      expect(data.resolvedSecrets.sort()).toEqual(["A", "B"]);
+    });
+
+    it("should preserve special characters in basic() literals", async () => {
+      // Basic Auth username can legitimately contain @, :, space, $.
+      const encrypted = encryptTestSecrets({ T: "token" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: '${{ basic("user@example.com", secrets.T) }}',
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("user@example.com:token").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+    });
   });
 
   describe("Token refresh with secretConnectorMap", () => {

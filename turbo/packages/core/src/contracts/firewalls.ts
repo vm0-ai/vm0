@@ -181,15 +181,18 @@ const AUTH_SECRET_PATTERN =
 
 /**
  * Create a fresh RegExp matching `${{ basic(username, password) }}` templates.
- * Each side is secrets.X, vars.X, or empty; comma is always required.
+ * Each side is secrets.X, vars.X, "literal", or empty; comma is always required.
  * Returns a new instance each time to avoid `.lastIndex` state leaking
  * between callers when the `/g` flag is used.
- * Groups: (1) ns1, (2) key1, (3) ns2, (4) key2 — all optional.
+ * Groups: (1) ns1, (2) key1, (3) lit1, (4) ns2, (5) key2, (6) lit2 — all optional.
+ * Literal strings forbid `"` and `\` to keep the regex simple, and are
+ * not subject to further template resolution (the resolver processes
+ * basic() before simple templates so literals stay literal).
  *
  * Shared between build-time secret extraction and runtime template resolution.
  */
 export function basicAuthTemplateRe(): RegExp {
-  return /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*\)\s*\}\}/g;
+  return /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)|"([^"\\]*)")?\s*\)\s*\}\}/g;
 }
 
 /**
@@ -206,11 +209,12 @@ export function extractSecretNamesFromApis(
       for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
         names.add(match[1]!);
       }
-      // basic() args may reference secrets or vars; only collect secrets here
-      // (vars don't need placeholders).
+      // basic() args may reference secrets, vars, or be string literals;
+      // only collect secrets here (vars don't need placeholders, literals
+      // are baked into the config).
       for (const match of value.matchAll(basicAuthTemplateRe())) {
         if (match[1] === "secrets" && match[2]) names.add(match[2]);
-        if (match[3] === "secrets" && match[4]) names.add(match[4]);
+        if (match[4] === "secrets" && match[5]) names.add(match[5]);
       }
     }
     // Scan auth.base for secret references (webhook-url connectors).
