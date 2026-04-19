@@ -14,10 +14,6 @@ import {
 } from "@vm0/core";
 import { mockApi } from "../msw-contract.ts";
 
-export function resetMockVoiceChat(): void {
-  // No mutable state to reset — default handlers are stateless.
-}
-
 export const apiVoiceChatHandlers = [
   mockApi(zeroVoiceChatPrepareTriggerContract.trigger, ({ respond }) => {
     return respond(200, {

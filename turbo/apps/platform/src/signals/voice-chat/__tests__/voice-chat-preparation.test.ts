@@ -41,7 +41,9 @@ async function setup() {
   context.store.set(setChatAgentId$, TEST_AGENT_ID);
 }
 
-function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
+function mockPrepareEndpoint(
+  responses: { status: "preparing" | "ready" | "failed"; id?: string }[],
+) {
   let callIndex = 0;
   const counter = {
     get count() {
@@ -56,7 +58,7 @@ function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
       return respond(200, {
         preparation: {
           id: response.id ?? "prep-1",
-          status: response.status as "preparing" | "ready" | "failed",
+          status: response.status,
         },
       });
     }),
@@ -67,8 +69,7 @@ function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
 describe("voice-chat-preparation signals", () => {
   it("should set status to ready when preparation is cached", async () => {
     await setup();
-    const responses = [{ status: "ready" }];
-    mockPrepareEndpoint(responses);
+    mockPrepareEndpoint([{ status: "ready" }]);
 
     await context.store.set(
       triggerPreparation$,
@@ -85,8 +86,7 @@ describe("voice-chat-preparation signals", () => {
 
   it("should set status to failed immediately when initial status is failed", async () => {
     await setup();
-    const responses = [{ status: "failed" }];
-    const counter = mockPrepareEndpoint(responses);
+    const counter = mockPrepareEndpoint([{ status: "failed" }]);
 
     await context.store.set(
       triggerPreparation$,
@@ -101,12 +101,11 @@ describe("voice-chat-preparation signals", () => {
 
   it("should poll until ready when preparation is in progress", async () => {
     await setup();
-    const responses = [
+    const counter = mockPrepareEndpoint([
       { status: "preparing" },
       { status: "preparing" },
       { status: "ready" },
-    ];
-    const counter = mockPrepareEndpoint(responses);
+    ]);
 
     const done = context.store.set(
       triggerPreparation$,
@@ -133,8 +132,10 @@ describe("voice-chat-preparation signals", () => {
 
   it("should set status to failed when preparation fails during poll", async () => {
     await setup();
-    const responses = [{ status: "preparing" }, { status: "failed" }];
-    const counter = mockPrepareEndpoint(responses);
+    const counter = mockPrepareEndpoint([
+      { status: "preparing" },
+      { status: "failed" },
+    ]);
 
     const done = context.store.set(
       triggerPreparation$,
@@ -199,8 +200,7 @@ describe("voice-chat-preparation signals", () => {
 
   it("should reset all state on clearPreparation$", async () => {
     await setup();
-    const responses = [{ status: "ready" }];
-    mockPrepareEndpoint(responses);
+    mockPrepareEndpoint([{ status: "ready" }]);
 
     await context.store.set(triggerPreparation$, "some prompt", context.signal);
 
@@ -243,8 +243,7 @@ describe("voice-chat page navigation abort", () => {
 
   it("should NOT clear preparation state when status is ready on navigation abort", async () => {
     await setupPageWithAbort();
-    const responses = [{ status: "ready" }];
-    mockPrepareEndpoint(responses);
+    mockPrepareEndpoint([{ status: "ready" }]);
 
     await context.store.set(
       triggerPreparation$,

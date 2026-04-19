@@ -61,7 +61,7 @@ import {
   resetMockPermissionRequests,
 } from "./api-permission-access-requests.ts";
 import { apiPermissionPoliciesHandlers } from "./api-permission-policies.ts";
-import { apiVoiceChatHandlers, resetMockVoiceChat } from "./api-voice-chat.ts";
+import { apiVoiceChatHandlers } from "./api-voice-chat.ts";
 
 export const handlers = [
   ...apiConnectorsHandlers,
@@ -108,5 +108,4 @@ export function resetAllMockHandlers(): void {
   resetMockOrgDomains();
   resetMockUsageMembers();
   resetMockMemberCreditCaps();
-  resetMockVoiceChat();
 }

@@ -33,7 +33,9 @@ async function setup() {
   });
 }
 
-function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
+function mockPrepareEndpoint(
+  responses: { status: "preparing" | "ready" | "failed"; id?: string }[],
+) {
   let callIndex = 0;
   const calls: { agentId: string; mode: string }[] = [];
   server.use(
@@ -47,7 +49,7 @@ function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
         return respond(200, {
           preparation: {
             id: response.id ?? "prep-1",
-            status: response.status as "preparing" | "ready" | "failed",
+            status: response.status,
           },
         });
       },
