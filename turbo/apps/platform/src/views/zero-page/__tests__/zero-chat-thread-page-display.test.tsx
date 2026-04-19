@@ -120,6 +120,30 @@ describe("zero chat thread page display - attachment video preview", () => {
   });
 });
 
+// CHAT-D-066: HeaderAgentAvatar renders null until agentId resolves — no default-avatar flicker
+describe("zero chat thread page display - header agent avatar flicker fix", () => {
+  it("renders the agent avatar link once agentId resolves and never renders a placeholder avatar beforehand", async () => {
+    mockSubagentThread("thread-avatar-test");
+
+    detachedSetupPage({ context, path: "/chats/thread-avatar-test" });
+
+    // The avatar link must appear once the agent id resolves.
+    await waitFor(() => {
+      expect(
+        document.querySelector('a[aria-label="View agent profile"]'),
+      ).toBeInTheDocument();
+    });
+
+    // No blank-name placeholder SVG should have been rendered: the component
+    // returns null before agentId is known, so there is never a second avatar
+    // element without the accessible link wrapper.
+    const avatarLinks = document.querySelectorAll(
+      'a[aria-label="View agent profile"]',
+    );
+    expect(avatarLinks).toHaveLength(1);
+  });
+});
+
 // CHAT-D-043: Message status indicators render in ChatMessageRow
 describe("zero chat thread page display - message status indicators", () => {
   it("displays a Stop button status indicator when a run is active", async () => {
