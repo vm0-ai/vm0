@@ -119,6 +119,7 @@ import { miroFirewall } from "./miro.generated";
 import { mixpanelFirewall } from "./mixpanel.generated";
 import { mondayFirewall } from "./monday.generated";
 import { msg9Firewall } from "./msg9.generated";
+import { n8nFirewall } from "./n8n.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
@@ -288,6 +289,7 @@ const CONNECTOR_FIREWALLS = {
   mixpanel: mixpanelFirewall,
   monday: mondayFirewall,
   msg9: msg9Firewall,
+  n8n: n8nFirewall,
   neon: neonFirewall,
   notion: notionFirewall,
   openai: openaiFirewall,
