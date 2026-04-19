@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {

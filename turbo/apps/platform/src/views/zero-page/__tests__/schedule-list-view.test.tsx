@@ -397,7 +397,7 @@ describe("schedule list view - run now action (SCHED-D-090)", () => {
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
-      mockApi(zeroScheduleRunContract.run, async ({ body, respond }) => {
+      mockApi(zeroScheduleRunContract.run, ({ body, respond }) => {
         capturedBody = body as { scheduleId?: string };
         return respond(201, { runId: "run-1" });
       }),

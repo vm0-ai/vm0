@@ -78,10 +78,11 @@ export const apiSchedulesHandlers = [
   // POST /api/zero/schedules/:name/enable
   mockApi(zeroSchedulesEnableContract.enable, ({ params, respond }) => {
     const schedule = mockSchedules.find((s) => s.name === params.name);
-    if (!schedule)
+    if (!schedule) {
       return respond(404, {
         error: { message: "Not found", code: "NOT_FOUND" },
       });
+    }
     const updated = { ...schedule, enabled: true };
     mockSchedules = mockSchedules.map((s) =>
       s.name === params.name ? updated : s,
@@ -92,10 +93,11 @@ export const apiSchedulesHandlers = [
   // POST /api/zero/schedules/:name/disable
   mockApi(zeroSchedulesEnableContract.disable, ({ params, respond }) => {
     const schedule = mockSchedules.find((s) => s.name === params.name);
-    if (!schedule)
+    if (!schedule) {
       return respond(404, {
         error: { message: "Not found", code: "NOT_FOUND" },
       });
+    }
     const updated = { ...schedule, enabled: false };
     mockSchedules = mockSchedules.map((s) =>
       s.name === params.name ? updated : s,

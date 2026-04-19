@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
@@ -252,7 +251,7 @@ describe("zero-schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
           return respond(
             201,
@@ -294,7 +293,7 @@ describe("zero-schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
           return respond(
             201,
@@ -330,7 +329,7 @@ describe("zero-schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
           return respond(
             201,
@@ -367,7 +366,7 @@ describe("zero-schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
           return respond(
             201,
@@ -405,7 +404,7 @@ describe("zero-schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
           return respond(
             201,
@@ -442,7 +441,7 @@ describe("zero-schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
           return respond(
             201,
@@ -479,7 +478,7 @@ describe("zero-schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
           return respond(
             201,
@@ -548,14 +547,11 @@ describe("zero-schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(
-          zeroSchedulesEnableContract.enable,
-          async ({ body, respond }) => {
-            captured.action = "enable";
-            captured.body = body as Record<string, unknown>;
-            return respond(200, mockScheduleResponse() as ScheduleResponse);
-          },
-        ),
+        mockApi(zeroSchedulesEnableContract.enable, ({ body, respond }) => {
+          captured.action = "enable";
+          captured.body = body as Record<string, unknown>;
+          return respond(200, mockScheduleResponse() as ScheduleResponse);
+        }),
       );
 
       await setup();
@@ -669,7 +665,7 @@ describe("zero-schedule signals", () => {
       let capturedBody: Record<string, unknown> | null = null;
 
       server.use(
-        mockApi(zeroScheduleRunContract.run, async ({ body, respond }) => {
+        mockApi(zeroScheduleRunContract.run, ({ body, respond }) => {
           capturedBody = body as Record<string, unknown>;
           return respond(201, { runId: "run-abc-123" });
         }),
@@ -939,7 +935,7 @@ describe("org schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
           return respond(
             201,
@@ -983,7 +979,7 @@ describe("org schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
           return respond(
             201,
@@ -1027,14 +1023,11 @@ describe("org schedule signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(
-          zeroSchedulesEnableContract.disable,
-          async ({ body, respond }) => {
-            captured.action = "disable";
-            captured.body = body as Record<string, unknown>;
-            return respond(200, mockScheduleResponse() as ScheduleResponse);
-          },
-        ),
+        mockApi(zeroSchedulesEnableContract.disable, ({ body, respond }) => {
+          captured.action = "disable";
+          captured.body = body as Record<string, unknown>;
+          return respond(200, mockScheduleResponse() as ScheduleResponse);
+        }),
       );
 
       await setup();

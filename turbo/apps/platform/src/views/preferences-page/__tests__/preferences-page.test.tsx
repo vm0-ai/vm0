@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -81,7 +80,7 @@ describe("zero preferences page - send mode interaction", () => {
 
     setMockUserPreferences(createMockPreferences({ sendMode: "enter" }));
     server.use(
-      mockApi(zeroUserPreferencesContract.update, async ({ body, respond }) => {
+      mockApi(zeroUserPreferencesContract.update, ({ body, respond }) => {
         capturedBody = body as Record<string, unknown>;
         return respond(200, createMockPreferences({ sendMode: "cmd-enter" }));
       }),
@@ -135,7 +134,7 @@ describe("zero preferences page - timezone update", () => {
 
     setMockUserPreferences(createMockPreferences({ timezone: "UTC" }));
     server.use(
-      mockApi(zeroUserPreferencesContract.update, async ({ body, respond }) => {
+      mockApi(zeroUserPreferencesContract.update, ({ body, respond }) => {
         capturedBody = body as Record<string, unknown>;
         return respond(
           200,

@@ -7,7 +7,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -49,7 +48,10 @@ function mockInsightsAPI(days: InsightsResponse["days"] = []) {
   );
 }
 
-function sampleDay(date: string, overrides?: Record<string, unknown>) {
+function sampleDay(
+  date: string,
+  overrides?: Record<string, unknown>,
+): InsightsResponse["days"][0] {
   return {
     date,
     agents: [
@@ -60,18 +62,16 @@ function sampleDay(date: string, overrides?: Record<string, unknown>) {
     creditBalance: 9800,
     teamUsage: [
       {
-        userId: "user-alice",
         name: "alice",
         credits: 120,
         agentNames: ["Alpha Bot"],
-        agentCredits: { "Alpha Bot": 120 },
+        agentCredits: { "Alpha Bot": 120 } as Record<string, number>,
       },
       {
-        userId: "user-bob",
         name: "bob",
         credits: 80,
         agentNames: ["Beta Bot"],
-        agentCredits: { "Beta Bot": 80 },
+        agentCredits: { "Beta Bot": 80 } as Record<string, number>,
       },
     ],
     topTask: { name: "chat:write", count: 15 },
@@ -104,7 +104,7 @@ function sampleDay(date: string, overrides?: Record<string, unknown>) {
       },
     ],
     ...overrides,
-  };
+  } as InsightsResponse["days"][0];
 }
 
 // ---------------------------------------------------------------------------

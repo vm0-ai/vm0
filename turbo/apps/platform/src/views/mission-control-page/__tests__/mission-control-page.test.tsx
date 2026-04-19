@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  tasksContract,
+  zeroQueuePositionContract,
+  type TaskItem,
+} from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -16,11 +21,6 @@ import { setMockTasks } from "../../../mocks/handlers/api-tasks.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import {
-  tasksContract,
-  zeroQueuePositionContract,
-  type TaskItem,
-} from "@vm0/core";
 
 const context = testContext();
 
@@ -308,7 +308,7 @@ describe("mission control page", () => {
       },
     ]);
     server.use(
-      mockApi(tasksContract.archive, async ({ body, respond }) => {
+      mockApi(tasksContract.archive, ({ body, respond }) => {
         archiveRequestBody = body;
         setMockTasks([]);
         return respond(200, { ok: true });
@@ -776,7 +776,7 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      mockApi(tasksContract.archive, async ({ body, respond }) => {
+      mockApi(tasksContract.archive, ({ body, respond }) => {
         archiveRequestBody = body;
         // After archive, update the tasks list to return empty
         setMockTasks([]);

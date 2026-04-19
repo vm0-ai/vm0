@@ -504,7 +504,7 @@ describe("zero schedule page - create dialog", () => {
 
     setMockSchedules(createMockSchedules() as ScheduleResponse[]);
     server.use(
-      mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+      mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
         capturedBody = body as Record<string, unknown>;
         return respond(
           201,
@@ -999,7 +999,7 @@ describe("zero schedule page - create dialog timezone default", () => {
     let capturedBody: Record<string, unknown> | null = null;
     setMockSchedules(createMockSchedules() as ScheduleResponse[]);
     server.use(
-      mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+      mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
         capturedBody = body as Record<string, unknown>;
         return respond(
           201,
@@ -1047,7 +1047,7 @@ describe("zero schedule page - create dialog timezone default", () => {
     let capturedBody: Record<string, unknown> | null = null;
     setMockSchedules(createMockSchedules() as ScheduleResponse[]);
     server.use(
-      mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+      mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
         capturedBody = body as Record<string, unknown>;
         return respond(
           201,

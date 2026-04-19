@@ -289,7 +289,7 @@ describe("zero-job-detail signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           capturedBody = body as Record<string, unknown>;
           return respond(
             201,
@@ -331,7 +331,7 @@ describe("zero-job-detail signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           capturedBody = body as Record<string, unknown>;
           return respond(
             201,
@@ -370,7 +370,7 @@ describe("zero-job-detail signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           capturedBody = body as Record<string, unknown>;
           return respond(
             201,
@@ -405,7 +405,7 @@ describe("zero-job-detail signals", () => {
 
       setMockSchedules([]);
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+        mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           capturedBody = body as Record<string, unknown>;
           return respond(
             201,
@@ -483,7 +483,7 @@ describe("zero-job-detail signals", () => {
       server.use(
         mockApi(
           zeroSchedulesEnableContract.enable,
-          async ({ request, body, respond }) => {
+          ({ request, body, respond }) => {
             capturedUrl = request.url;
             capturedBody = body as Record<string, unknown>;
             return respond(200, mockScheduleResponse() as ScheduleResponse);

@@ -265,7 +265,7 @@ describe("directed connect page", () => {
     let capturedBody: { name: string; value: string } | undefined;
 
     server.use(
-      mockApi(zeroSecretsContract.set, async ({ body, respond }) => {
+      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
         capturedBody = { name: body.name, value: body.value };
         const now = new Date().toISOString();
         return respond(201, {

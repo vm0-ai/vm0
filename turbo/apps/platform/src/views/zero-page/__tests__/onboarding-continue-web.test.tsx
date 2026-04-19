@@ -467,13 +467,10 @@ describe("completeMemberOnboarding request body", () => {
 
     let receivedBody: unknown = null;
     server.use(
-      mockApi(
-        onboardingCompleteContract.complete,
-        async ({ body, respond }) => {
-          receivedBody = body;
-          return respond(200, { ok: true });
-        },
-      ),
+      mockApi(onboardingCompleteContract.complete, ({ body, respond }) => {
+        receivedBody = body;
+        return respond(200, { ok: true });
+      }),
     );
 
     detachedSetupPage({ context, path: "/onboarding" });
@@ -516,13 +513,10 @@ describe("completeMemberOnboarding request body", () => {
 
     let receivedBody: unknown = null;
     server.use(
-      mockApi(
-        onboardingCompleteContract.complete,
-        async ({ body, respond }) => {
-          receivedBody = body;
-          return respond(200, { ok: true });
-        },
-      ),
+      mockApi(onboardingCompleteContract.complete, ({ body, respond }) => {
+        receivedBody = body;
+        return respond(200, { ok: true });
+      }),
     );
 
     detachedSetupPage({ context, path: "/onboarding" });
