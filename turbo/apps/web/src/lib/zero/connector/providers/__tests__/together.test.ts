@@ -30,4 +30,10 @@ describe("connector/providers/together", () => {
       );
     });
   });
+
+  describe("getSecretName", () => {
+    it("returns TOGETHER_TOKEN", () => {
+      expect(togetherHandler.getSecretName()).toBe("TOGETHER_TOKEN");
+    });
+  });
 });
