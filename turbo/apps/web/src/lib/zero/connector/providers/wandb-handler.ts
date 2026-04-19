@@ -18,6 +18,6 @@ export const wandbHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "WANDB_API_KEY";
+    return "WANDB_TOKEN";
   },
 };
