@@ -55,6 +55,36 @@ _SENSITIVE_HEADER_KEYWORDS = (
 )
 
 
+def _make_streaming_decompressor(decomp_fn, error_cls, encoding_label: str):
+    """Wrap a chunk decompressor with log-once + short-circuit on failure.
+
+    ``zlib`` / ``brotli`` / ``zstd`` streaming decompressors have internal
+    state that becomes undefined after a decompression error — subsequent
+    ``decomp_fn(chunk)`` calls may keep raising or silently produce garbage
+    plaintext.  On first error we log once (at debug, mirroring the
+    non-streaming ``decompress_body`` pattern), latch a broken flag, and
+    return ``b""`` for every subsequent chunk so downstream parsers don't
+    consume corrupt output.
+    """
+    broken = False
+
+    def wrapper(chunk: bytes) -> bytes:
+        nonlocal broken
+        if broken:
+            return b""
+        try:
+            return decomp_fn(chunk)
+        except error_cls as exc:
+            broken = True
+            try:
+                ctx.log.debug(f"Streaming decompression failed ({encoding_label}): {exc}")
+            except AttributeError:
+                pass  # ctx.log unavailable outside mitmproxy runtime
+            return b""
+
+    return wrapper
+
+
 def create_stream_decompressor(headers: http.Headers):
     """Create an incremental decompressor for streaming chunks.
 
@@ -67,34 +97,13 @@ def create_stream_decompressor(headers: http.Headers):
     if encoding in ("gzip", "deflate"):
         wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
         obj = zlib.decompressobj(wbits)
-
-        def decompress_zlib(chunk: bytes) -> bytes:
-            try:
-                return obj.decompress(chunk)
-            except zlib.error:
-                return b""
-
-        return decompress_zlib
+        return _make_streaming_decompressor(obj.decompress, zlib.error, encoding)
     if encoding == "br":
         dec = brotli.Decompressor()
-
-        def decompress_br(chunk: bytes) -> bytes:
-            try:
-                return dec.process(chunk)
-            except brotli.error:
-                return b""
-
-        return decompress_br
+        return _make_streaming_decompressor(dec.process, brotli.error, "br")
     if encoding == "zstd":
         obj = zstandard.ZstdDecompressor().decompressobj()
-
-        def decompress_zstd(chunk: bytes) -> bytes:
-            try:
-                return obj.decompress(chunk)
-            except zstandard.ZstdError:
-                return b""
-
-        return decompress_zstd
+        return _make_streaming_decompressor(obj.decompress, zstandard.ZstdError, "zstd")
     return None
 
 

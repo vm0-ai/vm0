@@ -13,6 +13,7 @@ from body_utils import (
     _redact_headers,
     _truncate_bytes_utf8_safe,
     add_capture_fields,
+    create_stream_decompressor,
 )
 from usage import extract_usage_from_json
 
@@ -755,3 +756,110 @@ class TestExtractUsageFromJson:
         assert result is not None
         assert result["input_tokens"] == 50
         assert result["output_tokens"] == 100
+
+
+class TestStreamDecompressor:
+    """Direct tests for ``create_stream_decompressor`` — exercises the
+    log-once + short-circuit guard that protects SSE/ndjson usage
+    extraction from garbage plaintext after a mid-stream failure.
+    """
+
+    def test_gzip_happy_path(self, headers):
+        import gzip
+
+        decomp = create_stream_decompressor(headers(("Content-Encoding", "gzip")))
+        assert decomp is not None
+        assert decomp(gzip.compress(b"hello world")) == b"hello world"
+
+    def test_brotli_happy_path(self, headers):
+        import brotli
+
+        decomp = create_stream_decompressor(headers(("Content-Encoding", "br")))
+        assert decomp is not None
+        assert decomp(brotli.compress(b"hello world")) == b"hello world"
+
+    def test_zstd_happy_path(self, headers):
+        import zstandard
+
+        decomp = create_stream_decompressor(headers(("Content-Encoding", "zstd")))
+        assert decomp is not None
+        assert decomp(zstandard.ZstdCompressor().compress(b"hello world")) == b"hello world"
+
+    def test_no_encoding_returns_none(self, headers):
+        assert create_stream_decompressor(headers()) is None
+
+    def test_identity_returns_none(self, headers):
+        assert create_stream_decompressor(headers(("Content-Encoding", "identity"))) is None
+
+    def test_gzip_error_logs_once_and_short_circuits(self, headers, mitm_ctx):
+        with mitm_ctx() as log:
+            decomp = create_stream_decompressor(headers(("Content-Encoding", "gzip")))
+            assert decomp is not None
+            assert decomp(b"not gzip at all") == b""
+            assert decomp(b"more garbage") == b""
+            assert decomp(b"even more") == b""
+        assert log.debug.call_count == 1
+        msg = log.debug.call_args[0][0]
+        assert "Streaming decompression failed" in msg
+        assert "gzip" in msg
+
+    def test_brotli_error_logs_once_and_short_circuits(self, headers, mitm_ctx):
+        with mitm_ctx() as log:
+            decomp = create_stream_decompressor(headers(("Content-Encoding", "br")))
+            assert decomp is not None
+            assert decomp(b"not brotli at all") == b""
+            assert decomp(b"more garbage") == b""
+        assert log.debug.call_count == 1
+        assert "br" in log.debug.call_args[0][0]
+
+    def test_zstd_error_logs_once_and_short_circuits(self, headers, mitm_ctx):
+        with mitm_ctx() as log:
+            decomp = create_stream_decompressor(headers(("Content-Encoding", "zstd")))
+            assert decomp is not None
+            assert decomp(b"not zstd at all") == b""
+            assert decomp(b"more garbage") == b""
+        assert log.debug.call_count == 1
+        assert "zstd" in log.debug.call_args[0][0]
+
+    def test_error_without_ctx_log_does_not_raise(self, headers):
+        # No mitm_ctx patch — ctx.log is unavailable.  Guard must swallow.
+        decomp = create_stream_decompressor(headers(("Content-Encoding", "gzip")))
+        assert decomp is not None
+        assert decomp(b"garbage") == b""
+        assert decomp(b"more garbage") == b""
+
+    def test_short_circuit_skips_decomp_fn_after_failure(self, headers, mitm_ctx, monkeypatch):
+        # Verify the broken flag actually prevents subsequent ``decomp_fn``
+        # calls — not just that they happen to return b"".  ``zlib.Decompress``
+        # is a C type whose ``decompress`` attribute is read-only, so we wrap
+        # the factory's return value in a proxy that counts delegations.
+        import zlib
+
+        real_factory = zlib.decompressobj
+
+        class CountingProxy:
+            def __init__(self, real):
+                self._real = real
+                self.count = 0
+
+            def decompress(self, chunk, *a, **kw):
+                self.count += 1
+                return self._real.decompress(chunk, *a, **kw)
+
+        proxies: list[CountingProxy] = []
+
+        def factory(*args, **kwargs):
+            proxy = CountingProxy(real_factory(*args, **kwargs))
+            proxies.append(proxy)
+            return proxy
+
+        monkeypatch.setattr("body_utils.zlib.decompressobj", factory)
+        with mitm_ctx():
+            decomp = create_stream_decompressor(headers(("Content-Encoding", "gzip")))
+            assert decomp is not None
+            assert decomp(b"not gzip") == b""
+            assert decomp(b"more garbage") == b""
+            assert decomp(b"and more") == b""
+        # Only the first chunk reaches zlib; later ones are short-circuited.
+        assert len(proxies) == 1
+        assert proxies[0].count == 1
