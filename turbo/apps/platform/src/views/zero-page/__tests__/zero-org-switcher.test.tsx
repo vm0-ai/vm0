@@ -16,14 +16,8 @@ beforeEach(() => {
   resetMockOrg();
 });
 
-// All default API state (team, chat-threads, org/logo) is covered by global handlers.
-function mockAPIs(): void {
-  // No-op: all required endpoints are covered by global default handlers.
-}
-
 describe("zero org switcher - current org avatar and name render (SIDEBAR-D-054)", () => {
   it("displays the current organization name in the sidebar trigger", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -72,7 +66,6 @@ describe("zero org switcher - organization slug renders (SIDEBAR-D-055)", () => 
 
 describe("zero org switcher - pending invitations badge shows count (SIDEBAR-D-056)", () => {
   it("shows a red dot badge when there are pending invitations", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -105,7 +98,6 @@ describe("zero org switcher - pending invitations badge shows count (SIDEBAR-D-0
 
 describe("zero org switcher - pending invitations list renders (SIDEBAR-D-057)", () => {
   it("shows pending invitation items when dropdown is opened", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -144,7 +136,6 @@ describe("zero org switcher - pending invitations list renders (SIDEBAR-D-057)",
 
 describe("zero org switcher - other org memberships list renders (SIDEBAR-D-058)", () => {
   it("shows other organizations the user belongs to when dropdown is opened", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -172,7 +163,6 @@ describe("zero org switcher - other org memberships list renders (SIDEBAR-D-058)
 
 describe("zero org switcher - dropdown opens (SIDEBAR-D-059)", () => {
   it("shows org management options when dropdown is opened", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -265,7 +255,6 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
       },
     );
 
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -299,7 +288,6 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
 
 describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", () => {
   it("removes the invitation from the list after Join is clicked", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -370,7 +358,6 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
       },
     );
 
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -402,7 +389,6 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
 
 describe("zero org switcher - pending invitations badge hidden when none (SIDEBAR-D-064)", () => {
   it("should not show red dot when there are no pending invitations", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -424,8 +410,6 @@ describe("zero org switcher - pending invitations badge hidden when none (SIDEBA
 
 describe("zero org switcher - create workspace visibility based on createOrganizationEnabled", () => {
   it("hides create workspace when createOrganizationEnabled is false", async () => {
-    mockAPIs();
-
     detachedSetupPage({
       context,
       path: "/",
@@ -448,8 +432,6 @@ describe("zero org switcher - create workspace visibility based on createOrganiz
   });
 
   it("shows create workspace when createOrganizationEnabled is true", async () => {
-    mockAPIs();
-
     detachedSetupPage({
       context,
       path: "/",

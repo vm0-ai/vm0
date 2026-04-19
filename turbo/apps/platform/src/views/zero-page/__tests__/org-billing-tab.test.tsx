@@ -17,11 +17,6 @@ import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
-// All default API state (chat-threads, team, org/logo) is covered by global handlers.
-function mockAPIs(): void {
-  // No-op: all required endpoints are covered by global default handlers.
-}
-
 async function openBillingTab() {
   detachedSetupPage({ context, path: "/?settings=billing" });
   await waitFor(() => {
@@ -31,7 +26,6 @@ async function openBillingTab() {
 
 describe("org billing tab - plan display", () => {
   it("should show Free plan for free tier", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -42,7 +36,6 @@ describe("org billing tab - plan display", () => {
   });
 
   it("should show Pro plan for pro tier", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -58,7 +51,6 @@ describe("org billing tab - plan display", () => {
   });
 
   it("should show Upgrade button for free tier", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -75,7 +67,6 @@ describe("org billing tab - plan display", () => {
   });
 
   it("should show Compare all plans link", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -91,7 +82,6 @@ describe("org billing tab - plan display", () => {
 describe("org billing tab - pricing sub-page navigation", () => {
   it("should navigate to pricing page when clicking Compare all plans", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -114,7 +104,6 @@ describe("org billing tab - pricing sub-page navigation", () => {
 
   it("should navigate back from pricing page via Back button", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -139,7 +128,6 @@ describe("org billing tab - pricing sub-page navigation", () => {
 
   it("should mark current plan as disabled on pricing page", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -172,7 +160,6 @@ describe("org billing tab - pricing sub-page navigation", () => {
 
 describe("org billing tab - auto-recharge section", () => {
   it("should show auto-recharge section for paid plans", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -191,7 +178,6 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should not show auto-recharge section for free plan", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -204,7 +190,6 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should hydrate form with server auto-recharge config when enabled", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -238,7 +223,6 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should show toggle off when server auto-recharge is disabled", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -266,7 +250,6 @@ describe("org billing tab - auto-recharge section", () => {
 
   it("should enable toggle when clicked with no prior threshold/amount config", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -315,7 +298,6 @@ describe("org billing tab - auto-recharge section", () => {
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -374,7 +356,6 @@ describe("org billing tab - auto-recharge section", () => {
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -416,7 +397,6 @@ describe("org billing tab - cancellation pending", () => {
   const futureDate = new Date(Date.now() + 30 * 86_400 * 1000).toISOString();
 
   it("should show cancellation notice when subscription is pending cancellation", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -436,7 +416,6 @@ describe("org billing tab - cancellation pending", () => {
   });
 
   it("should show 'Ends on' instead of 'Renews' when cancelling", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -456,7 +435,6 @@ describe("org billing tab - cancellation pending", () => {
   });
 
   it("should hide Downgrade button when cancellation is pending", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -480,7 +458,6 @@ describe("org billing tab - cancellation pending", () => {
   });
 
   it("should show Manage button when cancellation is pending", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -504,7 +481,6 @@ describe("org billing tab - cancellation pending", () => {
   });
 
   it("should show normal state when cancelAtPeriodEnd is false", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -533,7 +509,6 @@ describe("org billing tab - cancellation pending", () => {
 describe("org billing tab - plan card details", () => {
   it("should show plan cards with upgrade buttons on pricing page", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -571,7 +546,6 @@ describe("org billing tab - plan card details", () => {
 
 describe("org billing tab - renewal date display", () => {
   it("should show renewal date when subscription is active and not cancelling", async () => {
-    mockAPIs();
     const futureDate = new Date(Date.now() + 30 * 86_400 * 1000).toISOString();
     setMockBillingStatus({
       tier: "pro",
@@ -602,7 +576,6 @@ describe("org billing tab - billing states", () => {
         });
       }),
     );
-    mockAPIs();
 
     await openBillingTab();
 
@@ -633,7 +606,6 @@ describe("org billing tab - plan card actions", () => {
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -677,7 +649,6 @@ describe("org billing tab - stripe portal", () => {
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -707,7 +678,6 @@ describe("org billing tab - stripe portal", () => {
 
 describe("org billing tab - downgrade flow", () => {
   it("should show Downgrade button for paid tier (pro)", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -729,7 +699,6 @@ describe("org billing tab - downgrade flow", () => {
   });
 
   it("should show Downgrade button for team tier", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "team",
       credits: 120_000,
@@ -751,7 +720,6 @@ describe("org billing tab - downgrade flow", () => {
   });
 
   it("should not show Downgrade button for free tier", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -769,7 +737,6 @@ describe("org billing tab - downgrade flow", () => {
 
   it("should open downgrade dialog on Downgrade button click for pro user", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -801,7 +768,6 @@ describe("org billing tab - downgrade flow", () => {
 
   it("should open downgrade dialog with plan selection for team user", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "team",
       credits: 120_000,
@@ -841,7 +807,6 @@ describe("org billing tab - downgrade flow", () => {
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -886,7 +851,6 @@ describe("org billing tab - downgrade flow", () => {
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -928,7 +892,6 @@ describe("org billing tab - downgrade flow", () => {
 
   it("should route pricing page downgrade through dialog", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -966,7 +929,6 @@ describe("org billing tab - downgrade flow", () => {
 
 describe("org billing tab - billing status refresh", () => {
   it("should update plan display when billing status is refreshed", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();

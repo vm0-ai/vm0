@@ -38,18 +38,12 @@ beforeEach(() => {
   });
 });
 
-// All default API state (org, chat-threads, team, org/logo) is covered by global handlers.
-function mockBaseAPIs(): void {
-  // No-op: all required endpoints are covered by global default handlers.
-}
-
 // ---------------------------------------------------------------------------
 // InternalConnectorLogos (ORG-D-118, ORG-D-119, ORG-D-120, ORG-I-121)
 // ---------------------------------------------------------------------------
 
 describe("internal connector logos - display (ORG-D-118)", () => {
   it("lists all connector types with labels and type identifiers", async () => {
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/__internal-connector-logos" });
     const connectorTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
     // Verify at least one connector type and its label appears in the document
@@ -71,7 +65,6 @@ describe("internal connector logos - display (ORG-D-118)", () => {
 
 describe("internal connector logos - display (ORG-D-119)", () => {
   it("heading displays the count of connector types", async () => {
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/__internal-connector-logos" });
     const connectorTypes = Object.keys(CONNECTOR_TYPES);
     await waitFor(() => {
@@ -85,7 +78,6 @@ describe("internal connector logos - display (ORG-D-119)", () => {
 describe("internal connector logos - interaction (ORG-I-121)", () => {
   it("size selection buttons change the displayed icon size", async () => {
     const user = userEvent.setup();
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/__internal-connector-logos" });
     // Default size button is "128" — clicking "16" should switch to a smaller size
     await waitFor(() => {
@@ -149,7 +141,6 @@ function testSchedule(
 function mockScheduleDetailAPIs(
   schedules: ScheduleResponse[] = [testSchedule()],
 ) {
-  mockBaseAPIs();
   server.use(
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules });
@@ -394,7 +385,6 @@ describe("setup prompt - state (ORG-S-107)", () => {
 
 describe("clerk provider - display (ORG-D-122)", () => {
   it("clerk provider loads with publishable key from environment", async () => {
-    mockBaseAPIs();
     server.use(
       http.get("*/api/zero/schedules", () => {
         return HttpResponse.json({ schedules: [] });

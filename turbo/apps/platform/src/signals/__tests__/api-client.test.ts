@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOrgContract } from "@vm0/core";
@@ -42,11 +43,13 @@ describe("zeroClient$ 401 redirect", () => {
       withoutRender: true,
     });
 
+    // Keep raw http.get for 403 since it's not in zeroOrgContract.get's defined responses
     server.use(
-      mockApi(zeroOrgContract.get, ({ respond }) => {
-        return respond(404, {
-          error: { message: "Forbidden", code: "NOT_FOUND" },
-        });
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json(
+          { error: { message: "Forbidden", code: "FORBIDDEN" } },
+          { status: 403 },
+        );
       }),
     );
 
@@ -56,7 +59,7 @@ describe("zeroClient$ 401 redirect", () => {
     const client = createClient(zeroOrgContract);
     const result = await client.get();
 
-    expect(result.status).toBe(404);
+    expect(result.status).toBe(403);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 

@@ -18,7 +18,6 @@ import {
   downgradeDialogOpen$,
   setBillingDialogOpen$,
 } from "../../../signals/zero-page/billing.ts";
-import { mockBillingPageAPIs } from "./billing-dialog-test-helpers.ts";
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
@@ -53,7 +52,6 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -80,7 +78,6 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
 
 describe("chat-s-084: auto-recharge toggle state reflects enabled value from server", () => {
   it("shows aria-checked=false when auto-recharge is disabled", async () => {
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -99,7 +96,6 @@ describe("chat-s-084: auto-recharge toggle state reflects enabled value from ser
   });
 
   it("shows aria-checked=true when auto-recharge is enabled", async () => {
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -133,7 +129,6 @@ describe("chat-i-079: threshold input updates form state on change", () => {
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -178,7 +173,6 @@ describe("chat-i-080: amount input updates form state on change", () => {
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -223,7 +217,6 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -269,7 +262,6 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
 describe("chat-i-082: plan card click updates selected tier", () => {
   it("sets Team card to aria-pressed=true when clicked", async () => {
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -311,7 +303,6 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -349,7 +340,6 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
 
   it("opens downgrade dialog when Downgrade is clicked after selecting Free", async () => {
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -387,10 +377,6 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
 });
 
 describe("chat-i-085: form fields derive from server config via async computed", () => {
-  beforeEach(() => {
-    mockBillingPageAPIs();
-  });
-
   it("displays threshold and amount from autoRechargeConfig$ async computed path", async () => {
     setMockBillingStatus({
       tier: "pro",
@@ -412,10 +398,6 @@ describe("chat-i-085: form fields derive from server config via async computed",
 });
 
 describe("chat-i-086: form overrides clear after successful save", () => {
-  beforeEach(() => {
-    mockBillingPageAPIs();
-  });
-
   it("reverts inputs to server-returned values after save completes", async () => {
     // The default mock PUT handler (apiBillingHandlers) updates mockBillingStatus
     // in place, so after PUT the GET /billing/status will return the new values.
