@@ -13,6 +13,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -30,31 +31,27 @@ function defaultAgent() {
 
 describe("zero jobs page - sub-agent grid", () => {
   it("renders sub-agent cards in the grid", async () => {
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          defaultAgent(),
-          {
-            id: "agent-alpha",
-            displayName: "Alpha",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v2",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-          {
-            id: "agent-beta",
-            displayName: "Beta",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v3",
-            updatedAt: "2024-01-03T00:00:00Z",
-          },
-        ]);
-      }),
-    );
+    setMockTeam([
+      defaultAgent(),
+      {
+        id: "agent-alpha",
+        displayName: "Alpha",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "v2",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+      {
+        id: "agent-beta",
+        displayName: "Beta",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "v3",
+        updatedAt: "2024-01-03T00:00:00Z",
+      },
+    ]);
 
     detachedSetupPage({ context, path: "/agents" });
 
@@ -65,31 +62,27 @@ describe("zero jobs page - sub-agent grid", () => {
   });
 
   it("renders agent display name and falls back to id when displayName is null", async () => {
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          defaultAgent(),
-          {
-            id: "agent-named",
-            displayName: "Research Assistant",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v2",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-          {
-            id: "agent-no-name",
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v3",
-            updatedAt: "2024-01-03T00:00:00Z",
-          },
-        ]);
-      }),
-    );
+    setMockTeam([
+      defaultAgent(),
+      {
+        id: "agent-named",
+        displayName: "Research Assistant",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "v2",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+      {
+        id: "agent-no-name",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "v3",
+        updatedAt: "2024-01-03T00:00:00Z",
+      },
+    ]);
 
     detachedSetupPage({ context, path: "/agents" });
 
@@ -101,22 +94,18 @@ describe("zero jobs page - sub-agent grid", () => {
   });
 
   it("renders avatar images for agents with custom avatarUrl", async () => {
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          defaultAgent(),
-          {
-            id: "agent-with-avatar",
-            displayName: "Avatar Agent",
-            description: null,
-            sound: null,
-            avatarUrl: "https://example.com/avatar.png",
-            headVersionId: "v2",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-        ]);
-      }),
-    );
+    setMockTeam([
+      defaultAgent(),
+      {
+        id: "agent-with-avatar",
+        displayName: "Avatar Agent",
+        description: null,
+        sound: null,
+        avatarUrl: "https://example.com/avatar.png",
+        headVersionId: "v2",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+    ]);
 
     detachedSetupPage({ context, path: "/agents" });
 

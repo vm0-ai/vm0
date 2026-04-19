@@ -6,6 +6,9 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroTeamContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -30,10 +33,8 @@ function mockTeamAPI(
     updatedAt: string;
   }[] = [],
 ) {
+  setMockTeam([DEFAULT_AGENT, ...extraAgents]);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([DEFAULT_AGENT, ...extraAgents]);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -79,12 +80,12 @@ describe("zero jobs page - create agent dialog", () => {
     };
     let teamCallCount = 0;
     server.use(
-      http.get("*/api/zero/team", () => {
+      mockApi(zeroTeamContract.list, ({ respond }) => {
         teamCallCount++;
         if (teamCallCount === 1) {
-          return HttpResponse.json([DEFAULT_AGENT]);
+          return respond(200, [DEFAULT_AGENT]);
         }
-        return HttpResponse.json([DEFAULT_AGENT, NEW_AGENT]);
+        return respond(200, [DEFAULT_AGENT, NEW_AGENT]);
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -148,21 +149,19 @@ describe("zero jobs page - create agent dialog", () => {
 
 describe("zero jobs page - avatar display", () => {
   it("renders avatar for agents in the grid (AGENT-D-012)", async () => {
+    setMockTeam([
+      DEFAULT_AGENT,
+      {
+        id: "avatar-agent-id",
+        displayName: "Avatar Agent",
+        description: "Has a custom SVG avatar",
+        sound: null,
+        avatarUrl: "svg:r2s1h4c3f2m",
+        headVersionId: "version_av",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+    ]);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          DEFAULT_AGENT,
-          {
-            id: "avatar-agent-id",
-            displayName: "Avatar Agent",
-            description: "Has a custom SVG avatar",
-            sound: null,
-            avatarUrl: "svg:r2s1h4c3f2m",
-            headVersionId: "version_av",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-        ]);
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
@@ -177,21 +176,19 @@ describe("zero jobs page - avatar display", () => {
   });
 
   it("renders fallback avatar when avatarUrl is null (AGENT-D-013)", async () => {
+    setMockTeam([
+      DEFAULT_AGENT,
+      {
+        id: "no-avatar-agent-id",
+        displayName: "No Avatar Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_no",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+    ]);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          DEFAULT_AGENT,
-          {
-            id: "no-avatar-agent-id",
-            displayName: "No Avatar Agent",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_no",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-        ]);
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
@@ -209,21 +206,19 @@ describe("zero jobs page - avatar display", () => {
 describe("zero jobs page - navigation", () => {
   it("navigates to agent detail when an agent card is clicked (AGENT-D-009)", async () => {
     const user = userEvent.setup();
+    setMockTeam([
+      DEFAULT_AGENT,
+      {
+        id: "nav-agent-id",
+        displayName: "Nav Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_nav",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+    ]);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          DEFAULT_AGENT,
-          {
-            id: "nav-agent-id",
-            displayName: "Nav Agent",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_nav",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-        ]);
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
