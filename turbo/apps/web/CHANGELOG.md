@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.259.0](https://github.com/vm0-ai/vm0/compare/web-v12.258.0...web-v12.259.0) (2026-04-19)
+
+
+### Features
+
+* add buffer connector ([#10024](https://github.com/vm0-ai/vm0/issues/10024)) ([631cce7](https://github.com/vm0-ai/vm0/commit/631cce7e4ac7bb3284ef8be3039336b53847185a))
+* add coda connector ([#10020](https://github.com/vm0-ai/vm0/issues/10020)) ([36f0bdf](https://github.com/vm0-ai/vm0/commit/36f0bdf8025ab498a0eb5fc81a0691e8d75de241))
+* add dropbox-sign connector ([#10022](https://github.com/vm0-ai/vm0/issues/10022)) ([35eef8a](https://github.com/vm0-ai/vm0/commit/35eef8ab2dda16fc5f38c56db6a89e9e6c3e7075))
+* add greenhouse connector ([#10021](https://github.com/vm0-ai/vm0/issues/10021)) ([d8661de](https://github.com/vm0-ai/vm0/commit/d8661ded0a2c73479c5ed19b15bef41aaf5037b3))
+* add miro connector ([#10019](https://github.com/vm0-ai/vm0/issues/10019)) ([1913dac](https://github.com/vm0-ai/vm0/commit/1913dac818876f6d62ff0aebff6f3af058061187))
+* add pandadoc connector ([#10023](https://github.com/vm0-ai/vm0/issues/10023)) ([6ed9884](https://github.com/vm0-ai/vm0/commit/6ed9884e2241d4a002310efd252baa4b6f9e0f6c))
+* add zoom connector ([#10018](https://github.com/vm0-ai/vm0/issues/10018)) ([3ef5838](https://github.com/vm0-ai/vm0/commit/3ef5838b90bdcb2ac76ce7945afdf18c7c92058e))
+* **chat:** add thread read indicator with slack-style watermark ([#10054](https://github.com/vm0-ai/vm0/issues/10054)) ([57682ff](https://github.com/vm0-ai/vm0/commit/57682ff7c7b98a5f62b90c41ee6a08d65b5e6ca7))
+* close staff-org defaults except sandbox reuse ([#10053](https://github.com/vm0-ai/vm0/issues/10053)) ([dbbc51b](https://github.com/vm0-ai/vm0/commit/dbbc51b6b0e5c1a27de1327aa149aa5acc1faa68))
+
+
+### Bug Fixes
+
+* **logger:** serialize Error objects; name report-error errorHandler ([#10041](https://github.com/vm0-ai/vm0/issues/10041)) ([5da6659](https://github.com/vm0-ai/vm0/commit/5da66590142fdf65908aaaa064894fdd8b1cad26))
+* **ts-rest-handler:** report unhandled 5xx to Sentry ([#10043](https://github.com/vm0-ai/vm0/issues/10043)) ([e8097a9](https://github.com/vm0-ai/vm0/commit/e8097a9e041d2bbe1fd6577669fa01963edb867f))
+* **web:** restore trigger condition for agent self-update prompt ([#10066](https://github.com/vm0-ai/vm0/issues/10066)) ([f3d91ac](https://github.com/vm0-ai/vm0/commit/f3d91ac5cee3f6fc915e0aa6c3a691905b4d781a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.203.0
+
 ## [12.258.0](https://github.com/vm0-ai/vm0/compare/web-v12.257.0...web-v12.258.0) (2026-04-19)
 
 

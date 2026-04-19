@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.257.0](https://github.com/vm0-ai/vm0/compare/app-v0.256.0...app-v0.257.0) (2026-04-19)
+
+
+### Features
+
+* add buffer connector ([#10024](https://github.com/vm0-ai/vm0/issues/10024)) ([631cce7](https://github.com/vm0-ai/vm0/commit/631cce7e4ac7bb3284ef8be3039336b53847185a))
+* add coda connector ([#10020](https://github.com/vm0-ai/vm0/issues/10020)) ([36f0bdf](https://github.com/vm0-ai/vm0/commit/36f0bdf8025ab498a0eb5fc81a0691e8d75de241))
+* add dropbox-sign connector ([#10022](https://github.com/vm0-ai/vm0/issues/10022)) ([35eef8a](https://github.com/vm0-ai/vm0/commit/35eef8ab2dda16fc5f38c56db6a89e9e6c3e7075))
+* add greenhouse connector ([#10021](https://github.com/vm0-ai/vm0/issues/10021)) ([d8661de](https://github.com/vm0-ai/vm0/commit/d8661ded0a2c73479c5ed19b15bef41aaf5037b3))
+* add miro connector ([#10019](https://github.com/vm0-ai/vm0/issues/10019)) ([1913dac](https://github.com/vm0-ai/vm0/commit/1913dac818876f6d62ff0aebff6f3af058061187))
+* add pandadoc connector ([#10023](https://github.com/vm0-ai/vm0/issues/10023)) ([6ed9884](https://github.com/vm0-ai/vm0/commit/6ed9884e2241d4a002310efd252baa4b6f9e0f6c))
+* add zoom connector ([#10018](https://github.com/vm0-ai/vm0/issues/10018)) ([3ef5838](https://github.com/vm0-ai/vm0/commit/3ef5838b90bdcb2ac76ce7945afdf18c7c92058e))
+* **chat:** add thread read indicator with slack-style watermark ([#10054](https://github.com/vm0-ai/vm0/issues/10054)) ([57682ff](https://github.com/vm0-ai/vm0/commit/57682ff7c7b98a5f62b90c41ee6a08d65b5e6ca7))
+* **chat:** escape first thread to agent chat page via mod+shift+up ([#10050](https://github.com/vm0-ai/vm0/issues/10050)) ([2ae20ad](https://github.com/vm0-ai/vm0/commit/2ae20ad1137c32d111e63642af0e00bb86f04b46))
+
+
+### Bug Fixes
+
+* **chat:** avoid default-avatar flicker in chat header during load ([#10052](https://github.com/vm0-ai/vm0/issues/10052)) ([612b89c](https://github.com/vm0-ai/vm0/commit/612b89c28a3d490fd43a3f41c679d9524f208af1))
+
+
+### Refactoring
+
+* drop new-chat dedup, use useLoadableSet to gate the new button ([#10047](https://github.com/vm0-ai/vm0/issues/10047)) ([cf22963](https://github.com/vm0-ai/vm0/commit/cf22963dbd5b64bbe3237e66e276ce0a56cf4086))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.203.0
+
 ## [0.256.0](https://github.com/vm0-ai/vm0/compare/app-v0.255.0...app-v0.256.0) (2026-04-19)
 
 
