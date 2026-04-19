@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.4...guest-agent-v0.21.5) (2026-04-19)
+
+
+### Bug Fixes
+
+* **guest-agent:** fail fast on empty session id before checkpoint ([#10147](https://github.com/vm0-ai/vm0/issues/10147)) ([42746f0](https://github.com/vm0-ai/vm0/commit/42746f0899575f43a1d9ec411c50feda29c24be6))
+* **guest-agent:** record per-op durations for checkpoint session reads ([#10141](https://github.com/vm0-ai/vm0/issues/10141)) ([10d5a57](https://github.com/vm0-ai/vm0/commit/10d5a572e7cce65a0ac65fc3776626a1849ea6ff))
+
 ## [0.21.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.3...guest-agent-v0.21.4) (2026-04-18)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.262.0](https://github.com/vm0-ai/vm0/compare/app-v0.261.0...app-v0.262.0) (2026-04-19)
+
+
+### Features
+
+* add exa connector ([#10107](https://github.com/vm0-ai/vm0/issues/10107)) ([4232702](https://github.com/vm0-ai/vm0/commit/4232702d7ed283395b05825d84c37d450284c96a))
+* add together connector ([#10108](https://github.com/vm0-ai/vm0/issues/10108)) ([a0e4b0d](https://github.com/vm0-ai/vm0/commit/a0e4b0dbbd84cbc3099fd66d5b2d78ada62623cd))
+* **composer:** add per-run model picker next to send ([#10149](https://github.com/vm0-ai/vm0/issues/10149)) ([9079fbd](https://github.com/vm0-ai/vm0/commit/9079fbdb1f22e5669e2109856a3e9e68d183fd8f))
+
+
+### Refactoring
+
+* **platform:** migrate agents-domain server.use() overrides to mockApi (Phase 3) ([#10094](https://github.com/vm0-ai/vm0/issues/10094)) ([e9bb9de](https://github.com/vm0-ai/vm0/commit/e9bb9deb4779f6b52a20655523d4a2a22018e445))
+* **platform:** migrate chat/threads/runs/logs/logs server.use() overrides to mockApi (Phase 3) ([#10105](https://github.com/vm0-ai/vm0/issues/10105)) ([acbc1c0](https://github.com/vm0-ai/vm0/commit/acbc1c08b40f21b3e4ac4028b39d8d8175f75b74))
+* **platform:** migrate schedules/tasks/onboarding/phone/secrets/prefs to mockApi (Phase 3) ([#10119](https://github.com/vm0-ai/vm0/issues/10119)) ([b57db5f](https://github.com/vm0-ai/vm0/commit/b57db5f430a5c92aececac87ae15d99bfdd8479f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.208.0
+
 ## [0.261.0](https://github.com/vm0-ai/vm0/compare/app-v0.260.0...app-v0.261.0) (2026-04-19)
 
 

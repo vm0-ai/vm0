@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.208.0](https://github.com/vm0-ai/vm0/compare/core-v8.207.0...core-v8.208.0) (2026-04-19)
+
+
+### Features
+
+* add exa connector ([#10107](https://github.com/vm0-ai/vm0/issues/10107)) ([4232702](https://github.com/vm0-ai/vm0/commit/4232702d7ed283395b05825d84c37d450284c96a))
+* add together connector ([#10108](https://github.com/vm0-ai/vm0/issues/10108)) ([a0e4b0d](https://github.com/vm0-ai/vm0/commit/a0e4b0dbbd84cbc3099fd66d5b2d78ada62623cd))
+* **composer:** add per-run model picker next to send ([#10149](https://github.com/vm0-ai/vm0/issues/10149)) ([9079fbd](https://github.com/vm0-ai/vm0/commit/9079fbdb1f22e5669e2109856a3e9e68d183fd8f))
+* **zero:** configure model provider and model via cli ([#10142](https://github.com/vm0-ai/vm0/issues/10142)) ([5647c99](https://github.com/vm0-ai/vm0/commit/5647c99d5111bc160cbb013a742f44de37b28f72))
+
 ## [8.207.0](https://github.com/vm0-ai/vm0/compare/core-v8.206.0...core-v8.207.0) (2026-04-19)
 
 

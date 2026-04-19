@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.123.0](https://github.com/vm0-ai/vm0/compare/cli-v9.122.11...cli-v9.123.0) (2026-04-19)
+
+
+### Features
+
+* **zero:** configure model provider and model via cli ([#10142](https://github.com/vm0-ai/vm0/issues/10142)) ([5647c99](https://github.com/vm0-ai/vm0/commit/5647c99d5111bc160cbb013a742f44de37b28f72))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.208.0
+
 ## [9.122.11](https://github.com/vm0-ai/vm0/compare/cli-v9.122.10...cli-v9.122.11) (2026-04-19)
 
 

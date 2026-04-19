@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.86.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.1...runner-rs-v0.86.2) (2026-04-19)
+
+
+### Bug Fixes
+
+* **mitm-addon:** enforce decompress_body memory cap for zstd ([#10144](https://github.com/vm0-ai/vm0/issues/10144)) ([8f77ac8](https://github.com/vm0-ai/vm0/commit/8f77ac8bd0420a95672485a862393c41db38df86))
+* **mitm-addon:** log and short-circuit broken stream decompressors ([#10132](https://github.com/vm0-ai/vm0/issues/10132)) ([c82afd2](https://github.com/vm0-ai/vm0/commit/c82afd2b1ffdb9b09cdf62635995372476f680a2))
+
 ## [0.86.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.0...runner-rs-v0.86.1) (2026-04-19)
 
 

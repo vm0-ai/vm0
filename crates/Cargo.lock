@@ -1241,7 +1241,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.21.4"
+version = "0.21.5"
 dependencies = [
  "aho-corasick",
  "base64",
@@ -2512,7 +2512,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.86.1"
+version = "0.86.2"
 dependencies = [
  "ably-subscriber",
  "async-trait",
