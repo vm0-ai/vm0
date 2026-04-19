@@ -63,6 +63,7 @@ import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { gitlabHandler } from "./providers/gitlab-handler";
 import { granolaHandler } from "./providers/granola-handler";
 import { greenhouseHandler } from "./providers/greenhouse-handler";
+import { groqHandler } from "./providers/groq-handler";
 import { githubHandler } from "./providers/github-handler";
 import { heygenHandler } from "./providers/heygen-handler";
 import { huggingFaceHandler } from "./providers/hugging-face-handler";
@@ -227,6 +228,7 @@ export const PROVIDER_HANDLERS: Record<
   gitlab: gitlabHandler,
   granola: granolaHandler,
   greenhouse: greenhouseHandler,
+  groq: groqHandler,
   github: githubHandler,
   gmail: gmailHandler,
   heygen: heygenHandler,
