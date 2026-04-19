@@ -5,7 +5,12 @@ import {
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
 } from "../firewalls";
-import { resolveFirewallSelections, validateRule } from "../firewall-expander";
+import {
+  collectAndValidatePermissions,
+  resolveFirewallSelections,
+  validateRule,
+} from "../firewall-expander";
+import type { FirewallConfig } from "../firewalls";
 import type { FetchFn } from "../../firewall-loader";
 
 /** Helper to create a mock fetch function returning given body and status */
@@ -210,6 +215,68 @@ describe("resolveFirewallSelections", () => {
     expect(expanded[0]!.name).toBe("slack");
     expect(expanded[0]!.ref).toBe("slack");
     expect(expanded[0]!.apis.length).toBeGreaterThan(0);
+  });
+
+  it("collectAndValidatePermissions accepts mixed empty and non-empty apis", () => {
+    // Pins the per-api continue boundary: one api with empty permissions
+    // (auth-only injection + unknownPolicy fallback) alongside one with
+    // real permissions should both validate and only the latter's names
+    // should appear in the returned set.
+    const config: FirewallConfig = {
+      name: "mixed",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [],
+        },
+        {
+          base: "https://uploads.example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "upload", rules: ["POST /files"] },
+            { name: "read", rules: ["GET /files/{id}"] },
+          ],
+        },
+      ],
+    };
+    const names = collectAndValidatePermissions("mixed", config);
+    expect([...names].sort()).toEqual(["read", "upload"]);
+  });
+
+  it("should retain api entries with empty permissions when user picks all", async () => {
+    // Regression for the filter bug: api entries configured as
+    // `permissions: []` rely on base URL match + unknownPolicy fallback.
+    // Dropping them would make the firewall inject no auth headers.
+    // Uses a synthetic config so the test's meaning is independent of
+    // any individual builtin connector's permission list evolving.
+    const yaml = `
+name: empty-perm
+placeholders:
+  TOKEN: "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"
+apis:
+  - base: https://api.empty-perm.com
+    auth:
+      headers:
+        Authorization: "Bearer \${{ secrets.TOKEN }}"
+    permissions: []
+  - base: https://uploads.empty-perm.com
+    auth:
+      headers:
+        Authorization: "Bearer \${{ secrets.TOKEN }}"
+    permissions: []
+`;
+    const expanded = await resolveFirewallSelections(
+      { "empty-perm": { permissions: "all" } },
+      mockFetch(yaml),
+    );
+
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.name).toBe("empty-perm");
+    expect(expanded[0]!.apis).toHaveLength(2);
+    for (const api of expanded[0]!.apis) {
+      expect(api.permissions ?? []).toEqual([]);
+    }
   });
 
   it("should support full GitHub URL as ref", async () => {

@@ -184,9 +184,10 @@ export function collectAndValidatePermissions(
   for (const api of serviceConfig.apis) {
     validateBaseUrl(api.base, serviceConfig.name);
     if (!api.permissions || api.permissions.length === 0) {
-      throw new Error(
-        `API entry "${api.base}" in firewall "${serviceConfig.name}" (ref "${ref}") has no permissions`,
-      );
+      // Empty permissions is a valid shape: every request under this base
+      // falls through to the firewall's unknownPolicy. Auth headers are
+      // still injected on base URL match.
+      continue;
     }
     // Uniqueness is enforced within a single api_entry. The same permission
     // name across different api_entries is allowed (e.g., "full-access" on
@@ -289,6 +290,10 @@ export async function resolveFirewallSelections(
         };
       })
       .filter((api) => {
+        // When user picked "all", keep every api — including
+        // empty-permissions ones where auth-only injection plus
+        // unknownPolicy fallback is the intended semantics.
+        if (selectedSet === null) return true;
         return (api.permissions ?? []).length > 0;
       });
 
