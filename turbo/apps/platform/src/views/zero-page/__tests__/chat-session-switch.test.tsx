@@ -5,6 +5,8 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroQueuePositionContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -134,9 +136,9 @@ describe("chat session switch", () => {
           createdAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/zero/queue-position", () => {
-        return HttpResponse.json({ position: 0 });
-      }),
+      mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
+        respond(200, { position: 0, total: 0 }),
+      ),
     );
 
     // Start on a completed thread (no active polling)

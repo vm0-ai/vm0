@@ -8,6 +8,10 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroSchedulesMainContract, type ScheduleResponse } from "@vm0/core";
 
 const context = testContext();
 
@@ -73,10 +77,8 @@ function mockDeployResponse() {
 }
 
 function mockCreateModeAPIs() {
+  setMockSchedules([mockScheduleForList() as ScheduleResponse]);
   server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [mockScheduleForList()] });
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -98,20 +100,19 @@ async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
 }
 
 function mockEditModeAPIs() {
+  setMockTeam([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
+  setMockSchedules([mockScheduleForList() as ScheduleResponse]);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
         name: "my-agent",
@@ -127,9 +128,6 @@ function mockEditModeAPIs() {
     }),
     http.get("*/api/zero/agents/my-agent/instructions", () => {
       return HttpResponse.json({ content: null, filename: null });
-    }),
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [mockScheduleForList()] });
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -218,9 +216,15 @@ describe("schedule dialog - loading state (SCHED-D-048)", () => {
   it("shows loading indicator on save button while saving", async () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
     server.use(
-      http.post("*/api/zero/schedules", async () => {
+      mockApi(zeroSchedulesMainContract.deploy, async ({ respond }) => {
         await hangDeferred.promise;
-        return HttpResponse.json(mockDeployResponse());
+        return respond(
+          201,
+          mockDeployResponse() as {
+            schedule: ScheduleResponse;
+            created: boolean;
+          },
+        );
       }),
     );
     const user = userEvent.setup();
@@ -257,48 +261,26 @@ describe("schedule dialog - unsaved confirmation overlay (SCHED-D-050)", () => {
 
 describe("schedule dialog - agent selection (SCHED-D-051)", () => {
   it("sets selected agent when a different agent is chosen", async () => {
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            userId: "test-user-123",
-            appendSystemPrompt: null,
-            vars: null,
-            secretNames: null,
-            artifactName: null,
-            artifactVersion: null,
-            volumeVersions: null,
-            retryStartedAt: null,
-            consecutiveFailures: 0,
-          },
-          {
-            id: "e0000000-0000-4000-a000-000000000002",
-            displayName: "Research Agent",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "v2",
-            updatedAt: "2024-01-02T00:00:00Z",
-            userId: "test-user-123",
-            appendSystemPrompt: null,
-            vars: null,
-            secretNames: null,
-            artifactName: null,
-            artifactVersion: null,
-            volumeVersions: null,
-            retryStartedAt: null,
-            consecutiveFailures: 0,
-          },
-        ]);
-      }),
-    );
+    setMockTeam([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "v1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "e0000000-0000-4000-a000-000000000002",
+        displayName: "Research Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "v2",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+    ]);
     const user = userEvent.setup();
     await openCreateDialog(user);
     const agentTrigger = screen.getByRole("combobox", { name: "Agent" });
@@ -478,9 +460,15 @@ describe("schedule dialog - save button (SCHED-D-063)", () => {
   it("submits form and closes dialog when Create is clicked", async () => {
     let captured = false;
     server.use(
-      http.post("*/api/zero/schedules", () => {
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
         captured = true;
-        return HttpResponse.json(mockDeployResponse());
+        return respond(
+          201,
+          mockDeployResponse() as {
+            schedule: ScheduleResponse;
+            created: boolean;
+          },
+        );
       }),
     );
     const user = userEvent.setup();
