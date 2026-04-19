@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -9,11 +8,7 @@ import { getCategories } from "../zero-ideation-data.ts";
 const context = testContext();
 
 function mockChatAPI() {
-  server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
+  server.use();
 }
 
 // CHAT-D-002: dynamic tagline renders with userName via TypewriterText animation

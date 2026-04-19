@@ -1,21 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  chatThreadMessagesContract,
+  chatThreadByIdContract,
+  zeroRunsQueueContract,
+} from "@vm0/core";
 
 const context = testContext();
 
 function mockChatThread() {
   server.use(
-    http.get("*/api/zero/chat-threads/thread-1/messages", ({ request }) => {
-      const url = new URL(request.url);
-      if (url.searchParams.get("sinceId")) {
-        return HttpResponse.json({ messages: [], hasMore: false });
+    mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+      if (query.sinceId) {
+        return respond(200, { messages: [] });
       }
-      return HttpResponse.json({
+      return respond(200, {
         messages: [
           {
             id: "msg-1",
@@ -30,11 +34,10 @@ function mockChatThread() {
             createdAt: "2026-03-10T00:00:01Z",
           },
         ],
-        hasMore: false,
       });
     }),
-    http.get("*/api/zero/chat-threads/:id", () => {
-      return HttpResponse.json({
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: "thread-1",
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
@@ -52,20 +55,19 @@ function mockChatThread() {
         ],
         latestSessionId: null,
         activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
       });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
   );
 }
 
 function mockQueueAPIs() {
   server.use(
-    http.get("*/api/zero/runs/queue", () => {
-      return HttpResponse.json({
+    mockApi(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(200, {
         concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
         runningTasks: [],
         queue: [],

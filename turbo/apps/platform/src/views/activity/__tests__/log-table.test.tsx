@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -9,6 +8,12 @@ import type {
   LogEntry,
   LogsListResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  logsListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -49,8 +54,8 @@ function makeLogsResponse(
 
 function mockLogsAPI(response: LogsListResponse) {
   server.use(
-    http.get("*/api/zero/logs", () => {
-      return HttpResponse.json(response);
+    mockApi(logsListContract.list, ({ respond }) => {
+      return respond(200, response);
     }),
   );
 }
@@ -146,9 +151,9 @@ describe("log-table", () => {
     );
 
     server.use(
-      http.get("*/api/zero/logs/:id", ({ params }) => {
-        if (params["id"] === LOG_ID) {
-          return HttpResponse.json({
+      mockApi(logsByIdContract.getById, ({ params, respond }) => {
+        if (params.id === LOG_ID) {
+          return respond(200, {
             id: LOG_ID,
             sessionId: "session_1",
             agentId: "agent-1",
@@ -169,13 +174,12 @@ describe("log-table", () => {
             artifact: { name: null, version: null },
           });
         }
-        return HttpResponse.json(
-          { error: { message: "Not found", code: "NOT_FOUND" } },
-          { status: 404 },
-        );
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "claude-code",

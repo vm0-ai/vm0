@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
-const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "t0000000-0000-4000-a000-000000000001";
 
 function mockAgentsWithThreads() {
@@ -36,8 +36,8 @@ function mockAgentsWithThreads() {
     },
   ]);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, {
         threads: [
           {
             id: THREAD_ID,
@@ -52,14 +52,16 @@ function mockAgentsWithThreads() {
         ],
       });
     }),
-    http.get("*/api/zero/chat-threads/:id", () => {
-      return HttpResponse.json({
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: THREAD_ID,
         title: "My test conversation",
         agentId: "agent-alpha",
         chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });
@@ -91,9 +93,9 @@ describe("recent thread skeleton (#7546)", () => {
     // clearAllDetached() completion in afterEach.
     const hangDeferred = createDeferredPromise<void>(context.signal);
     server.use(
-      http.get("*/api/zero/chat-threads", async () => {
+      mockApi(chatThreadsContract.list, async ({ respond }) => {
         await hangDeferred.promise;
-        return HttpResponse.json({ threads: [] });
+        return respond(200, { threads: [] });
       }),
     );
 

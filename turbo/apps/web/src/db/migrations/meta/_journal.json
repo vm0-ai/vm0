@@ -1912,6 +1912,13 @@
       "when": 1776585129659,
       "tag": "0272_fresh_betty_brant",
       "breakpoints": true
+    },
+    {
+      "idx": 273,
+      "version": "7",
+      "when": 1776592685970,
+      "tag": "0273_hot_wendigo",
+      "breakpoints": true
     }
   ]
 }

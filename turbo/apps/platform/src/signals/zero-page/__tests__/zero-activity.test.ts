@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
@@ -15,6 +14,12 @@ import {
   formatLogTime,
   formatDuration,
 } from "../../activity-page/activity-signals.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  logsListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -37,9 +42,8 @@ function createMockLogs() {
       id: "a0000000-0000-4000-a000-000000000001",
       sessionId: "session-1",
       agentId: "zero",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "completed",
+      status: "completed" as const,
       createdAt: "2026-03-10T14:56:00Z",
       startedAt: "2026-03-10T14:56:01Z",
       completedAt: "2026-03-10T14:56:04Z",
@@ -49,9 +53,8 @@ function createMockLogs() {
       id: "a0000000-0000-4000-a000-000000000002",
       sessionId: "session-2",
       agentId: "zero",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "failed",
+      status: "failed" as const,
       createdAt: "2026-03-10T14:46:00Z",
     },
     {
@@ -59,9 +62,8 @@ function createMockLogs() {
       id: "a0000000-0000-4000-a000-000000000003",
       sessionId: "session-3",
       agentId: "zero",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "running",
+      status: "running" as const,
       createdAt: "2026-03-10T14:36:00Z",
     },
   ];
@@ -79,7 +81,7 @@ function createMockLogDetail() {
     triggerSource: "web" as const,
     triggerAgentName: null,
     scheduleId: null,
-    status: "completed",
+    status: "completed" as const,
     prompt: "Summarize today's activity",
     appendSystemPrompt: null,
     error: null,
@@ -102,11 +104,11 @@ describe("zero-activity signals", () => {
   describe("zeroActivityData$", () => {
     it("should fetch logs for all agents in org", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+        mockApi(logsListContract.list, ({ request, respond }) => {
           const url = new URL(request.url);
           // No name filter → returns all agents' logs
           expect(url.searchParams.has("name")).toBeFalsy();
-          return HttpResponse.json({
+          return respond(200, {
             data: createMockLogs(),
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
             filters: { statuses: [], sources: [], agents: [] },
@@ -125,8 +127,8 @@ describe("zero-activity signals", () => {
 
     it("should handle empty response", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/logs", () => {
-          return HttpResponse.json({
+        mockApi(logsListContract.list, ({ respond }) => {
+          return respond(200, {
             data: [],
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
             filters: { statuses: [], sources: [], agents: [] },
@@ -143,16 +145,13 @@ describe("zero-activity signals", () => {
 
     it("should throw on API error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/logs", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Internal server error",
-                code: "INTERNAL_SERVER_ERROR",
-              },
+        mockApi(logsListContract.list, ({ respond }) => {
+          return respond(403, {
+            error: {
+              message: "Internal server error",
+              code: "INTERNAL_SERVER_ERROR",
             },
-            { status: 500 },
-          );
+          });
         }),
       );
 
@@ -166,14 +165,15 @@ describe("zero-activity signals", () => {
 
     it("should report hasPrev as false on first page", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/logs", () => {
-          return HttpResponse.json({
+        mockApi(logsListContract.list, ({ respond }) => {
+          return respond(200, {
             data: createMockLogs(),
             pagination: {
               hasMore: true,
               nextCursor: "cursor-abc",
               totalPages: 2,
             },
+            filters: { statuses: [], sources: [], agents: [] },
           });
         }),
       );
@@ -189,10 +189,10 @@ describe("zero-activity signals", () => {
     it("should pass status filter to API query params", async () => {
       const captured: { status: string | null } = { status: null };
       server.use(
-        http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+        mockApi(logsListContract.list, ({ request, respond }) => {
           const url = new URL(request.url);
           captured.status = url.searchParams.get("status");
-          return HttpResponse.json({
+          return respond(200, {
             data: [],
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
             filters: { statuses: [], sources: [], agents: [] },
@@ -213,25 +213,21 @@ describe("zero-activity signals", () => {
   describe("zeroActivityDetail$", () => {
     it("should fetch log detail for selected log", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/logs/:logId", ({ params }) => {
-          if (params["logId"] === "a0000000-0000-4000-a000-000000000001") {
-            return HttpResponse.json(createMockLogDetail());
+        mockApi(logsByIdContract.getById, ({ params, respond }) => {
+          if (params.id === "a0000000-0000-4000-a000-000000000001") {
+            return respond(200, createMockLogDetail());
           }
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
+          return respond(404, {
+            error: { message: "Not found", code: "NOT_FOUND" },
+          });
         }),
-        http.get(
-          "http://localhost:3000/api/zero/runs/:runId/telemetry/agent",
-          () => {
-            return HttpResponse.json({
-              events: [],
-              hasMore: false,
-              framework: "claude-code",
-            });
-          },
-        ),
+        mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
       );
 
       await setupPage({

@@ -1,5 +1,29 @@
 # Changelog
 
+## [8.207.0](https://github.com/vm0-ai/vm0/compare/core-v8.206.0...core-v8.207.0) (2026-04-19)
+
+
+### Features
+
+* ship full UX for org custom connectors (admin CRUD, per-agent auth, UI) ([#10118](https://github.com/vm0-ai/vm0/issues/10118)) ([8c9f382](https://github.com/vm0-ai/vm0/commit/8c9f3829c92dcac8feab6d259828424efdfed1b9)), closes [#10099](https://github.com/vm0-ai/vm0/issues/10099)
+
+
+### Bug Fixes
+
+* **firewalls/github:** cover git, raw, codeload, gist, packages, ghcr ([#10073](https://github.com/vm0-ai/vm0/issues/10073)) ([fb8d068](https://github.com/vm0-ai/vm0/commit/fb8d0685f6a6caa0dbd3e644f6b12a3037280e63))
+
+## [8.206.0](https://github.com/vm0-ai/vm0/compare/core-v8.205.0...core-v8.206.0) (2026-04-19)
+
+
+### Features
+
+* add kimi/glm/minimax models to vm0 managed provider ([#10106](https://github.com/vm0-ai/vm0/issues/10106)) ([1619955](https://github.com/vm0-ai/vm0/commit/1619955f3a949352a20282c490776b0bc74df1b1))
+
+
+### Bug Fixes
+
+* **firewall:** allow api entries with empty permissions ([#10103](https://github.com/vm0-ai/vm0/issues/10103)) ([e7781cf](https://github.com/vm0-ai/vm0/commit/e7781cfe8a0880d352f4ab487aa185ea14f15dd1))
+
 ## [8.205.0](https://github.com/vm0-ai/vm0/compare/core-v8.204.0...core-v8.205.0) (2026-04-19)
 
 

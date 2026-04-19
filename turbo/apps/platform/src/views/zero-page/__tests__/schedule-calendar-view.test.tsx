@@ -151,8 +151,8 @@ function onceSchedule(
 function mockScheduleAPI(schedules: ScheduleResponse[]) {
   setMockSchedules(schedules);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    http.get("*/api/zero/schedules", () => {
+      return HttpResponse.json({ schedules });
     }),
   );
 }

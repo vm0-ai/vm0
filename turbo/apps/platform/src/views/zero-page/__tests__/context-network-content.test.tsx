@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -9,11 +8,16 @@ import {
   FeatureSwitchKey,
   type RunContextResponse,
   type NetworkLogEntry,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+  zeroRunContextContract,
+  zeroRunNetworkLogsContract,
 } from "@vm0/core";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -108,47 +112,41 @@ function setupMocks(options: {
   } | null;
 }) {
   server.use(
-    http.get("*/api/zero/logs/:id", ({ params }) => {
-      if (params["id"] === LOG_ID) {
-        return HttpResponse.json(makeLogDetail());
+    mockApi(logsByIdContract.getById, ({ params, respond }) => {
+      if (params.id === LOG_ID) {
+        return respond(200, makeLogDetail());
       }
-      return HttpResponse.json(
-        { error: { message: "Not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
     }),
-    http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-      return HttpResponse.json(makeEventsResponse());
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, makeEventsResponse());
     }),
   );
 
   if (options.contextResponse !== undefined) {
     server.use(
-      http.get("*/api/zero/runs/:id/context", () => {
+      mockApi(zeroRunContextContract.getContext, ({ respond }) => {
         if (options.contextResponse === null) {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
+          return respond(404, {
+            error: { message: "Not found", code: "NOT_FOUND" },
+          });
         }
-        return HttpResponse.json(options.contextResponse);
+        return respond(200, options.contextResponse!);
       }),
     );
   }
 
   if (options.networkResponse !== undefined) {
     server.use(
-      http.get("*/api/zero/runs/:id/network", () => {
+      mockApi(zeroRunNetworkLogsContract.getNetworkLogs, ({ respond }) => {
         if (options.networkResponse === null) {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
+          return respond(404, {
+            error: { message: "Not found", code: "NOT_FOUND" },
+          });
         }
-        return HttpResponse.json(options.networkResponse);
+        return respond(200, options.networkResponse!);
       }),
     );
   }
@@ -623,25 +621,21 @@ describe("networkContent", () => {
   it("should show Load more button and append next page on click (ACT-N-007)", async () => {
     let requestCount = 0;
     server.use(
-      http.get("*/api/zero/logs/:id", ({ params }) => {
-        if (params["id"] === LOG_ID) {
-          return HttpResponse.json(makeLogDetail());
+      mockApi(logsByIdContract.getById, ({ params, respond }) => {
+        if (params.id === LOG_ID) {
+          return respond(200, makeLogDetail());
         }
-        return HttpResponse.json(
-          { error: { message: "Not found", code: "NOT_FOUND" } },
-          { status: 404 },
-        );
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json(makeEventsResponse());
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, makeEventsResponse());
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-      http.get("*/api/zero/runs/:id/network", () => {
+      mockApi(zeroRunNetworkLogsContract.getNetworkLogs, ({ respond }) => {
         requestCount++;
         if (requestCount === 1) {
-          return HttpResponse.json({
+          return respond(200, {
             networkLogs: [
               makeNetworkEntry({
                 url: "https://page1.example.com",
@@ -651,7 +645,7 @@ describe("networkContent", () => {
             hasMore: true,
           });
         }
-        return HttpResponse.json({
+        return respond(200, {
           networkLogs: [
             makeNetworkEntry({
               url: "https://page2.example.com",

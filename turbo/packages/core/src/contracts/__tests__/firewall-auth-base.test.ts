@@ -144,4 +144,63 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
     ];
     expect(extractSecretNamesFromApis(apis)).toEqual([]);
   });
+
+  it("extracts secrets from basic() with ns.key args", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: "${{ basic(vars.USER, secrets.TOKEN) }}",
+          },
+        },
+      },
+    ];
+    expect(extractSecretNamesFromApis(apis)).toEqual(["TOKEN"]);
+  });
+
+  it("does not extract secrets from basic() literal args", () => {
+    const apis = [
+      {
+        base: "https://github.com/{owner}/{repo}.git",
+        auth: {
+          headers: {
+            Authorization:
+              '${{ basic("x-access-token", secrets.GITHUB_TOKEN) }}',
+          },
+        },
+      },
+    ];
+    expect(extractSecretNamesFromApis(apis)).toEqual(["GITHUB_TOKEN"]);
+  });
+
+  it("returns empty for basic() with both literal args", () => {
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: '${{ basic("admin", "hunter2") }}',
+          },
+        },
+      },
+    ];
+    expect(extractSecretNamesFromApis(apis)).toEqual([]);
+  });
+
+  it("does not extract literals that contain secrets.X-looking text", () => {
+    // A literal whose content happens to look like "secrets.FAKE" must NOT
+    // be treated as a secret reference — literals are opaque strings.
+    const apis = [
+      {
+        base: "https://example.com",
+        auth: {
+          headers: {
+            Authorization: '${{ basic("secrets.FAKE", secrets.REAL) }}',
+          },
+        },
+      },
+    ];
+    expect(extractSecretNamesFromApis(apis)).toEqual(["REAL"]);
+  });
 });

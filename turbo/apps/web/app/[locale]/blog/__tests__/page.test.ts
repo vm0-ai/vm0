@@ -90,7 +90,6 @@ describe("blog list page metadata", () => {
       de: "https://www.vm0.ai/de/blog",
       ja: "https://www.vm0.ai/ja/blog",
       es: "https://www.vm0.ai/es/blog",
-      "x-default": "https://www.vm0.ai/en/blog",
     });
   });
 

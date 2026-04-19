@@ -256,8 +256,10 @@ function collectReferencedKeys(
       if (match[1] && match[2]) addKey(match[1], match[2]);
     }
     for (const match of template.matchAll(basicAuthTemplateRe())) {
+      // Groups per side: (ns, key, literal). Only ns.key references need
+      // to be tracked; literals are baked into the template itself.
       if (match[1] && match[2]) addKey(match[1], match[2]);
-      if (match[3] && match[4]) addKey(match[3], match[4]);
+      if (match[4] && match[5]) addKey(match[4], match[5]);
     }
   }
   if (authBase) {
@@ -276,16 +278,19 @@ function collectReferencedKeys(
 }
 
 /**
- * Resolve a single secrets.X or vars.X reference inside a basic() call.
+ * Resolve a single basic() argument slot.
+ * Arg can be: secrets.X, vars.X, "literal", or omitted.
  * Returns the resolved value, or empty string if the slot is omitted/missing.
  */
 function resolveBasicArg(
   namespace: string | undefined,
   key: string | undefined,
+  literal: string | undefined,
   secrets: Record<string, string>,
   vars: Record<string, string>,
   resolvedKeys: Set<string>,
 ): string {
+  if (literal !== undefined) return literal;
   if (!namespace || !key) return "";
   if (namespace === "secrets") {
     resolvedKeys.add(key);
@@ -327,17 +332,44 @@ function resolveTemplates(
 
   const headers: Record<string, string> = {};
   for (const [name, template] of Object.entries(authHeaders)) {
-    // Pass 1: resolve simple ${{ secrets.X }} and ${{ vars.X }} templates
-    let resolved = resolveSimple(template);
-    // Pass 2: resolve ${{ basic(username, password) }} templates
-    resolved = resolved.replace(
+    // Pass 1: resolve ${{ basic(username, password) }} templates FIRST,
+    // so string literals inside basic() are not subject to further
+    // template resolution (e.g. `basic("${{ secrets.X }}", ...)` keeps
+    // the literal as-is rather than interpolating the secret). The
+    // output is a Basic <base64> header — base64 charset has no `$`,
+    // so Pass 2 cannot match inside basic()'s output.
+    let resolved = template.replace(
       basicAuthTemplateRe(),
-      (_match, ns1?: string, key1?: string, ns2?: string, key2?: string) => {
-        const user = resolveBasicArg(ns1, key1, secrets, vars, resolvedKeys);
-        const pass = resolveBasicArg(ns2, key2, secrets, vars, resolvedKeys);
+      (
+        _match,
+        ns1?: string,
+        key1?: string,
+        lit1?: string,
+        ns2?: string,
+        key2?: string,
+        lit2?: string,
+      ) => {
+        const user = resolveBasicArg(
+          ns1,
+          key1,
+          lit1,
+          secrets,
+          vars,
+          resolvedKeys,
+        );
+        const pass = resolveBasicArg(
+          ns2,
+          key2,
+          lit2,
+          secrets,
+          vars,
+          resolvedKeys,
+        );
         return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
       },
     );
+    // Pass 2: resolve simple ${{ secrets.X }} and ${{ vars.X }} templates
+    resolved = resolveSimple(resolved);
     headers[name] = resolved;
   }
 

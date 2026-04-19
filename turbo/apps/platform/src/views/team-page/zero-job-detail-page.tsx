@@ -82,6 +82,7 @@ import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
+import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
 import {
   hasConnectorPermissions,
   savePermissionPolicies$,
@@ -505,18 +506,21 @@ function JobPermissionsTab({
   return (
     <div className="mx-auto max-w-[900px] flex flex-col gap-4">
       {connectedConnectors.length === 0 ? (
-        <div className="zero-card py-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            No connected services yet. Head to the{" "}
-            <Link
-              pathname="/connectors"
-              className="font-medium text-foreground hover:underline"
-            >
-              Connectors
-            </Link>{" "}
-            page to connect your first service.
-          </p>
-        </div>
+        <>
+          <div className="zero-card py-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              No connected services yet. Head to the{" "}
+              <Link
+                pathname="/connectors"
+                className="font-medium text-foreground hover:underline"
+              >
+                Connectors
+              </Link>{" "}
+              page to connect your first service.
+            </p>
+          </div>
+          <JobCustomConnectorsSection />
+        </>
       ) : (
         <>
           <div className="zero-card">
@@ -607,6 +611,8 @@ function JobPermissionsTab({
               </p>
             )}
           </div>
+
+          <JobCustomConnectorsSection />
 
           {connectorType && (
             <PermissionsDrawer

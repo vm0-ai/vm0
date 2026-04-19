@@ -4,9 +4,10 @@ import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey, chatThreadsContract } from "@vm0/core";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -46,8 +47,21 @@ function mockAPIs({
   }[];
 } = {}) {
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads });
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
+    }),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads });
     }),
     http.get("*/api/zero/agents/:id", () => {
       return HttpResponse.json({
@@ -58,6 +72,7 @@ function mockAPIs({
         sound: null,
         avatarUrl: null,
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
   );

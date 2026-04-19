@@ -1,26 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { zeroQueuePositionContract } from "@vm0/core";
+import {
+  chatThreadMessagesContract,
+  chatThreadByIdContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+  zeroRunsByIdContract,
+  zeroQueuePositionContract,
+} from "@vm0/core";
 
 const context = testContext();
 
 describe("chat session switch", () => {
   it("should show running state when switching to a session with an active run", async () => {
     server.use(
-      http.get(
-        "*/api/zero/chat-threads/thread-completed/messages",
-        ({ request }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
-          }
-          return HttpResponse.json({
+      mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        const id = params.threadId;
+        if (id === "thread-completed") {
+          return respond(200, {
             messages: [
               {
                 id: "msg-1",
@@ -35,69 +40,60 @@ describe("chat session switch", () => {
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ],
-            hasMore: false,
           });
-        },
-      ),
-      http.get(
-        "*/api/zero/chat-threads/thread-running/messages",
-        ({ request }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
-          }
-          return HttpResponse.json({
-            messages: [
-              {
-                id: "msg-1",
-                role: "user",
-                content: "Active task prompt",
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              {
-                id: "msg-2",
-                role: "assistant",
-                content: null,
-                runId: "run-active",
-                status: "running",
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ],
-            hasMore: false,
-          });
-        },
-      ),
-      http.get("*/api/zero/chat-threads/:id", ({ params }) => {
-        const id = params.id as string;
+        }
+        // thread-running
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "user",
+              content: "Active task prompt",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-2",
+              role: "assistant",
+              content: null,
+              runId: "run-active",
+              status: "running",
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        const id = params.id;
         if (id === "thread-completed") {
-          return HttpResponse.json({
+          return respond(200, {
             id: "thread-completed",
             title: null,
             agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [],
             latestSessionId: null,
             activeRunIds: [],
+            draftContent: null,
+            draftAttachments: null,
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });
         }
         // thread-running
-        return HttpResponse.json({
+        return respond(200, {
           id: "thread-running",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
           activeRunIds: ["run-active"],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json({
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "a0000000-0000-4000-a000-000000000099",
           sessionId: "session-1",
           agentId: "zero",
@@ -118,15 +114,15 @@ describe("chat session switch", () => {
           artifact: { name: null, version: null },
         });
       }),
-      http.get("*/api/zero/runs/:id/telemetry/agent", () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "claude-code",
         });
       }),
-      http.get("*/api/zero/runs/:id", () => {
-        return HttpResponse.json({
+      mockApi(zeroRunsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           runId: "run-active",
           agentComposeVersionId: null,
           status: "running",
@@ -164,48 +160,41 @@ describe("chat session switch", () => {
 
   it("should load different messages when switching between completed sessions", async () => {
     server.use(
-      http.get(
-        "*/api/zero/chat-threads/:id/messages",
-        ({ request, params }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
-          }
-          const id = params.id as string;
-          return HttpResponse.json({
-            messages: [
-              {
-                id: "msg-1",
-                role: "user",
-                content: `Question for ${id}`,
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              {
-                id: "msg-2",
-                role: "assistant",
-                content: `Answer for ${id}`,
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ],
-            hasMore: false,
-          });
-        },
-      ),
-      http.get("*/api/zero/chat-threads/:id", ({ params }) => {
-        const id = params.id as string;
-        return HttpResponse.json({
-          id,
+      mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        const id = params.threadId;
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "user",
+              content: `Question for ${id}`,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-2",
+              role: "assistant",
+              content: `Answer for ${id}`,
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

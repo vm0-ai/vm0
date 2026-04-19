@@ -122,9 +122,6 @@ describe("onboarding → chat page (no auto-intro)", () => {
           defaultAgentMetadata: null,
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     await user.click(screen.getByText(/Continue in web/));
@@ -158,9 +155,6 @@ describe("onboarding → chat page (no auto-intro)", () => {
           defaultAgentId: MOCK_MEMBER_AGENT_ID,
           defaultAgentMetadata: { displayName: "Zero" },
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

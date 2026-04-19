@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
+import {
+  FeatureSwitchKey,
+  logsListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -23,7 +28,7 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
     framework: "claude-code",
     modelProvider: null,
     selectedModel: null,
-    triggerSource: "web",
+    triggerSource: "web" as const,
     triggerAgentName: null,
     scheduleId: null,
     status: "running",
@@ -62,37 +67,37 @@ describe("activity paged events", () => {
 
     setMockComposesList([]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(
+          200,
           makeLogDetail({
             status: eventFetchCount < 2 ? "running" : "completed",
           }),
         );
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", ({ request }) => {
-        eventFetchCount++;
-        const url = new URL(request.url);
-        const since = url.searchParams.get("since");
+      mockApi(
+        zeroRunAgentEventsContract.getAgentEvents,
+        ({ query, respond }) => {
+          eventFetchCount++;
+          const since = query.since;
 
-        // First page: has more events
-        if (!since) {
-          return HttpResponse.json({
-            events: [page1Event],
-            hasMore: true,
+          // First page: has more events
+          if (since === undefined) {
+            return respond(200, {
+              events: [page1Event],
+              hasMore: true,
+              framework: "claude-code",
+            } satisfies AgentEventsResponse);
+          }
+
+          // Second page: no more events
+          return respond(200, {
+            events: [page2Event],
+            hasMore: false,
             framework: "claude-code",
           } satisfies AgentEventsResponse);
-        }
-
-        // Second page: no more events
-        return HttpResponse.json({
-          events: [page2Event],
-          hasMore: false,
-          framework: "claude-code",
-        } satisfies AgentEventsResponse);
-      }),
+        },
+      ),
     );
 
     detachedSetupPage({
@@ -130,21 +135,17 @@ describe("activity paged events", () => {
 
     setMockComposesList([]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-      http.get("*/api/zero/logs", () => {
-        return HttpResponse.json({
+      mockApi(logsListContract.list, ({ respond }) => {
+        return respond(200, {
           data: [
             {
               id: "a0000000-0000-4000-a000-000000000099",
               sessionId: "session_test",
               agentId: "e0000000-0000-4000-a000-000000000010",
               displayName: "Test Agent",
-              orgSlug: "test",
               framework: "claude-code",
               status: "running",
-              triggerSource: "web",
+              triggerSource: "web" as const,
               triggerAgentName: null,
               scheduleId: null,
               prompt: "Test prompt",
@@ -157,12 +158,12 @@ describe("activity paged events", () => {
           filters: { statuses: [], sources: [], agents: [] },
         });
       }),
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(makeLogDetail({ status: "running" }));
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, makeLogDetail({ status: "running" }));
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
         eventFetchCount++;
-        return HttpResponse.json({
+        return respond(200, {
           events: [
             {
               sequenceNumber: 0,

@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -49,20 +53,16 @@ function mockActivityDetailAPI() {
   };
 
   server.use(
-    http.get("*/api/zero/logs/:id", ({ params }) => {
-      if (params["id"] === "a0000000-0000-4000-a000-000000000001") {
-        return HttpResponse.json(logDetail);
+    mockApi(logsByIdContract.getById, ({ params, respond }) => {
+      if (params.id === "a0000000-0000-4000-a000-000000000001") {
+        return respond(200, logDetail);
       }
-      return HttpResponse.json(
-        { error: { message: "Not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
     }),
-    http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-      return HttpResponse.json(eventsResponse);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, eventsResponse);
     }),
   );
 }
@@ -154,18 +154,15 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "claude-code",
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -209,18 +206,15 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "claude-code",
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -297,14 +291,11 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json(eventsResponse);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, eventsResponse);
       }),
     );
 
@@ -354,18 +345,15 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "claude-code",
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -408,18 +396,15 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "claude-code",
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -463,18 +448,15 @@ describe("zeroActivityDetailPage", () => {
     };
 
     server.use(
-      http.get("*/api/zero/logs/:id", () => {
-        return HttpResponse.json(logDetail);
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, logDetail);
       }),
-      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "claude-code",
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

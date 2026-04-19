@@ -9,7 +9,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -21,7 +20,8 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
-import type { ScheduleResponse } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { logsListContract, type ScheduleResponse } from "@vm0/core";
 
 const context = testContext();
 
@@ -68,8 +68,8 @@ function makeLogsResponse(
 
 function mockLogsAPI(response: LogsListResponse) {
   server.use(
-    http.get("*/api/zero/logs", () => {
-      return HttpResponse.json(response);
+    mockApi(logsListContract.list, ({ respond }) => {
+      return respond(200, response);
     }),
   );
 }
@@ -94,11 +94,12 @@ function createMockSchedule(overrides: Partial<ScheduleResponse> = {}) {
 describe("pagination component", () => {
   it("current page number displays (INFRA-D-015)", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-3") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 3 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -107,7 +108,8 @@ describe("pagination component", () => {
           );
         }
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: true,
               nextCursor: "cursor-3",
@@ -115,7 +117,8 @@ describe("pagination component", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -200,12 +203,10 @@ describe("pagination component", () => {
   it("rows per page selector changes value (INFRA-D-019)", async () => {
     const captured = { limit: null as string | null };
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         captured.limit = url.searchParams.get("limit");
-        return HttpResponse.json(
-          makeLogsResponse([makeLog()], { totalPages: 2 }),
-        );
+        return respond(200, makeLogsResponse([makeLog()], { totalPages: 2 }));
       }),
     );
     detachedSetupPage({ context, path: "/activities" });
@@ -231,11 +232,12 @@ describe("pagination component", () => {
 
   it("previous page button navigates back (INFRA-D-020)", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -243,7 +245,8 @@ describe("pagination component", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -276,11 +279,12 @@ describe("pagination component", () => {
 
   it("next page button navigates forward (INFRA-D-021)", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -288,7 +292,8 @@ describe("pagination component", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -315,11 +320,12 @@ describe("pagination component", () => {
 
   it("back two pages button works (INFRA-D-022)", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-3") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 3 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -328,7 +334,8 @@ describe("pagination component", () => {
           );
         }
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: true,
               nextCursor: "cursor-3",
@@ -336,7 +343,8 @@ describe("pagination component", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -369,11 +377,12 @@ describe("pagination component", () => {
 
   it("forward two pages button works (INFRA-D-023)", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-3") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 3 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -382,7 +391,8 @@ describe("pagination component", () => {
           );
         }
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: true,
               nextCursor: "cursor-3",
@@ -390,7 +400,8 @@ describe("pagination component", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -417,11 +428,12 @@ describe("pagination component", () => {
 
   it("navigation buttons disable at boundaries (INFRA-D-024)", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -429,7 +441,8 @@ describe("pagination component", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -467,11 +480,12 @@ describe("pagination component", () => {
 
   it("next page navigation resolves to new page content (INFRA-D-025)", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -479,7 +493,8 @@ describe("pagination component", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -509,11 +524,6 @@ describe("pagination component", () => {
 describe("loading switch component", () => {
   it("switch toggle disables the schedule (INFRA-D-026)", async () => {
     setMockSchedules([createMockSchedule({ enabled: true })]);
-    server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
 
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
@@ -533,11 +543,6 @@ describe("loading switch component", () => {
 
   it("switch toggle re-enables the schedule (INFRA-D-027)", async () => {
     setMockSchedules([createMockSchedule({ enabled: false })]);
-    server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
 
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
@@ -557,11 +562,6 @@ describe("loading switch component", () => {
 
   it("switch toggle round-trips: disable then re-enable (INFRA-D-028)", async () => {
     setMockSchedules([createMockSchedule({ enabled: true })]);
-    server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
 
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 

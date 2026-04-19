@@ -12,11 +12,7 @@ import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 const context = testContext();
 
 function mockChatAPI() {
-  server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
+  server.use();
 }
 
 function renderChatPage() {

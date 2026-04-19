@@ -14,7 +14,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -45,11 +44,6 @@ function mockBaseAPIs(
         headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
       };
-    }),
-  );
-  server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
   );
 }
@@ -179,9 +173,6 @@ describe("avatar loading state shows no image initially (SIDEBAR-D-044)", () => 
             updatedAt: "2024-01-01T00:00:00Z",
           },
         ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

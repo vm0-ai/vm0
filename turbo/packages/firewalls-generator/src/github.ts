@@ -1,6 +1,33 @@
 /**
  * Generate GitHub firewall config.
  *
+ * Covers the HTTPS endpoints where a GitHub token flows from the agent
+ * sandbox using an auth scheme compatible with a fixed-username Basic
+ * Auth or bare Bearer injection:
+ *   - api.github.com, uploads.github.com — REST / GraphQL / uploads
+ *   - github.com/<owner>/<repo>.git      — git smart-HTTP (clone/push/pull, LFS)
+ *   - gist.github.com/<id>.git           — gist git protocol (canonical, from git_pull_url)
+ *   - gist.github.com/<user>/<id>.git    — gist git protocol (browser URL form, also served)
+ *   - raw.githubusercontent.com          — raw file content for private repos
+ *   - codeload.github.com                — archive tarball/zipball downloads
+ *   - npm.pkg.github.com                 — GitHub Packages (npm)
+ *
+ * Auth scheme per host follows each surface's documented convention:
+ *   - REST/GraphQL/uploads + npm registry → `Authorization: Bearer $TOKEN`
+ *   - Git protocol + raw + codeload + gist
+ *     → `Authorization: Basic base64("x-access-token:$TOKEN")`.
+ *     "x-access-token" is GitHub's universal Basic-Auth username,
+ *     accepted for PATs, OAuth tokens, and App installation tokens.
+ *
+ * Deliberately NOT covered (future work):
+ *   - ghcr.io — Docker Registry v2 OAuth2 token-exchange flow; injecting
+ *     a bare Bearer PAT would overwrite the short-lived registry-issued
+ *     tokens the client uses on /v2/ calls.
+ *   - maven.pkg / nuget.pkg — require the real GitHub username as Basic
+ *     Auth user (docs explicitly disallow the x-access-token shortcut).
+ *   - rubygems.pkg — push uses Bearer but install uses Basic with the
+ *     real GitHub username; neither scheme is universal.
+ *
  * Fine-grained permissions are disabled because GitHub uses both REST and
  * GraphQL APIs. The GraphQL API has no public permission mapping data, so
  * we cannot generate equivalent rules. Permissions will be re-enabled per
@@ -61,13 +88,14 @@ function generateTypeScript(): string {
     "",
     "export const githubFirewall = {",
     '  name: "github",',
-    '  description: "GitHub API",',
+    '  description: "GitHub",',
     "  placeholders: {",
     `    GITHUB_TOKEN: "${placeholder}",`,
     `    GH_TOKEN: "${placeholder}",`,
     "  },",
     "  apis: [",
     "    {",
+    "      // REST + GraphQL API.",
     '      base: "https://api.github.com",',
     "      auth: {",
     "        headers: {",
@@ -77,7 +105,76 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "    {",
+    "      // Release asset uploads.",
     '      base: "https://uploads.github.com",',
+    "      auth: {",
+    "        headers: {",
+    '          Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",',
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
+    "    {",
+    "      // Git smart-HTTP (clone/push/pull, includes LFS under /info/lfs).",
+    '      base: "https://github.com/{owner}/{repo}.git",',
+    "      auth: {",
+    "        headers: {",
+    "          Authorization:",
+    "            '${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}',",
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
+    "    {",
+    "      // Gist git protocol — canonical form returned by the API's",
+    "      // git_pull_url / git_push_url fields (no username segment).",
+    '      base: "https://gist.github.com/{gist_id}.git",',
+    "      auth: {",
+    "        headers: {",
+    "          Authorization:",
+    "            '${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}',",
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
+    "    {",
+    "      // Gist git protocol — browser-URL form with username segment,",
+    "      // also served by GitHub's gist git server. Users often copy",
+    '      // this URL out of the gist page and append ".git".',
+    '      base: "https://gist.github.com/{user}/{gist_id}.git",',
+    "      auth: {",
+    "        headers: {",
+    "          Authorization:",
+    "            '${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}',",
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
+    "    {",
+    "      // Raw file content — used by curl/wget/requests for private repos.",
+    '      base: "https://raw.githubusercontent.com/{owner}/{repo}",',
+    "      auth: {",
+    "        headers: {",
+    "          Authorization:",
+    "            '${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}',",
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
+    "    {",
+    "      // Archive downloads — used by go get / pip install git+ / npm github:.",
+    '      base: "https://codeload.github.com/{owner}/{repo}",',
+    "      auth: {",
+    "        headers: {",
+    "          Authorization:",
+    "            '${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}',",
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
+    "    {",
+    "      // GitHub Packages — npm registry (npm install @scope/pkg).",
+    '      base: "https://npm.pkg.github.com",',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",',

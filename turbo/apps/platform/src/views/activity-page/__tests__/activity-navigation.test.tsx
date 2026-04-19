@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -9,6 +8,12 @@ import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  logsListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -22,8 +27,8 @@ function mockActivityAPIs() {
       displayName: "Test Agent",
       orgSlug: "test",
       framework: "claude-code",
-      status: "completed",
-      triggerSource: "web",
+      status: "completed" as const,
+      triggerSource: "web" as const,
       triggerAgentName: null,
       scheduleId: null,
       prompt: "Test prompt",
@@ -69,27 +74,23 @@ function mockActivityAPIs() {
 
   setMockComposesList([]);
   server.use(
-    http.get("*/api/zero/logs", () => {
-      return HttpResponse.json({
+    mockApi(logsListContract.list, ({ respond }) => {
+      return respond(200, {
         data: listData,
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
         filters: { statuses: [], sources: [], agents: [] },
       });
     }),
-    http.get("*/api/zero/logs/:id", ({ params }) => {
-      if (params["id"] === "a0000000-0000-4000-a000-000000000001") {
-        return HttpResponse.json(logDetail);
+    mockApi(logsByIdContract.getById, ({ params, respond }) => {
+      if (params.id === "a0000000-0000-4000-a000-000000000001") {
+        return respond(200, logDetail);
       }
-      return HttpResponse.json(
-        { error: { message: "Not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
     }),
-    http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-      return HttpResponse.json(eventsResponse);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, eventsResponse);
     }),
   );
 }

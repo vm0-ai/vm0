@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  logsListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -72,10 +77,9 @@ function mockAPIs() {
       sessionId: "session_1",
       agentId: "e0000000-0000-4000-a000-000000000010",
       displayName: "Agent One",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "completed",
-      triggerSource: "web",
+      status: "completed" as const,
+      triggerSource: "web" as const,
       triggerAgentName: null,
       scheduleId: null,
       prompt: "Test prompt",
@@ -88,10 +92,9 @@ function mockAPIs() {
       sessionId: "session_2",
       agentId: "e0000000-0000-4000-a000-000000000010",
       displayName: "Agent Two",
-      orgSlug: "test",
       framework: "claude-code",
-      status: "completed",
-      triggerSource: "cli",
+      status: "completed" as const,
+      triggerSource: "cli" as const,
       triggerAgentName: null,
       scheduleId: null,
       prompt: "Test prompt",
@@ -103,42 +106,40 @@ function mockAPIs() {
 
   setMockComposesList([]);
   server.use(
-    http.get("*/api/zero/logs", () => {
-      return HttpResponse.json({
+    mockApi(logsListContract.list, ({ respond }) => {
+      return respond(200, {
         data: listData,
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
         filters: { statuses: [], sources: [], agents: [] },
       });
     }),
-    http.get("*/api/zero/logs/:id", ({ params }) => {
-      if (params["id"] === "a0000000-0000-4000-a000-000000000001") {
-        return HttpResponse.json(detail1);
+    mockApi(logsByIdContract.getById, ({ params, respond }) => {
+      if (params.id === "a0000000-0000-4000-a000-000000000001") {
+        return respond(200, detail1);
       }
-      if (params["id"] === "a0000000-0000-4000-a000-000000000002") {
-        return HttpResponse.json(detail2);
+      if (params.id === "a0000000-0000-4000-a000-000000000002") {
+        return respond(200, detail2);
       }
-      return HttpResponse.json(
-        { error: { message: "Not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
-    }),
-    http.get("*/api/zero/runs/:runId/telemetry/agent", ({ params }) => {
-      const runId = params["runId"] as string;
-      if (runId === "a0000000-0000-4000-a000-000000000001") {
-        return HttpResponse.json(makeEventsResponse("Response from agent one"));
-      }
-      if (runId === "a0000000-0000-4000-a000-000000000002") {
-        return HttpResponse.json(makeEventsResponse("Response from agent two"));
-      }
-      return HttpResponse.json({
-        events: [],
-        hasMore: false,
-        framework: "claude-code",
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
       });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
+    mockApi(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ params, respond }) => {
+        if (params.id === "a0000000-0000-4000-a000-000000000001") {
+          return respond(200, makeEventsResponse("Response from agent one"));
+        }
+        if (params.id === "a0000000-0000-4000-a000-000000000002") {
+          return respond(200, makeEventsResponse("Response from agent two"));
+        }
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      },
+    ),
   );
 }
 

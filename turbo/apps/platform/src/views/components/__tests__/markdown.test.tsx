@@ -1,48 +1,49 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setTheme$ } from "../../../signals/theme.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadMessagesContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
-const THREAD_BASE = {
-  title: null,
-  agentId: "c0000000-0000-4000-a000-000000000001",
-  latestSessionId: null,
-  activeRunIds: [],
-  createdAt: "2026-01-01T00:00:00Z",
-  updatedAt: "2026-01-01T00:00:00Z",
-} as const;
+function makeThreadBase() {
+  return {
+    title: null,
+    agentId: "c0000000-0000-4000-a000-000000000001",
+    latestSessionId: null,
+    activeRunIds: [] as string[],
+    draftContent: null,
+    draftAttachments: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
+}
 
 describe("chat-d-064: markdown content renders from props", () => {
   it("should parse markdown and render as formatted HTML", async () => {
     server.use(
-      http.get(
-        "*/api/zero/chat-threads/thread-markdown/messages",
-        ({ request }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [] });
-          }
-          return HttpResponse.json({
-            messages: [
-              {
-                id: "msg-1",
-                role: "assistant",
-                content: "**bold text**",
-                createdAt: "2026-01-01T00:00:00Z",
-              },
-            ],
-          });
-        },
-      ),
-      http.get("*/api/zero/chat-threads/:id", () => {
-        return HttpResponse.json({
+      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "assistant",
+              content: "**bold text**",
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-markdown",
-          ...THREAD_BASE,
+          ...makeThreadBase(),
           chatMessages: [
             {
               role: "assistant",
@@ -51,9 +52,6 @@ describe("chat-d-064: markdown content renders from props", () => {
             },
           ],
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -70,29 +68,25 @@ describe("chat-d-064: markdown content renders from props", () => {
 describe("chat-d-065: theme signal applied to markdown rendering", () => {
   it("should apply theme from theme$ signal as data-color-mode on the markdown wrapper", async () => {
     server.use(
-      http.get(
-        "*/api/zero/chat-threads/thread-theme/messages",
-        ({ request }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [] });
-          }
-          return HttpResponse.json({
-            messages: [
-              {
-                id: "msg-1",
-                role: "assistant",
-                content: "hello",
-                createdAt: "2026-01-01T00:00:00Z",
-              },
-            ],
-          });
-        },
-      ),
-      http.get("*/api/zero/chat-threads/:id", () => {
-        return HttpResponse.json({
+      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "assistant",
+              content: "hello",
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-theme",
-          ...THREAD_BASE,
+          ...makeThreadBase(),
           chatMessages: [
             {
               role: "assistant",
@@ -101,9 +95,6 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
             },
           ],
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -134,29 +125,25 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
 describe("chat-d-066: markdown links open in new tab", () => {
   it("should render links with target=_blank and rel=noopener noreferrer", async () => {
     server.use(
-      http.get(
-        "*/api/zero/chat-threads/thread-link/messages",
-        ({ request }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [] });
-          }
-          return HttpResponse.json({
-            messages: [
-              {
-                id: "msg-1",
-                role: "assistant",
-                content: "[example](https://example.com)",
-                createdAt: "2026-01-01T00:00:00Z",
-              },
-            ],
-          });
-        },
-      ),
-      http.get("*/api/zero/chat-threads/:id", () => {
-        return HttpResponse.json({
+      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "assistant",
+              content: "[example](https://example.com)",
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-link",
-          ...THREAD_BASE,
+          ...makeThreadBase(),
           chatMessages: [
             {
               role: "assistant",
@@ -165,9 +152,6 @@ describe("chat-d-066: markdown links open in new tab", () => {
             },
           ],
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

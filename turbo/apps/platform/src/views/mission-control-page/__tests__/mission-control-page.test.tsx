@@ -5,9 +5,14 @@ import { http, HttpResponse } from "msw";
 import {
   FeatureSwitchKey,
   tasksContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+  zeroRunsByIdContract,
   zeroQueuePositionContract,
+  chatThreadByIdContract,
   zeroVoiceChatContextContract,
   type TaskItem,
+  type RunStatus,
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -38,11 +43,11 @@ function mockTasksAPI(tasks: TaskItem[]) {
   setMockTasks(tasks);
 }
 
-function mockActivityAPIs(_runId?: string, overrides?: { status?: string }) {
-  const status = overrides?.status ?? "completed";
+function mockActivityAPIs(_runId?: string, overrides?: { status?: RunStatus }) {
+  const status: RunStatus = overrides?.status ?? "completed";
   server.use(
-    http.get("*/api/zero/logs/:id", () => {
-      return HttpResponse.json({
+    mockApi(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, {
         id: "00000000-0000-4000-a000-000000000001",
         displayName: "Test Agent",
         status,
@@ -63,21 +68,21 @@ function mockActivityAPIs(_runId?: string, overrides?: { status?: string }) {
         artifact: { name: null, version: null },
       });
     }),
-    http.get("*/api/zero/runs/:id/telemetry/agent", () => {
-      return HttpResponse.json({
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+      return respond(200, {
         events: [],
         hasMore: false,
         framework: "unknown",
       });
     }),
-    http.get("*/api/zero/runs/:id", () => {
-      return HttpResponse.json({
+    mockApi(zeroRunsByIdContract.getById, ({ respond }) => {
+      return respond(200, {
         runId: "00000000-0000-4000-a000-000000000001",
         agentComposeVersionId: null,
         status,
         prompt: "",
         appendSystemPrompt: null,
-        result: null,
+        result: undefined,
         createdAt: "2026-04-10T10:00:00Z",
       });
     }),
@@ -152,20 +157,19 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get("*/api/zero/chat-threads/:id", () => {
-        return HttpResponse.json({
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "thread-abc",
           title: null,
           agentId: "00000000-0000-4000-a000-000000000000",
           chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-04-10T10:00:00Z",
           updatedAt: "2026-04-10T10:00:00Z",
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -506,8 +510,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get(`*/api/zero/logs/${runId}`, () => {
-        return HttpResponse.json({
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000001",
           displayName: "Test Agent",
           status: "completed",
@@ -528,8 +532,8 @@ describe("mission control page", () => {
           artifact: { name: null, version: null },
         });
       }),
-      http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "anthropic",
@@ -568,8 +572,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get(`*/api/zero/logs/${runId}`, () => {
-        return HttpResponse.json({
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000002",
           displayName: "Test Agent",
           status: "completed",
@@ -590,8 +594,8 @@ describe("mission control page", () => {
           artifact: { name: null, version: null },
         });
       }),
-      http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [
             {
               sequenceNumber: 1,
@@ -641,8 +645,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get(`*/api/zero/logs/${runId}`, () => {
-        return HttpResponse.json({
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000003",
           displayName: "Test Agent",
           status: "running",
@@ -663,8 +667,8 @@ describe("mission control page", () => {
           artifact: { name: null, version: null },
         });
       }),
-      http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "anthropic",
@@ -709,8 +713,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get(`*/api/zero/logs/${runId}`, () => {
-        return HttpResponse.json({
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000004",
           displayName: "Test Agent",
           status: "completed",
@@ -731,8 +735,8 @@ describe("mission control page", () => {
           artifact: { name: null, version: null },
         });
       }),
-      http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "anthropic",
@@ -1235,8 +1239,48 @@ describe("mission control page", () => {
       },
     ]);
     server.use(
-      http.get("*/api/zero/logs/run-refresh-v1", () => {
+      http.get("*/api/zero/tasks", () => {
         return HttpResponse.json({
+          tasks: [
+            {
+              id: "task-refresh",
+              type: "schedule",
+              title: "Refresh Panel Task",
+              summary: null,
+              agent: createAgent(),
+              latestRunId: "run-refresh-v1",
+              status: "completed",
+              scheduleId: "sched-refresh",
+              createdAt: "2026-04-10T10:00:00Z",
+              updatedAt: "2026-04-10T10:00:00Z",
+            },
+          ],
+        });
+      }),
+      mockApi(logsByIdContract.getById, ({ params, respond }) => {
+        if (params.id === "run-refresh-v2") {
+          return respond(200, {
+            id: "00000000-0000-4000-a000-000000000011",
+            displayName: "Test Agent",
+            status: "completed",
+            agentId: "agent-1",
+            sessionId: null,
+            triggerSource: "schedule",
+            triggerAgentName: null,
+            modelProvider: null,
+            selectedModel: null,
+            framework: null,
+            scheduleId: null,
+            prompt: "Prompt from run v2",
+            appendSystemPrompt: null,
+            error: null,
+            createdAt: "2026-04-10T10:01:00Z",
+            startedAt: "2026-04-10T10:01:01Z",
+            completedAt: "2026-04-10T10:01:05Z",
+            artifact: { name: null, version: null },
+          });
+        }
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000010",
           displayName: "Test Agent",
           status: "completed",
@@ -1257,37 +1301,8 @@ describe("mission control page", () => {
           artifact: { name: null, version: null },
         });
       }),
-      http.get("*/api/zero/runs/run-refresh-v1/telemetry/agent", () => {
-        return HttpResponse.json({
-          events: [],
-          hasMore: false,
-          framework: "anthropic",
-        });
-      }),
-      http.get("*/api/zero/logs/run-refresh-v2", () => {
-        return HttpResponse.json({
-          id: "00000000-0000-4000-a000-000000000011",
-          displayName: "Test Agent",
-          status: "completed",
-          agentId: "agent-1",
-          sessionId: null,
-          triggerSource: "schedule",
-          triggerAgentName: null,
-          modelProvider: null,
-          selectedModel: null,
-          framework: null,
-          scheduleId: null,
-          prompt: "Prompt from run v2",
-          appendSystemPrompt: null,
-          error: null,
-          createdAt: "2026-04-10T10:01:00Z",
-          startedAt: "2026-04-10T10:01:01Z",
-          completedAt: "2026-04-10T10:01:05Z",
-          artifact: { name: null, version: null },
-        });
-      }),
-      http.get("*/api/zero/runs/run-refresh-v2/telemetry/agent", () => {
-        return HttpResponse.json({
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "anthropic",
@@ -1351,8 +1366,8 @@ describe("mission control page", () => {
     // Track how many times polling is called — after close, no more calls
     let pollCallCount = 0;
     server.use(
-      http.get("*/api/zero/logs/run-close-1", () => {
-        return HttpResponse.json({
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, {
           id: "00000000-0000-4000-a000-000000000099",
           displayName: "Test Agent",
           status: "running",
@@ -1373,9 +1388,9 @@ describe("mission control page", () => {
           artifact: { name: null, version: null },
         });
       }),
-      http.get("*/api/zero/runs/run-close-1/telemetry/agent", () => {
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
         pollCallCount++;
-        return HttpResponse.json({
+        return respond(200, {
           events: [],
           hasMore: false,
           framework: "anthropic",

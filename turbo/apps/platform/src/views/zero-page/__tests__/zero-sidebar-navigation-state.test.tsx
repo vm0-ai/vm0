@@ -22,6 +22,8 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { resetMockBilling } from "../../../mocks/handlers/api-billing.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setIsScrolled$ } from "../../../signals/zero-page/zero-sidebar-state.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -87,6 +89,7 @@ function mockBaseAPIs(options?: {
     updatedAt: string;
     isRead: boolean;
     isArchived: boolean;
+    running: boolean;
   }[];
   agents?: {
     id: string;
@@ -103,8 +106,11 @@ function mockBaseAPIs(options?: {
 
   setMockTeam(agents);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads });
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json(agents);
+    }),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads });
     }),
   );
 }

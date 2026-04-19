@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -7,6 +6,12 @@ import {
   currentChatThreadSignals$,
   setDraftSyncDebounceMs$,
 } from "../create-chat-thread.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  chatThreadsContract,
+  chatThreadByIdContract,
+  chatThreadMessagesContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -18,21 +23,20 @@ const context = testContext();
  */
 function setupBaseHandlers(threadId: string) {
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: [] });
     }),
-    http.get(`*/api/zero/chat-threads/${threadId}/messages`, () => {
-      return HttpResponse.json({ messages: [] });
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [] });
     }),
-    http.get(`*/api/zero/chat-threads/${threadId}`, () => {
-      return HttpResponse.json({
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: threadId,
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
-        unsavedRuns: [],
         draftContent: null,
         draftAttachments: null,
         createdAt: "2026-04-13T00:00:00Z",
@@ -54,13 +58,10 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       let patchBody: unknown = null;
 
       server.use(
-        http.patch(
-          `*/api/zero/chat-threads/${threadId}`,
-          async ({ request }) => {
-            patchBody = await request.json();
-            return new HttpResponse(null, { status: 204 });
-          },
-        ),
+        mockApi(chatThreadByIdContract.patch, ({ body, respond }) => {
+          patchBody = body;
+          return respond(204);
+        }),
       );
       setupBaseHandlers(threadId);
 
@@ -103,9 +104,9 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       let patchCount = 0;
 
       server.use(
-        http.patch(`*/api/zero/chat-threads/${threadId}`, () => {
+        mockApi(chatThreadByIdContract.patch, ({ respond }) => {
           patchCount++;
-          return new HttpResponse(null, { status: 204 });
+          return respond(204);
         }),
       );
       setupBaseHandlers(threadId);
@@ -157,13 +158,10 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       let patchBody: unknown = null;
 
       server.use(
-        http.patch(
-          `*/api/zero/chat-threads/${threadId}`,
-          async ({ request }) => {
-            patchBody = await request.json();
-            return new HttpResponse(null, { status: 204 });
-          },
-        ),
+        mockApi(chatThreadByIdContract.patch, ({ body, respond }) => {
+          patchBody = body;
+          return respond(204);
+        }),
       );
       setupBaseHandlers(threadId);
 

@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadMessagesContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -14,18 +15,17 @@ describe("chat skeleton on switch", () => {
     const threadBDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
-      http.get(
-        "*/api/zero/chat-threads/:id/messages",
-        async ({ request, params }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
+      mockApi(
+        chatThreadMessagesContract.list,
+        async ({ params, query, respond }) => {
+          if (query.sinceId) {
+            return respond(200, { messages: [] });
           }
-          const id = params.id as string;
+          const id = params.threadId;
           if (id === "thread-b") {
             await threadBDeferred.promise;
           }
-          return HttpResponse.json({
+          return respond(200, {
             messages: [
               {
                 id: "msg-1",
@@ -40,28 +40,26 @@ describe("chat skeleton on switch", () => {
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ],
-            hasMore: false,
           });
         },
       ),
-      http.get("*/api/zero/chat-threads/:id", async ({ params }) => {
-        const id = params.id as string;
+      mockApi(chatThreadByIdContract.get, async ({ params, respond }) => {
+        const id = params.id;
         if (id === "thread-b") {
           await threadBDeferred.promise;
         }
-        return HttpResponse.json({
+        return respond(200, {
           id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

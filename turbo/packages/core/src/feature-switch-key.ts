@@ -50,6 +50,7 @@ export enum FeatureSwitchKey {
   InlineThinkingDot = "inlineThinkingDot",
   FreshdeskConnector = "freshdeskConnector",
   ZoomConnector = "zoomConnector",
+  OrgCustomConnectors = "orgCustomConnectors",
   ModelProviderSelection = "modelProviderSelection",
   Vm0KimiModel = "vm0KimiModel",
   Vm0GlmModel = "vm0GlmModel",

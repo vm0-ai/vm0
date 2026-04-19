@@ -15,7 +15,6 @@ const BUILD_DATE = new Date();
 
 /**
  * Build hreflang alternates map for a localized path.
- * Includes x-default pointing to the default-locale version.
  */
 function buildAlternates(
   localeLessPath: string,
@@ -25,7 +24,6 @@ function buildAlternates(
   for (const loc of availableLocales) {
     languages[loc] = `${baseUrl}/${loc}${localeLessPath}`;
   }
-  languages["x-default"] = `${baseUrl}/${defaultLocale}${localeLessPath}`;
   return languages;
 }
 

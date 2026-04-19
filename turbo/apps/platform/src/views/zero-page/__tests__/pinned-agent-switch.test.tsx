@@ -44,8 +44,36 @@ function mockPinnedAgents() {
     },
   ]);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: DEFAULT_AGENT_ID,
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-alpha",
+          displayName: "Alpha Bot",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_2",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-beta",
+          displayName: "Beta Bot",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_3",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
     }),
   );
   setMockUserPreferences({ pinnedAgentIds: ["agent-alpha", "agent-beta"] });

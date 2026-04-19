@@ -33,10 +33,6 @@ function mockOnboardingNeededAdmin() {
     mockApi(onboardingSetupContract.setup, ({ respond }) => {
       return respond(200, { agentId: MOCK_AGENT_ID });
     }),
-    // Mock chat threads for the home page
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 
@@ -55,10 +51,6 @@ function mockOnboardingNeededMember() {
     // Mock complete member onboarding
     mockApi(onboardingCompleteContract.complete, ({ respond }) => {
       return respond(200, { ok: true });
-    }),
-    // Mock chat threads for the home page
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
   );
 }

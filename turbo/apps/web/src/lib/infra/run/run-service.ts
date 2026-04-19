@@ -117,6 +117,9 @@ export interface CreateRunParams {
   // Per-permission policies from zero agent configuration (includes unknownPolicy).
   permissionPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
+  // Custom connector ids the user has authorized for this agent run. See
+  // BuildZeroContextParams for the semantic of `undefined` vs. empty array.
+  allowedCustomConnectorIds?: string[];
   // Additional volumes to mount (e.g., system skills, custom skills).
   additionalVolumes?: Array<{
     name: string;

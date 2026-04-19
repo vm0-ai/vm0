@@ -25,6 +25,8 @@ import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { pathname } from "../../../signals/location.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -90,6 +92,7 @@ function mockBaseAPIs(options?: {
     updatedAt: string;
     isRead: boolean;
     isArchived: boolean;
+    running: boolean;
   }[];
   agents?: {
     id: string;
@@ -106,8 +109,11 @@ function mockBaseAPIs(options?: {
 
   setMockTeam(agents);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads });
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json(agents);
+    }),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads });
     }),
     http.get("*/api/zero/agents/:id", ({ params }) => {
       const agents: Record<
@@ -265,26 +271,23 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
     mockBaseAPIs();
 
     server.use(
-      http.post("*/api/zero/chat-threads", () => {
-        return HttpResponse.json(
-          {
-            id: "new-thread-id",
-            title: null,
-            agentId: DEFAULT_AGENT_ID,
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          },
-          { status: 201 },
-        );
+      mockApi(chatThreadsContract.create, ({ respond }) => {
+        return respond(201, {
+          id: "new-thread-id",
+          title: null,
+          createdAt: "2026-03-10T00:00:00Z",
+        });
       }),
-      http.get("*/api/zero/chat-threads/:id", () => {
-        return HttpResponse.json({
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
           id: "new-thread-id",
           title: null,
           agentId: DEFAULT_AGENT_ID,
           chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
@@ -339,29 +342,34 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
 
     setMockTeam([makeDefaultAgent()]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads });
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([makeDefaultAgent()]);
       }),
-      http.get("*/api/zero/chat-threads/:id", ({ params }) => {
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, { threads });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         const thread = threads.find((t) => {
           return t.id === params.id;
         });
-        return HttpResponse.json({
+        return respond(200, {
           id: params.id,
           title: thread?.title ?? null,
           agentId: DEFAULT_AGENT_ID,
           chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.delete("*/api/zero/chat-threads/:id", ({ params }) => {
+      mockApi(chatThreadByIdContract.delete, ({ params, respond }) => {
         threads = threads.filter((t) => {
           return t.id !== params.id;
         });
-        return new HttpResponse(null, { status: 204 });
+        return respond(204);
       }),
     );
 

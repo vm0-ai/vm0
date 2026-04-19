@@ -18,8 +18,8 @@ const context = testContext();
 function mockPhoneStatusAPI(overrides: Partial<PhoneStatusResponse> = {}) {
   setMockPhoneStatus(overrides);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    http.get("*/api/zero/phone/status", () => {
+      return HttpResponse.json({ ...defaults, ...overrides });
     }),
   );
 }

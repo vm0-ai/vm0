@@ -1,35 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  chatThreadsContract,
+  chatThreadMessagesContract,
+  chatThreadByIdContract,
+} from "@vm0/core";
 
 const context = testContext();
 
 const AGENT_ID = "agent-alpha";
-
-function mockAgent() {
-  setMockTeam([
-    {
-      id: AGENT_ID,
-      displayName: "Alpha Bot",
-      description: null,
-      sound: null,
-      avatarUrl: null,
-      headVersionId: "version_1",
-      updatedAt: "2024-01-01T00:00:00Z",
-    },
-  ]);
-}
-
 function mockThreadList(threads: { id: string; title: string }[]) {
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, {
         threads: threads.map((t) => {
           return {
             id: t.id,
@@ -49,17 +38,19 @@ function mockThreadList(threads: { id: string; title: string }[]) {
 
 function mockEmptyMessages(threadId: string) {
   server.use(
-    http.get(`*/api/zero/chat-threads/${threadId}/messages`, () => {
-      return HttpResponse.json({ messages: [], hasMore: false });
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [] });
     }),
-    http.get(`*/api/zero/chat-threads/${threadId}`, () => {
-      return HttpResponse.json({
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
         id: threadId,
         title: `Thread ${threadId}`,
         agentId: AGENT_ID,
         chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });
@@ -70,7 +61,6 @@ function mockEmptyMessages(threadId: string) {
 describe("agent chat page keyboard shortcuts", () => {
   it("mod+shift+down navigates to the first thread", async () => {
     const user = userEvent.setup();
-    mockAgent();
     mockThreadList([
       { id: "thread-1", title: "First" },
       { id: "thread-2", title: "Second" },

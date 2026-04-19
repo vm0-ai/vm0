@@ -78,8 +78,8 @@ function mockDeployResponse(): {
 function mockScheduleAPI(schedules = createMockSchedules()) {
   setMockSchedules(schedules);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    http.get("*/api/zero/schedules", () => {
+      return HttpResponse.json({ schedules });
     }),
   );
 }
@@ -145,8 +145,56 @@ describe("zero schedule page - agent labels", () => {
       }),
     ]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: "c0000000-0000-4000-a000-000000000001",
+            displayName: "Zero",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "v1",
+            updatedAt: "2024-01-01T00:00:00Z",
+            userId: "test-user-123",
+            appendSystemPrompt: null,
+            vars: null,
+            secretNames: null,
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: null,
+            retryStartedAt: null,
+            consecutiveFailures: 0,
+          },
+          {
+            id: "e0000000-0000-4000-a000-000000000002",
+            displayName: "Research Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "v2",
+            updatedAt: "2024-01-02T00:00:00Z",
+            userId: "test-user-123",
+            appendSystemPrompt: null,
+            vars: null,
+            secretNames: null,
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: null,
+            retryStartedAt: null,
+            consecutiveFailures: 0,
+          },
+        ]);
+      }),
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [
+            {
+              ...createMockSchedules()[0],
+              agentId: "e0000000-0000-4000-a000-000000000002",
+              displayName: "Research Agent",
+            },
+          ],
+        });
       }),
     );
     await renderSchedulePage();
@@ -188,8 +236,56 @@ describe("zero schedule page - agent labels", () => {
       }),
     ]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: "c0000000-0000-4000-a000-000000000001",
+            displayName: null,
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "v1",
+            updatedAt: "2024-01-01T00:00:00Z",
+            userId: "test-user-123",
+            appendSystemPrompt: null,
+            vars: null,
+            secretNames: null,
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: null,
+            retryStartedAt: null,
+            consecutiveFailures: 0,
+          },
+          {
+            id: "e0000000-0000-4000-a000-000000000003",
+            displayName: null,
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "v2",
+            updatedAt: "2024-01-02T00:00:00Z",
+            userId: "test-user-123",
+            appendSystemPrompt: null,
+            vars: null,
+            secretNames: null,
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: null,
+            retryStartedAt: null,
+            consecutiveFailures: 0,
+          },
+        ]);
+      }),
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [
+            {
+              ...createMockSchedules()[0],
+              agentId: "e0000000-0000-4000-a000-000000000003",
+              displayName: null,
+            },
+          ],
+        });
       }),
     );
     await renderSchedulePage();
@@ -224,11 +320,6 @@ describe("zero schedule page - agent labels", () => {
         updatedAt: "2026-03-02T00:00:00Z",
       }),
     ]);
-    server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
     await renderSchedulePage();
     await waitFor(() => {
       expect(
@@ -268,11 +359,6 @@ describe("zero schedule page - agent labels", () => {
         updatedAt: "2026-03-02T00:00:00Z",
       }),
     ]);
-    server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
     await renderSchedulePage();
     await waitFor(() => {
       expect(
@@ -434,9 +520,6 @@ describe("zero schedule page - create dialog", () => {
         capturedBody = body as Record<string, unknown>;
         return respond(201, mockDeployResponse());
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     await renderSchedulePage();
@@ -484,9 +567,6 @@ describe("zero schedule page - toggle enabled", () => {
       mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
         capturedAction = "enable";
         return respond(200, createMockSchedules()[0]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -543,9 +623,6 @@ describe("zero schedule page - delete confirmation", () => {
         deleteCalled = true;
         return respond(204);
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     await renderSchedulePage();
@@ -579,9 +656,6 @@ describe("zero schedule page - delete confirmation", () => {
       mockApi(zeroSchedulesByNameContract.delete, ({ params, respond }) => {
         deletedName = params.name;
         return respond(204);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -618,9 +692,6 @@ describe("zero schedule page - delete confirmation", () => {
             return resolve(respond(204));
           };
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -665,9 +736,6 @@ describe("zero schedule page - delete confirmation", () => {
       mockApi(zeroSchedulesByNameContract.delete, ({ params, respond }) => {
         deletedName = params.name;
         return respond(204);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -828,9 +896,6 @@ describe("zero schedule page - schedule dialog fields", () => {
           },
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     await renderSchedulePage();
@@ -896,9 +961,6 @@ describe("zero schedule page - loading state", () => {
         await hangDeferred.promise;
         return respond(200, { schedules: [] });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     detachedSetupPage({ context, path: "/schedules" });
@@ -922,9 +984,6 @@ describe("zero schedule page - create dialog timezone default", () => {
       mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
         capturedBody = body as Record<string, unknown>;
         return respond(201, mockDeployResponse());
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -964,9 +1023,6 @@ describe("zero schedule page - create dialog timezone default", () => {
       mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
         capturedBody = body as Record<string, unknown>;
         return respond(201, mockDeployResponse());
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

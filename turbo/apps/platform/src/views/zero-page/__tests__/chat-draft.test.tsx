@@ -7,26 +7,26 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
 function mockThreads() {
   server.use(
-    http.get("*/api/zero/chat-threads/:id", ({ params }) => {
-      const id = params.id as string;
-      return HttpResponse.json({
-        id,
+    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
+        id: params.id,
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
   );
 }
@@ -110,23 +110,20 @@ describe("chat draft persistence across thread navigation", () => {
     let uploadRequestResolve: ((value: Response) => void) | null = null;
 
     server.use(
-      http.get("*/api/zero/chat-threads/:id", ({ params }) => {
-        const id = params.id as string;
-        return HttpResponse.json({
-          id,
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-      // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
       http.post("*/api/zero/uploads", () => {
         // Signal that the upload request has arrived
         resolveUpload?.();

@@ -18,11 +18,7 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const IDEAS_PATH = `/agents/${AGENT_ID}/ideas`;
 
 function mockChatAPI() {
-  server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
+  server.use();
 }
 
 function renderIdeationPage() {

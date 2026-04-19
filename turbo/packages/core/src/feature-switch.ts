@@ -278,6 +278,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
     enabled: false,
   },
+  [FeatureSwitchKey.OrgCustomConnectors]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the org custom connectors surface — the Custom tab on the Connectors settings page (admin CRUD, member Connect) and the per-agent Custom Connectors section on Agent Authorization. Backend routes remain open; this flag only gates entry points in the UI.",
+    enabled: false,
+    enabledOrgIdHashes: [],
+  },
   [FeatureSwitchKey.Vm0KimiModel]: {
     maintainer: "ethan@vm0.ai",
     description:

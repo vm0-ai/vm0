@@ -16,7 +16,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
-import { zeroIntegrationsSlackContract } from "@vm0/core";
+import { chatThreadsContract, zeroIntegrationsSlackContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -66,8 +66,11 @@ function mockBaseAPIs(
 
   setMockTeam(agents);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads });
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json(agents);
+    }),
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads });
     }),
   );
 }
@@ -122,9 +125,22 @@ describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
   it("shows skeleton placeholders while chat threads are loading", async () => {
     const deferred = createDeferredPromise<void>(context.signal);
     server.use(
-      http.get("*/api/zero/chat-threads", async () => {
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: DEFAULT_AGENT_ID,
+            displayName: null,
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      }),
+      mockApi(chatThreadsContract.list, async ({ respond }) => {
         await deferred.promise;
-        return HttpResponse.json({ threads: [] });
+        return respond(200, { threads: [] });
       }),
     );
 
@@ -389,18 +405,13 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
 
     mockBaseAPIs();
     server.use(
-      http.post("*/api/zero/chat-threads", async () => {
+      mockApi(chatThreadsContract.create, async ({ respond }) => {
         await deferred.promise;
-        return HttpResponse.json(
-          {
-            id: "new-thread",
-            title: null,
-            agentId: DEFAULT_AGENT_ID,
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          },
-          { status: 201 },
-        );
+        return respond(201, {
+          id: "new-thread",
+          title: null,
+          createdAt: "2026-03-10T00:00:00Z",
+        });
       }),
     );
 

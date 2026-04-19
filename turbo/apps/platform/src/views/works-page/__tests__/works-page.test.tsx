@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -30,9 +29,6 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
   server.use(
     mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
       return respond(200, { ...defaults, ...overrides });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
   );
 }

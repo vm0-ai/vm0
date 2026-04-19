@@ -35,8 +35,8 @@ function mockTeamAPI(
 ) {
   setMockTeam([DEFAULT_AGENT, ...extraAgents]);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([DEFAULT_AGENT, ...extraAgents]);
     }),
   );
 }
@@ -86,9 +86,6 @@ describe("zero jobs page - create agent dialog", () => {
           return respond(200, [DEFAULT_AGENT]);
         }
         return respond(200, [DEFAULT_AGENT, NEW_AGENT]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json(
@@ -162,8 +159,19 @@ describe("zero jobs page - avatar display", () => {
       },
     ]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          DEFAULT_AGENT,
+          {
+            id: "avatar-agent-id",
+            displayName: "Avatar Agent",
+            description: "Has a custom SVG avatar",
+            sound: null,
+            avatarUrl: "svg:r2s1h4c3f2m",
+            headVersionId: "version_av",
+            updatedAt: "2024-01-02T00:00:00Z",
+          },
+        ]);
       }),
     );
     detachedSetupPage({ context, path: "/agents" });
@@ -189,8 +197,19 @@ describe("zero jobs page - avatar display", () => {
       },
     ]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          DEFAULT_AGENT,
+          {
+            id: "no-avatar-agent-id",
+            displayName: "No Avatar Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_no",
+            updatedAt: "2024-01-02T00:00:00Z",
+          },
+        ]);
       }),
     );
     detachedSetupPage({ context, path: "/agents" });
@@ -219,8 +238,19 @@ describe("zero jobs page - navigation", () => {
       },
     ]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          DEFAULT_AGENT,
+          {
+            id: "nav-agent-id",
+            displayName: "Nav Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_nav",
+            updatedAt: "2024-01-02T00:00:00Z",
+          },
+        ]);
       }),
     );
     detachedSetupPage({ context, path: "/agents" });

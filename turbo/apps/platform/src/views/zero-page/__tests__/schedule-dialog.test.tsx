@@ -51,8 +51,8 @@ function mockDeployResponse(): {
 function mockCreateModeAPIs() {
   setMockSchedules([mockScheduleForList()]);
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    http.get("*/api/zero/schedules", () => {
+      return HttpResponse.json({ schedules: [mockScheduleForList()] });
     }),
   );
 }
@@ -101,8 +101,8 @@ function mockEditModeAPIs() {
     http.get("*/api/zero/agents/my-agent/instructions", () => {
       return HttpResponse.json({ content: null, filename: null });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    http.get("*/api/zero/schedules", () => {
+      return HttpResponse.json({ schedules: [mockScheduleForList()] });
     }),
   );
 }

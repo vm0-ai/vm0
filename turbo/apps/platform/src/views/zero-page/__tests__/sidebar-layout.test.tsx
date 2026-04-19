@@ -29,8 +29,18 @@ const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function mockBaseAPIs() {
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: DEFAULT_AGENT_ID,
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
     }),
   );
 }
@@ -67,8 +77,18 @@ describe("sidebar layout - breadcrumb name renders (SIDEBAR-D-046)", () => {
       },
     ]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: DEFAULT_AGENT_ID,
+            displayName: "My Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
       }),
     );
 
@@ -152,8 +172,18 @@ describe("sidebar layout - breadcrumb section link navigates (SIDEBAR-D-051)", (
       },
     ]);
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: DEFAULT_AGENT_ID,
+            displayName: "My Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
       }),
     );
 
