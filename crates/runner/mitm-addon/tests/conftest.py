@@ -18,7 +18,7 @@ import json
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mitmproxy import http, tcp
@@ -232,6 +232,42 @@ def mitm_ctx():
             patch.object(mitm_addon.ctx, "log", log, create=True),
         ):
             yield log
+
+    return _stub
+
+
+@pytest.fixture
+def fake_firewall_headers():
+    """Stub ``auth.get_firewall_headers`` at the real external boundary.
+
+    Dispatcher tests that want to verify ``mitm_addon.request`` routed to
+    ``handle_firewall_request`` should not patch the handler itself (that was
+    the Phase-3-forbidden pattern).  Instead they patch the handler's only
+    external dependency — the auth-service HTTP call behind
+    ``get_firewall_headers`` — and assert on ``flow.metadata["firewall_*"]``
+    written by the real handler at auth.py:327–333 before it ever reaches the
+    network.
+
+    Returns a context manager that yields the ``AsyncMock`` in case a test
+    wants to inspect call arguments.
+    """
+
+    @contextlib.contextmanager
+    def _stub(
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> Iterator[AsyncMock]:
+        mock = AsyncMock(
+            return_value={
+                "headers": headers if headers is not None else {"Authorization": "Bearer x"},
+                "resolved_secrets": [],
+                "refreshed_connectors": [],
+                "refreshed_secrets": [],
+                "cache_hit": False,
+            }
+        )
+        with patch.object(auth, "get_firewall_headers", mock):
+            yield mock
 
     return _stub
 

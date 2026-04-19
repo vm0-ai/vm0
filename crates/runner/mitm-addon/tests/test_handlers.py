@@ -5,7 +5,7 @@ import gzip
 import json
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from mitmproxy import http
@@ -80,17 +80,13 @@ class TestRequestHandler:
             with_response=False, host="api.vm0.ai", path="/api/test/oauth-provider/echo"
         )
 
-        mock_handler = AsyncMock()
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
-        ):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
             await mitm_addon.request(flow)
 
-        # Carve-out took effect: Step 2 ran and handed off to the firewall
-        # handler (not Step 1's auto-allow, which would `return` without
-        # invoking the handler).
-        mock_handler.assert_called_once()
+        # Carve-out took effect: Step 2 ran and the real handle_firewall_request
+        # entered (firewall_base is written at auth.py:327 up-front).  Step 1's
+        # auto-allow would have returned without writing firewall_base.
+        assert flow.metadata["firewall_base"] == "https://api.vm0.ai/api/test/oauth-provider"
 
     async def test_tracks_start_time(self, registry_file, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -128,7 +124,9 @@ class TestRequestHandler:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
 
-    async def test_firewall_match_calls_handler(self, tmp_path, real_flow, mitm_ctx, headers):
+    async def test_firewall_match_calls_handler(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
         """When URL matches a firewall rule, handle_firewall_request is called."""
         registry = {
             "vms": {
@@ -174,21 +172,18 @@ class TestRequestHandler:
             with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/repos"
         )
 
-        mock_handler = AsyncMock()
         with (
             mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
+            fake_firewall_headers(),
         ):
             await mitm_addon.request(flow)
 
-        mock_handler.assert_called_once()
-        call_args = mock_handler.call_args
-        assert call_args[0][0] is flow
-        assert call_args[0][1]["base"] == "https://api.github.com"
-        match_info = call_args[0][3]
-        assert match_info["name"] == "github"
-        assert match_info["ref"] == "github"
-        assert match_info["permission"] == "full-access"
+        # Dispatcher routed to the real handle_firewall_request, which writes
+        # match-info into flow.metadata at auth.py:327–333 up-front.
+        assert flow.metadata["firewall_base"] == "https://api.github.com"
+        assert flow.metadata["firewall_name"] == "github"
+        assert flow.metadata["firewall_ref"] == "github"
+        assert flow.metadata["firewall_permission"] == "full-access"
 
     async def test_firewall_permission_blocks_unmatched(
         self, tmp_path, real_flow, mitm_ctx, headers
@@ -241,14 +236,11 @@ class TestRequestHandler:
             with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/orgs"
         )
 
-        mock_handler = AsyncMock()
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
-        ):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
             await mitm_addon.request(flow)
 
-        mock_handler.assert_not_called()
+        # Dispatcher's FirewallBlock branch short-circuits with a 403 before
+        # handle_firewall_request is reached.
         assert flow.response is not None
         assert flow.response.status_code == 403
         assert flow.metadata["firewall_action"] == "DENY"
@@ -261,7 +253,9 @@ class TestRequestHandler:
         assert body["permissions"] == []
         assert body["base"] == "https://api.github.com"
 
-    async def test_firewall_permission_allows_matched(self, tmp_path, real_flow, mitm_ctx, headers):
+    async def test_firewall_permission_allows_matched(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
         """Firewall with permissions and matching rule calls handler with match_info."""
         registry = {
             "vms": {
@@ -313,23 +307,20 @@ class TestRequestHandler:
             path="/repos/octocat/hello",
         )
 
-        mock_handler = AsyncMock()
         with (
             mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
+            fake_firewall_headers(),
         ):
             await mitm_addon.request(flow)
 
-        mock_handler.assert_called_once()
-        call_args = mock_handler.call_args
-        assert call_args[0][0] is flow
-        assert call_args[0][1]["base"] == "https://api.github.com"
-        match_info = call_args[0][3]
-        assert match_info["name"] == "github"
-        assert match_info["ref"] == "github"
-        assert match_info["permission"] == "read-repos"
-        assert match_info["rule"] == "GET /repos/{owner}/{repo}"
-        assert match_info["params"] == {"owner": "octocat", "repo": "hello"}
+        # Dispatcher routed to the real handle_firewall_request, which writes
+        # match-info into flow.metadata at auth.py:327–333 up-front.
+        assert flow.metadata["firewall_base"] == "https://api.github.com"
+        assert flow.metadata["firewall_name"] == "github"
+        assert flow.metadata["firewall_ref"] == "github"
+        assert flow.metadata["firewall_permission"] == "read-repos"
+        assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
+        assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
 
     async def test_firewall_no_base_match_passes_through(
         self, tmp_path, real_flow, mitm_ctx, headers
@@ -376,17 +367,15 @@ class TestRequestHandler:
             with_response=False, client_ip="10.200.0.5", host="api.example.com", path="/data"
         )
 
-        mock_handler = AsyncMock()
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
-        ):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
             await mitm_addon.request(flow)
 
-        # No firewall match → pass-through, not blocked
-        mock_handler.assert_not_called()
+        # No firewall match → pass-through, not blocked (dispatcher's final
+        # fall-through sets firewall_action=ALLOW; handler never reached so
+        # firewall_base is absent).
         assert flow.response is None
         assert flow.metadata["firewall_action"] == "ALLOW"
+        assert "firewall_base" not in flow.metadata
 
 
 class TestResponseHeadersHandler:
@@ -1349,7 +1338,9 @@ class TestResponseUsageReporting:
 
         with (
             mitm_ctx(),
-            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
+            # Silence the background webhook; end-to-end JSON→webhook wiring
+            # is covered by test_full_path_response_to_opener's SSE variant.
+            patch.object(usage, "_enqueue_webhook"),
         ):
             mitm_addon.response(flow)
 
@@ -1358,7 +1349,6 @@ class TestResponseUsageReporting:
         assert extracted["model"] == "claude-sonnet-4-6"
         assert extracted["input_tokens"] == 50
         assert extracted["output_tokens"] == 200
-        mock_report.assert_called_once_with(flow, "run-abc-123")
 
     def test_model_provider_buffer_not_truncated(self, real_flow, headers):
         """Model provider responses should buffer without truncation."""
@@ -1435,12 +1425,13 @@ class TestResponseUsageReporting:
 
         with (
             mitm_ctx(),
-            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
+            # Let real maybe_report_proxy_usage run; it early-returns on the
+            # firewall_name == "github" filter and should never reach _enqueue.
+            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
         ):
             mitm_addon.response(flow)
 
-        # maybe_report_proxy_usage is always called; it checks firewall_name internally
-        mock_report.assert_called_once()
+        assert mock_enqueue.call_count == 0
 
     def test_full_path_response_to_opener(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
