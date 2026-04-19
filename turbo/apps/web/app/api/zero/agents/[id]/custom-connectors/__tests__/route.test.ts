@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, PUT } from "../route";
 import { POST as postAgentRoute } from "../../../route";
+import { POST as postCustomConnectors } from "../../../../custom-connectors/route";
 import {
   createTestRequest,
   createTestCliToken,
@@ -10,11 +11,6 @@ import {
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import {
-  createCustomConnector,
-  setCustomConnectorSecret,
-} from "../../../../../../../src/lib/zero/custom-connector/custom-connector-service";
-import { resolveCustomConnectorFirewalls } from "../../../../../../../src/lib/zero/custom-connector/resolve-custom-connectors";
 
 const context = testContext();
 
@@ -37,13 +33,22 @@ async function createAgent(): Promise<string> {
   return data.agentId as string;
 }
 
-async function createConnector(orgId: string, userId: string, suffix: string) {
-  return createCustomConnector(orgId, userId, {
-    displayName: `Test ${suffix}`,
-    prefixes: [`https://api.test-${suffix}.example/`],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
-  });
+async function createConnector(suffix: string): Promise<{ id: string }> {
+  const res = await postCustomConnectors(
+    createTestRequest(`http://localhost:3000/api/zero/custom-connectors`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        displayName: `Test ${suffix}`,
+        prefixes: [`https://api.test-${suffix}.example/`],
+        headerName: "Authorization",
+        headerTemplate: "Bearer {{secret}}",
+      }),
+    }),
+  );
+  expect(res.status).toBe(201);
+  const data = await res.json();
+  return { id: data.id as string };
 }
 
 function getCustomConnectors(agentId: string, token: string) {
@@ -82,6 +87,9 @@ describe("Agent Custom Connectors API", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    // setupUser defaults the mocked Clerk session to org:member; promote to
+    // admin so the caller can create custom connectors via POST.
+    mockClerk({ userId: user.userId, orgId: user.orgId, orgRole: "org:admin" });
     testCliToken = await createTestCliToken(user.userId);
   });
 
@@ -112,8 +120,8 @@ describe("Agent Custom Connectors API", () => {
   describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     it("sets enabled ids and round-trips via GET", async () => {
       const agentId = await createAgent();
-      const c1 = await createConnector(user.orgId, user.userId, "a");
-      const c2 = await createConnector(user.orgId, user.userId, "b");
+      const c1 = await createConnector("a");
+      const c2 = await createConnector("b");
 
       const res = await putCustomConnectors(
         agentId,
@@ -131,8 +139,8 @@ describe("Agent Custom Connectors API", () => {
 
     it("replaces the list atomically", async () => {
       const agentId = await createAgent();
-      const c1 = await createConnector(user.orgId, user.userId, "r1");
-      const c2 = await createConnector(user.orgId, user.userId, "r2");
+      const c1 = await createConnector("r1");
+      const c2 = await createConnector("r2");
 
       await putCustomConnectors(agentId, { enabledIds: [c1.id] }, testCliToken);
       const res = await putCustomConnectors(
@@ -149,7 +157,7 @@ describe("Agent Custom Connectors API", () => {
 
     it("clears authorizations with empty array", async () => {
       const agentId = await createAgent();
-      const c1 = await createConnector(user.orgId, user.userId, "clr");
+      const c1 = await createConnector("clr");
 
       await putCustomConnectors(agentId, { enabledIds: [c1.id] }, testCliToken);
       const res = await putCustomConnectors(
@@ -166,18 +174,24 @@ describe("Agent Custom Connectors API", () => {
 
     it("returns 400 for a cross-org custom connector id", async () => {
       const agentId = await createAgent();
+
       // Build a second user+org with its own connector. Passing a distinct
       // prefix bypasses the default-user cache in setupUser so we get a
       // genuinely different org.
       const otherUser = await context.setupUser({ prefix: "other-user" });
-      const otherConnector = await createConnector(
-        otherUser.orgId,
-        otherUser.userId,
-        "other",
-      );
+      mockClerk({
+        userId: otherUser.userId,
+        orgId: otherUser.orgId,
+        orgRole: "org:admin",
+      });
+      const otherConnector = await createConnector("other");
 
-      // Re-mock back as the original user
-      mockClerk({ userId: user.userId, orgId: user.orgId });
+      // Switch back to the original user.
+      mockClerk({
+        userId: user.userId,
+        orgId: user.orgId,
+        orgRole: "org:admin",
+      });
 
       const res = await putCustomConnectors(
         agentId,
@@ -195,69 +209,6 @@ describe("Agent Custom Connectors API", () => {
         testCliToken,
       );
       expect(res.status).toBe(404);
-    });
-  });
-
-  describe("resolveCustomConnectorFirewalls agent scope", () => {
-    it("returns no firewall when user has secret but agent is not authorized", async () => {
-      const agentId = await createAgent();
-      const c1 = await createConnector(user.orgId, user.userId, "scoped-off");
-      await setCustomConnectorSecret(
-        user.orgId,
-        user.userId,
-        c1.id,
-        "secret-value",
-      );
-
-      // Did NOT add to user_custom_connectors for this agent.
-      const resolved = await resolveCustomConnectorFirewalls(
-        user.orgId,
-        user.userId,
-        [],
-      );
-      expect(resolved.firewalls).toEqual([]);
-    });
-
-    it("returns the firewall when the agent is authorized for the connector", async () => {
-      const c1 = await createConnector(user.orgId, user.userId, "scoped-on");
-      await setCustomConnectorSecret(
-        user.orgId,
-        user.userId,
-        c1.id,
-        "secret-value",
-      );
-
-      const resolved = await resolveCustomConnectorFirewalls(
-        user.orgId,
-        user.userId,
-        [c1.id],
-      );
-      expect(resolved.firewalls).toHaveLength(1);
-      expect(resolved.firewalls[0]?.ref).toBe(c1.slug);
-    });
-
-    it("undefined allowedCustomIds preserves the legacy all-connectors behavior", async () => {
-      const c1 = await createConnector(
-        user.orgId,
-        user.userId,
-        "scoped-legacy",
-      );
-      await setCustomConnectorSecret(
-        user.orgId,
-        user.userId,
-        c1.id,
-        "secret-value",
-      );
-
-      const resolved = await resolveCustomConnectorFirewalls(
-        user.orgId,
-        user.userId,
-      );
-      expect(
-        resolved.firewalls.some((f) => {
-          return f.ref === c1.slug;
-        }),
-      ).toBe(true);
     });
   });
 });

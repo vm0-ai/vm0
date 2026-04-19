@@ -74,6 +74,24 @@ import { logger } from "../shared/logger";
 const log = logger("service:zero-run");
 
 /**
+ * Map user_custom_connectors rows to the `allowedCustomConnectorIds` list.
+ * Returns `undefined` when there is no resolved org (non-agent callers like
+ * the CLI) so resolveCustomConnectorFirewalls keeps the legacy all-access
+ * behavior; returns a (possibly empty) list for agent runs.
+ */
+function toAllowedCustomConnectorIds(
+  orgId: string | null,
+  rows: Array<{ customConnectorId: string }>,
+): string[] | undefined {
+  if (!orgId) {
+    return undefined;
+  }
+  return rows.map((r) => {
+    return r.customConnectorId;
+  });
+}
+
+/**
  * Parameters accepted by createZeroRun().
  * All zero trigger paths (web, schedule, telegram, slack, email, github)
  * use this interface to create agent runs with consistent defaults.
@@ -400,15 +418,10 @@ async function createZeroRunRecord(
         })
     : undefined;
 
-  // Collect custom connector authorizations for this agent. An empty array
-  // restricts the resolver to "no custom connectors for this agent"; a
-  // non-agent caller receives `undefined` and falls back to the user's
-  // full secret set (see resolveCustomConnectorFirewalls).
-  const allowedCustomConnectorIds: string[] | undefined = agent.orgId
-    ? customConnectorRows.map((r) => {
-        return r.customConnectorId;
-      })
-    : undefined;
+  const allowedCustomConnectorIds = toAllowedCustomConnectorIds(
+    agent.orgId,
+    customConnectorRows,
+  );
 
   // Resolve permission policies using the user's enabled connectors so that
   // default policies are seeded for each allowed connector type.
