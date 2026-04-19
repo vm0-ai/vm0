@@ -75,9 +75,7 @@ describe("org providers tab - display", () => {
     });
     await openProvidersPage();
     await waitFor(() => {
-      expect(screen.getAllByText("Anthropic API key").length).toBeGreaterThan(
-        0,
-      );
+      expect(screen.getAllByText("Anthropic").length).toBeGreaterThan(0);
     });
     expect(screen.getByText("Configured")).toBeInTheDocument();
     const imgs = document.querySelectorAll("img[alt='']");
@@ -106,7 +104,7 @@ describe("org providers tab - display", () => {
       // Multiple comboboxes may exist (tab nav + default provider select)
       const comboboxes = screen.getAllByRole("combobox");
       const defaultSelect = comboboxes.find((el) => {
-        return el.textContent?.includes("Anthropic API key");
+        return el.textContent?.includes("Anthropic");
       });
       expect(defaultSelect).toBeInTheDocument();
     });
@@ -157,19 +155,17 @@ describe("org providers tab - interaction", () => {
     await waitFor(() => {
       expect(
         screen.getAllByRole("button").find((el) => {
-          return /Anthropic API key/i.test(el.textContent ?? "");
+          return /Anthropic/i.test(el.textContent ?? "");
         }),
       ).toBeDefined();
     });
     const anthropicBtn = screen.getAllByRole("button").find((el) => {
-      return /Anthropic API key/i.test(el.textContent ?? "");
+      return /Anthropic/i.test(el.textContent ?? "");
     });
     expect(anthropicBtn).toBeDefined();
     await user.click(anthropicBtn!);
     await waitFor(() => {
-      expect(
-        screen.getByText(/Edit workspace Anthropic API key/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Edit workspace Anthropic/i)).toBeInTheDocument();
     });
   });
 
@@ -202,16 +198,16 @@ describe("org providers tab - interaction", () => {
     );
     await openProvidersPage();
     await waitFor(() => {
-      // Find the default provider select (shows "Anthropic API key"), not the tab nav select
+      // Find the default provider select (shows "Anthropic"), not the tab nav select
       const comboboxes = screen.getAllByRole("combobox");
       const defaultSelect = comboboxes.find((el) => {
-        return el.textContent?.includes("Anthropic API key");
+        return el.textContent?.includes("Anthropic");
       });
       expect(defaultSelect).toBeInTheDocument();
     });
     const comboboxes = screen.getAllByRole("combobox");
     const defaultSelect = comboboxes.find((el) => {
-      return el.textContent?.includes("Anthropic API key");
+      return el.textContent?.includes("Anthropic");
     })!;
     await user.click(defaultSelect);
     await waitFor(() => {
@@ -321,9 +317,7 @@ describe("org add provider dialog - interaction", () => {
     });
     await user.click(screen.getByTestId("org-provider-card-anthropic-api-key"));
     await waitFor(() => {
-      expect(
-        screen.getByText(/Add workspace Anthropic API key/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Add workspace Anthropic/i)).toBeInTheDocument();
     });
   });
 });

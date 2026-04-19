@@ -3,7 +3,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { chatThreadByIdContract } from "@vm0/core";
+import { chatThreadByIdContract, modelProviderTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import {
@@ -13,7 +13,10 @@ import {
   updateChatThreadDraft,
   deleteChatThread,
 } from "../../../../../src/lib/zero/chat-thread";
-import { publishThreadListChanged } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
+import {
+  getLatestRunProviderTypeForThread,
+  publishThreadListChanged,
+} from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { isNotFound } from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(chatThreadByIdContract, {
@@ -32,11 +35,22 @@ const router = tsr.router(chatThreadByIdContract, {
 
     try {
       const thread = await getChatThread(params.id, userId);
-      const [{ chatMessages, latestSessionId }, activeRunIds] =
-        await Promise.all([
-          getChatThreadMessages(params.id, userId),
-          getActiveRunIdsForThread(params.id),
-        ]);
+      const [
+        { chatMessages, latestSessionId },
+        activeRunIds,
+        latestRunProviderTypeRaw,
+      ] = await Promise.all([
+        getChatThreadMessages(params.id, userId),
+        getActiveRunIdsForThread(params.id),
+        getLatestRunProviderTypeForThread(params.id),
+      ]);
+      // Narrow to the canonical type enum; a stale/unknown value is treated
+      // as "no prior session" so the composer picker stays unconstrained.
+      const latestSessionProviderType =
+        latestRunProviderTypeRaw === null
+          ? null
+          : (modelProviderTypeSchema.safeParse(latestRunProviderTypeRaw).data ??
+            null);
 
       return {
         status: 200 as const,
@@ -46,11 +60,14 @@ const router = tsr.router(chatThreadByIdContract, {
           agentId: thread.agentComposeId,
           chatMessages,
           latestSessionId,
+          latestSessionProviderType,
           activeRunIds,
           createdAt: thread.createdAt.toISOString(),
           updatedAt: thread.updatedAt.toISOString(),
           draftContent: thread.draftContent,
           draftAttachments: thread.draftAttachments,
+          modelProviderId: thread.modelProviderId,
+          selectedModel: thread.selectedModel,
         },
       };
     } catch (error) {

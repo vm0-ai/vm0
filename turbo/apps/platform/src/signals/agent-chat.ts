@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadsContract,
+  type ModelProviderType,
   type PersistedAttachment,
 } from "@vm0/core";
 import { agentById, defaultAgentId$ } from "./agent.ts";
@@ -56,10 +57,23 @@ export interface ChatThread {
   agentId?: string;
   title: string | null;
   latestSessionId: string | null;
+  /**
+   * Provider type of the latest run in this thread. Null when the thread has
+   * no runs yet. The composer picker uses this to disable options whose base
+   * URL differs from the current session.
+   */
+  latestSessionProviderType: ModelProviderType | null;
   activeRunIds: string[];
   isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
+  /**
+   * Per-thread model override. Both fields set together or both null. When
+   * set, the send route uses this combination, overriding the agent and org
+   * defaults, for the next run.
+   */
+  modelProviderId: string | null;
+  selectedModel: string | null;
 }
 
 export const currentChatThread$ = computed(
@@ -82,10 +96,13 @@ export const currentChatThread$ = computed(
       title: body.title ?? null,
       agentId: body.agentId,
       latestSessionId: body.latestSessionId ?? null,
+      latestSessionProviderType: body.latestSessionProviderType ?? null,
       activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
+      modelProviderId: body.modelProviderId ?? null,
+      selectedModel: body.selectedModel ?? null,
     };
   },
 );

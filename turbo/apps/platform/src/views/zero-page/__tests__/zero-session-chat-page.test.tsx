@@ -108,7 +108,7 @@ describe("provider incompatibility error", () => {
         runId: "run-incompatible",
         status: "failed",
         error:
-          "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key.",
+          "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic.",
         createdAt: "2026-03-10T00:00:00Z",
       },
     ]);

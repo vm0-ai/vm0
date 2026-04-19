@@ -54,7 +54,6 @@ function getOverrides(
   }
   if (type === "anthropic-api-key") {
     return {
-      label: "Anthropic API key",
       description:
         "Power your agents with Claude models for advanced reasoning and analysis.",
     };
@@ -215,6 +214,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "claude-opus-4-6": "Claude Opus 4.6",
   "claude-opus-4-7": "Claude Opus 4.7",
+  "claude-haiku-4-5": "Claude Haiku 4.5",
   // Anthropic via OpenRouter / Vercel AI Gateway
   "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
   "anthropic/claude-opus-4.6": "Claude Opus 4.6",
@@ -246,4 +246,25 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
  */
 export function getModelDisplayName(model: string): string {
   return MODEL_DISPLAY_NAMES[model] ?? model;
+}
+
+/**
+ * Credit multiplier for Built-in model offerings, normalized so Claude Sonnet 4.6 = 1x.
+ * Sourced from OpenRouter per-token USD pricing and normalized via a blended
+ * (input + 5× output) cost against Sonnet 4.6 ($3/$15 per M), rounded to 1
+ * decimal. Only applies to the `vm0` provider type; BYOK providers pay the
+ * vendor directly and do not carry a platform multiplier.
+ */
+const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<Record<string, number>>({
+  "claude-opus-4-6": 1.7,
+  "claude-opus-4-7": 1.7,
+  "claude-sonnet-4-6": 1,
+  "glm-5.1": 0.4,
+  "claude-haiku-4-5": 0.3,
+  "kimi-k2.5": 0.2,
+  "MiniMax-M2.7": 0.1,
+});
+
+export function getVm0ModelMultiplier(model: string): number | undefined {
+  return VM0_MODEL_CREDIT_MULTIPLIER[model];
 }

@@ -5,9 +5,11 @@ import {
   timestamp,
   index,
   jsonb,
+  varchar,
 } from "drizzle-orm/pg-core";
 import type { PersistedAttachment } from "@vm0/core";
 import { agentComposes } from "./agent-compose";
+import { modelProviders } from "./model-provider";
 
 /**
  * Chat Threads table
@@ -54,6 +56,19 @@ export const chatThreads = pgTable(
      * Used to derive `isRead` in the thread list query.
      */
     lastReadAt: timestamp("last_read_at"),
+    /**
+     * Per-thread model override. When both fields are non-null the send route
+     * uses this combination for the next run; otherwise it falls back to the
+     * agent's override and then the org default. Set/cleared on every message
+     * send from the composer's model picker.
+     */
+    modelProviderId: uuid("model_provider_id").references(
+      () => {
+        return modelProviders.id;
+      },
+      { onDelete: "set null" },
+    ),
+    selectedModel: varchar("selected_model", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

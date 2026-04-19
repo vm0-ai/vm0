@@ -3,6 +3,8 @@ import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { orgCache } from "../../db/schema/org-cache";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
+import { modelProviders } from "../../db/schema/model-provider";
+import { chatThreads } from "../../db/schema/chat-thread";
 
 /**
  * Read the default agent ID (zero agent UUID) for an org from org_metadata.
@@ -96,4 +98,49 @@ export async function getOrgCredits(orgId: string): Promise<number | null> {
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
   return row?.credits ?? null;
+}
+
+/**
+ * Look up the uuid of a model provider by org + type. Useful for tests that
+ * need to reference a provider they just seeded via insertOrgDefaultModelProvider.
+ */
+export async function getTestModelProviderIdByType(
+  orgId: string,
+  type: string,
+): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ id: modelProviders.id })
+    .from(modelProviders)
+    .where(and(eq(modelProviders.orgId, orgId), eq(modelProviders.type, type)))
+    .limit(1);
+  if (!row) {
+    throw new Error(`No model provider of type "${type}" for org ${orgId}`);
+  }
+  return row.id;
+}
+
+/**
+ * Read the per-thread model override (modelProviderId, selectedModel) written
+ * by the chat-messages send route when the composer's picker is active.
+ */
+export async function getTestChatThreadModelOverride(
+  threadId: string,
+): Promise<{
+  modelProviderId: string | null;
+  selectedModel: string | null;
+}> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      modelProviderId: chatThreads.modelProviderId,
+      selectedModel: chatThreads.selectedModel,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  return {
+    modelProviderId: row?.modelProviderId ?? null,
+    selectedModel: row?.selectedModel ?? null,
+  };
 }

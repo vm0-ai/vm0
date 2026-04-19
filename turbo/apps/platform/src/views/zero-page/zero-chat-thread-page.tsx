@@ -58,6 +58,7 @@ import {
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -323,6 +324,20 @@ function ChatThreadComposer({
   const pageSignal = useGet(pageSignal$);
   const { signal: rootSignal } = useGet(rootSignal$);
 
+  // Per-thread composer state lives in ccstate signals on the factory so the
+  // initial value seeds from threadData once it resolves (a React useState
+  // initializer would snapshot `undefined` on first render). `modelSelection$`
+  // internally flips to a user-override once `setModelSelection$` is called,
+  // so unsaved edits survive subsequent threadData$ reloads.
+  const threadData = useLastResolved(thread.threadData$);
+  const modelFeatureEnabled =
+    useLastResolved(featureSwitch$)?.[
+      FeatureSwitchKey.ModelProviderSelection
+    ] ?? false;
+  const orgProviders = useLastResolved(orgModelProviders$);
+  const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
+  const setModelSelection = useSet(thread.setModelSelection$);
+
   const handleInputChange = (text: string) => {
     setInput(text);
     detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
@@ -336,7 +351,7 @@ function ChatThreadComposer({
     setInput("");
     // Use rootSignal so in-run page navigation (e.g. IPA internal nav) doesn't
     // cancel the pending send.
-    detach(send(text, rootSignal), Reason.DomCallback);
+    detach(send(text, modelSelection, rootSignal), Reason.DomCallback);
   };
 
   return (
@@ -366,6 +381,19 @@ function ChatThreadComposer({
           composerFileInput$={thread.composerFileInput$}
           setComposerFileInput$={thread.setComposerFileInput$}
           setInputRef={setInputRef}
+          modelPicker={
+            modelFeatureEnabled &&
+            orgProviders &&
+            orgProviders.modelProviders.length > 0
+              ? {
+                  providers: orgProviders.modelProviders,
+                  value: modelSelection,
+                  onChange: setModelSelection,
+                  sessionProviderType:
+                    threadData?.latestSessionProviderType ?? null,
+                }
+              : undefined
+          }
         />
         <div
           aria-hidden={!showWorking}

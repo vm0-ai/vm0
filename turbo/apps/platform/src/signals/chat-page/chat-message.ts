@@ -13,6 +13,7 @@ import {
   chatMessagesContract,
   chatThreadsContract,
   chatThreadByIdContract,
+  type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
@@ -119,12 +120,17 @@ export const createNewChatThread$ = command(
 /**
  * Send the first message in a new or threadless chat. Returns the threadId.
  * Used by the agent talk page which navigates to the thread after sending.
+ *
+ * `modelSelection` comes from the composer's per-run model picker and is
+ * always provided — `null` stores "no override" (inherit agent/org default)
+ * on the newly created thread; a non-null object sets the thread override.
  */
 export const sendNewThreadMessage$ = command(
   async (
     { get, set },
     agentId: string,
     prompt: string,
+    modelSelection: ModelSelectionRequest | null,
     signal: AbortSignal,
   ): Promise<string | null> => {
     if (!prompt.trim()) {
@@ -139,6 +145,7 @@ export const sendNewThreadMessage$ = command(
           prompt,
           hasTextContent: prompt.trim().length > 0,
           clientMessageId: crypto.randomUUID(),
+          modelSelection,
         },
         fetchOptions: { signal },
       }),

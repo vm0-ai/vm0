@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { runStatusSchema } from "./runs";
+import { modelProviderTypeSchema } from "./model-providers";
 
 const c = initContract();
 
@@ -84,11 +85,36 @@ const chatThreadDetailSchema = z.object({
   agentId: z.string(),
   chatMessages: z.array(storedChatMessageSchema),
   latestSessionId: z.string().nullable(),
+  /**
+   * Provider type of the latest run in this thread, if any. Used by the
+   * composer's model picker to disable options whose base URL differs from
+   * the current session — switching mid-session would break continuity.
+   * Null when the thread has no runs yet. Optional so older fixtures/tests
+   * that predate the field still validate.
+   */
+  latestSessionProviderType: modelProviderTypeSchema.nullable().optional(),
   activeRunIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
+  /**
+   * Per-thread model override. Both fields set together or both null.
+   * When set, the send route uses this combination (overriding the agent
+   * and org defaults) for the next run. Optional for back-compat.
+   */
+  modelProviderId: z.string().nullable().optional(),
+  selectedModel: z.string().nullable().optional(),
+});
+
+/**
+ * Per-run model selection from the composer. Both fields are required when
+ * the object is present; pass `null` to clear the thread's override and fall
+ * back to the agent/org default; omit to leave the thread's override unchanged.
+ */
+const modelSelectionRequestSchema = z.object({
+  modelProviderId: z.string().uuid(),
+  selectedModel: z.string().min(1),
 });
 
 /**
@@ -223,6 +249,13 @@ export const chatMessagesContract = c.router({
       prompt: z.string().min(1),
       threadId: z.string().optional(),
       modelProvider: z.string().optional(),
+      /**
+       * Per-run model override; persisted on the thread so subsequent runs
+       * inherit the same choice. `undefined` = leave current thread override
+       * untouched (backward-compat for older clients). `null` = clear the
+       * thread override and fall back to agent/org defaults.
+       */
+      modelSelection: modelSelectionRequestSchema.nullable().optional(),
       // Optional for backward compatibility: older clients that omit this field
       // still trigger title generation (server guards with !== false, not === true).
       hasTextContent: z.boolean().optional(),
@@ -292,12 +325,15 @@ export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export {
   chatThreadListItemSchema,
   chatThreadDetailSchema,
+  modelSelectionRequestSchema,
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
 };
+
+export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;

@@ -46,9 +46,12 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import {
   chatPageInput$,
+  chatPageModelSelection$,
   setChatPageInput$,
+  setChatPageModelSelection$,
   chatPageTaglineIndex$,
   suggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
@@ -308,6 +311,14 @@ export function AgentChatPage() {
   const navigateToChatFn = useSet(navigateToChat$);
   const { signal: rootSignal } = useGet(rootSignal$);
 
+  const modelFeatureEnabled =
+    useLastResolved(featureSwitch$)?.[
+      FeatureSwitchKey.ModelProviderSelection
+    ] ?? false;
+  const orgProviders = useLastResolved(orgModelProviders$);
+  const modelSelection = useGet(chatPageModelSelection$);
+  const setModelSelection = useSet(setChatPageModelSelection$);
+
   const handleSendMessage = (message: string) => {
     if (!currentChatAgentId) {
       return;
@@ -317,13 +328,16 @@ export function AgentChatPage() {
     // but not on page navigation (unlike pageSignal).
     const talkSignal = resetTalkSendSignal(rootSignal);
     detach(
-      sendNewThread(currentChatAgentId, message, talkSignal).then(
-        (threadId) => {
-          if (threadId) {
-            navigateToChatFn(threadId);
-          }
-        },
-      ),
+      sendNewThread(
+        currentChatAgentId,
+        message,
+        modelSelection,
+        talkSignal,
+      ).then((threadId) => {
+        if (threadId) {
+          navigateToChatFn(threadId);
+        }
+      }),
       Reason.DomCallback,
     );
   };
@@ -417,6 +431,19 @@ export function AgentChatPage() {
             onInputChange={setInput}
             onSend={handleSend}
             displayName={currentChatAgentDisplayName ?? ""}
+            modelPicker={
+              modelFeatureEnabled &&
+              orgProviders &&
+              orgProviders.modelProviders.length > 0
+                ? {
+                    providers: orgProviders.modelProviders,
+                    value: modelSelection,
+                    onChange: setModelSelection,
+                    // No prior session exists on the landing page.
+                    sessionProviderType: null,
+                  }
+                : undefined
+            }
           />
 
           {/* Suggested prompts */}

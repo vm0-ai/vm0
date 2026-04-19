@@ -20,9 +20,11 @@ import {
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   zeroRunsCancelContract,
+  type ModelSelectionRequest,
   type PersistedAttachment,
   type PagedChatMessage,
 } from "@vm0/core";
+import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
@@ -42,7 +44,15 @@ const L = logger("ChatThread");
 export interface ChatThreadSignals {
   // ── Data signals ──────────────────────────────────────────────────────────
   threadData$: Computed<Promise<ChatThread | null>>;
-  sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
+  // ── Composer model override ──────────────────────────────────────────────
+  // Seeded from threadData$ on first resolve; user edits via setModelSelection$
+  // take over and are preserved across subsequent threadData$ reloads.
+  modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  setModelSelection$: Command<void, [ModelProviderSelection | null]>;
+  sendMessage$: Command<
+    Promise<void>,
+    [string, ModelSelectionRequest | null, AbortSignal]
+  >;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
@@ -102,10 +112,13 @@ function createThreadData(threadId: string) {
       title: body.title ?? null,
       agentId: body.agentId,
       latestSessionId: body.latestSessionId ?? null,
+      latestSessionProviderType: body.latestSessionProviderType ?? null,
       activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
+      modelProviderId: body.modelProviderId ?? null,
+      selectedModel: body.selectedModel ?? null,
     };
   });
 
@@ -116,6 +129,47 @@ function createThreadData(threadId: string) {
   });
 
   return { threadData$, reloadThread$ };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: composer model override
+// ---------------------------------------------------------------------------
+
+function createModelSelection(
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  // Discriminated union so we can tell "user hasn't picked anything yet" from
+  // "user explicitly picked inherit (null)". Without the flag, clearing the
+  // selection would be indistinguishable from the initial unset state and we'd
+  // fall back to server data forever.
+  const internalUserOverride$ = state<
+    { kind: "unset" } | { kind: "set"; value: ModelProviderSelection | null }
+  >({ kind: "unset" });
+
+  const modelSelection$ = computed(
+    async (get): Promise<ModelProviderSelection | null> => {
+      const user = get(internalUserOverride$);
+      if (user.kind === "set") {
+        return user.value;
+      }
+      const thread = await get(threadData$);
+      if (!thread?.modelProviderId || !thread.selectedModel) {
+        return null;
+      }
+      return {
+        modelProviderId: thread.modelProviderId,
+        selectedModel: thread.selectedModel,
+      };
+    },
+  );
+
+  const setModelSelection$ = command(
+    ({ set }, value: ModelProviderSelection | null) => {
+      set(internalUserOverride$, { kind: "set", value });
+    },
+  );
+
+  return { modelSelection$, setModelSelection$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -756,49 +810,41 @@ function createRunTracking(
 }
 
 // ---------------------------------------------------------------------------
-// Factory: createChatThreadSignals
+// Sub-factory: sendMessage command
 // ---------------------------------------------------------------------------
 
-export function createChatThreadSignals(
-  threadId: string,
-  draft: DraftSignals,
-): ChatThreadSignals {
-  const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ } =
-    createScrollSignals(threadId);
-  const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
-  const { composerFileInput$, setComposerFileInput$ } =
-    createComposerFileInput();
-  const { agentId$, agentDisplayName$, agentPinned$ } =
-    createAgentInfoSignals(threadData$);
+interface SendMessageDeps {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  draft: DraftSignals;
+  prepareUserMessage$: Command<
+    Promise<{ fullPrompt: string; hasTextContent: boolean } | null>,
+    [string, AbortSignal]
+  >;
+  cancelDraftSync$: Command<void, []>;
+  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  insertOptimisticMessage$: Command<void, [PagedChatMessage]>;
+  scrollToBottom$: Command<void, []>;
+}
+
+function createSendMessage(deps: SendMessageDeps) {
   const {
-    timelineExpandedIds$,
-    toggleTimelineExpanded$,
-    copiedMessageId$,
-    copyMessage$,
-  } = createThreadUIState();
-  const {
-    latestChatMessageId$,
-    groupedChatMessages$,
-    fetchNextPage$,
-    insertOptimisticMessage$,
-  } = createPagedMessages(threadId);
-
-  const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
-    createDraftSync(threadId, draft);
-
-  const prepareUserMessage$ = createPrepareUserMessage(draft);
-
-  const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking(
     threadId,
-    reloadThread$,
     threadData$,
-    fetchNextPage$,
-    autoScroll$,
-  );
-
+    draft,
+    prepareUserMessage$,
+    cancelDraftSync$,
+    flushDraftClear$,
+    insertOptimisticMessage$,
+    scrollToBottom$,
+  } = deps;
   const sendMessage$ = command(
-    async ({ get, set }, prompt: string, signal: AbortSignal) => {
+    async (
+      { get, set },
+      prompt: string,
+      modelSelection: ModelSelectionRequest | null,
+      signal: AbortSignal,
+    ) => {
       L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
       const thread = await get(threadData$);
       signal.throwIfAborted();
@@ -843,6 +889,7 @@ export function createChatThreadSignals(
               threadId: threadId,
               hasTextContent: result.hasTextContent,
               clientMessageId,
+              modelSelection,
             },
             fetchOptions: { signal },
           }),
@@ -863,11 +910,70 @@ export function createChatThreadSignals(
       });
     },
   );
+  return { sendMessage$ };
+}
+
+// ---------------------------------------------------------------------------
+// Factory: createChatThreadSignals
+// ---------------------------------------------------------------------------
+
+export function createChatThreadSignals(
+  threadId: string,
+  draft: DraftSignals,
+): ChatThreadSignals {
+  const { threadData$, reloadThread$ } = createThreadData(threadId);
+  const { modelSelection$, setModelSelection$ } =
+    createModelSelection(threadData$);
+  const { setScrollContainer$, autoScroll$, scrollToBottom$, scrollToTop$ } =
+    createScrollSignals(threadId);
+  const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
+  const { composerFileInput$, setComposerFileInput$ } =
+    createComposerFileInput();
+  const { agentId$, agentDisplayName$, agentPinned$ } =
+    createAgentInfoSignals(threadData$);
+  const {
+    timelineExpandedIds$,
+    toggleTimelineExpanded$,
+    copiedMessageId$,
+    copyMessage$,
+  } = createThreadUIState();
+  const {
+    latestChatMessageId$,
+    groupedChatMessages$,
+    fetchNextPage$,
+    insertOptimisticMessage$,
+  } = createPagedMessages(threadId);
+
+  const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
+    createDraftSync(threadId, draft);
+
+  const prepareUserMessage$ = createPrepareUserMessage(draft);
+
+  const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking(
+    threadId,
+    reloadThread$,
+    threadData$,
+    fetchNextPage$,
+    autoScroll$,
+  );
+
+  const { sendMessage$ } = createSendMessage({
+    threadId,
+    threadData$,
+    draft,
+    prepareUserMessage$,
+    cancelDraftSync$,
+    flushDraftClear$,
+    insertOptimisticMessage$,
+    scrollToBottom$,
+  });
 
   const { setInputRef$, focusInput$ } = createInputRef();
 
   return {
     threadData$,
+    modelSelection$,
+    setModelSelection$,
     sendMessage$,
     cancelRun$,
     setScrollContainer$,

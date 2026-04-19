@@ -54,7 +54,16 @@ import {
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  type ModelProviderResponse,
+  type ModelProviderType,
+} from "@vm0/core";
+import {
+  ModelProviderPicker,
+  type ModelProviderSelection,
+} from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
@@ -126,6 +135,22 @@ interface ZeroChatComposerProps {
   setInputRef?: (el: HTMLElement | null) => void;
   /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
   onDraftChange?: () => void;
+  /**
+   * Per-run model picker wiring. When present, a compact picker is rendered
+   * immediately to the left of the Send button; the parent owns the selected
+   * value and decides when to include it in the send payload. Undefined
+   * hides the picker entirely (e.g. callers that haven't opted in).
+   */
+  modelPicker?: {
+    providers: ModelProviderResponse[];
+    value: ModelProviderSelection | null;
+    onChange: (value: ModelProviderSelection | null) => void;
+    /**
+     * Provider type of the current session's first run. When set, options whose
+     * base URL differs are disabled to preserve session continuity.
+     */
+    sessionProviderType: ModelProviderType | null;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -595,6 +620,7 @@ export function ZeroChatComposer({
   setComposerFileInput$: setComposerFileInputProp$,
   setInputRef,
   onDraftChange,
+  modelPicker,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
@@ -871,6 +897,23 @@ export function ZeroChatComposer({
                 />
               </div>
               <div className="flex items-center gap-2">
+                {modelPicker && (
+                  <ModelProviderPicker
+                    providers={modelPicker.providers}
+                    value={modelPicker.value}
+                    onChange={modelPicker.onChange}
+                    placeholder="Default"
+                    triggerClassName={cn(
+                      // Resting state: borderless ghost — trigger reads like
+                      // plain text in the toolbar.
+                      "h-8 w-auto max-w-[12rem] gap-1 border-transparent bg-transparent px-2 text-xs text-muted-foreground transition-colors",
+                      // Discoverable affordance only when the user targets it.
+                      "hover:bg-accent hover:text-foreground focus:bg-accent focus:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+                    )}
+                    sessionProviderType={modelPicker.sessionProviderType}
+                    compactTrigger
+                  />
+                )}
                 <MicButton
                   onTranscribed={(text) => {
                     const base = input;

@@ -40,8 +40,11 @@ interface Vm0ModelConfig {
   featureFlag?: FeatureSwitchKey;
 }
 
+// Key order is load-bearing: `Object.keys()` preserves insertion order and
+// `MODEL_PROVIDER_TYPES.vm0.models` is derived from it, which in turn drives
+// the order models appear in the Built-in model dropdown.
 export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
-  "claude-sonnet-4-6": {
+  "claude-opus-4-7": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
@@ -49,7 +52,16 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
-  "claude-opus-4-7": {
+  "claude-sonnet-4-6": {
+    concreteType: "anthropic-api-key",
+    vendor: "anthropic",
+  },
+  "glm-5.1": {
+    concreteType: "zai-api-key",
+    vendor: "zai",
+    featureFlag: FeatureSwitchKey.Vm0GlmModel,
+  },
+  "claude-haiku-4-5": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
@@ -57,11 +69,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "moonshot-api-key",
     vendor: "moonshot",
     featureFlag: FeatureSwitchKey.Vm0KimiModel,
-  },
-  "glm-5.1": {
-    concreteType: "zai-api-key",
-    vendor: "zai",
-    featureFlag: FeatureSwitchKey.Vm0GlmModel,
   },
   "MiniMax-M2.7": {
     concreteType: "minimax-api-key",
@@ -124,7 +131,7 @@ export const MODEL_PROVIDER_TYPES = {
   "anthropic-api-key": {
     framework: "claude-code" as const,
     secretName: "ANTHROPIC_API_KEY",
-    label: "Anthropic API Key",
+    label: "Anthropic",
     secretLabel: "API key",
     helpText:
       "Get your API key at: https://console.anthropic.com/settings/keys",

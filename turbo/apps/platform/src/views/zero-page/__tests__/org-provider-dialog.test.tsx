@@ -76,21 +76,14 @@ function mockProviderResponse(
 describe("org-provider-dialog - display", () => {
   // ORG-D-089: dialog title and description based on mode/type
   it("shows add title for anthropic-api-key in add mode", async () => {
-    await openAddDialog(
-      "anthropic-api-key",
-      /Add workspace Anthropic API key/i,
-    );
-    expect(
-      screen.getByText(/Add workspace Anthropic API key/i),
-    ).toBeInTheDocument();
+    await openAddDialog("anthropic-api-key", /Add workspace Anthropic/i);
+    expect(screen.getByText(/Add workspace Anthropic/i)).toBeInTheDocument();
   });
 
   it("shows edit title for anthropic-api-key in edit mode", async () => {
     const provider = mockProviderResponse({ type: "anthropic-api-key" });
-    await openEditDialog(provider, /Edit workspace Anthropic API key/i);
-    expect(
-      screen.getByText(/Edit workspace Anthropic API key/i),
-    ).toBeInTheDocument();
+    await openEditDialog(provider, /Edit workspace Anthropic/i);
+    expect(screen.getByText(/Edit workspace Anthropic/i)).toBeInTheDocument();
   });
 
   it("shows multi-auth title for aws-bedrock in add mode", async () => {
@@ -254,15 +247,13 @@ describe("org-provider-dialog - interaction", () => {
     const user = userEvent.setup();
     await openAddDialog("anthropic-api-key", /Add workspace/i);
 
-    expect(
-      screen.getByText(/Add workspace Anthropic API key/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Add workspace Anthropic/i)).toBeInTheDocument();
 
     await user.click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(
-        screen.queryByText(/Add workspace Anthropic API key/i),
+        screen.queryByText(/Add workspace Anthropic/i),
       ).not.toBeInTheDocument();
     });
   });

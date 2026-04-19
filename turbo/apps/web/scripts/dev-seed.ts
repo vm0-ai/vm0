@@ -53,6 +53,14 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheCreationTokenPrice: usd(6.25),
   },
   {
+    model: "claude-haiku-4-5",
+    modelProvider: "vm0",
+    inputTokenPrice: usd(1),
+    outputTokenPrice: usd(5),
+    cacheReadTokenPrice: usd(0.1),
+    cacheCreationTokenPrice: usd(1.25),
+  },
+  {
     model: "kimi-k2.5",
     modelProvider: "vm0",
     inputTokenPrice: usd(0.6),

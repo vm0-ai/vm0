@@ -187,6 +187,8 @@ export async function getChatThread(
   sourceScheduleRunId: string | null;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
+  modelProviderId: string | null;
+  selectedModel: string | null;
   createdAt: Date;
   updatedAt: Date;
 }> {
@@ -210,6 +212,8 @@ export async function getChatThread(
       .array()
       .nullable()
       .parse(thread.draftAttachments ?? null),
+    modelProviderId: thread.modelProviderId ?? null,
+    selectedModel: thread.selectedModel ?? null,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };

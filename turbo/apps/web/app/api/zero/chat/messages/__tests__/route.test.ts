@@ -10,6 +10,10 @@ import {
   getTestRun,
   getTestChatMessagesByThread,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  getTestChatThreadModelOverride,
+  getTestModelProviderIdByType,
+} from "../../../../../../src/__tests__/db-test-assertions/org";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { POST as createChatThreadPOST } from "../../../chat-threads/route";
 import {
@@ -558,6 +562,155 @@ describe("POST /api/zero/chat/messages", () => {
       expect(userMsg.attachFiles[0].id).toBe("resolve-uuid-1");
       expect(userMsg.attachFiles[0].filename).toBe("data.csv");
       expect(userMsg.attachFiles[0].url).toBe("https://presigned-url/data.csv");
+    });
+
+    describe("per-run model selection (composer picker)", () => {
+      it("persists modelSelection onto the thread", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "hello with override",
+              modelSelection: {
+                modelProviderId: providerId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(providerId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("clears the thread override when modelSelection is null", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+
+        // Seed an override via the first send.
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "with override",
+              modelSelection: {
+                modelProviderId: providerId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId } = await first.json();
+
+        // Now clear it explicitly.
+        const clear = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "reset to default",
+              threadId,
+              modelSelection: null,
+            }),
+          }),
+        );
+        expect(clear.status).toBe(201);
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBeNull();
+        expect(override.selectedModel).toBeNull();
+      });
+
+      it("leaves the thread override untouched when modelSelection is omitted", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "with override",
+              modelSelection: {
+                modelProviderId: providerId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId } = await first.json();
+
+        // Second send omits modelSelection — the server must keep the
+        // previously-saved override instead of resetting it.
+        const second = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "follow up",
+              threadId,
+            }),
+          }),
+        );
+        expect(second.status).toBe(201);
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(providerId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("rejects a providerId from a different org", async () => {
+        // Create a second org and set up a provider under it.
+        const otherContext = testContext();
+        otherContext.setupMocks();
+        const other = await otherContext.setupUser();
+        await insertOrgDefaultModelProvider(other.orgId, "anthropic-api-key");
+        const otherProviderId = await getTestModelProviderIdByType(
+          other.orgId,
+          "anthropic-api-key",
+        );
+
+        // Switch back to the original user before sending.
+        context.setupMocks();
+        mockClerk({ userId: user.userId });
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "should be rejected",
+              modelSelection: {
+                modelProviderId: otherProviderId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+        expect(response.status).toBe(400);
+      });
     });
   });
 });

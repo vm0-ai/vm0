@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { after } from "next/server";
 import {
   createHandler,
@@ -12,6 +12,9 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { createZeroRun } from "../../../../../src/lib/zero/zero-run-service";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
+import { modelProviders } from "../../../../../src/db/schema/model-provider";
+import { chatThreads } from "../../../../../src/db/schema/chat-thread";
 import {
   buildWebChatPrompt,
   buildWebAttachFilesPrompt,
@@ -86,6 +89,58 @@ interface ResolvedThread {
   sessionId: string | undefined;
   previousContext: { role: "user" | "assistant"; content: string }[];
   continueFromSchedulePrompt: string | undefined;
+}
+
+/**
+ * Persist the composer's per-run override onto the thread row and return the
+ * effective override to use for this run (precedence: per-run > thread > agent).
+ * `undefined` for `modelSelection` means "leave thread row as-is" — older
+ * clients that never saw the field still get the thread/agent fall-through.
+ */
+async function resolveRunModelOverride(
+  threadId: string,
+  agent: { modelProviderId: string | null; selectedModel: string | null },
+  modelSelection:
+    | { modelProviderId: string; selectedModel: string }
+    | null
+    | undefined,
+): Promise<{ providerId: string | null; selectedModel: string | null }> {
+  if (modelSelection !== undefined) {
+    await globalThis.services.db
+      .update(chatThreads)
+      .set({
+        modelProviderId: modelSelection?.modelProviderId ?? null,
+        selectedModel: modelSelection?.selectedModel ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(chatThreads.id, threadId));
+    if (modelSelection !== null) {
+      return {
+        providerId: modelSelection.modelProviderId,
+        selectedModel: modelSelection.selectedModel,
+      };
+    }
+    // modelSelection === null means "clear" — fall through to agent default.
+  } else {
+    const [thread] = await globalThis.services.db
+      .select({
+        modelProviderId: chatThreads.modelProviderId,
+        selectedModel: chatThreads.selectedModel,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, threadId))
+      .limit(1);
+    if (thread?.modelProviderId && thread.selectedModel) {
+      return {
+        providerId: thread.modelProviderId,
+        selectedModel: thread.selectedModel,
+      };
+    }
+  }
+  return {
+    providerId: agent.modelProviderId,
+    selectedModel: agent.selectedModel,
+  };
 }
 
 /**
@@ -176,6 +231,33 @@ const router = tsr.router(chatMessagesContract, {
       };
     }
 
+    // Validate per-run model selection belongs to the caller's org before
+    // we trust it to write onto the thread or override the agent's default.
+    if (body.modelSelection) {
+      const { org } = await resolveOrg(authCtx);
+      const [provider] = await globalThis.services.db
+        .select({ id: modelProviders.id })
+        .from(modelProviders)
+        .where(
+          and(
+            eq(modelProviders.id, body.modelSelection.modelProviderId),
+            eq(modelProviders.orgId, org.orgId),
+          ),
+        )
+        .limit(1);
+      if (!provider) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: "Unknown model provider for this workspace",
+              code: "BAD_REQUEST" as const,
+            },
+          },
+        };
+      }
+    }
+
     try {
       const {
         threadId,
@@ -183,6 +265,15 @@ const router = tsr.router(chatMessagesContract, {
         previousContext,
         continueFromSchedulePrompt,
       } = await resolveThread(authCtx.userId, body.agentId, body.threadId);
+
+      const override = await resolveRunModelOverride(
+        threadId,
+        {
+          modelProviderId: agent.modelProviderId,
+          selectedModel: agent.selectedModel,
+        },
+        body.modelSelection,
+      );
 
       // Only generate title when prompt has actual user text. The
       // assistant reply is not yet available at send time — the chat
@@ -231,8 +322,8 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
-        modelProviderId: agent.modelProviderId ?? undefined,
-        selectedModelOverride: agent.selectedModel ?? undefined,
+        modelProviderId: override.providerId ?? undefined,
+        selectedModelOverride: override.selectedModel ?? undefined,
         appendSystemPrompt: buildAppendSystemPrompt(continueFromSchedulePrompt),
         callbacks: [chatCallback],
         chatThreadId: threadId,

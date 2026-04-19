@@ -1919,6 +1919,13 @@
       "when": 1776592685970,
       "tag": "0273_hot_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 274,
+      "version": "7",
+      "when": 1776603350996,
+      "tag": "0274_freezing_human_cannonball",
+      "breakpoints": true
     }
   ]
 }

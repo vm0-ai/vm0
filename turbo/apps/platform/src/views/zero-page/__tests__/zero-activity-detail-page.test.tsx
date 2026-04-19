@@ -421,7 +421,7 @@ describe("zeroActivityDetailPage", () => {
     });
 
     // Provider label should be displayed, not selectedModel
-    expect(screen.getByText("Anthropic API Key")).toBeInTheDocument();
+    expect(screen.getByText("Anthropic")).toBeInTheDocument();
     expect(screen.queryByText("claude-sonnet-4.5")).toBeNull();
   });
 
@@ -473,6 +473,6 @@ describe("zeroActivityDetailPage", () => {
     });
 
     // Should fallback to provider label when selectedModel is null
-    expect(screen.getByText("Anthropic API Key")).toBeInTheDocument();
+    expect(screen.getByText("Anthropic")).toBeInTheDocument();
   });
 });

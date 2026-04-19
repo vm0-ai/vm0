@@ -292,6 +292,25 @@ export async function getLatestSessionIdForThread(
   return undefined;
 }
 
+/**
+ * Provider type of the most recent run in a thread, or null when the thread
+ * has no runs yet. The composer uses this to disable picker options whose
+ * base URL differs from the current session — `areProvidersCompatible`
+ * operates on type, not provider id.
+ */
+export async function getLatestRunProviderTypeForThread(
+  chatThreadId: string,
+): Promise<string | null> {
+  const [row] = await globalThis.services.db
+    .select({ modelProvider: zeroRuns.modelProvider })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(eq(zeroRuns.chatThreadId, chatThreadId))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(1);
+  return row?.modelProvider ?? null;
+}
+
 function hasAgentSessionId(
   value: unknown,
 ): value is { agentSessionId: string } {
