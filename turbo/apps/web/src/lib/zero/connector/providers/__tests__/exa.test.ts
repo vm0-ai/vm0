@@ -26,4 +26,10 @@ describe("connector/providers/exa", () => {
       }).rejects.toThrow("Exa does not support OAuth");
     });
   });
+
+  describe("getSecretName", () => {
+    it("returns EXA_TOKEN", () => {
+      expect(exaHandler.getSecretName()).toBe("EXA_TOKEN");
+    });
+  });
 });
