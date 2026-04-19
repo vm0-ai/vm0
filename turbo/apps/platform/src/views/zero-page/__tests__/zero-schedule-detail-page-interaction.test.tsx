@@ -5,6 +5,14 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroSchedulesMainContract,
+  zeroSchedulesEnableContract,
+  zeroScheduleRunContract,
+  type ScheduleResponse,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -40,10 +48,8 @@ function createMockSchedule(overrides: Record<string, unknown> = {}) {
 }
 
 function mockAPIs(overrides: Record<string, unknown> = {}) {
+  setMockSchedules([createMockSchedule(overrides) as ScheduleResponse]);
   server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [createMockSchedule(overrides)] });
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -134,18 +140,25 @@ describe("zero schedule detail page - toggle switch changes enabled state (SCHED
   it("should toggle the schedule between enabled and disabled", async () => {
     let toggleCalled = false;
     server.use(
-      http.post("*/api/zero/schedules/morning-briefing/disable", () => {
+      mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
         toggleCalled = true;
-        return HttpResponse.json(createMockSchedule({ enabled: false }));
+        return respond(
+          200,
+          createMockSchedule({ enabled: false }) as ScheduleResponse,
+        );
       }),
-      http.get("*/api/zero/schedules", () => {
+      mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
         if (toggleCalled) {
-          return HttpResponse.json({
-            schedules: [createMockSchedule({ enabled: false })],
+          return respond(200, {
+            schedules: [
+              createMockSchedule({ enabled: false }) as ScheduleResponse,
+            ],
           });
         }
-        return HttpResponse.json({
-          schedules: [createMockSchedule({ enabled: true })],
+        return respond(200, {
+          schedules: [
+            createMockSchedule({ enabled: true }) as ScheduleResponse,
+          ],
         });
       }),
       http.get("*/api/zero/chat-threads", () => {
@@ -178,15 +191,14 @@ describe("zero schedule detail page - settings save button persists changes (SCH
   it("should save settings and dismiss the unsaved changes banner", async () => {
     mockAPIs();
     server.use(
-      http.post("*/api/zero/schedules", () => {
-        return HttpResponse.json(
-          {
-            schedule: createMockSchedule({ description: "Updated" }),
-            created: false,
-          },
-          { status: 200 },
-        );
-      }),
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
+        respond(200, {
+          schedule: createMockSchedule({
+            description: "Updated",
+          }) as ScheduleResponse,
+          created: false,
+        }),
+      ),
     );
     const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
@@ -232,23 +244,26 @@ describe("zero schedule detail page - instruction save button saves instructions
     const newPrompt = "New instruction content";
     let saved = false;
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({
-          schedules: [createMockSchedule(saved ? { prompt: newPrompt } : {})],
-        });
-      }),
+      mockApi(zeroSchedulesMainContract.list, ({ respond }) =>
+        respond(200, {
+          schedules: [
+            createMockSchedule(
+              saved ? { prompt: newPrompt } : {},
+            ) as ScheduleResponse,
+          ],
+        }),
+      ),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
-      http.post("*/api/zero/schedules", () => {
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
         saved = true;
-        return HttpResponse.json(
-          {
-            schedule: createMockSchedule({ prompt: newPrompt }),
-            created: false,
-          },
-          { status: 200 },
-        );
+        return respond(200, {
+          schedule: createMockSchedule({
+            prompt: newPrompt,
+          }) as ScheduleResponse,
+          created: false,
+        });
       }),
     );
     const user = userEvent.setup();
@@ -486,12 +501,9 @@ describe("zero schedule detail page - run now button triggers immediate run (SCH
   it("should show a run started confirmation when run now button is clicked", async () => {
     mockAPIs();
     server.use(
-      http.post("*/api/zero/schedules/run", () => {
-        return HttpResponse.json(
-          { runId: "r0000000-0000-4000-a000-000000000001" },
-          { status: 201 },
-        );
-      }),
+      mockApi(zeroScheduleRunContract.run, ({ respond }) =>
+        respond(201, { runId: "r0000000-0000-4000-a000-000000000001" }),
+      ),
     );
     const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });

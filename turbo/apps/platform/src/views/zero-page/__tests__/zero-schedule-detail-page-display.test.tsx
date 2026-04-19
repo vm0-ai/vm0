@@ -5,6 +5,9 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroSchedulesEnableContract, type ScheduleResponse } from "@vm0/core";
 
 const context = testContext();
 
@@ -40,10 +43,8 @@ function createMockSchedule(overrides: Record<string, unknown> = {}) {
 }
 
 function mockAPIs(overrides: Record<string, unknown> = {}) {
+  setMockSchedules([createMockSchedule(overrides) as ScheduleResponse]);
   server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [createMockSchedule(overrides)] });
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -96,9 +97,9 @@ describe("zero schedule detail page - toggle loading state (SCHED-D-014)", () =>
     });
 
     server.use(
-      http.post("*/api/zero/schedules/:name/:action", async () => {
+      mockApi(zeroSchedulesEnableContract.disable, async ({ respond }) => {
         await togglePending;
-        return HttpResponse.json(createMockSchedule());
+        return respond(200, createMockSchedule() as ScheduleResponse);
       }),
     );
     mockAPIs();
