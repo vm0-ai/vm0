@@ -11,6 +11,7 @@ Exports:
 """
 
 import base64
+import contextlib
 import zlib
 from collections.abc import Callable
 
@@ -81,10 +82,9 @@ def _make_streaming_decompressor(
             return decomp_fn(chunk)
         except error_cls as exc:
             broken = True
-            try:
+            with contextlib.suppress(AttributeError):
+                # ctx.log unavailable outside mitmproxy runtime
                 ctx.log.debug(f"Streaming decompression failed ({encoding_label}): {exc}")
-            except AttributeError:
-                pass  # ctx.log unavailable outside mitmproxy runtime
             return b""
 
     return wrapper
@@ -146,10 +146,9 @@ def decompress_body(
             result = obj.decompress(data)
             return result[:max_output] if result else data
     except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
-        try:
+        with contextlib.suppress(AttributeError):
+            # ctx.log unavailable outside mitmproxy runtime
             ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
-        except AttributeError:
-            pass  # ctx.log unavailable outside mitmproxy runtime
     return data
 
 

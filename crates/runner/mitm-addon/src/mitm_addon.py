@@ -11,9 +11,10 @@ This addon runs on the runner HOST (not inside VMs) and:
 
 import functools
 import json
-import os
+import tempfile
 import time
 import urllib.parse
+from pathlib import Path
 
 from mitmproxy import ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
@@ -54,16 +55,19 @@ def load(loader: Loader) -> None:
     loader.add_option(
         name="vm0_proxy_registry_path",
         typespec=str,
-        default="/tmp/proxy-registry.json",
+        # This default is a placeholder shown in `mitmdump --help`; the runner
+        # always passes `--set vm0_proxy_registry_path=<per-runner path>` (see
+        # crates/runner/src/proxy.rs:362), so the default is never used in
+        # production. Computed via tempfile.gettempdir() so that standalone
+        # debugging works on platforms where /tmp is not the system temp dir.
+        default=str(Path(tempfile.gettempdir()) / "proxy-registry.json"),
         help="Path to proxy registry file",
     )
 
     # Initialize the usage pending-count file so the runner can poll it
     # before sending SIGTERM.  The file lives next to the addon script,
     # which is written to addon_dir by the runner.
-    usage.set_pending_path(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "usage-pending")
-    )
+    usage.set_pending_path(str(Path(__file__).resolve().parent / "usage-pending"))
 
 
 def get_api_url() -> str:
@@ -93,12 +97,12 @@ def load_registry() -> dict:
     global _registry_cache, _registry_cache_key
 
     try:
-        registry_path = get_registry_path()
-        st = os.stat(registry_path)
+        registry_path = Path(get_registry_path())
+        st = registry_path.stat()
         key = (st.st_mtime_ns, st.st_size)
         if key == _registry_cache_key:
             return _registry_cache
-        with open(registry_path, "r") as f:
+        with registry_path.open() as f:
             new_registry = json.load(f).get("vms", {})
 
         # Evict cache entries for runs no longer in the registry
@@ -201,10 +205,13 @@ async def request(flow: http.HTTPFlow) -> None:
     if api_url:
         parsed_api = urllib.parse.urlparse(api_url)
         api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
-        if api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}")):
-            if not flow.request.path.startswith("/api/test/"):
-                flow.metadata["firewall_action"] = "ALLOW"
-                return
+        if (
+            api_hostname
+            and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))
+            and not flow.request.path.startswith("/api/test/")
+        ):
+            flow.metadata["firewall_action"] = "ALLOW"
+            return
 
     # --- Step 2: Firewall match with permission check ---
     # Match base URL, then check permission rules before injecting auth headers.

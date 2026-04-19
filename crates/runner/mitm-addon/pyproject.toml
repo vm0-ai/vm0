@@ -22,7 +22,50 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear (real correctness bugs)
+    "S",      # flake8-bandit (security)
+    "ASYNC",  # flake8-async (this addon is async-heavy)
+    "UP",     # pyupgrade (modernize py3.10+ syntax)
+    "C4",     # flake8-comprehensions
+    "PT",     # flake8-pytest-style
+    "T20",    # flake8-print (force logging through ctx.log)
+    "RET",    # flake8-return
+    "N",      # pep8-naming
+    "G",      # flake8-logging-format
+    "A",      # flake8-builtins (no shadowing)
+    "SIM",    # flake8-simplify
+    "PIE",    # flake8-pie
+    "RUF",    # ruff-specific
+    "TRY",    # tryceratops (exception handling)
+    "PTH",    # flake8-use-pathlib
+]
+
+extend-ignore = [
+    # TRY003 forces a custom exception class for every interpolated-message
+    # raise (`raise ValueError(f"bad scheme: {x}")`). For one-shot errors that
+    # are never caught by type — only logged or surfaced to the operator —
+    # the extra class adds indirection without catching any real bug.
+    "TRY003",
+    # TRY300 asks for success paths to live in a try/except `else` block. It
+    # misfires when the success path does I/O (logging, etc.) that can in
+    # theory raise but never does in practice, pushing readers to restructure
+    # for a heuristic rather than a genuine error contract.
+    "TRY300",
+    # RUF002/003 flag EN DASH (–) vs HYPHEN-MINUS (-) in docstrings/comments.
+    # Pure typography; no runtime impact.
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# S101: pytest uses `assert` universally; S105: tests hardcode fixture tokens
+# like "vm_sandbox_token" that bandit flags as "possible password". Both are
+# standard pytest patterns with no security meaning in test-only code.
+"tests/**" = ["S101", "S105"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

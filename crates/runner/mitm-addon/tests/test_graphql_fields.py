@@ -4,6 +4,8 @@ Test cases reference graphql-core's parser test suite, adapted to our
 field-path-extraction use case.
 """
 
+from typing import ClassVar
+
 import pytest
 
 from graphql_fields import Lexer, T, extract_field_paths
@@ -1234,7 +1236,7 @@ class TestGraphQLCoreKeywordsAsNames:
     which iterates over all GraphQL keywords.
     """
 
-    KEYWORDS = [
+    KEYWORDS: ClassVar[list[str]] = [
         "on",
         "fragment",
         "query",
@@ -1709,7 +1711,7 @@ class TestKeywordsEveryPosition:
     is correct regardless of keyword placement.
     """
 
-    NON_ON_KEYWORDS = [
+    NON_ON_KEYWORDS: ClassVar[list[str]] = [
         "fragment",
         "query",
         "mutation",

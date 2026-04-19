@@ -43,7 +43,7 @@ def _reset_module_state() -> Iterator[None]:
     mitm_addon._registry_cache_key = (0, 0)
     auth._firewall_header_cache.clear()
     auth._cache_locks.clear()
-    yield
+    return
 
 
 def _headers(*pairs: tuple[str, str]) -> http.Headers:
@@ -208,7 +208,7 @@ class _StubOptions:
 
 
 @pytest.fixture
-def mitm_ctx():
+def mitm_ctx(tmp_path):
     """Stub ``mitmproxy.ctx.options`` and ``ctx.log`` for a test block.
 
     Returns a context-manager factory: calling ``mitm_ctx(registry_path=...)``
@@ -217,14 +217,22 @@ def mitm_ctx():
     that need to assert on warn/debug calls can do so; ``options`` doesn't
     get that treatment because the addon only ever reads two named
     attributes from it.
+
+    When the caller omits ``registry_path`` the default comes from pytest's
+    per-test ``tmp_path`` fixture, so tests never share a /tmp path that
+    could race between parallel workers.
     """
+
+    default_registry_path = str(tmp_path / "proxy-registry.json")
 
     @contextlib.contextmanager
     def _stub(
         *,
-        registry_path: str = "/tmp/proxy-registry.json",
+        registry_path: str | None = None,
         api_url: str = "https://api.vm0.ai",
     ) -> Iterator[MagicMock]:
+        if registry_path is None:
+            registry_path = default_registry_path
         options = _StubOptions(registry_path=registry_path, api_url=api_url)
         log = MagicMock()
         with (
