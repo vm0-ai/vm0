@@ -159,6 +159,7 @@ import { v0Handler } from "./providers/v0-handler";
 import { wixHandler } from "./providers/wix-handler";
 import { zeptomailHandler } from "./providers/zeptomail-handler";
 import { zoomHandler } from "./providers/zoom-handler";
+import { n8nHandler } from "./providers/n8n-handler";
 import { testOauthHandler } from "./providers/test-oauth-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -321,6 +322,7 @@ export const PROVIDER_HANDLERS: Record<
   "slack-webhook": slackWebhookHandler,
   v0: v0Handler,
   wix: wixHandler,
+  n8n: n8nHandler,
   "test-oauth": testOauthHandler,
 };
 
