@@ -757,6 +757,29 @@ const CONNECTOR_TYPES_DEF = {
       scopes: ["signature", "extended", "openid"],
     },
   },
+  duffel: {
+    label: "Duffel",
+    environmentMapping: {
+      DUFFEL_TOKEN: "$secrets.DUFFEL_TOKEN",
+    },
+    helpText:
+      "Connect your Duffel account to search and book flights and stays (hotels) through the Duffel API",
+    authMethods: {
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          "1. Log in to the [Duffel dashboard](https://app.duffel.com)\n2. Click your organisation name, then **Developers > Access tokens**\n3. Click **New token**, give it a name, leave scope as **Read write**\n4. Click **Create token** and copy the value (format: `duffel_test_...` for test mode, `duffel_live_...` for live mode)",
+        secrets: {
+          DUFFEL_TOKEN: {
+            label: "Access Token",
+            required: true,
+            placeholder: "duffel_test_...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   dropbox: {
     label: "Dropbox",
     environmentMapping: {
@@ -802,6 +825,30 @@ const CONNECTOR_TYPES_DEF = {
         "files.content.read",
       ],
     },
+  },
+  "dropbox-sign": {
+    label: "Dropbox Sign",
+    tags: ["hellosign", "e-signature", "signature", "sign", "document"],
+    environmentMapping: {
+      DROPBOX_SIGN_TOKEN: "$secrets.DROPBOX_SIGN_TOKEN",
+    },
+    helpText:
+      "Connect your Dropbox Sign (formerly HelloSign) account to send, track, and download e-signature requests",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Dropbox Sign](https://sign.dropbox.com)\n2. Click **API** in the left sidebar and open the **API Dashboard**\n3. Click **Reveal key** for an existing key, or **Generate key** to create a new one\n4. Copy the 40-character hex key and paste it here\n\nTip: While developing, add `test_mode=1` to signature-request calls to avoid billing and real emails.",
+        secrets: {
+          DROPBOX_SIGN_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "40-character hex key",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
   },
   linear: {
     label: "Linear",
@@ -960,6 +1007,29 @@ const CONNECTOR_TYPES_DEF = {
           JOTFORM_TOKEN: {
             label: "API Key",
             required: true,
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
+  klaviyo: {
+    label: "Klaviyo",
+    environmentMapping: {
+      KLAVIYO_TOKEN: "$secrets.KLAVIYO_TOKEN",
+    },
+    helpText:
+      "Connect your Klaviyo account to manage profiles, lists, events, subscriptions, and campaigns",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Klaviyo](https://www.klaviyo.com/)\n2. Go to **Account > Settings > API keys**\n3. Click **Create Private API Key**\n4. Grant the scopes your workflow needs (e.g. `profiles:write`, `lists:write`, `events:write`, `subscriptions:write`)\n5. Copy the key (format: `pk_...`)",
+        secrets: {
+          KLAVIYO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "pk_...",
           },
         },
       },
@@ -3312,6 +3382,37 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  shopify: {
+    label: "Shopify",
+    tags: ["ecommerce", "store", "products", "orders"],
+    environmentMapping: {
+      SHOPIFY_TOKEN: "$secrets.SHOPIFY_TOKEN",
+      SHOPIFY_SHOP: "$vars.SHOPIFY_SHOP",
+    },
+    helpText:
+      "Connect your Shopify store to manage products, orders, customers, and inventory through the Admin API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. In your Shopify admin, go to **Settings → Apps and sales channels → Develop apps**\n2. Click **Create an app**, name it (e.g. `vm0`), and open it\n3. Under **Configuration → Admin API integration**, grant the scopes you need (e.g. `read_products`, `read_orders`)\n4. Click **Install app** and then **Reveal token once** — copy the Admin API access token (starts with `shpat_`)\n5. For the **Store subdomain** below, enter only the subdomain of your `.myshopify.com` URL (for `acme.myshopify.com` enter `acme`)",
+        secrets: {
+          SHOPIFY_TOKEN: {
+            label: "Admin API Access Token",
+            required: true,
+            placeholder: "shpat_...",
+          },
+          SHOPIFY_SHOP: {
+            label: "Store Subdomain",
+            required: true,
+            type: "variable",
+            placeholder: "acme",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   shortio: {
     label: "Short.io",
     environmentMapping: {
@@ -4081,6 +4182,75 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  coda: {
+    label: "Coda",
+    environmentMapping: {
+      CODA_TOKEN: "$secrets.CODA_TOKEN",
+    },
+    helpText:
+      "Connect your Coda account to read and write docs, tables, rows, and pages",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Open Coda and click your avatar (bottom left) then **Account Settings**\n2. Scroll to **API Settings**\n3. Click **Generate API Token**, give it a name, optionally restrict scope\n4. Copy the token and paste it here",
+        secrets: {
+          CODA_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "your-coda-api-token",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
+  miro: {
+    label: "Miro",
+    environmentMapping: {
+      MIRO_TOKEN: "$secrets.MIRO_TOKEN",
+    },
+    helpText:
+      "Connect your Miro account to create and manage boards, sticky notes, shapes, text, and other items on the visual collaboration whiteboard",
+    authMethods: {
+      "api-token": {
+        label: "Access Token",
+        helpText:
+          "1. Go to [Miro App Settings](https://miro.com/app/settings/user-profile/apps) and click **Create new app**\n2. Fill in the app name and description\n3. **Important:** when asked about token expiration, select **Non-expiring access token** — this choice is permanent for the app\n4. On the app's page, open **Permissions** and check the scopes you need (e.g. `boards:read`, `boards:write`)\n5. Click **Install app and get OAuth token**, select your team, and copy the token\n6. Paste the token here",
+        secrets: {
+          MIRO_TOKEN: {
+            label: "Access Token",
+            required: true,
+            placeholder: "non-expiring access token",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
+  typeform: {
+    label: "Typeform",
+    environmentMapping: {
+      TYPEFORM_TOKEN: "$secrets.TYPEFORM_TOKEN",
+    },
+    helpText:
+      "Connect your Typeform account to create forms, fetch responses, and manage webhooks",
+    authMethods: {
+      "api-token": {
+        label: "Personal Access Token",
+        helpText:
+          "1. Log in to [Typeform](https://admin.typeform.com)\n2. Open the account menu (top-right) and pick **Personal tokens**\n3. Click **Generate a new token**, name it, and choose the scopes you need (e.g. `forms:read`, `responses:read`, `webhooks:write`)\n4. Copy the token (format: `tfp_...`)",
+        secrets: {
+          TYPEFORM_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+            placeholder: "tfp_...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   "test-oauth": {
     label: "Test OAuth (internal)",
     featureFlag: FeatureSwitchKey.TestOauthConnector,
@@ -4137,6 +4307,78 @@ const CONNECTOR_TYPES_DEF = {
       },
     },
     defaultAuthMethod: "api-token",
+  },
+  greenhouse: {
+    label: "Greenhouse",
+    environmentMapping: {
+      GREENHOUSE_TOKEN: "$secrets.GREENHOUSE_TOKEN",
+    },
+    helpText:
+      "Connect your Greenhouse account to read candidates, applications, jobs, offers, and scheduled interviews, and to create candidates and activity-feed notes via the Harvest API. Note: Harvest v1/v2 will be deprecated on August 31, 2026 — migrate to OAuth v3 before that date.",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. In Greenhouse, click **Configure** (gear icon) → **Dev Center** (left sidebar)\n2. Click **API Credential Management** → **Create new API credentials**\n3. For **API type**, select **Harvest API** (v1/v2). For **Partner**, choose **Custom** (or **Unlisted vendor**). Description: **vm0**\n4. Select the endpoints you want this key to access (permission scoping)\n5. Click **View and store credentials** and copy the API key — it is only shown once\n6. Paste it here\n\n**Note:** Harvest v1/v2 will be deprecated on August 31, 2026; migrate to OAuth v3 before that date.",
+        secrets: {
+          GREENHOUSE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-greenhouse-harvest-api-key",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
+  zoom: {
+    label: "Zoom",
+    environmentMapping: {
+      ZOOM_TOKEN: "$secrets.ZOOM_ACCESS_TOKEN",
+    },
+    featureFlag: FeatureSwitchKey.ZoomConnector,
+    helpText:
+      "Connect your Zoom account to schedule meetings, manage cloud recordings, and access webinar and participant data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Zoom to grant access.",
+        secrets: {
+          ZOOM_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          ZOOM_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "oauth",
+    oauth: {
+      authorizationUrl: "https://zoom.us/oauth/authorize",
+      tokenUrl: "https://zoom.us/oauth/token",
+      // Granular scopes (Zoom's "resource:action:target" format). Covers the
+      // core read/write flows documented in the zoom skill: users, meetings,
+      // past-meeting data, cloud recordings, and webinars.
+      scopes: [
+        "user:read:user",
+        "meeting:read:list_meetings",
+        "meeting:read:meeting",
+        "meeting:write:meeting",
+        "meeting:update:meeting",
+        "meeting:delete:meeting",
+        "meeting:update:status",
+        "meeting:read:list_past_participants",
+        "meeting:read:past_meeting",
+        "cloud_recording:read:list_user_recordings",
+        "cloud_recording:read:list_recording_files",
+        "cloud_recording:read:recording",
+        "webinar:read:list_webinars",
+        "webinar:read:webinar",
+      ],
+    },
   },
 } satisfies Record<string, ConnectorConfig>;
 

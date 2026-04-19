@@ -51,6 +51,7 @@ import { chatwootFirewall } from "./chatwoot.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
+import { codaFirewall } from "./coda.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
@@ -63,6 +64,8 @@ import { docusignFirewall } from "./docusign.generated";
 import { db9Firewall } from "./db9.generated";
 import { drive9Firewall } from "./drive9.generated";
 import { dropboxFirewall } from "./dropbox.generated";
+import { dropboxSignFirewall } from "./dropbox-sign.generated";
+import { duffelFirewall } from "./duffel.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { exploriumFirewall } from "./explorium.generated";
 import { falFirewall } from "./fal.generated";
@@ -80,6 +83,7 @@ import { googleDriveFirewall } from "./google-drive.generated";
 import { googleMeetFirewall } from "./google-meet.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
 import { granolaFirewall } from "./granola.generated";
+import { greenhouseFirewall } from "./greenhouse.generated";
 import { heygenFirewall } from "./heygen.generated";
 import { htmlcsstoimageFirewall } from "./htmlcsstoimage.generated";
 import { hubspotFirewall } from "./hubspot.generated";
@@ -93,6 +97,7 @@ import { intervalsIcuFirewall } from "./intervals-icu.generated";
 import { jamFirewall } from "./jam.generated";
 import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
+import { klaviyoFirewall } from "./klaviyo.generated";
 import { kommoFirewall } from "./kommo.generated";
 import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
@@ -106,6 +111,7 @@ import { mercuryFirewall } from "./mercury.generated";
 import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
 import { minimaxFirewall } from "./minimax.generated";
+import { miroFirewall } from "./miro.generated";
 import { mondayFirewall } from "./monday.generated";
 import { msg9Firewall } from "./msg9.generated";
 import { neonFirewall } from "./neon.generated";
@@ -136,6 +142,7 @@ import { salesforceFirewall } from "./salesforce.generated";
 import { scrapeninjaFirewall } from "./scrapeninja.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
+import { shopifyFirewall } from "./shopify.generated";
 import { shortioFirewall } from "./shortio.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackFirewall } from "./slack.generated";
@@ -152,6 +159,7 @@ import { testOauthFirewall } from "./test-oauth.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { twentyFirewall } from "./twenty.generated";
+import { typeformFirewall } from "./typeform.generated";
 import { v0Firewall } from "./v0.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { webflowFirewall } from "./webflow.generated";
@@ -164,6 +172,7 @@ import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
 import { zendeskFirewall } from "./zendesk.generated";
 import { zeptomailFirewall } from "./zeptomail.generated";
+import { zoomFirewall } from "./zoom.generated";
 
 // ── Permission categories ───────────────────────────────────────────────
 
@@ -204,6 +213,7 @@ const CONNECTOR_FIREWALLS = {
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
+  coda: codaFirewall,
   cronlytic: cronlyticFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
@@ -218,6 +228,8 @@ const CONNECTOR_FIREWALLS = {
   db9: db9Firewall,
   drive9: drive9Firewall,
   dropbox: dropboxFirewall,
+  "dropbox-sign": dropboxSignFirewall,
+  duffel: duffelFirewall,
   elevenlabs: elevenlabsFirewall,
   explorium: exploriumFirewall,
   fal: falFirewall,
@@ -235,6 +247,7 @@ const CONNECTOR_FIREWALLS = {
   "google-meet": googleMeetFirewall,
   "google-sheets": googleSheetsFirewall,
   granola: granolaFirewall,
+  greenhouse: greenhouseFirewall,
   heygen: heygenFirewall,
   htmlcsstoimage: htmlcsstoimageFirewall,
   hubspot: hubspotFirewall,
@@ -248,6 +261,7 @@ const CONNECTOR_FIREWALLS = {
   jam: jamFirewall,
   jira: jiraFirewall,
   jotform: jotformFirewall,
+  klaviyo: klaviyoFirewall,
   kommo: kommoFirewall,
   lark: larkFirewall,
   line: lineFirewall,
@@ -261,6 +275,7 @@ const CONNECTOR_FIREWALLS = {
   metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,
   minimax: minimaxFirewall,
+  miro: miroFirewall,
   monday: mondayFirewall,
   msg9: msg9Firewall,
   neon: neonFirewall,
@@ -291,6 +306,7 @@ const CONNECTOR_FIREWALLS = {
   scrapeninja: scrapeninjaFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
+  shopify: shopifyFirewall,
   shortio: shortioFirewall,
   similarweb: similarwebFirewall,
   slack: slackFirewall,
@@ -307,6 +323,7 @@ const CONNECTOR_FIREWALLS = {
   tldv: tldvFirewall,
   todoist: todoistFirewall,
   twenty: twentyFirewall,
+  typeform: typeformFirewall,
   v0: v0Firewall,
   vercel: vercelFirewall,
   webflow: webflowFirewall,
@@ -319,6 +336,7 @@ const CONNECTOR_FIREWALLS = {
   zapsign: zapsignFirewall,
   zendesk: zendeskFirewall,
   zeptomail: zeptomailFirewall,
+  zoom: zoomFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
 /**

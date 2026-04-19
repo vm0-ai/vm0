@@ -16,6 +16,7 @@ import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import { TsRestResponse } from "@ts-rest/serverless";
 import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
+import * as Sentry from "@sentry/nextjs";
 import { flushLogs, logger } from "./shared/logger";
 import { ingestRequestLog, flushAxiom } from "./shared/axiom";
 import { isApiError } from "./shared/errors";
@@ -98,6 +99,13 @@ export function createSafeErrorHandler(
 
     // Non-validation errors: log full details server-side, return generic message
     log.error(`${routeName} error:`, err);
+    // Report to Sentry. Without this, ts-rest-handled 5xx never reaches
+    // Sentry because the error is caught here and a 500 JSON is returned,
+    // so Next.js's onRequestError instrumentation hook never fires.
+    Sentry.captureException(err, {
+      mechanism: { type: "ts-rest-handler", handled: true },
+      captureContext: { tags: { route: routeName } },
+    });
     return TsRestResponse.fromJson(
       {
         error: {
@@ -175,8 +183,16 @@ export function createHandler<T extends AppRouter>(
           requestStartTimes.delete(request);
         }
 
-        // Flush all pending logs and ingested events to Axiom
-        await Promise.all([flushLogs(), flushAxiom()]);
+        // Flush all pending logs and ingested events to Axiom, and any
+        // pending Sentry events. Sentry.flush is wrapped so delivery
+        // failures don't block the response.
+        await Promise.all([
+          flushLogs(),
+          flushAxiom(),
+          Sentry.flush(2000).catch(() => {
+            return false;
+          }),
+        ]);
       },
     ],
   });
