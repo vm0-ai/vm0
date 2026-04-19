@@ -23,12 +23,16 @@ interface ModelProviderPickerProps {
   placeholder?: string;
 }
 
+// Radix Select reserves the empty string for "no value" and throws if a
+// SelectItem uses it, so use a sentinel to represent the inherit option.
+const INHERIT_SENTINEL = "__inherit_default__";
+
 function encodeValue(v: ModelProviderSelection | null): string {
-  return v ? `${v.modelProviderId}::${v.selectedModel}` : "";
+  return v ? `${v.modelProviderId}::${v.selectedModel}` : INHERIT_SENTINEL;
 }
 
 function decodeValue(s: string): ModelProviderSelection | null {
-  if (!s) {
+  if (s === INHERIT_SENTINEL) {
     return null;
   }
   const idx = s.indexOf("::");
@@ -76,7 +80,7 @@ export function ModelProviderPicker({
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="">{placeholder}</SelectItem>
+        <SelectItem value={INHERIT_SENTINEL}>{placeholder}</SelectItem>
         {options.map((opt) => {
           return (
             <SelectItem key={opt.value} value={opt.value}>
