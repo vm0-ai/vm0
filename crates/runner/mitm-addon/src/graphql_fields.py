@@ -396,4 +396,7 @@ def extract_field_paths(query_str: str) -> list[str]:
         parser = Parser(lexer)
         return parser.parse()
     except Exception:
+        # Fail-closed: unparseable query → no field matches → firewall blocks.
+        # Catching `Exception` (not a narrower type) is deliberate — any
+        # lexer/parser bug must not crash the addon on a malformed query.
         return []

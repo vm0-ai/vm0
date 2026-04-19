@@ -30,20 +30,22 @@ import usage
 
 
 @pytest.fixture(autouse=True)
-def _reset_module_state() -> Iterator[None]:
+def _reset_module_state() -> None:
     """Clear cached singletons between tests.
 
     ``mitm_addon`` and ``auth`` cache registry data and firewall header
     lookups in module-level dicts.  Without a reset, earlier tests leak
     entries that change later tests' behaviour (e.g. a request from IP X
     in test A primes ``_request_start_times`` seen by test B).
+
+    No teardown body — the next test's autouse invocation is itself the
+    cleanup, so we use ``return``-style (not ``yield``) per PT022.
     """
     mitm_addon._request_start_times.clear()
     mitm_addon._registry_cache = {}
     mitm_addon._registry_cache_key = (0, 0)
     auth._firewall_header_cache.clear()
     auth._cache_locks.clear()
-    return
 
 
 def _headers(*pairs: tuple[str, str]) -> http.Headers:
