@@ -14,6 +14,7 @@ from body_utils import (
     _truncate_bytes_utf8_safe,
     add_capture_fields,
     create_stream_decompressor,
+    decompress_body,
 )
 from usage import extract_usage_from_json
 
@@ -863,3 +864,68 @@ class TestStreamDecompressor:
         # Only the first chunk reaches zlib; later ones are short-circuited.
         assert len(proxies) == 1
         assert proxies[0].count == 1
+
+
+class TestDecompressBody:
+    """Direct tests for ``decompress_body`` — the non-streaming one-shot
+    path used by ``extract_usage_from_json`` and ``log_connector_usage``
+    to decompress full response bodies (up to
+    ``LARGE_RESPONSE_DECOMPRESS_LIMIT``) for JSON parsing.
+
+    Focus: verify the documented ``max_output`` cap is enforced during
+    decompression (not only via after-the-fact slicing) for gzip/zstd.
+    brotli is intentionally not tested for strict bounding — see the
+    ``decompress_body`` docstring for why that codec is best-effort.
+    """
+
+    def test_gzip_respects_max_output(self, headers):
+        # Regression: gzip path uses ``decompressobj.decompress(data,
+        # max_length=max_output)`` so zlib stops decoding at the cap
+        # rather than producing unbounded output.
+        import gzip
+
+        plaintext = b"A" * (10 * 1024 * 1024)  # 10 MB, high compression ratio
+        compressed = gzip.compress(plaintext)
+        hdrs = headers(("Content-Encoding", "gzip"))
+        result = decompress_body(compressed, hdrs, max_output=64 * 1024)
+        assert len(result) <= 64 * 1024
+        assert result == plaintext[: len(result)]
+
+    def test_zstd_respects_max_output(self, headers):
+        # Bug #10128: before the fix the zstd branch used
+        # ``decompressobj.decompress(data)`` which fully materialised
+        # the plaintext before slicing — defeating the bomb cap.
+        import zstandard
+
+        plaintext = b"A" * (10 * 1024 * 1024)  # 10 MB, high ratio → small payload
+        compressed = zstandard.ZstdCompressor().compress(plaintext)
+        assert len(compressed) < len(plaintext) // 100  # sanity: real high ratio
+        hdrs = headers(("Content-Encoding", "zstd"))
+        result = decompress_body(compressed, hdrs, max_output=64 * 1024)
+        assert len(result) <= 64 * 1024
+        assert result == plaintext[: len(result)]
+
+    def test_zstd_short_payload_returns_full_body(self, headers):
+        # When decompressed size is under the cap, return all of it.
+        import zstandard
+
+        plaintext = b"hello world"
+        compressed = zstandard.ZstdCompressor().compress(plaintext)
+        hdrs = headers(("Content-Encoding", "zstd"))
+        result = decompress_body(compressed, hdrs, max_output=64 * 1024)
+        assert result == plaintext
+
+    def test_zstd_corrupted_returns_original_data(self, headers, mitm_ctx):
+        # Malformed payload should fall through to the outer
+        # ``except zstandard.ZstdError`` and return ``data`` unchanged,
+        # matching the existing gzip/brotli error contract.
+        hdrs = headers(("Content-Encoding", "zstd"))
+        garbage = b"this is not a zstd frame"
+        with mitm_ctx():
+            result = decompress_body(garbage, hdrs, max_output=64 * 1024)
+        assert result == garbage
+
+    def test_identity_returns_data_unchanged(self, headers):
+        data = b'{"hello":"world"}'
+        assert decompress_body(data, headers(("Content-Encoding", "identity"))) == data
+        assert decompress_body(data, headers()) == data

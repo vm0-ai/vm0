@@ -123,7 +123,22 @@ def decompress_body(
     yields whatever decompressed bytes are available.
 
     Output is capped at *max_output* bytes to guard against decompression
-    bombs (small compressed payload expanding to huge output).
+    bombs.  Cap enforcement varies by codec:
+
+    - gzip/deflate: hard cap via ``decompressobj.decompress(data, max_length=)``;
+      zlib stops decoding once the cap is reached.
+    - zstd: hard cap via ``ZstdDecompressor.stream_reader(data).read(max_output)``;
+      zstd reads incrementally so total memory is bounded by
+      ``max_output`` plus library internal buffers.
+    - br: **no hard cap.**  The Python ``brotli`` bindings expose only
+      ``Decompressor.process(data)`` which materialises the full decompressed
+      output before returning; slicing afterwards does not prevent the
+      transient allocation.  Input chunking is not a reliable defence —
+      a single brotli copy command can emit up to 16 MB from a handful of
+      encoded bytes, so chunk-level bounds don't hold for adversarial
+      input.  This is acceptable given the callers only decompress
+      bodies from the pre-configured model-provider and billable-connector
+      allowlist (not arbitrary user-supplied URLs).
 
     Returns the original data unchanged if not compressed or on error.
     """
@@ -142,9 +157,9 @@ def decompress_body(
             result = dec.process(data)
             return result[:max_output] if result else data
         if encoding == "zstd":
-            obj = zstandard.ZstdDecompressor().decompressobj()
-            result = obj.decompress(data)
-            return result[:max_output] if result else data
+            with zstandard.ZstdDecompressor().stream_reader(data) as reader:
+                result = reader.read(max_output)
+            return result if result else data
     except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
         try:
             ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
