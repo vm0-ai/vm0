@@ -1,7 +1,6 @@
 import { writeOutput } from "./codegen";
 
-const DOCS_URL =
-  "https://developers.pipedrive.com/docs/api/v1";
+const DOCS_URL = "https://developers.pipedrive.com/docs/api/v1";
 const PLACEHOLDER_VALUE = "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 
 function generateTypeScript(): string {

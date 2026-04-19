@@ -2,8 +2,10 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://workos.com/docs/reference";
 // Placeholder uses Coffee/Safe/Local vocabulary; split to avoid secret scanning false-positive
-const PLACEHOLDER_VALUE =
-  ["sk_live", "CoffeeSafeLocalCoffeeSafeLocalCoffee"].join("_");
+const PLACEHOLDER_VALUE = [
+  "sk_live",
+  "CoffeeSafeLocalCoffeeSafeLocalCoffee",
+].join("_");
 
 function generateTypeScript(): string {
   const lines: string[] = [

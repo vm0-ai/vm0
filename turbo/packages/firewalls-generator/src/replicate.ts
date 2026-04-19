@@ -11,8 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://replicate.com/docs/reference/http";
 // Format: r8_ + 36 alphanumeric chars
-const PLACEHOLDER_VALUE =
-  "r8_CoffeeSafeLocalCoffeeSafeLocalCoffee";
+const PLACEHOLDER_VALUE = "r8_CoffeeSafeLocalCoffeeSafeLocalCoffee";
 
 function generateTypeScript(): string {
   const lines: string[] = [
