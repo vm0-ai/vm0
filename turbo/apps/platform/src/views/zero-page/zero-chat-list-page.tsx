@@ -4,9 +4,9 @@ import {
   useGet,
   useSet,
   useLastLoadable,
-  useLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { IconPlus, IconSearch, IconX, IconTrash } from "@tabler/icons-react";
 import {
   Button,
@@ -23,7 +23,6 @@ import {
   chatThreads$,
   deleteChatThread$,
   createNewChatThread$,
-  creatingNewSession$,
 } from "../../signals/chat-page/chat-message.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import {
@@ -67,8 +66,8 @@ export function ZeroChatListPage() {
 
   const selectedRecentId = useGet(currentChatThreadId$);
   const navigateToChat = useSet(navigateToChat$);
-  const createNewChat = useSet(createNewChatThread$);
-  const creatingLoadable = useLoadable(creatingNewSession$);
+  const [creatingLoadable, createNewChat] =
+    useLoadableSet(createNewChatThread$);
   const creating = creatingLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
