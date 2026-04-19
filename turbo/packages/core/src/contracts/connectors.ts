@@ -1136,14 +1136,14 @@ const CONNECTOR_TYPES_DEF = {
     label: "Mem0",
     helpText:
       "Connect to Mem0 for persistent AI memory across conversations and sessions.",
-    environmentMapping: { MEM0_API_KEY: "$secrets.MEM0_API_KEY" },
+    environmentMapping: { MEM0_TOKEN: "$secrets.MEM0_TOKEN" },
     authMethods: {
       "api-token": {
         label: "API Key",
         helpText:
           "Go to [app.mem0.ai](https://app.mem0.ai) → **API Keys** → create or copy your key.",
         secrets: {
-          MEM0_API_KEY: {
+          MEM0_TOKEN: {
             label: "API Key",
             required: true,
             placeholder: "m0-...",

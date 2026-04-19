@@ -14,6 +14,6 @@ export const mem0Handler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "MEM0_API_KEY";
+    return "MEM0_TOKEN";
   },
 };
