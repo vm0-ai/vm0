@@ -26,24 +26,24 @@ pub async fn create_checkpoint(
     memory_boot_fp: &memory::MemoryBootFingerprint,
 ) -> Result<(), AgentError> {
     let start = std::time::Instant::now();
-    let result = create_checkpoint_impl(start, memory_boot_fp).await;
+    let result = create_checkpoint_impl(memory_boot_fp).await;
     record_sandbox_op("checkpoint_total", start.elapsed(), result.is_ok(), None);
     result
 }
 
 async fn create_checkpoint_impl(
-    start: std::time::Instant,
     memory_boot_fp: &memory::MemoryBootFingerprint,
 ) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Creating checkpoint...");
 
     // Read session ID
+    let session_id_start = std::time::Instant::now();
     let session_id_path = paths::session_id_file();
     if !Path::new(session_id_path).exists() {
         log_error!(LOG_TAG, "No session ID found, checkpoint creation failed");
         record_sandbox_op(
             "session_id_read",
-            start.elapsed(),
+            session_id_start.elapsed(),
             false,
             Some("Session ID file not found"),
         );
@@ -53,15 +53,16 @@ async fn create_checkpoint_impl(
         .map_err(|e| AgentError::Checkpoint(format!("Failed to read session ID: {e}")))?
         .trim()
         .to_string();
-    record_sandbox_op("session_id_read", start.elapsed(), true, None);
+    record_sandbox_op("session_id_read", session_id_start.elapsed(), true, None);
 
     // Read session history path
+    let history_read_start = std::time::Instant::now();
     let history_path_file = paths::session_history_path_file();
     if !Path::new(history_path_file).exists() {
         log_error!(LOG_TAG, "No session history path found");
         record_sandbox_op(
             "session_history_read",
-            start.elapsed(),
+            history_read_start.elapsed(),
             false,
             Some("Path file not found"),
         );
@@ -84,7 +85,7 @@ async fn create_checkpoint_impl(
         );
         record_sandbox_op(
             "session_history_read",
-            start.elapsed(),
+            history_read_start.elapsed(),
             false,
             Some("File not found"),
         );
@@ -97,7 +98,12 @@ async fn create_checkpoint_impl(
         Ok(s) => s,
         Err(e) => {
             let msg = format!("Failed to read session history: {e}");
-            record_sandbox_op("session_history_read", start.elapsed(), false, Some(&msg));
+            record_sandbox_op(
+                "session_history_read",
+                history_read_start.elapsed(),
+                false,
+                Some(&msg),
+            );
             return Err(AgentError::Checkpoint(msg));
         }
     };
@@ -106,7 +112,7 @@ async fn create_checkpoint_impl(
         log_error!(LOG_TAG, "Session history is empty");
         record_sandbox_op(
             "session_history_read",
-            start.elapsed(),
+            history_read_start.elapsed(),
             false,
             Some("Empty"),
         );
@@ -115,7 +121,12 @@ async fn create_checkpoint_impl(
 
     let line_count = session_history.lines().count();
     log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
-    record_sandbox_op("session_history_read", start.elapsed(), true, None);
+    record_sandbox_op(
+        "session_history_read",
+        history_read_start.elapsed(),
+        true,
+        None,
+    );
 
     // Compute SHA-256 hash of session history for presigned URL upload
     let history_bytes = session_history.as_bytes();
