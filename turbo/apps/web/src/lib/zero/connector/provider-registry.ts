@@ -171,6 +171,7 @@ import { pdforgeHandler } from "./providers/pdforge-handler";
 import { slackWebhookHandler } from "./providers/slack-webhook-handler";
 import { v0Handler } from "./providers/v0-handler";
 import { wixHandler } from "./providers/wix-handler";
+import { zepHandler } from "./providers/zep-handler";
 import { zeptomailHandler } from "./providers/zeptomail-handler";
 import { zoomHandler } from "./providers/zoom-handler";
 import { n8nHandler } from "./providers/n8n-handler";
@@ -328,6 +329,7 @@ export const PROVIDER_HANDLERS: Record<
   wrike: wrikeHandler,
   x: xHandler,
   xero: xeroHandler,
+  zep: zepHandler,
   zeptomail: zeptomailHandler,
   runway: runwayHandler,
   salesforce: salesforceHandler,

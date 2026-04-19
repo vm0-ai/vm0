@@ -174,6 +174,7 @@ const CONNECTOR_ICON_COLORFUL = {
   youtube: true,
   zapier: true,
   zapsign: true,
+  zep: true,
   zeptomail: true,
   zoom: true,
 } as const;
