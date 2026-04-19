@@ -184,6 +184,7 @@ describe("zero-job-detail signals", () => {
   describe("setActiveAgent$ and reactive data loading", () => {
     it("should fetch detail, instructions, and schedules successfully", async () => {
       const agentResponse = mockAgentResponse();
+      setMockSchedules(mockSchedules().schedules as ScheduleResponse[]);
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(agentResponse);
@@ -194,9 +195,6 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
-        }),
       );
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
@@ -233,10 +231,8 @@ describe("zero-job-detail signals", () => {
             name: "sub-agent",
           });
         }),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
       );
+      setMockSchedules([]);
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-org/sub-agent");
@@ -291,16 +287,17 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
       await context.store.get(zeroJobDetail$);
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployScheduleResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          capturedBody = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployScheduleResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -332,16 +329,17 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
       await context.store.get(zeroJobDetail$);
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployScheduleResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          capturedBody = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployScheduleResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -370,16 +368,17 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
       await context.store.get(zeroJobDetail$);
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployScheduleResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          capturedBody = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployScheduleResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -404,16 +403,17 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
       await context.store.get(zeroJobDetail$);
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployScheduleResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          capturedBody = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployScheduleResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -447,16 +447,11 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
       await context.store.get(zeroJobDetail$);
 
+      setMockSchedules([]);
       server.use(
-        http.delete(
-          "http://localhost:3000/api/zero/schedules/:name",
-          ({ request }) => {
-            capturedUrl = request.url;
-            return new HttpResponse(null, { status: 204 });
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesByNameContract.delete, ({ request, respond }) => {
+          capturedUrl = request.url;
+          return respond(204);
         }),
       );
 
@@ -484,18 +479,16 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
       await context.store.get(zeroJobDetail$);
 
+      setMockSchedules(mockSchedules().schedules as ScheduleResponse[]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules/:name/:action",
-          async ({ request }) => {
+        mockApi(
+          zeroSchedulesEnableContract.enable,
+          async ({ request, body, respond }) => {
             capturedUrl = request.url;
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockScheduleResponse());
+            capturedBody = body as Record<string, unknown>;
+            return respond(200, mockScheduleResponse() as ScheduleResponse);
           },
         ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
-        }),
       );
 
       await context.store.set(
@@ -521,16 +514,11 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
       await context.store.get(zeroJobDetail$);
 
+      setMockSchedules(mockSchedules().schedules as ScheduleResponse[]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules/:name/:action",
-          ({ request }) => {
-            capturedUrl = request.url;
-            return HttpResponse.json(mockScheduleResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
+        mockApi(zeroSchedulesEnableContract.disable, ({ request, respond }) => {
+          capturedUrl = request.url;
+          return respond(200, mockScheduleResponse() as ScheduleResponse);
         }),
       );
 
@@ -549,6 +537,7 @@ describe("zero-job-detail signals", () => {
 
   describe("instructions editing", () => {
     async function setupWithInstructions() {
+      setMockSchedules([]);
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
@@ -559,9 +548,6 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
       );
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
@@ -683,6 +669,7 @@ describe("zero-job-detail signals", () => {
 
   describe("zeroJobUpdateSettings$", () => {
     async function setupSettings() {
+      setMockSchedules([]);
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
@@ -693,9 +680,6 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
       );
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
@@ -766,6 +750,7 @@ describe("zero-job-detail signals", () => {
 
   describe("connectors management", () => {
     async function setupWithConnectors() {
+      setMockSchedules([]);
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
@@ -776,9 +761,6 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
         http.get(
           "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
           () => {

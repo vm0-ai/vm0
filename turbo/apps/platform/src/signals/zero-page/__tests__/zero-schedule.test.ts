@@ -6,6 +6,15 @@ import {
   detachedSetupPage,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroSchedulesMainContract,
+  zeroSchedulesByNameContract,
+  zeroSchedulesEnableContract,
+  zeroScheduleRunContract,
+  type ScheduleResponse,
+} from "@vm0/core";
 import {
   fetchZeroSchedules$,
   zeroScheduleEntries$,
@@ -162,11 +171,7 @@ function setup() {
 describe("zero-schedule signals", () => {
   describe("fetchZeroSchedules$", () => {
     it("should fetch and filter schedules for the default agent", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: createMockSchedules() });
-        }),
-      );
+      setMockSchedules(createMockSchedules() as ScheduleResponse[]);
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -178,11 +183,7 @@ describe("zero-schedule signals", () => {
     });
 
     it("should convert cron schedule to display string", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: createMockSchedules() });
-        }),
-      );
+      setMockSchedules(createMockSchedules() as ScheduleResponse[]);
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -192,11 +193,7 @@ describe("zero-schedule signals", () => {
     });
 
     it("should convert loop schedule to display string", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: createMockSchedules() });
-        }),
-      );
+      setMockSchedules(createMockSchedules() as ScheduleResponse[]);
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -206,11 +203,7 @@ describe("zero-schedule signals", () => {
     });
 
     it("should handle empty response", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
-      );
+      setMockSchedules([]);
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -222,23 +215,20 @@ describe("zero-schedule signals", () => {
     it("should propagate API errors", async () => {
       // The background bootstrap also hits GET /api/zero/schedules via
       // fetchAllOrgSchedules$. Use a request counter so the first call
-      // (bootstrap) succeeds and the second call (explicit test) gets 500.
+      // (bootstrap) succeeds and the second call (explicit test) gets 401.
       let requestCount = 0;
       server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
+        mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
           requestCount++;
           if (requestCount > 1) {
-            return HttpResponse.json(
-              {
-                error: {
-                  message: "Internal server error",
-                  code: "INTERNAL_SERVER_ERROR",
-                },
+            return respond(401, {
+              error: {
+                message: "Internal server error",
+                code: "INTERNAL_SERVER_ERROR",
               },
-              { status: 500 },
-            );
+            });
           }
-          return HttpResponse.json({ schedules: [] });
+          return respond(200, { schedules: [] });
         }),
       );
 
@@ -260,16 +250,17 @@ describe("zero-schedule signals", () => {
     it("should POST a cron schedule and refresh the list", async () => {
       const captured: { body: Record<string, unknown> | null } = { body: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          captured.body = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -301,16 +292,17 @@ describe("zero-schedule signals", () => {
     it("should POST a loop schedule", async () => {
       const captured: { body: Record<string, unknown> | null } = { body: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          captured.body = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -336,16 +328,17 @@ describe("zero-schedule signals", () => {
     it("should use editName when editing an existing schedule", async () => {
       const captured: { body: Record<string, unknown> | null } = { body: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          captured.body = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -372,16 +365,17 @@ describe("zero-schedule signals", () => {
     it("should POST a one-time schedule with atTime", async () => {
       const captured: { body: Record<string, unknown> | null } = { body: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          captured.body = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -409,16 +403,17 @@ describe("zero-schedule signals", () => {
     it("should POST a weekly schedule with dayOfWeek", async () => {
       const captured: { body: Record<string, unknown> | null } = { body: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          captured.body = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -445,16 +440,17 @@ describe("zero-schedule signals", () => {
     it("should POST a monthly schedule with dayOfMonth", async () => {
       const captured: { body: Record<string, unknown> | null } = { body: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          captured.body = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -481,16 +477,17 @@ describe("zero-schedule signals", () => {
     it("should include description in POST body when provided", async () => {
       const captured: { body: Record<string, unknown> | null } = { body: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          captured.body = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -516,12 +513,11 @@ describe("zero-schedule signals", () => {
 
     it("should throw on API error during save", async () => {
       server.use(
-        http.post("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(
-            { error: { message: "Invalid timezone", code: "BAD_REQUEST" } },
-            { status: 400 },
-          );
-        }),
+        mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
+          respond(400, {
+            error: { message: "Invalid timezone", code: "BAD_REQUEST" },
+          }),
+        ),
       );
 
       await setup();
@@ -550,18 +546,16 @@ describe("zero-schedule signals", () => {
         body: Record<string, unknown> | null;
       } = { action: null, body: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules/:name/:action",
-          async ({ params, request }) => {
-            captured.action = params["action"] as string;
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockScheduleResponse());
+        mockApi(
+          zeroSchedulesEnableContract.enable,
+          async ({ body, respond }) => {
+            captured.action = "enable";
+            captured.body = body as Record<string, unknown>;
+            return respond(200, mockScheduleResponse() as ScheduleResponse);
           },
         ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
       );
 
       await setup();
@@ -583,16 +577,11 @@ describe("zero-schedule signals", () => {
     it("should POST to disable endpoint when enabled is false", async () => {
       const captured: { action: string | null } = { action: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules/:name/:action",
-          ({ params }) => {
-            captured.action = params["action"] as string;
-            return HttpResponse.json(mockScheduleResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
+          captured.action = "disable";
+          return respond(200, mockScheduleResponse() as ScheduleResponse);
         }),
       );
 
@@ -611,14 +600,10 @@ describe("zero-schedule signals", () => {
 
     it("should throw and show toast on API error", async () => {
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules/:name/:action",
-          () => {
-            return HttpResponse.json(
-              { error: { message: "Schedule not found", code: "NOT_FOUND" } },
-              { status: 404 },
-            );
-          },
+        mockApi(zeroSchedulesEnableContract.enable, ({ respond }) =>
+          respond(404, {
+            error: { message: "Schedule not found", code: "NOT_FOUND" },
+          }),
         ),
       );
 
@@ -639,15 +624,17 @@ describe("zero-schedule signals", () => {
       let fetchCount = 0;
 
       server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
+        mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
           fetchCount++;
-          return HttpResponse.json({ schedules: createMockSchedules() });
+          return respond(200, {
+            schedules: createMockSchedules() as ScheduleResponse[],
+          });
         }),
-        http.post(
-          "http://localhost:3000/api/zero/schedules/:name/:action",
-          () => {
-            return HttpResponse.json(mockScheduleResponse());
-          },
+        mockApi(zeroSchedulesEnableContract.disable, ({ respond }) =>
+          respond(200, mockScheduleResponse() as ScheduleResponse),
+        ),
+        mockApi(zeroSchedulesEnableContract.enable, ({ respond }) =>
+          respond(200, mockScheduleResponse() as ScheduleResponse),
         ),
       );
 
@@ -682,20 +669,10 @@ describe("zero-schedule signals", () => {
       let capturedBody: Record<string, unknown> | null = null;
 
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules/run",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(
-              {
-                runId: "run-abc-123",
-                status: "running",
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              { status: 201 },
-            );
-          },
-        ),
+        mockApi(zeroScheduleRunContract.run, async ({ body, respond }) => {
+          capturedBody = body as Record<string, unknown>;
+          return respond(201, { runId: "run-abc-123" });
+        }),
       );
 
       await setup();
@@ -712,12 +689,11 @@ describe("zero-schedule signals", () => {
 
     it("should throw on API error", async () => {
       server.use(
-        http.post("http://localhost:3000/api/zero/schedules/run", () => {
-          return HttpResponse.json(
-            { error: { message: "Schedule not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
+        mockApi(zeroScheduleRunContract.run, ({ respond }) =>
+          respond(404, {
+            error: { message: "Schedule not found", code: "NOT_FOUND" },
+          }),
+        ),
       );
 
       await setup();
@@ -728,17 +704,14 @@ describe("zero-schedule signals", () => {
 
     it("should throw on conflict when previous run is active", async () => {
       server.use(
-        http.post("http://localhost:3000/api/zero/schedules/run", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Previous run is still active",
-                code: "CONFLICT",
-              },
+        mockApi(zeroScheduleRunContract.run, ({ respond }) =>
+          respond(409, {
+            error: {
+              message: "Previous run is still active",
+              code: "CONFLICT",
             },
-            { status: 409 },
-          );
-        }),
+          }),
+        ),
       );
 
       await setup();
@@ -750,32 +723,26 @@ describe("zero-schedule signals", () => {
 
   describe("schedule display strings", () => {
     it("should convert one-time schedule to display string", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({
-            schedules: [
-              {
-                ...scheduleDefaults(),
-                id: "b0000000-0000-4000-a000-000000000001",
-                agentId: "c0000000-0000-4000-a000-000000000001",
-                name: "one-time",
-                triggerType: "once",
-                cronExpression: null,
-                atTime: "2026-06-15T14:30:00.000Z",
-                intervalSeconds: null,
-                timezone: "UTC",
-                prompt: "One-time task",
-                description: null,
-                enabled: true,
-                nextRunAt: null,
-                lastRunAt: null,
-                createdAt: "2026-03-01T00:00:00Z",
-                updatedAt: "2026-03-01T00:00:00Z",
-              },
-            ],
-          });
-        }),
-      );
+      setMockSchedules([
+        {
+          ...scheduleDefaults(),
+          id: "b0000000-0000-4000-a000-000000000001",
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          name: "one-time",
+          triggerType: "once",
+          cronExpression: null,
+          atTime: "2026-06-15T14:30:00.000Z",
+          intervalSeconds: null,
+          timezone: "UTC",
+          prompt: "One-time task",
+          description: null,
+          enabled: true,
+          nextRunAt: null,
+          lastRunAt: null,
+          createdAt: "2026-03-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+        } as ScheduleResponse,
+      ]);
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -786,32 +753,26 @@ describe("zero-schedule signals", () => {
     });
 
     it("should convert daily cron to display string", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({
-            schedules: [
-              {
-                ...scheduleDefaults(),
-                id: "b0000000-0000-4000-a000-000000000002",
-                agentId: "c0000000-0000-4000-a000-000000000001",
-                name: "daily",
-                triggerType: "cron",
-                cronExpression: "0 14 * * *",
-                atTime: null,
-                intervalSeconds: null,
-                timezone: "UTC",
-                prompt: "Daily task",
-                description: null,
-                enabled: true,
-                nextRunAt: null,
-                lastRunAt: null,
-                createdAt: "2026-03-01T00:00:00Z",
-                updatedAt: "2026-03-01T00:00:00Z",
-              },
-            ],
-          });
-        }),
-      );
+      setMockSchedules([
+        {
+          ...scheduleDefaults(),
+          id: "b0000000-0000-4000-a000-000000000002",
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          name: "daily",
+          triggerType: "cron",
+          cronExpression: "0 14 * * *",
+          atTime: null,
+          intervalSeconds: null,
+          timezone: "UTC",
+          prompt: "Daily task",
+          description: null,
+          enabled: true,
+          nextRunAt: null,
+          lastRunAt: null,
+          createdAt: "2026-03-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+        } as ScheduleResponse,
+      ]);
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -821,32 +782,26 @@ describe("zero-schedule signals", () => {
     });
 
     it("should convert monthly cron to display string", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({
-            schedules: [
-              {
-                ...scheduleDefaults(),
-                id: "b0000000-0000-4000-a000-000000000003",
-                agentId: "c0000000-0000-4000-a000-000000000001",
-                name: "monthly",
-                triggerType: "cron",
-                cronExpression: "0 9 15 * *",
-                atTime: null,
-                intervalSeconds: null,
-                timezone: "UTC",
-                prompt: "Monthly task",
-                description: null,
-                enabled: true,
-                nextRunAt: null,
-                lastRunAt: null,
-                createdAt: "2026-03-01T00:00:00Z",
-                updatedAt: "2026-03-01T00:00:00Z",
-              },
-            ],
-          });
-        }),
-      );
+      setMockSchedules([
+        {
+          ...scheduleDefaults(),
+          id: "b0000000-0000-4000-a000-000000000003",
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          name: "monthly",
+          triggerType: "cron",
+          cronExpression: "0 9 15 * *",
+          atTime: null,
+          intervalSeconds: null,
+          timezone: "UTC",
+          prompt: "Monthly task",
+          description: null,
+          enabled: true,
+          nextRunAt: null,
+          lastRunAt: null,
+          createdAt: "2026-03-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+        } as ScheduleResponse,
+      ]);
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -856,32 +811,26 @@ describe("zero-schedule signals", () => {
     });
 
     it("should convert weekly cron to display string with day name", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({
-            schedules: [
-              {
-                ...scheduleDefaults(),
-                id: "b0000000-0000-4000-a000-000000000004",
-                agentId: "c0000000-0000-4000-a000-000000000001",
-                name: "weekly",
-                triggerType: "cron",
-                cronExpression: "0 10 * * 3",
-                atTime: null,
-                intervalSeconds: null,
-                timezone: "UTC",
-                prompt: "Weekly task",
-                description: null,
-                enabled: true,
-                nextRunAt: null,
-                lastRunAt: null,
-                createdAt: "2026-03-01T00:00:00Z",
-                updatedAt: "2026-03-01T00:00:00Z",
-              },
-            ],
-          });
-        }),
-      );
+      setMockSchedules([
+        {
+          ...scheduleDefaults(),
+          id: "b0000000-0000-4000-a000-000000000004",
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          name: "weekly",
+          triggerType: "cron",
+          cronExpression: "0 10 * * 3",
+          atTime: null,
+          intervalSeconds: null,
+          timezone: "UTC",
+          prompt: "Weekly task",
+          description: null,
+          enabled: true,
+          nextRunAt: null,
+          lastRunAt: null,
+          createdAt: "2026-03-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+        } as ScheduleResponse,
+      ]);
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -891,32 +840,26 @@ describe("zero-schedule signals", () => {
     });
 
     it("should include description in entries", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({
-            schedules: [
-              {
-                ...scheduleDefaults(),
-                id: "b0000000-0000-4000-a000-000000000005",
-                agentId: "c0000000-0000-4000-a000-000000000001",
-                name: "described",
-                triggerType: "cron",
-                cronExpression: "0 9 * * *",
-                atTime: null,
-                intervalSeconds: null,
-                timezone: "UTC",
-                prompt: "Task with description",
-                description: "A detailed description",
-                enabled: true,
-                nextRunAt: null,
-                lastRunAt: null,
-                createdAt: "2026-03-01T00:00:00Z",
-                updatedAt: "2026-03-01T00:00:00Z",
-              },
-            ],
-          });
-        }),
-      );
+      setMockSchedules([
+        {
+          ...scheduleDefaults(),
+          id: "b0000000-0000-4000-a000-000000000005",
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          name: "described",
+          triggerType: "cron",
+          cronExpression: "0 9 * * *",
+          atTime: null,
+          intervalSeconds: null,
+          timezone: "UTC",
+          prompt: "Task with description",
+          description: "A detailed description",
+          enabled: true,
+          nextRunAt: null,
+          lastRunAt: null,
+          createdAt: "2026-03-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+        } as ScheduleResponse,
+      ]);
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -931,19 +874,17 @@ describe("zero-schedule signals", () => {
       let deletedName: string | null = null;
       let deletedAgentId: string | null = null;
 
+      setMockSchedules([]);
       server.use(
-        http.delete(
-          "http://localhost:3000/api/zero/schedules/:name",
-          ({ params, request }) => {
-            deletedName = params["name"] as string;
+        mockApi(
+          zeroSchedulesByNameContract.delete,
+          ({ params, request, respond }) => {
+            deletedName = params.name;
             const url = new URL(request.url);
             deletedAgentId = url.searchParams.get("agentId");
-            return new HttpResponse(null, { status: 204 });
+            return respond(204);
           },
         ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
       );
 
       await setup();
@@ -970,11 +911,7 @@ describe("org schedule signals", () => {
 
   describe("fetchAllOrgSchedules$ and allOrgScheduleEntries$", () => {
     it("should map agentId field from API response", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: createMockSchedules() });
-        }),
-      );
+      setMockSchedules(createMockSchedules() as ScheduleResponse[]);
 
       await setup();
       await context.store.set(fetchAllOrgSchedules$, context.signal);
@@ -1000,18 +937,17 @@ describe("org schedule signals", () => {
         body: null,
       };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({
-              ...mockDeployResponse(),
-            });
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          captured.body = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -1045,18 +981,17 @@ describe("org schedule signals", () => {
         body: null,
       };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({
-              ...mockDeployResponse(),
-            });
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+        mockApi(zeroSchedulesMainContract.deploy, async ({ body, respond }) => {
+          captured.body = body as Record<string, unknown>;
+          return respond(
+            201,
+            mockDeployResponse() as {
+              schedule: ScheduleResponse;
+              created: boolean;
+            },
+          );
         }),
       );
 
@@ -1090,18 +1025,16 @@ describe("org schedule signals", () => {
         body: Record<string, unknown> | null;
       } = { action: null, body: null };
 
+      setMockSchedules([]);
       server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules/:name/:action",
-          async ({ params, request }) => {
-            captured.action = params["action"] as string;
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockScheduleResponse());
+        mockApi(
+          zeroSchedulesEnableContract.disable,
+          async ({ body, respond }) => {
+            captured.action = "disable";
+            captured.body = body as Record<string, unknown>;
+            return respond(200, mockScheduleResponse() as ScheduleResponse);
           },
         ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
       );
 
       await setup();
@@ -1128,19 +1061,17 @@ describe("org schedule signals", () => {
       let deletedName: string | null = null;
       let deletedAgentId: string | null = null;
 
+      setMockSchedules([]);
       server.use(
-        http.delete(
-          "http://localhost:3000/api/zero/schedules/:name",
-          ({ params, request }) => {
-            deletedName = params["name"] as string;
+        mockApi(
+          zeroSchedulesByNameContract.delete,
+          ({ params, request, respond }) => {
+            deletedName = params.name;
             const url = new URL(request.url);
             deletedAgentId = url.searchParams.get("agentId");
-            return new HttpResponse(null, { status: 204 });
+            return respond(204);
           },
         ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
       );
 
       await setup();
