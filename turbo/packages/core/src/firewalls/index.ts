@@ -129,6 +129,7 @@ import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
 import { perplexityFirewall } from "./perplexity.generated";
+import { pipedriveFirewall } from "./pipedrive.generated";
 import { plainFirewall } from "./plain.generated";
 import { plausibleFirewall } from "./plausible.generated";
 import { podchaserFirewall } from "./podchaser.generated";
@@ -298,6 +299,7 @@ const CONNECTOR_FIREWALLS = {
   pdfco: pdfcoFirewall,
   pdforge: pdforgeFirewall,
   perplexity: perplexityFirewall,
+  pipedrive: pipedriveFirewall,
   plain: plainFirewall,
   plausible: plausibleFirewall,
   podchaser: podchaserFirewall,
