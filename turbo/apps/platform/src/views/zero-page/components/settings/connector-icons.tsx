@@ -127,7 +127,6 @@ const CONNECTOR_ICON_COLORFUL = {
   "meta-ads": true,
   minimax: true,
   minio: true,
-  mixpanel: true,
   monday: true,
   neon: true,
   pandadoc: true,
