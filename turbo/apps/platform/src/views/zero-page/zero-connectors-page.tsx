@@ -1,6 +1,11 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import {
   IconSearch,
   IconPlug,
@@ -10,9 +15,17 @@ import {
 } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
+  FeatureSwitchKey,
   type ConnectorType,
   isGoogleOAuthConnector,
 } from "@vm0/core";
+import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  connectorsPageTab$,
+  setConnectorsPageTab$,
+} from "../../signals/zero-page/settings/custom-connectors.ts";
+import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
@@ -275,6 +288,11 @@ export function ZeroConnectorsPage() {
   const permissionDialogType = useGet(permissionDialogType$);
   const setPermissionDialogType = useSet(setPermissionDialogType$);
   const optimisticConnected = useGet(justConnectedTypes$);
+  const features = useLastResolved(featureSwitch$);
+  const customConnectorsEnabled =
+    features?.[FeatureSwitchKey.OrgCustomConnectors] === true;
+  const activeTab = useGet(connectorsPageTab$);
+  const setActiveTab = useSet(setConnectorsPageTab$);
 
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
@@ -402,68 +420,90 @@ export function ZeroConnectorsPage() {
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-6">
-          {connected.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2 className="text-sm font-medium text-muted-foreground">
-                Connected ({connected.length})
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {connected.map(renderCard)}
-              </div>
-            </section>
+          {customConnectorsEnabled && (
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => {
+                return setActiveTab(v === "custom" ? "custom" : "builtin");
+              }}
+            >
+              <TabsList>
+                <TabsTrigger value="builtin">Built-in</TabsTrigger>
+                <TabsTrigger value="custom">Custom</TabsTrigger>
+              </TabsList>
+            </Tabs>
           )}
 
-          {notConnected.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2 className="text-sm font-medium text-muted-foreground">
-                Available ({notConnected.length})
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {notConnected.map((c) => {
-                  return (
-                    <AvailableConnectorCard
-                      key={c.type}
-                      connector={c}
-                      isPolling={pollingType === c.type}
-                      onConnect={() => {
-                        return connectHandler(c.type);
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {allTypesLoadable.state !== "hasData" && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {Array.from({ length: 6 }, (_, i) => {
-                return (
-                  <div
-                    key={i}
-                    data-testid="connector-skeleton"
-                    className="zero-card flex flex-col animate-pulse"
-                  >
-                    <div className="flex h-14 items-center gap-2.5 px-5">
-                      <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
-                      <span className="h-4 w-24 rounded bg-muted/50" />
-                    </div>
-                    <div className="flex h-11 items-center border-t border-border/30 px-5">
-                      <span className="h-3 w-16 rounded bg-muted/30" />
-                    </div>
+          {(!customConnectorsEnabled || activeTab === "builtin") && (
+            <>
+              {connected.length > 0 && (
+                <section className="flex flex-col gap-3">
+                  <h2 className="text-sm font-medium text-muted-foreground">
+                    Connected ({connected.length})
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {connected.map(renderCard)}
                   </div>
-                );
-              })}
-            </div>
+                </section>
+              )}
+
+              {notConnected.length > 0 && (
+                <section className="flex flex-col gap-3">
+                  <h2 className="text-sm font-medium text-muted-foreground">
+                    Available ({notConnected.length})
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {notConnected.map((c) => {
+                      return (
+                        <AvailableConnectorCard
+                          key={c.type}
+                          connector={c}
+                          isPolling={pollingType === c.type}
+                          onConnect={() => {
+                            return connectHandler(c.type);
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {allTypesLoadable.state !== "hasData" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {Array.from({ length: 6 }, (_, i) => {
+                    return (
+                      <div
+                        key={i}
+                        data-testid="connector-skeleton"
+                        className="zero-card flex flex-col animate-pulse"
+                      >
+                        <div className="flex h-14 items-center gap-2.5 px-5">
+                          <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
+                          <span className="h-4 w-24 rounded bg-muted/50" />
+                        </div>
+                        <div className="flex h-11 items-center border-t border-border/30 px-5">
+                          <span className="h-3 w-16 rounded bg-muted/30" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {allTypesLoadable.state === "hasData" &&
+                filtered.length === 0 &&
+                search && (
+                  <p className="py-12 text-center text-sm text-muted-foreground">
+                    No connectors matching &ldquo;{search}&rdquo;
+                  </p>
+                )}
+            </>
           )}
 
-          {allTypesLoadable.state === "hasData" &&
-            filtered.length === 0 &&
-            search && (
-              <p className="py-12 text-center text-sm text-muted-foreground">
-                No connectors matching &ldquo;{search}&rdquo;
-              </p>
-            )}
+          {customConnectorsEnabled && activeTab === "custom" && (
+            <CustomConnectorsPanel />
+          )}
         </div>
       </main>
 
