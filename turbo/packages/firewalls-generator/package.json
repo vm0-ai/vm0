@@ -69,6 +69,7 @@
     "generate:figma": "tsx src/index.ts figma",
     "generate:firecrawl": "tsx src/index.ts firecrawl",
     "generate:fireflies": "tsx src/index.ts fireflies",
+    "generate:freshdesk": "tsx src/index.ts freshdesk",
     "generate:gamma": "tsx src/index.ts gamma",
     "generate:garmin-connect": "tsx src/index.ts garmin-connect",
     "generate:github": "tsx src/index.ts github",
