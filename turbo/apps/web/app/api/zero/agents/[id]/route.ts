@@ -42,6 +42,8 @@ function agentResponseBody(
       agent?.unknownPermissionPolicies,
     ),
     customSkills: agent?.customSkills ?? [],
+    modelProviderId: agent?.modelProviderId ?? null,
+    selectedModel: agent?.selectedModel ?? null,
   };
 }
 
@@ -187,6 +189,8 @@ const router = tsr.router(zeroAgentsByIdContract, {
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
         customSkills,
+        modelProviderId: body.modelProviderId ?? null,
+        selectedModel: body.selectedModel ?? null,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
@@ -204,6 +208,12 @@ const router = tsr.router(zeroAgentsByIdContract, {
           }),
           ...(body.customSkills !== undefined && {
             customSkills: body.customSkills,
+          }),
+          ...(body.modelProviderId !== undefined && {
+            modelProviderId: body.modelProviderId,
+          }),
+          ...(body.selectedModel !== undefined && {
+            selectedModel: body.selectedModel,
           }),
         },
       });
@@ -275,6 +285,12 @@ const router = tsr.router(zeroAgentsByIdContract, {
         ...(body.sound !== undefined && { sound: body.sound }),
         ...(body.avatarUrl !== undefined && {
           avatarUrl: body.avatarUrl,
+        }),
+        ...(body.modelProviderId !== undefined && {
+          modelProviderId: body.modelProviderId,
+        }),
+        ...(body.selectedModel !== undefined && {
+          selectedModel: body.selectedModel,
         }),
       })
       .where(eq(zeroAgents.id, params.id));

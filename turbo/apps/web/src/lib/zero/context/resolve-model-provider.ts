@@ -14,7 +14,10 @@ import {
 import { badRequest, noModelProvider } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
-import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
+import {
+  getOrgDefaultModelProvider,
+  getModelProviderByIdForOrg,
+} from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
@@ -201,12 +204,17 @@ async function resolveVm0Provider(
  * Only injects if no explicit model provider config in compose environment
  *
  * For providers with environment mapping (e.g., moonshot), resolves all env vars
+ *
+ * @param modelProviderId - Optional specific provider ID to use instead of org default
+ * @param selectedModelOverride - Optional model override (takes precedence over provider's selectedModel)
  */
 export async function resolveModelProviderSecrets(
   orgId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
   explicitModelProvider?: string,
+  modelProviderId?: string,
+  selectedModelOverride?: string,
 ): Promise<ModelProviderSecretResult> {
   let secrets: Record<string, string> | undefined;
 
@@ -219,11 +227,16 @@ export async function resolveModelProviderSecrets(
     };
   }
 
-  // Fetch org-level default provider
-  const defaultProvider = await getOrgDefaultModelProvider(
-    orgId,
-    framework as ModelProviderFramework,
-  );
+  // Resolve provider: specific ID override → org default
+  let defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>;
+  if (modelProviderId) {
+    defaultProvider = await getModelProviderByIdForOrg(orgId, modelProviderId);
+  } else {
+    defaultProvider = await getOrgDefaultModelProvider(
+      orgId,
+      framework as ModelProviderFramework,
+    );
+  }
 
   const secretUserId = ORG_SENTINEL_USER_ID;
 
@@ -232,7 +245,9 @@ export async function resolveModelProviderSecrets(
     defaultProvider,
     explicitModelProvider,
   );
-  const selectedModel = defaultProvider?.selectedModel ?? undefined;
+  // selectedModelOverride (from agent/schedule config) takes precedence over provider's stored model
+  const selectedModel =
+    selectedModelOverride ?? defaultProvider?.selectedModel ?? undefined;
 
   // Handle VM0 managed provider (meta-provider resolution)
   if (providerType === "vm0") {

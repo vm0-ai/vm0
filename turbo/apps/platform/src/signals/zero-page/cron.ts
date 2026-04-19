@@ -21,6 +21,8 @@ export type ScheduleBody = {
   prompt: string;
   description?: string;
   enabled?: boolean;
+  modelProviderId?: string | null;
+  selectedModel?: string | null;
 } & (
   | { cronExpression: string }
   | { atTime: string }

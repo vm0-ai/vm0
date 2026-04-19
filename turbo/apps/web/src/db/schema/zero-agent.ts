@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { RawPermissionPolicies, FirewallPolicyValue } from "@vm0/core";
 import { agentComposes } from "./agent-compose";
+import { modelProviders } from "./model-provider";
 
 /**
  * Zero Agents table
@@ -44,6 +45,13 @@ export const zeroAgents = pgTable(
       .$type<string[]>()
       .notNull()
       .default([]),
+    modelProviderId: uuid("model_provider_id").references(
+      () => {
+        return modelProviders.id;
+      },
+      { onDelete: "set null" },
+    ),
+    selectedModel: varchar("selected_model", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

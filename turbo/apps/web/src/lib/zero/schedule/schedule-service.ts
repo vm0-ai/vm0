@@ -75,6 +75,8 @@ interface DeployScheduleRequest {
   enabled?: boolean;
   // vars and secrets removed - now managed via server-side tables
   volumeVersions?: Record<string, string>;
+  modelProviderId?: string | null;
+  selectedModel?: string | null;
 }
 
 /**
@@ -145,6 +147,8 @@ function toResponse(
     consecutiveFailures: schedule.consecutiveFailures,
     createdAt: schedule.createdAt.toISOString(),
     updatedAt: schedule.updatedAt.toISOString(),
+    modelProviderId: schedule.modelProviderId ?? null,
+    selectedModel: schedule.selectedModel ?? null,
   };
 }
 
@@ -257,6 +261,8 @@ async function updateExistingSchedule(
       nextRunAt,
       consecutiveFailures: 0,
       updatedAt: new Date(),
+      modelProviderId: request.modelProviderId ?? null,
+      selectedModel: request.selectedModel ?? null,
     })
     .where(eq(zeroAgentSchedules.id, existingId))
     .returning();
@@ -302,6 +308,8 @@ async function insertNewSchedule(
       consecutiveFailures: 0,
       createdAt: now,
       updatedAt: now,
+      modelProviderId: request.modelProviderId ?? null,
+      selectedModel: request.selectedModel ?? null,
     })
     .returning();
 
@@ -879,6 +887,8 @@ export async function executeSchedule(
       triggerType: schedule.triggerType,
       cronExpression: schedule.cronExpression ?? undefined,
       timezone: schedule.timezone,
+      modelProviderId: schedule.modelProviderId,
+      selectedModel: schedule.selectedModel,
     }),
   );
 

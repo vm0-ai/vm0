@@ -92,6 +92,9 @@ interface BuildZeroContextParams {
   captureNetworkBodies?: boolean;
   // Model provider for automatic secret injection
   modelProvider?: string;
+  // Per-agent or per-schedule model provider override (by provider ID + model)
+  modelProviderId?: string;
+  selectedModelOverride?: string;
   // API start time for E2E timing metrics
   apiStartTime?: number;
   // Per-permission policies from zero agent configuration (includes unknownPolicy).
@@ -119,6 +122,8 @@ async function resolveSecretsAndEnvironment(
   modelProvider: string | undefined,
   userId: string,
   allowedConnectorTypes?: ConnectorType[],
+  modelProviderId?: string,
+  selectedModelOverride?: string,
 ): Promise<{
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
@@ -151,6 +156,8 @@ async function resolveSecretsAndEnvironment(
       framework,
       hasExplicitModelProviderConfig,
       modelProvider,
+      modelProviderId,
+      selectedModelOverride,
     ),
     resolveOauthConnectorSecrets(orgId, userId, allowedConnectorTypes),
     getApiTokenConnectorTypes(orgId, userId),
@@ -433,6 +440,8 @@ export async function resolveCliRunContext(
       params.modelProvider,
       params.userId,
       params.allowedConnectorTypes,
+      params.modelProviderId,
+      params.selectedModelOverride,
     ),
     getUserPreferences(params.orgId, params.userId),
     // Fetch previous run's model provider for compatibility check
@@ -598,6 +607,8 @@ export async function buildZeroExecutionContext(
       params.modelProvider,
       params.userId,
       params.allowedConnectorTypes,
+      params.modelProviderId,
+      params.selectedModelOverride,
     ),
     params.preloadedUserTimezone !== undefined
       ? Promise.resolve(null)

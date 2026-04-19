@@ -49,4 +49,5 @@ export enum FeatureSwitchKey {
   ChatThreadReadIndicator = "chatThreadReadIndicator",
   InlineThinkingDot = "inlineThinkingDot",
   ZoomConnector = "zoomConnector",
+  ModelProviderSelection = "modelProviderSelection",
 }

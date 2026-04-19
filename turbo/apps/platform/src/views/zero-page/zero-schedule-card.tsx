@@ -233,6 +233,8 @@ interface ZeroScheduleCardProps {
     dayOfWeek?: string;
     dayOfMonth?: string;
     editName?: string;
+    modelProviderId?: string | null;
+    selectedModel?: string | null;
   }) => Promise<void>;
   /** When provided, called to delete a schedule by name. */
   onDelete?: (name: string) => Promise<void>;
@@ -400,6 +402,8 @@ export function ZeroScheduleCard({
             values.freq === "every_week" ? values.dayOfWeek : undefined,
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
+          modelProviderId: values.modelProviderId,
+          selectedModel: values.selectedModel,
         }).then(() => {
           return setAddScheduleOpen(false, signal);
         }),
@@ -447,6 +451,8 @@ export function ZeroScheduleCard({
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
           editName: editingEntry?.name,
+          modelProviderId: values.modelProviderId,
+          selectedModel: values.selectedModel,
         }).then(() => {
           return setEditingScheduleId(null, signal);
         }),
