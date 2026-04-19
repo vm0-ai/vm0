@@ -3837,6 +3837,29 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  luma: {
+    label: "Luma AI",
+    environmentMapping: {
+      LUMAAI_API_KEY: "$secrets.LUMAAI_API_KEY",
+    },
+    helpText:
+      "Connect your Luma AI account to generate videos and images using the Dream Machine API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [lumalabs.ai](https://lumalabs.ai)\n2. Go to [lumalabs.ai/dream-machine/api](https://lumalabs.ai/dream-machine/api) or account settings → API Keys\n3. Create a new API key and copy it\n4. Paste the key here",
+        secrets: {
+          LUMAAI_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-luma-api-key",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   mailsac: {
     label: "Mailsac",
     environmentMapping: {
