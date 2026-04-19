@@ -71,6 +71,7 @@ import { dropboxFirewall } from "./dropbox.generated";
 import { dropboxSignFirewall } from "./dropbox-sign.generated";
 import { duffelFirewall } from "./duffel.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
+import { exaFirewall } from "./exa.generated";
 import { exploriumFirewall } from "./explorium.generated";
 import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
@@ -240,6 +241,7 @@ const CONNECTOR_FIREWALLS = {
   "dropbox-sign": dropboxSignFirewall,
   duffel: duffelFirewall,
   elevenlabs: elevenlabsFirewall,
+  exa: exaFirewall,
   explorium: exploriumFirewall,
   fal: falFirewall,
   figma: figmaFirewall,

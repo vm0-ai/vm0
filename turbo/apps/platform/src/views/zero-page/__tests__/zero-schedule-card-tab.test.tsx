@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import {
   type ScheduleResponse,
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
 } from "@vm0/core";
@@ -11,9 +13,12 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import {
+  setMockSchedules,
+  createMockScheduleResponse,
+} from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
@@ -74,21 +79,47 @@ function mockBaseAPIs(schedules: ScheduleResponse[]) {
   ]);
   setMockSchedules(schedules);
   server.use(
-    http.get("*/api/zero/agents/my-agent", () => {
-      return HttpResponse.json({
-        name: "my-agent",
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          name: "zero",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-detail-id",
+          name: "my-agent",
+          displayName: "My Agent",
+          description: "A helpful agent",
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_2",
+          updatedAt: "2024-01-02T00:00:00Z",
+        },
+      ]);
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: AGENT_ID,
         ownerId: "test-owner-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        connectors: [],
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ content: null, filename: null });
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: null, filename: null });
     }),
   );
 }

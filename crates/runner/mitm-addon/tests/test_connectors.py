@@ -1340,7 +1340,9 @@ class TestGetFirewallHeaders:
 
 
 class TestHandleFirewallRequest:
-    async def test_success_injects_headers_and_audit_metadata(self, real_flow, headers, mitm_ctx):
+    async def test_success_injects_headers_and_audit_metadata(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {
@@ -1352,7 +1354,7 @@ class TestHandleFirewallRequest:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {
             "name": "github",
@@ -1397,7 +1399,7 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
 
-    async def test_failure_returns_502(self, real_flow, headers, mitm_ctx):
+    async def test_failure_returns_502(self, real_flow, headers, mitm_ctx, tmp_path):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
@@ -1405,7 +1407,7 @@ class TestHandleFirewallRequest:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {"name": "github", "ref": "github"}
 
@@ -1462,7 +1464,9 @@ class TestHandleFirewallRequest:
 
         assert flow.response is None
 
-    async def test_connector_not_configured_returns_424(self, real_flow, headers, mitm_ctx):
+    async def test_connector_not_configured_returns_424(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
         """When connector is enabled but not linked, return 424 with missing secrets."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -1471,7 +1475,7 @@ class TestHandleFirewallRequest:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {"name": "github", "ref": "github"}
 
@@ -1500,7 +1504,7 @@ class TestHandleFirewallRequest:
         assert body["permission"] == "github"
         assert body["base"] == "https://api.github.com"
 
-    async def test_missing_vars_only_returns_424(self, real_flow, headers, mitm_ctx):
+    async def test_missing_vars_only_returns_424(self, real_flow, headers, mitm_ctx, tmp_path):
         """When connector not configured, return 424 with connector ref."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -1509,7 +1513,7 @@ class TestHandleFirewallRequest:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {"name": "htmlcsstoimage", "ref": "htmlcsstoimage"}
 
@@ -1694,11 +1698,9 @@ class TestFetchFirewallHeaders:
             patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(urllib.error.HTTPError),
         ):
-            with pytest.raises(urllib.error.HTTPError):
-                auth._fetch_firewall_headers_sync(
-                    "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
-                )
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
     async def test_async_wrapper_passes_api_url_from_ctx(self, headers):
         """fetch_firewall_headers reads api_url on the event loop and passes it to the sync fn."""
@@ -1768,7 +1770,7 @@ class TestForwardRequestSecurity:
 class TestAuthBaseUrlRewrite:
     """Tests for auth.base URL rewriting via forward_request in handle_firewall_request."""
 
-    async def test_url_rewrite_with_rel_path_root(self, real_flow, headers, mitm_ctx):
+    async def test_url_rewrite_with_rel_path_root(self, real_flow, headers, mitm_ctx, tmp_path):
         """When rel_path is '/', resolved base URL is forwarded as-is."""
         flow = real_flow(with_response=False, host="firewall-placeholder.vm3.ai", path="/hook")
         flow.metadata["vm_run_id"] = "test-run"
@@ -1780,7 +1782,7 @@ class TestAuthBaseUrlRewrite:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {
             "name": "discord-webhook",
@@ -1809,7 +1811,7 @@ class TestAuthBaseUrlRewrite:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.response.status_code == 200
 
-    async def test_url_rewrite_with_remaining_path(self, real_flow, headers, mitm_ctx):
+    async def test_url_rewrite_with_remaining_path(self, real_flow, headers, mitm_ctx, tmp_path):
         """When rel_path has content, it's appended to resolved base in forwarded URL."""
         flow = real_flow(
             with_response=False,
@@ -1825,7 +1827,7 @@ class TestAuthBaseUrlRewrite:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {
             "name": "bitrix",
@@ -1856,7 +1858,7 @@ class TestAuthBaseUrlRewrite:
         )
         assert flow.metadata["firewall_action"] == "ALLOW"
 
-    async def test_url_rewrite_preserves_query_string(self, real_flow, headers, mitm_ctx):
+    async def test_url_rewrite_preserves_query_string(self, real_flow, headers, mitm_ctx, tmp_path):
         """Query string from original request is preserved in forwarded URL."""
         flow = real_flow(
             with_response=False,
@@ -1872,7 +1874,7 @@ class TestAuthBaseUrlRewrite:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {
             "name": "discord-webhook",
@@ -1900,7 +1902,7 @@ class TestAuthBaseUrlRewrite:
         assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc?wait=true"
 
     async def test_url_rewrite_resolved_base_with_trailing_slash(
-        self, real_flow, headers, mitm_ctx
+        self, real_flow, headers, mitm_ctx, tmp_path
     ):
         """Trailing slash on resolved base is stripped before appending rel_path."""
         flow = real_flow(
@@ -1917,7 +1919,7 @@ class TestAuthBaseUrlRewrite:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {
             "name": "bitrix",
@@ -1947,7 +1949,7 @@ class TestAuthBaseUrlRewrite:
             == "https://mycompany.bitrix24.com/rest/1/token/crm.deal.list"
         )
 
-    async def test_url_rewrite_merges_query_strings(self, real_flow, headers, mitm_ctx):
+    async def test_url_rewrite_merges_query_strings(self, real_flow, headers, mitm_ctx, tmp_path):
         """When resolved base has query string and original request also has one, merge with &."""
         flow = real_flow(
             with_response=False,
@@ -1963,7 +1965,7 @@ class TestAuthBaseUrlRewrite:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {
             "name": "test",
@@ -1990,7 +1992,9 @@ class TestAuthBaseUrlRewrite:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert mock_forward.call_args[0][0] == "https://example.com/hook?token=abc&wait=true"
 
-    async def test_no_url_rewrite_when_auth_base_absent(self, real_flow, headers, mitm_ctx):
+    async def test_no_url_rewrite_when_auth_base_absent(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
         """Without auth.base, no URL rewriting happens (existing behavior)."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -2003,7 +2007,7 @@ class TestAuthBaseUrlRewrite:
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {
             "name": "github",
@@ -2141,6 +2145,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
     def _make_rewrite_inputs(
         self,
         real_flow,
+        tmp_path,
         *,
         path="/hook",
         pretty_url=None,
@@ -2170,7 +2175,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {
             "name": "test",
@@ -2188,9 +2193,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
         }
         return flow, api_entry, vm_info, match_info, token_meta
 
-    async def test_sets_auth_url_rewrite_metadata_and_response(self, real_flow, mitm_ctx):
+    async def test_sets_auth_url_rewrite_metadata_and_response(self, real_flow, mitm_ctx, tmp_path):
         """auth_url_rewrite metadata is set and flow.response is populated via forward_request."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(real_flow)
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow, tmp_path
+        )
         mock_forward = AsyncMock(
             return_value=(200, b'{"ok":true}', {"Content-Type": "application/json"})
         )
@@ -2207,7 +2214,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
         call_args = mock_forward.call_args
         assert call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
 
-    async def test_no_auth_url_rewrite_metadata_when_no_base(self, real_flow, headers, mitm_ctx):
+    async def test_no_auth_url_rewrite_metadata_when_no_base(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
         """auth_url_rewrite metadata is absent when no URL rewrite happens."""
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -2219,7 +2228,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
             "runId": "run-1",
             "sandboxToken": "tok",
             "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "/tmp/net.jsonl",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
         }
         match_info = {
             "name": "gh",
@@ -2242,10 +2251,13 @@ class TestAuthBaseUrlRewriteEdgeCases:
         # Standard header injection happened
         assert flow.request.headers["Authorization"] == "Bearer real"
 
-    async def test_forward_request_includes_auth_headers(self, headers, real_flow, mitm_ctx):
+    async def test_forward_request_includes_auth_headers(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
         """auth.headers are included in the forwarded request to the real URL."""
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
             real_flow,
+            tmp_path,
             resolved_base="https://discord.com/api/webhooks/123/abc",
         )
         token_meta["headers"] = {"X-Custom": "injected-value"}
@@ -2262,9 +2274,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
         req_headers = call_args[0][2]
         assert req_headers["X-Custom"] == "injected-value"
 
-    async def test_forward_failure_returns_502(self, real_flow, mitm_ctx):
+    async def test_forward_failure_returns_502(self, real_flow, mitm_ctx, tmp_path):
         """forward_request exception produces a 502 error response."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(real_flow)
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow, tmp_path
+        )
         mock_forward = AsyncMock(side_effect=Exception("connection refused"))
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -2276,9 +2290,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert flow.response.status_code == 502
         assert flow.metadata["auth_url_rewrite"] is True
 
-    async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx):
+    async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
         """Empty string base from server is treated as absent — no URL rewrite."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(real_flow)
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
+            real_flow, tmp_path
+        )
         token_meta["base"] = ""
         original_url = flow.request.url
         with (

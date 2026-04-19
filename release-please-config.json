@@ -50,9 +50,6 @@
         "crates/guest-reseed": {
             "release-type": "rust"
         },
-        "crates/reqeast": {
-            "release-type": "rust"
-        },
         "crates/runner": {
             "release-type": "rust",
             "component": "runner-rs"

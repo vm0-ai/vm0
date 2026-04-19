@@ -11,7 +11,9 @@ Exports:
 """
 
 import base64
+import contextlib
 import zlib
+from collections.abc import Callable
 
 import brotli  # type: ignore[import-untyped]
 import zstandard
@@ -55,6 +57,39 @@ _SENSITIVE_HEADER_KEYWORDS = (
 )
 
 
+def _make_streaming_decompressor(
+    decomp_fn: Callable[[bytes], bytes],
+    error_cls: type[Exception],
+    encoding_label: str,
+) -> Callable[[bytes], bytes]:
+    """Wrap a chunk decompressor with log-once + short-circuit on failure.
+
+    ``zlib`` / ``brotli`` / ``zstd`` streaming decompressors have internal
+    state that becomes undefined after a decompression error — subsequent
+    ``decomp_fn(chunk)`` calls may keep raising or silently produce garbage
+    plaintext.  On first error we log once (at debug, mirroring the
+    non-streaming ``decompress_body`` pattern), latch a broken flag, and
+    return ``b""`` for every subsequent chunk so downstream parsers don't
+    consume corrupt output.
+    """
+    broken = False
+
+    def wrapper(chunk: bytes) -> bytes:
+        nonlocal broken
+        if broken:
+            return b""
+        try:
+            return decomp_fn(chunk)
+        except error_cls as exc:
+            broken = True
+            with contextlib.suppress(AttributeError):
+                # ctx.log unavailable outside mitmproxy runtime
+                ctx.log.debug(f"Streaming decompression failed ({encoding_label}): {exc}")
+            return b""
+
+    return wrapper
+
+
 def create_stream_decompressor(headers: http.Headers):
     """Create an incremental decompressor for streaming chunks.
 
@@ -67,34 +102,13 @@ def create_stream_decompressor(headers: http.Headers):
     if encoding in ("gzip", "deflate"):
         wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
         obj = zlib.decompressobj(wbits)
-
-        def decompress_zlib(chunk: bytes) -> bytes:
-            try:
-                return obj.decompress(chunk)
-            except zlib.error:
-                return b""
-
-        return decompress_zlib
+        return _make_streaming_decompressor(obj.decompress, zlib.error, encoding)
     if encoding == "br":
         dec = brotli.Decompressor()
-
-        def decompress_br(chunk: bytes) -> bytes:
-            try:
-                return dec.process(chunk)
-            except brotli.error:
-                return b""
-
-        return decompress_br
+        return _make_streaming_decompressor(dec.process, brotli.error, "br")
     if encoding == "zstd":
         obj = zstandard.ZstdDecompressor().decompressobj()
-
-        def decompress_zstd(chunk: bytes) -> bytes:
-            try:
-                return obj.decompress(chunk)
-            except zstandard.ZstdError:
-                return b""
-
-        return decompress_zstd
+        return _make_streaming_decompressor(obj.decompress, zstandard.ZstdError, "zstd")
     return None
 
 
@@ -109,7 +123,22 @@ def decompress_body(
     yields whatever decompressed bytes are available.
 
     Output is capped at *max_output* bytes to guard against decompression
-    bombs (small compressed payload expanding to huge output).
+    bombs.  Cap enforcement varies by codec:
+
+    - gzip/deflate: hard cap via ``decompressobj.decompress(data, max_length=)``;
+      zlib stops decoding once the cap is reached.
+    - zstd: hard cap via ``ZstdDecompressor.stream_reader(data).read(max_output)``;
+      zstd reads incrementally so total memory is bounded by
+      ``max_output`` plus library internal buffers.
+    - br: **no hard cap.**  The Python ``brotli`` bindings expose only
+      ``Decompressor.process(data)`` which materialises the full decompressed
+      output before returning; slicing afterwards does not prevent the
+      transient allocation.  Input chunking is not a reliable defence —
+      a single brotli copy command can emit up to 16 MB from a handful of
+      encoded bytes, so chunk-level bounds don't hold for adversarial
+      input.  This is acceptable given the callers only decompress
+      bodies from the pre-configured model-provider and billable-connector
+      allowlist (not arbitrary user-supplied URLs).
 
     Returns the original data unchanged if not compressed or on error.
     """
@@ -128,14 +157,16 @@ def decompress_body(
             result = dec.process(data)
             return result[:max_output] if result else data
         if encoding == "zstd":
-            obj = zstandard.ZstdDecompressor().decompressobj()
-            result = obj.decompress(data)
-            return result[:max_output] if result else data
+            # stream_reader.read(n) reads *up to* n bytes: the full frame if
+            # smaller than n, exactly n if larger — so total memory is bounded
+            # by n plus ZSTD_DStream{In,Out}Size (~128 KB library buffers).
+            with zstandard.ZstdDecompressor().stream_reader(data) as reader:
+                result = reader.read(max_output)
+            return result if result else data
     except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
-        try:
+        with contextlib.suppress(AttributeError):
+            # ctx.log unavailable outside mitmproxy runtime
             ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
-        except AttributeError:
-            pass  # ctx.log unavailable outside mitmproxy runtime
     return data
 
 

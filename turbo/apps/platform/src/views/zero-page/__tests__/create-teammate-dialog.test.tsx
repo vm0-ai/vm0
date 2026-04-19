@@ -5,6 +5,12 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  type ZeroAgentRequest,
+  zeroAgentsMainContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -57,38 +63,33 @@ describe("create agent dialog - avatar", () => {
 
   it("should send chosen avatar when creating agent", async () => {
     const user = userEvent.setup();
-    let capturedPayload: Record<string, unknown> | null = null;
+    let capturedPayload: ZeroAgentRequest | null = null;
 
     mockTeamWithSubagent();
     server.use(
-      http.post("*/api/zero/agents", async ({ request }) => {
-        capturedPayload = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
-          {
-            name: "new-agent-uuid",
-            agentId: "new-agent-id",
-            ownerId: "test-user-123",
-            description: null,
-            displayName: capturedPayload.displayName ?? null,
-            sound: null,
-            avatarUrl: capturedPayload.avatarUrl ?? null,
-            connectors: [],
-            permissionPolicies: null,
-          },
-          { status: 201 },
-        );
+      mockApi(zeroAgentsMainContract.create, ({ body, respond }) => {
+        capturedPayload = body;
+        return respond(201, {
+          agentId: "new-agent-id",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: body.displayName ?? null,
+          sound: null,
+          avatarUrl: body.avatarUrl ?? null,
+          permissionPolicies: null,
+          customSkills: [],
+        });
       }),
-      http.put("*/api/zero/agents/new-agent-id/instructions", () => {
-        return HttpResponse.json({
-          name: "new-agent-uuid",
+      mockApi(zeroAgentInstructionsContract.update, ({ respond }) => {
+        return respond(200, {
           agentId: "new-agent-id",
           ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,
           avatarUrl: null,
-          connectors: [],
           permissionPolicies: null,
+          customSkills: [],
         });
       }),
     );
@@ -110,38 +111,33 @@ describe("create agent dialog - avatar", () => {
 
   it("should submit via Enter key with avatar", async () => {
     const user = userEvent.setup();
-    let capturedPayload: Record<string, unknown> | null = null;
+    let capturedPayload: ZeroAgentRequest | null = null;
 
     mockTeamWithSubagent();
     server.use(
-      http.post("*/api/zero/agents", async ({ request }) => {
-        capturedPayload = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
-          {
-            name: "new-agent-uuid",
-            agentId: "new-agent-id",
-            ownerId: "test-user-123",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: capturedPayload.avatarUrl ?? null,
-            connectors: [],
-            permissionPolicies: null,
-          },
-          { status: 201 },
-        );
+      mockApi(zeroAgentsMainContract.create, ({ body, respond }) => {
+        capturedPayload = body;
+        return respond(201, {
+          agentId: "new-agent-id",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: body.avatarUrl ?? null,
+          permissionPolicies: null,
+          customSkills: [],
+        });
       }),
-      http.put("*/api/zero/agents/new-agent-id/instructions", () => {
-        return HttpResponse.json({
-          name: "new-agent-uuid",
+      mockApi(zeroAgentInstructionsContract.update, ({ respond }) => {
+        return respond(200, {
           agentId: "new-agent-id",
           ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,
           avatarUrl: null,
-          connectors: [],
           permissionPolicies: null,
+          customSkills: [],
         });
       }),
     );

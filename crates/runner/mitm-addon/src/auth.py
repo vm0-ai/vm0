@@ -51,7 +51,11 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     Centralises User-Agent, Authorization, Content-Type, and the optional
     Vercel bypass header so that callers cannot accidentally omit them.
     """
-    req = urllib.request.Request(
+    # S310 (suspicious-url-open-usage): `url` is always built by callers
+    # from `ctx.options.vm0_api_url` (operator-configured at mitmdump launch),
+    # never from user-controlled input, so the file:/custom-scheme risk S310
+    # guards against doesn't apply here.
+    req = urllib.request.Request(  # noqa: S310
         url,
         data=data,
         headers={
@@ -93,7 +97,9 @@ def _fetch_firewall_headers_sync(
     data = json.dumps(body).encode()
     req = make_api_request(url, data, sandbox_token)
     try:
-        resp = urllib.request.urlopen(req, timeout=10)
+        # S310 is satisfied by provenance: `req` always targets
+        # ctx.options.vm0_api_url (operator-set at mitmdump launch).
+        resp = urllib.request.urlopen(req, timeout=10)  # noqa: S310
     except urllib.error.HTTPError as e:
         try:
             error_body = json.loads(e.read())
@@ -196,7 +202,9 @@ def _forward_request_sync(
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("https", "http"):
         raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
-    req = urllib.request.Request(url, data=body, method=method)
+    # S310 is satisfied by the explicit scheme whitelist above: file:, ftp:,
+    # and other schemes S310 warns about are rejected before this point.
+    req = urllib.request.Request(url, data=body, method=method)  # noqa: S310
     for k, v in headers.items():
         if k.lower() in HOP_BY_HOP or k.lower() == "host":
             continue

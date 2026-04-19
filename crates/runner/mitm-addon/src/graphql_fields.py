@@ -76,7 +76,7 @@ class Lexer:
     never sees raw characters.
     """
 
-    __slots__ = ("src", "pos", "length")
+    __slots__ = ("length", "pos", "src")
 
     def __init__(self, source: str) -> None:
         self.src = source
@@ -395,5 +395,8 @@ def extract_field_paths(query_str: str) -> list[str]:
         lexer = Lexer(query_str)
         parser = Parser(lexer)
         return parser.parse()
-    except Exception:  # noqa: BLE001 — fail-closed: unparseable → no matches → blocked
+    except Exception:
+        # Fail-closed: unparseable query → no field matches → firewall blocks.
+        # Catching `Exception` (not a narrower type) is deliberate — any
+        # lexer/parser bug must not crash the addon on a malformed query.
         return []

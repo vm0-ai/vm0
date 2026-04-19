@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import type { PermissionAccessRequestResponse } from "@vm0/core";
+import {
+  zeroAgentsByIdContract,
+  type PermissionAccessRequestResponse,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 
@@ -27,19 +30,16 @@ function mockMemberOrg() {
 function mockAgentWithPolicy(
   permissionPolicies: Record<
     string,
-    { policies: Record<string, string>; unknownPolicy?: string }
+    {
+      policies: Record<string, "allow" | "deny" | "ask">;
+      unknownPolicy?: "allow" | "deny" | "ask";
+    }
   > | null,
   ownerId = "test-owner-id",
 ) {
   server.use(
-    http.get("*/api/zero/agents/:name", ({ params }) => {
-      if (
-        params.name === "instructions" ||
-        (typeof params.name === "string" && params.name.includes("/"))
-      ) {
-        return;
-      }
-      return HttpResponse.json({
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: AGENT_ID,
         ownerId,
         description: null,

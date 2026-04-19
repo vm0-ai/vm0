@@ -26,7 +26,11 @@ import { setMockUserPreferences } from "../../../mocks/handlers/api-user-prefere
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
+import {
+  chatThreadsContract,
+  chatThreadByIdContract,
+  zeroAgentsByIdContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -112,7 +116,7 @@ function mockBaseAPIs(options?: {
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads });
     }),
-    http.get("*/api/zero/agents/:id", ({ params }) => {
+    mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
       const agents: Record<
         string,
         {
@@ -122,8 +126,8 @@ function mockBaseAPIs(options?: {
           description: string | null;
           sound: null;
           avatarUrl: null;
-          headVersionId: string;
           permissionPolicies: null;
+          customSkills: string[];
         }
       > = {
         [DEFAULT_AGENT_ID]: {
@@ -133,8 +137,8 @@ function mockBaseAPIs(options?: {
           description: null,
           sound: null,
           avatarUrl: null,
-          headVersionId: "version_1",
           permissionPolicies: null,
+          customSkills: [],
         },
         [PINNED_AGENT_ID]: {
           agentId: PINNED_AGENT_ID,
@@ -143,15 +147,17 @@ function mockBaseAPIs(options?: {
           description: "A pinned sub-agent",
           sound: null,
           avatarUrl: null,
-          headVersionId: "version_2",
           permissionPolicies: null,
+          customSkills: [],
         },
       };
-      const agent = agents[params.id as string];
+      const agent = agents[params.id];
       if (!agent) {
-        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
       }
-      return HttpResponse.json(agent);
+      return respond(200, agent);
     }),
   );
 }

@@ -881,17 +881,12 @@ jobs:
           fi
 
           # Runner row. Link points to the rollback-runner.yml workflow
-          # dispatch page — GitHub's UI does not currently accept URL-param
-          # pre-fill for workflow_dispatch inputs, so we spell out the
-          # value to paste into `target_version` in the cell itself (no
-          # leading `v`, matching the workflow's semver regex). The
-          # operator still picks `rollback_mode` and toggles the
-          # `confirmed_compatible` gate manually in the dispatch form.
-          # HTML <code> tags (rather than markdown backticks) avoid bash
-          # command-substitution inside this double-quoted string.
+          # dispatch page; operator pastes the adjacent version (without
+          # the leading `v`) into `target_version` and picks
+          # `rollback_mode` / `confirmed_compatible` manually.
           if [ -n "$RUNNER_VERSION" ]; then
             if [ "$RUNNER_RESULT" = "success" ]; then
-              append_row "| runner-rs | v${RUNNER_VERSION} | [🔄 Rollback workflow](${RUNNER_ROLLBACK_URL}) — input <code>target_version</code>: <code>${RUNNER_VERSION}</code> |"
+              append_row "| runner-rs | v${RUNNER_VERSION} | [Rollback workflow](${RUNNER_ROLLBACK_URL}) |"
             else
               append_row "| runner-rs | v${RUNNER_VERSION} | ❌ Deploy failed |"
             fi

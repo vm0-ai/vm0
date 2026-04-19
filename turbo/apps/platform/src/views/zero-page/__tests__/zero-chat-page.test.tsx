@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { zeroAgentsByIdContract, zeroUserConnectorsContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
@@ -297,12 +298,9 @@ describe("zero chat page - connectors popover", () => {
       },
     ]);
     server.use(
-      http.get(
-        "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
-        () => {
-          return HttpResponse.json({ enabledTypes: ["axiom"] });
-        },
-      ),
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["axiom"] });
+      }),
     );
     mockChatAPI();
     detachedSetupPage({ context, path: "/" });
@@ -333,15 +331,8 @@ describe("zero chat page - connector label casing", () => {
   it("should display connector label from CONNECTOR_TYPES (e.g. 'Axiom') not the raw key ('axiom')", async () => {
     const user = userEvent.setup();
     server.use(
-      http.get("*/api/zero/agents/:name", ({ params }) => {
-        if (
-          params.name === "instructions" ||
-          (typeof params.name === "string" && params.name.includes("/"))
-        ) {
-          return;
-        }
-        return HttpResponse.json({
-          name: params.name,
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
           agentId: "c0000000-0000-4000-a000-000000000001",
           ownerId: "test-user-123",
           description: null,
@@ -349,14 +340,12 @@ describe("zero chat page - connector label casing", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          customSkills: [],
         });
       }),
-      http.get(
-        "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
-        () => {
-          return HttpResponse.json({ enabledTypes: ["axiom"] });
-        },
-      ),
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["axiom"] });
+      }),
     );
     // Axiom must be connected at org level for it to appear in the popover
     setMockConnectors([

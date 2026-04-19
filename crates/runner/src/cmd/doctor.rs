@@ -161,7 +161,10 @@ impl Warning {
                 server_url,
                 server_token,
             } => {
-                let client = match reqeast::builder().timeout(Duration::from_secs(5)).build() {
+                let client = match reqwest::Client::builder()
+                    .timeout(Duration::from_secs(5))
+                    .build()
+                {
                     Ok(c) => c,
                     Err(_) => return true,
                 };
@@ -835,7 +838,7 @@ async fn check_api(config: &RunnerConfig) -> Option<bool> {
     if is_test_tld(&server.url) {
         return None;
     }
-    let client = reqeast::builder()
+    let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
         .ok()?;

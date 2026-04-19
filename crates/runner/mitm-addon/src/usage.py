@@ -12,13 +12,13 @@ Two paths:
 """
 
 import json
-import os
 import threading
 import time
 import urllib.error
 import urllib.parse
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import TypedDict
 
 from mitmproxy import http
@@ -33,7 +33,7 @@ from logging_utils import log_proxy_entry
 #
 # The runner reads this file before sending SIGTERM so it can wait until
 # both counters reach zero (all flows processed, all reports delivered).
-# File format: "<flows>:<reports>" written atomically (tmp + os.replace).
+# File format: "<flows>:<reports>" written atomically (tmp + Path.replace).
 # ---------------------------------------------------------------------------
 
 _counter_lock = threading.Lock()
@@ -53,11 +53,11 @@ def _write_pending() -> None:
     """Atomically write current counters to file."""
     if not _pending_path:
         return
-    tmp = _pending_path + ".tmp"
+    tmp = Path(_pending_path + ".tmp")
     try:
-        with open(tmp, "w") as f:
+        with tmp.open("w") as f:
             f.write(f"{_in_flight_flows}:{_pending_reports}")
-        os.replace(tmp, _pending_path)
+        tmp.replace(_pending_path)
     except OSError:
         pass  # best-effort; runner will timeout if file is stale
 
@@ -122,15 +122,13 @@ def _extract_billing_usage(raw_usage, target: dict) -> None:
     if not raw_usage or not isinstance(raw_usage, dict):
         return
     for k, v in raw_usage.items():
-        if k in _BILLING_FIELDS and isinstance(v, (int, float)):
-            if v > 0 or k not in target:
-                target[k] = v
+        if k in _BILLING_FIELDS and isinstance(v, (int, float)) and (v > 0 or k not in target):
+            target[k] = v
     stu = raw_usage.get("server_tool_use")
     if isinstance(stu, dict):
         wsr = stu.get("web_search_requests")
-        if isinstance(wsr, (int, float)):
-            if wsr > 0 or "web_search_requests" not in target:
-                target["web_search_requests"] = wsr
+        if isinstance(wsr, (int, float)) and (wsr > 0 or "web_search_requests" not in target):
+            target["web_search_requests"] = wsr
 
 
 def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:

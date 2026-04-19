@@ -764,7 +764,7 @@ class TestResponseHandler:
         flow.metadata["firewall_api_id"] = "run-conn-1:0"
         flow.metadata["original_url"] = "https://api.github.com/repos"
 
-        flow.response = tutils.tresp(status_code=401, headers=http.Headers(**{}))
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
         # Pre-populate firewall header cache keyed by api_id
         cache_key = ("run-conn-1", "run-conn-1:0")
@@ -791,7 +791,7 @@ class TestResponseHandler:
         flow.metadata["firewall_rule"] = "domain:*.example.com"
         flow.metadata["original_url"] = "https://api.example.com/"
 
-        flow.response = tutils.tresp(status_code=500, headers=http.Headers(**{}))
+        flow.response = tutils.tresp(status_code=500, headers=http.Headers())
 
         mitm_addon.response(flow)
 
@@ -2780,9 +2780,9 @@ class TestFirewallHeaderCache:
         with (
             patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
             patch.object(auth, "_fetch_firewall_headers_sync", side_effect=failing_fetch),
+            pytest.raises(ConnectionError),
         ):
-            with pytest.raises(ConnectionError):
-                await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+            await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
         assert ("run-1", "api-1") not in auth._firewall_header_cache
 

@@ -11,6 +11,9 @@ import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+  zeroUserConnectorsContract,
   type ScheduleResponse,
 } from "@vm0/core";
 import { detachedSetupPage } from "../../../__tests__/page-helper";
@@ -119,21 +122,18 @@ function mockSchedules(): { schedules: ScheduleResponse[] } {
 function registerStandardHandlers() {
   setMockSchedules(mockSchedules().schedules);
   server.use(
-    http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-      return HttpResponse.json(mockAgentResponse());
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, mockAgentResponse());
     }),
-    http.get(
-      "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-      () => {
-        return HttpResponse.json(mockInstructions());
-      },
-    ),
-    http.get(
-      "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
-      () => {
-        return HttpResponse.json({ enabledTypes: [] });
-      },
-    ),
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, mockInstructions());
+    }),
+    http.get("http://localhost:3000/api/zero/schedules", () => {
+      return HttpResponse.json(mockSchedules());
+    }),
+    mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    }),
   );
 }
 
@@ -149,15 +149,15 @@ describe("zero-job-detail signals", () => {
       const agentResponse = mockAgentResponse();
       setMockSchedules(mockSchedules().schedules);
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(agentResponse);
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, agentResponse);
         }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
+        mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+          return respond(200, mockInstructions());
+        }),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json(mockSchedules());
+        }),
       );
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
@@ -178,10 +178,11 @@ describe("zero-job-detail signals", () => {
 
     it("should pass agent name directly to API", async () => {
       let capturedUrl = "";
+      // mockApi cannot be used here: the agent name "my-org/sub-agent" contains a literal slash,
+      // which MSW resolves as a path separator, so a wildcard pattern is the only way to match it.
       server.use(
         http.get("http://localhost:3000/api/zero/agents/*", ({ request }) => {
           const url = request.url;
-          // Only match the agent detail request, not the instructions or user-connectors sub-paths
           if (url.includes("/instructions")) {
             return HttpResponse.json(mockInstructions());
           }
@@ -189,10 +190,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json({ enabledTypes: [] });
           }
           capturedUrl = url;
-          return HttpResponse.json({
-            ...mockAgentResponse(),
-            name: "sub-agent",
-          });
+          return HttpResponse.json(mockAgentResponse());
         }),
       );
       setMockSchedules([]);
@@ -212,8 +210,8 @@ describe("zero-job-detail signals", () => {
         search: { policies: { read: "allow" as const } },
       };
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json({
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, {
             ...mockAgentResponse(),
             permissionPolicies: policies,
           });
@@ -478,15 +476,15 @@ describe("zero-job-detail signals", () => {
     async function setupWithInstructions() {
       setMockSchedules([]);
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, mockAgentResponse());
         }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
+        mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+          return respond(200, mockInstructions());
+        }),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
       );
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
@@ -534,33 +532,28 @@ describe("zero-job-detail signals", () => {
       await setupWithInstructions();
 
       server.use(
-        http.put(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as { content: string };
-            return HttpResponse.json({
-              agentId: "c0000000-0000-4000-a000-000000000002",
-              ownerId: "test-owner-id",
-              description: null,
-              displayName: null,
-              sound: null,
-              avatarUrl: null,
-              permissionPolicies: null,
-            });
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
+        mockApi(zeroAgentInstructionsContract.update, ({ body, respond }) => {
+          capturedBody = body;
+          return respond(200, {
+            agentId: "c0000000-0000-4000-a000-000000000002",
+            ownerId: "test-owner-id",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: null,
+            customSkills: [],
+          });
         }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json({
-              content: "Updated instructions",
-              filename: "instructions.md",
-            });
-          },
-        ),
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, mockAgentResponse());
+        }),
+        mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+          return respond(200, {
+            content: "Updated instructions",
+            filename: "instructions.md",
+          });
+        }),
       );
 
       context.store.set(setZeroJobEditedContent$, "Updated instructions");
@@ -584,21 +577,19 @@ describe("zero-job-detail signals", () => {
       await setupWithInstructions();
 
       server.use(
-        http.put(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            apiCalled = true;
-            return HttpResponse.json({
-              agentId: "c0000000-0000-4000-a000-000000000002",
-              ownerId: "test-owner-id",
-              description: null,
-              displayName: null,
-              sound: null,
-              avatarUrl: null,
-              permissionPolicies: null,
-            });
-          },
-        ),
+        mockApi(zeroAgentInstructionsContract.update, ({ respond }) => {
+          apiCalled = true;
+          return respond(200, {
+            agentId: "c0000000-0000-4000-a000-000000000002",
+            ownerId: "test-owner-id",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: null,
+            customSkills: [],
+          });
+        }),
       );
 
       await context.store.set(buildZeroJobInstructions$, context.signal);
@@ -610,15 +601,15 @@ describe("zero-job-detail signals", () => {
     async function setupSettings() {
       setMockSchedules([]);
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, mockAgentResponse());
         }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
+        mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+          return respond(200, mockInstructions());
+        }),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
       );
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
@@ -632,19 +623,16 @@ describe("zero-job-detail signals", () => {
       await setupSettings();
 
       server.use(
-        http.patch(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({
-              ...mockAgentResponse(),
-              displayName: "New Name",
-              sound: "friendly",
-            });
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
+        mockApi(zeroAgentsByIdContract.updateMetadata, ({ body, respond }) => {
+          capturedBody = body as Record<string, unknown>;
+          return respond(200, {
+            ...mockAgentResponse(),
+            displayName: "New Name",
+            sound: "friendly",
+          });
+        }),
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, mockAgentResponse());
         }),
       );
 
@@ -668,15 +656,12 @@ describe("zero-job-detail signals", () => {
       await setupSettings();
 
       server.use(
-        http.patch(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
-          () => {
-            patchCalled = true;
-            return HttpResponse.json(mockAgentResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
+        mockApi(zeroAgentsByIdContract.updateMetadata, ({ respond }) => {
+          patchCalled = true;
+          return respond(200, mockAgentResponse());
+        }),
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, mockAgentResponse());
         }),
       );
 
@@ -691,21 +676,18 @@ describe("zero-job-detail signals", () => {
     async function setupWithConnectors() {
       setMockSchedules([]);
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, mockAgentResponse());
         }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["search"] });
-          },
-        ),
+        mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+          return respond(200, mockInstructions());
+        }),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+        mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+          return respond(200, { enabledTypes: ["search"] });
+        }),
       );
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
@@ -777,21 +759,13 @@ describe("zero-job-detail signals", () => {
       await context.store.set(addZeroJobConnector$, "gmail", context.signal);
 
       server.use(
-        http.put(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as { enabledTypes: string[] };
-            return HttpResponse.json({
-              enabledTypes: capturedBody.enabledTypes,
-            });
-          },
-        ),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["search", "gmail"] });
-          },
-        ),
+        mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
+          capturedBody = body;
+          return respond(200, { enabledTypes: body.enabledTypes });
+        }),
+        mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+          return respond(200, { enabledTypes: ["search", "gmail"] });
+        }),
       );
 
       await context.store.set(saveZeroJobConnectors$, context.signal);

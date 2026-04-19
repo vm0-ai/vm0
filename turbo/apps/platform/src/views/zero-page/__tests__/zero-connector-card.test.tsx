@@ -4,9 +4,15 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import type { ConnectorResponse, ConnectorType } from "@vm0/core";
+import {
+  type ConnectorResponse,
+  type ConnectorType,
+  zeroAgentsByIdContract,
+  zeroUserConnectorsContract,
+} from "@vm0/core";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
@@ -59,9 +65,8 @@ function renderTeamPage(
 ) {
   mockConnectors(orgConnectors);
   server.use(
-    http.get("*/api/zero/agents/zero", () => {
-      return HttpResponse.json({
-        name: "zero",
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: "compose-1",
         ownerId: "test-user-123",
         description: null,
@@ -69,10 +74,11 @@ function renderTeamPage(
         sound: null,
         avatarUrl: null,
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/compose-1/user-connectors", () => {
-      return HttpResponse.json({ enabledTypes });
+    mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes });
     }),
   );
 
@@ -171,9 +177,8 @@ function renderTeamPageAsMember(
 ) {
   mockConnectors(orgConnectors);
   server.use(
-    http.get("*/api/zero/agents/zero", () => {
-      return HttpResponse.json({
-        name: "zero",
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: "compose-1",
         ownerId: "test-user-123",
         description: null,
@@ -181,10 +186,14 @@ function renderTeamPageAsMember(
         sound: null,
         avatarUrl: null,
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/compose-1/user-connectors", () => {
-      return HttpResponse.json({ enabledTypes });
+    mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes });
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
     }),
     http.get("*/api/zero/onboarding/status", () => {
       return HttpResponse.json({

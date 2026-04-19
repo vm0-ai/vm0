@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import type { ConnectorType } from "@vm0/core";
+import { type ConnectorType, zeroUserConnectorsContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -86,10 +87,8 @@ describe("chat-d-016: connected connector icons in composer trigger", () => {
     mockChatAPI();
     mockConnectedConnectors(["github", "linear", "slack"]);
     server.use(
-      http.get("*/api/zero/agents/:id/user-connectors", () => {
-        return HttpResponse.json({
-          enabledTypes: ["github", "linear", "slack"],
-        });
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["github", "linear", "slack"] });
       }),
     );
     detachedSetupPage({ context, path: "/" });

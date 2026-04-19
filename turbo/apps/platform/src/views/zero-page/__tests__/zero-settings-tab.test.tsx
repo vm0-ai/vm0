@@ -10,6 +10,12 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  type ZeroAgentMetadataRequest,
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -29,15 +35,14 @@ function subAgent() {
 
 function agentDetail(overrides: Record<string, unknown> = {}) {
   return {
-    name: "my-agent",
     agentId: "e0000000-0000-4000-a000-000000000010",
     ownerId: "test-user-123",
     description: "A helpful agent",
     displayName: "My Agent",
     sound: "professional",
     avatarUrl: "preset:0",
-    connectors: [],
     permissionPolicies: null,
+    customSkills: [] as string[],
     ...overrides,
   };
 }
@@ -64,11 +69,29 @@ function mockAPIs(detailOverrides: Record<string, unknown> = {}) {
     },
   ]);
   server.use(
-    http.get("*/api/zero/agents/my-agent", () => {
-      return HttpResponse.json(agentDetail(detailOverrides));
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          name: "zero",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        subAgent(),
+      ]);
     }),
-    http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ content: null, filename: null });
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, agentDetail(detailOverrides));
+    }),
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: null, filename: null });
     }),
   );
 }
@@ -166,21 +189,37 @@ describe("zero settings tab - display", () => {
       },
     ]);
     server.use(
-      http.get("*/api/zero/agents/zero", () => {
-        return HttpResponse.json({
-          name: "zero",
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: "c0000000-0000-4000-a000-000000000001",
+            name: "zero",
+            displayName: "Zero",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
           agentId: "c0000000-0000-4000-a000-000000000001",
           ownerId: "test-user-123",
           description: null,
           displayName: "Zero",
           sound: null,
           avatarUrl: null,
-          connectors: [],
           permissionPolicies: null,
+          customSkills: [],
         });
       }),
-      http.get("*/api/zero/agents/:name/instructions", () => {
-        return HttpResponse.json({ content: null, filename: null });
+      mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+        return respond(200, { content: null, filename: null });
       }),
     );
 
@@ -235,15 +274,13 @@ describe("zero settings tab - avatar", () => {
 
   it("saves avatar when applied from avatar maker (AGENT-D-047)", async () => {
     const user = userEvent.setup();
-    let capturedPayload: Record<string, unknown> | null = null;
+    let capturedPayload: ZeroAgentMetadataRequest | null = null;
     mockAPIs({ avatarUrl: "preset:0" });
 
     server.use(
-      http.patch("*/api/zero/agents/:id", async ({ request }) => {
-        capturedPayload = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
-          agentDetail({ avatarUrl: capturedPayload.avatarUrl }),
-        );
+      mockApi(zeroAgentsByIdContract.updateMetadata, ({ body, respond }) => {
+        capturedPayload = body;
+        return respond(200, agentDetail({ avatarUrl: body.avatarUrl }));
       }),
     );
 
@@ -318,11 +355,11 @@ describe("zero settings tab - interaction", () => {
 
     // Set up patch and reload handlers after initial load
     server.use(
-      http.patch("*/api/zero/agents/:id", () => {
-        return HttpResponse.json(agentDetail({ displayName: "Renamed Agent" }));
+      mockApi(zeroAgentsByIdContract.updateMetadata, ({ respond }) => {
+        return respond(200, agentDetail({ displayName: "Renamed Agent" }));
       }),
-      http.get("*/api/zero/agents/my-agent", () => {
-        return HttpResponse.json(agentDetail({ displayName: "Renamed Agent" }));
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, agentDetail({ displayName: "Renamed Agent" }));
       }),
     );
 
@@ -406,8 +443,8 @@ describe("zero settings tab - interaction", () => {
     const user = userEvent.setup();
     mockAPIs();
     server.use(
-      http.delete("*/api/zero/agents/:id", () => {
-        return new HttpResponse(null, { status: 204 });
+      mockApi(zeroAgentsByIdContract.delete, ({ respond }) => {
+        return respond(204);
       }),
     );
     await openProfileTab(user);

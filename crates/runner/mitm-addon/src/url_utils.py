@@ -35,10 +35,7 @@ def build_rewrite_url(resolved_base: str, match_info: dict, orig_url: str) -> st
 
     # Append rel_path to the base path portion
     rel_path = match_info.get("rel_path", "/")
-    if rel_path != "/":
-        base_path = base_parsed.path.rstrip("/") + rel_path
-    else:
-        base_path = base_parsed.path
+    base_path = base_parsed.path.rstrip("/") + rel_path if rel_path != "/" else base_parsed.path
 
     # Merge query strings: base qs + original request qs
     qs_parts: list[str] = []

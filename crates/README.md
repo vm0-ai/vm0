@@ -21,7 +21,6 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL |
 | **guest-reseed** | Entropy reseed after snapshot restore — injects host entropy via RNDADDENTROPY and forces CRNG reseed via RNDRESEEDCRNG |
 | **ably-subscriber** | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection |
-| **reqeast** | Thin reqwest wrapper — auto-installs `ring` TLS crypto provider, avoiding `aws-lc-sys` musl cross-compilation issues |
 
 ## Architecture
 
@@ -55,7 +54,7 @@ Guest crates (`guest-agent`, `guest-download`) **must** use system certificate r
 
 Both HTTP clients in the workspace use `rustls-platform-verifier` to read from the system certificate store:
 
-- **`reqeast`** (async, reqwest wrapper) — used by `guest-agent`, `runner`, `ably-subscriber`. Auto-installs the `ring` crypto provider to avoid `aws-lc-rs` musl cross-compilation issues. See [`reqeast/README.md`](reqeast/README.md).
+- **`reqwest`** (async) — used by `guest-agent`, `runner`, `ably-subscriber` with the `rustls` feature (aws-lc-rs crypto provider auto-installed).
 - **`ureq`** (sync, no tokio) — used by `guest-download` with the `platform-verifier` feature. Uses `ring` by default.
 
 ## Building

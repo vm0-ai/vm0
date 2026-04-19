@@ -2,17 +2,22 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { zeroConnectorsMainContract } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  zeroConnectorsMainContract,
+  zeroUserConnectorsContract,
+} from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
   PLACEHOLDER,
 } from "./chat-test-helpers.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -47,11 +52,43 @@ function mockConnectors() {
     },
   ]);
   server.use(
-    http.get(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
-      return HttpResponse.json({ enabledTypes: ["github"] });
+    http.get("*/api/zero/connectors", () => {
+      return HttpResponse.json({
+        connectors: [
+          {
+            id: "d0000001-0000-4000-a000-000000000001",
+            type: "github",
+            authMethod: "oauth",
+            externalId: null,
+            externalUsername: "testuser",
+            externalEmail: null,
+            oauthScopes: ["repo"],
+            needsReconnect: false,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+          {
+            id: "d0000002-0000-4000-a000-000000000002",
+            type: "linear",
+            authMethod: "oauth",
+            externalId: null,
+            externalUsername: "linearuser",
+            externalEmail: null,
+            oauthScopes: [],
+            needsReconnect: false,
+            createdAt: "2026-01-02T00:00:00Z",
+            updatedAt: "2026-01-02T00:00:00Z",
+          },
+        ],
+        configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+        connectorProvidedSecretNames: [],
+      });
     }),
-    http.put(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
-      return HttpResponse.json({ enabledTypes: ["github", "linear"] });
+    mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: ["github"] });
+    }),
+    mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
+      return respond(200, { enabledTypes: ["github", "linear"] });
     }),
   );
 }
@@ -160,14 +197,12 @@ describe("zero chat composer - connectors popover", () => {
           connectorProvidedSecretNames: [],
         });
       }),
-      http.get(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
-        return HttpResponse.json({
-          enabledTypes: githubEnabled ? ["github"] : [],
-        });
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: githubEnabled ? ["github"] : [] });
       }),
-      http.put(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
+      mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         githubEnabled = false;
-        return HttpResponse.json({ enabledTypes: [] });
+        return respond(200, { enabledTypes: [] });
       }),
     );
 

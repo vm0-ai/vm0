@@ -16,12 +16,11 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
-  zeroSecretsContract,
   zeroUserConnectorsContract,
 } from "@vm0/core";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -62,7 +61,7 @@ function mockAgentWithName(agentId: string, displayName: string) {
   ]);
 }
 
-function mockUserConnectors(_agentId: string, enabledTypes: string[] = []) {
+function mockUserConnectors(enabledTypes: string[] = []) {
   server.use(
     mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes });
@@ -319,7 +318,7 @@ describe("directed connect page", () => {
 
   it("auto-authorizes agent after API token connect when agentId is present", async () => {
     const user = userEvent.setup();
-    mockUserConnectors(AGENT_ID);
+    mockUserConnectors();
 
     let authorizeCalled = false;
     server.use(
@@ -334,9 +333,9 @@ describe("directed connect page", () => {
           updatedAt: now,
         });
       }),
-      http.put(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
+      mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         authorizeCalled = true;
-        return HttpResponse.json({ enabledTypes: ["axiom"] });
+        return respond(200, { enabledTypes: ["axiom"] });
       }),
     );
 
@@ -452,9 +451,9 @@ describe("directed connect page", () => {
           updatedAt: now,
         });
       }),
-      http.put(`*/api/zero/agents/*/user-connectors`, () => {
+      mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         authorizeCalled = true;
-        return HttpResponse.json({ enabledTypes: [] });
+        return respond(200, { enabledTypes: [] });
       }),
     );
 

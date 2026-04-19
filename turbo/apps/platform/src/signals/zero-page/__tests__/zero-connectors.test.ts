@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
@@ -9,7 +8,12 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
 import { zeroAddedConnectors$ } from "../zero-connectors.ts";
-import type { ConnectorType } from "@vm0/core";
+import {
+  type ConnectorType,
+  zeroAgentsByIdContract,
+  zeroUserConnectorsContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
@@ -97,21 +101,20 @@ describe("zero connectors — agent switch", () => {
   it("should return seeded connectors for new agent after switching", async () => {
     // Mock two agents with different user-connector permissions
     server.use(
-      http.get("*/api/zero/agents/agent-a", () => {
-        return HttpResponse.json({
-          name: "agent-a",
-          agentId: "uuid-a",
-          ownerId: "test-owner-id",
-          description: null,
-          displayName: "Agent A",
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: null,
-        });
-      }),
-      http.get("*/api/zero/agents/agent-b", () => {
-        return HttpResponse.json({
-          name: "agent-b",
+      mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
+        if (params.id === "agent-a") {
+          return respond(200, {
+            agentId: "uuid-a",
+            ownerId: "test-owner-id",
+            description: null,
+            displayName: "Agent A",
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: null,
+            customSkills: [],
+          });
+        }
+        return respond(200, {
           agentId: "uuid-b",
           ownerId: "test-owner-id",
           description: null,
@@ -119,13 +122,14 @@ describe("zero connectors — agent switch", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          customSkills: [],
         });
       }),
-      http.get("*/api/zero/agents/:id/user-connectors", ({ params }) => {
-        if (params["id"] === "uuid-a" || params["id"] === "agent-a") {
-          return HttpResponse.json({ enabledTypes: ["github"] });
+      mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
+        if (params.id === "uuid-a" || params.id === "agent-a") {
+          return respond(200, { enabledTypes: ["github"] });
         }
-        return HttpResponse.json({ enabledTypes: ["slack"] });
+        return respond(200, { enabledTypes: ["slack"] });
       }),
     );
 

@@ -4,6 +4,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -30,21 +35,47 @@ function mockTeamAPIs() {
     },
   ]);
   server.use(
-    http.get("*/api/zero/agents/my-agent", () => {
-      return HttpResponse.json({
-        name: "my-agent",
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          name: "zero",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-detail-id",
+          name: "my-agent",
+          displayName: "My Agent",
+          description: "A helpful agent",
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_2",
+          updatedAt: "2024-01-02T00:00:00Z",
+        },
+      ]);
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: "e0000000-0000-4000-a000-000000000010",
         ownerId: "test-owner-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        connectors: [],
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ content: null, filename: null });
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: null, filename: null });
     }),
   );
 }
