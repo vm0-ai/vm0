@@ -18,6 +18,6 @@ export const replicateHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "REPLICATE_API_TOKEN";
+    return "REPLICATE_TOKEN";
   },
 };
