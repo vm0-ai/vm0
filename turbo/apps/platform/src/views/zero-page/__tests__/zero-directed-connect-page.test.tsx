@@ -13,8 +13,14 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  zeroSecretsContract,
+} from "@vm0/core";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -42,21 +48,17 @@ function mockConnectors(
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 
 function mockAgentWithName(agentId: string, displayName: string) {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: agentId,
-          displayName,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-  );
+  setMockTeam([
+    {
+      id: agentId,
+      displayName,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
 }
 
 function mockUserConnectors(agentId: string, enabledTypes: string[] = []) {
@@ -190,12 +192,11 @@ describe("directed connect page", () => {
     const user = userEvent.setup();
 
     server.use(
-      http.post("*/api/zero/secrets", () => {
-        return HttpResponse.json(
-          { error: { message: "Invalid API token", code: "UNAUTHORIZED" } },
-          { status: 401 },
-        );
-      }),
+      mockApi(zeroSecretsContract.set, ({ respond }) =>
+        respond(401, {
+          error: { message: "Invalid API token", code: "UNAUTHORIZED" },
+        }),
+      ),
     );
 
     detachedSetupPage({ context, path: "/connectors/axiom/connect" });
@@ -264,22 +265,17 @@ describe("directed connect page", () => {
     let capturedBody: { name: string; value: string } | undefined;
 
     server.use(
-      http.post("*/api/zero/secrets", async ({ request }) => {
-        capturedBody = (await request.json()) as {
-          name: string;
-          value: string;
-        };
-        return HttpResponse.json(
-          {
-            id: crypto.randomUUID(),
-            name: capturedBody.name,
-            type: "user",
-            description: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          { status: 201 },
-        );
+      mockApi(zeroSecretsContract.set, async ({ body, respond }) => {
+        capturedBody = { name: body.name, value: body.value };
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: body.name,
+          type: "user",
+          description: body.description ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
       }),
     );
 
@@ -326,18 +322,16 @@ describe("directed connect page", () => {
 
     let authorizeCalled = false;
     server.use(
-      http.post("*/api/zero/secrets", () => {
-        return HttpResponse.json(
-          {
-            id: crypto.randomUUID(),
-            name: "AXIOM_TOKEN",
-            type: "user",
-            description: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          { status: 201 },
-        );
+      mockApi(zeroSecretsContract.set, ({ respond }) => {
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: "AXIOM_TOKEN",
+          type: "user",
+          description: null,
+          createdAt: now,
+          updatedAt: now,
+        });
       }),
       http.put(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
         authorizeCalled = true;
@@ -446,18 +440,16 @@ describe("directed connect page", () => {
 
     let authorizeCalled = false;
     server.use(
-      http.post("*/api/zero/secrets", () => {
-        return HttpResponse.json(
-          {
-            id: crypto.randomUUID(),
-            name: "AXIOM_TOKEN",
-            type: "user",
-            description: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          { status: 201 },
-        );
+      mockApi(zeroSecretsContract.set, ({ respond }) => {
+        const now = new Date().toISOString();
+        return respond(201, {
+          id: crypto.randomUUID(),
+          name: "AXIOM_TOKEN",
+          type: "user",
+          description: null,
+          createdAt: now,
+          updatedAt: now,
+        });
       }),
       http.put(`*/api/zero/agents/*/user-connectors`, () => {
         authorizeCalled = true;

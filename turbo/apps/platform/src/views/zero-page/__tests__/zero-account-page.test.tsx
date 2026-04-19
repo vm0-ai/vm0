@@ -10,22 +10,22 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import type { UserPreferencesResponse } from "@vm0/core";
+import {
+  type UserPreferencesResponse,
+  zeroUserPreferencesContract,
+} from "@vm0/core";
+import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
 function mockPreferencesAPI(
   prefs: Omit<UserPreferencesResponse, "captureNetworkBodiesRemaining">,
 ) {
-  const full: UserPreferencesResponse = {
+  setMockUserPreferences({
     captureNetworkBodiesRemaining: 0,
     ...prefs,
-  };
-  server.use(
-    http.get("*/api/zero/user-preferences", () => {
-      return HttpResponse.json(full);
-    }),
-  );
+  });
 }
 
 function renderPreferencesPage() {
@@ -199,24 +199,22 @@ describe("zero-account-page - send mode interaction", () => {
   it("selects Enter send mode when Enter button is clicked (PREF-D-008)", async () => {
     const user = userEvent.setup();
     const deferred = makeDeferred();
+    setMockUserPreferences({
+      timezone: null,
+      pinnedAgentIds: [],
+      sendMode: "cmd-enter",
+      captureNetworkBodiesRemaining: 0,
+    });
     server.use(
-      http.get("*/api/zero/user-preferences", () => {
-        return HttpResponse.json({
-          timezone: null,
-          pinnedAgentIds: [],
-          sendMode: "cmd-enter",
-          captureNetworkBodiesRemaining: 0,
-        });
-      }),
-      http.post("*/api/zero/user-preferences", () => {
-        return deferred.promise.then(() => {
-          return HttpResponse.json({
+      mockApi(zeroUserPreferencesContract.update, ({ respond }) => {
+        return deferred.promise.then(() =>
+          respond(200, {
             timezone: null,
             pinnedAgentIds: [],
             sendMode: "enter",
             captureNetworkBodiesRemaining: 0,
-          });
-        });
+          }),
+        );
       }),
     );
     await renderPreferencesPage();
@@ -239,24 +237,22 @@ describe("zero-account-page - send mode interaction", () => {
   it("selects Cmd+Enter send mode when Cmd+Enter button is clicked (PREF-D-009)", async () => {
     const user = userEvent.setup();
     const deferred = makeDeferred();
+    setMockUserPreferences({
+      timezone: null,
+      pinnedAgentIds: [],
+      sendMode: "enter",
+      captureNetworkBodiesRemaining: 0,
+    });
     server.use(
-      http.get("*/api/zero/user-preferences", () => {
-        return HttpResponse.json({
-          timezone: null,
-          pinnedAgentIds: [],
-          sendMode: "enter",
-          captureNetworkBodiesRemaining: 0,
-        });
-      }),
-      http.post("*/api/zero/user-preferences", () => {
-        return deferred.promise.then(() => {
-          return HttpResponse.json({
+      mockApi(zeroUserPreferencesContract.update, ({ respond }) => {
+        return deferred.promise.then(() =>
+          respond(200, {
             timezone: null,
             pinnedAgentIds: [],
             sendMode: "cmd-enter",
             captureNetworkBodiesRemaining: 0,
-          });
-        });
+          }),
+        );
       }),
     );
     await renderPreferencesPage();
