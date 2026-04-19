@@ -3436,29 +3436,6 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
-  "stability-ai": {
-    label: "Stability AI",
-    environmentMapping: {
-      STABILITY_API_KEY: "$secrets.STABILITY_API_KEY",
-    },
-    helpText:
-      "Connect your Stability AI account to generate images using Stable Diffusion models",
-    authMethods: {
-      "api-token": {
-        label: "API Key",
-        helpText:
-          "1. Sign up at [platform.stability.ai](https://platform.stability.ai)\n2. Go to **Account → API Keys → Create API Key**\n3. Copy the key (starts with `sk-`). Paste here. Free credits on signup.",
-        secrets: {
-          STABILITY_API_KEY: {
-            label: "API Key",
-            required: true,
-            placeholder: "sk-...",
-          },
-        },
-      },
-    },
-    defaultAuthMethod: "api-token",
-  },
   streak: {
     label: "Streak",
     environmentMapping: {
@@ -3854,6 +3831,29 @@ const CONNECTOR_TYPES_DEF = {
             label: "App ID",
             required: true,
             type: "variable",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
+  luma: {
+    label: "Luma AI",
+    environmentMapping: {
+      LUMA_TOKEN: "$secrets.LUMA_TOKEN",
+    },
+    helpText:
+      "Connect your Luma AI account to generate videos and images using the Dream Machine API",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [lumalabs.ai](https://lumalabs.ai)\n2. Go to [lumalabs.ai/dream-machine/api](https://lumalabs.ai/dream-machine/api) or account settings → API Keys\n3. Create a new API key and copy it\n4. Paste the key here",
+        secrets: {
+          LUMA_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-luma-api-key",
           },
         },
       },
