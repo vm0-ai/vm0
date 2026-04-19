@@ -149,6 +149,7 @@ import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
 import { shopifyFirewall } from "./shopify.generated";
 import { shortioFirewall } from "./shortio.generated";
+import { stabilityAiFirewall } from "./stability-ai.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackFirewall } from "./slack.generated";
 import { slackWebhookFirewall } from "./slack-webhook.generated";
@@ -318,6 +319,7 @@ const CONNECTOR_FIREWALLS = {
   serpapi: serpapiFirewall,
   shopify: shopifyFirewall,
   shortio: shortioFirewall,
+  "stability-ai": stabilityAiFirewall,
   similarweb: similarwebFirewall,
   slack: slackFirewall,
   "slack-webhook": slackWebhookFirewall,

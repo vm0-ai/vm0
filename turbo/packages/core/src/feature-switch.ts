@@ -272,6 +272,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Freshdesk helpdesk connector",
     enabled: false,
   },
+  [FeatureSwitchKey.StabilityAiConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the Stability AI image generation connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZoomConnector]: {
     maintainer: "ethan@vm0.ai",
     description:

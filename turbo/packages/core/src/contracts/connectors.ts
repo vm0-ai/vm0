@@ -3436,6 +3436,29 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  "stability-ai": {
+    label: "Stability AI",
+    environmentMapping: {
+      STABILITY_API_KEY: "$secrets.STABILITY_API_KEY",
+    },
+    helpText:
+      "Connect your Stability AI account to generate images using Stable Diffusion models",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [platform.stability.ai](https://platform.stability.ai)\n2. Go to **Account → API Keys → Create API Key**\n3. Copy the key (starts with `sk-`). Paste here. Free credits on signup.",
+        secrets: {
+          STABILITY_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk-...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   streak: {
     label: "Streak",
     environmentMapping: {

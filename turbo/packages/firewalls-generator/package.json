@@ -144,6 +144,7 @@
     "generate:slack": "tsx src/index.ts slack",
     "generate:slack-webhook": "tsx src/index.ts slack-webhook",
     "generate:spotify": "tsx src/index.ts spotify",
+    "generate:stability-ai": "tsx src/index.ts stability-ai",
     "generate:strava": "tsx src/index.ts strava",
     "generate:strapi": "tsx src/index.ts strapi",
     "generate:streak": "tsx src/index.ts streak",
