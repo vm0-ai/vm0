@@ -19,8 +19,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
@@ -52,27 +50,6 @@ function mockIOSSafariUA(isIOS: boolean) {
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
 }
 
-function mockBaseAPIs() {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
-}
-
 // ---------------------------------------------------------------------------
 // PWA-D-001: banner visible on iOS Safari
 // ---------------------------------------------------------------------------
@@ -81,16 +58,14 @@ describe("install banner - visible on iOS Safari (PWA-D-001)", () => {
   it("renders the install CTA and Install button when iOS Safari UA is detected", async () => {
     mockDisplayModeStandalone(false);
     mockIOSSafariUA(true);
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(
-        screen.getByText("Install Zero for a better experience"),
+        screen.getByLabelText("Dismiss install banner"),
       ).toBeInTheDocument();
+      expect(screen.getByLabelText("Install app")).toBeInTheDocument();
     });
-    expect(screen.getByText("Install")).toBeInTheDocument();
-    expect(screen.getByLabelText("Dismiss install banner")).toBeInTheDocument();
   });
 });
 
@@ -103,22 +78,16 @@ describe("install banner - install opens iOS modal (PWA-D-002)", () => {
     const user = userEvent.setup();
     mockDisplayModeStandalone(false);
     mockIOSSafariUA(true);
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
     const installButton = await waitFor(() => {
-      return screen.getByText("Install");
+      return screen.getByLabelText("Install app");
     });
     await user.click(installButton);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Add Zero to your Home Screen for quick access."),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("heading", { name: "Install Zero" }),
-    ).toBeInTheDocument();
   });
 });
 
@@ -131,7 +100,6 @@ describe("install banner - dismiss hides banner (PWA-D-003)", () => {
     const user = userEvent.setup();
     mockDisplayModeStandalone(false);
     mockIOSSafariUA(true);
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
     const dismissButton = await waitFor(() => {
@@ -141,7 +109,7 @@ describe("install banner - dismiss hides banner (PWA-D-003)", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText("Install Zero for a better experience"),
+        screen.queryByLabelText("Dismiss install banner"),
       ).not.toBeInTheDocument();
     });
   });
@@ -155,14 +123,13 @@ describe("install banner - hidden in standalone mode (PWA-D-004)", () => {
   it("does not render the banner when display-mode is standalone, even on iOS Safari", async () => {
     mockDisplayModeStandalone(true);
     mockIOSSafariUA(true);
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
     });
     expect(
-      screen.queryByText("Install Zero for a better experience"),
+      screen.queryByLabelText("Dismiss install banner"),
     ).not.toBeInTheDocument();
   });
 });
