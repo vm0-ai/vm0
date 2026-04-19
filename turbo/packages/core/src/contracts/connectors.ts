@@ -4529,14 +4529,14 @@ const CONNECTOR_TYPES_DEF = {
     label: "Weights & Biases",
     helpText:
       "Connect to Weights & Biases for ML experiment tracking and LLM observability.",
-    environmentMapping: { WANDB_API_KEY: "$secrets.WANDB_API_KEY" },
+    environmentMapping: { WANDB_TOKEN: "$secrets.WANDB_TOKEN" },
     authMethods: {
       "api-token": {
         label: "API Key",
         helpText:
           "Go to wandb.ai → Settings → API Keys → copy your key.",
         secrets: {
-          WANDB_API_KEY: {
+          WANDB_TOKEN: {
             label: "API Key",
             required: true,
             placeholder: "Your W&B API Key",
