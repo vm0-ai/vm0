@@ -6,7 +6,8 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey, zeroAgentsByIdContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -44,7 +45,10 @@ function mockTwoAgents() {
         },
       ]);
     }),
-    http.get("*/api/zero/agents/:id", ({ params }) => {
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
       const agents: Record<
         string,
         {
@@ -55,6 +59,7 @@ function mockTwoAgents() {
           sound: null;
           avatarUrl: null;
           permissionPolicies: null;
+          customSkills: string[];
         }
       > = {
         "agent-foo-id": {
@@ -65,6 +70,7 @@ function mockTwoAgents() {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          customSkills: [],
         },
         "agent-bar-id": {
           agentId: "agent-bar-id",
@@ -74,13 +80,16 @@ function mockTwoAgents() {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          customSkills: [],
         },
       };
-      const agent = agents[params.id as string];
+      const agent = agents[params.id];
       if (!agent) {
-        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
       }
-      return HttpResponse.json(agent);
+      return respond(200, agent);
     }),
   );
 }

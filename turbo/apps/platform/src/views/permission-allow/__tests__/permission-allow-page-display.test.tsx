@@ -11,7 +11,8 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import type { PermissionAccessRequestResponse } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { type PermissionAccessRequestResponse, zeroAgentsByIdContract } from "@vm0/core";
 import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 
@@ -28,9 +29,12 @@ interface AgentResponse {
   avatarUrl: string | null;
   permissionPolicies: Record<
     string,
-    { policies: Record<string, string>; unknownPolicy?: string }
+    {
+      policies: Record<string, "allow" | "deny" | "ask">;
+      unknownPolicy?: "allow" | "deny" | "ask";
+    }
   > | null;
-  customSkills: unknown[];
+  customSkills: string[];
 }
 
 function defaultAgent(overrides: Partial<AgentResponse> = {}): AgentResponse {
@@ -49,14 +53,8 @@ function defaultAgent(overrides: Partial<AgentResponse> = {}): AgentResponse {
 
 function mockAgent(agent: AgentResponse) {
   server.use(
-    http.get("*/api/zero/agents/:name", ({ params }) => {
-      if (
-        params.name === "instructions" ||
-        (typeof params.name === "string" && params.name.includes("/"))
-      ) {
-        return;
-      }
-      return HttpResponse.json(agent);
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, agent);
     }),
   );
 }
@@ -70,14 +68,17 @@ function mockPermissionRequests(
 function setupMemberContext(agentOverrides: Partial<AgentResponse> = {}) {
   setMockOrg({ role: "member" });
   server.use(
-    http.get("*/api/zero/agents/:name", ({ params }) => {
-      if (
-        params.name === "instructions" ||
-        (typeof params.name === "string" && params.name.includes("/"))
-      ) {
-        return;
-      }
-      return HttpResponse.json(
+    http.get("*/api/zero/org", () => {
+      return HttpResponse.json({
+        id: "org_1",
+        slug: "user-12345678",
+        name: "User 12345678",
+        role: "member",
+      });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(
+        200,
         defaultAgent({ ownerId: "other-owner-id", ...agentOverrides }),
       );
     }),
@@ -153,17 +154,11 @@ describe("fw-d-007: loading state shows while agent loads", () => {
   it("shows a loading spinner while the agent is being fetched", async () => {
     let unblock!: () => void;
     server.use(
-      http.get("*/api/zero/agents/:name", async ({ params }) => {
-        if (
-          params.name === "instructions" ||
-          (typeof params.name === "string" && params.name.includes("/"))
-        ) {
-          return;
-        }
+      mockApi(zeroAgentsByIdContract.get, async ({ respond }) => {
         await new Promise<void>((resolve) => {
           unblock = resolve;
         });
-        return HttpResponse.json(defaultAgent());
+        return respond(200, defaultAgent());
       }),
     );
     mockPermissionRequests();
@@ -189,13 +184,7 @@ describe("fw-d-007: loading state shows while agent loads", () => {
 describe("fw-d-008: error state shows when agent load fails", () => {
   it("shows an error state when the agent API returns an error", async () => {
     server.use(
-      http.get("*/api/zero/agents/:name", ({ params }) => {
-        if (
-          params.name === "instructions" ||
-          (typeof params.name === "string" && params.name.includes("/"))
-        ) {
-          return;
-        }
+      http.get("*/api/zero/agents/:id", () => {
         return HttpResponse.json(
           { error: { message: "Internal Server Error", code: "INTERNAL" } },
           { status: 500 },

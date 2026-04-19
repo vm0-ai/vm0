@@ -23,6 +23,8 @@ import {
 } from "@vm0/core";
 
 import { fill } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroAgentsByIdContract } from "@vm0/core";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 

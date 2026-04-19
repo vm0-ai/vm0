@@ -3,8 +3,12 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import {
+  CONNECTOR_TYPES,
   type ConnectorType,
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
   zeroAgentPermissionPoliciesContract,
+  zeroUserConnectorsContract,
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -19,7 +23,10 @@ function mockAPIs({
   ownerId = "test-user-123",
   permissionPolicies = null as Record<
     string,
-    { policies: Record<string, string>; unknownPolicy?: string }
+    {
+      policies: Record<string, "allow" | "deny" | "ask">;
+      unknownPolicy?: "allow" | "deny" | "ask";
+    }
   > | null,
 } = {}) {
   server.use(
@@ -47,27 +54,49 @@ function mockAPIs({
         },
       ]);
     }),
-    http.get("*/api/zero/agents/my-agent", () => {
-      return HttpResponse.json({
-        name: "my-agent",
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: "e0000000-0000-4000-a000-000000000010",
         ownerId,
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        connectors: [],
         permissionPolicies,
+        customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ content: null, filename: null });
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: null, filename: null });
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [] });
     }),
-    http.get("*/api/zero/agents/:id/user-connectors", () => {
-      return HttpResponse.json({ enabledTypes: [connectorType] });
+    http.get("*/api/zero/connectors", () => {
+      return HttpResponse.json({
+        connectors: [
+          {
+            id: "d0000001-0000-4000-a000-000000000001",
+            type: connectorType,
+            authMethod: "oauth",
+            externalId: null,
+            externalUsername: "testuser",
+            externalEmail: null,
+            oauthScopes: [],
+            needsReconnect: false,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+        configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+        connectorProvidedSecretNames: [],
+      });
+    }),
+    mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [connectorType] });
     }),
   );
   setMockConnectors([

@@ -6,6 +6,11 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroAgentsMainContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -83,31 +88,31 @@ describe("zero jobs page - create agent dialog", () => {
         }
         return HttpResponse.json([DEFAULT_AGENT, NEW_AGENT]);
       }),
-      http.post("*/api/zero/agents", () => {
-        return HttpResponse.json(
-          {
-            agentId: "new-agent-id",
-            ownerId: "test-user-123",
-            description: null,
-            displayName: "Marketing Bot",
-            sound: null,
-            avatarUrl: null,
-            connectors: [],
-            permissionPolicies: null,
-          },
-          { status: 201 },
-        );
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
       }),
-      http.put("*/api/zero/agents/new-agent-id/instructions", () => {
-        return HttpResponse.json({
+      mockApi(zeroAgentsMainContract.create, ({ respond }) => {
+        return respond(201, {
           agentId: "new-agent-id",
           ownerId: "test-user-123",
           description: null,
           displayName: "Marketing Bot",
           sound: null,
           avatarUrl: null,
-          connectors: [],
           permissionPolicies: null,
+          customSkills: [],
+        });
+      }),
+      mockApi(zeroAgentInstructionsContract.update, ({ respond }) => {
+        return respond(200, {
+          agentId: "new-agent-id",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: "Marketing Bot",
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: null,
+          customSkills: [],
         });
       }),
     );

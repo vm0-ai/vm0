@@ -12,6 +12,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -45,21 +50,23 @@ function mockAPIs(instructionsContent: string | null = null) {
         },
       ]);
     }),
-    http.get("*/api/zero/agents/my-agent", () => {
-      return HttpResponse.json({
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: "e0000000-0000-4000-a000-000000000010",
         ownerId: "test-user-123",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        connectors: [],
         permissionPolicies: null,
         customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/:id/instructions", () => {
-      return HttpResponse.json({
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, {
         content: instructionsContent,
         filename: null,
       });
@@ -107,15 +114,17 @@ describe("zero instructions tab - display", () => {
           },
         ]);
       }),
-      http.get("*/api/zero/agents/my-agent", () => {
-        return HttpResponse.json({
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
           agentId: "e0000000-0000-4000-a000-000000000010",
           ownerId: "test-user-123",
           description: "A helpful agent",
           displayName: "My Agent",
           sound: null,
           avatarUrl: null,
-          connectors: [],
           permissionPolicies: null,
           customSkills: [],
         });
@@ -202,9 +211,9 @@ describe("zero instructions tab - display", () => {
   it("calls save API when Save button is clicked (PREF-D-022)", async () => {
     let putCallCount = 0;
     server.use(
-      http.put("*/api/zero/agents/:id/instructions", () => {
+      mockApi(zeroAgentInstructionsContract.update, ({ respond }) => {
         putCallCount++;
-        return HttpResponse.json({
+        return respond(200, {
           agentId: "e0000000-0000-4000-a000-000000000010",
           ownerId: "test-user-123",
           description: "A helpful agent",

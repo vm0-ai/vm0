@@ -8,6 +8,11 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -109,21 +114,20 @@ function mockEditModeAPIs() {
         },
       ]);
     }),
-    http.get("*/api/zero/agents/my-agent", () => {
-      return HttpResponse.json({
-        name: "my-agent",
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: "c0000000-0000-4000-a000-000000000001",
         ownerId: "test-owner-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        connectors: [],
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/my-agent/instructions", () => {
-      return HttpResponse.json({ content: null, filename: null });
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: null, filename: null });
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [mockScheduleForList()] });

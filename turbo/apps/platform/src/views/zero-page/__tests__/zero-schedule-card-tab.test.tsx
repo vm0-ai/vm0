@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import type { ScheduleResponse } from "@vm0/core";
+import {
+  type ScheduleResponse,
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
@@ -70,21 +75,23 @@ function mockBaseAPIs(schedules: ScheduleResponse[]) {
         },
       ]);
     }),
-    http.get("*/api/zero/agents/my-agent", () => {
-      return HttpResponse.json({
-        name: "my-agent",
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: AGENT_ID,
         ownerId: "test-owner-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        connectors: [],
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ content: null, filename: null });
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: null, filename: null });
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules });

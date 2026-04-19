@@ -6,6 +6,8 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setZeroShowAboutPage$ } from "../../../signals/zero-page/zero-nav.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroAgentsByIdContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -55,8 +57,8 @@ describe("zero about page", () => {
           defaultAgentMetadata: { displayName: "MyAgent" },
         });
       }),
-      http.get("*/api/zero/agents/:id", () => {
-        return HttpResponse.json({
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
           agentId: "c0000000-0000-4000-a000-000000000001",
           ownerId: "test-user",
           displayName: "MyAgent",
@@ -64,6 +66,7 @@ describe("zero about page", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          customSkills: [],
         });
       }),
     );

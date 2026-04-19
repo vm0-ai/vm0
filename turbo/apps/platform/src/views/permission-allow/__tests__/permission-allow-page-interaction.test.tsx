@@ -14,6 +14,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import {
   type PermissionAccessRequestResponse,
+  zeroAgentsByIdContract,
   zeroAgentPermissionPoliciesContract,
   permissionAccessRequestsListContract,
   permissionAccessRequestsResolveContract,
@@ -44,14 +45,8 @@ function defaultAgentResponse(overrides?: Record<string, unknown>) {
 
 function mockAgent(overrides?: Record<string, unknown>) {
   server.use(
-    http.get("*/api/zero/agents/:name", ({ params }) => {
-      if (
-        params.name === "instructions" ||
-        (typeof params.name === "string" && params.name.includes("/"))
-      ) {
-        return;
-      }
-      return HttpResponse.json(defaultAgentResponse(overrides));
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, defaultAgentResponse(overrides));
     }),
   );
 }
@@ -65,14 +60,17 @@ function mockPermissionRequests(
 function setupMemberContext(agentOverrides?: Record<string, unknown>) {
   setMockOrg({ role: "member" });
   server.use(
-    http.get("*/api/zero/agents/:name", ({ params }) => {
-      if (
-        params.name === "instructions" ||
-        (typeof params.name === "string" && params.name.includes("/"))
-      ) {
-        return;
-      }
-      return HttpResponse.json(
+    http.get("*/api/zero/org", () => {
+      return HttpResponse.json({
+        id: "org_1",
+        slug: "user-12345678",
+        name: "User 12345678",
+        role: "member",
+      });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(
+        200,
         defaultAgentResponse({
           ownerId: "other-owner-id",
           ...agentOverrides,

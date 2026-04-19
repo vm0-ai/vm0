@@ -13,8 +13,13 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  zeroUserConnectorsContract,
+} from "@vm0/core";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -141,8 +146,8 @@ describe("directed authorize page", () => {
   it("shows authorized state when connector is already authorized for agent", async () => {
     mockConnectorsConnected("gmail");
     server.use(
-      http.get("*/api/zero/agents/:id/user-connectors", () => {
-        return HttpResponse.json({ enabledTypes: ["gmail"] });
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["gmail"] });
       }),
     );
 
@@ -161,8 +166,8 @@ describe("directed authorize page", () => {
   it("shows authorize button when connector is not yet authorized for agent", async () => {
     mockConnectorsConnected("gmail");
     server.use(
-      http.get("*/api/zero/agents/:id/user-connectors", () => {
-        return HttpResponse.json({ enabledTypes: [] });
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: [] });
       }),
     );
 
@@ -256,8 +261,8 @@ describe("directed authorize page", () => {
   it("does not show Google OAuth notice when connector is already authorized (AUTH-D-062)", async () => {
     mockConnectorsConnected("gmail");
     server.use(
-      http.get("*/api/zero/agents/:id/user-connectors", () => {
-        return HttpResponse.json({ enabledTypes: ["gmail"] });
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["gmail"] });
       }),
     );
 

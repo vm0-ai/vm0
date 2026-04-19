@@ -16,7 +16,8 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setPermissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { permissionDialogSelected$ } from "../../../signals/zero-page/settings/permission-dialog.ts";
-import type { ConnectorType } from "@vm0/core";
+import { type ConnectorType, zeroUserConnectorsContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -133,9 +134,9 @@ describe("connector permission dialog", () => {
 
     let putCalled = false;
     server.use(
-      http.put("*/api/zero/agents/:id/user-connectors", () => {
+      mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         putCalled = true;
-        return HttpResponse.json({ enabledTypes: ["github"] });
+        return respond(200, { enabledTypes: ["github"] });
       }),
     );
 
@@ -168,9 +169,9 @@ describe("connector permission dialog", () => {
 
     let putCalled = false;
     server.use(
-      http.put("*/api/zero/agents/:id/user-connectors", () => {
+      mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         putCalled = true;
-        return HttpResponse.json({ enabledTypes: ["github"] });
+        return respond(200, { enabledTypes: ["github"] });
       }),
     );
 
@@ -198,12 +199,11 @@ describe("connector permission dialog", () => {
 
     let updatedAgentId: string | undefined;
     server.use(
-      http.put(
-        "*/api/zero/agents/:id/user-connectors",
-        async ({ params, request }) => {
-          updatedAgentId = params.id as string;
-          const body = (await request.json()) as { enabledTypes: string[] };
-          return HttpResponse.json({ enabledTypes: body.enabledTypes });
+      mockApi(
+        zeroUserConnectorsContract.update,
+        ({ params, body, respond }) => {
+          updatedAgentId = params.id;
+          return respond(200, { enabledTypes: body.enabledTypes });
         },
       ),
     );

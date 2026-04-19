@@ -4,8 +4,12 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { zeroComposesMainContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroComposesMainContract,
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -58,9 +62,9 @@ function mockAPIs() {
         updatedAt: "2024-01-02T00:00:00Z",
       });
     }),
-    http.get("*/api/zero/agents/:name", ({ params }) => {
-      return HttpResponse.json({
-        agentId: params.name as string,
+    mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
+        agentId: params.id,
         ownerId: "test-owner-id",
         displayName: "Research Agent",
         description: "Finds and summarizes information",
@@ -72,8 +76,8 @@ function mockAPIs() {
         selectedModel: null,
       });
     }),
-    http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ content: null, filename: null });
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: null, filename: null });
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json([]);

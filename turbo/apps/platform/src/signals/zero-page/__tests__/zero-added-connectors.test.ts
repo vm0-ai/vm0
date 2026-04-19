@@ -7,18 +7,14 @@ import {
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { zeroAddedConnectors$, addZeroConnector$ } from "../zero-connectors.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroAgentsByIdContract, zeroUserConnectorsContract } from "@vm0/core";
 const context = testContext();
 
 function mockAgentApi(connectors: string[]) {
   server.use(
-    http.get("*/api/zero/agents/:name", ({ params }) => {
-      if (
-        params.name === "instructions" ||
-        (typeof params.name === "string" && params.name.includes("/"))
-      ) {
-        return;
-      }
-      return HttpResponse.json({
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: "c0000000-0000-4000-a000-000000000001",
         ownerId: "test-user-123",
         description: null,
@@ -26,14 +22,12 @@ function mockAgentApi(connectors: string[]) {
         sound: null,
         avatarUrl: null,
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
-    http.get(
-      "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
-      () => {
-        return HttpResponse.json({ enabledTypes: connectors });
-      },
-    ),
+    mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: connectors });
+    }),
   );
 }
 
@@ -63,8 +57,8 @@ describe("zeroAddedConnectors$", () => {
 
     // Sub-agent has github only
     server.use(
-      http.get("*/api/zero/agents/sub-agent-compose-id", () => {
-        return HttpResponse.json({
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
           agentId: "sub-agent-compose-id",
           ownerId: "test-user-123",
           description: null,
@@ -72,10 +66,11 @@ describe("zeroAddedConnectors$", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          customSkills: [],
         });
       }),
-      http.get("*/api/zero/agents/sub-agent-compose-id/user-connectors", () => {
-        return HttpResponse.json({ enabledTypes: ["github"] });
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["github"] });
       }),
       // Include cycling-coach in the team list so route setup resolves it
       http.get("*/api/zero/team", () => {
@@ -121,13 +116,10 @@ describe("addZeroConnector$", () => {
     mockAgentApi(["slack"]);
 
     server.use(
-      http.put(
-        "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
-        async ({ request }) => {
-          capturedBody = (await request.json()) as { enabledTypes: string[] };
-          return HttpResponse.json({ enabledTypes: capturedBody.enabledTypes });
-        },
-      ),
+      mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, { enabledTypes: body.enabledTypes });
+      }),
     );
 
     detachedSetupPage({ context, path: "/", withoutRender: true });

@@ -6,7 +6,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { navigate$ } from "../../../signals/route.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract } from "@vm0/core";
+import { chatThreadsContract, zeroAgentsByIdContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -70,7 +70,7 @@ function mockTwoAgents() {
         },
       ]);
     }),
-    http.get("*/api/zero/agents/:id", ({ params }) => {
+    mockApi(zeroAgentsByIdContract.get, ({ params, respond }) => {
       const agents: Record<
         string,
         {
@@ -115,11 +115,13 @@ function mockTwoAgents() {
           customSkills: [],
         },
       };
-      const agent = agents[params.id as string];
+      const agent = agents[params.id];
       if (!agent) {
-        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
       }
-      return HttpResponse.json(agent);
+      return respond(200, agent);
     }),
     mockApi(chatThreadsContract.list, ({ query, respond }) => {
       const agentId = query.agentId;

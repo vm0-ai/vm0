@@ -13,8 +13,13 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorType,
+  zeroUserConnectorsContract,
+} from "@vm0/core";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -59,13 +64,13 @@ function mockAgentWithName(agentId: string, displayName: string) {
   );
 }
 
-function mockUserConnectors(agentId: string, enabledTypes: string[] = []) {
+function mockUserConnectors(_agentId: string, enabledTypes: string[] = []) {
   server.use(
-    http.get(`*/api/zero/agents/${agentId}/user-connectors`, () => {
-      return HttpResponse.json({ enabledTypes });
+    mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes });
     }),
-    http.put(`*/api/zero/agents/${agentId}/user-connectors`, () => {
-      return HttpResponse.json({ enabledTypes });
+    mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
+      return respond(200, { enabledTypes });
     }),
   );
 }
@@ -339,9 +344,9 @@ describe("directed connect page", () => {
           { status: 201 },
         );
       }),
-      http.put(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
+      mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         authorizeCalled = true;
-        return HttpResponse.json({ enabledTypes: ["axiom"] });
+        return respond(200, { enabledTypes: ["axiom"] });
       }),
     );
 
@@ -459,9 +464,9 @@ describe("directed connect page", () => {
           { status: 201 },
         );
       }),
-      http.put(`*/api/zero/agents/*/user-connectors`, () => {
+      mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         authorizeCalled = true;
-        return HttpResponse.json({ enabledTypes: [] });
+        return respond(200, { enabledTypes: [] });
       }),
     );
 

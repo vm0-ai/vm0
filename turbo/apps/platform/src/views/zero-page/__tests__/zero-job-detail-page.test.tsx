@@ -5,6 +5,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -34,21 +39,23 @@ function mockAPIs() {
         },
       ]);
     }),
-    http.get("*/api/zero/agents/my-agent", () => {
-      return HttpResponse.json({
-        name: "my-agent",
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: "e0000000-0000-4000-a000-000000000010",
         ownerId: "test-owner-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        connectors: [],
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ content: null, filename: null });
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: null, filename: null });
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [] });
@@ -132,11 +139,13 @@ describe("zero job detail page", () => {
           },
         ]);
       }),
-      http.get("*/api/zero/agents/:name", () => {
-        return HttpResponse.json(
-          { error: { message: "Not found", code: "INTERNAL_SERVER_ERROR" } },
-          { status: 404 },
-        );
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Not found", code: "INTERNAL_SERVER_ERROR" },
+        });
       }),
     );
 
@@ -190,21 +199,23 @@ function mockAPIsWithSchedules() {
         },
       ]);
     }),
-    http.get("*/api/zero/agents/my-agent", () => {
-      return HttpResponse.json({
-        name: "my-agent",
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
         agentId: "e0000000-0000-4000-a000-000000000010",
         ownerId: "test-owner-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        connectors: [],
         permissionPolicies: null,
+        customSkills: [],
       });
     }),
-    http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ content: null, filename: null });
+    mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+      return respond(200, { content: null, filename: null });
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({
