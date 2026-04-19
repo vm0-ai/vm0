@@ -62,6 +62,7 @@ import { generate as generateGitlab } from "./gitlab";
 import { generate as generateGranola } from "./granola";
 import { generate as generateGreenhouse } from "./greenhouse";
 import { generate as generateHeygen } from "./heygen";
+import { generate as generateHelicone } from "./helicone";
 import { generate as generateHtmlcsstoimage } from "./htmlcsstoimage";
 import { generate as generateHubspot } from "./hubspot";
 import { generate as generateHuggingFace } from "./hugging-face";
@@ -211,6 +212,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   granola: generateGranola,
   greenhouse: generateGreenhouse,
   heygen: generateHeygen,
+  helicone: generateHelicone,
   htmlcsstoimage: generateHtmlcsstoimage,
   hubspot: generateHubspot,
   "hugging-face": generateHuggingFace,

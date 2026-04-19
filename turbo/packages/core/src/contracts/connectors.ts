@@ -587,6 +587,29 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  helicone: {
+    label: "Helicone",
+    helpText:
+      "Connect to Helicone for LLM cost tracking, request logging, and performance analytics.",
+    environmentMapping: {
+      HELICONE_API_KEY: "$secrets.HELICONE_API_KEY",
+    },
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "Go to helicone.ai → Settings → API Keys → create a new key.",
+        secrets: {
+          HELICONE_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk-helicone-...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   hubspot: {
     label: "HubSpot",
     environmentMapping: {

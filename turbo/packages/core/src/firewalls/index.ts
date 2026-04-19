@@ -89,6 +89,7 @@ import { googleSheetsFirewall } from "./google-sheets.generated";
 import { granolaFirewall } from "./granola.generated";
 import { greenhouseFirewall } from "./greenhouse.generated";
 import { heygenFirewall } from "./heygen.generated";
+import { heliconeFirewall } from "./helicone.generated";
 import { htmlcsstoimageFirewall } from "./htmlcsstoimage.generated";
 import { hubspotFirewall } from "./hubspot.generated";
 import { huggingFaceFirewall } from "./hugging-face.generated";
@@ -258,6 +259,7 @@ const CONNECTOR_FIREWALLS = {
   granola: granolaFirewall,
   greenhouse: greenhouseFirewall,
   heygen: heygenFirewall,
+  helicone: heliconeFirewall,
   htmlcsstoimage: htmlcsstoimageFirewall,
   hubspot: hubspotFirewall,
   "hugging-face": huggingFaceFirewall,

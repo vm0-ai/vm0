@@ -64,6 +64,7 @@ import { granolaHandler } from "./providers/granola-handler";
 import { greenhouseHandler } from "./providers/greenhouse-handler";
 import { githubHandler } from "./providers/github-handler";
 import { heygenHandler } from "./providers/heygen-handler";
+import { heliconeHandler } from "./providers/helicone-handler";
 import { huggingFaceHandler } from "./providers/hugging-face-handler";
 import { humeHandler } from "./providers/hume-handler";
 import { htmlcsstoimageHandler } from "./providers/htmlcsstoimage-handler";
@@ -227,6 +228,7 @@ export const PROVIDER_HANDLERS: Record<
   github: githubHandler,
   gmail: gmailHandler,
   heygen: heygenHandler,
+  helicone: heliconeHandler,
   "hugging-face": huggingFaceHandler,
   hume: humeHandler,
   htmlcsstoimage: htmlcsstoimageHandler,
