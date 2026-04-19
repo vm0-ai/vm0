@@ -103,8 +103,8 @@ export function createSafeErrorHandler(
     // Sentry because the error is caught here and a 500 JSON is returned,
     // so Next.js's onRequestError instrumentation hook never fires.
     Sentry.captureException(err, {
-      tags: { route: routeName },
       mechanism: { type: "ts-rest-handler", handled: true },
+      captureContext: { tags: { route: routeName } },
     });
     return TsRestResponse.fromJson(
       {
@@ -189,7 +189,9 @@ export function createHandler<T extends AppRouter>(
         await Promise.all([
           flushLogs(),
           flushAxiom(),
-          Sentry.flush(2000).catch(() => false),
+          Sentry.flush(2000).catch(() => {
+            return false;
+          }),
         ]);
       },
     ],

@@ -60,11 +60,9 @@ describe("createSafeErrorHandler", () => {
     const err = new Error("db timeout");
     handler(err);
     expect(captureException).toHaveBeenCalledTimes(1);
-    const [capturedErr, ctx] = captureException.mock.calls[0];
-    expect(capturedErr).toBe(err);
-    expect(ctx).toMatchObject({
-      tags: { route: "test-route" },
+    expect(captureException).toHaveBeenCalledWith(err, {
       mechanism: { type: "ts-rest-handler", handled: true },
+      captureContext: { tags: { route: "test-route" } },
     });
   });
 
