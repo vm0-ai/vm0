@@ -18,6 +18,6 @@ export const stabilityAiHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "STABILITY_API_KEY";
+    return "STABILITY_TOKEN";
   },
 };
