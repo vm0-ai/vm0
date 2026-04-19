@@ -41,14 +41,7 @@ beforeEach(() => {
   vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "test-token");
   vi.stubEnv("VM0_DEBUG", "*");
   vi.resetModules();
-  mockDebug.mockReset();
-  mockInfo.mockReset();
-  mockWarn.mockReset();
-  mockError.mockReset();
-  vi.spyOn(console, "info").mockImplementation(() => {});
-  vi.spyOn(console, "warn").mockImplementation(() => {});
-  vi.spyOn(console, "error").mockImplementation(() => {});
-  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.clearAllMocks();
 });
 
 afterEach(() => {

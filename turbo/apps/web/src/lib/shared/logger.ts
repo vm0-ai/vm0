@@ -100,7 +100,7 @@ function serializeError(err: Error): Record<string, unknown> {
   }
   for (const key of Object.keys(err)) {
     if (!(key in serialized)) {
-      serialized[key] = (err as Record<string, unknown>)[key];
+      serialized[key] = (err as unknown as Record<string, unknown>)[key];
     }
   }
   return serialized;
