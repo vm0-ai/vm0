@@ -148,11 +148,7 @@ export default function UseCasesGalleryClient() {
       {/* Role filter */}
       <section style={{ paddingBottom: "32px" }}>
         <div className="container">
-          <div
-            className="uc-filter-row"
-            role="tablist"
-            aria-label={t("role")}
-          >
+          <div className="uc-filter-row" role="tablist" aria-label={t("role")}>
             {ROLE_FILTERS.map((role) => {
               const isActive = activeRole === role;
               return (
