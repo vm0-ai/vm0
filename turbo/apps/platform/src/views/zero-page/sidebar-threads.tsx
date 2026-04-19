@@ -12,7 +12,7 @@ import {
   IconChevronRight,
   IconTrash,
 } from "@tabler/icons-react";
-import type { ChatThreadListItem } from "@vm0/core";
+import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
   Tooltip,
   TooltipContent,
@@ -55,18 +55,22 @@ import {
   sessionListCollapsed$,
   setSessionListCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Link } from "../router/link.tsx";
 
 function ChatThreadItem({
   session,
   isSelected,
   onSelect,
+  showReadIndicator,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
   onSelect?: (id: string) => void;
+  showReadIndicator: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
+  const isUnread = showReadIndicator && !session.isRead;
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
@@ -89,12 +93,12 @@ function ChatThreadItem({
         className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
           isSelected
             ? "bg-gray-200 text-gray-900 font-medium"
-            : session.isRead
-              ? "text-sidebar-foreground hover:bg-sidebar-accent"
-              : "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
+            : isUnread
+              ? "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
+              : "text-sidebar-foreground hover:bg-sidebar-accent"
         }`}
       >
-        {!session.isRead && !isSelected && (
+        {isUnread && !isSelected && (
           <span
             className="shrink-0 h-2 w-2 rounded-full bg-blue-500"
             aria-label="Unread"
@@ -141,6 +145,9 @@ function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(chatThreads$) ?? [];
+  const features = useLastResolved(featureSwitch$);
+  const showReadIndicator =
+    features?.[FeatureSwitchKey.ChatThreadReadIndicator] ?? false;
   const searchTerm = useGet(sidebarSearchTerm$);
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredChatThreads = trimmedTerm
@@ -181,6 +188,7 @@ function ChatThreads() {
             session={session}
             isSelected={currentChatThreadId === session.id}
             onSelect={onRecentSelect}
+            showReadIndicator={showReadIndicator}
           />
         );
       })}

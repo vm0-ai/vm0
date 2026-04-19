@@ -46,6 +46,7 @@ export enum FeatureSwitchKey {
   SlackAgentSwitch = "slackAgentSwitch",
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
+  ChatThreadReadIndicator = "chatThreadReadIndicator",
   InlineThinkingDot = "inlineThinkingDot",
   ZoomConnector = "zoomConnector",
 }
