@@ -86,6 +86,7 @@ describe("chat-d-057: upload progress indicator in AttachmentChip", () => {
   it("shows progress indicator while upload is pending", async () => {
     const user = userEvent.setup();
 
+    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
       http.post("*/api/zero/uploads", () => {
         return new Promise<never>(() => {});
@@ -123,6 +124,7 @@ describe("chat-d-058: image preview thumbnails in AttachmentChip", () => {
     const user = userEvent.setup();
     const imageUrl = "https://example.com/photo.png";
 
+    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({
@@ -165,6 +167,7 @@ describe("chat-i-059: image preview button opens lightbox", () => {
     const user = userEvent.setup();
     const imageUrl = "https://example.com/photo.png";
 
+    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({
@@ -216,6 +219,7 @@ describe("chat-i-060: close button closes lightbox", () => {
     const user = userEvent.setup();
     const imageUrl = "https://example.com/photo.png";
 
+    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({
@@ -273,6 +277,7 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
     const user = userEvent.setup();
     const imageUrl = "https://example.com/photo.png";
 
+    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({
@@ -331,6 +336,7 @@ describe("chat-i-062: remove button on attachment chip calls onRemove", () => {
   it("removes attachment chip when clicking the Remove button", async () => {
     const user = userEvent.setup();
 
+    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({
@@ -415,6 +421,7 @@ describe("chat-d-064: video attachment chip shows neither image thumbnail nor fi
     const user = userEvent.setup();
     const videoUrl = "https://example.com/demo.mp4";
 
+    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({

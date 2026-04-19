@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroVoiceChatPrepareTriggerContract,
+  zeroVoiceChatSessionsContract,
+  zeroVoiceChatContextContract,
+} from "@vm0/core";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
@@ -27,26 +33,27 @@ async function setup() {
   });
 }
 
-function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
+function mockPrepareEndpoint(
+  responses: { status: "preparing" | "ready" | "failed"; id?: string }[],
+) {
   let callIndex = 0;
   const calls: { agentId: string; mode: string }[] = [];
   server.use(
-    http.post("*/api/zero/voice-chat/prepare", async ({ request }) => {
-      const body = (await request.json()) as {
-        agentId: string;
-        mode: string;
-      };
-      calls.push(body);
-      const responseIndex = Math.min(callIndex, responses.length - 1);
-      const response = responses[responseIndex];
-      callIndex++;
-      return HttpResponse.json({
-        preparation: {
-          id: response.id ?? "prep-1",
-          status: response.status,
-        },
-      });
-    }),
+    mockApi(
+      zeroVoiceChatPrepareTriggerContract.trigger,
+      ({ body, respond }) => {
+        calls.push({ agentId: body.agentId, mode: body.mode ?? "chat" });
+        const responseIndex = Math.min(callIndex, responses.length - 1);
+        const response = responses[responseIndex];
+        callIndex++;
+        return respond(200, {
+          preparation: {
+            id: response.id ?? "prep-1",
+            status: response.status,
+          },
+        });
+      },
+    ),
   );
   return calls;
 }
@@ -59,13 +66,11 @@ function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
 function mockSessionEndpointError() {
   const sessionCalls: unknown[] = [];
   server.use(
-    http.post("*/api/zero/voice-chat", async ({ request }) => {
-      const body = await request.json();
+    mockApi(zeroVoiceChatSessionsContract.create, ({ body, respond }) => {
       sessionCalls.push(body);
-      return HttpResponse.json(
-        { error: { message: "test-session-error", code: "BAD_REQUEST" } },
-        { status: 400 },
-      );
+      return respond(400, {
+        error: { message: "test-session-error", code: "BAD_REQUEST" },
+      });
     }),
   );
   return sessionCalls;
@@ -242,8 +247,8 @@ describe("chat mode preparation cache", () => {
 
     function mockSessionPrepared() {
       server.use(
-        http.post("*/api/zero/voice-chat", () => {
-          return HttpResponse.json({
+        mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
+          return respond(200, {
             session: {
               id: "sess-cached-1",
               mode: "chat",
@@ -260,13 +265,15 @@ describe("chat mode preparation cache", () => {
     function mockActivateOk() {
       const calls: string[] = [];
       server.use(
-        http.post("*/api/zero/voice-chat/:sessionId/activate", ({ params }) => {
-          const sessionId = params["sessionId"] as string;
-          calls.push(sessionId);
-          return HttpResponse.json({
-            session: { id: sessionId, mode: "chat", status: "active" },
-          });
-        }),
+        mockApi(
+          zeroVoiceChatSessionsContract.activate,
+          ({ params, respond }) => {
+            calls.push(params.id);
+            return respond(200, {
+              session: { id: params.id, mode: "chat", status: "active" },
+            });
+          },
+        ),
       );
       return calls;
     }
@@ -274,34 +281,34 @@ describe("chat mode preparation cache", () => {
     function mockContextEndpoint() {
       const calls: string[] = [];
       server.use(
-        http.get("*/api/zero/voice-chat/:sessionId/context", ({ params }) => {
-          calls.push(params["sessionId"] as string);
-          return HttpResponse.json({ events: MOCK_EVENTS });
-        }),
+        mockApi(
+          zeroVoiceChatContextContract.getEvents,
+          ({ params, respond }) => {
+            calls.push(params.id);
+            return respond(200, { events: MOCK_EVENTS });
+          },
+        ),
       );
       return calls;
     }
 
     function mockTokenEndpointError() {
       server.use(
-        http.post("*/api/zero/voice-chat/token", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "test-token-error",
-                code: "INTERNAL_SERVER_ERROR",
-              },
+        mockApi(zeroVoiceChatSessionsContract.token, ({ respond }) => {
+          return respond(500, {
+            error: {
+              message: "test-token-error",
+              code: "INTERNAL_SERVER_ERROR",
             },
-            { status: 500 },
-          );
+          });
         }),
       );
     }
 
     function mockHeartbeat() {
       server.use(
-        http.post("*/api/zero/voice-chat/:sessionId/heartbeat", () => {
-          return HttpResponse.json({ ok: true });
+        mockApi(zeroVoiceChatSessionsContract.heartbeat, ({ respond }) => {
+          return respond(200, { ok: true });
         }),
       );
     }
@@ -407,8 +414,8 @@ describe("chat mode preparation cache", () => {
 
     function mockMeetingSessionPrepared() {
       server.use(
-        http.post("*/api/zero/voice-chat", () => {
-          return HttpResponse.json({
+        mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
+          return respond(200, {
             session: {
               id: "sess-meeting-cached-1",
               mode: "meeting",
@@ -425,13 +432,15 @@ describe("chat mode preparation cache", () => {
     function mockActivateOk() {
       const calls: string[] = [];
       server.use(
-        http.post("*/api/zero/voice-chat/:sessionId/activate", ({ params }) => {
-          const sessionId = params["sessionId"] as string;
-          calls.push(sessionId);
-          return HttpResponse.json({
-            session: { id: sessionId, mode: "meeting", status: "active" },
-          });
-        }),
+        mockApi(
+          zeroVoiceChatSessionsContract.activate,
+          ({ params, respond }) => {
+            calls.push(params.id);
+            return respond(200, {
+              session: { id: params.id, mode: "meeting", status: "active" },
+            });
+          },
+        ),
       );
       return calls;
     }
@@ -439,34 +448,34 @@ describe("chat mode preparation cache", () => {
     function mockContextEndpoint() {
       const calls: string[] = [];
       server.use(
-        http.get("*/api/zero/voice-chat/:sessionId/context", ({ params }) => {
-          calls.push(params["sessionId"] as string);
-          return HttpResponse.json({ events: MOCK_EVENTS });
-        }),
+        mockApi(
+          zeroVoiceChatContextContract.getEvents,
+          ({ params, respond }) => {
+            calls.push(params.id);
+            return respond(200, { events: MOCK_EVENTS });
+          },
+        ),
       );
       return calls;
     }
 
     function mockTokenEndpointError() {
       server.use(
-        http.post("*/api/zero/voice-chat/token", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "test-token-error",
-                code: "INTERNAL_SERVER_ERROR",
-              },
+        mockApi(zeroVoiceChatSessionsContract.token, ({ respond }) => {
+          return respond(500, {
+            error: {
+              message: "test-token-error",
+              code: "INTERNAL_SERVER_ERROR",
             },
-            { status: 500 },
-          );
+          });
         }),
       );
     }
 
     function mockHeartbeat() {
       server.use(
-        http.post("*/api/zero/voice-chat/:sessionId/heartbeat", () => {
-          return HttpResponse.json({ ok: true });
+        mockApi(zeroVoiceChatSessionsContract.heartbeat, ({ respond }) => {
+          return respond(200, { ok: true });
         }),
       );
     }

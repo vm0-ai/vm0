@@ -6,9 +6,11 @@ import {
   FeatureSwitchKey,
   tasksContract,
   zeroQueuePositionContract,
+  zeroVoiceChatContextContract,
   type TaskItem,
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -20,7 +22,6 @@ import { createAndShowChatTask$ } from "../../../signals/mission-control-page/mi
 import { setMockTasks } from "../../../mocks/handlers/api-tasks.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -855,8 +856,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get("*/api/zero/voice-chat/vc-session-open/context", () => {
-        return HttpResponse.json({ events: [] });
+      mockApi(zeroVoiceChatContextContract.getEvents, ({ respond }) => {
+        return respond(200, { events: [] });
       }),
     );
 
@@ -898,36 +899,32 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get(
-        "*/api/zero/voice-chat/vc-session-events/context",
-        ({ request }) => {
-          const url = new URL(request.url);
-          const after = Number(url.searchParams.get("after") ?? 0);
-          if (after === 0) {
-            return HttpResponse.json({
-              events: [
-                {
-                  id: "evt-a",
-                  seq: 1,
-                  source: "slow-brain",
-                  type: "thinking",
-                  content: "Analyzing context",
-                  createdAt: "2026-04-13T10:00:01Z",
-                },
-                {
-                  id: "evt-b",
-                  seq: 2,
-                  source: "slow-brain",
-                  type: "directive",
-                  content: "Be concise",
-                  createdAt: "2026-04-13T10:00:02Z",
-                },
-              ],
-            });
-          }
-          return HttpResponse.json({ events: [] });
-        },
-      ),
+      mockApi(zeroVoiceChatContextContract.getEvents, ({ query, respond }) => {
+        const after = query.after ?? 0;
+        if (after === 0) {
+          return respond(200, {
+            events: [
+              {
+                id: "evt-a",
+                seq: 1,
+                source: "slow-brain",
+                type: "thinking",
+                content: "Analyzing context",
+                createdAt: "2026-04-13T10:00:01Z",
+              },
+              {
+                id: "evt-b",
+                seq: 2,
+                source: "slow-brain",
+                type: "directive",
+                content: "Be concise",
+                createdAt: "2026-04-13T10:00:02Z",
+              },
+            ],
+          });
+        }
+        return respond(200, { events: [] });
+      }),
     );
 
     const user = userEvent.setup();
