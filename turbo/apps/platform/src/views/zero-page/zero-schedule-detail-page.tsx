@@ -484,7 +484,9 @@ function ScheduleSettingsForm({
             />
           </InlineSettingsRow>
 
-          {showModelPicker && orgProviders && orgProviders.modelProviders.length > 0 && (
+          {showModelPicker &&
+            orgProviders &&
+            orgProviders.modelProviders.length > 0 && (
             <InlineSettingsRow
               label="Model"
               description="Override the org default model for this schedule."
@@ -494,7 +496,10 @@ function ScheduleSettingsForm({
                   providers={orgProviders.modelProviders}
                   value={
                     form.modelProviderId && form.selectedModel
-                      ? { modelProviderId: form.modelProviderId, selectedModel: form.selectedModel }
+                      ? {
+                          modelProviderId: form.modelProviderId,
+                          selectedModel: form.selectedModel,
+                        }
                       : null
                   }
                   onChange={(sel: ModelProviderSelection | null) => {

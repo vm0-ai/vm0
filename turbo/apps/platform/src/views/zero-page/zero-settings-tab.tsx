@@ -102,7 +102,10 @@ export function ZeroSettingsTab({
 }: ZeroSettingsTabProps) {
   const initialModelSelection: ModelProviderSelection | null =
     initialModelProviderId && initialSelectedModel
-      ? { modelProviderId: initialModelProviderId, selectedModel: initialSelectedModel }
+      ? {
+          modelProviderId: initialModelProviderId,
+          selectedModel: initialSelectedModel,
+        }
       : null;
 
   useSet(initSettingsForm$)({
@@ -319,7 +322,9 @@ export function ZeroSettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
-            {showModelPicker && orgProviders && orgProviders.modelProviders.length > 0 && (
+            {showModelPicker &&
+              orgProviders &&
+              orgProviders.modelProviders.length > 0 && (
               <InlineSettingsRow
                 label="Model"
                 description="Override the org default model for this agent."

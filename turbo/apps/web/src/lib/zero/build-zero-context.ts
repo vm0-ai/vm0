@@ -295,6 +295,9 @@ interface ResolveCliRunContextParams {
   artifactVersion?: string;
   memoryName?: string;
   volumeVersions?: Record<string, string>;
+  // Model provider selection
+  modelProviderId?: string;
+  selectedModelOverride?: string;
 }
 
 /**

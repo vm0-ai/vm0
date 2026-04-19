@@ -189,8 +189,12 @@ function buildScheduleBody(
     prompt: params.prompt.trim(),
     ...(params.description && { description: params.description.trim() }),
     enabled: true,
-    ...(params.modelProviderId !== undefined && { modelProviderId: params.modelProviderId }),
-    ...(params.selectedModel !== undefined && { selectedModel: params.selectedModel }),
+    ...(params.modelProviderId !== undefined && {
+      modelProviderId: params.modelProviderId,
+    }),
+    ...(params.selectedModel !== undefined && {
+      selectedModel: params.selectedModel,
+    }),
   };
 
   if (params.freq === "every_n_minutes") {

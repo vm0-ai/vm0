@@ -200,6 +200,71 @@ async function resolveVm0Provider(
 }
 
 /**
+ * Resolve secrets for a multi-auth provider (e.g., aws-bedrock).
+ * Returns undefined if the auth method or required secrets are missing.
+ */
+async function resolveMultiAuthProviderSecrets(
+  orgId: string,
+  secretUserId: string,
+  providerType: ModelProviderType,
+  authMethod: string | undefined | null,
+  selectedModel: string | undefined,
+): Promise<ModelProviderSecretResult | undefined> {
+  if (!authMethod) {
+    log.debug(
+      `Multi-auth provider ${providerType} has no auth method configured`,
+    );
+    return undefined;
+  }
+
+  const secretNames = getSecretNamesForAuthMethod(providerType, authMethod);
+  if (!secretNames || secretNames.length === 0) {
+    log.debug(`No secret names found for ${providerType}/${authMethod}`);
+    return undefined;
+  }
+
+  const allSecretValues = await getSecretValues(
+    orgId,
+    secretUserId,
+    "model-provider",
+  );
+  const secretsMap: Record<string, string> = {};
+  let hasAllRequired = true;
+
+  for (const name of secretNames) {
+    const value = allSecretValues[name];
+    if (value) {
+      secretsMap[name] = value;
+    } else {
+      log.debug(`Missing secret ${name} for ${providerType}/${authMethod}`);
+      hasAllRequired = false;
+    }
+  }
+
+  if (!hasAllRequired) {
+    return undefined;
+  }
+
+  const injectedEnvironment = resolveEnvironmentMapping(
+    providerType,
+    undefined,
+    selectedModel,
+    new Set(secretNames),
+  );
+
+  log.debug(
+    `Resolved multi-auth model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
+  );
+
+  return {
+    secrets: secretsMap,
+    injectedEnvironment,
+    resolvedModelProvider: providerType,
+    selectedModel,
+  };
+}
+
+/**
  * Resolve and inject model provider secret if needed
  * Only injects if no explicit model provider config in compose environment
  *
@@ -259,82 +324,21 @@ export async function resolveModelProviderSecrets(
 
   // Handle multi-auth providers (like aws-bedrock)
   if (hasAuthMethods(providerType)) {
-    const authMethod = defaultProvider?.authMethod;
-    if (!authMethod) {
-      log.debug(
-        `Multi-auth provider ${providerType} has no auth method configured`,
-      );
-      return {
-        secrets,
-        injectedEnvironment: undefined,
-        resolvedModelProvider: providerType,
-        selectedModel,
-      };
-    }
-
-    // Get secret names for this auth method
-    const secretNames = getSecretNamesForAuthMethod(providerType, authMethod);
-    if (!secretNames || secretNames.length === 0) {
-      log.debug(`No secret names found for ${providerType}/${authMethod}`);
-      return {
-        secrets,
-        injectedEnvironment: undefined,
-        resolvedModelProvider: providerType,
-        selectedModel,
-      };
-    }
-
-    // Fetch all model-provider secrets by name (scoped to provider owner)
-    const allSecretValues = await getSecretValues(
+    const resolved = await resolveMultiAuthProviderSecrets(
       orgId,
       secretUserId,
-      "model-provider",
+      providerType,
+      defaultProvider?.authMethod,
+      selectedModel,
     );
-    const secretsMap: Record<string, string> = {};
-    let hasAllRequired = true;
-
-    for (const name of secretNames) {
-      const value = allSecretValues[name];
-      if (value) {
-        secretsMap[name] = value;
-      } else {
-        log.debug(`Missing secret ${name} for ${providerType}/${authMethod}`);
-        hasAllRequired = false;
-      }
-    }
-
-    if (!hasAllRequired) {
-      return {
+    return (
+      resolved ?? {
         secrets,
         injectedEnvironment: undefined,
         resolvedModelProvider: providerType,
         selectedModel,
-      };
-    }
-
-    // Store secrets for masking
-    secrets = secrets || {};
-    Object.assign(secrets, secretsMap);
-
-    // Resolve environment mapping as template references.
-    // Pass available secret names so mapping entries for other auth methods are skipped.
-    const injectedEnvironment = resolveEnvironmentMapping(
-      providerType,
-      undefined, // No single secret for multi-auth
-      selectedModel,
-      new Set(secretNames),
+      }
     );
-
-    log.debug(
-      `Resolved multi-auth model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
-    );
-
-    return {
-      secrets,
-      injectedEnvironment,
-      resolvedModelProvider: providerType,
-      selectedModel,
-    };
   }
 
   // Handle single-secret providers

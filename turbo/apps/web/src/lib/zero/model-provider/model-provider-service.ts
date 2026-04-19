@@ -1050,7 +1050,9 @@ export async function getModelProviderByIdForOrg(
     })
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
-    .where(and(eq(modelProviders.orgId, orgId), eq(modelProviders.id, providerId)))
+    .where(
+      and(eq(modelProviders.orgId, orgId), eq(modelProviders.id, providerId)),
+    )
     .limit(1);
 
   if (!row) return null;

@@ -45,6 +45,8 @@ export interface ScheduleResponse {
   consecutiveFailures: number;
   createdAt: string;
   updatedAt: string;
+  modelProviderId: string | null;
+  selectedModel: string | null;
 }
 
 /**

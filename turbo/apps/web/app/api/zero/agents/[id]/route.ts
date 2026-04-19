@@ -26,6 +26,33 @@ import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents:id");
 
+type AgentUpdateBody = {
+  displayName?: string | null;
+  description?: string | null;
+  sound?: string | null;
+  avatarUrl?: string | null;
+  customSkills?: string[];
+  modelProviderId?: string | null;
+  selectedModel?: string | null;
+};
+
+function buildAgentUpsertConflictSet(body: AgentUpdateBody, now: Date) {
+  return {
+    updatedAt: now,
+    ...(body.displayName !== undefined && { displayName: body.displayName }),
+    ...(body.description !== undefined && { description: body.description }),
+    ...(body.sound !== undefined && { sound: body.sound }),
+    ...(body.avatarUrl !== undefined && { avatarUrl: body.avatarUrl }),
+    ...(body.customSkills !== undefined && { customSkills: body.customSkills }),
+    ...(body.modelProviderId !== undefined && {
+      modelProviderId: body.modelProviderId,
+    }),
+    ...(body.selectedModel !== undefined && {
+      selectedModel: body.selectedModel,
+    }),
+  };
+}
+
 function agentResponseBody(
   agent: typeof zeroAgents.$inferSelect | undefined,
   fallback: { id: string; ownerId: string },
@@ -194,28 +221,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
-        set: {
-          updatedAt: now,
-          ...(body.displayName !== undefined && {
-            displayName: body.displayName,
-          }),
-          ...(body.description !== undefined && {
-            description: body.description,
-          }),
-          ...(body.sound !== undefined && { sound: body.sound }),
-          ...(body.avatarUrl !== undefined && {
-            avatarUrl: body.avatarUrl,
-          }),
-          ...(body.customSkills !== undefined && {
-            customSkills: body.customSkills,
-          }),
-          ...(body.modelProviderId !== undefined && {
-            modelProviderId: body.modelProviderId,
-          }),
-          ...(body.selectedModel !== undefined && {
-            selectedModel: body.selectedModel,
-          }),
-        },
+        set: buildAgentUpsertConflictSet(body, now),
       });
 
     log.info(`Updated zero agent: ${result.composeName}`);

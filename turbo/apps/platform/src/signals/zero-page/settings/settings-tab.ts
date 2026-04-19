@@ -112,8 +112,10 @@ export const initSettingsForm$ = command(({ get, set }, opts: FormSource) => {
     current.description === opts.description &&
     current.tone === opts.tone &&
     current.avatarUrl === opts.avatarUrl &&
-    current.modelSelection?.modelProviderId === opts.modelSelection?.modelProviderId &&
-    current.modelSelection?.selectedModel === opts.modelSelection?.selectedModel
+    current.modelSelection?.modelProviderId ===
+      opts.modelSelection?.modelProviderId &&
+    current.modelSelection?.selectedModel ===
+      opts.modelSelection?.selectedModel
   ) {
     return;
   }
