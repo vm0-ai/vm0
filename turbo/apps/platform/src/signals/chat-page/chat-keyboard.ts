@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { matchShortcut } from "@vm0/ui";
 import { chatThreads$, currentChatThreadId$ } from "../agent-chat.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
+import { detachedNavigateTo$ } from "../route.ts";
 import { onDomEventFn } from "../utils.ts";
 import { currentChatThreadSignals$ } from "./create-chat-thread.ts";
 
@@ -21,6 +22,14 @@ const navigateToAdjacentThread$ = command(
       return t.id === currentId;
     });
     if (idx === -1) {
+      return;
+    }
+    if (direction === "prev" && idx === 0) {
+      // Escape upwards from the first thread to the agent chat page.
+      const agentId = threads[0]!.agentId;
+      set(detachedNavigateTo$, "/agents/:agentId/chat", {
+        pathParams: { agentId },
+      });
       return;
     }
     const targetIdx = direction === "prev" ? idx - 1 : idx + 1;
@@ -53,7 +62,8 @@ const scrollCurrentThread$ = command(
 //
 // - mod+up / mod+down        → scroll messages to top / bottom
 // - mod+shift+up / shift+down → jump to previous / next thread in the list
-//   (no-op at the boundaries)
+//   (mod+shift+up on the first thread escapes to /agents/:agentId/chat;
+//    mod+shift+down on the last thread is a no-op)
 export const setupChatPageKeyboard$ = command(
   ({ set }, signal: AbortSignal) => {
     document.addEventListener(

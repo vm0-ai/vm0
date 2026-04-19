@@ -104,6 +104,30 @@ describe("chat page keyboard shortcuts", () => {
     });
   });
 
+  it("mod+shift+up on the first thread escapes to the agent chat page", async () => {
+    const user = userEvent.setup();
+    mockThreadList([
+      { id: "thread-1", title: "First" },
+      { id: "thread-2", title: "Second" },
+    ]);
+    mockEmptyMessages("thread-1");
+    mockEmptyMessages("thread-2");
+
+    detachedSetupPage({ context, path: "/chats/thread-1" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/i),
+      ).toBeInTheDocument();
+    });
+
+    await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    });
+  });
+
   it("mod+shift+down is a no-op on the last thread", async () => {
     const user = userEvent.setup();
     mockThreadList([
