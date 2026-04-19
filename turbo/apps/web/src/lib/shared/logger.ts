@@ -98,9 +98,9 @@ function serializeError(err: Error): Record<string, unknown> {
     serialized.cause =
       err.cause instanceof Error ? serializeError(err.cause) : err.cause;
   }
-  for (const key of Object.keys(err)) {
+  for (const [key, value] of Object.entries(err)) {
     if (!(key in serialized)) {
-      serialized[key] = (err as unknown as Record<string, unknown>)[key];
+      serialized[key] = value;
     }
   }
   return serialized;
