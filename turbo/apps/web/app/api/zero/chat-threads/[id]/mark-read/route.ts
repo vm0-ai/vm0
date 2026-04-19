@@ -7,6 +7,7 @@ import { chatThreadMarkReadContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-auth-context";
 import { markThreadRead } from "../../../../../../src/lib/zero/chat-thread";
+import { publishThreadListChanged } from "../../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { isNotFound } from "../../../../../../src/lib/shared/errors";
 import { publishUserSignal } from "../../../../../../src/lib/infra/realtime/client";
 
@@ -34,6 +35,7 @@ const router = tsr.router(chatThreadMarkReadContract, {
         `chatThreadReadCursorUpdated:${params.id}`,
         { lastReadAt: newLastReadAt.toISOString() },
       );
+      await publishThreadListChanged(userId);
 
       return {
         status: 200 as const,

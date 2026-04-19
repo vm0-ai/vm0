@@ -689,6 +689,20 @@ export {
   type ZeroVariablesByNameContract,
 } from "./zero-secrets";
 export {
+  zeroCustomConnectorsContract,
+  zeroCustomConnectorByIdContract,
+  zeroCustomConnectorSecretContract,
+  customConnectorResponseSchema,
+  customConnectorListResponseSchema,
+  createCustomConnectorBodySchema,
+  setCustomConnectorSecretBodySchema,
+  type ZeroCustomConnectorsContract,
+  type ZeroCustomConnectorByIdContract,
+  type ZeroCustomConnectorSecretContract,
+  type CustomConnectorResponse,
+  type CreateCustomConnectorBody,
+} from "./zero-custom-connectors";
+export {
   integrationsSlackMessageContract,
   type IntegrationsSlackMessageContract,
   type SendSlackMessageBody,

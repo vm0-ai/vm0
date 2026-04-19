@@ -1,5 +1,5 @@
 {
-  "id": "9b5d54e4-3293-4d3a-b2d5-5e58e5eab81d",
+  "id": "d3c7e4b4-0dbf-4dd3-8b7f-a3bf1f62dc3c",
   "prevId": "295f79bb-1f91-47bf-a402-ebf9dbff6ec6",
   "version": "7",
   "dialect": "postgresql",
@@ -4306,6 +4306,229 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.org_custom_connector_secrets": {
+      "name": "org_custom_connector_secrets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encrypted_value": {
+          "name": "encrypted_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_org_custom_connector_secrets_connector": {
+          "name": "idx_org_custom_connector_secrets_connector",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_org_custom_connector_secrets_user": {
+          "name": "idx_org_custom_connector_secrets_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_org_custom_connector_secrets_connector_user": {
+          "name": "idx_org_custom_connector_secrets_connector_user",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.org_custom_connectors": {
+      "name": "org_custom_connectors",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prefixes": {
+          "name": "prefixes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "header_name": {
+          "name": "header_name",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "header_template": {
+          "name": "header_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_org_custom_connectors_org": {
+          "name": "idx_org_custom_connectors_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_org_custom_connectors_org_slug": {
+          "name": "idx_org_custom_connectors_org_slug",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.org_members_cache": {
       "name": "org_members_cache",
       "schema": "",
@@ -7879,18 +8102,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "model_provider_id": {
-          "name": "model_provider_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "selected_model": {
-          "name": "selected_model",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "enabled": {
           "name": "enabled",
           "type": "boolean",
@@ -8056,15 +8267,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "zero_agent_schedules_model_provider_id_model_providers_id_fk": {
-          "name": "zero_agent_schedules_model_provider_id_model_providers_id_fk",
-          "tableFrom": "zero_agent_schedules",
-          "tableTo": "model_providers",
-          "columnsFrom": ["model_provider_id"],
-          "columnsTo": ["id"],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
         "zero_agent_schedules_last_run_id_agent_runs_id_fk": {
           "name": "zero_agent_schedules_last_run_id_agent_runs_id_fk",
           "tableFrom": "zero_agent_schedules",
@@ -8152,18 +8354,6 @@
           "notNull": true,
           "default": "'[]'::jsonb"
         },
-        "model_provider_id": {
-          "name": "model_provider_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "selected_model": {
-          "name": "selected_model",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -8225,15 +8415,6 @@
           "columnsFrom": ["id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "zero_agents_model_provider_id_model_providers_id_fk": {
-          "name": "zero_agents_model_provider_id_model_providers_id_fk",
-          "tableFrom": "zero_agents",
-          "tableTo": "model_providers",
-          "columnsFrom": ["model_provider_id"],
-          "columnsTo": ["id"],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

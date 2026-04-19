@@ -49,14 +49,7 @@ export async function compareRecentRunsProxyUsage(): Promise<void> {
   }
 
   for (const [orgId, runIds] of byOrg) {
-    try {
-      await compareProxyUsage(runIds, orgId);
-    } catch (err) {
-      log.warn("Proxy usage comparison failed", {
-        orgId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    await compareProxyUsage(runIds, orgId);
   }
 }
 
@@ -142,16 +135,12 @@ async function compareProxyUsage(
       }),
   );
 
-  // Walk the union of runIds.  Any asymmetry is an error:
+  // Walk client-present runs.  Any asymmetry against proxy is an error:
   //   proxy missing + client non-zero → mitmproxy lost all reports for this run
-  //   client missing + proxy non-zero → events webhook never delivered result events
   //   both present but proxy < client on any field → partial proxy data loss
-  // Runs where the present side is all-zero are silently skipped (no LLM call).
-  const allRunIds = new Set<string>([
-    ...proxyByRun.keys(),
-    ...clientByRun.keys(),
-  ]);
-
+  // Proxy-only runs are not checked: abnormal terminations (cancel, crash,
+  // timeout) make API calls that proxy captures but never emit a result
+  // event, so client_credit_usage is legitimately empty for those runs.
   const fields = [
     "inputTokens",
     "outputTokens",
@@ -160,32 +149,15 @@ async function compareProxyUsage(
     "webSearchRequests",
   ] as const;
 
-  for (const runId of allRunIds) {
+  for (const [runId, client] of clientByRun) {
     const proxy = proxyByRun.get(runId);
-    const client = clientByRun.get(runId);
 
     if (!proxy) {
-      const hasNonZero = client
-        ? fields.some((f) => {
-            return (client[f] ?? 0) > 0;
-          })
-        : false;
+      const hasNonZero = fields.some((f) => {
+        return (client[f] ?? 0) > 0;
+      });
       if (hasNonZero) {
         log.error("Proxy usage missing for run with client data", {
-          orgId,
-          runId,
-        });
-      }
-      continue;
-    }
-    if (!client) {
-      const hasNonZero = proxy
-        ? fields.some((f) => {
-            return (proxy[f] ?? 0) > 0;
-          })
-        : false;
-      if (hasNonZero) {
-        log.error("Client usage missing for run with proxy data", {
           orgId,
           runId,
         });

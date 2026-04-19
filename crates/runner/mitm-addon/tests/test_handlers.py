@@ -5,7 +5,7 @@ import gzip
 import json
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from mitmproxy import http
@@ -80,17 +80,13 @@ class TestRequestHandler:
             with_response=False, host="api.vm0.ai", path="/api/test/oauth-provider/echo"
         )
 
-        mock_handler = AsyncMock()
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
-        ):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
             await mitm_addon.request(flow)
 
-        # Carve-out took effect: Step 2 ran and handed off to the firewall
-        # handler (not Step 1's auto-allow, which would `return` without
-        # invoking the handler).
-        mock_handler.assert_called_once()
+        # Carve-out took effect: Step 2 ran and the real handle_firewall_request
+        # entered (firewall_base is written at auth.py:327 up-front).  Step 1's
+        # auto-allow would have returned without writing firewall_base.
+        assert flow.metadata["firewall_base"] == "https://api.vm0.ai/api/test/oauth-provider"
 
     async def test_tracks_start_time(self, registry_file, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -128,7 +124,9 @@ class TestRequestHandler:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
 
-    async def test_firewall_match_calls_handler(self, tmp_path, real_flow, mitm_ctx, headers):
+    async def test_firewall_match_calls_handler(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
         """When URL matches a firewall rule, handle_firewall_request is called."""
         registry = {
             "vms": {
@@ -174,21 +172,18 @@ class TestRequestHandler:
             with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/repos"
         )
 
-        mock_handler = AsyncMock()
         with (
             mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
+            fake_firewall_headers(),
         ):
             await mitm_addon.request(flow)
 
-        mock_handler.assert_called_once()
-        call_args = mock_handler.call_args
-        assert call_args[0][0] is flow
-        assert call_args[0][1]["base"] == "https://api.github.com"
-        match_info = call_args[0][3]
-        assert match_info["name"] == "github"
-        assert match_info["ref"] == "github"
-        assert match_info["permission"] == "full-access"
+        # Dispatcher routed to the real handle_firewall_request, which writes
+        # match-info into flow.metadata at auth.py:327–333 up-front.
+        assert flow.metadata["firewall_base"] == "https://api.github.com"
+        assert flow.metadata["firewall_name"] == "github"
+        assert flow.metadata["firewall_ref"] == "github"
+        assert flow.metadata["firewall_permission"] == "full-access"
 
     async def test_firewall_permission_blocks_unmatched(
         self, tmp_path, real_flow, mitm_ctx, headers
@@ -241,14 +236,11 @@ class TestRequestHandler:
             with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/orgs"
         )
 
-        mock_handler = AsyncMock()
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
-        ):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
             await mitm_addon.request(flow)
 
-        mock_handler.assert_not_called()
+        # Dispatcher's FirewallBlock branch short-circuits with a 403 before
+        # handle_firewall_request is reached.
         assert flow.response is not None
         assert flow.response.status_code == 403
         assert flow.metadata["firewall_action"] == "DENY"
@@ -261,7 +253,9 @@ class TestRequestHandler:
         assert body["permissions"] == []
         assert body["base"] == "https://api.github.com"
 
-    async def test_firewall_permission_allows_matched(self, tmp_path, real_flow, mitm_ctx, headers):
+    async def test_firewall_permission_allows_matched(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
         """Firewall with permissions and matching rule calls handler with match_info."""
         registry = {
             "vms": {
@@ -313,23 +307,20 @@ class TestRequestHandler:
             path="/repos/octocat/hello",
         )
 
-        mock_handler = AsyncMock()
         with (
             mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
+            fake_firewall_headers(),
         ):
             await mitm_addon.request(flow)
 
-        mock_handler.assert_called_once()
-        call_args = mock_handler.call_args
-        assert call_args[0][0] is flow
-        assert call_args[0][1]["base"] == "https://api.github.com"
-        match_info = call_args[0][3]
-        assert match_info["name"] == "github"
-        assert match_info["ref"] == "github"
-        assert match_info["permission"] == "read-repos"
-        assert match_info["rule"] == "GET /repos/{owner}/{repo}"
-        assert match_info["params"] == {"owner": "octocat", "repo": "hello"}
+        # Dispatcher routed to the real handle_firewall_request, which writes
+        # match-info into flow.metadata at auth.py:327–333 up-front.
+        assert flow.metadata["firewall_base"] == "https://api.github.com"
+        assert flow.metadata["firewall_name"] == "github"
+        assert flow.metadata["firewall_ref"] == "github"
+        assert flow.metadata["firewall_permission"] == "read-repos"
+        assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
+        assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
 
     async def test_firewall_no_base_match_passes_through(
         self, tmp_path, real_flow, mitm_ctx, headers
@@ -376,17 +367,15 @@ class TestRequestHandler:
             with_response=False, client_ip="10.200.0.5", host="api.example.com", path="/data"
         )
 
-        mock_handler = AsyncMock()
-        with (
-            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
-        ):
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
             await mitm_addon.request(flow)
 
-        # No firewall match → pass-through, not blocked
-        mock_handler.assert_not_called()
+        # No firewall match → pass-through, not blocked (dispatcher's final
+        # fall-through sets firewall_action=ALLOW; handler never reached so
+        # firewall_base is absent).
         assert flow.response is None
         assert flow.metadata["firewall_action"] == "ALLOW"
+        assert "firewall_base" not in flow.metadata
 
 
 class TestResponseHeadersHandler:
@@ -1175,7 +1164,7 @@ class TestPostWebhook:
         with patch.object(usage, "_opener") as mock_opener:
             mock_opener.open.return_value = MagicMock()
             usage._post_webhook("https://api.vm0.ai/api/webhooks/agent/usage", "tok-123", payload)
-        mock_opener.open.assert_called_once()
+        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
         assert req.get_header("Content-type") == "application/json"
@@ -1210,7 +1199,7 @@ class TestPostWebhook:
         ):
             with pytest.raises(urllib.error.HTTPError):
                 usage._post_webhook("https://api.vm0.ai/hook", "tok", {})
-        http_err.close.assert_called_once()
+        http_err.close.assert_called_once()  # urllib HTTPError cleanup contract (#9991)
 
     def test_adds_vercel_bypass_header(self):
         with (
@@ -1317,35 +1306,6 @@ class TestResponseHeadersSseParser:
 class TestResponseUsageReporting:
     """Tests for usage extraction and reporting in response() hook."""
 
-    def test_reports_proxy_usage_from_sse(self, tmp_path, real_flow, mitm_ctx, headers):
-        """When proxy_usage is set by SSE parser, it should trigger a usage report."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["proxy_usage"] = {
-            "model": "claude-sonnet-4-6",
-            "input_tokens": 100,
-            "output_tokens": 500,
-        }
-        flow.response = tutils.tresp(
-            status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
-        )
-        mitm_addon._request_start_times[flow.id] = time.time()
-
-        with (
-            mitm_ctx(),
-            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
-        ):
-            mitm_addon.response(flow)
-
-        mock_report.assert_called_once_with(flow, "run-abc-123")
-
     def test_non_streaming_json_fallback(self, tmp_path, real_flow, mitm_ctx, headers):
         """Non-streaming JSON response should extract usage from buffer."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -1378,7 +1338,9 @@ class TestResponseUsageReporting:
 
         with (
             mitm_ctx(),
-            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
+            # Silence the background webhook; end-to-end JSON→webhook wiring
+            # is covered by test_full_path_response_to_opener's SSE variant.
+            patch.object(usage, "_enqueue_webhook"),
         ):
             mitm_addon.response(flow)
 
@@ -1387,7 +1349,6 @@ class TestResponseUsageReporting:
         assert extracted["model"] == "claude-sonnet-4-6"
         assert extracted["input_tokens"] == 50
         assert extracted["output_tokens"] == 200
-        mock_report.assert_called_once_with(flow, "run-abc-123")
 
     def test_model_provider_buffer_not_truncated(self, real_flow, headers):
         """Model provider responses should buffer without truncation."""
@@ -1464,12 +1425,13 @@ class TestResponseUsageReporting:
 
         with (
             mitm_ctx(),
-            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
+            # Let real maybe_report_proxy_usage run; it early-returns on the
+            # firewall_name == "github" filter and should never reach _enqueue.
+            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
         ):
             mitm_addon.response(flow)
 
-        # maybe_report_proxy_usage is always called; it checks firewall_name internally
-        mock_report.assert_called_once()
+        assert mock_enqueue.call_count == 0
 
     def test_full_path_response_to_opener(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
@@ -1508,7 +1470,7 @@ class TestResponseUsageReporting:
             usage.usage_executor.shutdown(wait=True)
 
         # Verify the webhook POST reached _opener with correct payload
-        mock_opener.open.assert_called_once()
+        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
         body = json.loads(req.data)
@@ -1545,7 +1507,7 @@ class TestResponseUsageReporting:
             mitm_addon.error(flow)
             usage.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_called_once()
+        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
         assert body["runId"] == "run-int-002"
@@ -1588,7 +1550,7 @@ class TestResponseUsageReporting:
             mitm_addon.response(flow)
             usage.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_called_once()
+        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
         assert body["usage"]["message_id"] == "flow-uuid-xyz-123"
@@ -1626,7 +1588,7 @@ class TestResponseUsageReporting:
             mitm_addon.response(flow)
             usage.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_called_once()
+        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
         assert body["usage"]["message_id"] == "msg_real_anthropic_id"
@@ -2387,35 +2349,6 @@ class TestLogConnectorUsage:
         flow.response = None
         assert self._call_and_get_billing(flow) == []
 
-    # ---- integration: response() hook wiring ----
-
-    def test_response_hook_invokes_log_connector_usage(
-        self, tmp_path, real_flow, mitm_ctx, headers
-    ):
-        """response() hook should call usage.log_connector_usage."""
-        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
-        flow.metadata["firewall_name"] = "x"
-        flow.metadata["firewall_permission"] = "tweet.write"
-        flow.response = tutils.tresp(
-            status_code=200, headers=http.Headers(**{"content-type": "application/json"})
-        )
-        mitm_addon._request_start_times[flow.id] = time.time()
-
-        with (
-            mitm_ctx(),
-            patch.object(usage, "maybe_report_proxy_usage"),
-            patch.object(usage, "log_connector_usage") as mock_log_connector,
-        ):
-            mitm_addon.response(flow)
-
-        mock_log_connector.assert_called_once_with(flow, "run-abc-123")
-
     # ---- webhook skip ----
 
     def test_skips_webhook_without_sandbox_token(self, tmp_path, real_flow):
@@ -2481,29 +2414,6 @@ class TestLogConnectorUsage:
         assert by_cat["users.read"] == 3
 
 
-class TestErrorUsageReporting:
-    """Tests that error() hook calls maybe_report_proxy_usage."""
-
-    def test_error_calls_maybe_report(self, tmp_path, real_flow, mitm_ctx):
-        """error() should invoke maybe_report_proxy_usage."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        log_path = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.error = Error("connection reset by peer")
-        mitm_addon._request_start_times[flow.id] = time.time()
-
-        with (
-            mitm_ctx(),
-            patch.object(usage, "maybe_report_proxy_usage") as mock_report,
-        ):
-            mitm_addon.error(flow)
-
-        mock_report.assert_called_once_with(flow, "run-abc-123")
-
-
 class TestReportUsageWithRetry:
     """Tests for _post_webhook_with_retry retry logic."""
 
@@ -2543,7 +2453,7 @@ class TestReportUsageWithRetry:
             patch.object(usage.time, "sleep") as mock_sleep,
         ):
             usage._post_webhook_with_retry("url", "tok", {}, "", "usage")
-        mock_sleep.assert_called_once_with(0.5)
+        mock_sleep.assert_called_once_with(0.5)  # syscall boundary; pins retry backoff (#9991)
 
 
 class TestEnqueueWebhook:
@@ -2565,17 +2475,6 @@ class TestEnqueueWebhook:
         assert len(captured) == 1
         assert captured[0]["input_tokens"] == 100
 
-    def test_enqueue_submits_to_executor(self):
-        """_enqueue_webhook should submit work to the thread pool."""
-        mock_executor = MagicMock()
-        with patch.object(usage, "usage_executor", mock_executor):
-            usage._enqueue_webhook("url", "tok", {"k": 1}, "", "usage")
-        mock_executor.submit.assert_called_once()
-        args = mock_executor.submit.call_args[0]
-        assert args[0] == usage._post_webhook_with_retry
-        assert args[1] == "url"
-        assert args[2] == "tok"
-
     def test_enqueue_falls_back_to_sync_after_shutdown(self, fresh_usage_executor):
         """After executor shutdown, _enqueue_webhook should deliver synchronously with retry."""
         usage.usage_executor.shutdown(wait=True)
@@ -2594,6 +2493,7 @@ class TestDoneHook:
         mock_executor = MagicMock()
         with patch.object(usage, "usage_executor", mock_executor):
             mitm_addon.done()
+        # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
 
 

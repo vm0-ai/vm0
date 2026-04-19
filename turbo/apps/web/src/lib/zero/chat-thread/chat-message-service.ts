@@ -52,6 +52,7 @@ export async function insertChatMessage(params: {
     [params.userId],
     `chatThreadMessageCreated:${params.chatThreadId}`,
   );
+  await publishThreadListChanged(params.userId);
 
   return row;
 }
@@ -100,6 +101,7 @@ export async function insertAssistantEventMessages(
 
   if (rows.length > 0) {
     await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
+    await publishThreadListChanged(userId);
   }
 
   return rows.length;
@@ -145,6 +147,17 @@ export async function publishChatThreadRunUpdated(
     [chatThread.userId],
     `chatThreadRunUpdated:${chatThread.chatThreadId}`,
   );
+  await publishThreadListChanged(chatThread.userId);
+}
+
+/**
+ * Fire the user-level "thread list shape changed" signal. The sidebar
+ * subscribes to this topic and reloads the full list on any delivery —
+ * payload is intentionally empty because the server is authoritative and
+ * the client already has a cheap list endpoint to re-fetch.
+ */
+export async function publishThreadListChanged(userId: string): Promise<void> {
+  await publishUserSignal([userId], "threadListChanged");
 }
 
 /**

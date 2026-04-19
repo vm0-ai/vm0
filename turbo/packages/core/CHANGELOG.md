@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.204.0](https://github.com/vm0-ai/vm0/compare/core-v8.203.0...core-v8.204.0) (2026-04-19)
+
+
+### Features
+
+* add amplitude connector ([#10027](https://github.com/vm0-ai/vm0/issues/10027)) ([b925f1a](https://github.com/vm0-ai/vm0/commit/b925f1a8955d7e6d97656d41d3a56afc8210fbe0))
+* add attio connector ([#10026](https://github.com/vm0-ai/vm0/issues/10026)) ([7bc16d0](https://github.com/vm0-ai/vm0/commit/7bc16d0f77f7670f584ccdd97e94fb2edd46aa78))
+* add freshdesk connector ([#10028](https://github.com/vm0-ai/vm0/issues/10028)) ([d133137](https://github.com/vm0-ai/vm0/commit/d1331377db59915bf75506472ab8a8982f25ad6e))
+* add org custom connector gallery (v1) ([#10072](https://github.com/vm0-ai/vm0/issues/10072)) ([79c45e9](https://github.com/vm0-ai/vm0/commit/79c45e9f4fa13dcc62d4d2eabce162bc61085559))
+
+
+### Bug Fixes
+
+* add trailing newline to freshdesk.svg ([d133137](https://github.com/vm0-ai/vm0/commit/d1331377db59915bf75506472ab8a8982f25ad6e))
+
 ## [8.203.0](https://github.com/vm0-ai/vm0/compare/core-v8.202.0...core-v8.203.0) (2026-04-19)
 
 

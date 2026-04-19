@@ -1070,6 +1070,7 @@ class TestGetFirewallHeaders:
 
         assert headers["headers"] == mock_headers
         assert headers["cache_hit"] is False
+        # fetch_firewall_headers wraps urllib; args-once-with pins the cache-miss contract (#9991).
         mock_fetch.assert_called_once_with(
             encrypted, auth_templates, "tok-xyz", None, None, None, None
         )
@@ -1134,6 +1135,7 @@ class TestGetFirewallHeaders:
 
         assert headers["headers"] == fresh_headers
         assert headers["cache_hit"] is False
+        # fetch_firewall_headers wraps urllib; pins the TTL-expiry→re-fetch contract (#9991).
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
         assert auth._firewall_header_cache[cache_key]["headers"] == fresh_headers
@@ -1438,7 +1440,7 @@ class TestFetchFirewallHeaders:
 
         assert result == {"headers": {"Authorization": "Bearer tok"}}
 
-        # Verify the request was constructed correctly
+        # urllib.request.Request construction is the external boundary (#9991).
         mock_req_cls.assert_called_once()
         call_args = mock_req_cls.call_args
         assert call_args[0][0] == "https://api.vm0.ai/api/webhooks/agent/firewall/auth"
@@ -1463,6 +1465,7 @@ class TestFetchFirewallHeaders:
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
+        # urllib Request.add_header is the external boundary (#9991).
         mock_req_instance.add_header.assert_called_once_with(
             "x-vercel-protection-bypass", "secret-bypass-value"
         )

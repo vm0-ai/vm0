@@ -236,7 +236,7 @@ describe("GET /api/cron/compare-proxy-usage", () => {
     expect(entries[0]!.meta).toMatchObject({ runId });
   });
 
-  it("logs 'missing client' when proxy has data but client has none", async () => {
+  it("does not log when proxy has data but client has none (abnormal termination is expected)", async () => {
     const { orgId, userId } = await context.setupUser({ prefix: "no-client" });
     const runId = await createCompletedRun(
       orgId,
@@ -253,12 +253,7 @@ describe("GET /api/cron/compare-proxy-usage", () => {
     const response = await callCronRoute();
 
     expect(response.status).toBe(200);
-    const entries = errorMessagesForOrg(logSpy, orgId);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]!.message).toBe(
-      "Client usage missing for run with proxy data",
-    );
-    expect(entries[0]!.meta).toMatchObject({ runId });
+    expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
   // ── Zero-usage runs (no LLM call) ──────────────────────────────────
@@ -276,31 +271,6 @@ describe("GET /api/cron/compare-proxy-usage", () => {
     await insertTestClientCreditUsage(orgId, {
       userId,
       runId,
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadInputTokens: 0,
-      cacheCreationInputTokens: 0,
-      webSearchRequests: 0,
-    });
-
-    const response = await callCronRoute();
-
-    expect(response.status).toBe(200);
-    expect(errorMessagesForOrg(logSpy, orgId)).toHaveLength(0);
-  });
-
-  it("does not log 'missing client' when proxy data is all zeros", async () => {
-    const { orgId, userId } = await context.setupUser({ prefix: "zero-proxy" });
-    const runId = await createCompletedRun(
-      orgId,
-      userId,
-      new Date(Date.now() - 120_000),
-    );
-    // Proxy recorded usage but all token counts are zero
-    await insertTestCreditUsageForRun({
-      runId,
-      orgId,
-      userId,
       inputTokens: 0,
       outputTokens: 0,
       cacheReadInputTokens: 0,

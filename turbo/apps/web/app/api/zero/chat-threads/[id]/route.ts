@@ -13,6 +13,7 @@ import {
   updateChatThreadDraft,
   deleteChatThread,
 } from "../../../../../src/lib/zero/chat-thread";
+import { publishThreadListChanged } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { isNotFound } from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(chatThreadByIdContract, {
@@ -112,6 +113,7 @@ const router = tsr.router(chatThreadByIdContract, {
 
     try {
       await deleteChatThread(params.id, userId);
+      await publishThreadListChanged(userId);
       return { status: 204 as const, body: undefined };
     } catch (error) {
       if (isNotFound(error)) {

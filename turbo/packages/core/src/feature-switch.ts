@@ -267,6 +267,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show an inline streaming cursor on the last assistant message while the agent run is still active, so users see the agent is still working even after it has produced output",
     enabled: false,
   },
+  [FeatureSwitchKey.FreshdeskConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the Freshdesk helpdesk connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.ZoomConnector]: {
     maintainer: "ethan@vm0.ai",
     description:

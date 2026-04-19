@@ -9,6 +9,12 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
+import {
+  reloadChatThreads$,
+  reloadChatThreadsCounter$,
+} from "./chat-thread-list-reload.ts";
+
+export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
 const internalChatAgentId$ = state<string | null>(null);
 
@@ -84,14 +90,6 @@ export const currentChatThread$ = computed(
   },
 );
 
-const internalReloadChatThreads$ = state(0);
-
-export const reloadChatThreads$ = command(({ set }) => {
-  set(internalReloadChatThreads$, (n) => {
-    return n + 1;
-  });
-});
-
 /**
  * Mark a thread as read in the sidebar by triggering a full reload.
  * Uses reload (rather than in-place patch) so the server's authoritative
@@ -102,7 +100,7 @@ export const patchThreadRead$ = command(({ set }, _threadId: string) => {
 });
 
 export const chatThreads$ = computed(async (get) => {
-  get(internalReloadChatThreads$);
+  get(reloadChatThreadsCounter$);
   const agentId = await get(currentChatAgentId$);
   if (!agentId) {
     return [];

@@ -42,6 +42,13 @@ const chatThreadListItemSchema = z.object({
    */
   isRead: z.boolean(),
   isArchived: z.boolean(),
+  /**
+   * True when the thread has at least one non-terminal run
+   * (queued / pending / running). Drives the sidebar running indicator,
+   * which is mutually exclusive with the unread dot and shares the
+   * `ChatThreadReadIndicator` feature switch gate.
+   */
+  running: z.boolean(),
 });
 
 const toolSummaryEntrySchema = z.object({

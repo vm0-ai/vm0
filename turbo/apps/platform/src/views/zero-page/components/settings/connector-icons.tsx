@@ -96,6 +96,7 @@ const CONNECTOR_ICON_COLORFUL = {
   figma: true,
   firecrawl: true,
   fireflies: true,
+  freshdesk: true,
   gamma: true,
   "garmin-connect": true,
   gitlab: true,
