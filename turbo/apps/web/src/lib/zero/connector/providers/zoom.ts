@@ -41,6 +41,7 @@ export function buildZoomAuthorizationUrl(
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
+    scope: oauthConfig.scopes.join(" "),
     state,
   });
 
@@ -203,8 +204,7 @@ async function fetchZoomUserInfo(accessToken: string): Promise<ZoomUserInfo> {
 
   const username =
     data.display_name ??
-    [data.first_name, data.last_name].filter(Boolean).join(" ").trim() ??
-    null;
+    [data.first_name, data.last_name].filter(Boolean).join(" ").trim();
 
   return {
     id: data.id ?? "",
