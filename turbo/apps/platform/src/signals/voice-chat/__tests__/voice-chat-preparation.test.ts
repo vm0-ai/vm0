@@ -44,17 +44,12 @@ async function setup() {
 function mockPrepareEndpoint(
   responses: { status: "preparing" | "ready" | "failed"; id?: string }[],
 ) {
-  let callIndex = 0;
-  const counter = {
-    get count() {
-      return callIndex;
-    },
-  };
+  const counter = { count: 0 };
   server.use(
     mockApi(zeroVoiceChatPrepareTriggerContract.trigger, ({ respond }) => {
-      const responseIndex = Math.min(callIndex, responses.length - 1);
+      const responseIndex = Math.min(counter.count, responses.length - 1);
       const response = responses[responseIndex];
-      callIndex++;
+      counter.count++;
       return respond(200, {
         preparation: {
           id: response.id ?? "prep-1",
