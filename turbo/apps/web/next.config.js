@@ -5,6 +5,19 @@ const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    return [
+      // 301 permanent redirect: bare domain root → default locale.
+      // Using next.config redirects (not page.tsx) so Next.js returns a true
+      // 301 instead of the 308 that permanentRedirect() emits.
+      {
+        source: "/",
+        destination: "/en",
+        permanent: true,
+      },
+    ];
+  },
+
   async headers() {
     return [
       {
