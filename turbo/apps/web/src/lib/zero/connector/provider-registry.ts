@@ -146,6 +146,7 @@ import { podchaserHandler } from "./providers/podchaser-handler";
 import { productlaneHandler } from "./providers/productlane-handler";
 import { qdrantHandler } from "./providers/qdrant-handler";
 import { qiitaHandler } from "./providers/qiita-handler";
+import { replicateHandler } from "./providers/replicate-handler";
 import { resendHandler } from "./providers/resend-handler";
 import { revenuecatHandler } from "./providers/revenuecat-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
@@ -293,6 +294,7 @@ export const PROVIDER_HANDLERS: Record<
   pushinator: pushinatorHandler,
   qdrant: qdrantHandler,
   qiita: qiitaHandler,
+  replicate: replicateHandler,
   resend: resendHandler,
   revenuecat: revenuecatHandler,
   scrapeninja: scrapeninjaHandler,
