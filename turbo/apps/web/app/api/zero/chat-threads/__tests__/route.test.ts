@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
 import { GET, POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
   getOrgCacheEntry,
   insertTestChatMessage,
+  setTestChatThreadLastReadAt,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -13,7 +13,6 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { chatThreads } from "../../../../../src/db/schema/chat-thread";
 
 const context = testContext();
 
@@ -272,10 +271,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       content: "hi",
     });
     // Set last_read_at to now (after the message was created)
-    await globalThis.services.db
-      .update(chatThreads)
-      .set({ lastReadAt: new Date() })
-      .where(eq(chatThreads.id, readId));
+    await setTestChatThreadLastReadAt(readId, new Date());
 
     // Thread with last_read_at IS NULL → unread
     const unreadCreate = await POST(
@@ -292,10 +288,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       content: "hi",
     });
     // Explicitly null out last_read_at so message is newer than cursor
-    await globalThis.services.db
-      .update(chatThreads)
-      .set({ lastReadAt: null })
-      .where(eq(chatThreads.id, unreadId));
+    await setTestChatThreadLastReadAt(unreadId, null);
 
     const response = await GET(
       createTestRequest(

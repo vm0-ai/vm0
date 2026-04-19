@@ -354,6 +354,24 @@ export async function createTestSessionWithConversation(
 }
 
 /**
+ * Set last_read_at on a chat thread directly in the database.
+ *
+ * @why-db-direct The mark-read API sets last_read_at via a forward-only
+ * cursor (it never rewinds). Tests that need to seed a specific lastReadAt
+ * value (including null) must bypass the API to avoid the forward-only guard.
+ */
+export async function setTestChatThreadLastReadAt(
+  threadId: string,
+  lastReadAt: Date | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ lastReadAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
  * Insert a chat thread directly in the database.
  * Returns the thread ID.
  *

@@ -1,18 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { eq } from "drizzle-orm";
 import { POST as markRead } from "../route";
 import { POST as createThread } from "../../../route";
 import {
   createTestRequest,
   createTestCompose,
   insertTestChatMessage,
+  setTestChatThreadLastReadAt,
+  getTestChatThreadLastReadAt,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { chatThreads } from "../../../../../../../src/db/schema/chat-thread";
 import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
 import { reloadEnv } from "../../../../../../../src/env";
 
@@ -226,11 +226,8 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
       role: "assistant",
       content: "hello",
     });
-    // Null out last_read_at
-    await globalThis.services.db
-      .update(chatThreads)
-      .set({ lastReadAt: null })
-      .where(eq(chatThreads.id, threadId));
+    // Null out last_read_at to simulate an unread thread
+    await setTestChatThreadLastReadAt(threadId, null);
 
     // Mark as read
     const markRes = await markRead(
@@ -246,13 +243,8 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     expect(markRes.status).toBe(200);
 
     // Verify DB state
-    const [row] = await globalThis.services.db
-      .select({ lastReadAt: chatThreads.lastReadAt })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, threadId))
-      .limit(1);
-
-    expect(row?.lastReadAt).not.toBeNull();
+    const lastReadAt = await getTestChatThreadLastReadAt(threadId);
+    expect(lastReadAt).not.toBeNull();
   });
 
   it("publishes Ably signal on mark-read", async () => {

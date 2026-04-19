@@ -257,6 +257,9 @@ export function mockChatLifecycle(options?: {
         { status: 201 },
       );
     }),
+    http.post("*/api/zero/chat-threads/:id/mark-read", () => {
+      return HttpResponse.json({ lastReadAt: new Date().toISOString() });
+    }),
     // Unified chat message endpoint (creates thread + run + association)
     http.post("*/api/zero/chat/messages", async ({ request }) => {
       const body = (await request.json()) as { prompt?: string };
