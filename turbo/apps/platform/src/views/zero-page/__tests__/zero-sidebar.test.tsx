@@ -20,6 +20,7 @@ function mockAPIs({
       updatedAt: "2026-03-10T00:00:00Z",
       isRead: false,
       isArchived: false,
+      running: false,
     },
     {
       id: "thread-2",
@@ -29,6 +30,7 @@ function mockAPIs({
       updatedAt: "2026-03-09T00:00:00Z",
       isRead: false,
       isArchived: false,
+      running: false,
     },
   ],
 }: {
@@ -40,6 +42,7 @@ function mockAPIs({
     updatedAt: string;
     isRead: boolean;
     isArchived: boolean;
+    running: boolean;
   }[];
 } = {}) {
   server.use(

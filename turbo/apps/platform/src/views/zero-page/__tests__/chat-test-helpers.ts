@@ -115,6 +115,7 @@ interface ThreadListItem {
   updatedAt: string;
   isRead: boolean;
   isArchived: boolean;
+  running: boolean;
 }
 
 interface MockLifecycleControl {

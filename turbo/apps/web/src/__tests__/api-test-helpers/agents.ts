@@ -173,7 +173,8 @@ export async function createTestOrgMultiAuthModelProvider(
  */
 export async function updateTestChatThreadTitle(
   threadId: string,
+  userId: string,
   title: string,
 ): Promise<void> {
-  return updateChatThreadTitle(threadId, title);
+  return updateChatThreadTitle(threadId, userId, title);
 }

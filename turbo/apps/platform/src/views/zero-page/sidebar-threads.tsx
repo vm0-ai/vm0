@@ -71,6 +71,7 @@ function ChatThreadItem({
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const isUnread = showReadIndicator && !session.isRead;
+  const isRunning = showReadIndicator && session.running;
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
@@ -98,7 +99,13 @@ function ChatThreadItem({
               : "text-sidebar-foreground hover:bg-sidebar-accent"
         }`}
       >
-        {isUnread && !isSelected && (
+        {!isSelected && isRunning && (
+          <span
+            className="shrink-0 h-2 w-2 rounded-full bg-sky-600 animate-pulse"
+            aria-label="Running"
+          />
+        )}
+        {!isSelected && !isRunning && isUnread && (
           <span
             className="shrink-0 h-2 w-2 rounded-full bg-blue-500"
             aria-label="Unread"

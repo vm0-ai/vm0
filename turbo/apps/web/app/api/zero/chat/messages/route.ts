@@ -26,6 +26,7 @@ import {
   insertChatMessage,
   getLatestSessionIdForThread,
   getMessagesByThreadId,
+  publishThreadListChanged,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
@@ -190,7 +191,7 @@ const router = tsr.router(chatMessagesContract, {
         })
           .then((title) => {
             if (title) {
-              return updateChatThreadTitle(threadId, title);
+              return updateChatThreadTitle(threadId, authCtx.userId, title);
             }
           })
           .catch((err: unknown) => {
@@ -254,6 +255,7 @@ const router = tsr.router(chatMessagesContract, {
           [authCtx.userId],
           `chatThreadRunCreated:${threadId}`,
         );
+        await publishThreadListChanged(authCtx.userId);
       });
 
       return {

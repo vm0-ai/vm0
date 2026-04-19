@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET, POST } from "../route";
 import {
   createTestRequest,
@@ -13,6 +13,10 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { mockAblyPublish } from "../../../../../src/__tests__/ably-mock";
+import { reloadEnv } from "../../../../../src/env";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
+import { addTestRunToThread } from "../../../../../src/__tests__/db-test-seeders/agents";
 
 const context = testContext();
 
@@ -497,6 +501,140 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(data.threads).toHaveLength(1);
     expect(data.threads[0].id).toBe(threadId);
     expect(data.threads[0].isArchived).toBe(false);
+  });
+
+  it("reports running=false for a thread with no runs", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "No runs" }),
+      }),
+    );
+    await createRes.json();
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads[0].running).toBe(false);
+  });
+
+  it("reports running=true when a run is non-terminal", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Running" }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    const { runId } = await seedTestRun(user.userId, testComposeId, {
+      status: "running",
+    });
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const thread = data.threads.find((t: { id: string }) => {
+      return t.id === threadId;
+    });
+    expect(thread.running).toBe(true);
+  });
+
+  it("reports running=false when all runs reach terminal states", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Completed" }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    const { runId } = await seedTestRun(user.userId, testComposeId, {
+      status: "completed",
+    });
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    const thread = data.threads.find((t: { id: string }) => {
+      return t.id === threadId;
+    });
+    expect(thread.running).toBe(false);
+  });
+
+  it("reports running=true when any run is non-terminal even with a terminal sibling", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Mixed runs" }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    const doneRun = await seedTestRun(user.userId, testComposeId, {
+      status: "completed",
+    });
+    await addTestRunToThread(threadId, doneRun.runId, user.userId);
+    const queuedRun = await seedTestRun(user.userId, testComposeId, {
+      status: "queued",
+    });
+    await addTestRunToThread(threadId, queuedRun.runId, user.userId);
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    const thread = data.threads.find((t: { id: string }) => {
+      return t.id === threadId;
+    });
+    expect(thread.running).toBe(true);
+  });
+});
+
+describe("chat-threads - threadListChanged realtime signal", () => {
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    reloadEnv();
+    context.setupMocks();
+    await context.setupUser();
+    mockAblyPublish.mockClear();
+
+    const { composeId } = await createTestCompose(uniqueId("threadlist-ably"));
+    testComposeId = composeId;
+  });
+
+  it("publishes threadListChanged on thread create", async () => {
+    await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "T" }),
+      }),
+    );
+
+    expect(mockAblyPublish).toHaveBeenCalledWith("threadListChanged", null);
   });
 });
 

@@ -144,7 +144,7 @@ async function handleCompleted(
       priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
     });
     if (title) {
-      await updateChatThreadTitle(threadId, title);
+      await updateChatThreadTitle(threadId, userId, title);
     }
   } catch (err) {
     log.warn("Failed to generate chat title", { err });

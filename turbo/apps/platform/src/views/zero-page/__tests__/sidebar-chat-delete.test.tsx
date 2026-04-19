@@ -23,6 +23,7 @@ function makeThread(
   updatedAt: string;
   isRead: boolean;
   isArchived: boolean;
+  running: boolean;
 } {
   return {
     id,
@@ -32,6 +33,7 @@ function makeThread(
     updatedAt: createdAt,
     isRead: false,
     isArchived: false,
+    running: false,
   };
 }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET, DELETE, PATCH } from "../route";
 import { GET as listThreads, POST } from "../../route";
 import {
@@ -13,6 +13,8 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
+import { reloadEnv } from "../../../../../../src/env";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
 import { insertTestAssistantEventMessages } from "../../../../../../src/__tests__/db-test-seeders/agents";
@@ -186,7 +188,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const { id: threadId } = await createResponse.json();
 
     // Update title via service (simulates what the complete webhook does)
-    await updateTestChatThreadTitle(threadId, "AI-Generated Title");
+    await updateTestChatThreadTitle(threadId, testUserId, "AI-Generated Title");
 
     // Fetch thread detail and verify title was updated
     const response = await GET(
@@ -217,7 +219,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const { id: threadId } = await createResponse.json();
 
     // Update title
-    await updateTestChatThreadTitle(threadId, "After AI update");
+    await updateTestChatThreadTitle(threadId, testUserId, "After AI update");
 
     // List threads and verify title is reflected
     const listResponse = await listThreads(
@@ -450,6 +452,30 @@ describe("DELETE /api/zero/chat-threads/:id - Delete Thread", () => {
       ),
     );
     expect(deleteResponse.status).toBe(404);
+  });
+
+  it("publishes threadListChanged on successful delete", async () => {
+    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    reloadEnv();
+
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Deletable" }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+    mockAblyPublish.mockClear();
+
+    await DELETE(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        { method: "DELETE" },
+      ),
+    );
+
+    expect(mockAblyPublish).toHaveBeenCalledWith("threadListChanged", null);
   });
 });
 
