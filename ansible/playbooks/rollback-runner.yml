@@ -229,13 +229,21 @@
     #
     # Draining→Stopping has committed; teardown is irreversible. Wait for
     # systemd to mark the unit inactive (bounded by shutdown overhead —
-    # seconds, not minutes, since active jobs no longer gate teardown),
-    # then fall through to the normal install path.
+    # seconds, not minutes on the nominal path, since active jobs no
+    # longer gate teardown), then fall through to the normal install
+    # path.
+    #
+    # Retry budget is 60 × 2s = 120s, deliberately larger than nominal
+    # teardown (a few seconds) so FC-VM cleanup variance doesn't flake
+    # the rollback. Still shorter than systemd's TimeoutStopSec=5min;
+    # if shutdown wedges past 120s, fail here rather than block the
+    # rollback for another 3 minutes — the operator can SSH in and
+    # SIGKILL.
     - name: Wait for target to go inactive
       when: target_state in ["stopping", "stopped"]
       command: systemctl is-active --quiet vm0-runner-{{ runner_name }}.service
       register: wait_inactive
-      retries: 30
+      retries: 60
       delay: 2
       until: wait_inactive.rc != 0
       # systemctl is-active returns 0 when active, non-zero when inactive.
@@ -399,6 +407,18 @@
     #               Use during active incidents where continuing to serve
     #               the bad version is worse than the cost of aborting
     #               in-flight user tasks.
+    #
+    # Both branches shell out to `{{ bin_dir }}/runner`. On the
+    # skip_install path, Phase 5/6 were skipped so no prior task has
+    # touched the binary — assert it exists so a host where gc evicted
+    # the target (yet somehow still has the unit active) surfaces a
+    # clear error instead of a confusing "No such file or directory".
+    - name: Assert target binary present before drain/stop
+      stat:
+        path: "{{ bin_dir }}/runner"
+      register: tgt_bin_precheck
+      failed_when: not (tgt_bin_precheck.stat.exists and tgt_bin_precheck.stat.executable)
+
     - name: Find running runner services
       shell: >
         systemctl list-units 'vm0-runner-*.service' --state=running
