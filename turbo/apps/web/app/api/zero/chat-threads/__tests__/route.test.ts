@@ -274,8 +274,9 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       role: "assistant",
       content: "hi",
     });
-    // Set last_read_at to now (after the message was created)
-    await setTestChatThreadLastReadAt(readId, new Date());
+    // Set last_read_at to a future time to ensure it is >= the message's
+    // DB-server createdAt regardless of any clock skew between Node.js and Postgres.
+    await setTestChatThreadLastReadAt(readId, new Date(Date.now() + 60_000));
 
     // Thread with last_read_at IS NULL → unread
     const unreadCreate = await POST(
