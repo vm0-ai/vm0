@@ -3147,6 +3147,29 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  exa: {
+    label: "Exa",
+    environmentMapping: {
+      EXA_API_KEY: "$secrets.EXA_API_KEY",
+    },
+    helpText:
+      "Connect your Exa account to perform AI-native semantic web search, retrieve page contents, and find similar pages",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [dashboard.exa.ai](https://dashboard.exa.ai)\n2. Click your account \u2192 **API Keys** \u2192 **Create API Key**\n3. Copy the key (starts with `exa_`). Free tier: 1,000 requests/month.",
+        secrets: {
+          EXA_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "exa_...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   explorium: {
     label: "Explorium",
     environmentMapping: {

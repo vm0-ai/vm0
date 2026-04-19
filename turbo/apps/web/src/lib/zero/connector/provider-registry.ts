@@ -51,6 +51,7 @@ import { dropboxHandler } from "./providers/dropbox-handler";
 import { dropboxSignHandler } from "./providers/dropbox-sign-handler";
 import { duffelHandler } from "./providers/duffel-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
+import { exaHandler } from "./providers/exa-handler";
 import { exploriumHandler } from "./providers/explorium-handler";
 import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
@@ -213,6 +214,7 @@ export const PROVIDER_HANDLERS: Record<
   "dropbox-sign": dropboxSignHandler,
   duffel: duffelHandler,
   elevenlabs: elevenlabsHandler,
+  exa: exaHandler,
   explorium: exploriumHandler,
   fal: falHandler,
   figma: figmaHandler,

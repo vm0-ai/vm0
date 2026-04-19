@@ -49,6 +49,7 @@ import { generate as generateDropbox } from "./dropbox";
 import { generate as generateDropboxSign } from "./dropbox-sign";
 import { generate as generateDuffel } from "./duffel";
 import { generate as generateElevenlabs } from "./elevenlabs";
+import { generate as generateExa } from "./exa";
 import { generate as generateExplorium } from "./explorium";
 import { generate as generateFal } from "./fal";
 import { generate as generateFigma } from "./figma";
@@ -198,6 +199,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "dropbox-sign": generateDropboxSign,
   duffel: generateDuffel,
   elevenlabs: generateElevenlabs,
+  exa: generateExa,
   explorium: generateExplorium,
   fal: generateFal,
   figma: generateFigma,
