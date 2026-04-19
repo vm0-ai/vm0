@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use super::JobProvider;
@@ -52,6 +52,14 @@ pub struct MockJobProvider {
     completions: Arc<StdMutex<Vec<Completion>>>,
     heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
     cancel: CancellationToken,
+    /// Fired each time `discover()` has reached its inner `select!` await
+    /// point (lock + optional `poll_delay` complete, about to park on
+    /// `rx.recv()`). Tests that need to order actions against that state —
+    /// e.g. a silent `send_if_modified` that must land *after* the main loop
+    /// has entered its `discover_fut` select — await `notified()` instead of
+    /// sleeping. `notify_one` queues a permit, so a test that waits after
+    /// the signal fired still wakes immediately.
+    discover_entered: Arc<Notify>,
 }
 
 /// Test-side handle for driving the mock provider.
@@ -59,6 +67,8 @@ pub struct MockProviderHandle {
     pub discover_tx: mpsc::UnboundedSender<(RunId, String)>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
+    /// See [`MockJobProvider::discover_entered`].
+    pub discover_entered: Arc<Notify>,
 }
 
 impl MockJobProvider {
@@ -83,6 +93,7 @@ impl MockJobProvider {
         let (tx, rx) = mpsc::unbounded_channel();
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
+        let discover_entered = Arc::new(Notify::new());
         let provider = Arc::new(Self {
             discovery: Mutex::new(rx),
             poll_delay,
@@ -90,11 +101,13 @@ impl MockJobProvider {
             completions: Arc::clone(&completions),
             heartbeats: Arc::clone(&heartbeats),
             cancel,
+            discover_entered: Arc::clone(&discover_entered),
         });
         let handle = MockProviderHandle {
             discover_tx: tx,
             completions,
             heartbeats,
+            discover_entered,
         };
         (provider, handle)
     }
@@ -153,6 +166,11 @@ impl JobProvider for MockJobProvider {
         if let Some(delay) = self.poll_delay {
             tokio::time::sleep(delay).await;
         }
+        // Signal tests that the future has reached its await point — the
+        // main loop has polled `discover_fut`, the discovery Mutex is held,
+        // and we are about to park on `rx.recv()`. Tests ordering actions
+        // against this state use `handle.discover_entered.notified()`.
+        self.discover_entered.notify_one();
         tokio::select! {
             result = rx.recv() => result,
             () = self.cancel.cancelled() => None,

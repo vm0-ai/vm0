@@ -2603,7 +2603,12 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Deterministic barrier: wait for run()'s main loop to have polled
+        // `discover_fut` into its await state. Only then is the Running-arm
+        // `select!` provably in place, which is the precondition for the
+        // silent `send_if_modified` below to land without waking the loop.
+        // A wall-clock sleep here flakes under coverage CI — see #10146.
+        env.handle.discover_entered.notified().await;
 
         // Flip the watch value to Stopping without firing changed().
         env.mode_tx.send_if_modified(|v| {
