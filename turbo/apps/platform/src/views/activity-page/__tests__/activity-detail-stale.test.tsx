@@ -15,6 +15,7 @@ import type {
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -103,6 +104,7 @@ function mockAPIs() {
     },
   ];
 
+  setMockComposesList([]);
   server.use(
     mockApi(logsListContract.list, ({ respond }) => {
       return respond(200, {

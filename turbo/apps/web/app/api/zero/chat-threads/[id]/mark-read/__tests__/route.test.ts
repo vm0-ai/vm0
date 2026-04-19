@@ -266,5 +266,6 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
       expect.stringContaining(`chatThreadReadCursorUpdated:${threadId}`),
       expect.objectContaining({ lastReadAt: expect.any(String) }),
     );
+    expect(mockAblyPublish).toHaveBeenCalledWith("threadListChanged", null);
   });
 });

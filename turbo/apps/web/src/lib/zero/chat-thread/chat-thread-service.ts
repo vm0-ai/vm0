@@ -7,6 +7,7 @@ import { notFound } from "../../shared/errors";
 import {
   getMessagesByThreadId,
   getLatestSessionIdForThread,
+  publishThreadListChanged,
 } from "./chat-message-service";
 import {
   type PersistedAttachment,
@@ -72,6 +73,7 @@ export async function listChatThreads(
     updatedAt: Date;
     isRead: boolean;
     lastMessageArchivedAt: Date | null;
+    running: boolean;
   }>
 > {
   const lastMessage = globalThis.services.db
@@ -98,6 +100,13 @@ export async function listChatThreads(
         ELSE ${chatThreads.lastReadAt} >= ${lastMessage.createdAt}
       END`,
       lastMessageArchivedAt: lastMessage.archivedAt,
+      running: sql<boolean>`EXISTS (
+        SELECT 1
+        FROM ${zeroRuns}
+        INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+        WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
+          AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+      )`,
     })
     .from(chatThreads)
     .leftJoin(
@@ -250,12 +259,14 @@ export async function deleteChatThread(
  */
 export async function updateChatThreadTitle(
   threadId: string,
+  userId: string,
   title: string,
 ): Promise<void> {
   await globalThis.services.db
     .update(chatThreads)
     .set({ title })
     .where(eq(chatThreads.id, threadId));
+  await publishThreadListChanged(userId);
 }
 
 type ChatMessage = {

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { mockLocation } from "../../../location.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
@@ -14,6 +13,9 @@ import {
 } from "../org-manage-dialog.ts";
 import { orgManageTab$, inviteMember$ } from "../org-manage-tabs-state.ts";
 import { searchParams$ } from "../../../route.ts";
+import { setMockOrg } from "../../../../mocks/handlers/api-org.ts";
+import { zeroOrgInviteContract } from "@vm0/core";
+import { mockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -103,16 +105,7 @@ describe("checkSettingsParam$", () => {
   it("should redirect non-admin to general tab for admin-only tabs", async () => {
     const { store, signal } = context;
     setupAuth(signal);
-    server.use(
-      http.get("*/api/zero/org", () => {
-        return HttpResponse.json({
-          id: "org_1",
-          slug: "user-12345678",
-          name: "User 12345678",
-          role: "member",
-        });
-      }),
-    );
+    setMockOrg({ role: "member" });
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=billing" }, signal);
 
@@ -145,16 +138,13 @@ describe("inviteMember$", () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     server.use(
-      http.post("*/api/zero/org/invite", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Already a member",
-              code: "INTERNAL_SERVER_ERROR",
-            },
+      mockApi(zeroOrgInviteContract.invite, ({ respond }) => {
+        return respond(400, {
+          error: {
+            message: "Already a member",
+            code: "INTERNAL_SERVER_ERROR",
           },
-          { status: 400 },
-        );
+        });
       }),
     );
 

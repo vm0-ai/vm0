@@ -7,7 +7,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
@@ -19,7 +18,11 @@ import {
   downgradeDialogOpen$,
   setBillingDialogOpen$,
 } from "../../../signals/zero-page/billing.ts";
-import { mockBillingPageAPIs } from "./billing-dialog-test-helpers.ts";
+import {
+  zeroBillingAutoRechargeContract,
+  zeroBillingCheckoutContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -38,9 +41,9 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
   it("calls PUT auto-recharge with enabled: true when switch is clicked while disabled", async () => {
     let capturedBody: unknown;
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           enabled: true,
           threshold: null,
           amount: null,
@@ -49,7 +52,6 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -76,7 +78,6 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
 
 describe("chat-s-084: auto-recharge toggle state reflects enabled value from server", () => {
   it("shows aria-checked=false when auto-recharge is disabled", async () => {
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -95,7 +96,6 @@ describe("chat-s-084: auto-recharge toggle state reflects enabled value from ser
   });
 
   it("shows aria-checked=true when auto-recharge is enabled", async () => {
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -118,9 +118,9 @@ describe("chat-i-079: threshold input updates form state on change", () => {
   it("calls PUT auto-recharge with new threshold when Save is clicked after changing threshold", async () => {
     let capturedBody: unknown;
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           enabled: true,
           threshold: 2000,
           amount: 10_000,
@@ -129,7 +129,6 @@ describe("chat-i-079: threshold input updates form state on change", () => {
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -163,9 +162,9 @@ describe("chat-i-080: amount input updates form state on change", () => {
   it("calls PUT auto-recharge with new amount when Save is clicked after changing amount", async () => {
     let capturedBody: unknown;
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           enabled: true,
           threshold: 1000,
           amount: 20_000,
@@ -174,7 +173,6 @@ describe("chat-i-080: amount input updates form state on change", () => {
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -208,9 +206,9 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
   it("calls PUT auto-recharge with correct values when Save is clicked", async () => {
     let capturedBody: unknown;
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           enabled: true,
           threshold: 2000,
           amount: 5000,
@@ -219,7 +217,6 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -265,7 +262,6 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
 describe("chat-i-082: plan card click updates selected tier", () => {
   it("sets Team card to aria-pressed=true when clicked", async () => {
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -298,16 +294,15 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
   it("calls POST checkout with tier=team when Upgrade to Team is clicked", async () => {
     let capturedCheckoutBody: unknown;
     server.use(
-      http.post("*/api/zero/billing/checkout", async ({ request }) => {
-        capturedCheckoutBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        capturedCheckoutBody = body;
+        return respond(200, {
           url: "https://checkout.stripe.com/test?tier=team",
         });
       }),
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -345,7 +340,6 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
 
   it("opens downgrade dialog when Downgrade is clicked after selecting Free", async () => {
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -383,10 +377,6 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
 });
 
 describe("chat-i-085: form fields derive from server config via async computed", () => {
-  beforeEach(() => {
-    mockBillingPageAPIs();
-  });
-
   it("displays threshold and amount from autoRechargeConfig$ async computed path", async () => {
     setMockBillingStatus({
       tier: "pro",
@@ -408,21 +398,12 @@ describe("chat-i-085: form fields derive from server config via async computed",
 });
 
 describe("chat-i-086: form overrides clear after successful save", () => {
-  beforeEach(() => {
-    mockBillingPageAPIs();
-  });
-
   it("reverts inputs to server-returned values after save completes", async () => {
     // The default mock PUT handler (apiBillingHandlers) updates mockBillingStatus
     // in place, so after PUT the GET /billing/status will return the new values.
     // We register a custom PUT that returns 4000/20000 as the saved values.
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-        const body = (await request.json()) as {
-          enabled: boolean;
-          threshold?: number;
-          amount?: number;
-        };
+      mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
         // Update mock so subsequent GET /billing/status returns the new values
         setMockBillingStatus({
           autoRecharge: {
@@ -431,7 +412,7 @@ describe("chat-i-086: form overrides clear after successful save", () => {
             amount: body.amount ?? null,
           },
         });
-        return HttpResponse.json({
+        return respond(200, {
           enabled: true,
           threshold: body.threshold ?? null,
           amount: body.amount ?? null,

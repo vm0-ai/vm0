@@ -24,6 +24,7 @@ function mockTwoAgents() {
       updatedAt: "2026-03-10T00:00:00Z",
       isRead: false,
       isArchived: false,
+      running: false,
     },
     {
       id: "thread-beta-1",
@@ -33,6 +34,7 @@ function mockTwoAgents() {
       updatedAt: "2026-03-09T00:00:00Z",
       isRead: false,
       isArchived: false,
+      running: false,
     },
   ];
 

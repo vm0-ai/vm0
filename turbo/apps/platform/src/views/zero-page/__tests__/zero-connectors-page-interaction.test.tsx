@@ -11,11 +11,12 @@
 import { expect, test } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
+import { zeroConnectorScopeDiffContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -78,8 +79,8 @@ test("review button opens scope diff with added permissions (CONN-I-013)", async
   mockConnectors([{ type: "github", oauthScopes: [] }]);
 
   server.use(
-    http.get("*/api/zero/connectors/:type/scope-diff", () => {
-      return HttpResponse.json({
+    mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ respond }) => {
+      return respond(200, {
         addedScopes: ["repo", "project"],
         removedScopes: [],
         currentScopes: [],

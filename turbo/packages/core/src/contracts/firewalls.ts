@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { parseSegment } from "./segment-parser";
+
 /**
  * Proxy-side firewall configuration for token replacement.
  *
@@ -278,11 +280,6 @@ export function resolveFirewallBaseUrlVars(
 }
 
 /**
- * Pattern matching `{name}`, `{name+}`, or `{name*}` parameter segments.
- */
-const PARAM_SEGMENT_PATTERN = /^\{([^}]*)\}$/;
-
-/**
  * Check if a base URL contains `{name}` style parameter placeholders
  * (as opposed to `${{ vars.X }}` template references).
  */
@@ -306,8 +303,10 @@ function errMsg(base: string, svc: string, detail: string): string {
 
 /**
  * Validate host segments (`.`-delimited) for parameterized base URLs.
- * Greedy params (`+`/`*`) must be the first (leftmost) host segment.
- * At least one static segment is required for security.
+ * Greedy params (`+`/`*`) must be the first (leftmost) host segment and
+ * must not appear in mixed segments (prefix/suffix).
+ * At least one pure-literal segment is required for security — a mixed
+ * segment carrying a parameter is NOT counted as static.
  */
 function validateHostParams(
   segments: string[],
@@ -321,35 +320,33 @@ function validateHostParams(
   let hasStatic = false;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
-    const match = PARAM_SEGMENT_PATTERN.exec(seg);
-    if (!match) {
-      if (seg.includes("{") || seg.includes("}")) {
-        throw new Error(
-          errMsg(
-            base,
-            svc,
-            `host segment "${seg}" contains "{" or "}" but is not a valid parameter (use "{name}" for the full segment)`,
-          ),
-        );
-      }
+    const parsed = parseSegment(seg);
+    if (parsed.kind === "error") {
+      throw new Error(errMsg(base, svc, parsed.reason));
+    }
+    if (parsed.kind === "literal") {
       hasStatic = true;
       continue;
     }
-    const name = match[1]!;
-    const isGreedy = name.endsWith("+") || name.endsWith("*");
-    const baseName = isGreedy ? name.slice(0, -1) : name;
-    if (!baseName) {
-      throw new Error(errMsg(base, svc, "empty parameter name in host"));
-    }
-    if (paramNames.has(baseName)) {
+    const { name, greedy, prefix, suffix } = parsed;
+    if (paramNames.has(name)) {
       throw new Error(
-        errMsg(base, svc, `duplicate parameter name "{${baseName}}" in host`),
+        errMsg(base, svc, `duplicate parameter name "{${name}}" in host`),
       );
     }
-    paramNames.add(baseName);
-    if (isGreedy && i !== 0) {
+    paramNames.add(name);
+    if (greedy && i !== 0) {
       throw new Error(
-        errMsg(base, svc, `{${name}} must be the first host segment`),
+        errMsg(base, svc, `{${name}${greedy}} must be the first host segment`),
+      );
+    }
+    if (greedy && (prefix !== "" || suffix !== "")) {
+      throw new Error(
+        errMsg(
+          base,
+          svc,
+          `greedy parameter {${name}${greedy}} cannot be combined with a literal prefix or suffix in host segment "${seg}"`,
+        ),
       );
     }
   }
@@ -362,7 +359,9 @@ function validateHostParams(
 
 /**
  * Validate path segments (`/`-delimited) for parameterized base URLs.
- * Only `{param}` is allowed — greedy params are rejected.
+ * Greedy params (`+`/`*`) are rejected — they would consume the entire
+ * remaining path, leaving nothing for permission rules to match against.
+ * Mixed segments (`{param}.ext`, `prefix-{param}`) are accepted.
  */
 function validatePathParams(
   segments: string[],
@@ -371,29 +370,18 @@ function validatePathParams(
   svc: string,
 ): void {
   for (const seg of segments) {
-    const match = PARAM_SEGMENT_PATTERN.exec(seg);
-    if (!match) {
-      if (seg.includes("{") || seg.includes("}")) {
-        throw new Error(
-          errMsg(
-            base,
-            svc,
-            `path segment "${seg}" contains "{" or "}" but is not a valid parameter (use "{name}" for the full segment)`,
-          ),
-        );
-      }
-      continue;
+    const parsed = parseSegment(seg);
+    if (parsed.kind === "error") {
+      throw new Error(errMsg(base, svc, parsed.reason));
     }
-    const name = match[1]!;
-    if (!name) {
-      throw new Error(errMsg(base, svc, "empty parameter name in path"));
-    }
-    if (name.endsWith("+") || name.endsWith("*")) {
+    if (parsed.kind === "literal") continue;
+    const { name, greedy } = parsed;
+    if (greedy) {
       throw new Error(
         errMsg(
           base,
           svc,
-          `greedy parameter {${name}} is not allowed in base URL path`,
+          `greedy parameter {${name}${greedy}} is not allowed in base URL path`,
         ),
       );
     }

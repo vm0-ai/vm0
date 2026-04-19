@@ -1,6 +1,11 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -95,6 +100,13 @@ import {
   syncInstructionDraftEntry$,
   type ScheduleSettingsSnapshot,
 } from "../../signals/schedule-page/schedule-form.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
+import { FeatureSwitchKey } from "@vm0/core";
+import {
+  ModelProviderPicker,
+  type ModelProviderSelection,
+} from "./components/model-provider-picker.tsx";
 
 const SCHEDULE_DETAIL_TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
@@ -254,6 +266,8 @@ function buildSettingsSnapshot(
     description: entry.description ?? "",
     dayOfWeek: parsed.dayOfWeek ?? "1",
     dayOfMonth: parsed.dayOfMonth ?? "1",
+    modelProviderId: entry.modelProviderId,
+    selectedModel: entry.selectedModel,
   };
 }
 
@@ -269,7 +283,9 @@ function isSettingsChanged(
     a.timezone !== b.timezone ||
     a.loopMinutes !== b.loopMinutes ||
     a.agentId !== b.agentId ||
-    a.description !== b.description
+    a.description !== b.description ||
+    a.modelProviderId !== b.modelProviderId ||
+    a.selectedModel !== b.selectedModel
   );
 }
 
@@ -302,6 +318,11 @@ function ScheduleSettingsForm({
   const showDeleteConfirmVal = useGet(showDeleteConfirm$);
   const setShowDeleteConfirmVal = useSet(setShowDeleteConfirm$);
 
+  const features = useLastResolved(featureSwitch$);
+  const showModelPicker =
+    features?.[FeatureSwitchKey.ModelProviderSelection] ?? false;
+  const orgProviders = useLastResolved(orgModelProviders$);
+
   // Reset form when entry changes (component is keyed by entry.id)
   useSet(syncSettingsFormEntry$)(entry.id, entry.prompt, initial);
 
@@ -316,6 +337,8 @@ function ScheduleSettingsForm({
     description: form.description,
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
+    modelProviderId: form.modelProviderId,
+    selectedModel: form.selectedModel,
   };
   const isDirty = savedState ? isSettingsChanged(current, savedState) : false;
 
@@ -332,6 +355,8 @@ function ScheduleSettingsForm({
       loopMinutes: savedState.loopMinutes,
       agentId: savedState.agentId,
       description: savedState.description,
+      modelProviderId: savedState.modelProviderId,
+      selectedModel: savedState.selectedModel,
     });
   };
 
@@ -350,6 +375,8 @@ function ScheduleSettingsForm({
       intervalSeconds: form.loopMinutes * 60,
       editName: entry.name,
       agentId: form.agentId,
+      modelProviderId: form.modelProviderId,
+      selectedModel: form.selectedModel,
       ...(form.freq === "every_week" ? { dayOfWeek: form.dayOfWeek } : {}),
       ...(form.freq === "every_month" ? { dayOfMonth: form.dayOfMonth } : {}),
     });
@@ -461,6 +488,35 @@ function ScheduleSettingsForm({
               ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} this schedule`}
             />
           </InlineSettingsRow>
+
+          {showModelPicker &&
+            orgProviders &&
+            orgProviders.modelProviders.length > 0 && (
+              <InlineSettingsRow
+                label="Model"
+                description="Override the org default model for this schedule."
+              >
+                <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
+                  <ModelProviderPicker
+                    providers={orgProviders.modelProviders}
+                    value={
+                      form.modelProviderId && form.selectedModel
+                        ? {
+                            modelProviderId: form.modelProviderId,
+                            selectedModel: form.selectedModel,
+                          }
+                        : null
+                    }
+                    onChange={(sel: ModelProviderSelection | null) => {
+                      updateForm({
+                        modelProviderId: sel?.modelProviderId ?? null,
+                        selectedModel: sel?.selectedModel ?? null,
+                      });
+                    }}
+                  />
+                </div>
+              </InlineSettingsRow>
+            )}
         </CardContent>
       </Card>
 

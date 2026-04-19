@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -49,13 +49,24 @@ import {
   resetSettingsForm$,
   markSettingsSaved$,
   deleteAgent$,
+  settingsModelSelection$,
+  setSettingsModelSelection$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
+import { FeatureSwitchKey } from "@vm0/core";
+import {
+  ModelProviderPicker,
+  type ModelProviderSelection,
+} from "./components/model-provider-picker.tsx";
 
 interface ZeroSettingsTabProps {
   displayName: string;
   description: string;
   sound: Tone;
   avatarUrl: string | null;
+  modelProviderId?: string | null;
+  selectedModel?: string | null;
   updateSettings$: Command<
     Promise<void>,
     [
@@ -64,6 +75,8 @@ interface ZeroSettingsTabProps {
         sound: string;
         description: string;
         avatarUrl?: string | null;
+        modelProviderId?: string | null;
+        selectedModel?: string | null;
       },
       AbortSignal,
     ]
@@ -80,16 +93,27 @@ export function ZeroSettingsTab({
   description: initialDescription,
   sound: initialSound,
   avatarUrl: initialAvatarUrl,
+  modelProviderId: initialModelProviderId,
+  selectedModel: initialSelectedModel,
   updateSettings$,
   inputId = "zero-agent-name",
   isDefaultAgent = false,
   onDelete,
 }: ZeroSettingsTabProps) {
+  const initialModelSelection: ModelProviderSelection | null =
+    initialModelProviderId && initialSelectedModel
+      ? {
+          modelProviderId: initialModelProviderId,
+          selectedModel: initialSelectedModel,
+        }
+      : null;
+
   useSet(initSettingsForm$)({
     name: resolvedAgentName,
     description: initialDescription,
     tone: initialSound,
     avatarUrl: initialAvatarUrl,
+    modelSelection: initialModelSelection,
   });
 
   const agentName = useGet(settingsAgentName$);
@@ -100,9 +124,16 @@ export function ZeroSettingsTab({
   const setTone = useSet(setSettingsTone$);
   const avatarUrl = useGet(settingsAvatarUrl$);
   const setAvatarUrl = useSet(setSettingsAvatarUrl$);
+  const modelSelection = useGet(settingsModelSelection$);
+  const setModelSelection = useSet(setSettingsModelSelection$);
   const isSettingsDirty = useGet(settingsDirty$);
   const resetForm = useSet(resetSettingsForm$);
   const markSaved = useSet(markSettingsSaved$);
+
+  const features = useLastResolved(featureSwitch$);
+  const showModelPicker =
+    features?.[FeatureSwitchKey.ModelProviderSelection] ?? false;
+  const orgProviders = useLastResolved(orgModelProviders$);
 
   const [deleteLoadable, deleteAgentFn] = useLoadableSet(deleteAgent$);
   const deleting = deleteLoadable.state === "loading";
@@ -125,6 +156,8 @@ export function ZeroSettingsTab({
           description: desc,
           sound: tone,
           avatarUrl,
+          modelProviderId: modelSelection?.modelProviderId ?? null,
+          selectedModel: modelSelection?.selectedModel ?? null,
         },
         pageSignal,
       ).then(() => {
@@ -178,6 +211,9 @@ export function ZeroSettingsTab({
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
+                          modelProviderId:
+                            modelSelection?.modelProviderId ?? null,
+                          selectedModel: modelSelection?.selectedModel ?? null,
                         },
                         pageSignal,
                       ).then(() => {
@@ -287,6 +323,23 @@ export function ZeroSettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
+            {showModelPicker &&
+              orgProviders &&
+              orgProviders.modelProviders.length > 0 && (
+                <InlineSettingsRow
+                  label="Model"
+                  description="Override the org default model for this agent."
+                  wideControls
+                >
+                  <div className="min-w-0 w-full">
+                    <ModelProviderPicker
+                      providers={orgProviders.modelProviders}
+                      value={modelSelection}
+                      onChange={setModelSelection}
+                    />
+                  </div>
+                </InlineSettingsRow>
+              )}
           </CardContent>
         </Card>
 

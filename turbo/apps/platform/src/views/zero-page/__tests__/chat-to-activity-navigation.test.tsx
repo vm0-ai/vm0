@@ -15,6 +15,7 @@ import {
   logsByIdContract,
   zeroRunAgentEventsContract,
 } from "@vm0/core";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -97,6 +98,17 @@ function mockActivityDetailAPIs() {
     framework: "claude-code",
   };
 
+  setMockComposesList([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      name: "test-agent",
+      displayName: "Test Agent",
+      description: null,
+      sound: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   server.use(
     mockApi(logsByIdContract.getById, ({ params, respond }) => {
       if (params.id === "a0000000-0000-4000-a000-000000000011") {

@@ -22,6 +22,8 @@ function mockScheduleBase() {
     consecutiveFailures: 0,
     nextRunAt: null,
     lastRunAt: null,
+    modelProviderId: null,
+    selectedModel: null,
   };
 }
 

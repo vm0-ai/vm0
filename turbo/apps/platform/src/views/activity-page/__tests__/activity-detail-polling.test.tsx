@@ -9,6 +9,7 @@ import type {
 } from "../../../signals/zero-page/log-types.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { logsByIdContract, zeroRunAgentEventsContract } from "@vm0/core";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -40,6 +41,7 @@ describe("activity detail polling with initially empty events", () => {
   it("should pick up events that appear after the initial empty fetch", async () => {
     let eventFetchCount = 0;
 
+    setMockComposesList([]);
     server.use(
       mockApi(logsByIdContract.getById, ({ respond }) => {
         return respond(

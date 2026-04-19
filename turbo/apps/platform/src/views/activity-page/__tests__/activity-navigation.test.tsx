@@ -14,6 +14,7 @@ import {
   logsByIdContract,
   zeroRunAgentEventsContract,
 } from "@vm0/core";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -71,6 +72,7 @@ function mockActivityAPIs() {
     framework: "claude-code",
   };
 
+  setMockComposesList([]);
   server.use(
     mockApi(logsListContract.list, ({ respond }) => {
       return respond(200, {

@@ -31,6 +31,8 @@ export const scheduleResponseSchema = z.object({
   consecutiveFailures: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  modelProviderId: z.string().uuid().nullable().default(null),
+  selectedModel: z.string().nullable().default(null),
 });
 
 export const scheduleListResponseSchema = z.object({
@@ -58,6 +60,8 @@ const zeroDeployScheduleRequestSchema = z
     volumeVersions: z.record(z.string(), z.string()).optional(),
     agentId: z.string().uuid("Invalid agent ID"),
     enabled: z.boolean().optional(),
+    modelProviderId: z.string().uuid().nullable().optional(),
+    selectedModel: z.string().nullable().optional(),
   })
   .refine(
     (data) => {

@@ -93,6 +93,8 @@ async function updateInstructions(
         agent?.permissionPolicies,
         agent?.unknownPermissionPolicies,
       ),
+      modelProviderId: agent?.modelProviderId ?? null,
+      selectedModel: agent?.selectedModel ?? null,
       customSkills: agent?.customSkills ?? [],
     },
   };

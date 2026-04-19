@@ -148,6 +148,8 @@ function buildAgentResponse(
       agent?.unknownPermissionPolicies,
     ),
     customSkills: agent?.customSkills ?? [],
+    modelProviderId: agent?.modelProviderId ?? null,
+    selectedModel: agent?.selectedModel ?? null,
   };
 }
 

@@ -295,6 +295,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "rollout window defined by `enabledOrgIdHashes`.",
     enabled: false,
   },
+  [FeatureSwitchKey.ModelProviderSelection]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the model provider + model picker on the agent profile page and schedule dialog. " +
+      "Allows per-agent and per-schedule model selection, overriding the org default. " +
+      "Staff-only during initial rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

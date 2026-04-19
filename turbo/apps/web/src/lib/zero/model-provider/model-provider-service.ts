@@ -1028,3 +1028,45 @@ export function getOrgDefaultModelProvider(
 ): Promise<ModelProviderInfo | null> {
   return getDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID, framework);
 }
+
+/**
+ * Get a specific model provider by ID, scoped to an org.
+ * Returns null if the provider doesn't belong to the org.
+ */
+export async function getModelProviderByIdForOrg(
+  orgId: string,
+  providerId: string,
+): Promise<ModelProviderInfo | null> {
+  const [row] = await globalThis.services.db
+    .select({
+      id: modelProviders.id,
+      type: modelProviders.type,
+      isDefault: modelProviders.isDefault,
+      selectedModel: modelProviders.selectedModel,
+      authMethod: modelProviders.authMethod,
+      secretName: secrets.name,
+      createdAt: modelProviders.createdAt,
+      updatedAt: modelProviders.updatedAt,
+    })
+    .from(modelProviders)
+    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
+    .where(
+      and(eq(modelProviders.orgId, orgId), eq(modelProviders.id, providerId)),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  if (!(row.type in MODEL_PROVIDER_TYPES)) return null;
+
+  return toModelProviderInfo({
+    id: row.id,
+    type: row.type as ModelProviderType,
+    secretName: row.secretName,
+    authMethod: row.authMethod,
+    isDefault: row.isDefault,
+    selectedModel: row.selectedModel,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}

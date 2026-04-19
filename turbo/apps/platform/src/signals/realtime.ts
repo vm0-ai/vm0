@@ -14,6 +14,55 @@ const L = logger("Realtime");
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
 
 /**
+ * Deferred promise that `setupRealtime$` resolves once the user-scoped Ably
+ * channel has been established. Consumers started from the view layer
+ * before bootstrap finishes realtime setup (e.g. the sidebar thread-list
+ * daemon) can `await` this to avoid racing with the channel.
+ */
+interface ReadyDeferred {
+  promise: Promise<void>;
+  resolve: () => void;
+}
+
+const realtimeReadyDeferred$ = state<ReadyDeferred | null>(null);
+
+function createReadyDeferred(): ReadyDeferred {
+  let resolve: () => void = () => {};
+  const promise = new Promise<void>((_resolve) => {
+    resolve = _resolve;
+  });
+  return { promise, resolve };
+}
+
+export const awaitRealtimeReady$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    let deferred = get(realtimeReadyDeferred$);
+    if (!deferred) {
+      deferred = createReadyDeferred();
+      set(realtimeReadyDeferred$, deferred);
+    }
+    const readyPromise = deferred.promise;
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        signal.removeEventListener("abort", onAbort);
+        reject(signal.reason);
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort);
+      readyPromise
+        .then(() => {
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        })
+        .catch(reject);
+    });
+  },
+);
+
+/**
  * Initialize the Ably realtime client and subscribe to the user's channel.
  * Call once during app bootstrap, after Clerk auth is ready.
  */
@@ -67,6 +116,13 @@ export const setupRealtime$ = command(
     const channelName = `user:${ably.auth.clientId}`;
     const channel = ably.channels.get(channelName);
     set(internalUserChannel$, channel);
+
+    const existingReady = get(realtimeReadyDeferred$);
+    const readyDeferred = existingReady ?? createReadyDeferred();
+    if (!existingReady) {
+      set(realtimeReadyDeferred$, readyDeferred);
+    }
+    readyDeferred.resolve();
 
     L.debug(`Realtime connected, subscribed to ${channelName}`);
   },

@@ -16,6 +16,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
+import { zeroIntegrationsSlackContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
@@ -37,6 +39,7 @@ function mockBaseAPIs(
       updatedAt: string;
       isRead: boolean;
       isArchived: boolean;
+      running: boolean;
     }[];
     agents?: {
       id: string;
@@ -92,6 +95,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
           isArchived: false,
+          running: false,
         },
         {
           id: "thread-2",
@@ -101,6 +105,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
           updatedAt: "2026-03-09T00:00:00Z",
           isRead: false,
           isArchived: false,
+          running: false,
         },
       ],
     });
@@ -166,6 +171,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
           isArchived: false,
+          running: false,
         },
         {
           id: "thread-2",
@@ -175,6 +181,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
           updatedAt: "2026-03-09T00:00:00Z",
           isRead: false,
           isArchived: false,
+          running: false,
         },
       ],
     });
@@ -214,6 +221,7 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
           updatedAt: "2026-03-10T00:00:00Z",
           isRead: false,
           isArchived: false,
+          running: false,
         },
       ],
     });
@@ -341,8 +349,8 @@ describe("zero sidebar - pinned agents display (SIDEBAR-D-008)", () => {
 describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => {
   it("shows the Where Zero works link when Slack scope mismatch is true", async () => {
     server.use(
-      http.get("*/api/zero/integrations/slack", () => {
-        return HttpResponse.json({
+      mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
+        return respond(200, {
           isConnected: true,
           isInstalled: true,
           isAdmin: true,
@@ -351,7 +359,6 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
           installUrl: null,
           connectUrl: null,
           reinstallUrl: null,
-          defaultAgentId: null,
           agentOrgSlug: null,
           environment: {
             requiredSecrets: [],

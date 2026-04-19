@@ -189,6 +189,12 @@ function buildScheduleBody(
     prompt: params.prompt.trim(),
     ...(params.description && { description: params.description.trim() }),
     enabled: true,
+    ...(params.modelProviderId !== undefined && {
+      modelProviderId: params.modelProviderId,
+    }),
+    ...(params.selectedModel !== undefined && {
+      selectedModel: params.selectedModel,
+    }),
   };
 
   if (params.freq === "every_n_minutes") {
@@ -244,6 +250,8 @@ export interface ZeroScheduleSaveParams {
   dayOfMonth?: string;
   /** Schedule name when editing an existing schedule */
   editName?: string;
+  modelProviderId?: string | null;
+  selectedModel?: string | null;
 }
 
 export const saveZeroSchedule$ = command(
@@ -351,6 +359,8 @@ export interface OrgScheduleEntry {
   displayName: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
+  modelProviderId: string | null;
+  selectedModel: string | null;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -381,6 +391,8 @@ export const allOrgScheduleEntries$ = computed((get) => {
         displayName: s.displayName,
         nextRunAt: s.nextRunAt,
         lastRunAt: s.lastRunAt,
+        modelProviderId: s.modelProviderId,
+        selectedModel: s.selectedModel,
       };
     });
 });

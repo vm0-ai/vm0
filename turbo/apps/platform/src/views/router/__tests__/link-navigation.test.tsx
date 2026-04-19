@@ -14,19 +14,18 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract } from "@vm0/core";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
 function mockAPIs() {
+  setMockComposesList([]);
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads: [] });
     }),
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([]);
-    }),
-    http.get("*/api/zero/composes/list", () => {
-      return HttpResponse.json({ composes: [] });
     }),
   );
 }

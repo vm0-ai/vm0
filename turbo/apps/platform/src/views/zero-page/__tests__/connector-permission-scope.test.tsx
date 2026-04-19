@@ -10,12 +10,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setScopeReviewType$ } from "../../../signals/zero-page/settings/connectors.ts";
-import type { ConnectorType } from "@vm0/core";
+import { type ConnectorType, zeroConnectorScopeDiffContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -29,8 +29,8 @@ async function openScopeReviewModal(
   },
 ) {
   server.use(
-    http.get("*/api/zero/connectors/:type/scope-diff", () => {
-      return HttpResponse.json(scopeDiff);
+    mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ respond }) => {
+      return respond(200, scopeDiff);
     }),
   );
   detachedSetupPage({ context, path: "/connectors" });
@@ -131,7 +131,7 @@ describe("scope review modal - display", () => {
 describe("scope review modal - states", () => {
   it("loading state shows dialog without Reconnect button (CONN-S-037)", async () => {
     server.use(
-      http.get("*/api/zero/connectors/:type/scope-diff", () => {
+      mockApi(zeroConnectorScopeDiffContract.getScopeDiff, () => {
         return new Promise<never>(() => {
           // Never resolves — keeps component in loading state
         });
@@ -158,11 +158,10 @@ describe("scope review modal - states", () => {
 
   it("error state shows dialog without Reconnect button (CONN-C-038)", async () => {
     server.use(
-      http.get("*/api/zero/connectors/:type/scope-diff", () => {
-        return HttpResponse.json(
-          { message: "Internal error" },
-          { status: 500 },
-        );
+      mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Internal error", code: "NOT_FOUND" },
+        });
       }),
     );
 

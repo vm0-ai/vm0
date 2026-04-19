@@ -9,6 +9,7 @@ import {
   type ConnectorResponse,
   type ConnectorType,
   zeroConnectorsByTypeContract,
+  zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
 } from "@vm0/core";
 import { mockApi } from "../msw-contract.ts";
@@ -16,6 +17,10 @@ import { mockApi } from "../msw-contract.ts";
 const ALL_CONNECTOR_TYPES = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
 
 let mockConnectors: ConnectorResponse[] = [];
+
+export function setMockConnectors(connectors: ConnectorResponse[]): void {
+  mockConnectors = connectors;
+}
 
 export function resetMockConnectors(): void {
   mockConnectors = [];
@@ -46,5 +51,14 @@ export const apiConnectorsHandlers = [
       return c.type !== type;
     });
     return respond(204);
+  }),
+
+  mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ respond }) => {
+    return respond(200, {
+      addedScopes: [],
+      removedScopes: [],
+      currentScopes: [],
+      storedScopes: [],
+    });
   }),
 ];

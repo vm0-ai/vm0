@@ -28,6 +28,8 @@ export const zeroAgentResponseSchema = z.object({
   avatarUrl: z.string().nullable(),
   permissionPolicies: firewallPoliciesSchema.nullable(),
   customSkills: z.array(z.string()).default([]),
+  modelProviderId: z.string().uuid().nullable().default(null),
+  selectedModel: z.string().nullable().default(null),
 });
 
 /**
@@ -39,6 +41,8 @@ export const zeroAgentRequestSchema = z.object({
   sound: z.string().optional(),
   avatarUrl: z.string().optional(),
   customSkills: z.array(zeroAgentCustomSkillNameSchema).optional(),
+  modelProviderId: z.string().uuid().nullable().optional(),
+  selectedModel: z.string().nullable().optional(),
 });
 
 /**
@@ -49,6 +53,8 @@ export const zeroAgentMetadataRequestSchema = z.object({
   description: z.string().optional(),
   sound: z.string().optional(),
   avatarUrl: z.string().nullable().optional(),
+  modelProviderId: z.string().uuid().nullable().optional(),
+  selectedModel: z.string().nullable().optional(),
 });
 
 /**

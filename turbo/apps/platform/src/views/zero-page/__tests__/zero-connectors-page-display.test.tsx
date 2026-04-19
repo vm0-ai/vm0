@@ -10,11 +10,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
+import { zeroConnectorsMainContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -70,7 +71,7 @@ describe("connectors page - connector status indicators", () => {
     // in flight and "Connecting…" remains visible. The never-resolving promise
     // is cancelled by the abort signal via fetchOptions.signal in setLoop.
     server.use(
-      http.get("*/api/zero/connectors", () => {
+      mockApi(zeroConnectorsMainContract.list, () => {
         return new Promise<never>(() => {});
       }),
     );
@@ -136,7 +137,7 @@ describe("connectors page - connector status indicators", () => {
 describe("connectors page - loading state", () => {
   it("loading skeleton shown while connectors load (CONN-D-007)", async () => {
     server.use(
-      http.get("*/api/zero/connectors", () => {
+      mockApi(zeroConnectorsMainContract.list, () => {
         return new Promise<never>(() => {
           // Never resolves — keeps component in loading state
         });

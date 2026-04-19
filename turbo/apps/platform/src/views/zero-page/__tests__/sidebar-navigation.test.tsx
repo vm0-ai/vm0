@@ -21,6 +21,7 @@ function mockSubagentAPIs() {
     updatedAt: string;
     isRead: boolean;
     isArchived: boolean;
+    running: boolean;
   }[] = [
     {
       id: "thread-sub-1",
@@ -30,6 +31,7 @@ function mockSubagentAPIs() {
       updatedAt: "2026-03-10T00:00:00Z",
       isRead: false,
       isArchived: false,
+      running: false,
     },
   ];
 
@@ -72,6 +74,7 @@ function mockSubagentAPIs() {
         updatedAt: now,
         isRead: false,
         isArchived: false,
+        running: false,
       };
       threads.unshift(newThread);
       return respond(201, {
@@ -180,6 +183,7 @@ describe("sidebar new chat navigation", () => {
               updatedAt: "2026-03-10T00:00:00Z",
               isRead: false,
               isArchived: false,
+              running: false,
             },
           ],
         });

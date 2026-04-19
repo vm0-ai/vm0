@@ -10,6 +10,7 @@ import {
   createChatThread,
   listChatThreads,
 } from "../../../../src/lib/zero/chat-thread";
+import { publishThreadListChanged } from "../../../../src/lib/zero/chat-thread/chat-message-service";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 
@@ -59,6 +60,7 @@ const router = tsr.router(chatThreadsContract, {
       body.title,
       body.sourceScheduleRunId,
     );
+    await publishThreadListChanged(userId);
 
     return {
       status: 201 as const,
@@ -123,6 +125,7 @@ const router = tsr.router(chatThreadsContract, {
             updatedAt: t.updatedAt.toISOString(),
             isRead: t.isRead,
             isArchived: t.lastMessageArchivedAt !== null,
+            running: t.running,
           };
         }),
       },

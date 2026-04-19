@@ -3,6 +3,7 @@ import {
   type ExpandedFirewallConfig,
   validateBaseUrl,
 } from "./firewalls";
+import { parseSegment } from "./segment-parser";
 import { fetchFirewallConfig, type FetchFn } from "../firewall-loader";
 
 export interface FirewallSelection {
@@ -101,26 +102,29 @@ function validatePathSegments(
   const paramNames = new Set<string>();
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
-    if (seg.startsWith("{") && seg.endsWith("}")) {
-      const name = seg.slice(1, -1);
-      const isGreedy = name.endsWith("+") || name.endsWith("*");
-      const baseName = isGreedy ? name.slice(0, -1) : name;
-      if (!baseName) {
-        throw new Error(
-          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty parameter name`,
-        );
-      }
-      if (paramNames.has(baseName)) {
-        throw new Error(
-          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": duplicate parameter name "{${baseName}}"`,
-        );
-      }
-      paramNames.add(baseName);
-      if (isGreedy && i !== segments.length - 1) {
-        throw new Error(
-          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": {${name}} must be the last segment`,
-        );
-      }
+    const parsed = parseSegment(seg);
+    if (parsed.kind === "error") {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": ${parsed.reason}`,
+      );
+    }
+    if (parsed.kind === "literal") continue;
+    const { name, greedy, prefix, suffix } = parsed;
+    if (paramNames.has(name)) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": duplicate parameter name "{${name}}"`,
+      );
+    }
+    paramNames.add(name);
+    if (greedy && i !== segments.length - 1) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": {${name}${greedy}} must be the last segment`,
+      );
+    }
+    if (greedy && (prefix !== "" || suffix !== "")) {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": greedy parameter {${name}${greedy}} cannot be combined with a literal prefix or suffix in segment "${seg}"`,
+      );
     }
   }
 }

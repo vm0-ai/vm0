@@ -5,11 +5,13 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { logsListContract } from "@vm0/core";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
 describe("activity page error", () => {
   it("should show error state when /api/zero/logs returns 500", async () => {
+    setMockComposesList([]);
     server.use(
       mockApi(logsListContract.list, ({ respond }) => {
         return respond(403, {

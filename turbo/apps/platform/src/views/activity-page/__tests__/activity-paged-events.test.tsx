@@ -15,6 +15,7 @@ import type {
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -64,6 +65,7 @@ describe("activity paged events", () => {
       createdAt: "2026-03-10T14:56:10Z",
     };
 
+    setMockComposesList([]);
     server.use(
       mockApi(logsByIdContract.getById, ({ respond }) => {
         return respond(
@@ -131,6 +133,7 @@ describe("activity paged events", () => {
   it("should stop polling when navigating away from the run page", async () => {
     let eventFetchCount = 0;
 
+    setMockComposesList([]);
     server.use(
       mockApi(logsListContract.list, ({ respond }) => {
         return respond(200, {

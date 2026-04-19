@@ -15,6 +15,7 @@ import type {
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -73,6 +74,17 @@ function mockActivityAPIs() {
     framework: "claude-code",
   };
 
+  setMockComposesList([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      name: "test-agent",
+      displayName: "Test Agent",
+      description: null,
+      sound: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   server.use(
     mockApi(logsListContract.list, ({ respond }) => {
       return respond(200, {
@@ -166,6 +178,17 @@ describe("activity page routing", () => {
   });
 
   it("should display 'Agent (displayName)' for delegated runs with triggerAgentName", async () => {
+    setMockComposesList([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        name: "child-agent",
+        displayName: "Child Agent",
+        description: null,
+        sound: null,
+        headVersionId: null,
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
     server.use(
       mockApi(logsListContract.list, ({ respond }) => {
         return respond(200, {

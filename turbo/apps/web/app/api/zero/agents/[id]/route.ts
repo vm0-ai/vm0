@@ -26,6 +26,33 @@ import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents:id");
 
+type AgentUpdateBody = {
+  displayName?: string | null;
+  description?: string | null;
+  sound?: string | null;
+  avatarUrl?: string | null;
+  customSkills?: string[];
+  modelProviderId?: string | null;
+  selectedModel?: string | null;
+};
+
+function buildAgentUpsertConflictSet(body: AgentUpdateBody, now: Date) {
+  return {
+    updatedAt: now,
+    ...(body.displayName !== undefined && { displayName: body.displayName }),
+    ...(body.description !== undefined && { description: body.description }),
+    ...(body.sound !== undefined && { sound: body.sound }),
+    ...(body.avatarUrl !== undefined && { avatarUrl: body.avatarUrl }),
+    ...(body.customSkills !== undefined && { customSkills: body.customSkills }),
+    ...(body.modelProviderId !== undefined && {
+      modelProviderId: body.modelProviderId,
+    }),
+    ...(body.selectedModel !== undefined && {
+      selectedModel: body.selectedModel,
+    }),
+  };
+}
+
 function agentResponseBody(
   agent: typeof zeroAgents.$inferSelect | undefined,
   fallback: { id: string; ownerId: string },
@@ -42,6 +69,8 @@ function agentResponseBody(
       agent?.unknownPermissionPolicies,
     ),
     customSkills: agent?.customSkills ?? [],
+    modelProviderId: agent?.modelProviderId ?? null,
+    selectedModel: agent?.selectedModel ?? null,
   };
 }
 
@@ -187,25 +216,12 @@ const router = tsr.router(zeroAgentsByIdContract, {
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
         customSkills,
+        modelProviderId: body.modelProviderId ?? null,
+        selectedModel: body.selectedModel ?? null,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
-        set: {
-          updatedAt: now,
-          ...(body.displayName !== undefined && {
-            displayName: body.displayName,
-          }),
-          ...(body.description !== undefined && {
-            description: body.description,
-          }),
-          ...(body.sound !== undefined && { sound: body.sound }),
-          ...(body.avatarUrl !== undefined && {
-            avatarUrl: body.avatarUrl,
-          }),
-          ...(body.customSkills !== undefined && {
-            customSkills: body.customSkills,
-          }),
-        },
+        set: buildAgentUpsertConflictSet(body, now),
       });
 
     log.info(`Updated zero agent: ${result.composeName}`);
@@ -275,6 +291,12 @@ const router = tsr.router(zeroAgentsByIdContract, {
         ...(body.sound !== undefined && { sound: body.sound }),
         ...(body.avatarUrl !== undefined && {
           avatarUrl: body.avatarUrl,
+        }),
+        ...(body.modelProviderId !== undefined && {
+          modelProviderId: body.modelProviderId,
+        }),
+        ...(body.selectedModel !== undefined && {
+          selectedModel: body.selectedModel,
         }),
       })
       .where(eq(zeroAgents.id, params.id));

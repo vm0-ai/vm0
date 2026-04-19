@@ -50,4 +50,5 @@ export enum FeatureSwitchKey {
   InlineThinkingDot = "inlineThinkingDot",
   FreshdeskConnector = "freshdeskConnector",
   ZoomConnector = "zoomConnector",
+  ModelProviderSelection = "modelProviderSelection",
 }

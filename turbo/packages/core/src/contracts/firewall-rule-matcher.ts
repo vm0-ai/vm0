@@ -1,18 +1,35 @@
 import type { FirewallConfig } from "./firewalls";
+import { parseSegment } from "./segment-parser";
 
 /**
- * Parameter segment pattern: `{name}`, `{name+}`, or `{name*}`.
+ * Match a runtime segment against a mixed pattern's literal prefix/suffix.
+ *
+ * Byte-exact comparison; callers must case-fold inputs themselves when
+ * needed. Returns the captured middle on success, or null if prefix/suffix
+ * don't match or the middle would be empty (non-empty guard).
  */
-const PARAM_SEG = /^\{([^}]+)\}$/;
+function matchMixedSegment(
+  runtime: string,
+  prefix: string,
+  suffix: string,
+): string | null {
+  if (!runtime.startsWith(prefix)) return null;
+  if (!runtime.endsWith(suffix)) return null;
+  if (runtime.length <= prefix.length + suffix.length) return null;
+  return runtime.slice(prefix.length, runtime.length - suffix.length);
+}
 
 /**
  * Match a URL path against a rule path pattern.
  *
  * Ported from the Python MITM addon's `match_path()` function
- * (crates/runner/mitm-addon/src/mitm_addon.py).
+ * (crates/runner/mitm-addon/src/matching.py).
  *
  * - Literal segments must match exactly (case-sensitive).
  * - `{name}` matches a single non-empty path segment.
+ * - `prefix{name}suffix` (mixed) matches a segment that starts with
+ *   `prefix` and ends with `suffix`, with a non-empty middle captured
+ *   into `name`.
  * - `{name+}` matches the rest of the path (one or more segments). Must be last.
  * - `{name*}` matches the rest of the path (zero or more segments). Must be last.
  *
@@ -29,29 +46,35 @@ export function matchFirewallPath(
   let pi = 0;
 
   for (const seg of patternSegs) {
-    const m = PARAM_SEG.exec(seg);
-    if (m) {
-      const name = m[1]!;
-      if (name.endsWith("+")) {
-        // Greedy: consume rest (1+)
-        if (pi >= pathSegs.length) return null;
-        params[name.slice(0, -1)] = pathSegs.slice(pi).join("/");
-        return params;
-      }
-      if (name.endsWith("*")) {
-        // Greedy: consume rest (0+)
-        params[name.slice(0, -1)] = pathSegs.slice(pi).join("/");
-        return params;
-      }
-      // Single segment
-      if (pi >= pathSegs.length) return null;
-      params[name] = pathSegs[pi]!;
+    const parsed = parseSegment(seg);
+    // Invalid patterns are rejected by validateRule at ingest time, so
+    // kind "error" should never appear here on validated inputs.
+    if (parsed.kind === "error") return null;
+    if (parsed.kind === "literal") {
+      if (pi >= pathSegs.length || pathSegs[pi] !== parsed.value) return null;
       pi++;
-    } else {
-      // Literal
-      if (pi >= pathSegs.length || pathSegs[pi] !== seg) return null;
-      pi++;
+      continue;
     }
+    const { name, prefix, suffix, greedy } = parsed;
+    if (greedy === "+") {
+      if (pi >= pathSegs.length) return null;
+      params[name] = pathSegs.slice(pi).join("/");
+      return params;
+    }
+    if (greedy === "*") {
+      params[name] = pathSegs.slice(pi).join("/");
+      return params;
+    }
+    if (pi >= pathSegs.length) return null;
+    const runtime = pathSegs[pi]!;
+    if (prefix === "" && suffix === "") {
+      params[name] = runtime;
+    } else {
+      const captured = matchMixedSegment(runtime, prefix, suffix);
+      if (captured === null) return null;
+      params[name] = captured;
+    }
+    pi++;
   }
 
   // All pattern segments consumed; path must also be fully consumed

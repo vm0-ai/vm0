@@ -26,6 +26,7 @@ import {
   insertChatMessage,
   getLatestSessionIdForThread,
   getMessagesByThreadId,
+  publishThreadListChanged,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
@@ -155,9 +156,13 @@ const router = tsr.router(chatMessagesContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    // Verify agent exists
+    // Verify agent exists and fetch model provider override
     const [agent] = await globalThis.services.db
-      .select({ id: zeroAgents.id })
+      .select({
+        id: zeroAgents.id,
+        modelProviderId: zeroAgents.modelProviderId,
+        selectedModel: zeroAgents.selectedModel,
+      })
       .from(zeroAgents)
       .where(eq(zeroAgents.id, body.agentId))
       .limit(1);
@@ -190,7 +195,7 @@ const router = tsr.router(chatMessagesContract, {
         })
           .then((title) => {
             if (title) {
-              return updateChatThreadTitle(threadId, title);
+              return updateChatThreadTitle(threadId, authCtx.userId, title);
             }
           })
           .catch((err: unknown) => {
@@ -226,6 +231,8 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
+        modelProviderId: agent.modelProviderId ?? undefined,
+        selectedModelOverride: agent.selectedModel ?? undefined,
         appendSystemPrompt: buildAppendSystemPrompt(continueFromSchedulePrompt),
         callbacks: [chatCallback],
         chatThreadId: threadId,
@@ -254,6 +261,7 @@ const router = tsr.router(chatMessagesContract, {
           [authCtx.userId],
           `chatThreadRunCreated:${threadId}`,
         );
+        await publishThreadListChanged(authCtx.userId);
       });
 
       return {

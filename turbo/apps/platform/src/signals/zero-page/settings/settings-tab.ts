@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { Tone } from "../../../views/zero-page/zero-tone-constants.ts";
+import type { ModelProviderSelection } from "../../../views/zero-page/components/model-provider-picker.tsx";
 
 // ---------------------------------------------------------------------------
 // Form fields
@@ -39,6 +40,16 @@ export const setSettingsAvatarUrl$ = command(
   },
 );
 
+const internalModelSelection$ = state<ModelProviderSelection | null>(null);
+export const settingsModelSelection$ = computed((get) => {
+  return get(internalModelSelection$);
+});
+export const setSettingsModelSelection$ = command(
+  ({ set }, value: ModelProviderSelection | null) => {
+    set(internalModelSelection$, value);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Saved settings state (for dirty detection)
 // ---------------------------------------------------------------------------
@@ -48,6 +59,7 @@ interface SavedSettings {
   description: string;
   tone: Tone;
   avatarUrl: string | null;
+  modelSelection: ModelProviderSelection | null;
 }
 
 const internalSavedSettings$ = state<SavedSettings>({
@@ -55,15 +67,22 @@ const internalSavedSettings$ = state<SavedSettings>({
   description: "",
   tone: "professional",
   avatarUrl: null,
+  modelSelection: null,
 });
 
 export const settingsDirty$ = computed((get) => {
   const saved = get(internalSavedSettings$);
+  const currentModel = get(internalModelSelection$);
+  const savedModel = saved.modelSelection;
+  const modelChanged =
+    currentModel?.modelProviderId !== savedModel?.modelProviderId ||
+    currentModel?.selectedModel !== savedModel?.selectedModel;
   return (
     get(internalAgentName$) !== saved.name ||
     get(internalDesc$) !== saved.description ||
     get(internalTone$) !== saved.tone ||
-    get(internalAvatarUrl$) !== saved.avatarUrl
+    get(internalAvatarUrl$) !== saved.avatarUrl ||
+    modelChanged
   );
 });
 
@@ -76,6 +95,7 @@ interface FormSource {
   description: string;
   tone: Tone;
   avatarUrl: string | null;
+  modelSelection: ModelProviderSelection | null;
 }
 
 const internalFormSource$ = state<FormSource | null>(null);
@@ -91,7 +111,10 @@ export const initSettingsForm$ = command(({ get, set }, opts: FormSource) => {
     current.name === opts.name &&
     current.description === opts.description &&
     current.tone === opts.tone &&
-    current.avatarUrl === opts.avatarUrl
+    current.avatarUrl === opts.avatarUrl &&
+    current.modelSelection?.modelProviderId ===
+      opts.modelSelection?.modelProviderId &&
+    current.modelSelection?.selectedModel === opts.modelSelection?.selectedModel
   ) {
     return;
   }
@@ -100,11 +123,13 @@ export const initSettingsForm$ = command(({ get, set }, opts: FormSource) => {
   set(internalDesc$, opts.description);
   set(internalTone$, opts.tone);
   set(internalAvatarUrl$, opts.avatarUrl);
+  set(internalModelSelection$, opts.modelSelection);
   set(internalSavedSettings$, {
     name: opts.name,
     description: opts.description,
     tone: opts.tone,
     avatarUrl: opts.avatarUrl,
+    modelSelection: opts.modelSelection,
   });
 });
 
@@ -118,6 +143,7 @@ export const resetSettingsForm$ = command(({ get, set }) => {
   set(internalDesc$, saved.description);
   set(internalTone$, saved.tone);
   set(internalAvatarUrl$, saved.avatarUrl);
+  set(internalModelSelection$, saved.modelSelection);
 });
 
 // ---------------------------------------------------------------------------
@@ -130,6 +156,7 @@ export const markSettingsSaved$ = command(({ get, set }) => {
     description: get(internalDesc$),
     tone: get(internalTone$),
     avatarUrl: get(internalAvatarUrl$),
+    modelSelection: get(internalModelSelection$),
   });
 });
 

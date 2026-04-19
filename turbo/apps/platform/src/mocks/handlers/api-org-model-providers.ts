@@ -15,6 +15,12 @@ import { mockApi } from "../msw-contract.ts";
 // Mock org model providers data — empty by default
 let mockOrgModelProviders: ModelProviderResponse[] = [];
 
+export function setMockOrgModelProviders(
+  providers: ModelProviderResponse[],
+): void {
+  mockOrgModelProviders = [...providers];
+}
+
 /**
  * Reset mock org model providers to default state
  */

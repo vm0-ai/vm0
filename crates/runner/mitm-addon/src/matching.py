@@ -8,6 +8,106 @@ from typing import NamedTuple
 
 from graphql_fields import extract_field_paths
 
+_SEGMENT_ERROR_HINT = 'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"'
+
+
+def parse_segment(seg: str) -> dict:
+    """Parse a single host or path segment into literal / param / error.
+
+    Grammar mirrors turbo/packages/core/src/contracts/segment-parser.ts —
+    keep both implementations in lockstep. Any change to accepted or
+    rejected forms must land in both languages at once.
+
+    Returns one of:
+      {"kind": "literal", "value": seg}
+      {"kind": "param", "prefix": str, "name": str, "suffix": str,
+       "greedy": "" | "+" | "*"}
+      {"kind": "error", "reason": str}
+    """
+    open_count = seg.count("{")
+    close_count = seg.count("}")
+
+    if open_count == 0 and close_count == 0:
+        return {"kind": "literal", "value": seg}
+    if open_count != close_count:
+        return {
+            "kind": "error",
+            "reason": f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
+        }
+
+    open1 = seg.find("{")
+    close1 = seg.find("}")
+    if close1 < open1:
+        return {
+            "kind": "error",
+            "reason": f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
+        }
+
+    if open_count >= 2:
+        open2 = seg.find("{", close1 + 1)
+        if close1 + 1 == open2:
+            return {
+                "kind": "error",
+                "reason": (
+                    f'adjacent parameters in segment "{seg}" — only one parameter '
+                    f"per segment is allowed; {_SEGMENT_ERROR_HINT}"
+                ),
+            }
+        return {
+            "kind": "error",
+            "reason": (
+                f'literal-separated parameters in segment "{seg}" — only one parameter '
+                f"per segment is allowed; {_SEGMENT_ERROR_HINT}"
+            ),
+        }
+
+    prefix = seg[:open1]
+    content = seg[open1 + 1 : close1]
+    suffix = seg[close1 + 1 :]
+
+    if "{" in prefix or "}" in prefix or "{" in suffix or "}" in suffix:
+        return {
+            "kind": "error",
+            "reason": f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
+        }
+
+    greedy = ""
+    name = content
+    if len(content) > 0 and content[-1] in ("+", "*"):
+        greedy = content[-1]
+        name = content[:-1]
+
+    if len(name) == 0:
+        return {
+            "kind": "error",
+            "reason": f'empty parameter name in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
+        }
+
+    return {
+        "kind": "param",
+        "prefix": prefix,
+        "name": name,
+        "suffix": suffix,
+        "greedy": greedy,
+    }
+
+
+def _match_segment_literal(runtime: str, prefix: str, suffix: str) -> str | None:
+    """Match runtime segment against a mixed pattern's literal prefix/suffix.
+
+    Byte-exact comparison; the caller is responsible for case-folding
+    `runtime`, `prefix`, and `suffix` when needed (e.g., host matching).
+    Returns the captured middle on success, None if either the prefix/suffix
+    don't match or the middle would be empty.
+    """
+    if not runtime.startswith(prefix):
+        return None
+    if not runtime.endswith(suffix):
+        return None
+    if len(runtime) <= len(prefix) + len(suffix):
+        return None
+    return runtime[len(prefix) : len(runtime) - len(suffix)]
+
 
 def match_host(host: str, pattern: str) -> dict | None:
     """Match a hostname against a pattern. Returns extracted params or None.
@@ -17,47 +117,65 @@ def match_host(host: str, pattern: str) -> dict | None:
 
     - Literal segments must match exactly (case-insensitive).
     - {name} matches a single host segment.
+    - prefix{name}suffix matches a host segment case-insensitively, with
+      the non-empty middle captured into `name` (case preserved from host).
     - {name+} matches one or more leading host segments. Must be first.
     - {name*} matches zero or more leading host segments. Must be first.
     """
-    host_segs = host.lower().split(".")
-    # Keep original pattern segments for param name extraction;
-    # only lowercase for literal comparison.
+    # Preserve original host case for param value capture; compare via
+    # lowered copies.
+    host_segs_orig = host.split(".")
+    host_segs_lower = [s.lower() for s in host_segs_orig]
     pattern_segs_orig = pattern.split(".")
 
     params: dict[str, str] = {}
 
     # Match right-to-left: reverse both, then match like a path.
-    host_segs.reverse()
-    pattern_segs_orig.reverse()
+    host_segs_orig = list(reversed(host_segs_orig))
+    host_segs_lower = list(reversed(host_segs_lower))
+    pattern_segs_orig = list(reversed(pattern_segs_orig))
 
     hi = 0
     for seg_orig in pattern_segs_orig:
-        if seg_orig.startswith("{") and seg_orig.endswith("}"):
-            name = seg_orig[1:-1]
-            if name.endswith("+"):
-                # Greedy: consume rest (one or more)
-                if hi >= len(host_segs):
-                    return None
-                remaining = list(reversed(host_segs[hi:]))
-                params[name[:-1]] = ".".join(remaining)
-                return params
-            if name.endswith("*"):
-                # Greedy: consume rest (zero or more)
-                remaining = list(reversed(host_segs[hi:]))
-                params[name[:-1]] = ".".join(remaining)
-                return params
-            # Single segment
-            if hi >= len(host_segs):
+        parsed = parse_segment(seg_orig)
+        # Invalid patterns are rejected at config load time; a runtime
+        # error here means the config is already broken, so bail.
+        if parsed["kind"] == "error":
+            return None
+        if parsed["kind"] == "literal":
+            if hi >= len(host_segs_lower) or host_segs_lower[hi] != parsed["value"].lower():
                 return None
-            params[name] = host_segs[hi]
             hi += 1
+            continue
+        name = parsed["name"]
+        greedy = parsed["greedy"]
+        prefix = parsed["prefix"]
+        suffix = parsed["suffix"]
+        if greedy == "+":
+            if hi >= len(host_segs_orig):
+                return None
+            remaining = list(reversed(host_segs_orig[hi:]))
+            params[name] = ".".join(remaining)
+            return params
+        if greedy == "*":
+            remaining = list(reversed(host_segs_orig[hi:]))
+            params[name] = ".".join(remaining)
+            return params
+        if hi >= len(host_segs_orig):
+            return None
+        if prefix == "" and suffix == "":
+            # Preserve legacy behavior: host param captures are lowercased.
+            params[name] = host_segs_lower[hi]
         else:
-            if hi >= len(host_segs) or host_segs[hi] != seg_orig.lower():
+            # Mixed segment: match against lowered runtime + lowered
+            # prefix/suffix to maintain the case-insensitive host contract.
+            captured = _match_segment_literal(host_segs_lower[hi], prefix.lower(), suffix.lower())
+            if captured is None:
                 return None
-            hi += 1
+            params[name] = captured
+        hi += 1
 
-    if hi != len(host_segs):
+    if hi != len(host_segs_orig):
         return None
     return params
 
@@ -67,6 +185,8 @@ def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[di
 
     Unlike match_path(), does NOT require full path consumption.
     Does NOT support greedy params (not allowed in base URL paths).
+    Mixed segments (prefix{name}suffix) are supported with non-empty
+    middle capture.
 
     Returns (params, consumed_count) on match, None on no match.
     """
@@ -74,16 +194,28 @@ def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[di
     pi = 0
 
     for seg in pattern_segs:
-        if seg.startswith("{") and seg.endswith("}"):
-            name = seg[1:-1]
-            if pi >= len(path_segs):
+        parsed = parse_segment(seg)
+        if parsed["kind"] == "error":
+            return None
+        if parsed["kind"] == "literal":
+            if pi >= len(path_segs) or path_segs[pi] != parsed["value"]:
                 return None
-            params[name] = path_segs[pi]
             pi += 1
+            continue
+        if pi >= len(path_segs):
+            return None
+        name = parsed["name"]
+        prefix = parsed["prefix"]
+        suffix = parsed["suffix"]
+        runtime = path_segs[pi]
+        if prefix == "" and suffix == "":
+            params[name] = runtime
         else:
-            if pi >= len(path_segs) or path_segs[pi] != seg:
+            captured = _match_segment_literal(runtime, prefix, suffix)
+            if captured is None:
                 return None
-            pi += 1
+            params[name] = captured
+        pi += 1
 
     return params, pi
 
@@ -163,6 +295,8 @@ def match_path(path: str, pattern: str) -> dict | None:
 
     - Literal segments must match exactly.
     - {name} matches a single non-empty path segment.
+    - prefix{name}suffix matches a segment that starts with `prefix` and
+      ends with `suffix`, capturing the non-empty middle into `name`.
     - {name+} matches the rest of the path (one or more segments). Must be last.
     - {name*} matches the rest of the path (zero or more segments). Must be last.
     """
@@ -175,27 +309,37 @@ def match_path(path: str, pattern: str) -> dict | None:
     # Note: greedy params ({name+}, {name*}) must be the last segment.
     # This invariant is enforced at compose time by validateRule() in firewall-expander.ts.
     for seg in pattern_segs:
-        if seg.startswith("{") and seg.endswith("}"):
-            name = seg[1:-1]
-            if name.endswith("+"):
-                # Greedy: consume rest of path (one or more segments)
-                if pi >= len(path_segs):
-                    return None
-                params[name[:-1]] = "/".join(path_segs[pi:])
-                return params
-            if name.endswith("*"):
-                # Greedy: consume rest of path (zero or more segments)
-                params[name[:-1]] = "/".join(path_segs[pi:])
-                return params
-            # Single segment
+        parsed = parse_segment(seg)
+        if parsed["kind"] == "error":
+            return None
+        if parsed["kind"] == "literal":
+            if pi >= len(path_segs) or path_segs[pi] != parsed["value"]:
+                return None
+            pi += 1
+            continue
+        name = parsed["name"]
+        greedy = parsed["greedy"]
+        prefix = parsed["prefix"]
+        suffix = parsed["suffix"]
+        if greedy == "+":
             if pi >= len(path_segs):
                 return None
-            params[name] = path_segs[pi]
-            pi += 1
+            params[name] = "/".join(path_segs[pi:])
+            return params
+        if greedy == "*":
+            params[name] = "/".join(path_segs[pi:])
+            return params
+        if pi >= len(path_segs):
+            return None
+        runtime = path_segs[pi]
+        if prefix == "" and suffix == "":
+            params[name] = runtime
         else:
-            if pi >= len(path_segs) or path_segs[pi] != seg:
+            captured = _match_segment_literal(runtime, prefix, suffix)
+            if captured is None:
                 return None
-            pi += 1
+            params[name] = captured
+        pi += 1
 
     # All pattern segments consumed; path must also be fully consumed
     if pi != len(path_segs):
