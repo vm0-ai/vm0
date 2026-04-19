@@ -110,6 +110,7 @@ import { klaviyoFirewall } from "./klaviyo.generated";
 import { kommoFirewall } from "./kommo.generated";
 import { larkFirewall } from "./lark.generated";
 import { langfuseFirewall } from "./langfuse.generated";
+import { langsmithFirewall } from "./langsmith.generated";
 import { lineFirewall } from "./line.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
@@ -292,6 +293,7 @@ const CONNECTOR_FIREWALLS = {
   kommo: kommoFirewall,
   lark: larkFirewall,
   langfuse: langfuseFirewall,
+  langsmith: langsmithFirewall,
   line: lineFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,

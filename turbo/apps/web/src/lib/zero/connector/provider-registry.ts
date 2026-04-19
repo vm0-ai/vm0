@@ -89,6 +89,7 @@ import { klaviyoHandler } from "./providers/klaviyo-handler";
 import { kommoHandler } from "./providers/kommo-handler";
 import { larkHandler } from "./providers/lark-handler";
 import { langfuseHandler } from "./providers/langfuse-handler";
+import { langsmithHandler } from "./providers/langsmith-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { loopsHandler } from "./providers/loops-handler";
@@ -258,6 +259,7 @@ export const PROVIDER_HANDLERS: Record<
   "google-sheets": googleSheetsHandler,
   lark: larkHandler,
   langfuse: langfuseHandler,
+  langsmith: langsmithHandler,
   line: lineHandler,
   linear: linearHandler,
   loops: loopsHandler,
