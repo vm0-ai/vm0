@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use reqeast::StatusCode;
+use reqwest::StatusCode;
 
 use super::JobProvider;
 use crate::error::{RunnerError, RunnerResult};
@@ -506,7 +506,7 @@ impl ApiClient {
         }
         let resp = self
             .http
-            .request(reqeast::Method::POST, "/api/runners/poll", &self.token)
+            .request(reqwest::Method::POST, "/api/runners/poll", &self.token)
             .json(&body)
             .send()
             .await
@@ -531,7 +531,7 @@ impl ApiClient {
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
         let resp = self
             .http
-            .request(reqeast::Method::POST, "/api/runners/heartbeat", &self.token)
+            .request(reqwest::Method::POST, "/api/runners/heartbeat", &self.token)
             .timeout(Duration::from_secs(3))
             .json(state)
             .send()
@@ -553,7 +553,7 @@ impl ApiClient {
         let path = format!("/api/runners/jobs/{run_id}/claim");
         let resp = self
             .http
-            .request(reqeast::Method::POST, &path, &self.token)
+            .request(reqwest::Method::POST, &path, &self.token)
             .json(&serde_json::json!({}))
             .send()
             .await
@@ -594,7 +594,7 @@ impl ApiClient {
         let resp = self
             .http
             .request(
-                reqeast::Method::POST,
+                reqwest::Method::POST,
                 "/api/webhooks/agent/complete",
                 sandbox_token,
             )
@@ -618,7 +618,7 @@ impl ApiClient {
         let resp = self
             .http
             .request(
-                reqeast::Method::POST,
+                reqwest::Method::POST,
                 "/api/runners/realtime/token",
                 &self.token,
             )

@@ -11,7 +11,7 @@ guest-common.workspace = true
 http-body = "1"
 libc.workspace = true
 pin-project-lite = "0.2"
-reqeast = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 hex.workspace = true

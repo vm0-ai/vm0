@@ -7,7 +7,7 @@ use bytes::Bytes;
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
 use pin_project_lite::pin_project;
-use reqeast::Client;
+use reqwest::Client;
 use serde::Serialize;
 use serde_json::Value;
 use std::path::Path;
@@ -21,7 +21,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 
 static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
-    reqeast::builder()
+    Client::builder()
         .connect_timeout(Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS))
         .timeout(Duration::from_secs(constants::HTTP_TIMEOUT_SECS))
         .build()
@@ -234,7 +234,7 @@ pub async fn put_presigned_file(
     for attempt in 1..=max_retries {
         let file = tokio::fs::File::open(path).await?;
         let file_len = file.metadata().await?.len();
-        let body = reqeast::Body::wrap(SizedBody {
+        let body = reqwest::Body::wrap(SizedBody {
             reader: file,
             remaining: file_len,
         });

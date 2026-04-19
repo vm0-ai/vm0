@@ -124,7 +124,7 @@ async fn send_telemetry(
 
     let req = http
         .request(
-            reqeast::Method::POST,
+            reqwest::Method::POST,
             "/api/webhooks/agent/telemetry",
             sandbox_token,
         )
