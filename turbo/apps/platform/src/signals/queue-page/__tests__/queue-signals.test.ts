@@ -1,15 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { cancelQueueRun$ } from "../queue-signals.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroRunsQueueContract, zeroRunsCancelContract } from "@vm0/core";
 
 const context = testContext();
 
 function mockQueueResponse() {
   return {
-    concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
+    concurrency: { tier: "free" as const, limit: 1, active: 1, available: 0 },
     queue: [],
     runningTasks: [
       {
@@ -30,13 +31,13 @@ describe("cancelQueueRun$", () => {
     let cancelCalledWith: string | null = null;
 
     server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(mockQueueResponse());
-      }),
-      http.post("*/api/zero/runs/:runId/cancel", ({ params }) => {
-        cancelCalledWith = params.runId as string;
-        return HttpResponse.json({
-          id: params.runId,
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
+        respond(200, mockQueueResponse()),
+      ),
+      mockApi(zeroRunsCancelContract.cancel, ({ params, respond }) => {
+        cancelCalledWith = params.id;
+        return respond(200, {
+          id: params.id,
           status: "cancelled",
           message: "Run cancelled",
         });
@@ -52,15 +53,12 @@ describe("cancelQueueRun$", () => {
 
   it("should throw on non-ok cancel response", async () => {
     server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(mockQueueResponse());
-      }),
-      http.post("*/api/zero/runs/:runId/cancel", () => {
-        return HttpResponse.json(
-          { error: { message: "Forbidden", code: "FORBIDDEN" } },
-          { status: 403 },
-        );
-      }),
+      mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
+        respond(200, mockQueueResponse()),
+      ),
+      mockApi(zeroRunsCancelContract.cancel, ({ respond }) =>
+        respond(403, { error: { message: "Forbidden", code: "FORBIDDEN" } }),
+      ),
     );
 
     detachedSetupPage({ context, path: "/", withoutRender: true });

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
@@ -21,6 +20,8 @@ import {
   setAllScheduleRunRowsPerPage$,
   setAllScheduleRunStatusFilter$,
 } from "../all-schedule-run-history.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { logsListContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -64,9 +65,9 @@ function mockLogsEndpoint(
   captured?: { urls: string[] },
 ) {
   server.use(
-    http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+    mockApi(logsListContract.list, ({ request, respond }) => {
       captured?.urls.push(request.url);
-      return HttpResponse.json(response);
+      return respond(200, response);
     }),
   );
 }
