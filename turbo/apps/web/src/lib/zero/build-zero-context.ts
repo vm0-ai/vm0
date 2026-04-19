@@ -24,6 +24,7 @@ import {
   resolveModelProviderSecrets,
 } from "./context/resolve-model-provider";
 import { resolveOauthConnectorSecrets } from "./context/resolve-connectors";
+import { resolveCustomConnectorFirewalls } from "./custom-connector/resolve-custom-connectors";
 import {
   fetchReferencedSecrets,
   filterDbSecretsByConnectorPermissions,
@@ -144,6 +145,7 @@ async function resolveSecretsAndEnvironment(
     oauthResult,
     apiTokenTypes,
     mergedVars,
+    customConnectorResult,
   ] = await Promise.all([
     fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
     resolveModelProviderSecrets(
@@ -155,6 +157,7 @@ async function resolveSecretsAndEnvironment(
     resolveOauthConnectorSecrets(orgId, userId, allowedConnectorTypes),
     getApiTokenConnectorTypes(orgId, userId),
     fetchAndMergeVariables(orgId, userId, vars),
+    resolveCustomConnectorFirewalls(orgId, userId),
   ]);
 
   const rawApiTokenTypes = allowedConnectorTypes
@@ -180,16 +183,20 @@ async function resolveSecretsAndEnvironment(
   // Single secrets map with explicit priority (later overrides earlier).
   // Only mapped env vars from connectors are included — raw connector secrets
   // (including refresh tokens) are kept server-side and never sent to the runner.
+  const hasCustomConnectorSecrets =
+    Object.keys(customConnectorResult.secrets).length > 0;
   const hasSecrets =
     oauthResult.resolvedSecrets ||
     modelProviderResult.secrets ||
     filteredDbSecrets ||
-    cliSecrets;
+    cliSecrets ||
+    hasCustomConnectorSecrets;
   const secrets: Record<string, string> | undefined = hasSecrets
     ? {
         ...oauthResult.resolvedSecrets, // connector env mappings (e.g. GITHUB_TOKEN)
         ...modelProviderResult.secrets, // model provider
         ...filteredDbSecrets, // DB user secrets (connector secrets filtered)
+        ...customConnectorResult.secrets, // org custom connector per-user secrets
         ...cliSecrets, // highest: CLI --secrets
       }
     : undefined;
@@ -215,13 +222,15 @@ async function resolveSecretsAndEnvironment(
   // When undefined (no org context / CLI direct call), fall back to
   // connectorTypes (secret-derived) for backward compatibility.
   const firewallSourceTypes = allowedConnectorTypes ?? connectorTypes;
-  const connectorPermissionConfigs: ExpandedFirewallConfig[] =
-    firewallSourceTypes.filter(isFirewallConnectorType).map((type) => {
+  const connectorPermissionConfigs: ExpandedFirewallConfig[] = [
+    ...firewallSourceTypes.filter(isFirewallConnectorType).map((type) => {
       return {
         ...getConnectorFirewall(type),
         ref: type,
       };
-    });
+    }),
+    ...customConnectorResult.firewalls,
+  ];
 
   // Expand environment variables from compose config.
   // All permission configs (model provider, connector) are passed via the

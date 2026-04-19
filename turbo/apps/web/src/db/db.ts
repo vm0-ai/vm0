@@ -59,6 +59,8 @@ import * as pendingOutboundCallSchema from "./schema/pending-outbound-call";
 import * as voiceChatSchema from "./schema/voice-chat";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as chatMessageSchema from "./schema/chat-message";
+import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
+import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 
 export const schema = {
   ...userSchema,
@@ -122,4 +124,6 @@ export const schema = {
   ...voiceChatSchema,
   ...userFeatureSwitchesSchema,
   ...chatMessageSchema,
+  ...orgCustomConnectorSchema,
+  ...orgCustomConnectorSecretSchema,
 };

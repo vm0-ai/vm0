@@ -1898,6 +1898,13 @@
       "when": 1776562597119,
       "tag": "0270_simple_ultron",
       "breakpoints": true
+    },
+    {
+      "idx": 271,
+      "version": "7",
+      "when": 1776571541090,
+      "tag": "0271_gifted_vulcan",
+      "breakpoints": true
     }
   ]
 }
