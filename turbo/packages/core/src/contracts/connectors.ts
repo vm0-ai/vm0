@@ -2756,7 +2756,7 @@ const CONNECTOR_TYPES_DEF = {
   replicate: {
     label: "Replicate",
     environmentMapping: {
-      REPLICATE_API_TOKEN: "$secrets.REPLICATE_API_TOKEN",
+      REPLICATE_TOKEN: "$secrets.REPLICATE_TOKEN",
     },
     helpText:
       "Connect your Replicate account to run open-source ML models for image generation, text generation, and more",
@@ -2766,7 +2766,7 @@ const CONNECTOR_TYPES_DEF = {
         helpText:
           "1. Sign up at [replicate.com](https://replicate.com)\n2. Click your avatar → **API Tokens**\n3. Click **Create token**, give it a name\n4. Copy the token (starts with `r8_`)\n5. Paste it here",
         secrets: {
-          REPLICATE_API_TOKEN: {
+          REPLICATE_TOKEN: {
             label: "API Token",
             required: true,
             placeholder: "r8_...",
