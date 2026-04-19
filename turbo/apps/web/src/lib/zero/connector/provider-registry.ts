@@ -139,6 +139,7 @@ import { pdf4meHandler } from "./providers/pdf4me-handler";
 import { pandadocHandler } from "./providers/pandadoc-handler";
 import { pdfcoHandler } from "./providers/pdfco-handler";
 import { perplexityHandler } from "./providers/perplexity-handler";
+import { pipedriveHandler } from "./providers/pipedrive-handler";
 import { pushinatorHandler } from "./providers/pushinator-handler";
 import { plainHandler } from "./providers/plain-handler";
 import { plausibleHandler } from "./providers/plausible-handler";
@@ -286,6 +287,7 @@ export const PROVIDER_HANDLERS: Record<
   pdf4me: pdf4meHandler,
   pdfco: pdfcoHandler,
   perplexity: perplexityHandler,
+  pipedrive: pipedriveHandler,
   plain: plainHandler,
   plausible: plausibleHandler,
   podchaser: podchaserHandler,
