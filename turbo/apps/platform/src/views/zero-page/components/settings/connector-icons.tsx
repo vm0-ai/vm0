@@ -121,6 +121,7 @@ const CONNECTOR_ICON_COLORFUL = {
   jotform: true,
   kommo: true,
   lark: true,
+  langfuse: true,
   line: true,
   linear: true,
   loops: true,
