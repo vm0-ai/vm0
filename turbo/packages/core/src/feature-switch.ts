@@ -174,7 +174,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show admin-only daily credits chart and per-run records on Usage page",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ModelDetail]: {
     maintainer: "ethan@vm0.ai",
@@ -195,44 +194,37 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description: "Enable remote desktop host registration",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AuditLink]: {
     maintainer: "ethan@vm0.ai",
     description: "Show audit log links in Slack messages",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PhoneIntegration]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Phone page for voice call integration",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.VoiceChat]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable the Voice Chat feature and API endpoints",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AudioIO]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable audio input/output features in chat (TTS read-aloud, auto-read, voice input)",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MissionControlSidebar]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Mission Control page entry in the sidebar",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
@@ -250,7 +242,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show Run History tab on schedules page and Chat-from-schedule button on activity detail",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -263,21 +254,18 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.InlineThinkingDot]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Show an inline streaming cursor on the last assistant message while the agent run is still active, so users see the agent is still working even after it has produced output",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZoomConnector]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SlackAgentSwitch]: {
     maintainer: "yuma@vm0.ai",
@@ -295,7 +283,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "user falls back to the org default agent with no footer. Staff-only during the " +
       "rollout window defined by `enabledOrgIdHashes`.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

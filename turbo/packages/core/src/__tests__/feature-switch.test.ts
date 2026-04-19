@@ -30,9 +30,9 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return true when orgId hash matches enabledOrgIdHashes", () => {
-    // Lab has enabledOrgIdHashes: STAFF_ORG_ID_HASHES
+    // SandboxReuse has enabledOrgIdHashes: STAFF_ORG_ID_HASHES
     expect(
-      isFeatureEnabled(FeatureSwitchKey.Lab, {
+      isFeatureEnabled(FeatureSwitchKey.SandboxReuse, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
@@ -40,19 +40,19 @@ describe("isFeatureEnabled", () => {
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.Lab, {
+      isFeatureEnabled(FeatureSwitchKey.SandboxReuse, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
   });
 
   it("should return false when no orgId provided but switch has enabledOrgIdHashes", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.Lab)).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.SandboxReuse)).toBe(false);
   });
 
   it("should return true when orgId matches even if userId does not", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.Lab, {
+      isFeatureEnabled(FeatureSwitchKey.SandboxReuse, {
         userId: "non-matching-user",
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
@@ -71,8 +71,8 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    // Lab has STAFF_ORG_ID_HASHES and should be true
-    expect(states[FeatureSwitchKey.Lab]).toBe(true);
+    // SandboxReuse has STAFF_ORG_ID_HASHES and should be true
+    expect(states[FeatureSwitchKey.SandboxReuse]).toBe(true);
     // Globally enabled should still be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     // Switches without org hashes should remain false
@@ -83,7 +83,7 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
-    expect(states[FeatureSwitchKey.Lab]).toBe(false);
+    expect(states[FeatureSwitchKey.SandboxReuse]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
