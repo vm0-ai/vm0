@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -48,16 +47,6 @@ describe("zero about page", () => {
       defaultAgentMetadata: { displayName: "MyAgent" },
     });
     server.use(
-      http.get("*/api/zero/onboarding/status", () => {
-        return HttpResponse.json({
-          needsOnboarding: false,
-          isAdmin: true,
-          hasOrg: true,
-          hasDefaultAgent: true,
-          defaultAgentId: "c0000000-0000-4000-a000-000000000001",
-          defaultAgentMetadata: { displayName: "MyAgent" },
-        });
-      }),
       mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
         return respond(200, {
           agentId: "c0000000-0000-4000-a000-000000000001",

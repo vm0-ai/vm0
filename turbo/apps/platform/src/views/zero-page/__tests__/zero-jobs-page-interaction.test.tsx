@@ -85,9 +85,6 @@ describe("zero jobs page - create agent dialog", () => {
         }
         return HttpResponse.json([DEFAULT_AGENT, NEW_AGENT]);
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
       mockApi(zeroAgentsMainContract.create, ({ respond }) => {
         return respond(201, {
           agentId: "new-agent-id",

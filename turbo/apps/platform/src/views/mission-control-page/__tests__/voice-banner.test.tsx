@@ -15,7 +15,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -81,9 +80,6 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
-      http.get("*/api/zero/tasks", () => {
-        return HttpResponse.json({ tasks: [] });
-      }),
       mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
         return respond(200, {
           session: {
@@ -137,9 +133,6 @@ describe("voiceBanner — error on session creation (MC-VC-004)", () => {
     setMockFeatureSwitches({ voiceChat: true });
 
     server.use(
-      http.get("*/api/zero/tasks", () => {
-        return HttpResponse.json({ tasks: [] });
-      }),
       mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
         return respond(400, {
           error: { message: "Service unavailable", code: "BAD_REQUEST" },
@@ -180,9 +173,6 @@ describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
     setMockFeatureSwitches({ voiceChat: true });
 
     server.use(
-      http.get("*/api/zero/tasks", () => {
-        return HttpResponse.json({ tasks: [] });
-      }),
       mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
         return respond(400, {
           error: { message: "fail", code: "BAD_REQUEST" },

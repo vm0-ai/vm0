@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -191,19 +190,6 @@ function renderTeamPageAsMember(
     }),
     mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
-        needsOnboarding: false,
-        isAdmin: false,
-        hasOrg: true,
-        hasDefaultAgent: true,
-        defaultAgentId: "compose-1",
-        defaultAgentMetadata: { displayName: "Zero" },
-      });
     }),
   );
 

@@ -128,9 +128,6 @@ function registerStandardHandlers() {
     mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
       return respond(200, mockInstructions());
     }),
-    http.get("http://localhost:3000/api/zero/schedules", () => {
-      return HttpResponse.json(mockSchedules());
-    }),
     mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes: [] });
     }),
@@ -154,9 +151,6 @@ describe("zero-job-detail signals", () => {
         }),
         mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
           return respond(200, mockInstructions());
-        }),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
         }),
       );
 
@@ -482,9 +476,6 @@ describe("zero-job-detail signals", () => {
         mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
           return respond(200, mockInstructions());
         }),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
       );
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
@@ -607,9 +598,6 @@ describe("zero-job-detail signals", () => {
         mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
           return respond(200, mockInstructions());
         }),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
       );
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
@@ -681,9 +669,6 @@ describe("zero-job-detail signals", () => {
         }),
         mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
           return respond(200, mockInstructions());
-        }),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
         }),
         mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
           return respond(200, { enabledTypes: ["search"] });

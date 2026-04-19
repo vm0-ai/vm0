@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
@@ -39,31 +38,6 @@ function mockAPIs() {
     },
   ]);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "agent-detail-id",
-          displayName: "My Agent",
-          description: "A helpful agent",
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_2",
-          updatedAt: "2024-01-02T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
       return respond(200, {
         agentId: "e0000000-0000-4000-a000-000000000010",
@@ -173,12 +147,6 @@ describe("zero job detail page - display", () => {
   it("should show not-found error state for unknown agent (AGENT-D-024)", async () => {
     setMockTeam([]);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
       mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
         return respond(404, {
           error: { message: "Not found", code: "NOT_FOUND" },
