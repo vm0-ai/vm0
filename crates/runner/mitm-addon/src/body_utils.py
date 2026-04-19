@@ -12,6 +12,7 @@ Exports:
 
 import base64
 import zlib
+from collections.abc import Callable
 
 import brotli  # type: ignore[import-untyped]
 import zstandard
@@ -55,7 +56,11 @@ _SENSITIVE_HEADER_KEYWORDS = (
 )
 
 
-def _make_streaming_decompressor(decomp_fn, error_cls, encoding_label: str):
+def _make_streaming_decompressor(
+    decomp_fn: Callable[[bytes], bytes],
+    error_cls: type[Exception],
+    encoding_label: str,
+) -> Callable[[bytes], bytes]:
     """Wrap a chunk decompressor with log-once + short-circuit on failure.
 
     ``zlib`` / ``brotli`` / ``zstd`` streaming decompressors have internal
