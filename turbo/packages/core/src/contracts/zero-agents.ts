@@ -28,8 +28,8 @@ export const zeroAgentResponseSchema = z.object({
   avatarUrl: z.string().nullable(),
   permissionPolicies: firewallPoliciesSchema.nullable(),
   customSkills: z.array(z.string()).default([]),
-  modelProviderId: z.string().uuid().nullable(),
-  selectedModel: z.string().nullable(),
+  modelProviderId: z.string().uuid().nullable().default(null),
+  selectedModel: z.string().nullable().default(null),
 });
 
 /**

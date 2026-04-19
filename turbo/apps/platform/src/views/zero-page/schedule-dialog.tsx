@@ -1,7 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet } from "ccstate-react";
-import { useLastResolved } from "ccstate-react/experimental";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
 import {
@@ -754,35 +753,35 @@ function ScheduleFormDialogInner({
           {showModelPicker &&
             orgProviders &&
             orgProviders.modelProviders.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="schedule-dialog-model"
-                className="text-sm font-medium text-foreground"
-              >
-                Model
-                <span className="text-muted-foreground font-normal ml-1">
-                  (optional)
-                </span>
-              </label>
-              <ModelProviderPicker
-                providers={orgProviders.modelProviders}
-                value={
-                  form.modelProviderId && form.selectedModel
-                    ? {
-                        modelProviderId: form.modelProviderId,
-                        selectedModel: form.selectedModel,
-                      }
-                    : null
-                }
-                onChange={(sel: ModelProviderSelection | null) => {
-                  updateForm({
-                    modelProviderId: sel?.modelProviderId ?? null,
-                    selectedModel: sel?.selectedModel ?? null,
-                  });
-                }}
-              />
-            </div>
-          )}
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="schedule-dialog-model"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Model
+                  <span className="text-muted-foreground font-normal ml-1">
+                    (optional)
+                  </span>
+                </label>
+                <ModelProviderPicker
+                  providers={orgProviders.modelProviders}
+                  value={
+                    form.modelProviderId && form.selectedModel
+                      ? {
+                          modelProviderId: form.modelProviderId,
+                          selectedModel: form.selectedModel,
+                        }
+                      : null
+                  }
+                  onChange={(sel: ModelProviderSelection | null) => {
+                    updateForm({
+                      modelProviderId: sel?.modelProviderId ?? null,
+                      selectedModel: sel?.selectedModel ?? null,
+                    });
+                  }}
+                />
+              </div>
+            )}
         </div>
 
         <DialogFooter>

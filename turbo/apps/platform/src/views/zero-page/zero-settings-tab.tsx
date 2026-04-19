@@ -1,7 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet } from "ccstate-react";
-import { useLastResolved, useLoadableSet } from "ccstate-react/experimental";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   Button,
@@ -211,7 +211,8 @@ export function ZeroSettingsTab({
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          modelProviderId: modelSelection?.modelProviderId ?? null,
+                          modelProviderId:
+                            modelSelection?.modelProviderId ?? null,
                           selectedModel: modelSelection?.selectedModel ?? null,
                         },
                         pageSignal,
@@ -325,20 +326,20 @@ export function ZeroSettingsTab({
             {showModelPicker &&
               orgProviders &&
               orgProviders.modelProviders.length > 0 && (
-              <InlineSettingsRow
-                label="Model"
-                description="Override the org default model for this agent."
-                wideControls
-              >
-                <div className="min-w-0 w-full">
-                  <ModelProviderPicker
-                    providers={orgProviders.modelProviders}
-                    value={modelSelection}
-                    onChange={setModelSelection}
-                  />
-                </div>
-              </InlineSettingsRow>
-            )}
+                <InlineSettingsRow
+                  label="Model"
+                  description="Override the org default model for this agent."
+                  wideControls
+                >
+                  <div className="min-w-0 w-full">
+                    <ModelProviderPicker
+                      providers={orgProviders.modelProviders}
+                      value={modelSelection}
+                      onChange={setModelSelection}
+                    />
+                  </div>
+                </InlineSettingsRow>
+              )}
           </CardContent>
         </Card>
 

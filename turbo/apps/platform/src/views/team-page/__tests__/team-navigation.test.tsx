@@ -60,6 +60,9 @@ function mockAPIs() {
         sound: null,
         avatarUrl: null,
         permissionPolicies: null,
+        customSkills: [],
+        modelProviderId: null,
+        selectedModel: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {

@@ -39,6 +39,8 @@ function createMockSchedule(overrides: Record<string, unknown> = {}) {
     volumeVersions: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
+    modelProviderId: null,
+    selectedModel: null,
     ...overrides,
   };
 }

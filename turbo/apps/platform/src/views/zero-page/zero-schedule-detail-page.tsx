@@ -1,7 +1,12 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
-import { useLastResolved, useLoadableSet } from "ccstate-react/experimental";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconCalendar,
@@ -487,31 +492,31 @@ function ScheduleSettingsForm({
           {showModelPicker &&
             orgProviders &&
             orgProviders.modelProviders.length > 0 && (
-            <InlineSettingsRow
-              label="Model"
-              description="Override the org default model for this schedule."
-            >
-              <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
-                <ModelProviderPicker
-                  providers={orgProviders.modelProviders}
-                  value={
-                    form.modelProviderId && form.selectedModel
-                      ? {
-                          modelProviderId: form.modelProviderId,
-                          selectedModel: form.selectedModel,
-                        }
-                      : null
-                  }
-                  onChange={(sel: ModelProviderSelection | null) => {
-                    updateForm({
-                      modelProviderId: sel?.modelProviderId ?? null,
-                      selectedModel: sel?.selectedModel ?? null,
-                    });
-                  }}
-                />
-              </div>
-            </InlineSettingsRow>
-          )}
+              <InlineSettingsRow
+                label="Model"
+                description="Override the org default model for this schedule."
+              >
+                <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
+                  <ModelProviderPicker
+                    providers={orgProviders.modelProviders}
+                    value={
+                      form.modelProviderId && form.selectedModel
+                        ? {
+                            modelProviderId: form.modelProviderId,
+                            selectedModel: form.selectedModel,
+                          }
+                        : null
+                    }
+                    onChange={(sel: ModelProviderSelection | null) => {
+                      updateForm({
+                        modelProviderId: sel?.modelProviderId ?? null,
+                        selectedModel: sel?.selectedModel ?? null,
+                      });
+                    }}
+                  />
+                </div>
+              </InlineSettingsRow>
+            )}
         </CardContent>
       </Card>
 

@@ -281,7 +281,7 @@ export async function resolveModelProviderSecrets(
   modelProviderId?: string,
   selectedModelOverride?: string,
 ): Promise<ModelProviderSecretResult> {
-  let secrets: Record<string, string> | undefined;
+  const secrets: Record<string, string> | undefined = undefined;
 
   // Skip if explicit model provider config exists or framework doesn't use model providers
   if (hasExplicitModelProviderConfig || framework !== "claude-code") {
@@ -368,10 +368,6 @@ export async function resolveModelProviderSecrets(
     };
   }
 
-  // Store secret in secrets map for masking
-  secrets = secrets || {};
-  secrets[secretName] = secretValue;
-
   // Resolve environment mapping as template references
   const injectedEnvironment = resolveEnvironmentMapping(
     providerType,
@@ -384,7 +380,7 @@ export async function resolveModelProviderSecrets(
   );
 
   return {
-    secrets,
+    secrets: { [secretName]: secretValue },
     injectedEnvironment,
     resolvedModelProvider: providerType,
     selectedModel,

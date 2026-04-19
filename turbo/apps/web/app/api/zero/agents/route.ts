@@ -67,6 +67,16 @@ const router = tsr.router(zeroAgentsMainContract, {
       };
     }
 
+    const metadata = {
+      displayName: body.displayName ?? null,
+      description: body.description ?? null,
+      sound: body.sound ?? null,
+      avatarUrl: body.avatarUrl ?? null,
+      customSkills,
+      modelProviderId: body.modelProviderId ?? null,
+      selectedModel: body.selectedModel ?? null,
+    };
+
     // Write metadata to zero_agents (PK = composeId)
     await globalThis.services.db
       .insert(zeroAgents)
@@ -75,24 +85,12 @@ const router = tsr.router(zeroAgentsMainContract, {
         orgId: org.orgId,
         name: result.composeName,
         owner: userId,
-        displayName: body.displayName ?? null,
-        description: body.description ?? null,
-        sound: body.sound ?? null,
-        avatarUrl: body.avatarUrl ?? null,
-        customSkills,
-        modelProviderId: body.modelProviderId ?? null,
-        selectedModel: body.selectedModel ?? null,
+        ...metadata,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
         set: {
-          displayName: body.displayName ?? null,
-          description: body.description ?? null,
-          sound: body.sound ?? null,
-          avatarUrl: body.avatarUrl ?? null,
-          customSkills,
-          modelProviderId: body.modelProviderId ?? null,
-          selectedModel: body.selectedModel ?? null,
+          ...metadata,
           updatedAt: new Date(),
         },
       });
@@ -104,14 +102,8 @@ const router = tsr.router(zeroAgentsMainContract, {
       body: {
         agentId: result.composeId,
         ownerId: userId,
-        description: body.description ?? null,
-        displayName: body.displayName ?? null,
-        sound: body.sound ?? null,
-        avatarUrl: body.avatarUrl ?? null,
         permissionPolicies: null,
-        modelProviderId: body.modelProviderId ?? null,
-        selectedModel: body.selectedModel ?? null,
-        customSkills,
+        ...metadata,
       },
     };
   },

@@ -39,6 +39,8 @@ function mockAgentResponse() {
     avatarUrl: null,
     permissionPolicies: null,
     customSkills: [],
+    modelProviderId: null,
+    selectedModel: null,
   };
 }
 
