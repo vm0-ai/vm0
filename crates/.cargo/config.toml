@@ -1,3 +1,10 @@
 [target.aarch64-unknown-linux-musl]
 linker = "aarch64-linux-gnu-gcc"
 rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=-fuse-ld=mold"]
+
+# Cross-compiling C code (aws-lc-sys) with aarch64-linux-gnu-gcc pulls in
+# glibc headers that expand stdlib calls to _FORTIFY_SOURCE "__*_chk"
+# variants. Those symbols don't exist in musl libc, causing link failures.
+# Disable FORTIFY for the musl target since musl doesn't support it anyway.
+[env]
+CFLAGS_aarch64_unknown_linux_musl = "-U_FORTIFY_SOURCE"
