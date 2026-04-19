@@ -1,39 +1,21 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { reloadBillingStatus$ } from "../../../signals/zero-page/billing.ts";
+import {
+  zeroBillingStatusContract,
+  zeroBillingAutoRechargeContract,
+  zeroBillingCheckoutContract,
+  zeroBillingPortalContract,
+  zeroBillingDowngradeContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
-
-function mockAPIs() {
-  server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-  );
-}
 
 async function openBillingTab() {
   detachedSetupPage({ context, path: "/?settings=billing" });
@@ -44,7 +26,6 @@ async function openBillingTab() {
 
 describe("org billing tab - plan display", () => {
   it("should show Free plan for free tier", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -55,7 +36,6 @@ describe("org billing tab - plan display", () => {
   });
 
   it("should show Pro plan for pro tier", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -71,7 +51,6 @@ describe("org billing tab - plan display", () => {
   });
 
   it("should show Upgrade button for free tier", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -88,7 +67,6 @@ describe("org billing tab - plan display", () => {
   });
 
   it("should show Compare all plans link", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -104,7 +82,6 @@ describe("org billing tab - plan display", () => {
 describe("org billing tab - pricing sub-page navigation", () => {
   it("should navigate to pricing page when clicking Compare all plans", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -127,7 +104,6 @@ describe("org billing tab - pricing sub-page navigation", () => {
 
   it("should navigate back from pricing page via Back button", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -152,7 +128,6 @@ describe("org billing tab - pricing sub-page navigation", () => {
 
   it("should mark current plan as disabled on pricing page", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -185,7 +160,6 @@ describe("org billing tab - pricing sub-page navigation", () => {
 
 describe("org billing tab - auto-recharge section", () => {
   it("should show auto-recharge section for paid plans", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -204,7 +178,6 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should not show auto-recharge section for free plan", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -217,7 +190,6 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should hydrate form with server auto-recharge config when enabled", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -251,7 +223,6 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should show toggle off when server auto-recharge is disabled", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -279,7 +250,6 @@ describe("org billing tab - auto-recharge section", () => {
 
   it("should enable toggle when clicked with no prior threshold/amount config", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -318,9 +288,9 @@ describe("org billing tab - auto-recharge section", () => {
     const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           enabled: true,
           threshold: 2000,
           amount: 10_000,
@@ -328,7 +298,6 @@ describe("org billing tab - auto-recharge section", () => {
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -377,9 +346,9 @@ describe("org billing tab - auto-recharge section", () => {
   it("should send correct data when saving auto-recharge config", async () => {
     let capturedBody: unknown = null;
     server.use(
-      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingAutoRechargeContract.update, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           enabled: true,
           threshold: 2000,
           amount: 10_000,
@@ -387,7 +356,6 @@ describe("org billing tab - auto-recharge section", () => {
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -429,7 +397,6 @@ describe("org billing tab - cancellation pending", () => {
   const futureDate = new Date(Date.now() + 30 * 86_400 * 1000).toISOString();
 
   it("should show cancellation notice when subscription is pending cancellation", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -449,7 +416,6 @@ describe("org billing tab - cancellation pending", () => {
   });
 
   it("should show 'Ends on' instead of 'Renews' when cancelling", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -469,7 +435,6 @@ describe("org billing tab - cancellation pending", () => {
   });
 
   it("should hide Downgrade button when cancellation is pending", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -493,7 +458,6 @@ describe("org billing tab - cancellation pending", () => {
   });
 
   it("should show Manage button when cancellation is pending", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -517,7 +481,6 @@ describe("org billing tab - cancellation pending", () => {
   });
 
   it("should show normal state when cancelAtPeriodEnd is false", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -546,7 +509,6 @@ describe("org billing tab - cancellation pending", () => {
 describe("org billing tab - plan card details", () => {
   it("should show plan cards with upgrade buttons on pricing page", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -584,7 +546,6 @@ describe("org billing tab - plan card details", () => {
 
 describe("org billing tab - renewal date display", () => {
   it("should show renewal date when subscription is active and not cancelling", async () => {
-    mockAPIs();
     const futureDate = new Date(Date.now() + 30 * 86_400 * 1000).toISOString();
     setMockBillingStatus({
       tier: "pro",
@@ -606,11 +567,15 @@ describe("org billing tab - renewal date display", () => {
 describe("org billing tab - billing states", () => {
   it("should show error state when billing status fails to load", async () => {
     server.use(
-      http.get("*/api/zero/billing/status", () => {
-        return HttpResponse.json({}, { status: 500 });
+      mockApi(zeroBillingStatusContract.get, ({ respond }) => {
+        return respond(500, {
+          error: {
+            message: "Internal server error",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        });
       }),
     );
-    mockAPIs();
 
     await openBillingTab();
 
@@ -633,15 +598,14 @@ describe("org billing tab - plan card actions", () => {
     const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
-      http.post("*/api/zero/billing/checkout", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
           url: "https://checkout.stripe.com/test?tier=pro",
         });
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -678,14 +642,13 @@ describe("org billing tab - stripe portal", () => {
   it("should redirect to Stripe portal URL when Manage button is clicked", async () => {
     const user = userEvent.setup();
     server.use(
-      http.post("*/api/zero/billing/portal", () => {
-        return HttpResponse.json({
+      mockApi(zeroBillingPortalContract.create, ({ respond }) => {
+        return respond(200, {
           url: "https://billing.stripe.com/test-portal",
         });
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -715,7 +678,6 @@ describe("org billing tab - stripe portal", () => {
 
 describe("org billing tab - downgrade flow", () => {
   it("should show Downgrade button for paid tier (pro)", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -737,7 +699,6 @@ describe("org billing tab - downgrade flow", () => {
   });
 
   it("should show Downgrade button for team tier", async () => {
-    mockAPIs();
     setMockBillingStatus({
       tier: "team",
       credits: 120_000,
@@ -759,7 +720,6 @@ describe("org billing tab - downgrade flow", () => {
   });
 
   it("should not show Downgrade button for free tier", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();
@@ -777,7 +737,6 @@ describe("org billing tab - downgrade flow", () => {
 
   it("should open downgrade dialog on Downgrade button click for pro user", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -809,7 +768,6 @@ describe("org billing tab - downgrade flow", () => {
 
   it("should open downgrade dialog with plan selection for team user", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "team",
       credits: 120_000,
@@ -843,13 +801,12 @@ describe("org billing tab - downgrade flow", () => {
     const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
-      http.post("*/api/zero/billing/downgrade", async ({ request }) => {
-        capturedBody = await request.json();
-        return HttpResponse.json({ success: true, effectiveDate: null });
+      mockApi(zeroBillingDowngradeContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, { success: true, effectiveDate: null });
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -888,13 +845,12 @@ describe("org billing tab - downgrade flow", () => {
     const user = userEvent.setup();
     let apiCalled = false;
     server.use(
-      http.post("*/api/zero/billing/downgrade", () => {
+      mockApi(zeroBillingDowngradeContract.create, ({ respond }) => {
         apiCalled = true;
-        return HttpResponse.json({ success: true, effectiveDate: null });
+        return respond(200, { success: true, effectiveDate: null });
       }),
     );
 
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -936,7 +892,6 @@ describe("org billing tab - downgrade flow", () => {
 
   it("should route pricing page downgrade through dialog", async () => {
     const user = userEvent.setup();
-    mockAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -974,7 +929,6 @@ describe("org billing tab - downgrade flow", () => {
 
 describe("org billing tab - billing status refresh", () => {
   it("should update plan display when billing status is refreshed", async () => {
-    mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await openBillingTab();

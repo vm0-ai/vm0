@@ -104,6 +104,10 @@ export interface CreateZeroRunParams {
   sessionId?: string;
   appendSystemPrompt?: string;
   modelProvider?: string;
+  /** Per-agent or per-schedule model provider ID override. */
+  modelProviderId?: string;
+  /** Per-agent or per-schedule selected model override. */
+  selectedModelOverride?: string;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   scheduleId?: string;
   triggerAgentId?: string;
@@ -475,6 +479,8 @@ async function createZeroRunRecord(
     sessionId: params.sessionId,
     appendSystemPrompt,
     modelProvider: params.modelProvider,
+    modelProviderId: params.modelProviderId,
+    selectedModelOverride: params.selectedModelOverride,
     callbacks: params.callbacks,
     memoryName: "memory",
     disallowedTools: [...DISALLOWED_TOOLS],

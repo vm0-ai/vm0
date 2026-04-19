@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../../__tests__/page-helper.ts";
@@ -11,7 +10,11 @@ import {
   STANDALONE_POLLING_TIMEOUT_MS,
 } from "../connectors.ts";
 import { createDeferredPromise } from "../../../utils.ts";
-import type { ConnectorListResponse } from "@vm0/core";
+import {
+  type ConnectorListResponse,
+  zeroConnectorsMainContract,
+} from "@vm0/core";
+import { mockApi } from "../../../../mocks/msw-contract.ts";
 
 vi.mock("signal-timers", async (importOriginal) => {
   const mod = await importOriginal<typeof import("signal-timers")>();
@@ -78,16 +81,16 @@ describe("connectConnector$", () => {
     const secondPollDeferred = createDeferredPromise<void>(context.signal);
     let deferredResolved = false;
     server.use(
-      http.get("*/api/zero/connectors", () => {
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
         pollCount++;
         if (pollCount <= 1) {
-          return HttpResponse.json(makeEmptyConnectorResponse());
+          return respond(200, makeEmptyConnectorResponse());
         }
         if (!deferredResolved) {
           deferredResolved = true;
           secondPollDeferred.resolve();
         }
-        return HttpResponse.json(makeGithubConnectorResponse());
+        return respond(200, makeGithubConnectorResponse());
       }),
     );
 
@@ -131,15 +134,15 @@ describe("connectConnector$", () => {
     let pollCount = 0;
     const reconnectedUpdatedAt = "2026-02-01T00:00:00.000Z";
     server.use(
-      http.get("*/api/zero/connectors", () => {
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
         pollCount++;
         // First poll captures initialUpdatedAt; second poll still shows the
         // stale value (OAuth callback not yet complete); third poll reflects
         // the completed reconnect with a new updatedAt.
         if (pollCount <= 2) {
-          return HttpResponse.json(initialResponse);
+          return respond(200, initialResponse);
         }
-        return HttpResponse.json({
+        return respond(200, {
           ...initialResponse,
           connectors: [
             {
@@ -173,12 +176,12 @@ describe("connectConnector$", () => {
 
     let pollCount = 0;
     server.use(
-      http.get("*/api/zero/connectors", () => {
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
         pollCount++;
         if (pollCount >= 2) {
           mockWindow.closed = true;
         }
-        return HttpResponse.json(makeEmptyConnectorResponse());
+        return respond(200, makeEmptyConnectorResponse());
       }),
     );
 
@@ -201,8 +204,8 @@ describe("connectConnector$", () => {
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
     server.use(
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json(makeGithubConnectorResponse());
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+        return respond(200, makeGithubConnectorResponse());
       }),
     );
 
@@ -219,12 +222,12 @@ describe("connectConnector$", () => {
 
     let pollCount = 0;
     server.use(
-      http.get("*/api/zero/connectors", () => {
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
         pollCount++;
         if (pollCount >= 1) {
           mockWindow.closed = true;
         }
-        return HttpResponse.json(makeEmptyConnectorResponse());
+        return respond(200, makeEmptyConnectorResponse());
       }),
     );
 
@@ -240,8 +243,8 @@ describe("connectConnector$", () => {
     vi.spyOn(window, "open").mockReturnValue(null);
 
     server.use(
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json(makeGithubConnectorResponse());
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+        return respond(200, makeGithubConnectorResponse());
       }),
     );
 
@@ -267,12 +270,12 @@ describe("connectConnector$", () => {
     // simulating the user completing OAuth in external Safari then returning.
     let pollCount = 0;
     server.use(
-      http.get("*/api/zero/connectors", () => {
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
         pollCount++;
         if (pollCount < 3) {
-          return HttpResponse.json(makeEmptyConnectorResponse());
+          return respond(200, makeEmptyConnectorResponse());
         }
-        return HttpResponse.json(makeGithubConnectorResponse());
+        return respond(200, makeGithubConnectorResponse());
       }),
     );
 
@@ -308,8 +311,8 @@ describe("connectConnector$", () => {
     });
 
     server.use(
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json(makeEmptyConnectorResponse());
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+        return respond(200, makeEmptyConnectorResponse());
       }),
     );
 

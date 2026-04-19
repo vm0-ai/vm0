@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { http, HttpResponse } from "msw";
 import { waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroVoiceChatContextContract } from "@vm0/core";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createVoiceChatPanelSignals } from "../create-voice-chat-panel-signals.ts";
@@ -29,11 +30,10 @@ describe("createVoiceChatPanelSignals", () => {
     setup();
 
     server.use(
-      http.get("*/api/zero/voice-chat/sess-poll/context", ({ request }) => {
-        const url = new URL(request.url);
-        const after = Number(url.searchParams.get("after") ?? 0);
+      mockApi(zeroVoiceChatContextContract.getEvents, ({ query, respond }) => {
+        const after = query.after ?? 0;
         if (after === 0) {
-          return HttpResponse.json({
+          return respond(200, {
             events: [
               {
                 id: "evt-1",
@@ -55,7 +55,7 @@ describe("createVoiceChatPanelSignals", () => {
           });
         }
         // Subsequent polls return no new events
-        return HttpResponse.json({ events: [] });
+        return respond(200, { events: [] });
       }),
     );
 
@@ -92,12 +92,9 @@ describe("createVoiceChatPanelSignals", () => {
 
     const pollFired = createDeferredPromise<void>(context.signal);
     server.use(
-      http.get("*/api/zero/voice-chat/sess-error/context", () => {
+      mockApi(zeroVoiceChatContextContract.getEvents, ({ respond }) => {
         pollFired.resolve();
-        return HttpResponse.json(
-          { error: { message: "boom", code: "INTERNAL" } },
-          { status: 500 },
-        );
+        return respond(404, { error: { message: "boom", code: "NOT_FOUND" } });
       }),
     );
 

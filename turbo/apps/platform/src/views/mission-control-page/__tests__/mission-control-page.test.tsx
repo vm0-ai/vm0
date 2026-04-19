@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey, zeroVoiceChatContextContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -919,8 +920,8 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get("*/api/zero/voice-chat/vc-session-open/context", () => {
-        return HttpResponse.json({ events: [] });
+      mockApi(zeroVoiceChatContextContract.getEvents, ({ respond }) => {
+        return respond(200, { events: [] });
       }),
     );
 
@@ -962,36 +963,32 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get(
-        "*/api/zero/voice-chat/vc-session-events/context",
-        ({ request }) => {
-          const url = new URL(request.url);
-          const after = Number(url.searchParams.get("after") ?? 0);
-          if (after === 0) {
-            return HttpResponse.json({
-              events: [
-                {
-                  id: "evt-a",
-                  seq: 1,
-                  source: "slow-brain",
-                  type: "thinking",
-                  content: "Analyzing context",
-                  createdAt: "2026-04-13T10:00:01Z",
-                },
-                {
-                  id: "evt-b",
-                  seq: 2,
-                  source: "slow-brain",
-                  type: "directive",
-                  content: "Be concise",
-                  createdAt: "2026-04-13T10:00:02Z",
-                },
-              ],
-            });
-          }
-          return HttpResponse.json({ events: [] });
-        },
-      ),
+      mockApi(zeroVoiceChatContextContract.getEvents, ({ query, respond }) => {
+        const after = query.after ?? 0;
+        if (after === 0) {
+          return respond(200, {
+            events: [
+              {
+                id: "evt-a",
+                seq: 1,
+                source: "slow-brain",
+                type: "thinking",
+                content: "Analyzing context",
+                createdAt: "2026-04-13T10:00:01Z",
+              },
+              {
+                id: "evt-b",
+                seq: 2,
+                source: "slow-brain",
+                type: "directive",
+                content: "Be concise",
+                createdAt: "2026-04-13T10:00:02Z",
+              },
+            ],
+          });
+        }
+        return respond(200, { events: [] });
+      }),
     );
 
     const user = userEvent.setup();

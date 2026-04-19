@@ -1,9 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { creditsMemberList$ } from "../member-credit-caps.ts";
+import {
+  setMockUsageMembers,
+  setMockMemberCreditCap,
+  resetMockUsageMembers,
+  resetMockMemberCreditCaps,
+} from "../../../mocks/handlers/api-usage.ts";
+import { zeroMemberCreditCapContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -49,43 +57,31 @@ function memberB(): MockMember {
   };
 }
 
-function mockUsageMembers(members: MockMember[]) {
-  server.use(
-    http.get("*/api/zero/usage/members", () => {
-      return HttpResponse.json({
-        period: { start: "2026-03-01", end: "2026-03-31" },
-        members,
-      });
-    }),
-  );
+beforeEach(() => {
+  resetMockUsageMembers();
+  resetMockMemberCreditCaps();
+});
+
+function setupUsageMembers(members: MockMember[]) {
+  setMockUsageMembers({
+    period: { start: "2026-03-01", end: "2026-03-31" },
+    members,
+  });
 }
 
-function mockCreditCaps(
+function setupCreditCaps(
   caps: Record<string, { creditCap: number | null; creditEnabled: boolean }>,
 ) {
-  server.use(
-    http.get("*/api/zero/org/members/credit-cap", ({ request }) => {
-      const url = new URL(request.url);
-      const userId = url.searchParams.get("userId");
-      const cap = userId ? caps[userId] : undefined;
-      if (!cap) {
-        return HttpResponse.json({
-          userId,
-          creditCap: null,
-          creditEnabled: false,
-        });
-      }
-      return HttpResponse.json({ userId, ...cap });
-    }),
-  );
+  for (const [userId, cap] of Object.entries(caps)) {
+    setMockMemberCreditCap(userId, cap.creditCap, cap.creditEnabled);
+  }
 }
 
-function mockCreditCapPut(captured: { calls: CapturedCapCall[] }) {
+function setupCreditCapPut(captured: { calls: CapturedCapCall[] }) {
   server.use(
-    http.put("*/api/zero/org/members/credit-cap", async ({ request }) => {
-      const body = (await request.json()) as CapturedCapCall;
-      captured.calls.push(body);
-      return HttpResponse.json({
+    mockApi(zeroMemberCreditCapContract.set, ({ body, respond }) => {
+      captured.calls.push({ userId: body.userId, creditCap: body.creditCap });
+      return respond(200, {
         userId: body.userId,
         creditCap: body.creditCap,
         creditEnabled: body.creditCap !== null,
@@ -100,8 +96,8 @@ function setup() {
 
 describe("creditsMemberList$", () => {
   it("should return member settings with credit caps from API", async () => {
-    mockUsageMembers([memberA(), memberB()]);
-    mockCreditCaps({
+    setupUsageMembers([memberA(), memberB()]);
+    setupCreditCaps({
       "user-a": { creditCap: 1000, creditEnabled: true },
       "user-b": { creditCap: null, creditEnabled: false },
     });
@@ -122,7 +118,8 @@ describe("creditsMemberList$", () => {
   });
 
   it("should throw when API returns non-OK for credit cap fetch", async () => {
-    mockUsageMembers([memberA()]);
+    setupUsageMembers([memberA()]);
+    // Keep raw http.get for 500 since it's not in the contract's defined responses
     server.use(
       http.get("*/api/zero/org/members/credit-cap", () => {
         return HttpResponse.json(
@@ -147,12 +144,12 @@ describe("creditsMemberList$", () => {
 
 describe("save$ command", () => {
   it("should call PUT with parsed credit cap and exit edit mode", async () => {
-    mockUsageMembers([memberA()]);
-    mockCreditCaps({
+    setupUsageMembers([memberA()]);
+    setupCreditCaps({
       "user-a": { creditCap: null, creditEnabled: false },
     });
     const captured: { calls: CapturedCapCall[] } = { calls: [] };
-    mockCreditCapPut(captured);
+    setupCreditCapPut(captured);
 
     await setup();
 
@@ -178,12 +175,12 @@ describe("save$ command", () => {
   });
 
   it("should not call PUT when value is invalid (non-positive)", async () => {
-    mockUsageMembers([memberA()]);
-    mockCreditCaps({
+    setupUsageMembers([memberA()]);
+    setupCreditCaps({
       "user-a": { creditCap: null, creditEnabled: false },
     });
     const captured: { calls: CapturedCapCall[] } = { calls: [] };
-    mockCreditCapPut(captured);
+    setupCreditCapPut(captured);
 
     await setup();
 
@@ -198,12 +195,12 @@ describe("save$ command", () => {
   });
 
   it("should not call PUT when value is NaN", async () => {
-    mockUsageMembers([memberA()]);
-    mockCreditCaps({
+    setupUsageMembers([memberA()]);
+    setupCreditCaps({
       "user-a": { creditCap: null, creditEnabled: false },
     });
     const captured: { calls: CapturedCapCall[] } = { calls: [] };
-    mockCreditCapPut(captured);
+    setupCreditCapPut(captured);
 
     await setup();
 
@@ -218,12 +215,12 @@ describe("save$ command", () => {
   });
 
   it("should call PUT with null creditCap when value is empty", async () => {
-    mockUsageMembers([memberA()]);
-    mockCreditCaps({
+    setupUsageMembers([memberA()]);
+    setupCreditCaps({
       "user-a": { creditCap: 1000, creditEnabled: true },
     });
     const captured: { calls: CapturedCapCall[] } = { calls: [] };
-    mockCreditCapPut(captured);
+    setupCreditCapPut(captured);
 
     await setup();
 
@@ -244,12 +241,12 @@ describe("save$ command", () => {
 
 describe("clearCap$ command", () => {
   it("should call PUT with null creditCap and exit edit mode", async () => {
-    mockUsageMembers([memberA()]);
-    mockCreditCaps({
+    setupUsageMembers([memberA()]);
+    setupCreditCaps({
       "user-a": { creditCap: 1000, creditEnabled: true },
     });
     const captured: { calls: CapturedCapCall[] } = { calls: [] };
-    mockCreditCapPut(captured);
+    setupCreditCapPut(captured);
 
     await setup();
 
@@ -270,8 +267,8 @@ describe("clearCap$ command", () => {
 
 describe("edit mode signals", () => {
   it("should toggle edit mode and reset value on enter", async () => {
-    mockUsageMembers([memberA()]);
-    mockCreditCaps({
+    setupUsageMembers([memberA()]);
+    setupCreditCaps({
       "user-a": { creditCap: 500, creditEnabled: true },
     });
 
@@ -291,8 +288,8 @@ describe("edit mode signals", () => {
   });
 
   it("should initialize value to empty string when creditCap is null", async () => {
-    mockUsageMembers([memberA()]);
-    mockCreditCaps({
+    setupUsageMembers([memberA()]);
+    setupCreditCaps({
       "user-a": { creditCap: null, creditEnabled: false },
     });
 
@@ -308,8 +305,8 @@ describe("edit mode signals", () => {
 
 describe("creditsMemberList$ caching", () => {
   it("should reuse cached setting when creditCap has not changed", async () => {
-    mockUsageMembers([memberA()]);
-    mockCreditCaps({
+    setupUsageMembers([memberA()]);
+    setupCreditCaps({
       "user-a": { creditCap: 1000, creditEnabled: true },
     });
 

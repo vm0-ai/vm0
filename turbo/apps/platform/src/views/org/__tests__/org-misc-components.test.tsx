@@ -12,7 +12,7 @@
  * Internal: real signals, components, rendering
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -24,30 +24,19 @@ import {
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
 
-function mockBaseAPIs() {
-  server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "test-org",
-        name: "Test Org",
-        role: "admin",
-      });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-  );
-}
+beforeEach(() => {
+  resetMockOrg();
+  setMockOrg({
+    id: "org_1",
+    slug: "test-org",
+    name: "Test Org",
+    role: "admin",
+  });
+});
 
 // ---------------------------------------------------------------------------
 // InternalConnectorLogos (ORG-D-118, ORG-D-119, ORG-D-120, ORG-I-121)
@@ -55,7 +44,6 @@ function mockBaseAPIs() {
 
 describe("internal connector logos - display (ORG-D-118)", () => {
   it("lists all connector types with labels and type identifiers", async () => {
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/__internal-connector-logos" });
     const connectorTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
     // Verify at least one connector type and its label appears in the document
@@ -77,7 +65,6 @@ describe("internal connector logos - display (ORG-D-118)", () => {
 
 describe("internal connector logos - display (ORG-D-119)", () => {
   it("heading displays the count of connector types", async () => {
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/__internal-connector-logos" });
     const connectorTypes = Object.keys(CONNECTOR_TYPES);
     await waitFor(() => {
@@ -91,7 +78,6 @@ describe("internal connector logos - display (ORG-D-119)", () => {
 describe("internal connector logos - interaction (ORG-I-121)", () => {
   it("size selection buttons change the displayed icon size", async () => {
     const user = userEvent.setup();
-    mockBaseAPIs();
     detachedSetupPage({ context, path: "/__internal-connector-logos" });
     // Default size button is "128" — clicking "16" should switch to a smaller size
     await waitFor(() => {
@@ -148,6 +134,8 @@ function testSchedule(
     consecutiveFailures: 0,
     nextRunAt: null,
     lastRunAt: null,
+    modelProviderId: null,
+    selectedModel: null,
     ...overrides,
   };
 }
@@ -155,7 +143,6 @@ function testSchedule(
 function mockScheduleDetailAPIs(
   schedules: ScheduleResponse[] = [testSchedule()],
 ) {
-  mockBaseAPIs();
   server.use(
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules });
@@ -331,19 +318,6 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
 // ---------------------------------------------------------------------------
 
 async function openSetupPrompt(user: ReturnType<typeof userEvent.setup>) {
-  mockBaseAPIs();
-  server.use(
-    http.get("*/api/zero/model-providers", () => {
-      return HttpResponse.json({ modelProviders: [] });
-    }),
-    http.get("*/api/zero/org/members", () => {
-      return HttpResponse.json({
-        members: [],
-        pendingInvitations: [],
-        membershipRequests: [],
-      });
-    }),
-  );
   detachedSetupPage({ context, path: "/?settings=providers" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -413,7 +387,6 @@ describe("setup prompt - state (ORG-S-107)", () => {
 
 describe("clerk provider - display (ORG-D-122)", () => {
   it("clerk provider loads with publishable key from environment", async () => {
-    mockBaseAPIs();
     server.use(
       http.get("*/api/zero/schedules", () => {
         return HttpResponse.json({ schedules: [] });

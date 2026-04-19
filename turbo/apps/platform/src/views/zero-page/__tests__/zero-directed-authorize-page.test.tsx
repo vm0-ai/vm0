@@ -13,7 +13,8 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { CONNECTOR_TYPES } from "@vm0/core";
+import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
 
@@ -37,29 +38,21 @@ function mockAgentWithName(agentId: string, displayName: string) {
   );
 }
 
-function mockConnectorsConnected(type: string) {
-  server.use(
-    http.get("*/api/zero/connectors", () => {
-      return HttpResponse.json({
-        connectors: [
-          {
-            id: crypto.randomUUID(),
-            type,
-            authMethod: "oauth",
-            externalId: null,
-            externalUsername: null,
-            externalEmail: null,
-            oauthScopes: null,
-            needsReconnect: false,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
-          },
-        ],
-        configuredTypes: Object.keys(CONNECTOR_TYPES),
-        connectorProvidedSecretNames: [],
-      });
-    }),
-  );
+function mockConnectorsConnected(type: ConnectorType) {
+  setMockConnectors([
+    {
+      id: crypto.randomUUID(),
+      type,
+      authMethod: "oauth",
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      needsReconnect: false,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+  ]);
 }
 
 describe("directed authorize page", () => {

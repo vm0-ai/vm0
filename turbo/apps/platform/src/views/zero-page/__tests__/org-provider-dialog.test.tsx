@@ -10,7 +10,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -19,7 +18,11 @@ import {
   orgOpenEditDialog$,
   setOrgAddProviderDialogOpen$,
 } from "../../../signals/zero-page/settings/org-model-providers.ts";
-import type { ModelProviderResponse } from "@vm0/core";
+import {
+  type ModelProviderResponse,
+  zeroModelProvidersMainContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -274,15 +277,12 @@ describe("org-provider-dialog - interaction", () => {
     });
 
     server.use(
-      http.post("*/api/zero/model-providers", async () => {
+      mockApi(zeroModelProvidersMainContract.upsert, async ({ respond }) => {
         await postPromise;
-        return HttpResponse.json(
-          {
-            provider: mockProviderResponse({ type: "anthropic-api-key" }),
-            created: true,
-          },
-          { status: 201 },
-        );
+        return respond(201, {
+          provider: mockProviderResponse({ type: "anthropic-api-key" }),
+          created: true,
+        });
       }),
     );
 

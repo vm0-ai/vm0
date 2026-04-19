@@ -11,10 +11,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { type SlackOrgStatus, zeroIntegrationsSlackContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -22,8 +23,8 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-function mockSlackAPI(overrides: Record<string, unknown> = {}) {
-  const defaults = {
+function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
+  const defaults: SlackOrgStatus = {
     isConnected: false,
     isInstalled: false,
     isAdmin: false,
@@ -32,7 +33,6 @@ function mockSlackAPI(overrides: Record<string, unknown> = {}) {
     reinstallUrl: null,
     scopeMismatch: false,
     workspaceName: null,
-    defaultAgentId: null,
     agentOrgSlug: null,
     environment: {
       requiredSecrets: [],
@@ -42,8 +42,8 @@ function mockSlackAPI(overrides: Record<string, unknown> = {}) {
     },
   };
   server.use(
-    http.get("*/api/zero/integrations/slack", () => {
-      return HttpResponse.json({ ...defaults, ...overrides });
+    mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
+      return respond(200, { ...defaults, ...overrides });
     }),
   );
 }
@@ -194,13 +194,15 @@ describe("works page - more options dropdown", () => {
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     server.use(
-      http.delete("*/api/zero/integrations/slack", ({ request }) => {
-        const url = new URL(request.url);
-        if (!url.searchParams.get("action")) {
-          disconnectCalled = true;
-        }
-        return HttpResponse.json({ ok: true });
-      }),
+      mockApi(
+        zeroIntegrationsSlackContract.disconnect,
+        ({ query, respond }) => {
+          if (!query.action) {
+            disconnectCalled = true;
+          }
+          return respond(200, { ok: true });
+        },
+      ),
     );
 
     await renderWorksPage();
@@ -229,10 +231,10 @@ describe("works page - disconnect loading state", () => {
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     server.use(
-      http.delete("*/api/zero/integrations/slack", () => {
-        return new Promise<Response>((resolve) => {
+      mockApi(zeroIntegrationsSlackContract.disconnect, ({ respond }) => {
+        return new Promise<ReturnType<typeof respond>>((resolve) => {
           resolveDisconnect = () => {
-            return resolve(HttpResponse.json({ ok: true }));
+            resolve(respond(200, { ok: true }));
           };
         });
       }),
@@ -270,10 +272,10 @@ describe("works page - uninstall loading state", () => {
 
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     server.use(
-      http.delete("*/api/zero/integrations/slack", () => {
-        return new Promise<Response>((resolve) => {
+      mockApi(zeroIntegrationsSlackContract.disconnect, ({ respond }) => {
+        return new Promise<ReturnType<typeof respond>>((resolve) => {
           resolveUninstall = () => {
-            return resolve(HttpResponse.json({ ok: true }));
+            resolve(respond(200, { ok: true }));
           };
         });
       }),

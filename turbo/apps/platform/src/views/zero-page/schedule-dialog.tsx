@@ -32,6 +32,13 @@ import {
   showConfirm$,
   setShowConfirm$,
 } from "../../signals/schedule-page/schedule-form.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
+import { FeatureSwitchKey } from "@vm0/core";
+import {
+  ModelProviderPicker,
+  type ModelProviderSelection,
+} from "./components/model-provider-picker.tsx";
 
 // ---------------------------------------------------------------------------
 // Constants (moved from zero-schedule-card.tsx)
@@ -116,6 +123,8 @@ export interface ScheduleFormValues {
   loopMinutes: number;
   dayOfWeek: string;
   dayOfMonth: string;
+  modelProviderId: string | null;
+  selectedModel: string | null;
 }
 
 interface ScheduleFormDialogProps {
@@ -492,6 +501,8 @@ function buildDefaults(
     loopMinutes: 15,
     dayOfWeek: "1",
     dayOfMonth: "1",
+    modelProviderId: null,
+    selectedModel: null,
   };
   return { ...defaults, ...initialValues };
 }
@@ -516,6 +527,8 @@ function checkDirty(
     current.loopMinutes !== init.loopMinutes ||
     current.dayOfWeek !== init.dayOfWeek ||
     current.dayOfMonth !== init.dayOfMonth ||
+    current.modelProviderId !== init.modelProviderId ||
+    current.selectedModel !== init.selectedModel ||
     (opts.hasAgents && current.agentId !== init.agentId)
   );
 }
@@ -549,6 +562,11 @@ function ScheduleFormDialogInner({
   const showConfirmVal = useGet(showConfirm$);
   const setShowConfirmVal = useSet(setShowConfirm$);
 
+  const features = useLastResolved(featureSwitch$);
+  const showModelPicker =
+    features?.[FeatureSwitchKey.ModelProviderSelection] ?? false;
+  const orgProviders = useLastResolved(orgModelProviders$);
+
   const current: ScheduleFormValues = {
     prompt: form.prompt,
     description: form.description,
@@ -561,6 +579,8 @@ function ScheduleFormDialogInner({
     loopMinutes: form.loopMinutes,
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
+    modelProviderId: form.modelProviderId,
+    selectedModel: form.selectedModel,
   };
 
   const isDirty = checkDirty(current, init, mode, {
@@ -729,6 +749,39 @@ function ScheduleFormDialogInner({
               return updateForm({ timezone: v });
             }}
           />
+
+          {showModelPicker &&
+            orgProviders &&
+            orgProviders.modelProviders.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="schedule-dialog-model"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Model
+                  <span className="text-muted-foreground font-normal ml-1">
+                    (optional)
+                  </span>
+                </label>
+                <ModelProviderPicker
+                  providers={orgProviders.modelProviders}
+                  value={
+                    form.modelProviderId && form.selectedModel
+                      ? {
+                          modelProviderId: form.modelProviderId,
+                          selectedModel: form.selectedModel,
+                        }
+                      : null
+                  }
+                  onChange={(sel: ModelProviderSelection | null) => {
+                    updateForm({
+                      modelProviderId: sel?.modelProviderId ?? null,
+                      selectedModel: sel?.selectedModel ?? null,
+                    });
+                  }}
+                />
+              </div>
+            )}
         </div>
 
         <DialogFooter>

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import {
@@ -10,6 +9,8 @@ import {
   orgUpdateFormModel$,
 } from "../org-model-providers.ts";
 import { getProviderShape } from "../../../../views/zero-page/components/settings/provider-ui-config.ts";
+import { zeroModelProvidersMainContract } from "@vm0/core";
+import { mockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -25,26 +26,23 @@ describe("org-model-providers vm0 provider", () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.post("*/api/zero/model-providers", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: (capturedBody.selectedModel as string) ?? null,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-            created: true,
+      mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(201, {
+          provider: {
+            id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
+            type: "vm0",
+            framework: "claude-code",
+            secretName: null,
+            authMethod: null,
+            secretNames: null,
+            isDefault: true,
+            selectedModel: (capturedBody.selectedModel as string) ?? null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           },
-          { status: 201 },
-        );
+          created: true,
+        });
       }),
     );
 
@@ -68,26 +66,23 @@ describe("org-model-providers vm0 provider", () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.post("*/api/zero/model-providers", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: (capturedBody.selectedModel as string) ?? null,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-            created: true,
+      mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(201, {
+          provider: {
+            id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
+            type: "vm0",
+            framework: "claude-code",
+            secretName: null,
+            authMethod: null,
+            secretNames: null,
+            isDefault: true,
+            selectedModel: (capturedBody.selectedModel as string) ?? null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           },
-          { status: 201 },
-        );
+          created: true,
+        });
       }),
     );
 
@@ -111,26 +106,23 @@ describe("org-model-providers vm0 provider", () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.post("*/api/zero/model-providers", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: (capturedBody.selectedModel as string) ?? null,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-            created: true,
+      mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(201, {
+          provider: {
+            id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
+            type: "vm0",
+            framework: "claude-code",
+            secretName: null,
+            authMethod: null,
+            secretNames: null,
+            isDefault: true,
+            selectedModel: (capturedBody.selectedModel as string) ?? null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           },
-          { status: 201 },
-        );
+          created: true,
+        });
       }),
     );
 

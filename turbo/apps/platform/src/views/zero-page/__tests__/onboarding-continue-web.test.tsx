@@ -7,6 +7,8 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { zeroIntegrationsSlackContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -87,8 +89,8 @@ function switchToMemberComplete() {
 
 function mockSlackInstallReady() {
   server.use(
-    http.get("*/api/zero/integrations/slack", () => {
-      return HttpResponse.json({
+    mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
+      return respond(200, {
         isConnected: false,
         isInstalled: false,
         isAdmin: true,
@@ -97,7 +99,6 @@ function mockSlackInstallReady() {
         reinstallUrl: null,
         scopeMismatch: false,
         workspaceName: null,
-        defaultAgentId: null,
         agentOrgSlug: null,
         environment: {
           requiredSecrets: [],
@@ -112,8 +113,8 @@ function mockSlackInstallReady() {
 
 function mockSlackConnectReady() {
   server.use(
-    http.get("*/api/zero/integrations/slack", () => {
-      return HttpResponse.json({
+    mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
+      return respond(200, {
         isConnected: false,
         isInstalled: true,
         isAdmin: false,
@@ -122,7 +123,6 @@ function mockSlackConnectReady() {
         reinstallUrl: null,
         scopeMismatch: false,
         workspaceName: "Acme",
-        defaultAgentId: null,
         agentOrgSlug: null,
         environment: {
           requiredSecrets: [],

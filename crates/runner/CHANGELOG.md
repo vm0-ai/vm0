@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.86.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.85.4...runner-rs-v0.86.0) (2026-04-19)
+
+
+### Features
+
+* **firewall:** accept mixed {param}{literal} segments in url patterns ([#10081](https://github.com/vm0-ai/vm0/issues/10081)) ([2b58902](https://github.com/vm0-ai/vm0/commit/2b589020d004ed7a99b461ee32609534d02cda18))
+
+
+### Refactoring
+
+* **mitm-addon:** push usage tests from internal stubs to _opener ([#9991](https://github.com/vm0-ai/vm0/issues/9991)) ([#10097](https://github.com/vm0-ai/vm0/issues/10097)) ([c4f0f6a](https://github.com/vm0-ai/vm0/commit/c4f0f6ae88d859938946ad6ad0f48be8075f6da5))
+
 ## [0.85.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.85.3...runner-rs-v0.85.4) (2026-04-19)
 
 

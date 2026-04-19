@@ -52,6 +52,30 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheReadTokenPrice: usd(0.5),
     cacheCreationTokenPrice: usd(6.25),
   },
+  {
+    model: "kimi-k2.5",
+    modelProvider: "vm0",
+    inputTokenPrice: usd(0.6),
+    outputTokenPrice: usd(3),
+    cacheReadTokenPrice: usd(0.1),
+    cacheCreationTokenPrice: usd(0.6),
+  },
+  {
+    model: "glm-5.1",
+    modelProvider: "vm0",
+    inputTokenPrice: usd(1.4),
+    outputTokenPrice: usd(4.4),
+    cacheReadTokenPrice: usd(0.26),
+    cacheCreationTokenPrice: usd(1.4),
+  },
+  {
+    model: "MiniMax-M2.7",
+    modelProvider: "vm0",
+    inputTokenPrice: usd(0.3),
+    outputTokenPrice: usd(1.2),
+    cacheReadTokenPrice: usd(0.06),
+    cacheCreationTokenPrice: usd(0.375),
+  },
 ];
 
 /**

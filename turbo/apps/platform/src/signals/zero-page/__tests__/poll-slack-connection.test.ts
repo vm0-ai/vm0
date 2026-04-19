@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -8,6 +7,8 @@ import {
   pollSlackConnection$,
   setSlackPollIntervalMs$,
 } from "../zero-slack.ts";
+import { zeroIntegrationsSlackContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -34,14 +35,13 @@ function mockSlackEndpoint(getIsConnected: (callCount: number) => boolean) {
     },
   };
   server.use(
-    http.get("*/api/zero/integrations/slack", () => {
+    mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
       callCount++;
-      return HttpResponse.json({
+      return respond(200, {
         isConnected: getIsConnected(callCount),
         isInstalled: true,
         workspaceName: "Test Workspace",
         isAdmin: false,
-        defaultAgentId: null,
         agentOrgSlug: null,
         environment: {
           requiredSecrets: [],
@@ -90,7 +90,7 @@ describe("pollSlackConnection$", () => {
     const deferred = createDeferredPromise<void>(context.signal);
     let callCount = 0;
     server.use(
-      http.get("*/api/zero/integrations/slack", async () => {
+      mockApi(zeroIntegrationsSlackContract.getStatus, async ({ respond }) => {
         callCount++;
         // The second call is the first real poll — block it and abort the controller
         if (callCount === 2) {
@@ -98,12 +98,11 @@ describe("pollSlackConnection$", () => {
           deferred.resolve();
           await deferred.promise;
         }
-        return HttpResponse.json({
+        return respond(200, {
           isConnected: false,
           isInstalled: true,
           workspaceName: "Test Workspace",
           isAdmin: false,
-          defaultAgentId: null,
           agentOrgSlug: null,
           environment: {
             requiredSecrets: [],

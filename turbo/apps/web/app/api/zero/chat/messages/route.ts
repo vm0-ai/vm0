@@ -156,9 +156,13 @@ const router = tsr.router(chatMessagesContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    // Verify agent exists
+    // Verify agent exists and fetch model provider override
     const [agent] = await globalThis.services.db
-      .select({ id: zeroAgents.id })
+      .select({
+        id: zeroAgents.id,
+        modelProviderId: zeroAgents.modelProviderId,
+        selectedModel: zeroAgents.selectedModel,
+      })
       .from(zeroAgents)
       .where(eq(zeroAgents.id, body.agentId))
       .limit(1);
@@ -227,6 +231,8 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
+        modelProviderId: agent.modelProviderId ?? undefined,
+        selectedModelOverride: agent.selectedModel ?? undefined,
         appendSystemPrompt: buildAppendSystemPrompt(continueFromSchedulePrompt),
         callbacks: [chatCallback],
         chatThreadId: threadId,

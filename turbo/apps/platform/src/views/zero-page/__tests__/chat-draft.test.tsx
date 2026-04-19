@@ -126,6 +126,7 @@ describe("chat draft persistence across thread navigation", () => {
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
+      // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
       http.post("*/api/zero/uploads", () => {
         // Signal that the upload request has arrived
         resolveUpload?.();

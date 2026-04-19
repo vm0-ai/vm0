@@ -9,6 +9,7 @@ import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -96,20 +97,18 @@ function mockActivityDetailAPIs() {
     framework: "claude-code",
   };
 
+  setMockComposesList([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      name: "test-agent",
+      displayName: "Test Agent",
+      description: null,
+      sound: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   server.use(
-    http.get("*/api/zero/composes/list", () => {
-      return HttpResponse.json({
-        composes: [
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            name: "test-agent",
-            displayName: "Test Agent",
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ],
-      });
-    }),
     http.get("*/api/zero/logs/:id", ({ params }) => {
       if (params["id"] === "a0000000-0000-4000-a000-000000000011") {
         return HttpResponse.json(logDetail);

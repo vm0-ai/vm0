@@ -7,6 +7,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 import { pathname } from "../../../signals/location.ts";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -309,22 +310,18 @@ describe("ideation page - navigation", () => {
   it("should preserve agent ID from URL across navigation", async () => {
     const customAgentId = "custom-agent-42";
     mockChatAPI();
+    setMockComposesList([
+      {
+        id: customAgentId,
+        name: "custom-agent",
+        displayName: "Custom Agent",
+        description: null,
+        sound: null,
+        headVersionId: "v1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     server.use(
-      http.get("*/api/zero/composes/list", () => {
-        return HttpResponse.json({
-          composes: [
-            {
-              id: customAgentId,
-              displayName: "Custom Agent",
-              description: null,
-              sound: null,
-              avatarUrl: null,
-              headVersionId: "v1",
-              updatedAt: "2024-01-01T00:00:00Z",
-            },
-          ],
-        });
-      }),
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([
           {

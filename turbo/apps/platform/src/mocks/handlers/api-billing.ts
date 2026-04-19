@@ -10,9 +10,17 @@ import {
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
   zeroBillingAutoRechargeContract,
+  zeroBillingInvoicesContract,
   type BillingStatusResponse,
+  type BillingInvoice,
 } from "@vm0/core";
 import { mockApi } from "../msw-contract.ts";
+
+let mockBillingInvoices: BillingInvoice[] = [];
+
+export function setMockBillingInvoices(invoices: BillingInvoice[]): void {
+  mockBillingInvoices = invoices;
+}
 
 let mockBillingStatus: BillingStatusResponse = {
   tier: "free",
@@ -42,6 +50,7 @@ export function resetMockBilling(): void {
     autoRecharge: { enabled: false, threshold: null, amount: null },
     creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
   };
+  mockBillingInvoices = [];
 }
 
 export const apiBillingHandlers = [
@@ -79,5 +88,9 @@ export const apiBillingHandlers = [
       amount: body.enabled ? (body.amount ?? null) : null,
     };
     return respond(200, mockBillingStatus.autoRecharge);
+  }),
+
+  mockApi(zeroBillingInvoicesContract.get, ({ respond }) => {
+    return respond(200, { invoices: mockBillingInvoices });
   }),
 ];

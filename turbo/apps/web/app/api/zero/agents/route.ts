@@ -67,6 +67,16 @@ const router = tsr.router(zeroAgentsMainContract, {
       };
     }
 
+    const metadata = {
+      displayName: body.displayName ?? null,
+      description: body.description ?? null,
+      sound: body.sound ?? null,
+      avatarUrl: body.avatarUrl ?? null,
+      customSkills,
+      modelProviderId: body.modelProviderId ?? null,
+      selectedModel: body.selectedModel ?? null,
+    };
+
     // Write metadata to zero_agents (PK = composeId)
     await globalThis.services.db
       .insert(zeroAgents)
@@ -75,20 +85,12 @@ const router = tsr.router(zeroAgentsMainContract, {
         orgId: org.orgId,
         name: result.composeName,
         owner: userId,
-        displayName: body.displayName ?? null,
-        description: body.description ?? null,
-        sound: body.sound ?? null,
-        avatarUrl: body.avatarUrl ?? null,
-        customSkills,
+        ...metadata,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
         set: {
-          displayName: body.displayName ?? null,
-          description: body.description ?? null,
-          sound: body.sound ?? null,
-          avatarUrl: body.avatarUrl ?? null,
-          customSkills,
+          ...metadata,
           updatedAt: new Date(),
         },
       });
@@ -100,12 +102,8 @@ const router = tsr.router(zeroAgentsMainContract, {
       body: {
         agentId: result.composeId,
         ownerId: userId,
-        description: body.description ?? null,
-        displayName: body.displayName ?? null,
-        sound: body.sound ?? null,
-        avatarUrl: body.avatarUrl ?? null,
         permissionPolicies: null,
-        customSkills,
+        ...metadata,
       },
     };
   },
@@ -131,6 +129,8 @@ const router = tsr.router(zeroAgentsMainContract, {
         permissionPolicies: zeroAgents.permissionPolicies,
         unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
         customSkills: zeroAgents.customSkills,
+        modelProviderId: zeroAgents.modelProviderId,
+        selectedModel: zeroAgents.selectedModel,
       })
       .from(zeroAgents)
       .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
@@ -151,6 +151,8 @@ const router = tsr.router(zeroAgentsMainContract, {
             row.permissionPolicies,
             row.unknownPermissionPolicies,
           ),
+          modelProviderId: row.modelProviderId ?? null,
+          selectedModel: row.selectedModel ?? null,
           customSkills: row.customSkills,
         };
       }),

@@ -25,7 +25,7 @@ describe("chat-d-064: markdown content renders from props", () => {
         ({ request }) => {
           const url = new URL(request.url);
           if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
+            return HttpResponse.json({ messages: [] });
           }
           return HttpResponse.json({
             messages: [
@@ -36,7 +36,6 @@ describe("chat-d-064: markdown content renders from props", () => {
                 createdAt: "2026-01-01T00:00:00Z",
               },
             ],
-            hasMore: false,
           });
         },
       ),
@@ -76,7 +75,7 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
         ({ request }) => {
           const url = new URL(request.url);
           if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
+            return HttpResponse.json({ messages: [] });
           }
           return HttpResponse.json({
             messages: [
@@ -87,7 +86,6 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
                 createdAt: "2026-01-01T00:00:00Z",
               },
             ],
-            hasMore: false,
           });
         },
       ),
@@ -141,7 +139,7 @@ describe("chat-d-066: markdown links open in new tab", () => {
         ({ request }) => {
           const url = new URL(request.url);
           if (url.searchParams.get("sinceId")) {
-            return HttpResponse.json({ messages: [], hasMore: false });
+            return HttpResponse.json({ messages: [] });
           }
           return HttpResponse.json({
             messages: [
@@ -152,7 +150,6 @@ describe("chat-d-066: markdown links open in new tab", () => {
                 createdAt: "2026-01-01T00:00:00Z",
               },
             ],
-            hasMore: false,
           });
         },
       ),

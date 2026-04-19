@@ -1,11 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import type { OrgMember } from "../../../signals/external/org-members.ts";
+import {
+  setMockOrgMembers,
+  resetMockOrgMembers,
+} from "../../../mocks/handlers/api-org-members.ts";
+import { zeroOrgMembersContract, zeroOrgInviteContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -39,21 +44,18 @@ const secondAdmin = {
   joinedAt: "2026-01-15T00:00:00Z",
 } as const satisfies OrgMember;
 
-function mockMembersAPI(members: OrgMember[] = [adminMember, regularMember]) {
-  server.use(
-    http.get("*/api/zero/org/members", () => {
-      return HttpResponse.json({
-        slug: "user-12345678",
-        role: "admin",
-        members,
-        pendingInvitations: [],
-        createdAt: "2026-01-01T00:00:00Z",
-      });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
+beforeEach(() => {
+  resetMockOrgMembers();
+});
+
+function setupMembersAPI(members: OrgMember[] = [adminMember, regularMember]) {
+  setMockOrgMembers({
+    slug: "user-12345678",
+    role: "admin",
+    members,
+    pendingInvitations: [],
+    createdAt: "2026-01-01T00:00:00Z",
+  });
 }
 
 function renderMembersTab() {
@@ -65,14 +67,12 @@ describe("org members - invite dialog loading state", () => {
     const user = userEvent.setup();
     let resolveInvite: (() => void) | null = null;
 
-    mockMembersAPI();
+    setupMembersAPI();
     server.use(
-      http.post("*/api/zero/org/invite", () => {
-        return new Promise<Response>((resolve) => {
+      mockApi(zeroOrgInviteContract.invite, ({ respond }) => {
+        return new Promise((resolve) => {
           resolveInvite = () => {
-            return resolve(
-              HttpResponse.json({ message: "ok" }, { status: 200 }),
-            );
+            resolve(respond(200, { message: "ok" }));
           };
         });
       }),
@@ -122,14 +122,12 @@ describe("org members - invite dialog loading state", () => {
     const user = userEvent.setup();
     let resolveInvite: (() => void) | null = null;
 
-    mockMembersAPI();
+    setupMembersAPI();
     server.use(
-      http.post("*/api/zero/org/invite", () => {
-        return new Promise<Response>((resolve) => {
+      mockApi(zeroOrgInviteContract.invite, ({ respond }) => {
+        return new Promise((resolve) => {
           resolveInvite = () => {
-            return resolve(
-              HttpResponse.json({ message: "ok" }, { status: 200 }),
-            );
+            resolve(respond(200, { message: "ok" }));
           };
         });
       }),
@@ -172,12 +170,7 @@ describe("org members - invite dialog loading state", () => {
 describe("org members - invite dialog role selector", () => {
   it("should show role selector defaulting to Member", async () => {
     const user = userEvent.setup();
-    mockMembersAPI();
-    server.use(
-      http.post("*/api/zero/org/invite", () => {
-        return HttpResponse.json({ message: "ok" }, { status: 200 });
-      }),
-    );
+    setupMembersAPI();
 
     await renderMembersTab();
 
@@ -204,11 +197,11 @@ describe("org members - invite dialog role selector", () => {
     const user = userEvent.setup();
     let capturedBody: Record<string, unknown> | null = null;
 
-    mockMembersAPI();
+    setupMembersAPI();
     server.use(
-      http.post("*/api/zero/org/invite", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ message: "ok" }, { status: 200 });
+      mockApi(zeroOrgInviteContract.invite, ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(200, { message: "ok" });
       }),
     );
 
@@ -260,14 +253,12 @@ describe("org members - role change loading state", () => {
     const user = userEvent.setup();
     let resolveRoleChange: (() => void) | null = null;
 
-    mockMembersAPI([adminMember, regularMember]);
+    setupMembersAPI([adminMember, regularMember]);
     server.use(
-      http.patch("*/api/zero/org/members", () => {
-        return new Promise<Response>((resolve) => {
+      mockApi(zeroOrgMembersContract.updateRole, ({ respond }) => {
+        return new Promise((resolve) => {
           resolveRoleChange = () => {
-            return resolve(
-              HttpResponse.json({ message: "Role updated" }, { status: 200 }),
-            );
+            resolve(respond(200, { message: "Role updated" }));
           };
         });
       }),
@@ -309,7 +300,7 @@ describe("org members - role change loading state", () => {
 
 describe("org members - sole admin self-demote protection", () => {
   it("should not show self-demote menu when user is the only admin", async () => {
-    mockMembersAPI([adminMember, regularMember]);
+    setupMembersAPI([adminMember, regularMember]);
 
     await renderMembersTab();
 
@@ -324,7 +315,7 @@ describe("org members - sole admin self-demote protection", () => {
   });
 
   it("should show self-demote menu when multiple admins exist", async () => {
-    mockMembersAPI([adminMember, secondAdmin, regularMember]);
+    setupMembersAPI([adminMember, secondAdmin, regularMember]);
 
     await renderMembersTab();
 

@@ -1,8 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -10,33 +8,16 @@ import {
   mockedClerk,
   mockOrganization,
 } from "../../../__tests__/mock-auth.ts";
+import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
 
 const context = testContext();
 
-function mockAPIs() {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
-}
+beforeEach(() => {
+  resetMockOrg();
+});
 
 describe("zero org switcher - current org avatar and name render (SIDEBAR-D-054)", () => {
   it("displays the current organization name in the sidebar trigger", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -54,32 +35,12 @@ describe("zero org switcher - current org avatar and name render (SIDEBAR-D-054)
 
 describe("zero org switcher - organization slug renders (SIDEBAR-D-055)", () => {
   it("displays the organization slug in the dropdown header", async () => {
-    server.use(
-      http.get("*/api/zero/org", () => {
-        return HttpResponse.json({
-          id: "org_1",
-          slug: "acme-corp",
-          name: "Acme Corp",
-          role: "admin",
-        });
-      }),
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
+    setMockOrg({
+      id: "org_1",
+      slug: "acme-corp",
+      name: "Acme Corp",
+      role: "admin",
+    });
 
     detachedSetupPage({
       context,
@@ -105,7 +66,6 @@ describe("zero org switcher - organization slug renders (SIDEBAR-D-055)", () => 
 
 describe("zero org switcher - pending invitations badge shows count (SIDEBAR-D-056)", () => {
   it("shows a red dot badge when there are pending invitations", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -138,7 +98,6 @@ describe("zero org switcher - pending invitations badge shows count (SIDEBAR-D-0
 
 describe("zero org switcher - pending invitations list renders (SIDEBAR-D-057)", () => {
   it("shows pending invitation items when dropdown is opened", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -177,7 +136,6 @@ describe("zero org switcher - pending invitations list renders (SIDEBAR-D-057)",
 
 describe("zero org switcher - other org memberships list renders (SIDEBAR-D-058)", () => {
   it("shows other organizations the user belongs to when dropdown is opened", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -205,7 +163,6 @@ describe("zero org switcher - other org memberships list renders (SIDEBAR-D-058)
 
 describe("zero org switcher - dropdown opens (SIDEBAR-D-059)", () => {
   it("shows org management options when dropdown is opened", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -233,35 +190,12 @@ describe("zero org switcher - dropdown opens (SIDEBAR-D-059)", () => {
 
 describe("zero org switcher - manage button opens org management (SIDEBAR-D-060)", () => {
   it("opens the org management dialog when Manage is clicked", async () => {
-    server.use(
-      http.get("*/api/zero/org", () => {
-        return HttpResponse.json({
-          id: "org_1",
-          slug: "current-org",
-          name: "Current Org",
-          role: "admin",
-        });
-      }),
-      http.get("*/api/zero/org/logo", () => {
-        return HttpResponse.json({ logoUrl: null });
-      }),
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
+    setMockOrg({
+      id: "org_1",
+      slug: "current-org",
+      name: "Current Org",
+      role: "admin",
+    });
 
     detachedSetupPage({
       context,
@@ -321,7 +255,6 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
       },
     );
 
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -355,7 +288,6 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
 
 describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", () => {
   it("removes the invitation from the list after Join is clicked", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -426,7 +358,6 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
       },
     );
 
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -458,7 +389,6 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
 
 describe("zero org switcher - pending invitations badge hidden when none (SIDEBAR-D-064)", () => {
   it("should not show red dot when there are no pending invitations", async () => {
-    mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
@@ -480,8 +410,6 @@ describe("zero org switcher - pending invitations badge hidden when none (SIDEBA
 
 describe("zero org switcher - create workspace visibility based on createOrganizationEnabled", () => {
   it("hides create workspace when createOrganizationEnabled is false", async () => {
-    mockAPIs();
-
     detachedSetupPage({
       context,
       path: "/",
@@ -504,8 +432,6 @@ describe("zero org switcher - create workspace visibility based on createOrganiz
   });
 
   it("shows create workspace when createOrganizationEnabled is true", async () => {
-    mockAPIs();
-
     detachedSetupPage({
       context,
       path: "/",

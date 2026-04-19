@@ -10,6 +10,7 @@ import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -100,6 +101,7 @@ function mockAPIs() {
     },
   ];
 
+  setMockComposesList([]);
   server.use(
     http.get("*/api/zero/logs", () => {
       return HttpResponse.json({
@@ -107,9 +109,6 @@ function mockAPIs() {
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
         filters: { statuses: [], sources: [], agents: [] },
       });
-    }),
-    http.get("*/api/zero/composes/list", () => {
-      return HttpResponse.json({ composes: [] });
     }),
     http.get("*/api/zero/logs/:id", ({ params }) => {
       if (params["id"] === "a0000000-0000-4000-a000-000000000001") {

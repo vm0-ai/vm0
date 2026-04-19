@@ -1,11 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { createDeferredPromise } from "../../../signals/utils.ts";
+import {
+  setMockBillingInvoices,
+  resetMockBilling,
+} from "../../../mocks/handlers/api-billing.ts";
+import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
+import { zeroBillingInvoicesContract } from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -32,38 +37,16 @@ function makeInvoice(overrides?: InvoiceOverrides) {
   };
 }
 
-function mockAPIs() {
-  server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "test-org",
-        name: "Test Org",
-        role: "admin",
-      });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-  );
-}
+beforeEach(() => {
+  resetMockOrg();
+  resetMockBilling();
+  setMockOrg({
+    id: "org_1",
+    slug: "test-org",
+    name: "Test Org",
+    role: "admin",
+  });
+});
 
 async function openInvoicesTab() {
   detachedSetupPage({ context, path: "/?settings=invoices" });
@@ -75,16 +58,9 @@ async function openInvoicesTab() {
 // ORG-D-059
 describe("invoice list display", () => {
   it("shows invoice number, date, amount, and status badge", async () => {
-    mockAPIs();
-    server.use(
-      http.get("*/api/zero/billing/invoices", () => {
-        return HttpResponse.json({
-          invoices: [
-            makeInvoice({ number: "INV-001", amount: 4999, status: "paid" }),
-          ],
-        });
-      }),
-    );
+    setMockBillingInvoices([
+      makeInvoice({ number: "INV-001", amount: 4999, status: "paid" }),
+    ]);
     await openInvoicesTab();
     await waitFor(() => {
       expect(screen.getByText("INV-001")).toBeInTheDocument();
@@ -94,14 +70,7 @@ describe("invoice list display", () => {
   });
 
   it("shows invoice id when number is null", async () => {
-    mockAPIs();
-    server.use(
-      http.get("*/api/zero/billing/invoices", () => {
-        return HttpResponse.json({
-          invoices: [makeInvoice({ id: "inv_abc123", number: null })],
-        });
-      }),
-    );
+    setMockBillingInvoices([makeInvoice({ id: "inv_abc123", number: null })]);
     await openInvoicesTab();
     await waitFor(() => {
       expect(screen.getByText("inv_abc123")).toBeInTheDocument();
@@ -113,14 +82,7 @@ describe("invoice list display", () => {
 it("formats date and amount correctly", async () => {
   const timestamp = 1_700_000_000;
   const expectedDate = new Date(timestamp * 1000).toLocaleDateString("en-US");
-  mockAPIs();
-  server.use(
-    http.get("*/api/zero/billing/invoices", () => {
-      return HttpResponse.json({
-        invoices: [makeInvoice({ date: timestamp, amount: 12_050 })],
-      });
-    }),
-  );
+  setMockBillingInvoices([makeInvoice({ date: timestamp, amount: 12_050 })]);
   await openInvoicesTab();
   await waitFor(() => {
     expect(screen.getByText(expectedDate)).toBeInTheDocument();
@@ -130,25 +92,18 @@ it("formats date and amount correctly", async () => {
 
 // ORG-C-061
 it("shows download link only when hostedInvoiceUrl is available", async () => {
-  mockAPIs();
-  server.use(
-    http.get("*/api/zero/billing/invoices", () => {
-      return HttpResponse.json({
-        invoices: [
-          makeInvoice({
-            id: "inv_1",
-            number: "INV-001",
-            hostedInvoiceUrl: "https://invoice.stripe.com/inv_1",
-          }),
-          makeInvoice({
-            id: "inv_2",
-            number: "INV-002",
-            hostedInvoiceUrl: null,
-          }),
-        ],
-      });
+  setMockBillingInvoices([
+    makeInvoice({
+      id: "inv_1",
+      number: "INV-001",
+      hostedInvoiceUrl: "https://invoice.stripe.com/inv_1",
     }),
-  );
+    makeInvoice({
+      id: "inv_2",
+      number: "INV-002",
+      hostedInvoiceUrl: null,
+    }),
+  ]);
   await openInvoicesTab();
   await waitFor(() => {
     expect(screen.getByText("INV-001")).toBeInTheDocument();
@@ -165,12 +120,7 @@ it("shows download link only when hostedInvoiceUrl is available", async () => {
 
 // ORG-C-062
 it("shows empty state when no invoices exist", async () => {
-  mockAPIs();
-  server.use(
-    http.get("*/api/zero/billing/invoices", () => {
-      return HttpResponse.json({ invoices: [] });
-    }),
-  );
+  // Default handler already returns empty invoices, just open the tab
   await openInvoicesTab();
   await waitFor(() => {
     expect(screen.getByText("No invoices yet.")).toBeInTheDocument();
@@ -179,19 +129,21 @@ it("shows empty state when no invoices exist", async () => {
 
 // ORG-D-063
 it("shows loading state while invoices load", async () => {
-  const deferred = createDeferredPromise<void>(context.signal);
-  mockAPIs();
+  let resolveInvoices: (() => void) | null = null;
+  const invoicesPromise = new Promise<void>((resolve) => {
+    resolveInvoices = resolve;
+  });
   server.use(
-    http.get("*/api/zero/billing/invoices", async () => {
-      await deferred.promise;
-      return HttpResponse.json({ invoices: [] });
+    mockApi(zeroBillingInvoicesContract.get, async ({ respond }) => {
+      await invoicesPromise;
+      return respond(200, { invoices: [] });
     }),
   );
   await openInvoicesTab();
   await waitFor(() => {
     expect(screen.getByText("Loading invoices...")).toBeInTheDocument();
   });
-  deferred.resolve();
+  resolveInvoices!();
   await waitFor(() => {
     expect(screen.getByText("No invoices yet.")).toBeInTheDocument();
   });
@@ -200,16 +152,9 @@ it("shows loading state while invoices load", async () => {
 // ORG-I-064
 it("shows tooltip when hovering download link", async () => {
   const user = userEvent.setup();
-  mockAPIs();
-  server.use(
-    http.get("*/api/zero/billing/invoices", () => {
-      return HttpResponse.json({
-        invoices: [
-          makeInvoice({ hostedInvoiceUrl: "https://invoice.stripe.com/inv_1" }),
-        ],
-      });
-    }),
-  );
+  setMockBillingInvoices([
+    makeInvoice({ hostedInvoiceUrl: "https://invoice.stripe.com/inv_1" }),
+  ]);
   await openInvoicesTab();
   await waitFor(() => {
     expect(

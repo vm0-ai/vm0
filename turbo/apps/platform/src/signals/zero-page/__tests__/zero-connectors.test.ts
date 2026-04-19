@@ -9,7 +9,8 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
 import { zeroAddedConnectors$ } from "../zero-connectors.ts";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core";
+import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
 
@@ -40,28 +41,20 @@ describe("connectors", () => {
   });
 
   it("should sort connected connectors before unconnected ones", async () => {
-    server.use(
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json({
-          connectors: [
-            {
-              id: "d0000001-0000-4000-a000-000000000001",
-              type: "github",
-              authMethod: "oauth",
-              externalId: null,
-              externalUsername: "testuser",
-              externalEmail: null,
-              oauthScopes: ["repo", "project"],
-              needsReconnect: false,
-              createdAt: "2026-01-01T00:00:00Z",
-              updatedAt: "2026-01-01T00:00:00Z",
-            },
-          ],
-          configuredTypes: Object.keys(CONNECTOR_TYPES),
-          connectorProvidedSecretNames: [],
-        });
-      }),
-    );
+    setMockConnectors([
+      {
+        id: "d0000001-0000-4000-a000-000000000001",
+        type: "github",
+        authMethod: "oauth",
+        externalId: null,
+        externalUsername: "testuser",
+        externalEmail: null,
+        oauthScopes: ["repo", "project"],
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+    ]);
 
     detachedSetupPage({
       context,

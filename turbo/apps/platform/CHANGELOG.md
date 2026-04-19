@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.259.0](https://github.com/vm0-ai/vm0/compare/app-v0.258.0...app-v0.259.0) (2026-04-19)
+
+
+### Features
+
+* add running indicator to sidebar chat threads ([#10090](https://github.com/vm0-ai/vm0/issues/10090)) ([e60fda6](https://github.com/vm0-ai/vm0/commit/e60fda61a8503af6face1cf7ceff34c366d5932e))
+
+
+### Bug Fixes
+
+* **chat:** anchor initial thread load at the latest messages ([#10098](https://github.com/vm0-ai/vm0/issues/10098)) ([19d5fb5](https://github.com/vm0-ai/vm0/commit/19d5fb54deed6d1b7116eb44c2b3a9dcdaf7660b))
+
+
+### Refactoring
+
+* **platform:** migrate org/billing/members server.use() overrides to mockApi (Phase 3 / [#10083](https://github.com/vm0-ai/vm0/issues/10083)) ([#10095](https://github.com/vm0-ai/vm0/issues/10095)) ([8766cd3](https://github.com/vm0-ai/vm0/commit/8766cd3a3c107f806ec695d2bb5e56cca8a68f10))
+* **platform:** migrate server.use() overrides to mockApi (phase 3 / [#10083](https://github.com/vm0-ai/vm0/issues/10083)) ([#10096](https://github.com/vm0-ai/vm0/issues/10096)) ([8dc26d0](https://github.com/vm0-ai/vm0/commit/8dc26d052e0d2719cd04bd64ff3f769b580c74ac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.205.0
+
 ## [0.258.0](https://github.com/vm0-ai/vm0/compare/app-v0.257.0...app-v0.258.0) (2026-04-19)
 
 

@@ -1156,62 +1156,6 @@ class TestNdjsonExtractor:
         assert state["data_count"] == 1
 
 
-class TestPostWebhook:
-    """Tests for _post_webhook HTTP request construction."""
-
-    def test_posts_correct_payload(self):
-        payload = {"runId": "run-1", "usage": {"model": "claude-sonnet-4-6", "input_tokens": 100}}
-        with patch.object(usage, "_opener") as mock_opener:
-            mock_opener.open.return_value = MagicMock()
-            usage._post_webhook("https://api.vm0.ai/api/webhooks/agent/usage", "tok-123", payload)
-        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
-        req = mock_opener.open.call_args[0][0]
-        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
-        assert req.get_header("Content-type") == "application/json"
-        assert req.get_header("Authorization") == "Bearer tok-123"
-        assert req.get_header("User-agent") == "vm0-mitm-addon/1.0"
-        body = json.loads(req.data)
-        assert body["runId"] == "run-1"
-        assert body["usage"]["model"] == "claude-sonnet-4-6"
-
-    def test_raises_on_network_error(self):
-        """Network failures should propagate (retry handled by caller)."""
-        with patch.object(
-            usage,
-            "_opener",
-            **{"open.side_effect": ConnectionError("refused")},
-        ):
-            with pytest.raises(ConnectionError):
-                usage._post_webhook("https://api.vm0.ai/hook", "tok", {})
-
-    def test_closes_http_error_response(self):
-        """HTTPError (non-2xx) should be closed to avoid socket leak."""
-        import urllib.error
-
-        http_err = urllib.error.HTTPError(
-            "https://api.vm0.ai", 500, "Internal Server Error", {}, None
-        )
-        http_err.close = MagicMock()
-        with patch.object(
-            usage,
-            "_opener",
-            **{"open.side_effect": http_err},
-        ):
-            with pytest.raises(urllib.error.HTTPError):
-                usage._post_webhook("https://api.vm0.ai/hook", "tok", {})
-        http_err.close.assert_called_once()  # urllib HTTPError cleanup contract (#9991)
-
-    def test_adds_vercel_bypass_header(self):
-        with (
-            patch.object(usage, "_opener") as mock_opener,
-            patch.object(auth, "VERCEL_BYPASS", "bypass-secret"),
-        ):
-            mock_opener.open.return_value = MagicMock()
-            usage._post_webhook("https://api.vm0.ai/hook", "tok", {})
-        req = mock_opener.open.call_args[0][0]
-        assert req.get_header("X-vercel-protection-bypass") == "bypass-secret"
-
-
 class TestResponseHeadersSseParser:
     """Tests for SSE parser setup in responseheaders()."""
 
@@ -1306,7 +1250,9 @@ class TestResponseHeadersSseParser:
 class TestResponseUsageReporting:
     """Tests for usage extraction and reporting in response() hook."""
 
-    def test_non_streaming_json_fallback(self, tmp_path, real_flow, mitm_ctx, headers):
+    def test_non_streaming_json_fallback(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
         """Non-streaming JSON response should extract usage from buffer."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
@@ -1338,11 +1284,11 @@ class TestResponseUsageReporting:
 
         with (
             mitm_ctx(),
-            # Silence the background webhook; end-to-end JSON→webhook wiring
-            # is covered by test_full_path_response_to_opener's SSE variant.
-            patch.object(usage, "_enqueue_webhook"),
+            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
         ):
+            mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.usage_executor.shutdown(wait=True)
 
         # JSON fallback should populate proxy_usage in metadata
         extracted = flow.metadata["proxy_usage"]
@@ -1408,7 +1354,9 @@ class TestResponseUsageReporting:
         assert len(buf) == len(large_chunk)
         assert not state["truncated"]
 
-    def test_no_usage_report_for_non_model_provider(self, tmp_path, real_flow, mitm_ctx, headers):
+    def test_no_usage_report_for_non_model_provider(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
         """Non-model-provider requests should not trigger usage reporting."""
         flow = real_flow(with_response=False, host="api.github.com")
         log_path = str(tmp_path / "network.jsonl")
@@ -1425,13 +1373,14 @@ class TestResponseUsageReporting:
 
         with (
             mitm_ctx(),
-            # Let real maybe_report_proxy_usage run; it early-returns on the
-            # firewall_name == "github" filter and should never reach _enqueue.
-            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
+            # maybe_report_proxy_usage early-returns on the firewall_name == "github"
+            # filter, so no urllib request should ever reach the external boundary.
+            patch.object(usage, "_opener") as mock_opener,
         ):
             mitm_addon.response(flow)
+            usage.usage_executor.shutdown(wait=True)
 
-        assert mock_enqueue.call_count == 0
+        assert mock_opener.open.call_count == 0  # urllib external boundary (#9991)
 
     def test_full_path_response_to_opener(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
@@ -1683,7 +1632,9 @@ class TestErrorHandler:
         assert "connection reset by peer" in content
         assert "slack.com" in content
 
-    def test_error_logs_connector_usage_for_x_stream(self, tmp_path, real_flow, headers):
+    def test_error_logs_connector_usage_for_x_stream(
+        self, tmp_path, real_flow, headers, fresh_usage_executor
+    ):
         """Mid-flight stream crash: partial counts still reported (issue #9534)."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         log_path = str(tmp_path / "network.jsonl")
@@ -1711,19 +1662,23 @@ class TestErrorHandler:
         flow.metadata["vm_sandbox_token"] = "test-token"
 
         with (
-            patch("usage.get_api_url", return_value="https://app.test"),
-            patch("usage._enqueue_webhook") as mock_enqueue,
+            patch.object(usage, "get_api_url", return_value="https://app.test"),
+            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
         ):
+            mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
+            usage.usage_executor.shutdown(wait=True)
 
-        # Connector billing webhook should have been enqueued
-        assert mock_enqueue.called
-        payloads = [call[0][2] for call in mock_enqueue.call_args_list]
+        # Connector billing webhook should have been posted to _opener.
+        assert mock_opener.open.called
+        payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["tweet.read"] == 23
         assert by_cat["users.read"] == 5
 
-    def test_full_pipeline_stream_error_midflight(self, tmp_path, real_flow, headers):
+    def test_full_pipeline_stream_error_midflight(
+        self, tmp_path, real_flow, headers, fresh_usage_executor
+    ):
         """End-to-end: responseheaders → partial chunks → error() logs observed counts.
 
         Simulates a real scenario: stream opens successfully, a few tweets
@@ -1760,13 +1715,15 @@ class TestErrorHandler:
         flow.metadata["vm_sandbox_token"] = "test-token"
 
         with (
-            patch("usage.get_api_url", return_value="https://app.test"),
-            patch("usage._enqueue_webhook") as mock_enqueue,
+            patch.object(usage, "get_api_url", return_value="https://app.test"),
+            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
         ):
+            mock_opener.open.return_value = MagicMock()
             mitm_addon.error(flow)
+            usage.usage_executor.shutdown(wait=True)
 
         # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)
-        payloads = [call[0][2] for call in mock_enqueue.call_args_list]
+        payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["tweet.read"] == 2  # not 3 — partial trailing dropped
         assert by_cat["users.read"] == 1
@@ -1775,8 +1732,8 @@ class TestErrorHandler:
 class TestMaybeReportProxyUsage:
     """Tests for maybe_report_proxy_usage helper."""
 
-    def test_reports_usage_for_model_provider(self, real_flow):
-        """Should enqueue usage when proxy_usage exists for model provider."""
+    def test_reports_usage_for_model_provider(self, real_flow, fresh_usage_executor):
+        """Model-provider usage reaches _opener with correct payload."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
@@ -1787,31 +1744,33 @@ class TestMaybeReportProxyUsage:
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
+            patch.object(usage, "_opener") as mock_opener,
         ):
+            mock_opener.open.return_value = MagicMock()
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.usage_executor.shutdown(wait=True)
 
-        mock_enqueue.assert_called_once()
-        args = mock_enqueue.call_args[0]
-        assert args[0] == "https://api.vm0.ai/api/webhooks/agent/usage"
-        assert args[1] == "tok-xyz"
-        payload = args[2]
-        assert payload["runId"] == "run-abc-123"
-        assert payload["usage"]["input_tokens"] == 100
+        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
+        req = mock_opener.open.call_args[0][0]
+        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
+        body = json.loads(req.data)
+        assert body["runId"] == "run-abc-123"
+        assert body["usage"]["input_tokens"] == 100
 
-    def test_skips_non_model_provider(self, real_flow):
-        """Should NOT enqueue usage for non-model-provider requests."""
+    def test_skips_non_model_provider(self, real_flow, fresh_usage_executor):
+        """Should NOT reach _opener for non-model-provider requests."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["firewall_name"] = "github"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
 
-        with patch.object(usage, "_enqueue_webhook") as mock_enqueue:
+        with patch.object(usage, "_opener") as mock_opener:
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.usage_executor.shutdown(wait=True)
 
-        mock_enqueue.assert_not_called()
+        mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
 
-    def test_skips_when_no_proxy_usage(self, real_flow):
-        """Should NOT enqueue when proxy_usage is absent."""
+    def test_skips_when_no_proxy_usage(self, real_flow, fresh_usage_executor):
+        """Should NOT reach _opener when proxy_usage is absent."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
@@ -1819,24 +1778,26 @@ class TestMaybeReportProxyUsage:
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
+            patch.object(usage, "_opener") as mock_opener,
         ):
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.usage_executor.shutdown(wait=True)
 
-        mock_enqueue.assert_not_called()
+        mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
 
-    def test_skips_when_no_run_id(self, real_flow):
-        """Should NOT enqueue when run_id is empty."""
+    def test_skips_when_no_run_id(self, real_flow, fresh_usage_executor):
+        """Should NOT reach _opener when run_id is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["proxy_usage"] = {"input_tokens": 50}
 
-        with patch.object(usage, "_enqueue_webhook") as mock_enqueue:
+        with patch.object(usage, "_opener") as mock_opener:
             usage.maybe_report_proxy_usage(flow, "")
+            usage.usage_executor.shutdown(wait=True)
 
-        mock_enqueue.assert_not_called()
+        mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
 
-    def test_warns_when_missing_sandbox_token(self, tmp_path, real_flow):
+    def test_warns_when_missing_sandbox_token(self, tmp_path, real_flow, fresh_usage_executor):
         """Should write to proxy log and skip when sandbox_token is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
@@ -1847,15 +1808,16 @@ class TestMaybeReportProxyUsage:
 
         with (
             patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
+            patch.object(usage, "_opener") as mock_opener,
         ):
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.usage_executor.shutdown(wait=True)
 
-        mock_enqueue.assert_not_called()
+        mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
         assert proxy_log.exists()
         assert "missing sandbox_token or api_url" in proxy_log.read_text()
 
-    def test_warns_when_missing_api_url(self, tmp_path, real_flow):
+    def test_warns_when_missing_api_url(self, tmp_path, real_flow, fresh_usage_executor):
         """Should write to proxy log and skip when api_url is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
@@ -1866,11 +1828,12 @@ class TestMaybeReportProxyUsage:
 
         with (
             patch.object(usage, "get_api_url", return_value=""),
-            patch.object(usage, "_enqueue_webhook") as mock_enqueue,
+            patch.object(usage, "_opener") as mock_opener,
         ):
             usage.maybe_report_proxy_usage(flow, "run-abc-123")
+            usage.usage_executor.shutdown(wait=True)
 
-        mock_enqueue.assert_not_called()
+        mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
         assert proxy_log.exists()
 
 
@@ -1898,6 +1861,13 @@ class TestIsXStreamPath:
 
 class TestLogConnectorUsage:
     """Tests for log_connector_usage helper (issue #9504)."""
+
+    @pytest.fixture(autouse=True)
+    def _sync_executor(self, sync_usage_executor):
+        """All tests here route billing through ``_call_and_get_billing`` which
+        inspects ``_opener.open`` inline; the sync executor makes that work
+        without each test needing its own ``fresh_usage_executor`` + shutdown.
+        """
 
     def _make_x_flow(
         self,
@@ -1935,15 +1905,18 @@ class TestLogConnectorUsage:
         return flow
 
     def _call_and_get_billing(self, flow, run_id="run-abc-123"):
-        """Call log_connector_usage and return the webhook payload(s)."""
+        """Call log_connector_usage and return the webhook payload(s).
+
+        Relies on the class-level ``_sync_executor`` autouse fixture to
+        route submissions inline; only the urllib boundary is mocked here.
+        """
         with (
-            patch("usage.get_api_url", return_value="https://app.test"),
-            patch("usage._enqueue_webhook") as mock_enqueue,
+            patch.object(usage, "get_api_url", return_value="https://app.test"),
+            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
         ):
+            mock_opener.open.return_value = MagicMock()
             usage.log_connector_usage(flow, run_id)
-        if not mock_enqueue.called:
-            return []
-        return [call[0][2] for call in mock_enqueue.call_args_list]
+        return [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
 
     def _call_and_get_single_billing(self, flow, run_id="run-abc-123"):
         """Call log_connector_usage and return the single webhook payload."""
@@ -2362,7 +2335,9 @@ class TestLogConnectorUsage:
 
     # ---- full pipeline: responseheaders -> stream chunks -> response (issue #9534) ----
 
-    def test_full_streaming_pipeline_filtered_stream(self, tmp_path, real_flow, mitm_ctx, headers):
+    def test_full_streaming_pipeline_filtered_stream(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
         """End-to-end: responseheaders registers parser, chunks accumulate, response() logs."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["vm_run_id"] = "run-abc-123"
@@ -2400,13 +2375,15 @@ class TestLogConnectorUsage:
         # 3. Simulated disconnect - response() fires and logs via webhook
         with (
             mitm_ctx(),
-            patch("usage.get_api_url", return_value="https://app.test"),
-            patch("usage._enqueue_webhook") as mock_enqueue,
+            patch.object(usage, "get_api_url", return_value="https://app.test"),
+            patch.object(usage, "_opener") as mock_opener,  # urllib external boundary (#9991)
         ):
+            mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            usage.usage_executor.shutdown(wait=True)
 
         # 4. Verify billing payloads
-        payloads = [call[0][2] for call in mock_enqueue.call_args_list]
+        payloads = [json.loads(call[0][0].data) for call in mock_opener.open.call_args_list]
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         # 3 tweets primary + 0 from includes.tweets (none here) = 3
         assert by_cat["tweet.read"] == 3
@@ -2414,75 +2391,135 @@ class TestLogConnectorUsage:
         assert by_cat["users.read"] == 3
 
 
-class TestReportUsageWithRetry:
-    """Tests for _post_webhook_with_retry retry logic."""
+class TestUsageWebhookDelivery:
+    """Webhook delivery behavior observed through maybe_report_proxy_usage."""
 
-    def test_succeeds_on_first_attempt(self):
-        with patch.object(usage, "_post_webhook") as mock_do:
-            usage._post_webhook_with_retry("url", "tok", {}, "", "usage")
-        mock_do.assert_called_once()
+    @staticmethod
+    def _model_flow(real_flow, tmp_path):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = "tok"
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["proxy_usage"] = {"input_tokens": 100}
+        return flow
 
-    def test_retries_on_failure(self):
-        with patch.object(
-            usage,
-            "_post_webhook",
-            side_effect=[ConnectionError("fail"), None],
-        ) as mock_do:
-            usage._post_webhook_with_retry("url", "tok", {}, "", "usage")
-        assert mock_do.call_count == 2
-
-    def test_gives_up_after_max_retries(self, tmp_path):
-        proxy_log = tmp_path / "proxy-run-1.jsonl"
-        with patch.object(
-            usage,
-            "_post_webhook",
-            side_effect=ConnectionError("fail"),
-        ):
-            # Should not raise
-            usage._post_webhook_with_retry("url", "tok", {}, str(proxy_log), "usage", max_retries=2)
-        assert proxy_log.exists()
-        assert "3 attempts" in proxy_log.read_text()
-
-    def test_sleeps_between_retries(self):
+    def test_succeeds_on_first_attempt(self, tmp_path, real_flow, fresh_usage_executor):
+        flow = self._model_flow(real_flow, tmp_path)
+        flow.metadata["proxy_usage"] = {"model": "claude-sonnet-4-6", "input_tokens": 100}
         with (
-            patch.object(
-                usage,
-                "_post_webhook",
-                side_effect=[ConnectionError("fail"), None],
-            ),
-            patch.object(usage.time, "sleep") as mock_sleep,
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
         ):
-            usage._post_webhook_with_retry("url", "tok", {}, "", "usage")
-        mock_sleep.assert_called_once_with(0.5)  # syscall boundary; pins retry backoff (#9991)
-
-
-class TestEnqueueWebhook:
-    """Tests for _enqueue_webhook (ThreadPoolExecutor submission)."""
-
-    def test_enqueue_copies_payload_dict(self, fresh_usage_executor):
-        """Mutating the original dict after enqueue should not affect the submitted task."""
-        original = {"input_tokens": 100}
-        captured = []
-
-        def capture_payload(_url, _tok, payload, _proxy_log_path, _log_type):
-            captured.append(payload)
-
-        with patch.object(usage, "_post_webhook_with_retry", capture_payload):
-            usage._enqueue_webhook("url", "tok", original, "", "usage")
-            original["input_tokens"] = 999
+            mock_opener.open.return_value = MagicMock()
+            usage.maybe_report_proxy_usage(flow, "run-1")
             usage.usage_executor.shutdown(wait=True)
 
-        assert len(captured) == 1
-        assert captured[0]["input_tokens"] == 100
+        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
+        req = mock_opener.open.call_args[0][0]
+        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
+        assert req.get_header("Content-type") == "application/json"
+        assert req.get_header("Authorization") == "Bearer tok"
+        assert req.get_header("User-agent") == "vm0-mitm-addon/1.0"
+        body = json.loads(req.data)
+        assert body["runId"] == "run-1"
+        assert body["usage"]["model"] == "claude-sonnet-4-6"
+        assert body["usage"]["input_tokens"] == 100
 
-    def test_enqueue_falls_back_to_sync_after_shutdown(self, fresh_usage_executor):
-        """After executor shutdown, _enqueue_webhook should deliver synchronously with retry."""
+    def test_closes_http_error_response(self, tmp_path, real_flow, fresh_usage_executor):
+        """HTTPError sockets must be closed to avoid leaking; retries still apply."""
+        import urllib.error
+
+        http_err = urllib.error.HTTPError(
+            "https://api.vm0.ai", 500, "Internal Server Error", {}, None
+        )
+        http_err.close = MagicMock()
+        flow = self._model_flow(real_flow, tmp_path)
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
+        ):
+            mock_opener.open.side_effect = http_err
+            usage.maybe_report_proxy_usage(flow, "run-1")
+            usage.usage_executor.shutdown(wait=True)
+
+        # Cleanup must run once per HTTPError — tracks attempt count so the
+        # invariant survives future changes to max_retries.
+        assert http_err.close.call_count == mock_opener.open.call_count  # (#9991)
+
+    def test_adds_vercel_bypass_header(self, tmp_path, real_flow, fresh_usage_executor):
+        flow = self._model_flow(real_flow, tmp_path)
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(auth, "VERCEL_BYPASS", "bypass-secret"),
+            patch.object(usage, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.maybe_report_proxy_usage(flow, "run-1")
+            usage.usage_executor.shutdown(wait=True)
+
+        req = mock_opener.open.call_args[0][0]
+        assert req.get_header("X-vercel-protection-bypass") == "bypass-secret"
+
+    def test_retries_on_failure(self, tmp_path, real_flow, fresh_usage_executor):
+        flow = self._model_flow(real_flow, tmp_path)
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
+        ):
+            mock_opener.open.side_effect = [ConnectionError("fail"), MagicMock()]
+            usage.maybe_report_proxy_usage(flow, "run-1")
+            usage.usage_executor.shutdown(wait=True)
+
+        assert mock_opener.open.call_count == 2  # urllib external boundary (#9991)
+
+    def test_gives_up_after_retry_budget(self, tmp_path, real_flow, fresh_usage_executor):
+        """Default max_retries=1 → 2 total attempts before giving up."""
+        flow = self._model_flow(real_flow, tmp_path)
+        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
+        ):
+            mock_opener.open.side_effect = ConnectionError("fail")
+            usage.maybe_report_proxy_usage(flow, "run-1")
+            usage.usage_executor.shutdown(wait=True)
+
+        assert mock_opener.open.call_count == 2  # urllib external boundary (#9991)
+        assert proxy_log.exists()
+        assert "2 attempts" in proxy_log.read_text()
+
+    def test_sleeps_between_retries(self, tmp_path, real_flow, fresh_usage_executor):
+        flow = self._model_flow(real_flow, tmp_path)
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
+            patch.object(usage.time, "sleep") as mock_sleep,
+        ):
+            mock_opener.open.side_effect = [ConnectionError("fail"), MagicMock()]
+            usage.maybe_report_proxy_usage(flow, "run-1")
+            usage.usage_executor.shutdown(wait=True)
+
+        mock_sleep.assert_called_once_with(0.5)  # syscall boundary; pins retry backoff (#9991)
+
+    def test_falls_back_to_sync_after_shutdown(self, tmp_path, real_flow, fresh_usage_executor):
+        """After executor shutdown, delivery happens synchronously before return."""
+        flow = self._model_flow(real_flow, tmp_path)
+        flow.metadata["proxy_usage"] = {"input_tokens": 42}
         usage.usage_executor.shutdown(wait=True)
 
-        with patch.object(usage, "_post_webhook_with_retry") as mock_retry:
-            usage._enqueue_webhook("url", "tok", {"input_tokens": 42}, "", "usage")
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.maybe_report_proxy_usage(flow, "run-1")
+            # Sync fallback: _opener must have been called before the call returned.
+            mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
 
-        mock_retry.assert_called_once_with("url", "tok", {"input_tokens": 42}, "", "usage")
+        req = mock_opener.open.call_args[0][0]
+        body = json.loads(req.data)
+        assert body["runId"] == "run-1"
+        assert body["usage"]["input_tokens"] == 42
 
 
 class TestDoneHook:
@@ -2823,35 +2860,46 @@ class TestUsagePendingCounter:
         assert usage._in_flight_flows == 0
         assert usage._pending_reports == 0
 
-    def test_report_decrements_after_completion(self, tmp_path):
-        """_post_webhook_with_retry must decrement even on failure."""
+    def test_report_decrements_after_completion(self, tmp_path, real_flow, fresh_usage_executor):
+        """Retry exhaustion still runs the decrement finally-block."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
-        usage._increment_reports()
-        assert usage._pending_reports == 1
 
-        with patch.object(usage, "_post_webhook", side_effect=Exception("boom")):
-            usage._post_webhook_with_retry(
-                "http://localhost/webhook", "tok", {}, str(tmp_path / "proxy.log"), "usage"
-            )
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = "tok"
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["proxy_usage"] = {"input_tokens": 1}
+
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
+        ):
+            mock_opener.open.side_effect = ConnectionError("boom")
+            usage.maybe_report_proxy_usage(flow, "run-1")
+            usage.usage_executor.shutdown(wait=True)
 
         assert usage._pending_reports == 0
         content = (tmp_path / "usage-pending").read_text()
         assert content == "0:0"
 
-    def test_enqueue_increments_and_drains_reports(self, tmp_path, fresh_usage_executor):
-        """_enqueue_webhook increments pending; executor drain decrements to 0."""
+    def test_enqueue_increments_and_drains_reports(self, tmp_path, real_flow, fresh_usage_executor):
+        """Public entry increments pending on enqueue; executor drain decrements to 0."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
 
-        with patch.object(usage, "_post_webhook"):
-            usage._enqueue_webhook(
-                "http://localhost/webhook",
-                "tok",
-                {"model": "x"},
-                str(tmp_path / "p.log"),
-                "usage",
-            )
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = "tok"
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["proxy_usage"] = {"input_tokens": 1}
+
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.maybe_report_proxy_usage(flow, "run-1")
             usage.usage_executor.shutdown(wait=True)
-        # After executor drains, counter must be back to 0.
+
         assert usage._pending_reports == 0
         content = (tmp_path / "usage-pending").read_text()
         assert content == "0:0"
@@ -2891,20 +2939,25 @@ class TestUsagePendingCounter:
         fake_handler(flow)
         assert usage._in_flight_flows == 1  # unchanged
 
-    def test_sync_fallback_decrements_reports(self, tmp_path, fresh_usage_executor):
-        """When executor is shut down, sync fallback must still decrement."""
+    def test_sync_fallback_decrements_reports(self, tmp_path, real_flow, fresh_usage_executor):
+        """When the executor is already shut down, the sync fallback still decrements."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
-
         # Shut down the executor so _enqueue_webhook takes the sync fallback.
         usage.usage_executor.shutdown(wait=True)
-        with patch.object(usage, "_post_webhook"):
-            usage._enqueue_webhook(
-                "http://localhost/webhook",
-                "tok",
-                {"model": "x"},
-                str(tmp_path / "p.log"),
-                "usage",
-            )
+
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = "tok"
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["proxy_usage"] = {"input_tokens": 1}
+
+        with (
+            patch.object(usage, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(usage, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.maybe_report_proxy_usage(flow, "run-1")
+
         assert usage._pending_reports == 0
         content = (tmp_path / "usage-pending").read_text()
         assert content == "0:0"

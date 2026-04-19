@@ -6,7 +6,11 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { permissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
-import type { ConnectorListResponse } from "@vm0/core";
+import {
+  type ConnectorListResponse,
+  zeroConnectorsMainContract,
+} from "@vm0/core";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 vi.mock("signal-timers", async (importOriginal) => {
   const mod = await importOriginal<typeof import("signal-timers")>();
@@ -94,8 +98,8 @@ describe("onboarding connector permission dialog suppression", () => {
     // Mock the connectors API to return GitHub as connected (simulates
     // successful OAuth — the polling inside connectConnector$ will pick it up).
     server.use(
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json(makeGithubConnectedResponse());
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+        return respond(200, makeGithubConnectedResponse());
       }),
     );
 

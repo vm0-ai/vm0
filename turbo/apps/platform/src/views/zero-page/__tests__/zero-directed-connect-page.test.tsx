@@ -14,32 +14,27 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 const context = testContext();
 
 function mockConnectors(
   connectors: { type: ConnectorType; externalUsername?: string }[],
 ) {
-  server.use(
-    http.get("*/api/zero/connectors", () => {
-      return HttpResponse.json({
-        connectors: connectors.map((c) => {
-          return {
-            id: crypto.randomUUID(),
-            type: c.type,
-            authMethod: "oauth",
-            externalId: null,
-            externalUsername: c.externalUsername ?? null,
-            externalEmail: null,
-            oauthScopes: null,
-            needsReconnect: false,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
-          };
-        }),
-        configuredTypes: Object.keys(CONNECTOR_TYPES),
-        connectorProvidedSecretNames: [],
-      });
+  setMockConnectors(
+    connectors.map((c) => {
+      return {
+        id: crypto.randomUUID(),
+        type: c.type,
+        authMethod: "oauth",
+        externalId: null,
+        externalUsername: c.externalUsername ?? null,
+        externalEmail: null,
+        oauthScopes: null,
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      };
     }),
   );
 }

@@ -14,7 +14,10 @@ import {
 import { badRequest, noModelProvider } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
-import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
+import {
+  getOrgDefaultModelProvider,
+  getModelProviderByIdForOrg,
+} from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
@@ -197,18 +200,88 @@ async function resolveVm0Provider(
 }
 
 /**
+ * Resolve secrets for a multi-auth provider (e.g., aws-bedrock).
+ * Returns undefined if the auth method or required secrets are missing.
+ */
+async function resolveMultiAuthProviderSecrets(
+  orgId: string,
+  secretUserId: string,
+  providerType: ModelProviderType,
+  authMethod: string | undefined | null,
+  selectedModel: string | undefined,
+): Promise<ModelProviderSecretResult | undefined> {
+  if (!authMethod) {
+    log.debug(
+      `Multi-auth provider ${providerType} has no auth method configured`,
+    );
+    return undefined;
+  }
+
+  const secretNames = getSecretNamesForAuthMethod(providerType, authMethod);
+  if (!secretNames || secretNames.length === 0) {
+    log.debug(`No secret names found for ${providerType}/${authMethod}`);
+    return undefined;
+  }
+
+  const allSecretValues = await getSecretValues(
+    orgId,
+    secretUserId,
+    "model-provider",
+  );
+  const secretsMap: Record<string, string> = {};
+  let hasAllRequired = true;
+
+  for (const name of secretNames) {
+    const value = allSecretValues[name];
+    if (value) {
+      secretsMap[name] = value;
+    } else {
+      log.debug(`Missing secret ${name} for ${providerType}/${authMethod}`);
+      hasAllRequired = false;
+    }
+  }
+
+  if (!hasAllRequired) {
+    return undefined;
+  }
+
+  const injectedEnvironment = resolveEnvironmentMapping(
+    providerType,
+    undefined,
+    selectedModel,
+    new Set(secretNames),
+  );
+
+  log.debug(
+    `Resolved multi-auth model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
+  );
+
+  return {
+    secrets: secretsMap,
+    injectedEnvironment,
+    resolvedModelProvider: providerType,
+    selectedModel,
+  };
+}
+
+/**
  * Resolve and inject model provider secret if needed
  * Only injects if no explicit model provider config in compose environment
  *
  * For providers with environment mapping (e.g., moonshot), resolves all env vars
+ *
+ * @param modelProviderId - Optional specific provider ID to use instead of org default
+ * @param selectedModelOverride - Optional model override (takes precedence over provider's selectedModel)
  */
 export async function resolveModelProviderSecrets(
   orgId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
   explicitModelProvider?: string,
+  modelProviderId?: string,
+  selectedModelOverride?: string,
 ): Promise<ModelProviderSecretResult> {
-  let secrets: Record<string, string> | undefined;
+  const secrets: Record<string, string> | undefined = undefined;
 
   // Skip if explicit model provider config exists or framework doesn't use model providers
   if (hasExplicitModelProviderConfig || framework !== "claude-code") {
@@ -219,11 +292,16 @@ export async function resolveModelProviderSecrets(
     };
   }
 
-  // Fetch org-level default provider
-  const defaultProvider = await getOrgDefaultModelProvider(
-    orgId,
-    framework as ModelProviderFramework,
-  );
+  // Resolve provider: specific ID override → org default
+  let defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>;
+  if (modelProviderId) {
+    defaultProvider = await getModelProviderByIdForOrg(orgId, modelProviderId);
+  } else {
+    defaultProvider = await getOrgDefaultModelProvider(
+      orgId,
+      framework as ModelProviderFramework,
+    );
+  }
 
   const secretUserId = ORG_SENTINEL_USER_ID;
 
@@ -232,7 +310,9 @@ export async function resolveModelProviderSecrets(
     defaultProvider,
     explicitModelProvider,
   );
-  const selectedModel = defaultProvider?.selectedModel ?? undefined;
+  // selectedModelOverride (from agent/schedule config) takes precedence over provider's stored model
+  const selectedModel =
+    selectedModelOverride ?? defaultProvider?.selectedModel ?? undefined;
 
   // Handle VM0 managed provider (meta-provider resolution)
   if (providerType === "vm0") {
@@ -244,82 +324,21 @@ export async function resolveModelProviderSecrets(
 
   // Handle multi-auth providers (like aws-bedrock)
   if (hasAuthMethods(providerType)) {
-    const authMethod = defaultProvider?.authMethod;
-    if (!authMethod) {
-      log.debug(
-        `Multi-auth provider ${providerType} has no auth method configured`,
-      );
-      return {
-        secrets,
-        injectedEnvironment: undefined,
-        resolvedModelProvider: providerType,
-        selectedModel,
-      };
-    }
-
-    // Get secret names for this auth method
-    const secretNames = getSecretNamesForAuthMethod(providerType, authMethod);
-    if (!secretNames || secretNames.length === 0) {
-      log.debug(`No secret names found for ${providerType}/${authMethod}`);
-      return {
-        secrets,
-        injectedEnvironment: undefined,
-        resolvedModelProvider: providerType,
-        selectedModel,
-      };
-    }
-
-    // Fetch all model-provider secrets by name (scoped to provider owner)
-    const allSecretValues = await getSecretValues(
+    const resolved = await resolveMultiAuthProviderSecrets(
       orgId,
       secretUserId,
-      "model-provider",
+      providerType,
+      defaultProvider?.authMethod,
+      selectedModel,
     );
-    const secretsMap: Record<string, string> = {};
-    let hasAllRequired = true;
-
-    for (const name of secretNames) {
-      const value = allSecretValues[name];
-      if (value) {
-        secretsMap[name] = value;
-      } else {
-        log.debug(`Missing secret ${name} for ${providerType}/${authMethod}`);
-        hasAllRequired = false;
-      }
-    }
-
-    if (!hasAllRequired) {
-      return {
+    return (
+      resolved ?? {
         secrets,
         injectedEnvironment: undefined,
         resolvedModelProvider: providerType,
         selectedModel,
-      };
-    }
-
-    // Store secrets for masking
-    secrets = secrets || {};
-    Object.assign(secrets, secretsMap);
-
-    // Resolve environment mapping as template references.
-    // Pass available secret names so mapping entries for other auth methods are skipped.
-    const injectedEnvironment = resolveEnvironmentMapping(
-      providerType,
-      undefined, // No single secret for multi-auth
-      selectedModel,
-      new Set(secretNames),
+      }
     );
-
-    log.debug(
-      `Resolved multi-auth model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
-    );
-
-    return {
-      secrets,
-      injectedEnvironment,
-      resolvedModelProvider: providerType,
-      selectedModel,
-    };
   }
 
   // Handle single-secret providers
@@ -349,10 +368,6 @@ export async function resolveModelProviderSecrets(
     };
   }
 
-  // Store secret in secrets map for masking
-  secrets = secrets || {};
-  secrets[secretName] = secretValue;
-
   // Resolve environment mapping as template references
   const injectedEnvironment = resolveEnvironmentMapping(
     providerType,
@@ -365,7 +380,7 @@ export async function resolveModelProviderSecrets(
   );
 
   return {
-    secrets,
+    secrets: { [secretName]: secretValue },
     injectedEnvironment,
     resolvedModelProvider: providerType,
     selectedModel,

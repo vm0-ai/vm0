@@ -106,6 +106,8 @@ export interface CreateRunParams {
   resumedFromCheckpointId?: string;
   agentName?: string;
   modelProvider?: string;
+  modelProviderId?: string;
+  selectedModelOverride?: string;
   debugNoMockClaude?: boolean;
   captureNetworkBodies?: boolean;
   // Caller-resolved org context for variable/storage resolution.

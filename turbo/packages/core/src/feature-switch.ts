@@ -285,6 +285,27 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: [],
   },
+  [FeatureSwitchKey.Vm0KimiModel]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Expose Moonshot Kimi K2.5 as a selectable model under the VM0 managed provider",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.Vm0GlmModel]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Expose Z.AI GLM-5.1 as a selectable model under the VM0 managed provider",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.Vm0MinimaxModel]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Expose MiniMax M2.7 as a selectable model under the VM0 managed provider",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.SlackAgentSwitch]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -301,6 +322,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "user falls back to the org default agent with no footer. Staff-only during the " +
       "rollout window defined by `enabledOrgIdHashes`.",
     enabled: false,
+  },
+  [FeatureSwitchKey.ModelProviderSelection]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the model provider + model picker on the agent profile page and schedule dialog. " +
+      "Allows per-agent and per-schedule model selection, overriding the org default. " +
+      "Staff-only during initial rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

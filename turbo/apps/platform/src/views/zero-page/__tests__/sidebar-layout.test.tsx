@@ -19,6 +19,8 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setSidebarExpanded$ } from "../../../signals/zero-page/zero-nav.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
+import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 
 const context = testContext();
 
@@ -119,16 +121,12 @@ describe("sidebar layout - invite button shows for admins (SIDEBAR-D-048)", () =
 describe("sidebar layout - invite button hidden for non-admins (SIDEBAR-D-049)", () => {
   it("does not render the Invite button for non-admin users", async () => {
     mockBaseAPIs();
-    server.use(
-      http.get("*/api/zero/org", () => {
-        return HttpResponse.json({
-          id: "org_1",
-          slug: "test-org",
-          name: "Test Org",
-          role: "member",
-        });
-      }),
-    );
+    setMockOrg({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
     detachedSetupPage({ context, path: "/" });
     await waitFor(() => {
       expect(screen.queryByText("Invite")).not.toBeInTheDocument();
@@ -203,20 +201,13 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
   it("opens the org manage dialog on the members tab when Invite is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    server.use(
-      http.get("*/api/zero/org/logo", () => {
-        return HttpResponse.json({ logoUrl: null });
-      }),
-      http.get("*/api/zero/org/members", () => {
-        return HttpResponse.json({
-          slug: "test-org",
-          role: "admin",
-          members: [],
-          pendingInvitations: [],
-          createdAt: "2024-01-01T00:00:00Z",
-        });
-      }),
-    );
+    setMockOrgMembers({
+      slug: "test-org",
+      role: "admin",
+      members: [],
+      pendingInvitations: [],
+      createdAt: "2024-01-01T00:00:00Z",
+    });
 
     detachedSetupPage({ context, path: "/" });
 

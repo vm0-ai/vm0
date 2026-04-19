@@ -9,7 +9,20 @@ import {
   apiConnectorsHandlers,
   resetMockConnectors,
 } from "./api-connectors.ts";
-import { apiOrgHandlers } from "./api-org.ts";
+import { apiOrgHandlers, resetMockOrg, resetMockOrgLogo } from "./api-org.ts";
+import {
+  apiOrgMembersHandlers,
+  resetMockOrgMembers,
+} from "./api-org-members.ts";
+import {
+  apiOrgDomainsHandlers,
+  resetMockOrgDomains,
+} from "./api-org-domains.ts";
+import {
+  apiUsageHandlers,
+  resetMockUsageMembers,
+  resetMockMemberCreditCaps,
+} from "./api-usage.ts";
 import {
   apiOrgModelProvidersHandlers,
   resetMockOrgModelProviders,
@@ -26,7 +39,7 @@ import {
   apiIntegrationsTelegramHandlers,
   resetMockTelegramIntegration,
 } from "./api-integrations-telegram.ts";
-import { apiAgentsHandlers } from "./api-agents.ts";
+import { apiAgentsHandlers, resetMockComposesList } from "./api-agents.ts";
 import {
   apiFeatureSwitchesHandlers,
   resetMockFeatureSwitches,
@@ -43,10 +56,19 @@ import {
   apiIntegrationsSlackConnectHandlers,
   resetMockSlackConnect,
 } from "./api-integrations-slack-connect.ts";
+import {
+  apiPermissionAccessRequestsHandlers,
+  resetMockPermissionRequests,
+} from "./api-permission-access-requests.ts";
+import { apiPermissionPoliciesHandlers } from "./api-permission-policies.ts";
+import { apiVoiceChatHandlers } from "./api-voice-chat.ts";
 
 export const handlers = [
   ...apiConnectorsHandlers,
   ...apiOrgHandlers,
+  ...apiOrgMembersHandlers,
+  ...apiOrgDomainsHandlers,
+  ...apiUsageHandlers,
   ...apiOrgModelProvidersHandlers,
   ...apiSecretsHandlers,
   ...apiVariablesHandlers,
@@ -61,6 +83,9 @@ export const handlers = [
   ...apiIntegrationsSlackConnectHandlers,
   ...apiFeatureSwitchesHandlers,
   ...apiRealtimeHandlers,
+  ...apiPermissionAccessRequestsHandlers,
+  ...apiPermissionPoliciesHandlers,
+  ...apiVoiceChatHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -75,4 +100,12 @@ export function resetAllMockHandlers(): void {
   resetMockSlackConnect();
   resetMockFeatureSwitches();
   resetAblySubscriptions();
+  resetMockPermissionRequests();
+  resetMockComposesList();
+  resetMockOrg();
+  resetMockOrgLogo();
+  resetMockOrgMembers();
+  resetMockOrgDomains();
+  resetMockUsageMembers();
+  resetMockMemberCreditCaps();
 }

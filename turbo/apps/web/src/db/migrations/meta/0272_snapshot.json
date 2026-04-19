@@ -1,5 +1,5 @@
 {
-  "id": "3bd3e6d7-9774-48e9-beef-0177e2915f1b",
+  "id": "ed8347ab-3bcc-41e6-b2b9-04b214b627c5",
   "prevId": "d3c7e4b4-0dbf-4dd3-8b7f-a3bf1f62dc3c",
   "version": "7",
   "dialect": "postgresql",
@@ -7381,131 +7381,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.user_custom_connectors": {
-      "name": "user_custom_connectors",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "agent_id": {
-          "name": "agent_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "custom_connector_id": {
-          "name": "custom_connector_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_user_custom_connectors_unique": {
-          "name": "idx_user_custom_connectors_unique",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "custom_connector_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_user_custom_connectors_agent_user": {
-          "name": "idx_user_custom_connectors_agent_user",
-          "columns": [
-            {
-              "expression": "agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "user_custom_connectors_agent_id_zero_agents_id_fk": {
-          "name": "user_custom_connectors_agent_id_zero_agents_id_fk",
-          "tableFrom": "user_custom_connectors",
-          "tableTo": "zero_agents",
-          "columnsFrom": ["agent_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "user_custom_connectors_custom_connector_id_org_custom_connectors_id_fk": {
-          "name": "user_custom_connectors_custom_connector_id_org_custom_connectors_id_fk",
-          "tableFrom": "user_custom_connectors",
-          "tableTo": "org_custom_connectors",
-          "columnsFrom": ["custom_connector_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.user_feature_switches": {
       "name": "user_feature_switches",
       "schema": "",
@@ -8227,6 +8102,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "model_provider_id": {
+          "name": "model_provider_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "selected_model": {
+          "name": "selected_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "enabled": {
           "name": "enabled",
           "type": "boolean",
@@ -8392,6 +8279,15 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
+        "zero_agent_schedules_model_provider_id_model_providers_id_fk": {
+          "name": "zero_agent_schedules_model_provider_id_model_providers_id_fk",
+          "tableFrom": "zero_agent_schedules",
+          "tableTo": "model_providers",
+          "columnsFrom": ["model_provider_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "zero_agent_schedules_last_run_id_agent_runs_id_fk": {
           "name": "zero_agent_schedules_last_run_id_agent_runs_id_fk",
           "tableFrom": "zero_agent_schedules",
@@ -8479,6 +8375,18 @@
           "notNull": true,
           "default": "'[]'::jsonb"
         },
+        "model_provider_id": {
+          "name": "model_provider_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "selected_model": {
+          "name": "selected_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -8540,6 +8448,15 @@
           "columnsFrom": ["id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "zero_agents_model_provider_id_model_providers_id_fk": {
+          "name": "zero_agents_model_provider_id_model_providers_id_fk",
+          "tableFrom": "zero_agents",
+          "tableTo": "model_providers",
+          "columnsFrom": ["model_provider_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

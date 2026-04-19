@@ -1,11 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import type { OrgDomain } from "@vm0/core";
+import { type OrgDomain, zeroOrgDomainsContract } from "@vm0/core";
+import { setMockOrg, resetMockOrg } from "../../../mocks/handlers/api-org.ts";
+import {
+  setMockOrgDomains,
+  resetMockOrgDomains,
+} from "../../../mocks/handlers/api-org-domains.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -25,41 +30,10 @@ const unverifiedDomain = {
   createdAt: "2026-02-20T00:00:00Z",
 } as const satisfies OrgDomain;
 
-function mockAPIs(domains: OrgDomain[] = [], overrides?: { role?: string }) {
-  server.use(
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "test-org",
-        name: "Test Org",
-        role: overrides?.role ?? "admin",
-      });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-    http.get("*/api/zero/org/domains", () => {
-      return HttpResponse.json({ domains });
-    }),
-  );
-}
+beforeEach(() => {
+  resetMockOrg();
+  resetMockOrgDomains();
+});
 
 async function openDomainsTab() {
   detachedSetupPage({ context, path: "/?settings=domains" });
@@ -71,7 +45,8 @@ async function openDomainsTab() {
 describe("org domains tab - display", () => {
   it("shows each domain's name in the list", async () => {
     // ORG-D-073
-    mockAPIs([verifiedDomain, unverifiedDomain]);
+    setMockOrg({ slug: "test-org", name: "Test Org", role: "admin" });
+    setMockOrgDomains([verifiedDomain, unverifiedDomain]);
     await openDomainsTab();
 
     await waitFor(() => {
@@ -85,7 +60,7 @@ describe("org domains tab - display", () => {
 describe("org domains tab - conditional", () => {
   it("shows empty state when no domains exist", async () => {
     // ORG-C-075
-    mockAPIs([]);
+    setMockOrg({ role: "admin" });
     await openDomainsTab();
 
     await waitFor(() => {
@@ -97,10 +72,10 @@ describe("org domains tab - conditional", () => {
 describe("org domains tab - display loading", () => {
   it("shows loading skeleton placeholders while domains load", async () => {
     // ORG-D-076
-    mockAPIs([]);
+    setMockOrg({ role: "admin" });
     server.use(
-      http.get("*/api/zero/org/domains", () => {
-        return new Promise<Response>(() => {
+      mockApi(zeroOrgDomainsContract.list, ({ respond: _ }) => {
+        return new Promise(() => {
           // intentionally never resolves to keep loading state
         });
       }),
@@ -120,7 +95,7 @@ describe("org domains tab - interaction", () => {
   it("opens add domain dialog with input field when 'Add domain' button is clicked", async () => {
     // ORG-I-077
     const user = userEvent.setup();
-    mockAPIs([]);
+    setMockOrg({ role: "admin" });
     await openDomainsTab();
 
     await waitFor(() => {
@@ -140,7 +115,7 @@ describe("org domains tab - interaction", () => {
   it("shows all enrollment mode options in the dropdown", async () => {
     // ORG-I-079
     const user = userEvent.setup();
-    mockAPIs([]);
+    setMockOrg({ role: "admin" });
     await openDomainsTab();
 
     await user.click(screen.getByText(/Add domain/i));
@@ -170,7 +145,8 @@ describe("org domains tab - interaction", () => {
   it("shows verify/unverify and remove options in the domain action menu", async () => {
     // ORG-I-080
     const user = userEvent.setup();
-    mockAPIs([verifiedDomain]);
+    setMockOrg({ role: "admin" });
+    setMockOrgDomains([verifiedDomain]);
     await openDomainsTab();
 
     await waitFor(() => {
@@ -189,7 +165,8 @@ describe("org domains tab - interaction", () => {
   it("shows remove confirmation dialog when Remove is clicked from action menu", async () => {
     // ORG-I-081
     const user = userEvent.setup();
-    mockAPIs([verifiedDomain]);
+    setMockOrg({ role: "admin" });
+    setMockOrgDomains([verifiedDomain]);
     await openDomainsTab();
 
     await waitFor(() => {
@@ -216,7 +193,7 @@ describe("org domains tab - validation", () => {
   it("disables the submit button when domain input has invalid format", async () => {
     // ORG-V-078
     const user = userEvent.setup();
-    mockAPIs([]);
+    setMockOrg({ role: "admin" });
     await openDomainsTab();
 
     await user.click(screen.getByText(/Add domain/i));
@@ -243,7 +220,7 @@ describe("org domains tab - validation", () => {
 
 describe("org domains tab - access control", () => {
   it("redirects non-admin users to the general tab when navigating to domains", async () => {
-    mockAPIs([], { role: "member" });
+    setMockOrg({ role: "member" });
     detachedSetupPage({ context, path: "/?settings=domains" });
 
     await waitFor(() => {

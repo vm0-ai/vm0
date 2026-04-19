@@ -101,7 +101,6 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
 
     expect(response.status).toBe(200);
     expect(data.messages).toEqual([]);
-    expect(data.hasMore).toBe(false);
   });
 
   it("should return messages in ascending createdAt order", async () => {
@@ -140,7 +139,6 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(data.messages[0].content).toBe("Hello");
     expect(data.messages[1].role).toBe("assistant");
     expect(data.messages[1].content).toBe("Hi there");
-    expect(data.hasMore).toBe(false);
     // Verify createdAt is a valid ISO 8601 string
     expect(new Date(data.messages[0].createdAt).toISOString()).toBe(
       data.messages[0].createdAt,
@@ -188,10 +186,9 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(data.messages).toHaveLength(2);
     expect(data.messages[0].content).toBe("Second");
     expect(data.messages[1].content).toBe("Third");
-    expect(data.hasMore).toBe(false);
   });
 
-  it("should set hasMore=true when more messages exist beyond the limit", async () => {
+  it("should return the latest N messages (still ASC) when no cursor is provided and total exceeds the limit", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -230,7 +227,8 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
 
     expect(response.status).toBe(200);
     expect(data.messages).toHaveLength(2);
-    expect(data.hasMore).toBe(true);
+    expect(data.messages[0].content).toBe("B");
+    expect(data.messages[1].content).toBe("C");
   });
 
   it("should return only user message when run has no assistant events", async () => {

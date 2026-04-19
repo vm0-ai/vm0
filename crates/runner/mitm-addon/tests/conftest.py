@@ -273,6 +273,31 @@ def fake_firewall_headers():
 
 
 @pytest.fixture
+def sync_usage_executor():
+    """Swap ``usage.usage_executor`` for a synchronous stub.
+
+    Tests that mock ``usage._opener`` and want the webhook payloads to
+    appear on the mock by the time they inspect it need submission to
+    happen inline rather than on a background thread — otherwise they
+    have to thread ``fresh_usage_executor`` + ``shutdown(wait=True)``
+    boilerplate through every caller.  The stub's ``submit`` just runs
+    the function synchronously; the original executor is restored on
+    teardown.
+    """
+
+    class _SyncExecutor:
+        def submit(self, fn, *args, **kwargs):
+            fn(*args, **kwargs)
+
+    original = usage.usage_executor
+    usage.usage_executor = _SyncExecutor()
+    try:
+        yield usage.usage_executor
+    finally:
+        usage.usage_executor = original
+
+
+@pytest.fixture
 def fresh_usage_executor():
     """Swap ``usage.usage_executor`` for a throw-away pool for one test.
 

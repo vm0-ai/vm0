@@ -224,6 +224,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   // DeepSeek
   "deepseek-chat": "DeepSeek Chat",
   // MiniMax
+  "MiniMax-M2.7": "MiniMax M2.7",
   "MiniMax-M2.1": "MiniMax M2.1",
   "minimax/minimax-m2.5": "MiniMax M2.5",
   // Kimi / Moonshot
@@ -232,6 +233,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "kimi-k2-thinking-turbo": "Kimi K2 Thinking Turbo",
   "moonshotai/kimi-k2.5": "Kimi K2.5",
   // GLM / ZhipuAI
+  "glm-5.1": "GLM-5.1",
   "glm-5": "GLM-5",
   "glm-4.7": "GLM-4.7",
   "glm-4.5-air": "GLM-4.5 Air",
