@@ -31,6 +31,7 @@ describe("connector/providers/zoom", () => {
       );
       expect(url).toContain("state=test-state");
       expect(url).toContain("response_type=code");
+      expect(url).toContain("scope=");
       expect(url).toContain("zoom.us/oauth/authorize");
     });
   });
