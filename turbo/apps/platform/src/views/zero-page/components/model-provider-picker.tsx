@@ -28,7 +28,9 @@ function encodeValue(v: ModelProviderSelection | null): string {
 }
 
 function decodeValue(s: string): ModelProviderSelection | null {
-  if (!s) return null;
+  if (!s) {
+    return null;
+  }
   const idx = s.indexOf("::");
   return {
     modelProviderId: s.slice(0, idx),
@@ -46,10 +48,14 @@ export function ModelProviderPicker({
 
   for (const provider of providers) {
     const typeConfig = MODEL_PROVIDER_TYPES[provider.type];
-    if (!typeConfig) continue;
+    if (!typeConfig) {
+      continue;
+    }
     const providerLabel = typeConfig.label;
     const models = getModels(provider.type);
-    if (!models || models.length === 0) continue;
+    if (!models || models.length === 0) {
+      continue;
+    }
 
     for (const model of models) {
       options.push({

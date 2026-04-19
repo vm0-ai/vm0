@@ -311,6 +311,8 @@ export function ZeroScheduleCard({
           loopMinutes: parsed.loopMinutes,
           dayOfWeek: "1",
           dayOfMonth: "1",
+          modelProviderId: null,
+          selectedModel: null,
         },
         signal,
       ),
