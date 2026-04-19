@@ -192,11 +192,11 @@ describe("directed connect page", () => {
     const user = userEvent.setup();
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ respond }) =>
-        respond(401, {
+      mockApi(zeroSecretsContract.set, ({ respond }) => {
+        return respond(401, {
           error: { message: "Invalid API token", code: "UNAUTHORIZED" },
-        }),
-      ),
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/connectors/axiom/connect" });

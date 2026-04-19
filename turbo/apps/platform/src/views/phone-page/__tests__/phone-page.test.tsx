@@ -226,11 +226,11 @@ describe("phone page - error display", () => {
 
     mockPhoneStatusAPI({ orgPhone: "+18001234567", userPhone: null });
     server.use(
-      mockApi(zeroPhoneLinkContract.link, ({ respond }) =>
-        respond(403, {
+      mockApi(zeroPhoneLinkContract.link, ({ respond }) => {
+        return respond(403, {
           error: "Direct phone linking is not available for this org",
-        }),
-      ),
+        });
+      }),
     );
 
     await renderPhonePage();

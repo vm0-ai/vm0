@@ -5,7 +5,10 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import {
+  setMockSchedules,
+  createMockScheduleResponse,
+} from "../../../mocks/handlers/api-schedules.ts";
 import type { ScheduleResponse } from "@vm0/core";
 
 const context = testContext();
@@ -166,95 +169,54 @@ describe("zero jobs page - team list", () => {
   });
 });
 
-function createMockSchedulesFromAPI() {
+function createMockSchedulesFromAPI(): ScheduleResponse[] {
   return [
-    {
+    createMockScheduleResponse({
       id: "f0000002-0000-4000-a000-000000000001",
-      agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: null,
       userId: "user_test1",
       name: "zero-morning",
-      triggerType: "cron",
       cronExpression: "55 9 * * 1-5",
-      atTime: null,
-      intervalSeconds: null,
       timezone: "Asia/Shanghai",
       prompt: "Send morning brief pptx to the team channel",
       description: "Morning brief",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      volumeVersions: null,
-      enabled: true,
       nextRunAt: "2026-03-26T01:55:00.000Z",
       lastRunAt: "2026-03-25T01:55:22.168Z",
-      retryStartedAt: null,
-      consecutiveFailures: 0,
-      modelProviderId: null,
-      selectedModel: null,
       createdAt: "2026-03-18T06:30:22.322Z",
       updatedAt: "2026-03-24T13:47:09.003Z",
-    },
-    {
+    }),
+    createMockScheduleResponse({
       id: "f0000002-0000-4000-a000-000000000002",
-      agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: null,
       userId: "user_test1",
       name: "zero-ac",
-      triggerType: "cron",
-      cronExpression: "0 9 * * 1-5",
-      atTime: null,
-      intervalSeconds: null,
       timezone: "Asia/Shanghai",
       prompt: "Turn on the air conditioning in my office",
       description: "Office AC on",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      volumeVersions: null,
-      enabled: true,
       nextRunAt: "2026-03-26T01:00:00.000Z",
       lastRunAt: "2026-03-25T01:00:27.774Z",
-      retryStartedAt: null,
-      consecutiveFailures: 0,
-      modelProviderId: null,
-      selectedModel: null,
       createdAt: "2026-03-20T02:58:38.749Z",
       updatedAt: "2026-03-25T01:46:27.637Z",
-    },
-    {
+    }),
+    createMockScheduleResponse({
       id: "f0000002-0000-4000-a000-000000000003",
-      agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: null,
       userId: "user_test1",
       name: "zero-evening",
-      triggerType: "cron",
       cronExpression: "0 19 * * 1-5",
-      atTime: null,
-      intervalSeconds: null,
       timezone: "Asia/Shanghai",
       prompt:
         "Summarize today's work and post evening brief to the team channel",
       description: "Evening work summary",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      volumeVersions: null,
-      enabled: true,
       nextRunAt: "2026-03-25T11:00:00.000Z",
-      lastRunAt: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
-      modelProviderId: null,
-      selectedModel: null,
       createdAt: "2026-03-24T13:44:56.808Z",
-      updatedAt: "2026-03-24T13:47:30.699Z",
-    },
+      updatedAt: "2026-03-24T13:47:30.669Z",
+    }),
   ];
 }
 
 function mockScheduleAPI(schedules = createMockSchedulesFromAPI()) {
-  setMockSchedules(schedules as ScheduleResponse[]);
+  setMockSchedules(schedules);
   server.use(
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });

@@ -16,6 +16,39 @@ import { mockApi } from "../msw-contract.ts";
 
 let mockSchedules: ScheduleResponse[] = [];
 
+export function createMockScheduleResponse(
+  overrides?: Partial<ScheduleResponse>,
+): ScheduleResponse {
+  return {
+    id: "f0000001-0000-4000-a000-000000000001",
+    agentId: "c0000000-0000-4000-a000-000000000001",
+    displayName: null,
+    userId: "test-user-123",
+    name: "morning-briefing",
+    triggerType: "cron",
+    cronExpression: "0 9 * * 1-5",
+    atTime: null,
+    intervalSeconds: null,
+    timezone: "UTC",
+    prompt: "Summarize yesterday's threads",
+    description: null,
+    appendSystemPrompt: null,
+    vars: null,
+    secretNames: null,
+    volumeVersions: null,
+    enabled: true,
+    nextRunAt: null,
+    lastRunAt: null,
+    retryStartedAt: null,
+    consecutiveFailures: 0,
+    modelProviderId: null,
+    selectedModel: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
 export function setMockSchedules(schedules: ScheduleResponse[]): void {
   mockSchedules = schedules;
 }

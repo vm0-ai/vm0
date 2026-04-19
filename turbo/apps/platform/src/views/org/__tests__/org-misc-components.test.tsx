@@ -278,12 +278,12 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
     const user = userEvent.setup();
     await openScheduleSettings();
     server.use(
-      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
-        respond(200, {
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
+        return respond(200, {
           schedule: testSchedule({ description: "New description" }),
           created: false,
-        }),
-      ),
+        });
+      }),
     );
     const descInput = screen.getByPlaceholderText(
       "Leave blank to auto-generate",

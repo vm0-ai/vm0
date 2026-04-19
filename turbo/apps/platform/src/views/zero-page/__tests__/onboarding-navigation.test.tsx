@@ -19,20 +19,20 @@ const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
 
 function mockOnboardingNeededAdmin() {
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: true,
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-      }),
-    ),
+      });
+    }),
     // Single setup endpoint replaces all individual onboarding API calls
-    mockApi(onboardingSetupContract.setup, ({ respond }) =>
-      respond(200, { agentId: MOCK_AGENT_ID }),
-    ),
+    mockApi(onboardingSetupContract.setup, ({ respond }) => {
+      return respond(200, { agentId: MOCK_AGENT_ID });
+    }),
     // Mock chat threads for the home page
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -42,20 +42,20 @@ function mockOnboardingNeededAdmin() {
 
 function mockOnboardingNeededMember() {
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: true,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: "c0000000-0000-4000-a000-000000000001",
         defaultAgentMetadata: { displayName: "Zero" },
-      }),
-    ),
+      });
+    }),
     // Mock complete member onboarding
-    mockApi(onboardingCompleteContract.complete, ({ respond }) =>
-      respond(200, { ok: true }),
-    ),
+    mockApi(onboardingCompleteContract.complete, ({ respond }) => {
+      return respond(200, { ok: true });
+    }),
     // Mock chat threads for the home page
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -118,16 +118,16 @@ describe("onboarding navigation", () => {
 
     // After completing onboarding, the API should report needsOnboarding: false
     server.use(
-      mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-        respond(200, {
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
           needsOnboarding: false,
           isAdmin: true,
           hasOrg: true,
           hasDefaultAgent: true,
           defaultAgentId: MOCK_AGENT_ID,
           defaultAgentMetadata: null,
-        }),
-      ),
+        });
+      }),
     );
 
     // Click "Continue in web" to trigger handleContinueWithWeb -> navigate("/")
@@ -177,16 +177,16 @@ describe("onboarding navigation", () => {
 
     // After completing onboarding, the API should report needsOnboarding: false
     server.use(
-      mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-        respond(200, {
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
           needsOnboarding: false,
           isAdmin: false,
           hasOrg: true,
           hasDefaultAgent: true,
           defaultAgentId: "c0000000-0000-4000-a000-000000000001",
           defaultAgentMetadata: { displayName: "Zero" },
-        }),
-      ),
+        });
+      }),
     );
 
     // Click "Continue in web" to trigger handleContinueWeb -> navigate("/")

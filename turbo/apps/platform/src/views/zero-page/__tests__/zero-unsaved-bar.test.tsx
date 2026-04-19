@@ -9,7 +9,10 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import {
+  setMockSchedules,
+  createMockScheduleResponse,
+} from "../../../mocks/handlers/api-schedules.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { zeroSchedulesMainContract, type ScheduleResponse } from "@vm0/core";
 
@@ -17,39 +20,15 @@ const context = testContext();
 
 const SCHEDULE_ID = "f0000001-0000-4000-a000-000000000001";
 
-function createMockSchedule(overrides: Record<string, unknown> = {}) {
-  return {
-    id: SCHEDULE_ID,
-    agentId: "c0000000-0000-4000-a000-000000000001",
-    displayName: "Zero",
-    name: "morning-briefing",
-    triggerType: "cron",
-    cronExpression: "0 9 * * 1-5",
-    atTime: null,
-    intervalSeconds: null,
-    timezone: "America/New_York",
-    prompt: "Summarize yesterday's threads",
-    description: "Daily morning briefing",
-    enabled: true,
-    nextRunAt: null,
-    lastRunAt: null,
-    createdAt: "2026-03-01T00:00:00Z",
-    updatedAt: "2026-03-01T00:00:00Z",
-    userId: "test-user-123",
-    appendSystemPrompt: null,
-    vars: null,
-    secretNames: null,
-    volumeVersions: null,
-    retryStartedAt: null,
-    consecutiveFailures: 0,
-    modelProviderId: null,
-    selectedModel: null,
-    ...overrides,
-  };
-}
-
-function mockAPIs(overrides: Record<string, unknown> = {}) {
-  setMockSchedules([createMockSchedule(overrides) as ScheduleResponse]);
+function mockAPIs(overrides: Partial<ScheduleResponse> = {}) {
+  setMockSchedules([
+    createMockScheduleResponse({
+      displayName: "Zero",
+      timezone: "America/New_York",
+      description: "Daily morning briefing",
+      ...overrides,
+    }),
+  ]);
   server.use(
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -103,14 +82,16 @@ describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () =
 describe("zero unsaved bar - save button persists changes (SCHED-D-096)", () => {
   it("hides unsaved changes bar after successful save", async () => {
     server.use(
-      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
-        respond(200, {
-          schedule: createMockSchedule({
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
+        return respond(200, {
+          schedule: createMockScheduleResponse({
+            displayName: "Zero",
+            timezone: "America/New_York",
             description: "Daily morning briefingMy description",
-          }) as ScheduleResponse,
+          }),
           created: false,
-        }),
-      ),
+        });
+      }),
     );
 
     const user = userEvent.setup();

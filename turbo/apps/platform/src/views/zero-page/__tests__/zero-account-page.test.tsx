@@ -206,14 +206,14 @@ describe("zero-account-page - send mode interaction", () => {
     });
     server.use(
       mockApi(zeroUserPreferencesContract.update, ({ respond }) => {
-        return deferred.promise.then(() =>
-          respond(200, {
+        return deferred.promise.then(() => {
+          return respond(200, {
             timezone: null,
             pinnedAgentIds: [],
             sendMode: "enter",
             captureNetworkBodiesRemaining: 0,
-          }),
-        );
+          });
+        });
       }),
     );
     await renderPreferencesPage();
@@ -244,14 +244,14 @@ describe("zero-account-page - send mode interaction", () => {
     });
     server.use(
       mockApi(zeroUserPreferencesContract.update, ({ respond }) => {
-        return deferred.promise.then(() =>
-          respond(200, {
+        return deferred.promise.then(() => {
+          return respond(200, {
             timezone: null,
             pinnedAgentIds: [],
             sendMode: "cmd-enter",
             captureNetworkBodiesRemaining: 0,
-          }),
-        );
+          });
+        });
       }),
     );
     await renderPreferencesPage();

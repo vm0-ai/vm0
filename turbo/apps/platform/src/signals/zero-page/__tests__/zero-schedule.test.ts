@@ -5,7 +5,10 @@ import {
   detachedSetupPage,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import {
+  setMockSchedules,
+  createMockScheduleResponse,
+} from "../../../mocks/handlers/api-schedules.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesMainContract,
@@ -30,25 +33,13 @@ import {
 
 const context = testContext();
 
-function mockScheduleResponse() {
-  return {
-    ...scheduleDefaults(),
+function mockScheduleResponse(): ScheduleResponse {
+  return createMockScheduleResponse({
     id: "d0000000-0000-4000-a000-000000000001",
-    agentId: "c0000000-0000-4000-a000-000000000001",
     name: "new-schedule",
-    triggerType: "cron" as const,
     cronExpression: "0 9 * * *",
-    atTime: null,
-    intervalSeconds: null,
-    timezone: "UTC",
     prompt: "test",
-    description: null,
-    enabled: true,
-    nextRunAt: null,
-    lastRunAt: null,
-    createdAt: "2026-03-01T00:00:00Z",
-    updatedAt: "2026-03-01T00:00:00Z",
-  };
+  });
 }
 
 function mockDeployResponse() {
@@ -58,104 +49,29 @@ function mockDeployResponse() {
   };
 }
 
-function scheduleDefaults() {
-  return {
-    displayName: null,
-    userId: "test-user-123",
-    appendSystemPrompt: null,
-    vars: null,
-    secretNames: null,
-    volumeVersions: null,
-    retryStartedAt: null,
-    consecutiveFailures: 0,
-    modelProviderId: null,
-    selectedModel: null,
-  };
-}
-
-function createMockSchedules() {
+function createMockSchedules(): ScheduleResponse[] {
   return [
-    {
-      ...scheduleDefaults(),
+    createMockScheduleResponse({
       id: "a0000001-0000-4000-a000-000000000001",
-      agentId: "c0000000-0000-4000-a000-000000000001",
       name: "morning-briefing",
-      triggerType: "cron",
       cronExpression: "0 9 * * 1-5",
-      atTime: null,
-      intervalSeconds: null,
-      timezone: "UTC",
       prompt: "Summarize yesterday's threads",
-      description: null,
-      enabled: true,
-      nextRunAt: null,
-      lastRunAt: null,
-      createdAt: "2026-03-01T00:00:00Z",
-      updatedAt: "2026-03-01T00:00:00Z",
-      userId: "test-user-123",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      artifactName: null,
-      artifactVersion: null,
-      volumeVersions: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
-    },
-    {
-      ...scheduleDefaults(),
+    }),
+    createMockScheduleResponse({
       id: "a0000001-0000-4000-a000-000000000002",
-      agentId: "c0000000-0000-4000-a000-000000000001",
       name: "check-inbox",
       triggerType: "loop",
       cronExpression: null,
-      atTime: null,
       intervalSeconds: 900,
-      timezone: "UTC",
       prompt: "Check inbox for urgent items",
-      description: null,
-      enabled: true,
-      nextRunAt: null,
-      lastRunAt: null,
-      createdAt: "2026-03-01T00:00:00Z",
-      updatedAt: "2026-03-01T00:00:00Z",
-      userId: "test-user-123",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      artifactName: null,
-      artifactVersion: null,
-      volumeVersions: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
-    },
-    {
-      ...scheduleDefaults(),
+    }),
+    createMockScheduleResponse({
       id: "a0000001-0000-4000-a000-000000000003",
       agentId: "a0000001-0000-4000-a000-000000000020",
       name: "other-schedule",
-      triggerType: "cron",
       cronExpression: "0 12 * * *",
-      atTime: null,
-      intervalSeconds: null,
-      timezone: "UTC",
       prompt: "This belongs to another agent",
-      description: null,
-      enabled: true,
-      nextRunAt: null,
-      lastRunAt: null,
-      createdAt: "2026-03-01T00:00:00Z",
-      updatedAt: "2026-03-01T00:00:00Z",
-      userId: "test-user-123",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      artifactName: null,
-      artifactVersion: null,
-      volumeVersions: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
-    },
+    }),
   ];
 }
 
@@ -170,7 +86,7 @@ function setup() {
 describe("zero-schedule signals", () => {
   describe("fetchZeroSchedules$", () => {
     it("should fetch and filter schedules for the default agent", async () => {
-      setMockSchedules(createMockSchedules() as ScheduleResponse[]);
+      setMockSchedules(createMockSchedules());
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -182,7 +98,7 @@ describe("zero-schedule signals", () => {
     });
 
     it("should convert cron schedule to display string", async () => {
-      setMockSchedules(createMockSchedules() as ScheduleResponse[]);
+      setMockSchedules(createMockSchedules());
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -192,7 +108,7 @@ describe("zero-schedule signals", () => {
     });
 
     it("should convert loop schedule to display string", async () => {
-      setMockSchedules(createMockSchedules() as ScheduleResponse[]);
+      setMockSchedules(createMockSchedules());
 
       await setup();
       await context.store.set(fetchZeroSchedules$, context.signal);
@@ -253,13 +169,7 @@ describe("zero-schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
-          return respond(
-            201,
-            mockDeployResponse() as {
-              schedule: ScheduleResponse;
-              created: boolean;
-            },
-          );
+          return respond(201, mockDeployResponse());
         }),
       );
 
@@ -295,13 +205,7 @@ describe("zero-schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
-          return respond(
-            201,
-            mockDeployResponse() as {
-              schedule: ScheduleResponse;
-              created: boolean;
-            },
-          );
+          return respond(201, mockDeployResponse());
         }),
       );
 
@@ -331,13 +235,7 @@ describe("zero-schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
-          return respond(
-            201,
-            mockDeployResponse() as {
-              schedule: ScheduleResponse;
-              created: boolean;
-            },
-          );
+          return respond(201, mockDeployResponse());
         }),
       );
 
@@ -368,13 +266,7 @@ describe("zero-schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
-          return respond(
-            201,
-            mockDeployResponse() as {
-              schedule: ScheduleResponse;
-              created: boolean;
-            },
-          );
+          return respond(201, mockDeployResponse());
         }),
       );
 
@@ -406,13 +298,7 @@ describe("zero-schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
-          return respond(
-            201,
-            mockDeployResponse() as {
-              schedule: ScheduleResponse;
-              created: boolean;
-            },
-          );
+          return respond(201, mockDeployResponse());
         }),
       );
 
@@ -443,13 +329,7 @@ describe("zero-schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
-          return respond(
-            201,
-            mockDeployResponse() as {
-              schedule: ScheduleResponse;
-              created: boolean;
-            },
-          );
+          return respond(201, mockDeployResponse());
         }),
       );
 
@@ -480,13 +360,7 @@ describe("zero-schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
-          return respond(
-            201,
-            mockDeployResponse() as {
-              schedule: ScheduleResponse;
-              created: boolean;
-            },
-          );
+          return respond(201, mockDeployResponse());
         }),
       );
 
@@ -512,11 +386,11 @@ describe("zero-schedule signals", () => {
 
     it("should throw on API error during save", async () => {
       server.use(
-        mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
-          respond(400, {
+        mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
+          return respond(400, {
             error: { message: "Invalid timezone", code: "BAD_REQUEST" },
-          }),
-        ),
+          });
+        }),
       );
 
       await setup();
@@ -550,7 +424,7 @@ describe("zero-schedule signals", () => {
         mockApi(zeroSchedulesEnableContract.enable, ({ body, respond }) => {
           captured.action = "enable";
           captured.body = body as Record<string, unknown>;
-          return respond(200, mockScheduleResponse() as ScheduleResponse);
+          return respond(200, mockScheduleResponse());
         }),
       );
 
@@ -577,7 +451,7 @@ describe("zero-schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
           captured.action = "disable";
-          return respond(200, mockScheduleResponse() as ScheduleResponse);
+          return respond(200, mockScheduleResponse());
         }),
       );
 
@@ -596,11 +470,11 @@ describe("zero-schedule signals", () => {
 
     it("should throw and show toast on API error", async () => {
       server.use(
-        mockApi(zeroSchedulesEnableContract.enable, ({ respond }) =>
-          respond(404, {
+        mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
+          return respond(404, {
             error: { message: "Schedule not found", code: "NOT_FOUND" },
-          }),
-        ),
+          });
+        }),
       );
 
       await setup();
@@ -623,15 +497,15 @@ describe("zero-schedule signals", () => {
         mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
           fetchCount++;
           return respond(200, {
-            schedules: createMockSchedules() as ScheduleResponse[],
+            schedules: createMockSchedules(),
           });
         }),
-        mockApi(zeroSchedulesEnableContract.disable, ({ respond }) =>
-          respond(200, mockScheduleResponse() as ScheduleResponse),
-        ),
-        mockApi(zeroSchedulesEnableContract.enable, ({ respond }) =>
-          respond(200, mockScheduleResponse() as ScheduleResponse),
-        ),
+        mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
+          return respond(200, mockScheduleResponse());
+        }),
+        mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
+          return respond(200, mockScheduleResponse());
+        }),
       );
 
       await setup();
@@ -685,11 +559,11 @@ describe("zero-schedule signals", () => {
 
     it("should throw on API error", async () => {
       server.use(
-        mockApi(zeroScheduleRunContract.run, ({ respond }) =>
-          respond(404, {
+        mockApi(zeroScheduleRunContract.run, ({ respond }) => {
+          return respond(404, {
             error: { message: "Schedule not found", code: "NOT_FOUND" },
-          }),
-        ),
+          });
+        }),
       );
 
       await setup();
@@ -700,14 +574,14 @@ describe("zero-schedule signals", () => {
 
     it("should throw on conflict when previous run is active", async () => {
       server.use(
-        mockApi(zeroScheduleRunContract.run, ({ respond }) =>
-          respond(409, {
+        mockApi(zeroScheduleRunContract.run, ({ respond }) => {
+          return respond(409, {
             error: {
               message: "Previous run is still active",
               code: "CONFLICT",
             },
-          }),
-        ),
+          });
+        }),
       );
 
       await setup();
@@ -720,24 +594,14 @@ describe("zero-schedule signals", () => {
   describe("schedule display strings", () => {
     it("should convert one-time schedule to display string", async () => {
       setMockSchedules([
-        {
-          ...scheduleDefaults(),
+        createMockScheduleResponse({
           id: "b0000000-0000-4000-a000-000000000001",
-          agentId: "c0000000-0000-4000-a000-000000000001",
           name: "one-time",
           triggerType: "once",
           cronExpression: null,
           atTime: "2026-06-15T14:30:00.000Z",
-          intervalSeconds: null,
-          timezone: "UTC",
           prompt: "One-time task",
-          description: null,
-          enabled: true,
-          nextRunAt: null,
-          lastRunAt: null,
-          createdAt: "2026-03-01T00:00:00Z",
-          updatedAt: "2026-03-01T00:00:00Z",
-        } as ScheduleResponse,
+        }),
       ]);
 
       await setup();
@@ -750,24 +614,12 @@ describe("zero-schedule signals", () => {
 
     it("should convert daily cron to display string", async () => {
       setMockSchedules([
-        {
-          ...scheduleDefaults(),
+        createMockScheduleResponse({
           id: "b0000000-0000-4000-a000-000000000002",
-          agentId: "c0000000-0000-4000-a000-000000000001",
           name: "daily",
-          triggerType: "cron",
           cronExpression: "0 14 * * *",
-          atTime: null,
-          intervalSeconds: null,
-          timezone: "UTC",
           prompt: "Daily task",
-          description: null,
-          enabled: true,
-          nextRunAt: null,
-          lastRunAt: null,
-          createdAt: "2026-03-01T00:00:00Z",
-          updatedAt: "2026-03-01T00:00:00Z",
-        } as ScheduleResponse,
+        }),
       ]);
 
       await setup();
@@ -779,24 +631,12 @@ describe("zero-schedule signals", () => {
 
     it("should convert monthly cron to display string", async () => {
       setMockSchedules([
-        {
-          ...scheduleDefaults(),
+        createMockScheduleResponse({
           id: "b0000000-0000-4000-a000-000000000003",
-          agentId: "c0000000-0000-4000-a000-000000000001",
           name: "monthly",
-          triggerType: "cron",
           cronExpression: "0 9 15 * *",
-          atTime: null,
-          intervalSeconds: null,
-          timezone: "UTC",
           prompt: "Monthly task",
-          description: null,
-          enabled: true,
-          nextRunAt: null,
-          lastRunAt: null,
-          createdAt: "2026-03-01T00:00:00Z",
-          updatedAt: "2026-03-01T00:00:00Z",
-        } as ScheduleResponse,
+        }),
       ]);
 
       await setup();
@@ -808,24 +648,12 @@ describe("zero-schedule signals", () => {
 
     it("should convert weekly cron to display string with day name", async () => {
       setMockSchedules([
-        {
-          ...scheduleDefaults(),
+        createMockScheduleResponse({
           id: "b0000000-0000-4000-a000-000000000004",
-          agentId: "c0000000-0000-4000-a000-000000000001",
           name: "weekly",
-          triggerType: "cron",
           cronExpression: "0 10 * * 3",
-          atTime: null,
-          intervalSeconds: null,
-          timezone: "UTC",
           prompt: "Weekly task",
-          description: null,
-          enabled: true,
-          nextRunAt: null,
-          lastRunAt: null,
-          createdAt: "2026-03-01T00:00:00Z",
-          updatedAt: "2026-03-01T00:00:00Z",
-        } as ScheduleResponse,
+        }),
       ]);
 
       await setup();
@@ -837,24 +665,12 @@ describe("zero-schedule signals", () => {
 
     it("should include description in entries", async () => {
       setMockSchedules([
-        {
-          ...scheduleDefaults(),
+        createMockScheduleResponse({
           id: "b0000000-0000-4000-a000-000000000005",
-          agentId: "c0000000-0000-4000-a000-000000000001",
           name: "described",
-          triggerType: "cron",
-          cronExpression: "0 9 * * *",
-          atTime: null,
-          intervalSeconds: null,
-          timezone: "UTC",
           prompt: "Task with description",
           description: "A detailed description",
-          enabled: true,
-          nextRunAt: null,
-          lastRunAt: null,
-          createdAt: "2026-03-01T00:00:00Z",
-          updatedAt: "2026-03-01T00:00:00Z",
-        } as ScheduleResponse,
+        }),
       ]);
 
       await setup();
@@ -907,7 +723,7 @@ describe("org schedule signals", () => {
 
   describe("fetchAllOrgSchedules$ and allOrgScheduleEntries$", () => {
     it("should map agentId field from API response", async () => {
-      setMockSchedules(createMockSchedules() as ScheduleResponse[]);
+      setMockSchedules(createMockSchedules());
 
       await setup();
       await context.store.set(fetchAllOrgSchedules$, context.signal);
@@ -937,13 +753,7 @@ describe("org schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
-          return respond(
-            201,
-            mockDeployResponse() as {
-              schedule: ScheduleResponse;
-              created: boolean;
-            },
-          );
+          return respond(201, mockDeployResponse());
         }),
       );
 
@@ -981,13 +791,7 @@ describe("org schedule signals", () => {
       server.use(
         mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
           captured.body = body as Record<string, unknown>;
-          return respond(
-            201,
-            mockDeployResponse() as {
-              schedule: ScheduleResponse;
-              created: boolean;
-            },
-          );
+          return respond(201, mockDeployResponse());
         }),
       );
 
@@ -1026,7 +830,7 @@ describe("org schedule signals", () => {
         mockApi(zeroSchedulesEnableContract.disable, ({ body, respond }) => {
           captured.action = "disable";
           captured.body = body as Record<string, unknown>;
-          return respond(200, mockScheduleResponse() as ScheduleResponse);
+          return respond(200, mockScheduleResponse());
         }),
       );
 

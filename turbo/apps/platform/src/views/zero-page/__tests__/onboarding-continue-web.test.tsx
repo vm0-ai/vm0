@@ -22,34 +22,34 @@ const MOCK_MEMBER_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function mockAdminOnboarding() {
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: true,
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-      }),
-    ),
-    mockApi(onboardingSetupContract.setup, ({ respond }) =>
-      respond(200, { agentId: MOCK_AGENT_ID }),
-    ),
+      });
+    }),
+    mockApi(onboardingSetupContract.setup, ({ respond }) => {
+      return respond(200, { agentId: MOCK_AGENT_ID });
+    }),
   );
 }
 
 function switchToAdminComplete() {
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: false,
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: MOCK_AGENT_ID,
         defaultAgentMetadata: null,
-      }),
-    ),
+      });
+    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -58,34 +58,34 @@ function switchToAdminComplete() {
 
 function mockMemberOnboarding() {
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: true,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: MOCK_MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
-      }),
-    ),
-    mockApi(onboardingCompleteContract.complete, ({ respond }) =>
-      respond(200, { ok: true }),
-    ),
+      });
+    }),
+    mockApi(onboardingCompleteContract.complete, ({ respond }) => {
+      return respond(200, { ok: true });
+    }),
   );
 }
 
 function switchToMemberComplete() {
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: false,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: MOCK_MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
-      }),
-    ),
+      });
+    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),

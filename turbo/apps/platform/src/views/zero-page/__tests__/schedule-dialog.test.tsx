@@ -8,7 +8,10 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import {
+  setMockSchedules,
+  createMockScheduleResponse,
+} from "../../../mocks/handlers/api-schedules.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { zeroSchedulesMainContract, type ScheduleResponse } from "@vm0/core";
@@ -17,67 +20,36 @@ const context = testContext();
 
 const SCHEDULE_ID = "f0000001-0000-4000-a000-000000000001";
 
-function mockScheduleBase() {
-  return {
-    userId: "test-user-123",
-    appendSystemPrompt: null,
-    vars: null,
-    secretNames: null,
-    volumeVersions: null,
-    retryStartedAt: null,
-    consecutiveFailures: 0,
-  };
-}
-
-function mockScheduleForList() {
-  return {
-    ...mockScheduleBase(),
+function mockScheduleForList(): ScheduleResponse {
+  return createMockScheduleResponse({
     id: SCHEDULE_ID,
-    agentId: "c0000000-0000-4000-a000-000000000001",
     displayName: "Zero",
     name: "morning-task",
-    triggerType: "cron",
     cronExpression: "0 9 * * 1-5",
-    atTime: null,
-    intervalSeconds: null,
-    timezone: "UTC",
     prompt: "Existing prompt text",
-    description: null,
-    enabled: true,
-    nextRunAt: null,
-    lastRunAt: null,
-    createdAt: "2026-03-01T00:00:00Z",
-    updatedAt: "2026-03-01T00:00:00Z",
-  };
+  });
 }
 
-function mockDeployResponse() {
+function mockDeployResponse(): {
+  schedule: ScheduleResponse;
+  created: boolean;
+} {
   return {
-    schedule: {
-      ...mockScheduleBase(),
+    schedule: createMockScheduleResponse({
       id: "d0000001-0000-4000-a000-000000000001",
-      agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: "Zero",
       name: "new-schedule",
-      triggerType: "cron",
       cronExpression: "0 9 * * *",
-      atTime: null,
-      intervalSeconds: null,
-      timezone: "UTC",
       prompt: "Daily standup summary",
-      description: null,
-      enabled: true,
-      nextRunAt: null,
-      lastRunAt: null,
       createdAt: "2026-04-01T00:00:00Z",
       updatedAt: "2026-04-01T00:00:00Z",
-    },
+    }),
     created: true,
   };
 }
 
 function mockCreateModeAPIs() {
-  setMockSchedules([mockScheduleForList() as ScheduleResponse]);
+  setMockSchedules([mockScheduleForList()]);
   server.use(
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -111,7 +83,7 @@ function mockEditModeAPIs() {
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
-  setMockSchedules([mockScheduleForList() as ScheduleResponse]);
+  setMockSchedules([mockScheduleForList()]);
   server.use(
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
@@ -197,11 +169,11 @@ describe("schedule dialog - save error (SCHED-D-047)", () => {
   it("surfaces save failure via toast and keeps dialog open", async () => {
     const user = userEvent.setup();
     server.use(
-      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
-        respond(400, {
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
+        return respond(400, {
           error: { message: "Server error", code: "BAD_REQUEST" },
-        }),
-      ),
+        });
+      }),
     );
     await openCreateDialog(user);
     const promptInput = screen.getByLabelText("Prompt");
@@ -220,13 +192,7 @@ describe("schedule dialog - loading state (SCHED-D-048)", () => {
     server.use(
       mockApi(zeroSchedulesMainContract.deploy, async ({ respond }) => {
         await hangDeferred.promise;
-        return respond(
-          201,
-          mockDeployResponse() as {
-            schedule: ScheduleResponse;
-            created: boolean;
-          },
-        );
+        return respond(201, mockDeployResponse());
       }),
     );
     const user = userEvent.setup();
@@ -464,13 +430,7 @@ describe("schedule dialog - save button (SCHED-D-063)", () => {
     server.use(
       mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
         captured = true;
-        return respond(
-          201,
-          mockDeployResponse() as {
-            schedule: ScheduleResponse;
-            created: boolean;
-          },
-        );
+        return respond(201, mockDeployResponse());
       }),
     );
     const user = userEvent.setup();

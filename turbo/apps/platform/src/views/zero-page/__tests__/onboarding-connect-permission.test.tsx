@@ -48,19 +48,19 @@ function makeGithubConnectedResponse(): ConnectorListResponse {
 
 function mockAdminOnboarding() {
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: true,
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-      }),
-    ),
-    mockApi(onboardingSetupContract.setup, ({ respond }) =>
-      respond(200, { agentId: "d0000000-0000-4000-a000-000000000001" }),
-    ),
+      });
+    }),
+    mockApi(onboardingSetupContract.setup, ({ respond }) => {
+      return respond(200, { agentId: "d0000000-0000-4000-a000-000000000001" });
+    }),
   );
 }
 

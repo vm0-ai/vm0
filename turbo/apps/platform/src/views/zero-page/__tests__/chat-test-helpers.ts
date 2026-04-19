@@ -329,9 +329,9 @@ export function mockChatLifecycle(options?: {
         createdAt: "2026-03-10T00:00:00Z",
       });
     }),
-    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
-      respond(200, { position: queuePosition, total: 0 }),
-    ),
+    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) => {
+      return respond(200, { position: queuePosition, total: 0 });
+    }),
   );
 
   return {

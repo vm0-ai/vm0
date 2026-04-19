@@ -136,9 +136,9 @@ describe("chat session switch", () => {
           createdAt: "2026-03-10T00:00:00Z",
         });
       }),
-      mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
-        respond(200, { position: 0, total: 0 }),
-      ),
+      mockApi(zeroQueuePositionContract.getPosition, ({ respond }) => {
+        return respond(200, { position: 0, total: 0 });
+      }),
     );
 
     // Start on a completed thread (no active polling)

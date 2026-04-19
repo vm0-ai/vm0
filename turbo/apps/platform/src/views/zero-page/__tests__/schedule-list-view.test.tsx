@@ -7,7 +7,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import {
+  setMockSchedules,
+  createMockScheduleResponse,
+} from "../../../mocks/handlers/api-schedules.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesEnableContract,
@@ -17,53 +20,34 @@ import {
 
 const context = testContext();
 
-function mockScheduleBase() {
-  return {
-    userId: "test-user-123",
-    appendSystemPrompt: null,
-    vars: null,
-    secretNames: null,
-    volumeVersions: null,
-    retryStartedAt: null,
-    consecutiveFailures: 0,
-    nextRunAt: null,
-    lastRunAt: null,
-  };
-}
-
-function createEnabledSchedule() {
-  return {
-    ...mockScheduleBase(),
+function createEnabledSchedule(): ScheduleResponse {
+  return createMockScheduleResponse({
     id: "f0000001-0000-4000-a000-000000000001",
-    agentId: "c0000000-0000-4000-a000-000000000001",
     displayName: "Zero",
     name: "morning-briefing",
-    triggerType: "cron",
     cronExpression: "0 9 * * 1-5",
-    atTime: null,
-    intervalSeconds: null,
-    timezone: "UTC",
     prompt: "Summarize yesterday's threads",
-    description: null,
     enabled: true,
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-01T00:00:00Z",
-  };
+  });
 }
 
-function createDisabledSchedule() {
-  return {
-    ...createEnabledSchedule(),
+function createDisabledSchedule(): ScheduleResponse {
+  return createMockScheduleResponse({
     id: "f0000001-0000-4000-a000-000000000002",
+    displayName: "Zero",
     name: "disabled-task",
+    cronExpression: "0 12 * * *",
     prompt: "Disabled task",
     enabled: false,
-    cronExpression: "0 12 * * *",
-  };
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-01T00:00:00Z",
+  });
 }
 
 function mockScheduleAPI(schedules = [createEnabledSchedule()]) {
-  setMockSchedules(schedules as ScheduleResponse[]);
+  setMockSchedules(schedules);
   server.use(
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -122,14 +106,14 @@ describe("schedule list view - agent labels (SCHED-D-082)", () => {
   it("renders agent labels for each schedule entry when multiple agents are present", async () => {
     mockScheduleAPI([
       createEnabledSchedule(),
-      {
-        ...createEnabledSchedule(),
+      createMockScheduleResponse({
         id: "f0000001-0000-4000-a000-000000000022",
         agentId: "c0000000-0000-4000-a000-000000000002",
         displayName: "Research Agent",
         name: "research-task",
+        cronExpression: "0 9 * * 1-5",
         prompt: "Research daily summary",
-      },
+      }),
     ]);
     detachedSetupPage({ context, path: "/schedules" });
 
@@ -143,10 +127,14 @@ describe("schedule list view - agent labels (SCHED-D-082)", () => {
 describe("schedule list view - time and timezone (SCHED-D-083)", () => {
   it("renders schedule time and timezone for each entry", async () => {
     mockScheduleAPI([
-      {
-        ...createEnabledSchedule(),
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000001",
+        displayName: "Zero",
+        name: "morning-briefing",
+        cronExpression: "0 9 * * 1-5",
+        prompt: "Summarize yesterday's threads",
         timezone: "America/New_York",
-      },
+      }),
     ]);
     detachedSetupPage({ context, path: "/schedules" });
 
@@ -181,7 +169,7 @@ describe("schedule list view - enabled/disabled indicator (SCHED-D-084)", () => 
 describe("schedule list view - running action indicator (SCHED-D-085)", () => {
   it("shows Starting indicator in run menu while a run is in progress", async () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
-    setMockSchedules([createEnabledSchedule() as ScheduleResponse]);
+    setMockSchedules([createEnabledSchedule()]);
     server.use(
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -316,15 +304,15 @@ describe("schedule list view - toggle switch (SCHED-D-088)", () => {
     const user = userEvent.setup();
     let capturedAction: string | null = null;
 
-    setMockSchedules([createDisabledSchedule() as ScheduleResponse]);
+    setMockSchedules([createDisabledSchedule()]);
     server.use(
       mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
         capturedAction = "enable";
-        return respond(200, createDisabledSchedule() as ScheduleResponse);
+        return respond(200, createDisabledSchedule());
       }),
       mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
         capturedAction = "disable";
-        return respond(200, createDisabledSchedule() as ScheduleResponse);
+        return respond(200, createDisabledSchedule());
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -392,7 +380,7 @@ describe("schedule list view - run now action (SCHED-D-090)", () => {
     const user = userEvent.setup();
     let capturedBody: { scheduleId?: string } | null = null;
 
-    setMockSchedules([createEnabledSchedule() as ScheduleResponse]);
+    setMockSchedules([createEnabledSchedule()]);
     server.use(
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });

@@ -5,7 +5,10 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
-import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import {
+  setMockSchedules,
+  createMockScheduleResponse,
+} from "../../../mocks/handlers/api-schedules.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesMainContract,
@@ -18,37 +21,14 @@ const context = testContext();
 
 const SCHEDULE_ID = "f0000001-0000-4000-a000-000000000001";
 
-function createMockSchedule(overrides: Record<string, unknown> = {}) {
-  return {
-    id: SCHEDULE_ID,
-    agentId: "c0000000-0000-4000-a000-000000000001",
-    displayName: "Zero",
-    name: "morning-briefing",
-    triggerType: "cron",
-    cronExpression: "0 9 * * 1-5",
-    atTime: null,
-    intervalSeconds: null,
-    timezone: "UTC",
-    prompt: "Summarize yesterday's threads",
-    description: "Daily morning briefing",
-    enabled: true,
-    nextRunAt: null,
-    lastRunAt: null,
-    createdAt: "2026-03-01T00:00:00Z",
-    updatedAt: "2026-03-01T00:00:00Z",
-    userId: "test-user-123",
-    appendSystemPrompt: null,
-    vars: null,
-    secretNames: null,
-    volumeVersions: null,
-    retryStartedAt: null,
-    consecutiveFailures: 0,
-    ...overrides,
-  };
-}
-
-function mockAPIs(overrides: Record<string, unknown> = {}) {
-  setMockSchedules([createMockSchedule(overrides) as ScheduleResponse]);
+function mockAPIs(overrides: Partial<ScheduleResponse> = {}) {
+  setMockSchedules([
+    createMockScheduleResponse({
+      displayName: "Zero",
+      description: "Daily morning briefing",
+      ...overrides,
+    }),
+  ]);
   server.use(
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -144,20 +124,32 @@ describe("zero schedule detail page - toggle switch changes enabled state (SCHED
         toggleCalled = true;
         return respond(
           200,
-          createMockSchedule({ enabled: false }) as ScheduleResponse,
+          createMockScheduleResponse({
+            displayName: "Zero",
+            description: "Daily morning briefing",
+            enabled: false,
+          }),
         );
       }),
       mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
         if (toggleCalled) {
           return respond(200, {
             schedules: [
-              createMockSchedule({ enabled: false }) as ScheduleResponse,
+              createMockScheduleResponse({
+                displayName: "Zero",
+                description: "Daily morning briefing",
+                enabled: false,
+              }),
             ],
           });
         }
         return respond(200, {
           schedules: [
-            createMockSchedule({ enabled: true }) as ScheduleResponse,
+            createMockScheduleResponse({
+              displayName: "Zero",
+              description: "Daily morning briefing",
+              enabled: true,
+            }),
           ],
         });
       }),
@@ -191,14 +183,15 @@ describe("zero schedule detail page - settings save button persists changes (SCH
   it("should save settings and dismiss the unsaved changes banner", async () => {
     mockAPIs();
     server.use(
-      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
-        respond(200, {
-          schedule: createMockSchedule({
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
+        return respond(200, {
+          schedule: createMockScheduleResponse({
+            displayName: "Zero",
             description: "Updated",
-          }) as ScheduleResponse,
+          }),
           created: false,
-        }),
-      ),
+        });
+      }),
     );
     const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
@@ -244,24 +237,28 @@ describe("zero schedule detail page - instruction save button saves instructions
     const newPrompt = "New instruction content";
     let saved = false;
     server.use(
-      mockApi(zeroSchedulesMainContract.list, ({ respond }) =>
-        respond(200, {
+      mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
+        return respond(200, {
           schedules: [
-            createMockSchedule(
-              saved ? { prompt: newPrompt } : {},
-            ) as ScheduleResponse,
+            createMockScheduleResponse({
+              displayName: "Zero",
+              description: "Daily morning briefing",
+              ...(saved ? { prompt: newPrompt } : {}),
+            }),
           ],
-        }),
-      ),
+        });
+      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
       mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
         saved = true;
         return respond(200, {
-          schedule: createMockSchedule({
+          schedule: createMockScheduleResponse({
+            displayName: "Zero",
+            description: "Daily morning briefing",
             prompt: newPrompt,
-          }) as ScheduleResponse,
+          }),
           created: false,
         });
       }),
@@ -501,9 +498,9 @@ describe("zero schedule detail page - run now button triggers immediate run (SCH
   it("should show a run started confirmation when run now button is clicked", async () => {
     mockAPIs();
     server.use(
-      mockApi(zeroScheduleRunContract.run, ({ respond }) =>
-        respond(201, { runId: "r0000000-0000-4000-a000-000000000001" }),
-      ),
+      mockApi(zeroScheduleRunContract.run, ({ respond }) => {
+        return respond(201, { runId: "r0000000-0000-4000-a000-000000000001" });
+      }),
     );
     const user = userEvent.setup();
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });

@@ -42,15 +42,15 @@ function mockInsightsAPI(days: InsightsResponse["days"] = []) {
   }, 0);
   const lastUpdated = days.length > 0 ? new Date().toISOString() : null;
   server.use(
-    mockApi(zeroInsightsContract.get, ({ respond }) =>
-      respond(200, { days, totalCredits, totalRuns, lastUpdated }),
-    ),
+    mockApi(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, { days, totalCredits, totalRuns, lastUpdated });
+    }),
   );
 }
 
 function sampleDay(
   date: string,
-  overrides?: Record<string, unknown>,
+  overrides?: Partial<InsightsResponse["days"][0]>,
 ): InsightsResponse["days"][0] {
   return {
     date,
@@ -65,13 +65,13 @@ function sampleDay(
         name: "alice",
         credits: 120,
         agentNames: ["Alpha Bot"],
-        agentCredits: { "Alpha Bot": 120 } as Record<string, number>,
+        agentCredits: { "Alpha Bot": 120 },
       },
       {
         name: "bob",
         credits: 80,
         agentNames: ["Beta Bot"],
-        agentCredits: { "Beta Bot": 80 } as Record<string, number>,
+        agentCredits: { "Beta Bot": 80 },
       },
     ],
     topTask: { name: "chat:write", count: 15 },
@@ -104,7 +104,7 @@ function sampleDay(
       },
     ],
     ...overrides,
-  } as InsightsResponse["days"][0];
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +178,6 @@ describe("network insights page - data rendering", () => {
         creditBalance: 9500,
         teamUsage: [
           {
-            userId: "user-alice",
             name: "alice",
             credits: 12_400,
             agentNames: ["Alpha Bot"],
@@ -203,7 +202,6 @@ describe("network insights page - data rendering", () => {
         creditBalance: 5_000_000,
         teamUsage: [
           {
-            userId: "user-alice",
             name: "alice",
             credits: 2_300_000,
             agentNames: ["Alpha Bot"],
@@ -228,7 +226,6 @@ describe("network insights page - data rendering", () => {
         creditBalance: 9500,
         teamUsage: [
           {
-            userId: "user-alice",
             name: "alice",
             credits: 12_400,
             agentNames: ["Alpha Bot"],
@@ -506,7 +503,7 @@ describe("network insights page - data refetch", () => {
                 },
               ];
         return respond(200, {
-          days: [sampleDay(day1Ago, { agents }) as InsightsResponse["days"][0]],
+          days: [sampleDay(day1Ago, { agents })],
           totalCredits: 10,
           totalRuns: 1,
           lastUpdated: new Date().toISOString(),
@@ -597,14 +594,12 @@ describe("network insights page - your credit usage card", () => {
       sampleDay(day1Ago, {
         teamUsage: [
           {
-            userId: "test-user-123",
             name: "me",
             credits: 75,
             agentNames: ["Alpha Bot"],
             agentCredits: { "Alpha Bot": 75 },
           },
           {
-            userId: "other-user",
             name: "other",
             credits: 125,
             agentNames: ["Beta Bot"],
@@ -628,7 +623,6 @@ describe("network insights page - your credit usage card", () => {
       sampleDay(day1Ago, {
         teamUsage: [
           {
-            userId: "someone-else",
             name: "someone",
             credits: 200,
             agentNames: ["Alpha Bot"],

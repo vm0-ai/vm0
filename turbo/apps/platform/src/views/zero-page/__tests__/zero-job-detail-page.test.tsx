@@ -6,12 +6,14 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import {
+  setMockSchedules,
+  createMockScheduleResponse,
+} from "../../../mocks/handlers/api-schedules.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
-  type ScheduleResponse,
 } from "@vm0/core";
 
 const context = testContext();
@@ -211,31 +213,13 @@ function mockAPIsWithSchedules() {
     }),
   );
   setMockSchedules([
-    {
+    createMockScheduleResponse({
       id: "f0000002-0000-4000-a000-000000000001",
       agentId: "e0000000-0000-4000-a000-000000000010",
-      displayName: null,
-      userId: "test-user-123",
       name: "morning-briefing",
-      triggerType: "cron",
       cronExpression: "0 9 * * 1-5",
-      atTime: null,
-      intervalSeconds: null,
-      timezone: "UTC",
       prompt: "Summarize yesterday's threads",
-      description: null,
-      enabled: true,
-      nextRunAt: null,
-      lastRunAt: null,
-      createdAt: "2026-03-01T00:00:00Z",
-      updatedAt: "2026-03-01T00:00:00Z",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      volumeVersions: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
-    } as ScheduleResponse,
+    }),
   ]);
 }
 
@@ -350,33 +334,19 @@ describe("zero job detail page - schedule tab toggle", () => {
     mockAPIsWithSchedules();
 
     server.use(
-      mockApi(zeroSchedulesEnableContract.disable, ({ respond }) =>
-        respond(200, {
-          id: "f0000002-0000-4000-a000-000000000001",
-          agentId: "e0000000-0000-4000-a000-000000000010",
-          displayName: null,
-          userId: "test-user-123",
-          name: "morning-briefing",
-          triggerType: "cron",
-          cronExpression: "0 9 * * 1-5",
-          atTime: null,
-          intervalSeconds: null,
-          timezone: "UTC",
-          prompt: "Summarize yesterday's threads",
-          description: null,
-          enabled: false,
-          nextRunAt: null,
-          lastRunAt: null,
-          createdAt: "2026-03-01T00:00:00Z",
-          updatedAt: "2026-03-01T00:00:00Z",
-          appendSystemPrompt: null,
-          vars: null,
-          secretNames: null,
-          volumeVersions: null,
-          retryStartedAt: null,
-          consecutiveFailures: 0,
-        } as ScheduleResponse),
-      ),
+      mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
+        return respond(
+          200,
+          createMockScheduleResponse({
+            id: "f0000002-0000-4000-a000-000000000001",
+            agentId: "e0000000-0000-4000-a000-000000000010",
+            name: "morning-briefing",
+            cronExpression: "0 9 * * 1-5",
+            prompt: "Summarize yesterday's threads",
+            enabled: false,
+          }),
+        );
+      }),
     );
 
     detachedSetupPage({ context, path: "/agents/my-agent?tab=schedule" });

@@ -81,9 +81,9 @@ function mockActivityAPIs(_runId?: string, overrides?: { status?: string }) {
         createdAt: "2026-04-10T10:00:00Z",
       });
     }),
-    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
-      respond(200, { position: 0, total: 0 }),
-    ),
+    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) => {
+      return respond(200, { position: 0, total: 0 });
+    }),
   );
 }
 

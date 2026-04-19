@@ -11,16 +11,16 @@ const context = testContext();
 
 function mockOnboardingNeeded() {
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: true,
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-      }),
-    ),
+      });
+    }),
   );
 }
 
@@ -116,16 +116,16 @@ describe("zero onboarding - does not render when not needed", () => {
 
 function mockMemberOnboardingNeeded() {
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: true,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: "c0000000-0000-4000-a000-000000000001",
         defaultAgentMetadata: null,
-      }),
-    ),
+      });
+    }),
   );
 }
 

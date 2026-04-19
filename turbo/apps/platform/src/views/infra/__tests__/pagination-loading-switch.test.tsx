@@ -17,7 +17,10 @@ import type {
   LogEntry,
   LogsListResponse,
 } from "../../../signals/zero-page/log-types.ts";
-import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import {
+  setMockSchedules,
+  createMockScheduleResponse,
+} from "../../../mocks/handlers/api-schedules.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { zeroSchedulesEnableContract, type ScheduleResponse } from "@vm0/core";
 
@@ -77,33 +80,14 @@ function mockLogsAPI(response: LogsListResponse) {
 const SCHEDULE_ID = "f0000001-0000-4000-a000-000000000001";
 const SCHEDULE_NAME = "morning-briefing";
 
-function createMockSchedule(overrides: Record<string, unknown> = {}) {
-  return {
+function createMockSchedule(overrides: Partial<ScheduleResponse> = {}) {
+  return createMockScheduleResponse({
     id: SCHEDULE_ID,
-    agentId: "c0000000-0000-4000-a000-000000000001",
     displayName: "Zero",
     name: SCHEDULE_NAME,
-    triggerType: "cron",
-    cronExpression: "0 9 * * 1-5",
-    atTime: null,
-    intervalSeconds: null,
-    timezone: "UTC",
-    prompt: "Summarize yesterday's threads",
     description: "Daily morning briefing",
-    enabled: true,
-    nextRunAt: null,
-    lastRunAt: null,
-    createdAt: "2026-03-01T00:00:00Z",
-    updatedAt: "2026-03-01T00:00:00Z",
-    userId: "test-user-123",
-    appendSystemPrompt: null,
-    vars: null,
-    secretNames: null,
-    volumeVersions: null,
-    retryStartedAt: null,
-    consecutiveFailures: 0,
     ...overrides,
-  };
+  });
 }
 
 // ---- Pagination tests ----
@@ -526,17 +510,14 @@ describe("pagination component", () => {
 describe("loading switch component", () => {
   it("switch toggle disables the schedule (INFRA-D-026)", async () => {
     let enabled = true;
-    setMockSchedules([createMockSchedule({ enabled }) as ScheduleResponse]);
+    setMockSchedules([createMockSchedule({ enabled })]);
     server.use(
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
       mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
         enabled = false;
-        return respond(
-          200,
-          createMockSchedule({ enabled: false }) as ScheduleResponse,
-        );
+        return respond(200, createMockSchedule({ enabled: false }));
       }),
     );
 
@@ -558,17 +539,14 @@ describe("loading switch component", () => {
 
   it("switch toggle re-enables the schedule (INFRA-D-027)", async () => {
     let enabled = false;
-    setMockSchedules([createMockSchedule({ enabled }) as ScheduleResponse]);
+    setMockSchedules([createMockSchedule({ enabled })]);
     server.use(
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
       mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
         enabled = true;
-        return respond(
-          200,
-          createMockSchedule({ enabled: true }) as ScheduleResponse,
-        );
+        return respond(200, createMockSchedule({ enabled: true }));
       }),
     );
 
@@ -590,24 +568,18 @@ describe("loading switch component", () => {
 
   it("switch toggle round-trips: disable then re-enable (INFRA-D-028)", async () => {
     let enabled = true;
-    setMockSchedules([createMockSchedule({ enabled }) as ScheduleResponse]);
+    setMockSchedules([createMockSchedule({ enabled })]);
     server.use(
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
       mockApi(zeroSchedulesEnableContract.disable, ({ respond }) => {
         enabled = false;
-        return respond(
-          200,
-          createMockSchedule({ enabled: false }) as ScheduleResponse,
-        );
+        return respond(200, createMockSchedule({ enabled: false }));
       }),
       mockApi(zeroSchedulesEnableContract.enable, ({ respond }) => {
         enabled = true;
-        return respond(
-          200,
-          createMockSchedule({ enabled: true }) as ScheduleResponse,
-        );
+        return respond(200, createMockSchedule({ enabled: true }));
       }),
     );
 

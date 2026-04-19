@@ -24,16 +24,16 @@ function mockMemberOnboardingDeferred() {
   const completeDeferred = createDeferredPromise<void>(context.signal);
 
   server.use(
-    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-      respond(200, {
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+      return respond(200, {
         needsOnboarding: true,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: MOCK_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
-      }),
-    ),
+      });
+    }),
     mockApi(onboardingCompleteContract.complete, async ({ respond }) => {
       await completeDeferred.promise;
       return respond(200, { ok: true });
@@ -86,16 +86,16 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
 
     // Switch status to complete and add chat-threads mock for the landing page
     server.use(
-      mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
-        respond(200, {
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
           needsOnboarding: false,
           isAdmin: false,
           hasOrg: true,
           hasDefaultAgent: true,
           defaultAgentId: MOCK_AGENT_ID,
           defaultAgentMetadata: { displayName: "Zero" },
-        }),
-      ),
+        });
+      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),

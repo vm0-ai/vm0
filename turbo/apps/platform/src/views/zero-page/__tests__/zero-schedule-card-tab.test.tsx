@@ -246,14 +246,14 @@ describe("zero-schedule-card - save error", () => {
     const user = userEvent.setup();
     mockBaseAPIs([defaultSchedule()]);
     server.use(
-      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
-        respond(400, {
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) => {
+        return respond(400, {
           error: {
             message: "Schedule limit reached",
             code: "INTERNAL_SERVER_ERROR",
           },
-        }),
-      ),
+        });
+      }),
     );
     await navigateToScheduleTab();
 
@@ -377,14 +377,14 @@ describe("zero-schedule-tab - error state", () => {
   it("displays error message when schedule fetch fails (SCHED-D-044)", async () => {
     mockBaseAPIs([]);
     server.use(
-      mockApi(zeroSchedulesMainContract.list, ({ respond }) =>
-        respond(401, {
+      mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
+        return respond(401, {
           error: {
             message: "Failed to load schedules",
             code: "INTERNAL_SERVER_ERROR",
           },
-        }),
-      ),
+        });
+      }),
     );
 
     await navigateToScheduleTab();
