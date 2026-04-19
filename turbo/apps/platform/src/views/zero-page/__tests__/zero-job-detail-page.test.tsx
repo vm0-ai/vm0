@@ -34,9 +34,6 @@ function mockAPIs() {
         },
       ]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
         name: "my-agent",
@@ -135,9 +132,6 @@ describe("zero job detail page", () => {
           },
         ]);
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
       http.get("*/api/zero/agents/:name", () => {
         return HttpResponse.json(
           { error: { message: "Not found", code: "INTERNAL_SERVER_ERROR" } },
@@ -195,9 +189,6 @@ function mockAPIsWithSchedules() {
           updatedAt: "2024-01-02T00:00:00Z",
         },
       ]);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({

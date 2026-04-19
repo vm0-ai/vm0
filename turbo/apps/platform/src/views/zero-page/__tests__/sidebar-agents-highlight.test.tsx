@@ -32,9 +32,6 @@ function mockAgentAPIs() {
         },
       ]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 

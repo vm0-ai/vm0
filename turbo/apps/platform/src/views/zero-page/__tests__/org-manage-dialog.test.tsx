@@ -18,9 +18,6 @@ function mockAPIs(overrides?: { role?: string }) {
         role: overrides?.role ?? "admin",
       });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/org/logo", () => {
       return HttpResponse.json({ logoUrl: null });
     }),

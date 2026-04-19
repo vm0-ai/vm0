@@ -32,9 +32,6 @@ function mockTeamWithSubagent() {
         },
       ]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 

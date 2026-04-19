@@ -20,9 +20,6 @@ function mockAPIs(overrides?: { slug?: string; name?: string; role?: string }) {
     http.get("*/api/zero/org", () => {
       return HttpResponse.json(org);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/org/logo", () => {
       return HttpResponse.json({ logoUrl: null });
     }),

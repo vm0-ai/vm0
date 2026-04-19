@@ -45,9 +45,6 @@ function mockAPIs(instructionsContent: string | null = null) {
         },
       ]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
         agentId: "e0000000-0000-4000-a000-000000000010",
@@ -109,9 +106,6 @@ describe("zero instructions tab - display", () => {
             updatedAt: "2024-01-02T00:00:00Z",
           },
         ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
       http.get("*/api/zero/agents/my-agent", () => {
         return HttpResponse.json({

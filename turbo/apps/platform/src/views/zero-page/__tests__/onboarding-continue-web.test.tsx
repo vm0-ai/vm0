@@ -43,9 +43,6 @@ function switchToAdminComplete() {
         defaultAgentMetadata: null,
       });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 
@@ -78,9 +75,6 @@ function switchToMemberComplete() {
         defaultAgentId: MOCK_MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
       });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
   );
 }

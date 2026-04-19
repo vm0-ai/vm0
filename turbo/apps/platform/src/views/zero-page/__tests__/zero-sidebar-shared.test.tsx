@@ -47,9 +47,6 @@ function mockBaseAPIs(
         }),
       );
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 
@@ -178,9 +175,6 @@ describe("avatar loading state shows no image initially (SIDEBAR-D-044)", () => 
             updatedAt: "2024-01-01T00:00:00Z",
           },
         ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

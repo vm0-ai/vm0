@@ -58,9 +58,6 @@ function mockAPIs(detailOverrides: Record<string, unknown> = {}) {
         subAgent(),
       ]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json(agentDetail(detailOverrides));
     }),
@@ -168,9 +165,6 @@ describe("zero settings tab - display", () => {
             updatedAt: "2024-01-01T00:00:00Z",
           },
         ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
       http.get("*/api/zero/agents/zero", () => {
         return HttpResponse.json({

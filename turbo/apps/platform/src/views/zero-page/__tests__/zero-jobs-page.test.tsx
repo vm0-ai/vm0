@@ -54,9 +54,6 @@ function mockTeamAPI(
     http.get("*/api/zero/team", () => {
       return HttpResponse.json(agents);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 
@@ -256,9 +253,6 @@ function mockScheduleAPI(schedules = createMockSchedulesFromAPI()) {
   server.use(
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
   );
 }

@@ -28,9 +28,6 @@ function mockAPIs() {
         },
       ]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 
@@ -75,9 +72,6 @@ describe("zero org switcher - organization slug renders (SIDEBAR-D-055)", () => 
             updatedAt: "2024-01-01T00:00:00Z",
           },
         ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -257,9 +251,6 @@ describe("zero org switcher - manage button opens org management (SIDEBAR-D-060)
             updatedAt: "2024-01-01T00:00:00Z",
           },
         ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

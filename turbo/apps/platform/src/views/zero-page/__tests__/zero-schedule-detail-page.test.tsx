@@ -42,9 +42,6 @@ function mockAPIs(schedules = [createMockSchedule()]) {
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 

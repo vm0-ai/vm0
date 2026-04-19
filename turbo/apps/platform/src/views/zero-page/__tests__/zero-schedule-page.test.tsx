@@ -114,9 +114,6 @@ function mockScheduleAPI(schedules = createMockSchedules()) {
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 
@@ -203,9 +200,6 @@ describe("zero schedule page - agent labels", () => {
           ],
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
     await renderSchedulePage();
 
@@ -268,9 +262,6 @@ describe("zero schedule page - agent labels", () => {
           ],
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
     await renderSchedulePage();
 
@@ -327,9 +318,6 @@ describe("zero schedule page - agent labels", () => {
             },
           ],
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
     await renderSchedulePage();
@@ -391,9 +379,6 @@ describe("zero schedule page - agent labels", () => {
             },
           ],
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
     await renderSchedulePage();
@@ -559,9 +544,6 @@ describe("zero schedule page - create dialog", () => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(mockDeployResponse());
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     await renderSchedulePage();
@@ -607,9 +589,6 @@ describe("zero schedule page - toggle enabled", () => {
       http.post("*/api/zero/schedules/:name/:action", ({ params }) => {
         capturedAction = params["action"] as string;
         return HttpResponse.json(createMockSchedules()[0]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -668,9 +647,6 @@ describe("zero schedule page - delete confirmation", () => {
         deleteCalled = true;
         return new HttpResponse(null, { status: 204 });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     await renderSchedulePage();
@@ -706,9 +682,6 @@ describe("zero schedule page - delete confirmation", () => {
       http.delete("*/api/zero/schedules/:name", ({ params }) => {
         deletedName = params["name"] as string;
         return new HttpResponse(null, { status: 204 });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -747,9 +720,6 @@ describe("zero schedule page - delete confirmation", () => {
             return resolve(new HttpResponse(null, { status: 204 }));
           };
         });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -796,9 +766,6 @@ describe("zero schedule page - delete confirmation", () => {
       http.delete("*/api/zero/schedules/:name", ({ params }) => {
         deletedName = params["name"] as string;
         return new HttpResponse(null, { status: 204 });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -964,9 +931,6 @@ describe("zero schedule page - schedule dialog fields", () => {
           { status: 400 },
         );
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     await renderSchedulePage();
@@ -1032,9 +996,6 @@ describe("zero schedule page - loading state", () => {
         await hangDeferred.promise;
         return HttpResponse.json({ schedules: [] });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     detachedSetupPage({ context, path: "/schedules" });
@@ -1060,9 +1021,6 @@ describe("zero schedule page - create dialog timezone default", () => {
       http.post("*/api/zero/schedules", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(mockDeployResponse());
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -1104,9 +1062,6 @@ describe("zero schedule page - create dialog timezone default", () => {
       http.post("*/api/zero/schedules", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(mockDeployResponse());
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 

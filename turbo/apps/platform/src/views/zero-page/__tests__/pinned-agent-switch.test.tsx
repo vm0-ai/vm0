@@ -45,9 +45,6 @@ function mockPinnedAgents() {
         },
       ]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
   setMockUserPreferences({ pinnedAgentIds: ["agent-alpha", "agent-beta"] });
 }

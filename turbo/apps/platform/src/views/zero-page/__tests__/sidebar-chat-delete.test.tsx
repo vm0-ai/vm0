@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -45,44 +46,33 @@ function mockAPIs() {
   let lastDeletedId: string | null = null;
 
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: AGENT_ID,
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads });
-    }),
-    http.get("*/api/zero/chat-threads/:id", ({ params }) => {
+    mockApi(chatThreadsContract.list, ({ respond }) =>
+      respond(200, { threads }),
+    ),
+    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       const thread = threads.find((t) => {
         return t.id === params.id;
       });
-      return HttpResponse.json({
+      return respond(200, {
         id: params.id,
         title: thread?.title ?? null,
         agentId: AGENT_ID,
         chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       });
     }),
-    http.delete("*/api/zero/chat-threads/:id", ({ params }) => {
-      const id = params.id as string;
+    mockApi(chatThreadByIdContract.delete, ({ params, respond }) => {
+      const id = params.id;
       lastDeletedId = id;
       threads = threads.filter((t) => {
         return t.id !== id;
       });
-      return new HttpResponse(null, { status: 204 });
+      return respond(204);
     }),
   );
 
@@ -213,42 +203,31 @@ describe("sidebar chat delete", () => {
     ];
 
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: AGENT_ID,
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads });
-      }),
-      http.get("*/api/zero/chat-threads/:id", ({ params }) => {
+      mockApi(chatThreadsContract.list, ({ respond }) =>
+        respond(200, { threads }),
+      ),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         const thread = threads.find((t) => {
           return t.id === params.id;
         });
-        return HttpResponse.json({
+        return respond(200, {
           id: params.id,
           title: thread?.title ?? null,
           agentId: AGENT_ID,
           chatMessages: [],
           latestSessionId: null,
           activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.delete("*/api/zero/chat-threads/:id", ({ params }) => {
+      mockApi(chatThreadByIdContract.delete, ({ params, respond }) => {
         threads = threads.filter((t) => {
           return t.id !== params.id;
         });
-        return new HttpResponse(null, { status: 204 });
+        return respond(204);
       }),
     );
 

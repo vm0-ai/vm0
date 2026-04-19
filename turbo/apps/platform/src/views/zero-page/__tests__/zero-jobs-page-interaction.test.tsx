@@ -34,9 +34,6 @@ function mockTeamAPI(
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([DEFAULT_AGENT, ...extraAgents]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 
@@ -85,9 +82,6 @@ describe("zero jobs page - create agent dialog", () => {
           return HttpResponse.json([DEFAULT_AGENT]);
         }
         return HttpResponse.json([DEFAULT_AGENT, NEW_AGENT]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json(
@@ -163,9 +157,6 @@ describe("zero jobs page - avatar display", () => {
           },
         ]);
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
     detachedSetupPage({ context, path: "/agents" });
 
@@ -191,9 +182,6 @@ describe("zero jobs page - avatar display", () => {
             updatedAt: "2024-01-02T00:00:00Z",
           },
         ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
     detachedSetupPage({ context, path: "/agents" });
@@ -223,9 +211,6 @@ describe("zero jobs page - navigation", () => {
             updatedAt: "2024-01-02T00:00:00Z",
           },
         ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
     detachedSetupPage({ context, path: "/agents" });

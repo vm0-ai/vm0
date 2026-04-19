@@ -11,11 +11,7 @@ const context = testContext();
 const SUBAGENT_ID = "subagent-0000-4000-a000-000000000002";
 
 function mockChatAPI() {
-  server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
+  server.use();
 }
 
 function mockSubagentTeam() {

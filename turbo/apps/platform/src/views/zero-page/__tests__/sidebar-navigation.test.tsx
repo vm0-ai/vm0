@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -33,33 +34,11 @@ function mockSubagentAPIs() {
   ];
 
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: "Zero",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "subagent-compose-id",
-          displayName: "Helper Bot",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_2",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads });
-    }),
-    http.get("*/api/zero/chat-threads/:id", () => {
-      return HttpResponse.json({
+    mockApi(chatThreadsContract.list, ({ respond }) =>
+      respond(200, { threads }),
+    ),
+    mockApi(chatThreadByIdContract.get, ({ respond }) =>
+      respond(200, {
         id: "thread-sub-1",
         title: "Subagent thread",
         agentId: "subagent-compose-id",
@@ -77,53 +56,13 @@ function mockSubagentAPIs() {
         ],
         latestSessionId: "session-sub-1",
         activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
-      });
-    }),
-    http.get("*/api/zero/agents/:id", ({ params }) => {
-      const agents: Record<
-        string,
-        {
-          agentId: string;
-          displayName: string;
-          ownerId: string;
-          description: null;
-          sound: null;
-          avatarUrl: null;
-          permissionPolicies: null;
-        }
-      > = {
-        "c0000000-0000-4000-a000-000000000001": {
-          agentId: "c0000000-0000-4000-a000-000000000001",
-          ownerId: "test-user",
-          displayName: "Zero",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: null,
-        },
-        "subagent-compose-id": {
-          agentId: "subagent-compose-id",
-          ownerId: "test-user",
-          displayName: "Helper Bot",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: null,
-        },
-      };
-      const agent = agents[params.id as string];
-      if (!agent) {
-        return HttpResponse.json({ error: "Not found" }, { status: 404 });
-      }
-      return HttpResponse.json(agent);
-    }),
-    http.post("*/api/zero/chat-threads", async ({ request }) => {
-      const body = (await request.json()) as {
-        agentId: string;
-        title?: string;
-      };
+      }),
+    ),
+    mockApi(chatThreadsContract.create, async ({ body, respond }) => {
       const now = new Date().toISOString();
       const newThread = {
         id: "new-thread-id",
@@ -135,14 +74,11 @@ function mockSubagentAPIs() {
         isArchived: false,
       };
       threads.unshift(newThread);
-      return HttpResponse.json(
-        {
-          id: newThread.id,
-          title: newThread.title,
-          createdAt: newThread.createdAt,
-        },
-        { status: 201 },
-      );
+      return respond(201, {
+        id: newThread.id,
+        title: newThread.title,
+        createdAt: newThread.createdAt,
+      });
     }),
   );
 }
@@ -193,16 +129,13 @@ describe("sidebar new chat navigation", () => {
     // Override POST with deferred so we can control when the response arrives
     const createDeferred = createDeferredPromise<void>(context.signal);
     server.use(
-      http.post("*/api/zero/chat-threads", async () => {
+      mockApi(chatThreadsContract.create, async ({ respond }) => {
         await createDeferred.promise;
-        return HttpResponse.json(
-          {
-            id: "delayed-thread-id",
-            title: null,
-            createdAt: "2026-03-10T00:00:00Z",
-          },
-          { status: 201 },
-        );
+        return respond(201, {
+          id: "delayed-thread-id",
+          title: null,
+          createdAt: "2026-03-10T00:00:00Z",
+        });
       }),
     );
 
@@ -236,8 +169,8 @@ describe("sidebar new chat navigation", () => {
     // fetchZeroSessionList$ is always called after navigation so the list must
     // include the new thread (title: null) for "New chat" to appear in the sidebar.
     server.use(
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({
+      mockApi(chatThreadsContract.list, ({ respond }) =>
+        respond(200, {
           threads: [
             {
               id: "new-thread-id",
@@ -249,20 +182,22 @@ describe("sidebar new chat navigation", () => {
               isArchived: false,
             },
           ],
-        });
-      }),
-      http.get("*/api/zero/chat-threads/:id", () => {
-        return HttpResponse.json({
+        }),
+      ),
+      mockApi(chatThreadByIdContract.get, ({ respond }) =>
+        respond(200, {
           id: "new-thread-id",
           title: null,
           agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: "session-new-1",
           activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
-        });
-      }),
+        }),
+      ),
     );
 
     detachedSetupPage({ context, path: "/agents" });

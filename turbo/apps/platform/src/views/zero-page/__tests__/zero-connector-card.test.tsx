@@ -195,9 +195,6 @@ function renderTeamPageAsMember(
     http.get("*/api/zero/agents/compose-1/user-connectors", () => {
       return HttpResponse.json({ enabledTypes });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/onboarding/status", () => {
       return HttpResponse.json({
         needsOnboarding: false,

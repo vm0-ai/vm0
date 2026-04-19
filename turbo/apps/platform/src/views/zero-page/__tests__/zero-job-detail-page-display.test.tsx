@@ -35,9 +35,6 @@ function mockAPIs() {
         },
       ]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
         name: "my-agent",
@@ -158,9 +155,6 @@ describe("zero job detail page - display", () => {
     server.use(
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
       http.get("*/api/zero/agents/:name", () => {
         return HttpResponse.json(

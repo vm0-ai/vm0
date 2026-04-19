@@ -27,9 +27,6 @@ function mockAPIs(members: MockMember[]) {
   }
 
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
         {

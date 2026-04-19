@@ -6,6 +6,14 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  chatThreadByIdContract,
+  chatMessagesContract,
+  zeroRunAgentEventsContract,
+  zeroRunsByIdContract,
+  logsByIdContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -13,50 +21,50 @@ const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
 function mockChatAPIs() {
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     // Unified chat message endpoint (creates thread + run + association)
-    http.post("*/api/zero/chat/messages", () => {
-      return HttpResponse.json(
-        {
-          runId: "run-abc-123",
-          threadId: "new-thread-id-123",
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        { status: 201 },
-      );
-    }),
-    http.get("*/api/zero/chat-threads/:id", () => {
-      return HttpResponse.json({
+    mockApi(chatMessagesContract.send, ({ respond }) =>
+      respond(201, {
+        runId: "run-abc-123",
+        threadId: "new-thread-id-123",
+        status: "pending",
+        createdAt: "2026-03-10T00:00:00Z",
+      }),
+    ),
+    mockApi(chatThreadByIdContract.get, ({ respond }) =>
+      respond(200, {
         id: "new-thread-id-123",
         title: "Hello",
         agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
         latestSessionId: null,
         activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-      });
-    }),
-    http.get("*/api/zero/runs/:id/telemetry/agent", () => {
-      return HttpResponse.json({
+      }),
+    ),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+      respond(200, {
         events: [],
         hasMore: false,
         framework: "claude-code",
-      });
-    }),
-    http.get("*/api/zero/runs/:id", ({ params }) => {
-      return HttpResponse.json({
-        id: params["id"],
+      }),
+    ),
+    mockApi(zeroRunsByIdContract.getById, ({ params, respond }) =>
+      respond(200, {
+        runId: params.id,
+        agentComposeVersionId: null,
         status: "completed",
+        prompt: "Hello",
+        appendSystemPrompt: null,
         result: { agentSessionId: "session-1" },
-      });
-    }),
+        createdAt: "2026-03-10T00:00:00Z",
+      }),
+    ),
     // Return terminal status so polling loop stops immediately
-    http.get("*/api/zero/logs/:id", () => {
-      return HttpResponse.json({
+    mockApi(logsByIdContract.getById, ({ respond }) =>
+      respond(200, {
         id: "a0000000-0000-4000-a000-000000000098",
         sessionId: "session-1",
         agentId: "zero",
@@ -75,8 +83,8 @@ function mockChatAPIs() {
         startedAt: "2026-03-10T00:00:01Z",
         completedAt: "2026-03-10T00:00:05Z",
         artifact: { name: null, version: null },
-      });
-    }),
+      }),
+    ),
   );
 }
 

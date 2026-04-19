@@ -44,9 +44,6 @@ function mockTwoAgents() {
         },
       ]);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
     http.get("*/api/zero/agents/:id", ({ params }) => {
       const agents: Record<
         string,

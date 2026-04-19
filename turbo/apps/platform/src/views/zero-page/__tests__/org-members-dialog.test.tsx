@@ -50,9 +50,6 @@ function mockMembersAPI(members: OrgMember[] = [adminMember, regularMember]) {
         createdAt: "2026-01-01T00:00:00Z",
       });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 

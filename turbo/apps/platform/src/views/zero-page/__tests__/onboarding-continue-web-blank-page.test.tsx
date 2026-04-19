@@ -91,9 +91,6 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
           defaultAgentMetadata: { displayName: "Zero" },
         });
       }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
     );
 
     // Release the deferred POST response to let onboarding complete and

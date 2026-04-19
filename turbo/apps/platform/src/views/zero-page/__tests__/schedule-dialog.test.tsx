@@ -77,9 +77,6 @@ function mockCreateModeAPIs() {
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [mockScheduleForList()] });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
   );
 }
 
@@ -130,9 +127,6 @@ function mockEditModeAPIs() {
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [mockScheduleForList()] });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
     }),
   );
 }
