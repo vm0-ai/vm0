@@ -9,6 +9,8 @@ import type {
   LogEntry,
   LogsListResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { logsListContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -59,9 +61,7 @@ function makeLogsResponse(
 
 function mockLogsAPI(response: LogsListResponse) {
   server.use(
-    http.get("*/api/zero/logs", () => {
-      return HttpResponse.json(response);
-    }),
+    mockApi(logsListContract.list, ({ respond }) => respond(200, response)),
   );
 }
 
@@ -79,11 +79,12 @@ describe("zeroActivityPage", () => {
 
   it("should render agent filter options from availableAgentsLoadable", async () => {
     server.use(
-      http.get("*/api/zero/logs", () => {
-        return HttpResponse.json(
+      mockApi(logsListContract.list, ({ respond }) =>
+        respond(
+          200,
           makeLogsResponse([makeLog()], {}, { agents: ["agent-1"] }),
-        );
-      }),
+        ),
+      ),
       http.get("*/api/zero/composes/list", () => {
         return HttpResponse.json({
           composes: [
@@ -177,17 +178,14 @@ describe("zeroActivityPage", () => {
 
   it("should render error state when data loading fails", async () => {
     server.use(
-      http.get("*/api/zero/logs", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Internal server error",
-              code: "INTERNAL_SERVER_ERROR",
-            },
+      mockApi(logsListContract.list, ({ respond }) =>
+        respond(403, {
+          error: {
+            message: "Internal server error",
+            code: "INTERNAL_SERVER_ERROR",
           },
-          { status: 500 },
-        );
-      }),
+        }),
+      ),
     );
     detachedSetupPage({ context, path: "/activities" });
 
@@ -227,7 +225,7 @@ describe("zeroActivityPage", () => {
   it("should filter log table when agent filter changes", async () => {
     const captured = { name: null as string | null };
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         captured.name = url.searchParams.get("name");
         const name = url.searchParams.get("name");
@@ -235,7 +233,8 @@ describe("zeroActivityPage", () => {
           name === "agent-1"
             ? [makeLog({ displayName: "Filtered Agent Log" })]
             : [makeLog({ displayName: "All Agents Log" })];
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse(logs, {}, { agents: ["agent-1"] }),
         );
       }),
@@ -280,7 +279,7 @@ describe("zeroActivityPage", () => {
   it("should filter log table when status filter changes", async () => {
     const captured = { status: null as string | null };
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         captured.status = url.searchParams.get("status");
         const status = url.searchParams.get("status");
@@ -288,7 +287,8 @@ describe("zeroActivityPage", () => {
           status === "failed"
             ? [makeLog({ displayName: "Failed Log", status: "failed" })]
             : [makeLog({ displayName: "All Status Log" })];
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse(logs, {}, { statuses: ["failed"] }),
         );
       }),
@@ -320,7 +320,7 @@ describe("zeroActivityPage", () => {
   it("should filter log table when source filter changes", async () => {
     const captured = { triggerSource: null as string | null };
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         captured.triggerSource = url.searchParams.get("triggerSource");
         const src = url.searchParams.get("triggerSource");
@@ -328,9 +328,7 @@ describe("zeroActivityPage", () => {
           src === "cli"
             ? [makeLog({ displayName: "CLI Log", triggerSource: "cli" })]
             : [makeLog({ displayName: "All Sources Log" })];
-        return HttpResponse.json(
-          makeLogsResponse(logs, {}, { sources: ["cli"] }),
-        );
+        return respond(200, makeLogsResponse(logs, {}, { sources: ["cli"] }));
       }),
     );
     detachedSetupPage({ context, path: "/activities" });
@@ -357,11 +355,12 @@ describe("zeroActivityPage", () => {
 
   it("should advance to next page when next button is clicked", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -369,7 +368,8 @@ describe("zeroActivityPage", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -398,12 +398,13 @@ describe("zeroActivityPage", () => {
   it("should go back to previous page when prev button is clicked", async () => {
     let callCount = 0;
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         callCount++;
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -411,7 +412,8 @@ describe("zeroActivityPage", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -447,11 +449,12 @@ describe("zeroActivityPage", () => {
 
   it("should skip forward two pages when forward two button is clicked", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-3") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 3 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -460,7 +463,8 @@ describe("zeroActivityPage", () => {
           );
         }
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: true,
               nextCursor: "cursor-3",
@@ -468,7 +472,8 @@ describe("zeroActivityPage", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -495,11 +500,12 @@ describe("zeroActivityPage", () => {
 
   it("should go back two pages when back two button is clicked", async () => {
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-3") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 3 Log" })], {
               hasMore: false,
               nextCursor: null,
@@ -508,7 +514,8 @@ describe("zeroActivityPage", () => {
           );
         }
         if (cursor === "cursor-2") {
-          return HttpResponse.json(
+          return respond(
+            200,
             makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
               hasMore: true,
               nextCursor: "cursor-3",
@@ -516,7 +523,8 @@ describe("zeroActivityPage", () => {
             }),
           );
         }
-        return HttpResponse.json(
+        return respond(
+          200,
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
             hasMore: true,
             nextCursor: "cursor-2",
@@ -551,12 +559,10 @@ describe("zeroActivityPage", () => {
   it("should change page size when rows per page is changed", async () => {
     const captured = { limit: null as string | null };
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         captured.limit = url.searchParams.get("limit");
-        return HttpResponse.json(
-          makeLogsResponse([makeLog()], { totalPages: 2 }),
-        );
+        return respond(200, makeLogsResponse([makeLog()], { totalPages: 2 }));
       }),
     );
     detachedSetupPage({ context, path: "/activities" });

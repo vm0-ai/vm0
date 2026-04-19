@@ -5,6 +5,8 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract, logsListContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -44,9 +46,9 @@ function mockAPIs(overrides: Record<string, unknown> = {}) {
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [createMockSchedule(overrides)] });
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
+    mockApi(chatThreadsContract.list, ({ respond }) =>
+      respond(200, { threads: [] }),
+    ),
   );
 }
 
@@ -62,7 +64,7 @@ function mockLogsWithPagination() {
   const cursors = ["", "cursor2", "cursor3"];
 
   server.use(
-    http.get("*/api/zero/logs", ({ request }) => {
+    mockApi(logsListContract.list, ({ request, respond }) => {
       const url = new URL(request.url);
       const cursor = url.searchParams.get("cursor") ?? "";
       const cursorIndex = cursors.indexOf(cursor);
@@ -72,7 +74,7 @@ function mockLogsWithPagination() {
           ? cursors[effectiveIndex + 1]
           : null;
 
-      return HttpResponse.json({
+      return respond(200, {
         data: [
           {
             id: `b000000${String(effectiveIndex + 1)}-0000-4000-a000-000000000001`,
@@ -395,15 +397,15 @@ describe("zero schedule detail page - rows per page select changes page size (SC
     mockAPIs();
     let capturedLimit: string | null = null;
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         capturedLimit = url.searchParams.get("limit");
-        return HttpResponse.json({
+        return respond(200, {
           data: [],
           pagination: {
             hasMore: false,
             nextCursor: null,
-            totalPages: undefined,
+            totalPages: 1,
           },
           filters: { statuses: [], sources: [], agents: [] },
         });
@@ -440,10 +442,10 @@ describe("zero schedule detail page - status filter select filters runs (SCHED-D
     mockAPIs();
     let capturedStatus: string | null = null;
     server.use(
-      http.get("*/api/zero/logs", ({ request }) => {
+      mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
         capturedStatus = url.searchParams.get("status");
-        return HttpResponse.json({
+        return respond(200, {
           data: [],
           pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
           filters: {

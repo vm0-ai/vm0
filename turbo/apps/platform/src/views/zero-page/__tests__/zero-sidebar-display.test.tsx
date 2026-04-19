@@ -20,6 +20,8 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { chatThreadsContract } from "@vm0/core";
 
 const context = testContext();
 
@@ -64,9 +66,9 @@ function mockBaseAPIs(
     http.get("*/api/zero/team", () => {
       return HttpResponse.json(agents);
     }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads });
-    }),
+    mockApi(chatThreadsContract.list, ({ respond }) =>
+      respond(200, { threads }),
+    ),
   );
 }
 
@@ -131,9 +133,9 @@ describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
           },
         ]);
       }),
-      http.get("*/api/zero/chat-threads", async () => {
+      mockApi(chatThreadsContract.list, async ({ respond }) => {
         await deferred.promise;
-        return HttpResponse.json({ threads: [] });
+        return respond(200, { threads: [] });
       }),
     );
 
@@ -396,18 +398,13 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
 
     mockBaseAPIs();
     server.use(
-      http.post("*/api/zero/chat-threads", async () => {
+      mockApi(chatThreadsContract.create, async ({ respond }) => {
         await deferred.promise;
-        return HttpResponse.json(
-          {
-            id: "new-thread",
-            title: null,
-            agentId: DEFAULT_AGENT_ID,
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          },
-          { status: 201 },
-        );
+        return respond(201, {
+          id: "new-thread",
+          title: null,
+          createdAt: "2026-03-10T00:00:00Z",
+        });
       }),
     );
 
