@@ -1132,6 +1132,27 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  mem0: {
+    label: "Mem0",
+    helpText:
+      "Connect to Mem0 for persistent AI memory across conversations and sessions.",
+    environmentMapping: { MEM0_API_KEY: "$secrets.MEM0_API_KEY" },
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "Go to [app.mem0.ai](https://app.mem0.ai) → **API Keys** → create or copy your key.",
+        secrets: {
+          MEM0_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "m0-...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   metabase: {
     label: "Metabase",
     environmentMapping: {

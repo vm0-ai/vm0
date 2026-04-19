@@ -126,6 +126,7 @@ const CONNECTOR_ICON_COLORFUL = {
   mailchimp: true,
   mailsac: true,
   manus: true,
+  mem0: true,
   "meta-ads": true,
   minimax: true,
   minio: true,
