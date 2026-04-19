@@ -53,6 +53,7 @@ function mockWebAudio() {
 function mockTtsEndpoint() {
   let fetchCount = 0;
 
+  // raw http override: binary streaming response is out of scope for mockApi (Phase 0 of #9707); full origin URL intentional for fetch interception
   server.use(
     http.post("http://localhost:3000/api/zero/voice-io/tts", () => {
       fetchCount++;
@@ -119,6 +120,7 @@ describe("playTts$", () => {
     // Allow expected TTS error logs without throwing
     vi.spyOn(console, "error").mockImplementation(() => {});
 
+    // raw http override: binary streaming response is out of scope for mockApi (Phase 0 of #9707); full origin URL intentional for fetch interception
     server.use(
       http.post("http://localhost:3000/api/zero/voice-io/tts", () => {
         return HttpResponse.json({ error: "fail" }, { status: 500 });
@@ -148,6 +150,7 @@ describe("playTts$", () => {
     mockWebAudio();
 
     const fetchGate = createDeferredPromise<void>(context.signal);
+    // raw http override: binary streaming response is out of scope for mockApi (Phase 0 of #9707); full origin URL intentional for fetch interception
     server.use(
       http.post("http://localhost:3000/api/zero/voice-io/tts", async () => {
         await fetchGate.promise;
@@ -175,6 +178,7 @@ describe("playTts$", () => {
     mockWebAudio();
 
     const fetchGate = createDeferredPromise<void>(context.signal);
+    // raw http override: binary streaming response is out of scope for mockApi (Phase 0 of #9707); full origin URL intentional for fetch interception
     server.use(
       http.post("http://localhost:3000/api/zero/voice-io/tts", async () => {
         await fetchGate.promise;

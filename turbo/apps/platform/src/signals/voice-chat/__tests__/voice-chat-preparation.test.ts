@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroVoiceChatPrepareTriggerContract,
+  onboardingStatusContract,
+} from "@vm0/core";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
@@ -44,14 +49,14 @@ function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
     },
   };
   server.use(
-    http.post("*/api/zero/voice-chat/prepare", () => {
+    mockApi(zeroVoiceChatPrepareTriggerContract.trigger, ({ respond }) => {
       const responseIndex = Math.min(callIndex, responses.length - 1);
       const response = responses[responseIndex];
       callIndex++;
-      return HttpResponse.json({
+      return respond(200, {
         preparation: {
           id: response.id ?? "prep-1",
-          status: response.status,
+          status: response.status as "preparing" | "ready" | "failed",
         },
       });
     }),
@@ -165,8 +170,23 @@ describe("voice-chat-preparation signals", () => {
   });
 
   it("should set status to failed when no agent is selected", async () => {
+    // Override onboarding to return no defaultAgentId before setup() so the
+    // onboarding status fetched during page initialization has null defaultAgentId.
+    // triggerPreparation$ reads defaultAgentId$ which derives from this status.
+    server.use(
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: false,
+          defaultAgentId: null,
+          defaultAgentMetadata: null,
+        });
+      }),
+    );
+
     await setup();
-    context.store.set(setChatAgentId$, null);
 
     await context.store.set(
       triggerPreparation$,
@@ -254,20 +274,23 @@ describe("voice-chat page navigation abort", () => {
     const initialCallDone = createDeferredPromise<void>(context.signal);
     let firstPrepCall = true;
     server.use(
-      http.post("*/api/zero/voice-chat/prepare", async () => {
-        if (firstPrepCall) {
-          firstPrepCall = false;
-          initialCallDone.resolve();
-          return HttpResponse.json({
+      mockApi(
+        zeroVoiceChatPrepareTriggerContract.trigger,
+        async ({ respond }) => {
+          if (firstPrepCall) {
+            firstPrepCall = false;
+            initialCallDone.resolve();
+            return respond(200, {
+              preparation: { id: "prep-1", status: "preparing" },
+            });
+          }
+          // Block all subsequent poll calls so we stay in "preparing"
+          await prepBlock.promise;
+          return respond(200, {
             preparation: { id: "prep-1", status: "preparing" },
           });
-        }
-        // Block all subsequent poll calls so we stay in "preparing"
-        await prepBlock.promise;
-        return HttpResponse.json({
-          preparation: { id: "prep-1", status: "preparing" },
-        });
-      }),
+        },
+      ),
     );
 
     const pageSignal = await setupPageWithAbort();

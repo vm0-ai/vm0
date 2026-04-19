@@ -44,6 +44,7 @@ function mockConnectedConnectors(types: ConnectorType[]) {
 
 describe("chat-d-015: attachment chips in composer", () => {
   beforeEach(() => {
+    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({

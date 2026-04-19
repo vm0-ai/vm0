@@ -15,12 +15,16 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { vcModel$ } from "../../../signals/voice-chat/voice-chat-session.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroVoiceChatPrepareTriggerContract,
+  zeroVoiceChatPrepareListContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -30,13 +34,13 @@ const context = testContext();
  */
 function mockVoiceChatPrepareEndpoint() {
   server.use(
-    http.post("*/api/zero/voice-chat/prepare", () => {
-      return HttpResponse.json({
-        preparation: { id: "prep-noop", status: "idle" },
+    mockApi(zeroVoiceChatPrepareTriggerContract.trigger, ({ respond }) => {
+      return respond(200, {
+        preparation: { id: "prep-noop", status: "ready" },
       });
     }),
-    http.get("*/api/zero/voice-chat/prepare/list", () => {
-      return HttpResponse.json({ preparations: [] });
+    mockApi(zeroVoiceChatPrepareListContract.list, ({ respond }) => {
+      return respond(200, { preparations: [] });
     }),
   );
 }
