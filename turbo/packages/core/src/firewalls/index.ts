@@ -69,6 +69,7 @@ import { drive9Firewall } from "./drive9.generated";
 import { dropboxFirewall } from "./dropbox.generated";
 import { dropboxSignFirewall } from "./dropbox-sign.generated";
 import { duffelFirewall } from "./duffel.generated";
+import { e2bFirewall } from "./e2b.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { exploriumFirewall } from "./explorium.generated";
 import { falFirewall } from "./fal.generated";
@@ -238,6 +239,7 @@ const CONNECTOR_FIREWALLS = {
   dropbox: dropboxFirewall,
   "dropbox-sign": dropboxSignFirewall,
   duffel: duffelFirewall,
+  e2b: e2bFirewall,
   elevenlabs: elevenlabsFirewall,
   explorium: exploriumFirewall,
   fal: falFirewall,

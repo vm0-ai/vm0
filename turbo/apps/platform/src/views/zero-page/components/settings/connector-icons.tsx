@@ -91,6 +91,7 @@ const CONNECTOR_ICON_COLORFUL = {
   docusign: true,
   dropbox: true,
   "dropbox-sign": true,
+  e2b: true,
   explorium: true,
   fal: true,
   figma: true,

@@ -50,6 +50,7 @@ import { drive9Handler } from "./providers/drive9-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { dropboxSignHandler } from "./providers/dropbox-sign-handler";
 import { duffelHandler } from "./providers/duffel-handler";
+import { e2bHandler } from "./providers/e2b-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { exploriumHandler } from "./providers/explorium-handler";
 import { falHandler } from "./providers/fal-handler";
@@ -212,6 +213,7 @@ export const PROVIDER_HANDLERS: Record<
   dropbox: dropboxHandler,
   "dropbox-sign": dropboxSignHandler,
   duffel: duffelHandler,
+  e2b: e2bHandler,
   elevenlabs: elevenlabsHandler,
   explorium: exploriumHandler,
   fal: falHandler,
