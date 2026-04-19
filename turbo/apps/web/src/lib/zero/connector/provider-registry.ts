@@ -110,6 +110,7 @@ import { runwayHandler } from "./providers/runway-handler";
 import { salesforceHandler } from "./providers/salesforce-handler";
 import { shopifyHandler } from "./providers/shopify-handler";
 import { shortioHandler } from "./providers/shortio-handler";
+import { stabilityAiHandler } from "./providers/stability-ai-handler";
 import { strapiHandler } from "./providers/strapi-handler";
 import { streakHandler } from "./providers/streak-handler";
 import { supadataHandler } from "./providers/supadata-handler";
@@ -311,6 +312,7 @@ export const PROVIDER_HANDLERS: Record<
   salesforce: salesforceHandler,
   shopify: shopifyHandler,
   shortio: shortioHandler,
+  "stability-ai": stabilityAiHandler,
   streak: streakHandler,
   supadata: supadataHandler,
   tavily: tavilyHandler,

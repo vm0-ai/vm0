@@ -126,6 +126,7 @@ import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
 import { generate as generateShopify } from "./shopify";
 import { generate as generateShortio } from "./shortio";
+import { generate as generateStabilityAi } from "./stability-ai";
 import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
 import { generate as generateSlackWebhook } from "./slack-webhook";
@@ -278,6 +279,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   serpapi: generateSerpapi,
   shopify: generateShopify,
   shortio: generateShortio,
+  "stability-ai": generateStabilityAi,
   similarweb: generateSimilarweb,
   slack: generateSlack,
   "slack-webhook": generateSlackWebhook,

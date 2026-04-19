@@ -49,6 +49,7 @@ export enum FeatureSwitchKey {
   ChatThreadReadIndicator = "chatThreadReadIndicator",
   InlineThinkingDot = "inlineThinkingDot",
   FreshdeskConnector = "freshdeskConnector",
+  StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
   OrgCustomConnectors = "orgCustomConnectors",
   ModelProviderSelection = "modelProviderSelection",
