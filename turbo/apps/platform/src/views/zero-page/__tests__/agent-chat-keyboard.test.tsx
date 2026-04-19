@@ -92,5 +92,4 @@ describe("agent chat page keyboard shortcuts", () => {
       expect(pathname()).toBe("/chats/thread-1");
     });
   });
-
 });
