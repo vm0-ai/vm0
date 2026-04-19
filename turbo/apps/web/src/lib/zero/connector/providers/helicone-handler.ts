@@ -14,6 +14,6 @@ export const heliconeHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "HELICONE_API_KEY";
+    return "HELICONE_TOKEN";
   },
 };

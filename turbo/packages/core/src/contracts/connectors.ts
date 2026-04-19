@@ -592,7 +592,7 @@ const CONNECTOR_TYPES_DEF = {
     helpText:
       "Connect to Helicone for LLM cost tracking, request logging, and performance analytics.",
     environmentMapping: {
-      HELICONE_API_KEY: "$secrets.HELICONE_API_KEY",
+      HELICONE_TOKEN: "$secrets.HELICONE_TOKEN",
     },
     authMethods: {
       "api-token": {
@@ -600,7 +600,7 @@ const CONNECTOR_TYPES_DEF = {
         helpText:
           "Go to helicone.ai → Settings → API Keys → create a new key.",
         secrets: {
-          HELICONE_API_KEY: {
+          HELICONE_TOKEN: {
             label: "API Key",
             required: true,
             placeholder: "sk-helicone-...",
