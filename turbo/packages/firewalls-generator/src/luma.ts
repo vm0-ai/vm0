@@ -5,7 +5,7 @@
  *
  * Luma AI Dream Machine is an AI video and image generation platform.
  * Uses Bearer token authentication via the Authorization header.
- * Token is an opaque string stored in LUMAAI_API_KEY environment variable.
+ * Token is an opaque string stored in LUMA_TOKEN environment variable.
  */
 
 import { writeOutput } from "./codegen";
@@ -28,14 +28,14 @@ function generateTypeScript(): string {
     '  name: "luma",',
     '  description: "Luma AI Dream Machine",',
     "  placeholders: {",
-    `    LUMAAI_API_KEY: "${PLACEHOLDER_VALUE}",`,
+    `    LUMA_TOKEN: "${PLACEHOLDER_VALUE}",`,
     "  },",
     "  apis: [",
     "    {",
     '      base: "https://api.lumalabs.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.LUMAAI_API_KEY }}",',
+    '          Authorization: "Bearer ${{ secrets.LUMA_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",
