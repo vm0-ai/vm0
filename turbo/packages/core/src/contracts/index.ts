@@ -264,6 +264,7 @@ export {
   VM0_MODEL_TO_PROVIDER,
   getVm0ConcreteProviderType,
   getVm0Vendor,
+  getVm0VisibleModels,
 } from "./model-providers";
 export {
   sessionsByIdContract,

@@ -7,11 +7,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui/components/ui/select";
+import { useLastResolved } from "ccstate-react";
 import {
   MODEL_PROVIDER_TYPES,
   getAuthMethodsForType,
   getSecretsForAuthMethod,
   getModels,
+  getVm0VisibleModels,
   getDefaultModel,
   hasModelSelection,
   allowsCustomModel,
@@ -25,6 +27,7 @@ import {
   getModelDisplayName,
 } from "./provider-ui-config.ts";
 import { ClaudeCodeSetupPrompt } from "./setup-prompt.tsx";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 
 export function OAuthFields({
   secret,
@@ -286,12 +289,14 @@ function ModelSelector({
   onUseDefaultModelChange: (value: boolean) => void;
 }) {
   const type = providerType as keyof typeof MODEL_PROVIDER_TYPES;
+  const features = useLastResolved(featureSwitch$);
 
   if (!hasModelSelection(type)) {
     return null;
   }
 
-  const models = getModels(type) ?? [];
+  const models =
+    type === "vm0" ? getVm0VisibleModels(features) : (getModels(type) ?? []);
   const defaultModel = getUIDefaultModel(type) ?? getDefaultModel(type) ?? "";
   const canCustom = allowsCustomModel(type);
   const placeholder = getCustomModelPlaceholder(type) ?? "Enter model name";
