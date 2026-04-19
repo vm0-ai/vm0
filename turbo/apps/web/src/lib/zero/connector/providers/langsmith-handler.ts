@@ -14,6 +14,6 @@ export const langsmithHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "LANGSMITH_API_KEY";
+    return "LANGSMITH_TOKEN";
   },
 };
