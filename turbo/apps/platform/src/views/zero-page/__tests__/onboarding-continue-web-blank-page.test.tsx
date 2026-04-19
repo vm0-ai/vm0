@@ -7,6 +7,11 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  onboardingStatusContract,
+  onboardingCompleteContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -19,19 +24,19 @@ function mockMemberOnboardingDeferred() {
   const completeDeferred = createDeferredPromise<void>(context.signal);
 
   server.use(
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
+      respond(200, {
         needsOnboarding: true,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: MOCK_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
-      });
-    }),
-    http.post("*/api/zero/onboarding/complete", async () => {
+      }),
+    ),
+    mockApi(onboardingCompleteContract.complete, async ({ respond }) => {
       await completeDeferred.promise;
-      return HttpResponse.json({ ok: true });
+      return respond(200, { ok: true });
     }),
   );
 
@@ -81,16 +86,16 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
 
     // Switch status to complete and add chat-threads mock for the landing page
     server.use(
-      http.get("*/api/zero/onboarding/status", () => {
-        return HttpResponse.json({
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
+        respond(200, {
           needsOnboarding: false,
           isAdmin: false,
           hasOrg: true,
           hasDefaultAgent: true,
           defaultAgentId: MOCK_AGENT_ID,
           defaultAgentMetadata: { displayName: "Zero" },
-        });
-      }),
+        }),
+      ),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),

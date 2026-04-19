@@ -9,6 +9,8 @@ import { permissionDialogType$ } from "../../../signals/zero-page/settings/conne
 import {
   type ConnectorListResponse,
   zeroConnectorsMainContract,
+  onboardingStatusContract,
+  onboardingSetupContract,
 } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 
@@ -47,21 +49,19 @@ function makeGithubConnectedResponse(): ConnectorListResponse {
 
 function mockAdminOnboarding() {
   server.use(
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
+      respond(200, {
         needsOnboarding: true,
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-      });
-    }),
-    http.post("*/api/zero/onboarding/setup", () => {
-      return HttpResponse.json({
-        agentId: "d0000000-0000-4000-a000-000000000001",
-      });
-    }),
+      }),
+    ),
+    mockApi(onboardingSetupContract.setup, ({ respond }) =>
+      respond(200, { agentId: "d0000000-0000-4000-a000-000000000001" }),
+    ),
   );
 }
 

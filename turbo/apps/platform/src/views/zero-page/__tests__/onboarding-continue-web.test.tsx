@@ -7,7 +7,12 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
-import { zeroIntegrationsSlackContract } from "@vm0/core";
+import {
+  zeroIntegrationsSlackContract,
+  onboardingStatusContract,
+  onboardingSetupContract,
+  onboardingCompleteContract,
+} from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
@@ -17,34 +22,34 @@ const MOCK_MEMBER_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function mockAdminOnboarding() {
   server.use(
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
+      respond(200, {
         needsOnboarding: true,
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-      });
-    }),
-    http.post("*/api/zero/onboarding/setup", () => {
-      return HttpResponse.json({ agentId: MOCK_AGENT_ID });
-    }),
+      }),
+    ),
+    mockApi(onboardingSetupContract.setup, ({ respond }) =>
+      respond(200, { agentId: MOCK_AGENT_ID }),
+    ),
   );
 }
 
 function switchToAdminComplete() {
   server.use(
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
+      respond(200, {
         needsOnboarding: false,
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: MOCK_AGENT_ID,
         defaultAgentMetadata: null,
-      });
-    }),
+      }),
+    ),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -53,34 +58,34 @@ function switchToAdminComplete() {
 
 function mockMemberOnboarding() {
   server.use(
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
+      respond(200, {
         needsOnboarding: true,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: MOCK_MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
-      });
-    }),
-    http.post("*/api/zero/onboarding/complete", () => {
-      return HttpResponse.json({ ok: true });
-    }),
+      }),
+    ),
+    mockApi(onboardingCompleteContract.complete, ({ respond }) =>
+      respond(200, { ok: true }),
+    ),
   );
 }
 
 function switchToMemberComplete() {
   server.use(
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
+    mockApi(onboardingStatusContract.getStatus, ({ respond }) =>
+      respond(200, {
         needsOnboarding: false,
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: MOCK_MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "Zero" },
-      });
-    }),
+      }),
+    ),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
