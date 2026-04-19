@@ -10,14 +10,14 @@ export const replicateFirewall = {
   name: "replicate",
   description: "Replicate",
   placeholders: {
-    REPLICATE_API_TOKEN: "r8_CoffeeSafeLocalCoffeeSafeLocalCoffee",
+    REPLICATE_TOKEN: "r8_CoffeeSafeLocalCoffeeSafeLocalCoffee",
   },
   apis: [
     {
       base: "https://api.replicate.com",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.REPLICATE_API_TOKEN }}",
+          Authorization: "Bearer ${{ secrets.REPLICATE_TOKEN }}",
         },
       },
       permissions: [],
