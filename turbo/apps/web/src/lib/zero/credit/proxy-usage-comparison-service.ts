@@ -49,14 +49,7 @@ export async function compareRecentRunsProxyUsage(): Promise<void> {
   }
 
   for (const [orgId, runIds] of byOrg) {
-    try {
-      await compareProxyUsage(runIds, orgId);
-    } catch (err) {
-      log.warn("Proxy usage comparison failed", {
-        orgId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    await compareProxyUsage(runIds, orgId);
   }
 }
 
