@@ -30,7 +30,7 @@
     "@vm0/typescript-config": "workspace:*",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.34.0",
-    "happy-dom": "^20.8.9",
+    "happy-dom": "^20.9.0",
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.21.1",
     "postcss": "^8.5.3",

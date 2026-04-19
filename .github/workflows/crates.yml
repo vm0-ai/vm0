@@ -335,7 +335,7 @@ jobs:
         run: echo "sha=$(echo "${GITHUB_SHA:-unknown}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
       - name: Upload runner binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: runner-${{ steps.short-sha.outputs.sha }}-aarch64-linux
           path: crates/target/${{ env.TARGET_TRIPLE }}/ci/runner
