@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { eq } from "drizzle-orm";
 import { GET, POST } from "../route";
 import {
   createTestRequest,
@@ -12,6 +13,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { chatThreads } from "../../../../../src/db/schema/chat-thread";
 
 const context = testContext();
 
@@ -226,7 +228,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(data.threads[0].updatedAt).toBeDefined();
   });
 
-  it("reports isRead=false and isArchived=false for a thread with no messages", async () => {
+  it("reports isRead=true and isArchived=false for a thread with no messages", async () => {
     const createRequest = createTestRequest(
       "http://localhost:3000/api/zero/chat-threads",
       {
@@ -249,11 +251,13 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
 
     expect(response.status).toBe(200);
     expect(data.threads).toHaveLength(1);
-    expect(data.threads[0].isRead).toBe(false);
+    // Empty threads are considered read (Slack semantics)
+    expect(data.threads[0].isRead).toBe(true);
     expect(data.threads[0].isArchived).toBe(false);
   });
 
-  it("reports isRead based on the last message's readAt", async () => {
+  it("reports isRead based on last_read_at watermark", async () => {
+    // Thread with last_read_at >= last message → read
     const readCreate = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -266,9 +270,14 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       chatThreadId: readId,
       role: "assistant",
       content: "hi",
-      readAt: new Date(),
     });
+    // Set last_read_at to now (after the message was created)
+    await globalThis.services.db
+      .update(chatThreads)
+      .set({ lastReadAt: new Date() })
+      .where(eq(chatThreads.id, readId));
 
+    // Thread with last_read_at IS NULL → unread
     const unreadCreate = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -282,6 +291,11 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       role: "assistant",
       content: "hi",
     });
+    // Explicitly null out last_read_at so message is newer than cursor
+    await globalThis.services.db
+      .update(chatThreads)
+      .set({ lastReadAt: null })
+      .where(eq(chatThreads.id, unreadId));
 
     const response = await GET(
       createTestRequest(

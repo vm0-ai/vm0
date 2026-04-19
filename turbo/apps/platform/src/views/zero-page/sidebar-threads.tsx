@@ -89,9 +89,17 @@ function ChatThreadItem({
         className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
           isSelected
             ? "bg-gray-200 text-gray-900 font-medium"
-            : "text-sidebar-foreground hover:bg-sidebar-accent"
+            : session.isRead
+              ? "text-sidebar-foreground hover:bg-sidebar-accent"
+              : "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
         }`}
       >
+        {!session.isRead && !isSelected && (
+          <span
+            className="shrink-0 h-2 w-2 rounded-full bg-blue-500"
+            aria-label="Unread"
+          />
+        )}
         <span className="truncate min-w-0 flex-1">
           {session.title ?? "New chat"}
         </span>

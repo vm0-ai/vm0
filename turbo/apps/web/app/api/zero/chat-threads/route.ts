@@ -121,7 +121,7 @@ const router = tsr.router(chatThreadsContract, {
             agentId: query.agentId,
             createdAt: t.createdAt.toISOString(),
             updatedAt: t.updatedAt.toISOString(),
-            isRead: t.lastMessageReadAt !== null,
+            isRead: t.isRead,
             isArchived: t.lastMessageArchivedAt !== null,
           };
         }),

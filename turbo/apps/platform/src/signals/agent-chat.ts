@@ -92,6 +92,15 @@ export const reloadChatThreads$ = command(({ set }) => {
   });
 });
 
+/**
+ * Mark a thread as read in the sidebar by triggering a full reload.
+ * Uses reload (rather than in-place patch) so the server's authoritative
+ * `last_read_at` value is reflected without client-side bookkeeping.
+ */
+export const patchThreadRead$ = command(({ set }, _threadId: string) => {
+  set(reloadChatThreads$);
+});
+
 export const chatThreads$ = computed(async (get) => {
   get(internalReloadChatThreads$);
   const agentId = await get(currentChatAgentId$);
