@@ -6,7 +6,8 @@
  * Auth or bare Bearer injection:
  *   - api.github.com, uploads.github.com — REST / GraphQL / uploads
  *   - github.com/<owner>/<repo>.git      — git smart-HTTP (clone/push/pull, LFS)
- *   - gist.github.com/<user>/<id>.git    — gist git protocol
+ *   - gist.github.com/<id>.git           — gist git protocol (canonical, from git_pull_url)
+ *   - gist.github.com/<user>/<id>.git    — gist git protocol (browser URL form, also served)
  *   - raw.githubusercontent.com          — raw file content for private repos
  *   - codeload.github.com                — archive tarball/zipball downloads
  *   - npm.pkg.github.com                 — GitHub Packages (npm)
@@ -125,7 +126,21 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "    {",
-    "      // Gist git protocol (clone/push gist).",
+    "      // Gist git protocol — canonical form returned by the API's",
+    "      // git_pull_url / git_push_url fields (no username segment).",
+    '      base: "https://gist.github.com/{gist_id}.git",',
+    "      auth: {",
+    "        headers: {",
+    "          Authorization:",
+    "            '${{ basic(\"x-access-token\", secrets.GITHUB_TOKEN) }}',",
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
+    "    {",
+    "      // Gist git protocol — browser-URL form with username segment,",
+    "      // also served by GitHub's gist git server. Users often copy",
+    '      // this URL out of the gist page and append ".git".',
     '      base: "https://gist.github.com/{user}/{gist_id}.git",',
     "      auth: {",
     "        headers: {",

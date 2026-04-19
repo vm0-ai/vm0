@@ -20,6 +20,7 @@ describe("githubFirewall", () => {
       "https://api.github.com",
       "https://uploads.github.com",
       "https://github.com/{owner}/{repo}.git",
+      "https://gist.github.com/{gist_id}.git",
       "https://gist.github.com/{user}/{gist_id}.git",
       "https://raw.githubusercontent.com/{owner}/{repo}",
       "https://codeload.github.com/{owner}/{repo}",
@@ -36,6 +37,7 @@ describe("githubFirewall", () => {
   it("uses Basic auth with x-access-token for git-protocol surfaces", () => {
     const basicBases = [
       "https://github.com/{owner}/{repo}.git",
+      "https://gist.github.com/{gist_id}.git",
       "https://gist.github.com/{user}/{gist_id}.git",
       "https://raw.githubusercontent.com/{owner}/{repo}",
       "https://codeload.github.com/{owner}/{repo}",
