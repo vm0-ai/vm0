@@ -157,6 +157,9 @@ def decompress_body(
             result = dec.process(data)
             return result[:max_output] if result else data
         if encoding == "zstd":
+            # stream_reader.read(n) reads *up to* n bytes: the full frame if
+            # smaller than n, exactly n if larger — so total memory is bounded
+            # by n plus ZSTD_DStream{In,Out}Size (~128 KB library buffers).
             with zstandard.ZstdDecompressor().stream_reader(data) as reader:
                 result = reader.read(max_output)
             return result if result else data
