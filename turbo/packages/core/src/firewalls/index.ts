@@ -13,6 +13,7 @@ import type {
   FirewallPolicyValue,
 } from "../contracts/firewalls";
 import type { ConnectorType } from "../contracts/connectors";
+import { CONNECTOR_TYPES } from "../contracts/connectors";
 import {
   gmailDefaultAllowed,
   gmailCategories,
@@ -589,4 +590,41 @@ export function resolveFirewallPolicies(
     };
   }
   return resolved;
+}
+
+/**
+ * Map every built-in connector's `api.base` host to its connector type.
+ *
+ * Used to reject org custom connectors whose prefix host collides with a
+ * built-in. The returned map lets callers produce a user-facing error that
+ * names the conflicting built-in.
+ */
+export function getAllBuiltinConnectorHosts(): Map<
+  string,
+  FirewallConnectorType
+> {
+  const hosts = new Map<string, FirewallConnectorType>();
+  for (const [type, firewall] of Object.entries(CONNECTOR_FIREWALLS) as [
+    FirewallConnectorType,
+    FirewallConfig,
+  ][]) {
+    for (const api of firewall.apis) {
+      const host = new URL(api.base).host;
+      if (!hosts.has(host)) {
+        hosts.set(host, type);
+      }
+    }
+  }
+  return hosts;
+}
+
+/**
+ * Human-readable display name for a built-in connector type
+ * (e.g. "GitHub", "Google Drive"). Falls back to the type slug if
+ * `CONNECTOR_TYPES` has no entry.
+ */
+export function getBuiltinConnectorDisplayName(
+  type: FirewallConnectorType,
+): string {
+  return CONNECTOR_TYPES[type]?.label ?? type;
 }
