@@ -102,6 +102,11 @@ interface BuildZeroContextParams {
   // Connector types the user has permitted for this agent run. When set, only
   // these connector types will have their secrets injected at runtime.
   allowedConnectorTypes?: ConnectorType[];
+  // Custom connector ids the user has authorized for this agent run. `undefined`
+  // preserves the non-agent behavior (every connector the user has a secret
+  // for). An empty array means the agent is not authorized for any custom
+  // connector even if the user has set secrets.
+  allowedCustomConnectorIds?: string[];
   // Pre-fetched user timezone from Phase 1 — skips getUserPreferences() when provided
   preloadedUserTimezone?: string;
 }
@@ -120,6 +125,7 @@ async function resolveSecretsAndEnvironment(
   modelProvider: string | undefined,
   userId: string,
   allowedConnectorTypes?: ConnectorType[],
+  allowedCustomConnectorIds?: string[],
 ): Promise<{
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
@@ -157,7 +163,7 @@ async function resolveSecretsAndEnvironment(
     resolveOauthConnectorSecrets(orgId, userId, allowedConnectorTypes),
     getApiTokenConnectorTypes(orgId, userId),
     fetchAndMergeVariables(orgId, userId, vars),
-    resolveCustomConnectorFirewalls(orgId, userId),
+    resolveCustomConnectorFirewalls(orgId, userId, allowedCustomConnectorIds),
   ]);
 
   const rawApiTokenTypes = allowedConnectorTypes
@@ -292,6 +298,7 @@ interface ResolveCliRunContextParams {
   modelProvider?: string;
   permissionPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
+  allowedCustomConnectorIds?: string[];
   // Artifact/memory
   artifactName?: string;
   artifactVersion?: string;
@@ -442,6 +449,7 @@ export async function resolveCliRunContext(
       params.modelProvider,
       params.userId,
       params.allowedConnectorTypes,
+      params.allowedCustomConnectorIds,
     ),
     getUserPreferences(params.orgId, params.userId),
     // Fetch previous run's model provider for compatibility check
@@ -607,6 +615,7 @@ export async function buildZeroExecutionContext(
       params.modelProvider,
       params.userId,
       params.allowedConnectorTypes,
+      params.allowedCustomConnectorIds,
     ),
     params.preloadedUserTimezone !== undefined
       ? Promise.resolve(null)

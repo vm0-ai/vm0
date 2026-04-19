@@ -61,6 +61,7 @@ import {
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
+import { userCustomConnectors } from "../../db/schema/user-custom-connector";
 import {
   consumeCaptureNetworkBodies,
   getUserPreferences,
@@ -338,6 +339,7 @@ async function createZeroRunRecord(
   // ── Round 2: Operations needing agent.orgId or resolved.orgId ───────
   const [
     connectorRows,
+    customConnectorRows,
     orgMeta,
     userPrefs,
     featureOverrides,
@@ -353,6 +355,22 @@ async function createZeroRunRecord(
               eq(userConnectors.orgId, agent.orgId),
               eq(userConnectors.userId, params.userId),
               eq(userConnectors.agentId, params.agentId),
+            ),
+          )
+      : Promise.resolve([]),
+    // Fetch custom connector authorizations for this user+agent.
+    // Parallel to userConnectors but keyed on the org_custom_connectors UUID.
+    agent.orgId
+      ? db
+          .select({
+            customConnectorId: userCustomConnectors.customConnectorId,
+          })
+          .from(userCustomConnectors)
+          .where(
+            and(
+              eq(userCustomConnectors.orgId, agent.orgId),
+              eq(userCustomConnectors.userId, params.userId),
+              eq(userCustomConnectors.agentId, params.agentId),
             ),
           )
       : Promise.resolve([]),
@@ -380,6 +398,16 @@ async function createZeroRunRecord(
         .map((p) => {
           return p.data;
         })
+    : undefined;
+
+  // Collect custom connector authorizations for this agent. An empty array
+  // restricts the resolver to "no custom connectors for this agent"; a
+  // non-agent caller receives `undefined` and falls back to the user's
+  // full secret set (see resolveCustomConnectorFirewalls).
+  const allowedCustomConnectorIds: string[] | undefined = agent.orgId
+    ? customConnectorRows.map((r) => {
+        return r.customConnectorId;
+      })
     : undefined;
 
   // Resolve permission policies using the user's enabled connectors so that
@@ -440,6 +468,7 @@ async function createZeroRunRecord(
     vars: { ZERO_AGENT_ID: params.agentId },
     permissionPolicies: permissionPolicies ?? undefined,
     allowedConnectorTypes,
+    allowedCustomConnectorIds,
     agentName: resolved.agentName,
     orgId: resolved.orgId,
     orgTier,
