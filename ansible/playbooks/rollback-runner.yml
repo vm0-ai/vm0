@@ -82,14 +82,22 @@
     # Typos like rollback_mode=greaceful silently no-op both Phase 7 drain
     # branches, leaving the fleet in a mixed-version state while the play
     # reports success. Catch that upfront.
+    # Semver regex is enforced at the workflow layer too (rollback-runner.yml
+    # Validate target_version format), but we re-check here as defense in
+    # depth for direct `ansible-playbook` invocations: `runner_version`
+    # flows into systemd unit names and `command:` tasks (Ansible splits
+    # on whitespace), so a malformed value containing spaces or shell
+    # metachars could inject extra CLI flags.
     - name: Validate required inputs
       assert:
         that:
           - runner_version is defined and runner_version | length > 0
+          - runner_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
           - rollback_mode is defined and rollback_mode in ["graceful", "emergency"]
         fail_msg: >-
-          Missing or invalid inputs. Required: `runner_version` (e.g. 0.81.0)
-          and `rollback_mode` (graceful | emergency). Got
+          Missing or invalid inputs. Required: `runner_version` in semver
+          form (e.g. 0.81.0, no leading v) and `rollback_mode` (graceful |
+          emergency). Got
           runner_version='{{ runner_version | default('<undefined>') }}',
           rollback_mode='{{ rollback_mode | default('<undefined>') }}'.
 
@@ -427,15 +435,24 @@
       register: running_runners
       changed_when: false
 
+    # `failed_when: false` tolerates non-zero exits from individual
+    # runners — e.g. a runner already in `draining` (operator pre-drained
+    # it) rejects a second `service drain` with non-zero; a runner mid-
+    # teardown rejects `service stop`. We don't want one stuck unit to
+    # abort the fleet-wide rollback; Phase 8's final `runner doctor` on
+    # the target is the real convergence check. Per-item errors are
+    # still visible in Ansible's per-host log.
     - name: Drain non-target runners (graceful)
       command: "{{ bin_dir }}/runner service drain --name {{ item }}"
       loop: "{{ running_runners.stdout_lines | default([]) }}"
       when: item != runner_name and rollback_mode == "graceful"
+      failed_when: false
 
     - name: Stop non-target runners (emergency)
       command: "{{ bin_dir }}/runner service stop --name {{ item }} --force"
       loop: "{{ running_runners.stdout_lines | default([]) }}"
       when: item != runner_name and rollback_mode == "emergency"
+      failed_when: false
 
     # ========================================
     # Phase 8: Garbage collect + final health check
