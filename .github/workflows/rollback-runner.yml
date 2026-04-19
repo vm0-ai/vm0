@@ -151,6 +151,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUNNER_VERSION: ${{ inputs.target_version }}
           ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+          API_URL: ${{ vars.VM0_API_URL }}
         run: |
           cd ansible
           ansible-playbook \
@@ -161,7 +162,7 @@ jobs:
             -e "rollback_mode=${ROLLBACK_MODE}" \
             -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
-            -e "api_url=https://www.vm0.ai" \
+            -e "api_url=${API_URL}" \
             -e "github_token=${GH_TOKEN}" \
             -v
 
