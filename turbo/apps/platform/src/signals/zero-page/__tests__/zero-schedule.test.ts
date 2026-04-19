@@ -65,11 +65,11 @@ function scheduleDefaults() {
     appendSystemPrompt: null,
     vars: null,
     secretNames: null,
-    artifactName: null,
-    artifactVersion: null,
     volumeVersions: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
+    modelProviderId: null,
+    selectedModel: null,
   };
 }
 

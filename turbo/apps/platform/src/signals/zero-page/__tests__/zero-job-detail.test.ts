@@ -66,14 +66,14 @@ function scheduleBase() {
     appendSystemPrompt: null,
     vars: null,
     secretNames: null,
-    artifactName: null,
-    artifactVersion: null,
     volumeVersions: null,
     nextRunAt: null,
     lastRunAt: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
     updatedAt: "2024-06-01T00:00:00Z",
+    modelProviderId: null,
+    selectedModel: null,
   };
 }
 

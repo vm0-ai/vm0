@@ -55,6 +55,8 @@ export const apiSchedulesHandlers = [
       lastRunAt: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
+      modelProviderId: body.modelProviderId ?? null,
+      selectedModel: body.selectedModel ?? null,
       createdAt: now,
       updatedAt: now,
     };
