@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import type { ExpandedFirewallConfig } from "@vm0/core";
 import { orgCustomConnectors } from "../../../db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "../../../db/schema/org-custom-connector-secret";
@@ -29,11 +29,21 @@ function customSecretKey(connectorId: string): string {
  * The synthesized firewalls use empty `permissions`, which combined with
  * the default `unknownPolicy: "allow"` means the entire base URL is
  * granted once the user has supplied a secret.
+ *
+ * @param allowedCustomIds If provided, restricts the result to connectors
+ *   whose id appears in the list (per-agent authorization). `undefined`
+ *   preserves the original behavior — every connector the user has a secret
+ *   for is returned. An empty array returns no firewalls.
  */
 export async function resolveCustomConnectorFirewalls(
   orgId: string,
   userId: string,
+  allowedCustomIds?: string[],
 ): Promise<ResolvedCustomConnectors> {
+  if (allowedCustomIds !== undefined && allowedCustomIds.length === 0) {
+    return { firewalls: [], secrets: {} };
+  }
+
   const rows = await globalThis.services.db
     .select({
       id: orgCustomConnectors.id,
@@ -52,7 +62,14 @@ export async function resolveCustomConnectorFirewalls(
         eq(orgCustomConnectorSecrets.userId, userId),
       ),
     )
-    .where(eq(orgCustomConnectors.orgId, orgId));
+    .where(
+      allowedCustomIds
+        ? and(
+            eq(orgCustomConnectors.orgId, orgId),
+            inArray(orgCustomConnectors.id, allowedCustomIds),
+          )
+        : eq(orgCustomConnectors.orgId, orgId),
+    );
 
   if (rows.length === 0) {
     return { firewalls: [], secrets: {} };

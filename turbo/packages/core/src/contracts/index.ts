@@ -264,6 +264,7 @@ export {
   VM0_MODEL_TO_PROVIDER,
   getVm0ConcreteProviderType,
   getVm0Vendor,
+  getVm0VisibleModels,
 } from "./model-providers";
 export {
   sessionsByIdContract,
@@ -696,12 +697,20 @@ export {
   customConnectorListResponseSchema,
   createCustomConnectorBodySchema,
   setCustomConnectorSecretBodySchema,
+  patchCustomConnectorBodySchema,
   type ZeroCustomConnectorsContract,
   type ZeroCustomConnectorByIdContract,
   type ZeroCustomConnectorSecretContract,
   type CustomConnectorResponse,
   type CreateCustomConnectorBody,
+  type PatchCustomConnectorBody,
 } from "./zero-custom-connectors";
+export {
+  zeroAgentCustomConnectorsContract,
+  agentCustomConnectorEnabledIdsSchema,
+  type AgentCustomConnectorEnabledIds,
+  type ZeroAgentCustomConnectorsContract,
+} from "./zero-agent-custom-connectors";
 export {
   integrationsSlackMessageContract,
   type IntegrationsSlackMessageContract,

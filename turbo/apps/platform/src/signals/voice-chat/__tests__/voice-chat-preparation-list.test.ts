@@ -7,6 +7,11 @@ import {
   freshPreparations$,
   fetchFreshPreparations$,
 } from "../voice-chat-preparation.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroVoiceChatPrepareListContract,
+  type FreshPreparation,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -18,20 +23,12 @@ function setup() {
   });
 }
 
-function mockListEndpoint(
-  preparations: {
-    id: string;
-    mode: string;
-    prompt: string | null;
-    agentId: string | null;
-    createdAt: string;
-  }[],
-) {
+function mockListEndpoint(preparations: FreshPreparation[]) {
   const calls: unknown[] = [];
   server.use(
-    http.get("*/api/zero/voice-chat/prepare/list", () => {
+    mockApi(zeroVoiceChatPrepareListContract.list, ({ respond }) => {
       calls.push({});
-      return HttpResponse.json({ preparations });
+      return respond(200, { preparations });
     }),
   );
   return calls;
@@ -89,6 +86,7 @@ describe("fetchFreshPreparations$", () => {
 
   it("should throw on API error", async () => {
     setup();
+    // raw http override: 500 is not a declared contract status for this endpoint
     server.use(
       http.get("*/api/zero/voice-chat/prepare/list", () => {
         return new HttpResponse(null, { status: 500 });

@@ -1,0 +1,210 @@
+# Manual runner rollback — switches all production metal hosts from the
+# currently-active runner version back to a prior `target_version`. Invoked
+# via workflow_dispatch. Sister to the forward path in `release-please.yml`
+# (`build-runner-production` + `promote-runner-production`).
+#
+# Entry point: rollback dashboard issue (`vars.ROLLBACK_ISSUE_NUMBER`,
+# maintained by release-please.yml's `update-rollback-dashboard` job).
+# Each successful runner promote appends a row with a "🔄 Rollback
+# workflow" link pointing here; operator clicks the link, types the
+# target_version from the row, selects mode + confirms compatibility,
+# and runs.
+
+name: Rollback Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: "Version to roll back TO (semver, e.g. 0.81.0 — no leading v)"
+        required: true
+        type: string
+      rollback_mode:
+        description: "graceful (drain, ≤2h) or emergency (SIGTERM stop, ≤5min)"
+        required: true
+        type: choice
+        options:
+          - graceful
+          - emergency
+        default: graceful
+      confirmed_compatible:
+        description: "I confirm the target version has no breaking API / guest / on-disk changes vs current live version"
+        required: true
+        type: choice
+        options:
+          - "no"
+          - "yes"
+        default: "no"
+
+# Mutex between concurrent rollback runs only.
+# TODO: release-please.yml currently scopes its own concurrency to
+# `${{ github.workflow }}-${{ github.ref }}`, so a rollback triggered
+# while a release is mid-deploy would run in parallel. Proper cross-
+# workflow mutex requires changing release-please.yml's deploy jobs to
+# share the same group name — follow-up per issue #9746 constraint #6.
+concurrency:
+  group: runner-deploy
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260416
+    permissions:
+      contents: read
+    environment: production
+
+    steps:
+      # Hard gate — refuse to proceed unless the operator explicitly
+      # confirmed compatibility. Prevents one-click rollback to a version
+      # with breaking API/guest/on-disk changes that would poison state.
+      - name: Gate confirmed_compatible
+        if: inputs.confirmed_compatible != 'yes'
+        run: |
+          echo "::error::'confirmed_compatible' must be 'yes'. Operator must vet the target version for API / guest ABI / on-disk state compatibility before rolling back."
+          exit 1
+
+      # Reject shell-unsafe / semver-ish injection in target_version. This
+      # string flows into systemd unit names, file paths, URLs, and --name
+      # flags; keep it strictly numeric + dots to match `validate_name` in
+      # crates/runner/src/runner_dirname.rs.
+      - name: Validate target_version format
+        env:
+          VERSION: ${{ inputs.target_version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::target_version='$VERSION' is not semver (e.g. 0.81.0). Reject."
+            exit 1
+          fi
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Runner RS* ⏪ rolling back to v${{ inputs.target_version }} (${{ inputs.rollback_mode }})..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ⏪ rolling back to v${{ inputs.target_version }}...\n📦 Mode: `${{ inputs.rollback_mode }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ inputs.target_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      # Use main's rollback-runner.yml — this playbook did not exist in
+      # older tags. The playbook only calls stable runner CLI surfaces
+      # (`service install` / `service drain` / `service stop` / `service
+      # resume` / `doctor` / `gc` / `setup` / `build` / `config`), so it
+      # works against any target binary the runner CLI contract supports.
+      - uses: actions/checkout@v6
+
+      # Preflight: confirm the release asset is downloadable before we go
+      # SSH-tinkering with production hosts. gc typically keeps the last
+      # 6 versions on-host so this is a fallback check, but if a host
+      # recently replaced its disk the playbook's binary-download branch
+      # will need the asset — fail fast rather than mid-rollout.
+      - name: Verify target release asset exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.target_version }}
+        run: |
+          TAG="runner-rs-v${VERSION}"
+          ASSET_NAME="runner-v${VERSION}-aarch64-linux"
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET_NAME"; then
+            echo "::error::Release $TAG does not exist or is missing asset $ASSET_NAME."
+            exit 1
+          fi
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      # Invokes rollback-runner.yml against every production host. The
+      # playbook is idempotent and per-host state-machine-driven, so one
+      # invocation converges heterogeneous fleet states (some hosts with
+      # target inactive, some with target still draining, some with target
+      # already running, etc.) to "target is the sole live version".
+      #
+      # R2 credentials are NOT passed: on the happy path (target artifacts
+      # still on disk thanks to gc --keep-latest 6), the playbook only
+      # re-runs idempotent `runner build` which hits the local content-
+      # addressed cache. On the rebuild path (gc evicted the target bin
+      # dir), the build falls back to local rootfs construction — slower
+      # but works offline. R2 sweep in `runner gc` is likewise a nice-to-
+      # have, not required for correctness.
+      - name: Roll back runner on production hosts with Ansible
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUNNER_VERSION: ${{ inputs.target_version }}
+          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+          API_URL: ${{ vars.VM0_API_URL }}
+        run: |
+          cd ansible
+          ansible-playbook \
+            -i "${AWS_METAL_RUNNER_HOSTS}," \
+            playbooks/rollback-runner.yml \
+            -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+            -e "runner_version=${RUNNER_VERSION}" \
+            -e "rollback_mode=${ROLLBACK_MODE}" \
+            -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
+            -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
+            -e "api_url=${API_URL}" \
+            -e "github_token=${GH_TOKEN}" \
+            -v
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ✅ Rolled back to v${{ inputs.target_version }}"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ✅ Rolled back to v${{ inputs.target_version }} (${{ inputs.rollback_mode }})\n⏱️ `${{ steps.duration.outputs.text }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ inputs.target_version }}|View Release>\n\n⚠️ Remember to land a `revert` PR on main so the next release doesn't re-ship the bad version."
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ❌ Rollback to v${{ inputs.target_version }} FAILED"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ❌ Rollback to v${{ inputs.target_version }} FAILED\n📦 Mode: `${{ inputs.rollback_mode }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>\n\n⚠️ Fleet may be in a split-version state. Inspect per-host and decide whether to re-run or SSH manually."

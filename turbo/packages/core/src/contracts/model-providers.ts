@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ExpandedFirewallConfig } from "./firewalls";
 
 /**
@@ -33,10 +34,13 @@ export const VM0_ORG_SLUG = "vm0";
  * NOTE: Defined before MODEL_PROVIDER_TYPES so the vm0 entry can derive its
  * models list from this mapping via Object.keys().
  */
-export const VM0_MODEL_TO_PROVIDER: Record<
-  string,
-  { concreteType: string; vendor: string }
-> = {
+interface Vm0ModelConfig {
+  concreteType: string;
+  vendor: string;
+  featureFlag?: FeatureSwitchKey;
+}
+
+export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "claude-sonnet-4-6": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -49,7 +53,40 @@ export const VM0_MODEL_TO_PROVIDER: Record<
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
+  "kimi-k2.5": {
+    concreteType: "moonshot-api-key",
+    vendor: "moonshot",
+    featureFlag: FeatureSwitchKey.Vm0KimiModel,
+  },
+  "glm-5.1": {
+    concreteType: "zai-api-key",
+    vendor: "zai",
+    featureFlag: FeatureSwitchKey.Vm0GlmModel,
+  },
+  "MiniMax-M2.7": {
+    concreteType: "minimax-api-key",
+    vendor: "minimax",
+    featureFlag: FeatureSwitchKey.Vm0MinimaxModel,
+  },
 };
+
+/**
+ * Return the VM0 managed models visible to the caller, filtered by feature
+ * switches. Models without a featureFlag are always visible; models with a
+ * flag require the flag to be enabled in the supplied feature map.
+ */
+export function getVm0VisibleModels(
+  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+): string[] {
+  return Object.entries(VM0_MODEL_TO_PROVIDER)
+    .filter(([, { featureFlag }]) => {
+      if (!featureFlag) return true;
+      return features?.[featureFlag] === true;
+    })
+    .map(([model]) => {
+      return model;
+    });
+}
 
 /**
  * Model Provider type configuration
@@ -168,8 +205,8 @@ export const MODEL_PROVIDER_TYPES = {
       API_TIMEOUT_MS: "3000000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     } as Record<string, string>,
-    models: ["MiniMax-M2.1"] as string[],
-    defaultModel: "MiniMax-M2.1",
+    models: ["MiniMax-M2.7", "MiniMax-M2.1"] as string[],
+    defaultModel: "MiniMax-M2.7",
   },
   "deepseek-api-key": {
     framework: "claude-code" as const,
@@ -207,8 +244,8 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "3000000",
     } as Record<string, string>,
-    models: ["glm-5", "glm-4.7", "glm-4.5-air"] as string[],
-    defaultModel: "glm-4.7",
+    models: ["glm-5.1", "glm-5", "glm-4.7", "glm-4.5-air"] as string[],
+    defaultModel: "glm-5.1",
   },
   "vercel-ai-gateway": {
     framework: "claude-code" as const,

@@ -1,5 +1,43 @@
 # Changelog
 
+## [12.262.0](https://github.com/vm0-ai/vm0/compare/web-v12.261.0...web-v12.262.0) (2026-04-19)
+
+
+### Features
+
+* add kimi/glm/minimax models to vm0 managed provider ([#10106](https://github.com/vm0-ai/vm0/issues/10106)) ([1619955](https://github.com/vm0-ai/vm0/commit/1619955f3a949352a20282c490776b0bc74df1b1))
+
+
+### Bug Fixes
+
+* **seo:** remove x-default hreflang duplicate + fix root 307→301 ([#10121](https://github.com/vm0-ai/vm0/issues/10121)) ([bc4d50b](https://github.com/vm0-ai/vm0/commit/bc4d50b9014880449a174aab8588f6e498324ef0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.206.0
+
+## [12.261.0](https://github.com/vm0-ai/vm0/compare/web-v12.260.0...web-v12.261.0) (2026-04-19)
+
+
+### Features
+
+* add running indicator to sidebar chat threads ([#10090](https://github.com/vm0-ai/vm0/issues/10090)) ([e60fda6](https://github.com/vm0-ai/vm0/commit/e60fda61a8503af6face1cf7ceff34c366d5932e))
+
+
+### Bug Fixes
+
+* **chat:** anchor initial thread load at the latest messages ([#10098](https://github.com/vm0-ai/vm0/issues/10098)) ([19d5fb5](https://github.com/vm0-ai/vm0/commit/19d5fb54deed6d1b7116eb44c2b3a9dcdaf7660b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.205.0
+
 ## [12.260.0](https://github.com/vm0-ai/vm0/compare/web-v12.259.0...web-v12.260.0) (2026-04-19)
 
 

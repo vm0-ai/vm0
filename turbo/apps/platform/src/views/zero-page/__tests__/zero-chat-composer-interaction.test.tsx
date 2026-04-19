@@ -78,6 +78,7 @@ describe("zero chat composer - file input", () => {
   it("shows attachment chip after a file is selected via the file input", async () => {
     const user = userEvent.setup();
     mockChatLifecycle();
+    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({

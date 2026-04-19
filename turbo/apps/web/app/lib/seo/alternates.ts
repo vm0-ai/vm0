@@ -24,10 +24,6 @@ export function buildLocaleAlternates(
   for (const loc of emitLocales) {
     languages[loc] = `${BASE_URL}/${loc}${normalized}`;
   }
-  // x-default points to the default-locale version so search engines have a
-  // clear fallback.  Using the prefixed /en/… path avoids the 307 redirect
-  // that the locale-less path would trigger.
-  languages["x-default"] = `${BASE_URL}/${defaultLocale}${normalized}`;
 
   return {
     canonical: `${BASE_URL}/${currentLocale}${normalized}`,

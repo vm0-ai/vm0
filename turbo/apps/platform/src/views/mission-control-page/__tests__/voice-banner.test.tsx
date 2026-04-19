@@ -21,6 +21,11 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroVoiceChatSessionsContract,
+  zeroVoiceChatContextContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -82,8 +87,8 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
       http.get("*/api/zero/tasks", () => {
         return HttpResponse.json({ tasks: [] });
       }),
-      http.post("*/api/zero/voice-chat", () => {
-        return HttpResponse.json({
+      mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
+        return respond(200, {
           session: {
             id: "vc-prep-session",
             mode: "chat",
@@ -95,9 +100,9 @@ describe("voiceBanner — preparing state (MC-VC-003)", () => {
         });
       }),
       // Hang the context poll so status stays "preparing"
-      http.get("*/api/zero/voice-chat/vc-prep-session/context", async () => {
+      mockApi(zeroVoiceChatContextContract.getEvents, async ({ respond }) => {
         await hangDeferred.promise;
-        return HttpResponse.json({ events: [] });
+        return respond(200, { events: [] });
       }),
     );
 
@@ -138,13 +143,10 @@ describe("voiceBanner — error on session creation (MC-VC-004)", () => {
       http.get("*/api/zero/tasks", () => {
         return HttpResponse.json({ tasks: [] });
       }),
-      http.post("*/api/zero/voice-chat", () => {
-        return HttpResponse.json(
-          {
-            error: { message: "Service unavailable", code: "BAD_REQUEST" },
-          },
-          { status: 400 },
-        );
+      mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
+        return respond(400, {
+          error: { message: "Service unavailable", code: "BAD_REQUEST" },
+        });
       }),
     );
 
@@ -184,15 +186,14 @@ describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
       http.get("*/api/zero/tasks", () => {
         return HttpResponse.json({ tasks: [] });
       }),
-      http.post("*/api/zero/voice-chat", () => {
-        return HttpResponse.json(
-          { error: { message: "fail", code: "BAD_REQUEST" } },
-          { status: 400 },
-        );
+      mockApi(zeroVoiceChatSessionsContract.create, ({ respond }) => {
+        return respond(400, {
+          error: { message: "fail", code: "BAD_REQUEST" },
+        });
       }),
       // endVoiceChat$ fires a best-effort POST to /end — let it succeed silently
-      http.post("*/api/zero/voice-chat/*/end", () => {
-        return HttpResponse.json({ ok: true });
+      mockApi(zeroVoiceChatSessionsContract.end, ({ respond }) => {
+        return respond(200, { ok: true });
       }),
     );
 

@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  zeroVoiceChatPrepareTriggerContract,
+  onboardingStatusContract,
+} from "@vm0/core";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
@@ -36,19 +41,16 @@ async function setup() {
   context.store.set(setChatAgentId$, TEST_AGENT_ID);
 }
 
-function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
-  let callIndex = 0;
-  const counter = {
-    get count() {
-      return callIndex;
-    },
-  };
+function mockPrepareEndpoint(
+  responses: { status: "preparing" | "ready" | "failed"; id?: string }[],
+) {
+  const counter = { count: 0 };
   server.use(
-    http.post("*/api/zero/voice-chat/prepare", () => {
-      const responseIndex = Math.min(callIndex, responses.length - 1);
+    mockApi(zeroVoiceChatPrepareTriggerContract.trigger, ({ respond }) => {
+      const responseIndex = Math.min(counter.count, responses.length - 1);
       const response = responses[responseIndex];
-      callIndex++;
-      return HttpResponse.json({
+      counter.count++;
+      return respond(200, {
         preparation: {
           id: response.id ?? "prep-1",
           status: response.status,
@@ -62,8 +64,7 @@ function mockPrepareEndpoint(responses: { status: string; id?: string }[]) {
 describe("voice-chat-preparation signals", () => {
   it("should set status to ready when preparation is cached", async () => {
     await setup();
-    const responses = [{ status: "ready" }];
-    mockPrepareEndpoint(responses);
+    mockPrepareEndpoint([{ status: "ready" }]);
 
     await context.store.set(
       triggerPreparation$,
@@ -80,8 +81,7 @@ describe("voice-chat-preparation signals", () => {
 
   it("should set status to failed immediately when initial status is failed", async () => {
     await setup();
-    const responses = [{ status: "failed" }];
-    const counter = mockPrepareEndpoint(responses);
+    const counter = mockPrepareEndpoint([{ status: "failed" }]);
 
     await context.store.set(
       triggerPreparation$,
@@ -96,12 +96,11 @@ describe("voice-chat-preparation signals", () => {
 
   it("should poll until ready when preparation is in progress", async () => {
     await setup();
-    const responses = [
+    const counter = mockPrepareEndpoint([
       { status: "preparing" },
       { status: "preparing" },
       { status: "ready" },
-    ];
-    const counter = mockPrepareEndpoint(responses);
+    ]);
 
     const done = context.store.set(
       triggerPreparation$,
@@ -128,8 +127,10 @@ describe("voice-chat-preparation signals", () => {
 
   it("should set status to failed when preparation fails during poll", async () => {
     await setup();
-    const responses = [{ status: "preparing" }, { status: "failed" }];
-    const counter = mockPrepareEndpoint(responses);
+    const counter = mockPrepareEndpoint([
+      { status: "preparing" },
+      { status: "failed" },
+    ]);
 
     const done = context.store.set(
       triggerPreparation$,
@@ -165,8 +166,23 @@ describe("voice-chat-preparation signals", () => {
   });
 
   it("should set status to failed when no agent is selected", async () => {
+    // Override onboarding to return no defaultAgentId before setup() so the
+    // onboarding status fetched during page initialization has null defaultAgentId.
+    // triggerPreparation$ reads defaultAgentId$ which derives from this status.
+    server.use(
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: false,
+          defaultAgentId: null,
+          defaultAgentMetadata: null,
+        });
+      }),
+    );
+
     await setup();
-    context.store.set(setChatAgentId$, null);
 
     await context.store.set(
       triggerPreparation$,
@@ -179,8 +195,7 @@ describe("voice-chat-preparation signals", () => {
 
   it("should reset all state on clearPreparation$", async () => {
     await setup();
-    const responses = [{ status: "ready" }];
-    mockPrepareEndpoint(responses);
+    mockPrepareEndpoint([{ status: "ready" }]);
 
     await context.store.set(triggerPreparation$, "some prompt", context.signal);
 
@@ -223,8 +238,7 @@ describe("voice-chat page navigation abort", () => {
 
   it("should NOT clear preparation state when status is ready on navigation abort", async () => {
     await setupPageWithAbort();
-    const responses = [{ status: "ready" }];
-    mockPrepareEndpoint(responses);
+    mockPrepareEndpoint([{ status: "ready" }]);
 
     await context.store.set(
       triggerPreparation$,
@@ -254,20 +268,23 @@ describe("voice-chat page navigation abort", () => {
     const initialCallDone = createDeferredPromise<void>(context.signal);
     let firstPrepCall = true;
     server.use(
-      http.post("*/api/zero/voice-chat/prepare", async () => {
-        if (firstPrepCall) {
-          firstPrepCall = false;
-          initialCallDone.resolve();
-          return HttpResponse.json({
+      mockApi(
+        zeroVoiceChatPrepareTriggerContract.trigger,
+        async ({ respond }) => {
+          if (firstPrepCall) {
+            firstPrepCall = false;
+            initialCallDone.resolve();
+            return respond(200, {
+              preparation: { id: "prep-1", status: "preparing" },
+            });
+          }
+          // Block all subsequent poll calls so we stay in "preparing"
+          await prepBlock.promise;
+          return respond(200, {
             preparation: { id: "prep-1", status: "preparing" },
           });
-        }
-        // Block all subsequent poll calls so we stay in "preparing"
-        await prepBlock.promise;
-        return HttpResponse.json({
-          preparation: { id: "prep-1", status: "preparing" },
-        });
-      }),
+        },
+      ),
     );
 
     const pageSignal = await setupPageWithAbort();

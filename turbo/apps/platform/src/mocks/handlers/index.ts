@@ -62,6 +62,7 @@ import {
   resetMockPermissionRequests,
 } from "./api-permission-access-requests.ts";
 import { apiPermissionPoliciesHandlers } from "./api-permission-policies.ts";
+import { apiVoiceChatHandlers } from "./api-voice-chat.ts";
 
 export const handlers = [
   ...apiConnectorsHandlers,
@@ -86,6 +87,7 @@ export const handlers = [
   ...apiRealtimeHandlers,
   ...apiPermissionAccessRequestsHandlers,
   ...apiPermissionPoliciesHandlers,
+  ...apiVoiceChatHandlers,
 ];
 
 export function resetAllMockHandlers(): void {

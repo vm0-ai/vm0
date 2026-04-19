@@ -61,6 +61,7 @@ import {
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
+import { userCustomConnectors } from "../../db/schema/user-custom-connector";
 import {
   consumeCaptureNetworkBodies,
   getUserPreferences,
@@ -71,6 +72,24 @@ import { SEED_SKILLS } from "./seed-skills";
 import { logger } from "../shared/logger";
 
 const log = logger("service:zero-run");
+
+/**
+ * Map user_custom_connectors rows to the `allowedCustomConnectorIds` list.
+ * Returns `undefined` when there is no resolved org (non-agent callers like
+ * the CLI) so resolveCustomConnectorFirewalls keeps the legacy all-access
+ * behavior; returns a (possibly empty) list for agent runs.
+ */
+function toAllowedCustomConnectorIds(
+  orgId: string | null,
+  rows: Array<{ customConnectorId: string }>,
+): string[] | undefined {
+  if (!orgId) {
+    return undefined;
+  }
+  return rows.map((r) => {
+    return r.customConnectorId;
+  });
+}
 
 /**
  * Parameters accepted by createZeroRun().
@@ -342,6 +361,7 @@ async function createZeroRunRecord(
   // ── Round 2: Operations needing agent.orgId or resolved.orgId ───────
   const [
     connectorRows,
+    customConnectorRows,
     orgMeta,
     userPrefs,
     featureOverrides,
@@ -357,6 +377,22 @@ async function createZeroRunRecord(
               eq(userConnectors.orgId, agent.orgId),
               eq(userConnectors.userId, params.userId),
               eq(userConnectors.agentId, params.agentId),
+            ),
+          )
+      : Promise.resolve([]),
+    // Fetch custom connector authorizations for this user+agent.
+    // Parallel to userConnectors but keyed on the org_custom_connectors UUID.
+    agent.orgId
+      ? db
+          .select({
+            customConnectorId: userCustomConnectors.customConnectorId,
+          })
+          .from(userCustomConnectors)
+          .where(
+            and(
+              eq(userCustomConnectors.orgId, agent.orgId),
+              eq(userCustomConnectors.userId, params.userId),
+              eq(userCustomConnectors.agentId, params.agentId),
             ),
           )
       : Promise.resolve([]),
@@ -385,6 +421,11 @@ async function createZeroRunRecord(
           return p.data;
         })
     : undefined;
+
+  const allowedCustomConnectorIds = toAllowedCustomConnectorIds(
+    agent.orgId,
+    customConnectorRows,
+  );
 
   // Resolve permission policies using the user's enabled connectors so that
   // default policies are seeded for each allowed connector type.
@@ -446,6 +487,7 @@ async function createZeroRunRecord(
     vars: { ZERO_AGENT_ID: params.agentId },
     permissionPolicies: permissionPolicies ?? undefined,
     allowedConnectorTypes,
+    allowedCustomConnectorIds,
     agentName: resolved.agentName,
     orgId: resolved.orgId,
     orgTier,

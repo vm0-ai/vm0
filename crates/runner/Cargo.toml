@@ -1,6 +1,6 @@
 [package]
 name = "runner"
-version = "0.85.4"
+version = "0.86.1"
 edition.workspace = true
 
 [dependencies]
@@ -10,7 +10,7 @@ nbd-cow = { workspace = true }
 sandbox-fc = { workspace = true }
 
 async-trait = { workspace = true }
-aws-sdk-s3 = { workspace = true, features = ["rustls", "rt-tokio", "behavior-version-latest"] }
+aws-sdk-s3 = { workspace = true, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
 base64 = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true, features = ["serde", "now"] }

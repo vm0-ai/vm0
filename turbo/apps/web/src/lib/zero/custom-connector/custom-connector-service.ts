@@ -1,4 +1,8 @@
 import { eq, and } from "drizzle-orm";
+import {
+  getAllBuiltinConnectorHosts,
+  getBuiltinConnectorDisplayName,
+} from "@vm0/core";
 import { orgCustomConnectors } from "../../../db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "../../../db/schema/org-custom-connector-secret";
 import { encryptSecretValue } from "../../shared/crypto";
@@ -94,6 +98,21 @@ function validateInput(input: CustomConnectorInput): {
     if (seen.has(p)) throw badRequest(`Duplicate prefix: ${p}`);
     seen.add(p);
   }
+  // Reject prefixes whose host collides with a built-in connector. Mitm-level
+  // matching is still the final line of defense; this early rejection gives
+  // admins a clear message at create time instead of a silent shadow.
+  const builtinHosts = getAllBuiltinConnectorHosts();
+  for (const p of prefixes) {
+    const host = new URL(p).host;
+    const builtinType = builtinHosts.get(host);
+    if (builtinType) {
+      throw badRequest(
+        `Host "${host}" is already managed by the ${getBuiltinConnectorDisplayName(
+          builtinType,
+        )} connector`,
+      );
+    }
+  }
   const headerName = input.headerName.trim();
   if (!HEADER_NAME_REGEX.test(headerName)) {
     throw badRequest(
@@ -171,6 +190,28 @@ export async function createCustomConnector(
     .returning();
   if (!row) {
     throw new Error("Expected insert to return a row");
+  }
+  return { ...row, prefixes: row.prefixes as string[] };
+}
+
+export async function patchCustomConnectorDisplayName(
+  orgId: string,
+  id: string,
+  displayName: string,
+): Promise<CustomConnector> {
+  const trimmed = displayName.trim();
+  if (trimmed.length < 1 || trimmed.length > 128) {
+    throw badRequest("Display name must be between 1 and 128 characters");
+  }
+  const [row] = await globalThis.services.db
+    .update(orgCustomConnectors)
+    .set({ displayName: trimmed, updatedAt: new Date() })
+    .where(
+      and(eq(orgCustomConnectors.id, id), eq(orgCustomConnectors.orgId, orgId)),
+    )
+    .returning();
+  if (!row) {
+    throw notFound(`Custom connector ${id} not found`);
   }
   return { ...row, prefixes: row.prefixes as string[] };
 }

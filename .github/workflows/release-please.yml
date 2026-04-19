@@ -72,7 +72,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     permissions:
       contents: read
     environment: production
@@ -170,7 +170,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
     permissions:
@@ -395,7 +395,7 @@ jobs:
     if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     outputs:
       deployment_url: ${{ needs.build-web-production.outputs.deployment_url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
@@ -513,7 +513,7 @@ jobs:
     if: ${{ needs.release-please.outputs.app_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
     permissions:
@@ -617,7 +617,7 @@ jobs:
       needs.release-please.outputs.app_release_created == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     outputs:
       deployment_url: ${{ needs.build-app-production.outputs.deployment_url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
@@ -731,10 +731,12 @@ jobs:
 
   # Update rollback dashboard issue after deployments
   update-rollback-dashboard:
-    needs: [release-please, promote-web-production, promote-app-production]
+    needs: [release-please, promote-web-production, promote-app-production, promote-runner-production]
     if: >-
       always() &&
-      (needs.promote-web-production.result == 'success' || needs.promote-app-production.result == 'success')
+      (needs.promote-web-production.result == 'success' ||
+       needs.promote-app-production.result == 'success' ||
+       needs.promote-runner-production.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -806,12 +808,15 @@ jobs:
         env:
           WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
           APP_VERSION: ${{ needs.release-please.outputs.app_version }}
+          RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           WEB_RESULT: ${{ needs.promote-web-production.result }}
           APP_RESULT: ${{ needs.promote-app-production.result }}
+          RUNNER_RESULT: ${{ needs.promote-runner-production.result }}
           WEB_DASHBOARD_URL: ${{ needs.promote-web-production.outputs.vercel_dashboard_url }}
           APP_DASHBOARD_URL: ${{ needs.promote-app-production.outputs.vercel_dashboard_url }}
           SAFETY: ${{ steps.migration-safety.outputs.indicator }}
           MIGRATION_FILES: ${{ steps.migration-safety.outputs.details }}
+          RUNNER_ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-runner.yml
         run: |
           DATE=$(date -u +%Y-%m-%d)
 
@@ -823,8 +828,11 @@ jobs:
           if [ "$APP_RESULT" = "success" ] && [ -n "$APP_VERSION" ]; then
             TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }app v${APP_VERSION}"
           fi
+          if [ "$RUNNER_RESULT" = "success" ] && [ -n "$RUNNER_VERSION" ]; then
+            TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }runner v${RUNNER_VERSION}"
+          fi
 
-          # Safety indicator
+          # Web/app migration-safety indicator (applies to web+app rollbacks)
           case "$SAFETY" in
             destructive)
               INDICATOR="🔴 **Warning: destructive migration** ($MIGRATION_FILES)"
@@ -840,41 +848,76 @@ jobs:
               ;;
           esac
 
+          # Helper: append a row, handling empty ROWS without a leading newline.
+          append_row() {
+            if [ -n "$ROWS" ]; then
+              ROWS="${ROWS}
+          $1"
+            else
+              ROWS="$1"
+            fi
+          }
+
           # Build table rows
           ROWS=""
           if [ -n "$WEB_VERSION" ]; then
             if [ "$WEB_RESULT" = "success" ] && [ -n "$WEB_DASHBOARD_URL" ]; then
-              ROWS="| web | v${WEB_VERSION} | [Rollback in Vercel](${WEB_DASHBOARD_URL}) |"
+              append_row "| web | v${WEB_VERSION} | [Rollback in Vercel](${WEB_DASHBOARD_URL}) |"
             elif [ "$WEB_RESULT" = "success" ]; then
-              ROWS="| web | v${WEB_VERSION} | _URL unavailable_ |"
+              append_row "| web | v${WEB_VERSION} | _URL unavailable_ |"
             else
-              ROWS="| web | v${WEB_VERSION} | ❌ Deploy failed |"
+              append_row "| web | v${WEB_VERSION} | ❌ Deploy failed |"
             fi
           fi
 
           if [ -n "$APP_VERSION" ]; then
-            ROW=""
             if [ "$APP_RESULT" = "success" ] && [ -n "$APP_DASHBOARD_URL" ]; then
-              ROW="| app | v${APP_VERSION} | [Rollback in Vercel](${APP_DASHBOARD_URL}) |"
+              append_row "| app | v${APP_VERSION} | [Rollback in Vercel](${APP_DASHBOARD_URL}) |"
             elif [ "$APP_RESULT" = "success" ]; then
-              ROW="| app | v${APP_VERSION} | _URL unavailable_ |"
+              append_row "| app | v${APP_VERSION} | _URL unavailable_ |"
             else
-              ROW="| app | v${APP_VERSION} | ❌ Deploy failed |"
-            fi
-            if [ -n "$ROWS" ]; then
-              ROWS="${ROWS}
-          ${ROW}"
-            else
-              ROWS="$ROW"
+              append_row "| app | v${APP_VERSION} | ❌ Deploy failed |"
             fi
           fi
 
-          # Build full entry
+          # Runner row. Link points to the rollback-runner.yml workflow
+          # dispatch page — GitHub's UI does not currently accept URL-param
+          # pre-fill for workflow_dispatch inputs, so we spell out the
+          # value to paste into `target_version` in the cell itself (no
+          # leading `v`, matching the workflow's semver regex). The
+          # operator still picks `rollback_mode` and toggles the
+          # `confirmed_compatible` gate manually in the dispatch form.
+          # HTML <code> tags (rather than markdown backticks) avoid bash
+          # command-substitution inside this double-quoted string.
+          if [ -n "$RUNNER_VERSION" ]; then
+            if [ "$RUNNER_RESULT" = "success" ]; then
+              append_row "| runner-rs | v${RUNNER_VERSION} | [🔄 Rollback workflow](${RUNNER_ROLLBACK_URL}) — input <code>target_version</code>: <code>${RUNNER_VERSION}</code> |"
+            else
+              append_row "| runner-rs | v${RUNNER_VERSION} | ❌ Deploy failed |"
+            fi
+          fi
+
+          # Build full entry.
+          # - The migration-safety INDICATOR only describes web migrations
+          #   (see Detect migration safety step), so suppress it for release
+          #   cycles with no web/app changes — otherwise a runner-only
+          #   release would print a misleading "🟢 Safe to rollback".
+          # - Runner has no auto-computed compatibility indicator. We print
+          #   a static advisory whenever the release includes runner so the
+          #   operator doesn't silently treat runner rollbacks the same as
+          #   web/app (which are Vercel-level atomic flips). Deliberately
+          #   NOT naming specific compat surfaces — that would encourage a
+          #   checklist mindset and miss cases the list doesn't anticipate.
           {
             echo "### ${DATE} — ${TITLE_PARTS}"
-            echo "${INDICATOR}"
-            echo "| Component | Version | Rollback via Vercel |"
-            echo "|-----------|---------|---------------------|"
+            if [ -n "$WEB_VERSION" ] || [ -n "$APP_VERSION" ]; then
+              echo "${INDICATOR}"
+            fi
+            if [ -n "$RUNNER_VERSION" ]; then
+              echo "⚠️ **Runner rollback needs manual diff review.** The \`confirmed_compatible\` input gates it."
+            fi
+            echo "| Component | Version | Rollback |"
+            echo "|-----------|---------|----------|"
             echo "${ROWS}"
           } > /tmp/dashboard-entry.md
 
@@ -1074,7 +1117,7 @@ jobs:
     if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     permissions:
       contents: write
     environment: production
@@ -1200,6 +1243,7 @@ jobs:
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          API_URL: ${{ vars.VM0_API_URL }}
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
@@ -1232,7 +1276,7 @@ jobs:
             playbooks/build-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
-            -e "api_url=https://www.vm0.ai" \
+            -e "api_url=${API_URL}" \
             -e "runner_version=${RUNNER_VERSION}" \
             -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
             -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
@@ -1296,7 +1340,7 @@ jobs:
       needs.release-please.outputs.runner_rs_release_created == 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     permissions:
       contents: read
     environment: production
@@ -1460,7 +1504,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     permissions:
       contents: read
     environment: production
@@ -1484,7 +1528,7 @@ jobs:
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     permissions:
       contents: read
     steps:

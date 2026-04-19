@@ -67,7 +67,7 @@ jobs:
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
@@ -288,7 +288,7 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -311,7 +311,7 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -325,7 +325,7 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -339,7 +339,7 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -355,7 +355,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     services:
       postgres:
         image: postgres:17-alpine
@@ -401,7 +401,7 @@ jobs:
     # Only run when migration or schema files changed
     if: needs.prepare.outputs.migration-changed == 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     services:
       postgres:
         image: postgres:17-alpine
@@ -458,7 +458,7 @@ jobs:
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -490,7 +490,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -519,7 +519,7 @@ jobs:
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -549,7 +549,7 @@ jobs:
       group: deploy-web-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, or platform changed
     if: |
@@ -1012,7 +1012,7 @@ jobs:
       group: deploy-app-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and platform/e2e/ci changed
     if: >-
@@ -1166,7 +1166,7 @@ jobs:
   build-cli:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     needs: [prepare]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1344,7 +1344,7 @@ jobs:
       group: deploy-runner-prepare-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     needs: [prepare]
     timeout-minutes: 20
     env:
@@ -1887,7 +1887,7 @@ jobs:
   build-e2b-template:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260416
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     needs: [prepare]
     # Build on PR or main push when E2B templates changed, skip release-please commits
     if: |
