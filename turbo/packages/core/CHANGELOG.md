@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.205.0](https://github.com/vm0-ai/vm0/compare/core-v8.204.0...core-v8.205.0) (2026-04-19)
+
+
+### Features
+
+* add running indicator to sidebar chat threads ([#10090](https://github.com/vm0-ai/vm0/issues/10090)) ([e60fda6](https://github.com/vm0-ai/vm0/commit/e60fda61a8503af6face1cf7ceff34c366d5932e))
+* **firewall:** accept mixed {param}{literal} segments in url patterns ([#10081](https://github.com/vm0-ai/vm0/issues/10081)) ([2b58902](https://github.com/vm0-ai/vm0/commit/2b589020d004ed7a99b461ee32609534d02cda18))
+
+
+### Bug Fixes
+
+* **chat:** anchor initial thread load at the latest messages ([#10098](https://github.com/vm0-ai/vm0/issues/10098)) ([19d5fb5](https://github.com/vm0-ai/vm0/commit/19d5fb54deed6d1b7116eb44c2b3a9dcdaf7660b))
+
 ## [8.204.0](https://github.com/vm0-ai/vm0/compare/core-v8.203.0...core-v8.204.0) (2026-04-19)
 
 
