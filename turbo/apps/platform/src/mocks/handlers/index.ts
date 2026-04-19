@@ -27,6 +27,7 @@ import {
   resetMockTelegramIntegration,
 } from "./api-integrations-telegram.ts";
 import { apiAgentsHandlers } from "./api-agents.ts";
+import { apiRunsHandlers } from "./api-runs.ts";
 import {
   apiFeatureSwitchesHandlers,
   resetMockFeatureSwitches,
@@ -55,6 +56,7 @@ export const handlers = [
   ...apiIntegrationsSlackOrgHandlers,
   ...apiIntegrationsTelegramHandlers,
   ...apiAgentsHandlers,
+  ...apiRunsHandlers,
   ...apiUserPreferencesHandlers,
   ...apiOnboardingHandlers,
   ...apiBillingHandlers,
