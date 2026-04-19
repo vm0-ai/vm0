@@ -15,6 +15,7 @@ import { setChatAgentId$, currentChatAgent$ } from "../agent-chat.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { reloadTagline$ } from "./zero-chat-page.ts";
+import { setupAgentChatPageKeyboard$ } from "./agent-chat-keyboard.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -24,6 +25,7 @@ export const setupAgentChatPage$ = command(
     );
     set(updateDocumentTitle$, "Chat");
     set(reloadTagline$);
+    set(setupAgentChatPageKeyboard$, signal);
 
     // Reset the talk draft on entrance
     set(get(talkDraft$).clear$);

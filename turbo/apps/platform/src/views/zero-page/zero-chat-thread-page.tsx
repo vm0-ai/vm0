@@ -64,42 +64,34 @@ import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-ma
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
-  const agentId = useLastResolved(thread.agentId$) ?? null;
+  const agentId = useLastResolved(thread.agentId$);
 
-  if (agentId) {
-    return (
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              pathname="/agents/:agentId"
-              options={{ pathParams: { agentId } }}
-              className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="View agent profile"
-            >
-              <AgentAvatarImg
-                name={agentId}
-                alt=""
-                className="h-8 w-8 rounded-full object-cover object-top"
-              />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p className="text-xs">View agent profile</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
+  if (!agentId) {
+    return null;
   }
 
   return (
-    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
-      <AgentAvatarImg
-        name=""
-        alt=""
-        className="h-8 w-8 rounded-full object-cover object-top"
-      />
-    </div>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            pathname="/agents/:agentId"
+            options={{ pathParams: { agentId } }}
+            className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label="View agent profile"
+          >
+            <AgentAvatarImg
+              name={agentId}
+              alt=""
+              className="h-8 w-8 rounded-full object-cover object-top"
+            />
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">View agent profile</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

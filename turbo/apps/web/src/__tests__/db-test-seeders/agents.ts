@@ -444,7 +444,7 @@ export async function addTestRunToThread(
     chatThreadId: threadId,
     role: "user",
     content: prompt ?? "test prompt",
-    runId: null,
+    runId,
   });
   await globalThis.services.db
     .update(zeroRuns)

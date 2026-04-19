@@ -58,7 +58,6 @@ import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import {
   createNewChatThread$,
-  creatingNewSession$,
   resetTalkSendSignal$,
   sendNewThreadMessage$,
   startNewZeroSession$,
@@ -190,9 +189,9 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
 
 function NewChatButton({ pageSignal }: { pageSignal: AbortSignal }) {
   const currentChatAgentId = useResolved(currentChatAgentId$);
-  const createNewChat = useSet(createNewChatThread$);
+  const [creatingLoadable, createNewChat] =
+    useLoadableSet(createNewChatThread$);
   const navigateToChatFn = useSet(navigateToChat$);
-  const creatingLoadable = useLoadable(creatingNewSession$);
   const creating = creatingLoadable.state === "loading";
 
   const handleNewChat = () => {
