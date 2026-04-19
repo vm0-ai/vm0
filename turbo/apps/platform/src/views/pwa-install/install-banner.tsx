@@ -42,6 +42,7 @@ export function InstallBanner() {
       </span>
       <button
         type="button"
+        aria-label="Install app"
         onClick={() => {
           detach(trigger(pageSignal), Reason.DomCallback);
         }}
