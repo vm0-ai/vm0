@@ -891,7 +891,7 @@ jobs:
           # command-substitution inside this double-quoted string.
           if [ -n "$RUNNER_VERSION" ]; then
             if [ "$RUNNER_RESULT" = "success" ]; then
-              append_row "| runner-rs | v${RUNNER_VERSION} | [🔄 Rollback workflow](${RUNNER_ROLLBACK_URL}) — input <code>target_version</code>: <code>${RUNNER_VERSION}</code> |"
+              append_row "| runner-rs | v${RUNNER_VERSION} | [Rollback workflow](${RUNNER_ROLLBACK_URL}) — input <code>target_version</code>: <code>${RUNNER_VERSION}</code> |"
             else
               append_row "| runner-rs | v${RUNNER_VERSION} | ❌ Deploy failed |"
             fi
