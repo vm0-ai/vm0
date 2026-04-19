@@ -208,6 +208,8 @@ describe("zero-job-detail signals", () => {
 
     it("should pass agent name directly to API", async () => {
       let capturedUrl = "";
+      // mockApi cannot be used here: the agent name "my-org/sub-agent" contains a literal slash,
+      // which MSW resolves as a path separator, so a wildcard pattern is the only way to match it.
       server.use(
         http.get("http://localhost:3000/api/zero/agents/*", ({ request }) => {
           const url = request.url;
