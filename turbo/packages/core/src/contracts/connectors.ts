@@ -3837,6 +3837,29 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  langsmith: {
+    label: "LangSmith",
+    helpText:
+      "Connect to LangSmith for LLM tracing, evaluation, and dataset management.",
+    environmentMapping: {
+      LANGSMITH_API_KEY: "$secrets.LANGSMITH_API_KEY",
+    },
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "Go to [smith.langchain.com](https://smith.langchain.com) → Settings → API Keys → Create API Key.",
+        secrets: {
+          LANGSMITH_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "lsv2_pt_...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   mailsac: {
     label: "Mailsac",
     environmentMapping: {

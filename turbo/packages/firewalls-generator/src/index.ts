@@ -78,6 +78,7 @@ import { generate as generateJotform } from "./jotform";
 import { generate as generateKlaviyo } from "./klaviyo";
 import { generate as generateKommo } from "./kommo";
 import { generate as generateLark } from "./lark";
+import { generate as generateLangsmith } from "./langsmith";
 import { generate as generateLine } from "./line";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
@@ -227,6 +228,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   klaviyo: generateKlaviyo,
   kommo: generateKommo,
   lark: generateLark,
+  langsmith: generateLangsmith,
   line: generateLine,
   linear: generateLinear,
   loops: generateLoops,

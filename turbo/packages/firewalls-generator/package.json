@@ -97,6 +97,7 @@
     "generate:jotform": "tsx src/index.ts jotform",
     "generate:kommo": "tsx src/index.ts kommo",
     "generate:lark": "tsx src/index.ts lark",
+    "generate:langsmith": "tsx src/index.ts langsmith",
     "generate:line": "tsx src/index.ts line",
     "generate:linear": "tsx src/index.ts linear",
     "generate:loops": "tsx src/index.ts loops",
