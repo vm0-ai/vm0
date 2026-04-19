@@ -130,6 +130,7 @@ import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTwenty } from "./twenty";
+import { generate as generateTypeform } from "./typeform";
 import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateWebflow } from "./webflow";
@@ -141,6 +142,7 @@ import { generate as generateZapier } from "./zapier";
 import { generate as generateZapsign } from "./zapsign";
 import { generate as generateZendesk } from "./zendesk";
 import { generate as generateZeptomail } from "./zeptomail";
+import { generate as generateZoom } from "./zoom";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
@@ -268,6 +270,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tldv: generateTldv,
   todoist: generateTodoist,
   twenty: generateTwenty,
+  typeform: generateTypeform,
   v0: generateV0,
   vercel: generateVercel,
   webflow: generateWebflow,
@@ -279,6 +282,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   zapsign: generateZapsign,
   zendesk: generateZendesk,
   zeptomail: generateZeptomail,
+  zoom: generateZoom,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),

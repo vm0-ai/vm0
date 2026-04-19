@@ -4181,6 +4181,29 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  typeform: {
+    label: "Typeform",
+    environmentMapping: {
+      TYPEFORM_TOKEN: "$secrets.TYPEFORM_TOKEN",
+    },
+    helpText:
+      "Connect your Typeform account to create forms, fetch responses, and manage webhooks",
+    authMethods: {
+      "api-token": {
+        label: "Personal Access Token",
+        helpText:
+          "1. Log in to [Typeform](https://admin.typeform.com)\n2. Open the account menu (top-right) and pick **Personal tokens**\n3. Click **Generate a new token**, name it, and choose the scopes you need (e.g. `forms:read`, `responses:read`, `webhooks:write`)\n4. Copy the token (format: `tfp_...`)",
+        secrets: {
+          TYPEFORM_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+            placeholder: "tfp_...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   "test-oauth": {
     label: "Test OAuth (internal)",
     featureFlag: FeatureSwitchKey.TestOauthConnector,
@@ -4213,6 +4236,55 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "/api/test/oauth-provider/authorize",
       tokenUrl: "/api/test/oauth-provider/token",
       scopes: ["read"],
+    },
+  },
+  zoom: {
+    label: "Zoom",
+    environmentMapping: {
+      ZOOM_TOKEN: "$secrets.ZOOM_ACCESS_TOKEN",
+    },
+    featureFlag: FeatureSwitchKey.ZoomConnector,
+    helpText:
+      "Connect your Zoom account to schedule meetings, manage cloud recordings, and access webinar and participant data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Zoom to grant access.",
+        secrets: {
+          ZOOM_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          ZOOM_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "oauth",
+    oauth: {
+      authorizationUrl: "https://zoom.us/oauth/authorize",
+      tokenUrl: "https://zoom.us/oauth/token",
+      // Granular scopes (Zoom's "resource:action:target" format). Covers the
+      // core read/write flows documented in the zoom skill: users, meetings,
+      // past-meeting data, cloud recordings, and webinars.
+      scopes: [
+        "user:read:user",
+        "meeting:read:list_meetings",
+        "meeting:read:meeting",
+        "meeting:write:meeting",
+        "meeting:update:meeting",
+        "meeting:delete:meeting",
+        "meeting:update:status",
+        "meeting:read:list_past_participants",
+        "meeting:read:past_meeting",
+        "cloud_recording:read:list_user_recordings",
+        "cloud_recording:read:list_recording_files",
+        "cloud_recording:read:recording",
+        "webinar:read:list_webinars",
+        "webinar:read:webinar",
+      ],
     },
   },
 } satisfies Record<string, ConnectorConfig>;

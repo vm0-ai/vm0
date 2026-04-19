@@ -158,6 +158,7 @@ const CONNECTOR_ICON_COLORFUL = {
   zapier: true,
   zapsign: true,
   zeptomail: true,
+  zoom: true,
 } as const;
 
 function connectorIconSkipsDarkInvert(type: ConnectorType): boolean {

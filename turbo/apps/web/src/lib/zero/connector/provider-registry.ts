@@ -106,6 +106,7 @@ import { supadataHandler } from "./providers/supadata-handler";
 import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
 import { twentyHandler } from "./providers/twenty-handler";
+import { typeformHandler } from "./providers/typeform-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
 import { zapierHandler } from "./providers/zapier-handler";
 import { zapsignHandler } from "./providers/zapsign-handler";
@@ -148,6 +149,7 @@ import { slackWebhookHandler } from "./providers/slack-webhook-handler";
 import { v0Handler } from "./providers/v0-handler";
 import { wixHandler } from "./providers/wix-handler";
 import { zeptomailHandler } from "./providers/zeptomail-handler";
+import { zoomHandler } from "./providers/zoom-handler";
 import { testOauthHandler } from "./providers/test-oauth-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -291,10 +293,12 @@ export const PROVIDER_HANDLERS: Record<
   tavily: tavilyHandler,
   tldv: tldvHandler,
   twenty: twentyHandler,
+  typeform: typeformHandler,
   youtube: youtubeHandler,
   zapier: zapierHandler,
   zapsign: zapsignHandler,
   zendesk: zendeskHandler,
+  zoom: zoomHandler,
   pdforge: pdforgeHandler,
   "slack-webhook": slackWebhookHandler,
   v0: v0Handler,
