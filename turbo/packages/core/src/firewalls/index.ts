@@ -163,6 +163,7 @@ import { tavilyFirewall } from "./tavily.generated";
 import { testOauthFirewall } from "./test-oauth.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
+import { togetherFirewall } from "./together.generated";
 import { twentyFirewall } from "./twenty.generated";
 import { typeformFirewall } from "./typeform.generated";
 import { v0Firewall } from "./v0.generated";
@@ -332,6 +333,7 @@ const CONNECTOR_FIREWALLS = {
   "test-oauth": testOauthFirewall,
   tldv: tldvFirewall,
   todoist: todoistFirewall,
+  together: togetherFirewall,
   twenty: twentyFirewall,
   typeform: typeformFirewall,
   v0: v0Firewall,

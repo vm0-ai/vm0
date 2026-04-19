@@ -113,6 +113,7 @@ import { streakHandler } from "./providers/streak-handler";
 import { supadataHandler } from "./providers/supadata-handler";
 import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
+import { togetherHandler } from "./providers/together-handler";
 import { twentyHandler } from "./providers/twenty-handler";
 import { typeformHandler } from "./providers/typeform-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
@@ -310,6 +311,7 @@ export const PROVIDER_HANDLERS: Record<
   supadata: supadataHandler,
   tavily: tavilyHandler,
   tldv: tldvHandler,
+  together: togetherHandler,
   twenty: twentyHandler,
   typeform: typeformHandler,
   youtube: youtubeHandler,

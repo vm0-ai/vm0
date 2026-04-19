@@ -138,6 +138,7 @@ import { generate as generateTavily } from "./tavily";
 import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
+import { generate as generateTogether } from "./together";
 import { generate as generateTwenty } from "./twenty";
 import { generate as generateTypeform } from "./typeform";
 import { generate as generateV0 } from "./v0";
@@ -287,6 +288,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "test-oauth": generateTestOauth,
   tldv: generateTldv,
   todoist: generateTodoist,
+  together: generateTogether,
   twenty: generateTwenty,
   typeform: generateTypeform,
   v0: generateV0,
