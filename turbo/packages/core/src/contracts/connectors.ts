@@ -752,8 +752,8 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "oauth",
     oauth: {
-      authorizationUrl: "https://account.docusign.com/oauth/auth",
-      tokenUrl: "https://account.docusign.com/oauth/token",
+      authorizationUrl: "https://account-d.docusign.com/oauth/auth",
+      tokenUrl: "https://account-d.docusign.com/oauth/token",
       scopes: ["signature", "extended", "openid"],
     },
   },

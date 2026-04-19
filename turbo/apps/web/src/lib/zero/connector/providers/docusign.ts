@@ -2,7 +2,7 @@ import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
-const DOCUSIGN_USERINFO_URL = "https://account.docusign.com/oauth/userinfo";
+const DOCUSIGN_USERINFO_URL = "https://account-d.docusign.com/oauth/userinfo";
 
 interface DocuSignUserInfo {
   id: string;

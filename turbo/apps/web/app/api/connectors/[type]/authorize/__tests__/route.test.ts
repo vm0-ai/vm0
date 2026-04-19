@@ -183,7 +183,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
 
       expect(response.status).toBe(307);
       const location = response.headers.get("location");
-      expect(location).toContain("https://account.docusign.com/oauth/auth");
+      expect(location).toContain("https://account-d.docusign.com/oauth/auth");
       expect(location).toContain("client_id=docusign-test-client-id");
       expect(location).toContain("redirect_uri=");
       expect(location).toContain("response_type=code");
