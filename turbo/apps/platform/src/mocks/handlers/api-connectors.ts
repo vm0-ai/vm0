@@ -8,7 +8,6 @@ import {
   CONNECTOR_TYPES,
   type ConnectorResponse,
   type ConnectorType,
-  type ScopeDiffResponse,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
@@ -23,18 +22,8 @@ export function setMockConnectors(connectors: ConnectorResponse[]): void {
   mockConnectors = connectors;
 }
 
-const DEFAULT_SCOPE_DIFF: ScopeDiffResponse = {
-  addedScopes: [],
-  removedScopes: [],
-  currentScopes: [],
-  storedScopes: [],
-};
-
-let mockScopeDiff: ScopeDiffResponse = { ...DEFAULT_SCOPE_DIFF };
-
 export function resetMockConnectors(): void {
   mockConnectors = [];
-  mockScopeDiff = { ...DEFAULT_SCOPE_DIFF };
 }
 
 export const apiConnectorsHandlers = [
@@ -65,6 +54,11 @@ export const apiConnectorsHandlers = [
   }),
 
   mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ respond }) => {
-    return respond(200, mockScopeDiff);
+    return respond(200, {
+      addedScopes: [],
+      removedScopes: [],
+      currentScopes: [],
+      storedScopes: [],
+    });
   }),
 ];
