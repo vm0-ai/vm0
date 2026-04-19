@@ -3168,6 +3168,13 @@
           "Dale contexto de marca a Zero. Pega tus guías de voz de marca o una publicación de ejemplo del idioma objetivo — la salida será notablemente más acorde a la marca."
         ]
       }
+    },
+    "filter": {
+      "all": "Todos",
+      "everyone": "Para todos",
+      "engineering": "Engineering",
+      "product": "Producto",
+      "ops": "Operaciones"
     }
   },
   "landing": {

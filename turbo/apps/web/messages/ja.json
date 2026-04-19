@@ -3168,6 +3168,13 @@
           "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
         ]
       }
+    },
+    "filter": {
+      "all": "すべて",
+      "everyone": "全員向け",
+      "engineering": "Engineering",
+      "product": "プロダクト",
+      "ops": "オペレーション"
     }
   },
   "landing": {

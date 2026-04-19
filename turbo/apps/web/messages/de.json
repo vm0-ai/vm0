@@ -3168,6 +3168,13 @@
           "Geben Sie Zero Markenkontext. Fügen Sie Ihre Brand-Voice-Richtlinien oder einen Beispielbeitrag aus der Zielsprache ein — die Ausgabe wird spürbar markengerechter."
         ]
       }
+    },
+    "filter": {
+      "all": "Alle",
+      "everyone": "Für alle",
+      "engineering": "Engineering",
+      "product": "Produkt",
+      "ops": "Operations"
     }
   },
   "landing": {
