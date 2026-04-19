@@ -160,6 +160,7 @@ import { wixHandler } from "./providers/wix-handler";
 import { zeptomailHandler } from "./providers/zeptomail-handler";
 import { zoomHandler } from "./providers/zoom-handler";
 import { testOauthHandler } from "./providers/test-oauth-handler";
+import { wandbHandler } from "./providers/wandb-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
 
@@ -322,6 +323,7 @@ export const PROVIDER_HANDLERS: Record<
   v0: v0Handler,
   wix: wixHandler,
   "test-oauth": testOauthHandler,
+  wandb: wandbHandler,
 };
 
 /**

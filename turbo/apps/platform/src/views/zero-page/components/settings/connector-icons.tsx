@@ -157,6 +157,7 @@ const CONNECTOR_ICON_COLORFUL = {
   supabase: true,
   tldv: true,
   todoist: true,
+  wandb: true,
   webflow: true,
   wrike: true,
   xero: true,

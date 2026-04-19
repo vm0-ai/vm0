@@ -151,6 +151,7 @@ import { generate as generateZapier } from "./zapier";
 import { generate as generateZapsign } from "./zapsign";
 import { generate as generateZendesk } from "./zendesk";
 import { generate as generateZeptomail } from "./zeptomail";
+import { generate as generateWandb } from "./wandb";
 import { generate as generateZoom } from "./zoom";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
@@ -300,6 +301,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   zapsign: generateZapsign,
   zendesk: generateZendesk,
   zeptomail: generateZeptomail,
+  wandb: generateWandb,
   zoom: generateZoom,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
