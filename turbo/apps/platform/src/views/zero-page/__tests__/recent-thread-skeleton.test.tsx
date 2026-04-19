@@ -12,6 +12,7 @@ import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 
+const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "t0000000-0000-4000-a000-000000000001";
 
 function mockAgentsWithThreads() {

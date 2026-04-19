@@ -9,13 +9,15 @@ import { pathname } from "../../../signals/location.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { zeroUserPreferencesContract } from "@vm0/core";
+import {
+  zeroUserPreferencesContract,
+  chatThreadsContract,
+  chatThreadByIdContract,
+} from "@vm0/core";
 import {
   setManagePinnedDialogOpen$,
   setDraftPinnedIds$,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
-import { mockApi } from "../../../mocks/msw-contract.ts";
-import { chatThreadsContract, chatThreadByIdContract } from "@vm0/core";
 
 const context = testContext();
 

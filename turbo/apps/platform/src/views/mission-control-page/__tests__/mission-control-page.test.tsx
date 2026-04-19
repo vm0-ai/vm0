@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import {
   FeatureSwitchKey,
   tasksContract,
@@ -1239,24 +1238,6 @@ describe("mission control page", () => {
       },
     ]);
     server.use(
-      http.get("*/api/zero/tasks", () => {
-        return HttpResponse.json({
-          tasks: [
-            {
-              id: "task-refresh",
-              type: "schedule",
-              title: "Refresh Panel Task",
-              summary: null,
-              agent: createAgent(),
-              latestRunId: "run-refresh-v1",
-              status: "completed",
-              scheduleId: "sched-refresh",
-              createdAt: "2026-04-10T10:00:00Z",
-              updatedAt: "2026-04-10T10:00:00Z",
-            },
-          ],
-        });
-      }),
       mockApi(logsByIdContract.getById, ({ params, respond }) => {
         if (params.id === "run-refresh-v2") {
           return respond(200, {
@@ -1338,7 +1319,6 @@ describe("mission control page", () => {
         updatedAt: "2026-04-10T10:00:00Z",
       },
     ]);
-    server.use();
 
     // The tasks loop auto-polls — it discovers the new latestRunId and calls
     // refreshPanel$, swapping the panel entry to run-refresh-v2.
