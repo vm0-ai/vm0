@@ -113,8 +113,10 @@ const router = tsr.router(zeroUserConnectorsContract, {
       };
     }
 
+    const uniqueTypes = Array.from(new Set(body.enabledTypes));
+
     // Validate connector types before storing
-    const invalidTypes = body.enabledTypes.filter((t) => {
+    const invalidTypes = uniqueTypes.filter((t) => {
       return !connectorTypeSchema.safeParse(t).success;
     });
     if (invalidTypes.length > 0) {
@@ -130,7 +132,6 @@ const router = tsr.router(zeroUserConnectorsContract, {
     }
 
     const db = globalThis.services.db;
-    const uniqueTypes = Array.from(new Set(body.enabledTypes));
 
     // Replace full list atomically
     await db.transaction(async (tx) => {
