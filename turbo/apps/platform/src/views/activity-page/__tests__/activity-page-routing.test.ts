@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -10,6 +9,12 @@ import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import {
+  logsListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+} from "@vm0/core";
 
 const context = testContext();
 
@@ -70,41 +75,24 @@ function mockActivityAPIs() {
   };
 
   server.use(
-    http.get("*/api/zero/composes/list", () => {
-      return HttpResponse.json({
-        composes: [
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            name: "test-agent",
-            displayName: "Test Agent",
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ],
-      });
-    }),
-    http.get("*/api/zero/logs", () => {
-      return HttpResponse.json({
+    mockApi(logsListContract.list, ({ respond }) =>
+      respond(200, {
         data: logs,
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
         filters: { statuses: [], sources: [], agents: [] },
+      }),
+    ),
+    mockApi(logsByIdContract.getById, ({ params, respond }) => {
+      if (params.id === "a0000000-0000-4000-a000-000000000001") {
+        return respond(200, logDetail);
+      }
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
       });
     }),
-    http.get("*/api/zero/logs/:id", ({ params }) => {
-      if (params["id"] === "a0000000-0000-4000-a000-000000000001") {
-        return HttpResponse.json(logDetail);
-      }
-      return HttpResponse.json(
-        { error: { message: "Not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
-    }),
-    http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-      return HttpResponse.json(eventsResponse);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
+    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
+      respond(200, eventsResponse),
+    ),
   );
 }
 
@@ -180,21 +168,8 @@ describe("activity page routing", () => {
 
   it("should display 'Agent (displayName)' for delegated runs with triggerAgentName", async () => {
     server.use(
-      http.get("*/api/zero/composes/list", () => {
-        return HttpResponse.json({
-          composes: [
-            {
-              id: "c0000000-0000-4000-a000-000000000001",
-              name: "child-agent",
-              displayName: "Child Agent",
-              headVersionId: null,
-              updatedAt: "2026-03-10T00:00:00Z",
-            },
-          ],
-        });
-      }),
-      http.get("*/api/zero/logs", () => {
-        return HttpResponse.json({
+      mockApi(logsListContract.list, ({ respond }) =>
+        respond(200, {
           data: [
             {
               id: "b0000000-0000-4000-a000-000000000001",
@@ -215,11 +190,8 @@ describe("activity page routing", () => {
           ],
           pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
           filters: { statuses: [], sources: [], agents: [] },
-        });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
+        }),
+      ),
     );
 
     detachedSetupPage({
