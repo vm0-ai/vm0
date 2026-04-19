@@ -180,9 +180,16 @@ export default async function RootLayout({
         <body
           className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
         >
-          <Script
-            id="json-ld"
+          {/*
+            JSON-LD must render as a native <script> tag in SSR HTML so Googlebot
+            sees it on first-pass crawl. Next.js <Script> (default strategy:
+            afterInteractive) injects scripts client-side and escapes payloads,
+            which hides the structured data from first-wave indexing and most
+            third-party validators.
+          */}
+          <script
             type="application/ld+json"
+            suppressHydrationWarning
             dangerouslySetInnerHTML={{
               __html: JSON.stringify({
                 "@context": "https://schema.org",
@@ -207,9 +214,9 @@ export default async function RootLayout({
               }),
             }}
           />
-          <Script
-            id="json-ld-website"
+          <script
             type="application/ld+json"
+            suppressHydrationWarning
             dangerouslySetInnerHTML={{
               __html: JSON.stringify({
                 "@context": "https://schema.org",
@@ -221,9 +228,9 @@ export default async function RootLayout({
               }),
             }}
           />
-          <Script
-            id="json-ld-software"
+          <script
             type="application/ld+json"
+            suppressHydrationWarning
             dangerouslySetInnerHTML={{
               __html: JSON.stringify({
                 "@context": "https://schema.org",
