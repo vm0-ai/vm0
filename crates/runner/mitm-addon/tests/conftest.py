@@ -16,6 +16,7 @@ Fixtures here exist for two reasons:
 import contextlib
 import json
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -25,6 +26,7 @@ from mitmproxy.test import tflow, tutils
 
 import auth
 import mitm_addon
+import usage
 
 
 @pytest.fixture(autouse=True)
@@ -242,22 +244,16 @@ def fresh_usage_executor():
     reports need a fresh executor afterwards so later tests still see a
     live pool.  This fixture owns the lifecycle: a new
     :class:`ThreadPoolExecutor` is installed before the test and the
-    original is restored after, regardless of whether the test shut it
-    down.
+    original is restored after.  ``ThreadPoolExecutor.shutdown`` is
+    idempotent, so we always call it on the way out regardless of
+    whether the test already did.
     """
-    from concurrent.futures import ThreadPoolExecutor
-
-    import usage
-
     original = usage.usage_executor
     usage.usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
     try:
         yield usage.usage_executor
     finally:
-        try:
-            usage.usage_executor.shutdown(wait=True)
-        except RuntimeError:
-            pass
+        usage.usage_executor.shutdown(wait=True)
         usage.usage_executor = original
 
 
