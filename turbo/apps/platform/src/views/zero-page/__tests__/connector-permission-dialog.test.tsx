@@ -17,27 +17,24 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setPermissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { permissionDialogSelected$ } from "../../../signals/zero-page/settings/permission-dialog.ts";
 import type { ConnectorType } from "@vm0/core";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
 function mockAgents(
   agents: { id: string; displayName: string; avatarUrl?: string }[],
 ) {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json(
-        agents.map((a) => {
-          return {
-            id: a.id,
-            displayName: a.displayName,
-            description: null,
-            sound: null,
-            avatarUrl: a.avatarUrl ?? null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          };
-        }),
-      );
+  setMockTeam(
+    agents.map((a) => {
+      return {
+        id: a.id,
+        displayName: a.displayName,
+        description: null,
+        sound: null,
+        avatarUrl: a.avatarUrl ?? null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      };
     }),
   );
 }

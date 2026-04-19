@@ -6,24 +6,12 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setZeroShowAboutPage$ } from "../../../signals/zero-page/zero-nav.ts";
+import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
 
 function mockBasicAPIs() {
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -47,17 +35,10 @@ describe("zero about page", () => {
   // AGENT-D-073: Dynamic text interpolation with name
   it("interpolates agent display name in section headings", async () => {
     mockBasicAPIs();
+    setMockOnboardingStatus({
+      defaultAgentMetadata: { displayName: "MyAgent" },
+    });
     server.use(
-      http.get("*/api/zero/onboarding/status", () => {
-        return HttpResponse.json({
-          needsOnboarding: false,
-          isAdmin: true,
-          hasOrg: true,
-          hasDefaultAgent: true,
-          defaultAgentId: "c0000000-0000-4000-a000-000000000001",
-          defaultAgentMetadata: { displayName: "MyAgent" },
-        });
-      }),
       http.get("*/api/zero/agents/:id", () => {
         return HttpResponse.json({
           agentId: "c0000000-0000-4000-a000-000000000001",

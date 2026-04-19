@@ -39,7 +39,11 @@ import {
   apiIntegrationsTelegramHandlers,
   resetMockTelegramIntegration,
 } from "./api-integrations-telegram.ts";
-import { apiAgentsHandlers, resetMockComposesList } from "./api-agents.ts";
+import {
+  apiAgentsHandlers,
+  resetMockComposesList,
+  resetMockTeam,
+} from "./api-agents.ts";
 import {
   apiFeatureSwitchesHandlers,
   resetMockFeatureSwitches,
@@ -50,8 +54,16 @@ import {
   apiUserPreferencesHandlers,
   resetMockUserPreferences,
 } from "./api-user-preferences.ts";
-import { apiOnboardingHandlers } from "./api-onboarding.ts";
+import {
+  apiOnboardingHandlers,
+  resetMockOnboardingStatus,
+} from "./api-onboarding.ts";
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
+import { apiSchedulesHandlers, resetMockSchedules } from "./api-schedules.ts";
+import { apiTasksHandlers, resetMockTasks } from "./api-tasks.ts";
+import { apiPhoneHandlers, resetMockPhoneStatus } from "./api-phone.ts";
+import { apiInsightsHandlers } from "./api-insights.ts";
+import { apiQueuePositionHandlers } from "./api-queue-position.ts";
 import {
   apiIntegrationsSlackConnectHandlers,
   resetMockSlackConnect,
@@ -84,6 +96,11 @@ export const handlers = [
   ...apiRealtimeHandlers,
   ...apiPermissionAccessRequestsHandlers,
   ...apiPermissionPoliciesHandlers,
+  ...apiSchedulesHandlers,
+  ...apiTasksHandlers,
+  ...apiPhoneHandlers,
+  ...apiInsightsHandlers,
+  ...apiQueuePositionHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -106,4 +123,9 @@ export function resetAllMockHandlers(): void {
   resetMockOrgDomains();
   resetMockUsageMembers();
   resetMockMemberCreditCaps();
+  resetMockSchedules();
+  resetMockTasks();
+  resetMockPhoneStatus();
+  resetMockTeam();
+  resetMockOnboardingStatus();
 }

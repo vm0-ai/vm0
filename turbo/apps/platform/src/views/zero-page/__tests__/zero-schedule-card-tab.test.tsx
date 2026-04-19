@@ -2,11 +2,18 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import type { ScheduleResponse } from "@vm0/core";
+import {
+  type ScheduleResponse,
+  zeroSchedulesMainContract,
+  zeroSchedulesByNameContract,
+} from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
@@ -45,31 +52,28 @@ function defaultSchedule(
 }
 
 function mockBaseAPIs(schedules: ScheduleResponse[]) {
+  setMockTeam([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "agent-detail-id",
+      displayName: "My Agent",
+      description: "A helpful agent",
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_2",
+      updatedAt: "2024-01-02T00:00:00Z",
+    },
+  ]);
+  setMockSchedules(schedules);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "agent-detail-id",
-          name: "my-agent",
-          displayName: "My Agent",
-          description: "A helpful agent",
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_2",
-          updatedAt: "2024-01-02T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -88,9 +92,6 @@ function mockBaseAPIs(schedules: ScheduleResponse[]) {
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
       return HttpResponse.json({ content: null, filename: null });
-    }),
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules });
     }),
   );
 }
@@ -245,17 +246,14 @@ describe("zero-schedule-card - save error", () => {
     const user = userEvent.setup();
     mockBaseAPIs([defaultSchedule()]);
     server.use(
-      http.post("*/api/zero/schedules", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Schedule limit reached",
-              code: "INTERNAL_SERVER_ERROR",
-            },
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
+        respond(400, {
+          error: {
+            message: "Schedule limit reached",
+            code: "INTERNAL_SERVER_ERROR",
           },
-          { status: 400 },
-        );
-      }),
+        }),
+      ),
     );
     await navigateToScheduleTab();
 
@@ -287,9 +285,9 @@ describe("zero-schedule-card - delete", () => {
     let deleteCalled = false;
     mockBaseAPIs([defaultSchedule()]);
     server.use(
-      http.delete("*/api/zero/schedules/:name", () => {
+      mockApi(zeroSchedulesByNameContract.delete, ({ respond }) => {
         deleteCalled = true;
-        return new HttpResponse(null, { status: 204 });
+        return respond(204);
       }),
     );
 
@@ -323,9 +321,9 @@ describe("zero-schedule-card - delete", () => {
     let deletedName: string | null = null;
     mockBaseAPIs([defaultSchedule()]);
     server.use(
-      http.delete("*/api/zero/schedules/:name", ({ params }) => {
-        deletedName = params["name"] as string;
-        return new HttpResponse(null, { status: 204 });
+      mockApi(zeroSchedulesByNameContract.delete, ({ params, respond }) => {
+        deletedName = params.name;
+        return respond(204);
       }),
     );
 
@@ -356,9 +354,9 @@ describe("zero-schedule-tab - loading state", () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
     mockBaseAPIs([defaultSchedule()]);
     server.use(
-      http.get("*/api/zero/schedules", async () => {
+      mockApi(zeroSchedulesMainContract.list, async ({ respond }) => {
         await hangDeferred.promise;
-        return HttpResponse.json({ schedules: [] });
+        return respond(200, { schedules: [] });
       }),
     );
 
@@ -379,17 +377,14 @@ describe("zero-schedule-tab - error state", () => {
   it("displays error message when schedule fetch fails (SCHED-D-044)", async () => {
     mockBaseAPIs([]);
     server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Failed to load schedules",
-              code: "INTERNAL_SERVER_ERROR",
-            },
+      mockApi(zeroSchedulesMainContract.list, ({ respond }) =>
+        respond(401, {
+          error: {
+            message: "Failed to load schedules",
+            code: "INTERNAL_SERVER_ERROR",
           },
-          { status: 500 },
-        );
-      }),
+        }),
+      ),
     );
 
     await navigateToScheduleTab();

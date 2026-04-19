@@ -7,6 +7,7 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type { ConnectorResponse, ConnectorType } from "@vm0/core";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
+import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
 
@@ -188,18 +189,14 @@ function renderTeamPageAsMember(
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
-        needsOnboarding: false,
-        isAdmin: false,
-        hasOrg: true,
-        hasDefaultAgent: true,
-        defaultAgentId: "compose-1",
-        defaultAgentMetadata: { displayName: "Zero" },
-      });
-    }),
   );
 
+  setMockOnboardingStatus({
+    isAdmin: false,
+    hasDefaultAgent: true,
+    defaultAgentId: "compose-1",
+    defaultAgentMetadata: { displayName: "Zero" },
+  });
   setMockOrg({ role: "member" });
   detachedSetupPage({ context, path: "/agents/zero" });
 }

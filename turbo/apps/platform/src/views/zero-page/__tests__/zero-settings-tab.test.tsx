@@ -10,6 +10,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
@@ -42,22 +43,27 @@ function agentDetail(overrides: Record<string, unknown> = {}) {
 }
 
 function mockAPIs(detailOverrides: Record<string, unknown> = {}) {
+  setMockTeam([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: subAgent().id,
+      displayName: subAgent().displayName,
+      description: subAgent().description,
+      sound: subAgent().sound,
+      avatarUrl: subAgent().avatarUrl,
+      headVersionId: subAgent().headVersionId,
+      updatedAt: subAgent().updatedAt,
+    },
+  ]);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        subAgent(),
-      ]);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -66,9 +72,6 @@ function mockAPIs(detailOverrides: Record<string, unknown> = {}) {
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
       return HttpResponse.json({ content: null, filename: null });
-    }),
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [] });
     }),
   );
 }
@@ -154,21 +157,18 @@ describe("zero settings tab - display", () => {
   });
 
   it("hides danger zone for the default agent (AGENT-D-043)", async () => {
+    setMockTeam([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: "Zero",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            name: "zero",
-            displayName: "Zero",
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
@@ -187,9 +187,6 @@ describe("zero settings tab - display", () => {
       }),
       http.get("*/api/zero/agents/:name/instructions", () => {
         return HttpResponse.json({ content: null, filename: null });
-      }),
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({ schedules: [] });
       }),
     );
 

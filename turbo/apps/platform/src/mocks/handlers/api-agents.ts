@@ -12,14 +12,36 @@ import {
   zeroUserConnectorsContract,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroSchedulesMainContract,
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   type ComposeListItem,
+  type TeamComposeItem,
 } from "@vm0/core";
 import { mockApi } from "../msw-contract.ts";
+
+const DEFAULT_TEAM: TeamComposeItem[] = [
+  {
+    id: "c0000000-0000-4000-a000-000000000001",
+    displayName: null,
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    headVersionId: "version_1",
+    updatedAt: "2024-01-01T00:00:00Z",
+  },
+];
+
+let mockTeam: TeamComposeItem[] = [...DEFAULT_TEAM];
+
+export function setMockTeam(team: TeamComposeItem[]): void {
+  mockTeam = team;
+}
+
+export function resetMockTeam(): void {
+  mockTeam = [...DEFAULT_TEAM];
+}
 
 const DEFAULT_COMPOSES_LIST: ComposeListItem[] = [
   {
@@ -46,17 +68,7 @@ export function resetMockComposesList(): void {
 export const apiAgentsHandlers = [
   // GET /api/zero/team
   mockApi(zeroTeamContract.list, ({ respond }) => {
-    return respond(200, [
-      {
-        id: "c0000000-0000-4000-a000-000000000001",
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
+    return respond(200, mockTeam);
   }),
 
   // GET /api/zero/composes/list
@@ -111,11 +123,6 @@ export const apiAgentsHandlers = [
       content: null,
       filename: null,
     });
-  }),
-
-  // GET /api/zero/schedules
-  mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
-    return respond(200, { schedules: [] });
   }),
 
   // GET /api/zero/chat-threads

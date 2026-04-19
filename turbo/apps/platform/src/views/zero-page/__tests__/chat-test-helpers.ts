@@ -9,6 +9,9 @@ import {
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 
 import { fill } from "../../../__tests__/page-helper.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroQueuePositionContract } from "@vm0/core";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
@@ -16,29 +19,27 @@ const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 export const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 
 export function mockSubagentThread(threadId: string) {
+  setMockTeam([
+    {
+      id: DEFAULT_AGENT_ID,
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: SUB_AGENT_ID,
+      displayName: "Assistant",
+      description: null,
+      sound: null,
+      avatarUrl: "https://example.com/avatar.png",
+      headVersionId: "version_2",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: DEFAULT_AGENT_ID,
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: SUB_AGENT_ID,
-          displayName: "Assistant",
-          description: null,
-          sound: null,
-          avatarUrl: "https://example.com/avatar.png",
-          headVersionId: "version_2",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/chat-threads/:id/messages", () => {
       return HttpResponse.json({ messages: [], hasMore: false });
     }),
@@ -328,9 +329,9 @@ export function mockChatLifecycle(options?: {
         createdAt: "2026-03-10T00:00:00Z",
       });
     }),
-    http.get("*/api/zero/queue-position", () => {
-      return HttpResponse.json({ position: queuePosition });
-    }),
+    mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
+      respond(200, { position: queuePosition, total: 0 }),
+    ),
   );
 
   return {

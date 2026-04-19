@@ -47,19 +47,6 @@ function mockAPIs() {
   let lastDeletedId: string | null = null;
 
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: AGENT_ID,
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads });
     }),
@@ -215,19 +202,6 @@ describe("sidebar chat delete", () => {
     ];
 
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: AGENT_ID,
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads });
       }),

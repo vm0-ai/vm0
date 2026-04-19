@@ -6,27 +6,24 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
 const AGENT_ID = "agent-alpha";
 
 function mockAgent() {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: AGENT_ID,
-          displayName: "Alpha Bot",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-  );
+  setMockTeam([
+    {
+      id: AGENT_ID,
+      displayName: "Alpha Bot",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
 }
 
 function mockThreadList(threads: { id: string; title: string }[]) {

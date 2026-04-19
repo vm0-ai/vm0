@@ -7,43 +7,37 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { FeatureSwitchKey } from "@vm0/core";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { setMockOnboardingStatus } from "../../../mocks/handlers/api-onboarding.ts";
 
 const context = testContext();
 
 function mockTwoAgents() {
+  setMockOnboardingStatus({
+    defaultAgentId: "agent-foo-id",
+    defaultAgentMetadata: { displayName: "foo" },
+  });
+  setMockTeam([
+    {
+      id: "agent-foo-id",
+      displayName: "foo",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "agent-bar-id",
+      displayName: "bar",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_2",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
   server.use(
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
-        needsOnboarding: false,
-        isAdmin: true,
-        hasOrg: true,
-        hasDefaultAgent: true,
-        defaultAgentId: "agent-foo-id",
-        defaultAgentMetadata: { displayName: "foo" },
-      });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "agent-foo-id",
-          displayName: "foo",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "agent-bar-id",
-          displayName: "bar",
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_2",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),

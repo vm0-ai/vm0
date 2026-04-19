@@ -21,6 +21,7 @@ import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
@@ -63,10 +64,8 @@ function mockBaseAPIs(
   ];
   const threads = overrides.threads ?? [];
 
+  setMockTeam(agents);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json(agents);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads });
     }),
@@ -123,19 +122,6 @@ describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
   it("shows skeleton placeholders while chat threads are loading", async () => {
     const deferred = createDeferredPromise<void>(context.signal);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: DEFAULT_AGENT_ID,
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
       http.get("*/api/zero/chat-threads", async () => {
         await deferred.promise;
         return HttpResponse.json({ threads: [] });

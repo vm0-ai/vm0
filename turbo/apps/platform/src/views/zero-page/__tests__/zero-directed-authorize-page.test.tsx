@@ -15,27 +15,24 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 
 function mockAgentWithName(agentId: string, displayName: string) {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: agentId,
-          displayName,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-  );
+  setMockTeam([
+    {
+      id: agentId,
+      displayName,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
 }
 
 function mockConnectorsConnected(type: ConnectorType) {

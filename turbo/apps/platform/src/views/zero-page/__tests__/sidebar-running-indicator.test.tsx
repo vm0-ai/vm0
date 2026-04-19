@@ -40,19 +40,6 @@ interface ThreadFixture {
 
 function mockAPIs(threadsRef: { current: ThreadFixture[] }) {
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: DEFAULT_AGENT_ID,
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: threadsRef.current });
     }),

@@ -21,15 +21,12 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { setMockTasks } from "../../../mocks/handlers/api-tasks.ts";
 
 const context = testContext();
 
 function mockEmptyTaskList() {
-  server.use(
-    http.get("*/api/zero/tasks", () => {
-      return HttpResponse.json({ tasks: [] });
-    }),
-  );
+  setMockTasks([]);
 }
 
 // ---------------------------------------------------------------------------

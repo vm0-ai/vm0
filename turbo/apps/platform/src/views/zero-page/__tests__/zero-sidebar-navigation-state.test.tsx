@@ -18,6 +18,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { resetMockBilling } from "../../../mocks/handlers/api-billing.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setIsScrolled$ } from "../../../signals/zero-page/zero-sidebar-state.ts";
@@ -100,10 +101,8 @@ function mockBaseAPIs(options?: {
   const agents = options?.agents ?? [makeDefaultAgent()];
   const threads = options?.threads ?? [];
 
+  setMockTeam(agents);
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json(agents);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads });
     }),

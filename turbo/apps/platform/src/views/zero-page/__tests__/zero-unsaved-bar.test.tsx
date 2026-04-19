@@ -9,6 +9,9 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setMockSchedules } from "../../../mocks/handlers/api-schedules.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroSchedulesMainContract, type ScheduleResponse } from "@vm0/core";
 
 const context = testContext();
 
@@ -46,10 +49,8 @@ function createMockSchedule(overrides: Record<string, unknown> = {}) {
 }
 
 function mockAPIs(overrides: Record<string, unknown> = {}) {
+  setMockSchedules([createMockSchedule(overrides) as ScheduleResponse]);
   server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [createMockSchedule(overrides)] });
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -102,14 +103,14 @@ describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () =
 describe("zero unsaved bar - save button persists changes (SCHED-D-096)", () => {
   it("hides unsaved changes bar after successful save", async () => {
     server.use(
-      http.post("*/api/zero/schedules", () => {
-        return HttpResponse.json({
+      mockApi(zeroSchedulesMainContract.deploy, ({ respond }) =>
+        respond(200, {
           schedule: createMockSchedule({
             description: "Daily morning briefingMy description",
-          }),
+          }) as ScheduleResponse,
           created: false,
-        });
-      }),
+        }),
+      ),
     );
 
     const user = userEvent.setup();

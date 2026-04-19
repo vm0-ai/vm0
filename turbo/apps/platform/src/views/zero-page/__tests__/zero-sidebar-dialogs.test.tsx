@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -7,6 +7,9 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { zeroUserPreferencesContract } from "@vm0/core";
 import {
   setManagePinnedDialogOpen$,
   setDraftPinnedIds$,
@@ -17,38 +20,37 @@ const context = testContext();
 function mockAPIsWithSubagents({
   pinnedAgentIds = ["pinned-agent-id"],
 }: { pinnedAgentIds?: string[] } = {}) {
+  setMockTeam([
+    {
+      id: "c0000000-0000-4000-a000-000000000001",
+      displayName: null,
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "pinned-agent-id",
+      displayName: "Pinned Agent",
+      description: "A pinned sub-agent",
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_2",
+      updatedAt: "2024-01-02T00:00:00Z",
+    },
+    {
+      id: "unpinned-agent-id",
+      displayName: "Unpinned Agent",
+      description: "An unpinned sub-agent",
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_3",
+      updatedAt: "2024-01-03T00:00:00Z",
+    },
+  ]);
+  setMockUserPreferences({ pinnedAgentIds });
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "pinned-agent-id",
-          displayName: "Pinned Agent",
-          description: "A pinned sub-agent",
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_2",
-          updatedAt: "2024-01-02T00:00:00Z",
-        },
-        {
-          id: "unpinned-agent-id",
-          displayName: "Unpinned Agent",
-          description: "An unpinned sub-agent",
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_3",
-          updatedAt: "2024-01-03T00:00:00Z",
-        },
-      ]);
-    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
@@ -74,23 +76,6 @@ function mockAPIsWithSubagents({
         { status: 201 },
       );
     }),
-    http.get("*/api/zero/user-preferences", () => {
-      return HttpResponse.json({
-        timezone: null,
-        pinnedAgentIds,
-        sendMode: "enter" as const,
-        captureNetworkBodiesRemaining: 0,
-      });
-    }),
-    http.post("*/api/zero/user-preferences", async ({ request }) => {
-      const body = (await request.json()) as { pinnedAgentIds?: string[] };
-      return HttpResponse.json({
-        timezone: null,
-        pinnedAgentIds: body.pinnedAgentIds ?? pinnedAgentIds,
-        sendMode: "enter" as const,
-        captureNetworkBodiesRemaining: 0,
-      });
-    }),
   );
 }
 
@@ -108,10 +93,6 @@ function openManagePinnedDialog() {
   context.store.set(setDraftPinnedIds$, ["pinned-agent-id"]);
   context.store.set(setManagePinnedDialogOpen$, true);
 }
-
-beforeEach(() => {
-  setMockUserPreferences({ pinnedAgentIds: ["pinned-agent-id"] });
-});
 
 describe("chatListDialog", () => {
   it("should navigate to chat when clicking a pinned agent", async () => {
@@ -555,12 +536,12 @@ describe("chatListDialog - pin buttons disabled during save (SIDEBAR-D-042)", ()
 
     mockAPIsWithSubagents({ pinnedAgentIds: ["pinned-agent-id"] });
     server.use(
-      http.post("*/api/zero/user-preferences", async () => {
+      mockApi(zeroUserPreferencesContract.update, async ({ respond }) => {
         await postPromise;
-        return HttpResponse.json({
+        return respond(200, {
           timezone: null,
           pinnedAgentIds: ["pinned-agent-id", "unpinned-agent-id"],
-          sendMode: "enter" as const,
+          sendMode: "enter",
           captureNetworkBodiesRemaining: 0,
         });
       }),
