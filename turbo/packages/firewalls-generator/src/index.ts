@@ -65,6 +65,7 @@ import { generate as generateGranola } from "./granola";
 import { generate as generateGreenhouse } from "./greenhouse";
 import { generate as generateGroq } from "./groq";
 import { generate as generateHeygen } from "./heygen";
+import { generate as generateHelicone } from "./helicone";
 import { generate as generateHtmlcsstoimage } from "./htmlcsstoimage";
 import { generate as generateHubspot } from "./hubspot";
 import { generate as generateHuggingFace } from "./hugging-face";
@@ -226,6 +227,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   greenhouse: generateGreenhouse,
   groq: generateGroq,
   heygen: generateHeygen,
+  helicone: generateHelicone,
   htmlcsstoimage: generateHtmlcsstoimage,
   hubspot: generateHubspot,
   "hugging-face": generateHuggingFace,
