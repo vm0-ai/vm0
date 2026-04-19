@@ -38,7 +38,6 @@ export const ZERO_CAPABILITIES = [
   "slack:write",
   "chat-message:write",
   "connector:read",
-  "connector:write",
   "computer-use:write",
   "voice-chat:write",
 ] as const;
@@ -76,10 +75,6 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Send chat messages",
     },
     "connector:read": { group: "Connectors", label: "View connected services" },
-    "connector:write": {
-      group: "Connectors",
-      label: "Manage org custom connectors",
-    },
     "computer-use:write": {
       group: "Computer Use",
       label: "Control remote desktop",

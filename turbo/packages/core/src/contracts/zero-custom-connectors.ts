@@ -45,7 +45,7 @@ export const setCustomConnectorSecretBodySchema = z.object({
 /**
  * Zero custom connectors contract for /api/zero/custom-connectors
  * GET: list all org custom connectors (with per-user hasSecret flag)
- * POST: create a new custom connector (admin only — requires connector:write)
+ * POST: create a new custom connector (admin only)
  */
 export const zeroCustomConnectorsContract = c.router({
   list: {

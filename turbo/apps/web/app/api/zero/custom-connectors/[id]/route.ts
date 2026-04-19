@@ -20,9 +20,7 @@ import { isNotFound } from "../../../../../src/lib/shared/errors";
 const router = tsr.router(zeroCustomConnectorByIdContract, {
   delete: async ({ params, headers }) => {
     initServices();
-    const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "connector:write",
-    });
+    const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
     try {
       const { org, member } = await resolveOrg(authCtx);
