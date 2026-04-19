@@ -4288,6 +4288,7 @@ const CONNECTOR_TYPES_DEF = {
       FRESHDESK_TOKEN: "$secrets.FRESHDESK_TOKEN",
       FRESHDESK_DOMAIN: "$vars.FRESHDESK_DOMAIN",
     },
+    featureFlag: FeatureSwitchKey.FreshdeskConnector,
     helpText:
       "Connect your Freshdesk account to manage support tickets, contacts, companies, agents, and knowledge base articles",
     authMethods: {
