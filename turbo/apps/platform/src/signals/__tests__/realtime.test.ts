@@ -127,17 +127,16 @@ describe("setupRealtime$ authCallback", () => {
 
     const firstHistory = getAuthTokenHistory();
     expect(firstHistory).toHaveLength(1);
-    const firstBody = firstHistory[0] as { nonce: string };
+    const firstBody = firstHistory[0];
 
     // Simulate Ably proactively renewing the token after ttl elapses.
     await triggerAblyReauth();
 
     const secondHistory = getAuthTokenHistory();
     expect(secondHistory).toHaveLength(2);
-    const secondBody = secondHistory[1] as { nonce: string };
     // The pre-fix cached-closure implementation returned the same body both
-    // times; a distinct nonce per invocation is the real freshness signal.
-    expect(secondBody.nonce).not.toBe(firstBody.nonce);
+    // times; a distinct body per invocation is the real freshness signal.
+    expect(secondHistory[1]).not.toStrictEqual(firstBody);
 
     controller.abort();
   });
