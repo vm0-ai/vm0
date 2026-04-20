@@ -8,6 +8,7 @@ import {
   type DraftSignals,
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
+import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 import {
   currentChatThreadId$,
   reloadChatThreads$,
@@ -190,56 +191,6 @@ function createComposerFileInput() {
     }),
   );
   return { composerFileInput$, setComposerFileInput$ };
-}
-
-function createPrepareUserMessage(draft: DraftSignals) {
-  return command(
-    async (
-      { get },
-      prompt: string,
-      signal: AbortSignal,
-    ): Promise<{ fullPrompt: string; hasTextContent: boolean } | null> => {
-      const allAttachments = get(draft.attachments$);
-      const allInfos = await Promise.all(
-        allAttachments.map((a) => {
-          return get(a.fileInfo$);
-        }),
-      );
-      signal.throwIfAborted();
-
-      const ready = allAttachments
-        .map((a, i) => {
-          return { attachment: a, info: allInfos[i] };
-        })
-        .filter(
-          (
-            r,
-          ): r is {
-            attachment: ZeroChatAttachment;
-            info: { id: string; url: string };
-          } => {
-            return r.info !== null;
-          },
-        );
-
-      if (!prompt.trim() && ready.length === 0) {
-        return null;
-      }
-
-      const attachmentLines = ready.map((r) => {
-        return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`;
-      });
-
-      const trimmedPrompt = prompt.trim();
-      const fullPrompt = trimmedPrompt
-        ? attachmentLines.length > 0
-          ? `${trimmedPrompt}\n\n${attachmentLines.join("\n")}`
-          : trimmedPrompt
-        : attachmentLines.join("\n");
-
-      return { fullPrompt, hasTextContent: trimmedPrompt.length > 0 };
-    },
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -817,10 +768,6 @@ interface SendMessageDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
   draft: DraftSignals;
-  prepareUserMessage$: Command<
-    Promise<{ fullPrompt: string; hasTextContent: boolean } | null>,
-    [string, AbortSignal]
-  >;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   insertOptimisticMessage$: Command<void, [PagedChatMessage]>;
@@ -832,7 +779,6 @@ function createSendMessage(deps: SendMessageDeps) {
     threadId,
     threadData$,
     draft,
-    prepareUserMessage$,
     cancelDraftSync$,
     flushDraftClear$,
     insertOptimisticMessage$,
@@ -854,7 +800,12 @@ function createSendMessage(deps: SendMessageDeps) {
         return;
       }
 
-      const result = await set(prepareUserMessage$, prompt, signal);
+      const result = await set(
+        prepareUserMessageFromDraft$,
+        draft,
+        prompt,
+        signal,
+      );
       if (!result) {
         L.debug("sendMessage$ prepare returned null, abort", { threadId });
         return;
@@ -868,7 +819,8 @@ function createSendMessage(deps: SendMessageDeps) {
       set(insertOptimisticMessage$, {
         id: clientMessageId,
         role: "user",
-        content: result.fullPrompt,
+        content: result.prompt,
+        attachFiles: result.attachments,
         createdAt: new Date().toISOString(),
       });
       animationFrame(
@@ -885,11 +837,12 @@ function createSendMessage(deps: SendMessageDeps) {
           client.send({
             body: {
               agentId,
-              prompt: result.fullPrompt,
+              prompt: result.prompt,
               threadId: threadId,
               hasTextContent: result.hasTextContent,
               clientMessageId,
               modelSelection,
+              attachFiles: result.attachFiles,
             },
             fetchOptions: { signal },
           }),
@@ -947,8 +900,6 @@ export function createChatThreadSignals(
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft);
 
-  const prepareUserMessage$ = createPrepareUserMessage(draft);
-
   const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking(
     threadId,
     reloadThread$,
@@ -961,7 +912,6 @@ export function createChatThreadSignals(
     threadId,
     threadData$,
     draft,
-    prepareUserMessage$,
     cancelDraftSync$,
     flushDraftClear$,
     insertOptimisticMessage$,

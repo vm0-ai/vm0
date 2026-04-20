@@ -287,7 +287,7 @@ type ChatMessage = {
  * Resolve file IDs to presigned S3 URLs with metadata for the frontend.
  * Lists S3 objects at each file's prefix to discover filename and size.
  */
-async function resolveAttachFileUrls(
+export async function resolveAttachFileUrls(
   userId: string,
   fileIds: string[],
 ): Promise<ResolvedAttachFile[]> {

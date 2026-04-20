@@ -179,6 +179,13 @@ export function mockChatLifecycle(options?: {
     error?: string;
     status?: string;
     createdAt: string;
+    attachFiles?: {
+      id: string;
+      filename: string;
+      contentType: string;
+      size: number;
+      url: string;
+    }[];
   }[];
   threadTitle?: string | null;
   onRunCreate?: () => void;
@@ -216,6 +223,13 @@ export function mockChatLifecycle(options?: {
         error?: string;
         status?: string;
         createdAt: string;
+        attachFiles?: {
+          id: string;
+          filename: string;
+          contentType: string;
+          size: number;
+          url: string;
+        }[];
       }[] = [];
 
       // Seed with pre-existing chatMessages (e.g. history on resume)

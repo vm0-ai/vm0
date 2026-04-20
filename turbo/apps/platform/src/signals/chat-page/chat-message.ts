@@ -18,6 +18,8 @@ import {
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import { talkDraft$ } from "../zero-page/chat-draft.ts";
+import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 
 export {
   chatThreads$,
@@ -133,7 +135,17 @@ export const sendNewThreadMessage$ = command(
     modelSelection: ModelSelectionRequest | null,
     signal: AbortSignal,
   ): Promise<string | null> => {
-    if (!prompt.trim()) {
+    // Mirror the in-thread send path: resolve the talk-page draft's uploaded
+    // attachments so the first message carries structured `attachFiles` just
+    // like follow-ups do (fixes #10243 for the new-thread entry point).
+    const draft = get(talkDraft$);
+    const prepared = await set(
+      prepareUserMessageFromDraft$,
+      draft,
+      prompt,
+      signal,
+    );
+    if (!prepared) {
       return null;
     }
 
@@ -142,10 +154,11 @@ export const sendNewThreadMessage$ = command(
       client.send({
         body: {
           agentId,
-          prompt,
-          hasTextContent: prompt.trim().length > 0,
+          prompt: prepared.prompt,
+          hasTextContent: prepared.hasTextContent,
           clientMessageId: crypto.randomUUID(),
           modelSelection,
+          attachFiles: prepared.attachFiles,
         },
         fetchOptions: { signal },
       }),
@@ -153,6 +166,8 @@ export const sendNewThreadMessage$ = command(
     );
     signal.throwIfAborted();
 
+    // Drop the now-persisted attachments from the talk draft.
+    set(draft.clear$);
     set(reloadChatThreads$);
     return result.body.threadId;
   },
