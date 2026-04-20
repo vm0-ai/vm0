@@ -11,8 +11,10 @@ import {
 import { sql } from "drizzle-orm";
 
 /**
- * credit_expires_record — tracks subscription-granted credits with expiration times.
- * Pay-as-you-go credits (auto-recharge, starter 10k) never expire and are NOT tracked here.
+ * credit_expires_record — tracks credits with expiration times.
+ * Free-tier starter credits (source='starter_grant') and subscription credits
+ * (source='subscription_renewal') expire after 1 month; auto-recharge credits
+ * do NOT expire and are NOT tracked here.
  * During deduction, expiring credits are consumed first (FEFO — First Expiring, First Out).
  */
 export const creditExpiresRecord = pgTable(
@@ -35,6 +37,9 @@ export const creditExpiresRecord = pgTable(
       uniqueIndex("uq_credit_expires_invoice")
         .on(table.orgId, table.stripeInvoiceId)
         .where(sql`stripe_invoice_id IS NOT NULL`),
+      uniqueIndex("uq_credit_expires_starter_grant")
+        .on(table.orgId)
+        .where(sql`source = 'starter_grant'`),
     ];
   },
 );

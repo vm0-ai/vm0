@@ -5,6 +5,7 @@ import {
   insertCreditExpiresRecord,
   insertOrgCacheEntry,
   grantCreditsToOrg,
+  setOrgCredits,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -58,7 +59,8 @@ const context = testContext();
 describe("GET /api/zero/billing/status", () => {
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    const user = await context.setupUser();
+    await setOrgCredits(user.orgId, 100_000);
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -89,6 +91,7 @@ describe("GET /api/zero/billing/status", () => {
 
   it("returns correct data for subscribed org", async () => {
     const { orgId } = await context.setupUser({ prefix: "sub-user" });
+    await setOrgCredits(orgId, 100_000);
     const periodEnd = new Date("2026-04-20T00:00:00Z");
 
     await updateOrgStripeFields(orgId, {

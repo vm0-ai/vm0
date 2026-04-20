@@ -195,7 +195,7 @@
       "runOutOfCredits": "Was passiert, wenn meine Credits aufgebraucht sind?",
       "runOutOfCreditsAnswer": "Wenn Ihre Credits aufgebraucht sind, stoppen Ihre Agenten. Sie können zusätzliche Credits per automatischem Aufladen kaufen oder auf einen höheren Plan upgraden.",
       "doCreditsRollOver": "Werden ungenutzte Credits übertragen?",
-      "doCreditsRollOverAnswer": "Beim Free-Plan verfallen Starter-Credits nicht, werden aber nicht aufgefüllt. Bei Pro werden ungenutzte Credits 1 Monat übertragen. Bei Team werden Credits 1 Monat übertragen.",
+      "doCreditsRollOverAnswer": "Beim Free-Plan verfallen Starter-Credits 1 Monat nach Registrierung und werden nicht aufgefüllt. Bei Pro werden ungenutzte Credits 1 Monat übertragen. Bei Team werden Credits 1 Monat übertragen.",
       "bringOwnModel": "Kann ich meinen eigenen Modellanbieter verwenden?",
       "bringOwnModelAnswer": "Ja! Alle Pläne unterstützen eigene LLM-API-Schlüssel (Anthropic usw.). Bei Verwendung eigener Schlüssel werden keine VM0-Credits für die Modellnutzung verbraucht.",
       "howSecure": "Wie sicher ist VM0?",

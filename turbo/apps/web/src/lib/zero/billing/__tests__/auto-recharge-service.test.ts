@@ -10,6 +10,7 @@ import {
   updateOrgStripeFields,
   updateOrgAutoRecharge,
   getOrgAutoRechargeFields,
+  setOrgCredits,
 } from "../../../../__tests__/api-test-helpers";
 
 // Stripe mock — must be defined before importing the service
@@ -62,6 +63,7 @@ describe("auto-recharge-service", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    await setOrgCredits(user.orgId, 100_000);
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     reloadEnv();

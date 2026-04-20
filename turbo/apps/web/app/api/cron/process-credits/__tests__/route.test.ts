@@ -20,6 +20,7 @@ import {
   insertCreditExpiresRecord,
   findCreditExpiresRecords,
   grantCreditsToOrg,
+  setOrgCredits,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
@@ -44,6 +45,7 @@ describe("GET /api/cron/process-credits", () => {
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     reloadEnv();
     user = await context.setupUser();
+    await setOrgCredits(user.orgId, 100_000);
   });
 
   describe("auth", () => {

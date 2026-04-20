@@ -121,7 +121,7 @@ const pricingJsonLd = {
       price: "0",
       priceCurrency: "USD",
       description:
-        "100,000 starter credits, 1 agent at a time, community support",
+        "100,000 starter credits (expire in 1 month), 1 agent at a time, community support",
     },
     {
       "@type": "Offer",
