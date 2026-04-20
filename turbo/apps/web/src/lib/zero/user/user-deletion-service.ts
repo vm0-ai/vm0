@@ -7,6 +7,7 @@ import { storages } from "../../../db/schema/storage";
 import { secrets } from "../../../db/schema/secret";
 import { modelProviders } from "../../../db/schema/model-provider";
 import { connectors } from "../../../db/schema/connector";
+import { userPlatformConnectors } from "../../../db/schema/user-platform-connector";
 import { variables } from "../../../db/schema/variable";
 import { usageDaily } from "../../../db/schema/usage-daily";
 import { exportJobs } from "../../../db/schema/export-job";
@@ -87,6 +88,9 @@ export async function deleteUserData(userId: string): Promise<void> {
 
   // Step 4: Tables without CASCADE
   await db.delete(connectors).where(eq(connectors.userId, userId));
+  await db
+    .delete(userPlatformConnectors)
+    .where(eq(userPlatformConnectors.userId, userId));
   await db.delete(variables).where(eq(variables.userId, userId));
   await db.delete(usageDaily).where(eq(usageDaily.userId, userId));
   await db.delete(exportJobs).where(eq(exportJobs.userId, userId));

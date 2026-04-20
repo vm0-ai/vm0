@@ -6,6 +6,7 @@ import {
   hasRequiredScopes,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
+  zeroPlatformConnectorContract,
   zeroSecretsContract,
   zeroVariablesContract,
   type ConnectorListResponse,
@@ -102,23 +103,33 @@ export const allConnectorTypes$ = computed(async (get) => {
   const items = (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
       const flag = CONNECTOR_TYPES[type].featureFlag;
-      const oauthEnabled = !flag || !!features?.[flag];
-      const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
-      // Connector visible if OAuth is enabled OR it has an api-token method
-      return oauthEnabled || hasApiToken;
+      const flagEnabled = !flag || !!features?.[flag];
+      const methods = CONNECTOR_TYPES[type].authMethods;
+      const hasOauth = "oauth" in methods;
+      const hasApiToken = "api-token" in methods;
+      const hasPlatform = "platform" in methods;
+      // Connector visible if:
+      //  - the feature flag (if any) allows it AND an OAuth or platform method exists, or
+      //  - it has an api-token method (api-token is always available regardless of flag).
+      return (flagEnabled && (hasOauth || hasPlatform)) || hasApiToken;
     })
     .map((type) => {
       const config = CONNECTOR_TYPES[type];
       const connector = connectorMap.get(type) ?? null;
       const flag = CONNECTOR_TYPES[type].featureFlag;
-      const oauthEnabled = !flag || !!features?.[flag];
+      const flagEnabled = !flag || !!features?.[flag];
+      const hasOauth = "oauth" in config.authMethods;
       const hasApiToken = "api-token" in config.authMethods;
+      const hasPlatform = "platform" in config.authMethods;
       const availableAuthMethods: string[] = [];
-      if (oauthEnabled && "oauth" in config.authMethods) {
+      if (flagEnabled && hasOauth) {
         availableAuthMethods.push("oauth");
       }
       if (hasApiToken) {
         availableAuthMethods.push("api-token");
+      }
+      if (flagEnabled && hasPlatform) {
+        availableAuthMethods.push("platform");
       }
       const isExperimental = !!flag && !hasApiToken;
       return {
@@ -248,6 +259,36 @@ export const tokenFormValuesFor$ = (type: string) => {
 export const setTokenFormSubmitting$ = command(
   ({ set }, value: string | null) => {
     set(internalTokenFormSubmitting$, value);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Enable a platform-supplied connector (no credentials; POST the enable request)
+// ---------------------------------------------------------------------------
+
+export const enablePlatformConnector$ = command(
+  async ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroPlatformConnectorContract);
+    await accept(
+      client.create({
+        params: { type },
+        body: {},
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalJustConnectedTypes$, (prev) => {
+      return new Set([...prev, type]);
+    });
+    set(reloadConnectors$);
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.delete(type);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+    toast.success(`${CONNECTOR_TYPES[type].label} enabled`, {
+      id: `connector-connected-${type}`,
+    });
+    set(internalPermissionDialogType$, type);
   },
 );
 

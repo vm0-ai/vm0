@@ -60,8 +60,11 @@ export function getConnectorEnvironmentMapping(
 
 /**
  * Connector types eligible for agent compose: GA (no feature flag) or
- * feature-flagged with an api-token auth method.  Feature flags only gate
- * OAuth; api-token is always available.
+ * feature-flagged with an api-token auth method. Feature flags gate OAuth
+ * and platform auth methods; api-token is always available.
+ *
+ * Flag-gated platform-only connectors are intentionally excluded until their
+ * runtime wiring (pool key resolver, billing extractor) lands.
  */
 export function getEligibleConnectorTypes(): string[] {
   return Object.entries(CONNECTOR_TYPES)
