@@ -6,7 +6,7 @@ import {
 } from "../../../db/schema/voice-chat-candidate";
 import { type CreateZeroRunResult } from "../zero-run-service";
 import { cancelRun } from "../zero-run-cancel";
-import { notFound } from "../../shared/errors";
+import { isRunNotCancellable, notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat-candidate:task");
@@ -55,7 +55,6 @@ export async function createVoiceChatCandidateTask(params: {
 
 export async function completeVoiceChatCandidateTask(params: {
   taskId: string;
-  runId: string;
   result: string | null;
   error: string | null;
   agentId: string;
@@ -198,8 +197,12 @@ export async function cancelSessionPendingRuns(session: {
     try {
       await cancelRun(task.runId, session.userId, session.orgId);
     } catch (err) {
-      log.debug(
-        `cancelRun for task ${task.id} (runId=${task.runId}) swallowed: ${String(
+      // Only swallow the expected "already terminal" signal from the run
+      // state machine. Any other error (DB failure, permission mismatch,
+      // network, etc.) must propagate so the caller can react.
+      if (!isRunNotCancellable(err)) throw err;
+      log.warn(
+        `cancelRun for task ${task.id} (runId=${task.runId}) skipped — run is no longer cancellable: ${String(
           err,
         )}`,
       );

@@ -169,7 +169,6 @@ describe("completeVoiceChatCandidateTask", () => {
 
     const completed = await completeVoiceChatCandidateTask({
       taskId: task.id,
-      runId,
       result: "all good",
       error: null,
       agentId,
@@ -210,7 +209,6 @@ describe("completeVoiceChatCandidateTask", () => {
 
     const completed = await completeVoiceChatCandidateTask({
       taskId: task.id,
-      runId,
       result: null,
       error: "worker timeout",
       agentId,
@@ -268,7 +266,6 @@ describe("completeVoiceChatCandidateTask", () => {
     const wrongAgentId = randomUUID();
     const completed = await completeVoiceChatCandidateTask({
       taskId: completeTask.id,
-      runId: completeRunId,
       result: "should be ignored",
       error: null,
       agentId: wrongAgentId,
@@ -300,7 +297,6 @@ describe("completeVoiceChatCandidateTask", () => {
     await expect(
       completeVoiceChatCandidateTask({
         taskId: randomUUID(),
-        runId: randomUUID(),
         result: null,
         error: null,
         agentId: randomUUID(),
@@ -374,7 +370,6 @@ describe("listPendingVoiceChatCandidateTasks", () => {
     });
     await completeVoiceChatCandidateTask({
       taskId: doneTask.id,
-      runId: doneRunId,
       result: "ok",
       error: null,
       agentId,
