@@ -3,6 +3,7 @@ import {
   createTestRequest,
   insertTestCreditUsageForRun,
   setTestCreditUsageCreatedAt,
+  seedTestSchedule,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -10,17 +11,11 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
-import { seedTestCompose } from "../../../../../../src/__tests__/db-test-seeders/agents";
-import { insertTestChatThread } from "../../../../../../src/__tests__/db-test-seeders/agents";
-import { triggerSourceSchema } from "@vm0/core";
-import { initServices } from "../../../../../../src/lib/init-services";
-import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
-import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
 import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../../src/db/schema/agent-compose";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+  seedTestCompose,
+  insertTestChatThread,
+} from "../../../../../../src/__tests__/db-test-seeders/agents";
+import { triggerSourceSchema } from "@vm0/core";
 
 import { GET } from "../route";
 
@@ -94,13 +89,13 @@ describe("GET /api/zero/usage/insight", () => {
     // Totals across bucket series should be <= grandTotal
     const bucketSum = data.buckets.reduce(
       (sum: number, b: { series: Record<string, number> }) => {
-        return (
-          sum +
-          Object.values(b.series).reduce(
-            (s: number, v: number) => s + v,
-            0 as number,
-          )
+        const seriesSum = Object.values(b.series).reduce(
+          (s: number, v: number) => {
+            return s + v;
+          },
+          0 as number,
         );
+        return sum + seriesSum;
       },
       0,
     );
@@ -302,10 +297,9 @@ describe("GET /api/zero/usage/insight", () => {
       buckets: Array<{ ts: string; series: Record<string, number> }>,
     ) => {
       return buckets.find((b) => {
-        const total = Object.values(b.series).reduce(
-          (s: number, v: number) => s + v,
-          0,
-        );
+        const total = Object.values(b.series).reduce((s: number, v: number) => {
+          return s + v;
+        }, 0);
         return total === 42;
       });
     };
@@ -327,7 +321,6 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("top-100 truncation — 105 schedules → schedules.length === 100, otherCount === 5", async () => {
-    initServices();
     const { userId, orgId } = await context.user;
     const { composeId } = await seedTestCompose({
       userId,
@@ -335,51 +328,22 @@ describe("GET /api/zero/usage/insight", () => {
       orgId,
     });
 
-    // Create a compose version to use for all runs
-    const versionId = uniqueId("version");
-    await globalThis.services.db
-      .insert(agentComposeVersions)
-      .values({
-        id: versionId,
-        composeId,
-        content: {},
-        createdBy: userId,
-      })
-      .onConflictDoNothing();
-
     // Seed 105 schedules, each with one run + credit usage
     for (let i = 0; i < 105; i++) {
-      const [sched] = await globalThis.services.db
-        .insert(zeroAgentSchedules)
-        .values({
-          agentId: composeId,
-          userId,
-          orgId,
-          name: `sched-${i}-${uniqueId("s")}`,
-          cronExpression: "0 0 * * *",
-          prompt: "test",
-        })
-        .returning({ id: zeroAgentSchedules.id });
+      const scheduleId = await seedTestSchedule({
+        agentId: composeId,
+        userId,
+        orgId,
+      });
 
-      const [run] = await globalThis.services.db
-        .insert(agentRuns)
-        .values({
-          userId,
-          orgId,
-          agentComposeVersionId: versionId,
-          prompt: "test",
-          status: "completed",
-        })
-        .returning({ id: agentRuns.id });
-
-      await globalThis.services.db.insert(zeroRuns).values({
-        id: run!.id,
+      const { runId } = await seedTestRun(userId, composeId, {
         triggerSource: "schedule",
-        scheduleId: sched!.id,
+        scheduleId,
+        status: "completed",
       });
 
       await insertTestCreditUsageForRun({
-        runId: run!.id,
+        runId,
         orgId,
         userId,
         creditsCharged: i + 1,
@@ -452,7 +416,6 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("returns chat rows when groupBy=source and there are chat runs", async () => {
-    initServices();
     const { userId, orgId } = await context.user;
     const { composeId } = await seedTestCompose({
       userId,
@@ -467,38 +430,15 @@ describe("GET /api/zero/usage/insight", () => {
       "Test Chat Thread",
     );
 
-    // Create a compose version
-    const versionId = uniqueId("version");
-    await globalThis.services.db
-      .insert(agentComposeVersions)
-      .values({
-        id: versionId,
-        composeId,
-        content: {},
-        createdBy: userId,
-      })
-      .onConflictDoNothing();
-
     // Create a run linked to the chat thread
-    const [run] = await globalThis.services.db
-      .insert(agentRuns)
-      .values({
-        userId,
-        orgId,
-        agentComposeVersionId: versionId,
-        prompt: "test",
-        status: "completed",
-      })
-      .returning({ id: agentRuns.id });
-
-    await globalThis.services.db.insert(zeroRuns).values({
-      id: run!.id,
+    const { runId } = await seedTestRun(userId, composeId, {
       triggerSource: "web",
       chatThreadId: threadId,
+      status: "completed",
     });
 
     await insertTestCreditUsageForRun({
-      runId: run!.id,
+      runId,
       orgId,
       userId,
       creditsCharged: 200,
@@ -512,9 +452,9 @@ describe("GET /api/zero/usage/insight", () => {
     const data = await response.json();
 
     expect(data.chats.length).toBeGreaterThanOrEqual(1);
-    const chat = data.chats.find(
-      (c: { threadId: string }) => c.threadId === threadId,
-    );
+    const chat = data.chats.find((c: { threadId: string }) => {
+      return c.threadId === threadId;
+    });
     expect(chat).toBeDefined();
     expect(chat?.threadTitle).toBe("Test Chat Thread");
     expect(chat?.credits).toBe(200);

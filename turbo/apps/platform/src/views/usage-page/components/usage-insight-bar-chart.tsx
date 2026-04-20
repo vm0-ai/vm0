@@ -43,8 +43,12 @@ const setChartWidth$ = command(({ set }, width: number) => {
   set(internalWidth$, width);
 });
 
-const tooltip$ = computed((get) => get(internalTooltip$));
-const chartWidth$ = computed((get) => get(internalWidth$));
+const tooltip$ = computed((get) => {
+  return get(internalTooltip$);
+});
+const chartWidth$ = computed((get) => {
+  return get(internalWidth$);
+});
 
 // --- Helpers ---
 
@@ -234,7 +238,9 @@ export function UsageInsightBarChart({
   // Compute per-bucket totals for Y axis
   const perBucketTotals = buckets.map((b) => {
     return Object.values(metric === "credits" ? b.series : b.tokens).reduce(
-      (s, v) => s + v,
+      (s, v) => {
+        return s + v;
+      },
       0,
     );
   });

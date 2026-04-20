@@ -52,6 +52,7 @@ async function createRunDirect(
     prompt?: string;
     continuedFromSessionId?: string;
     scheduleId?: string;
+    chatThreadId?: string;
     triggerSource?: string;
     createdAt?: Date;
     startedAt?: Date;
@@ -85,6 +86,7 @@ async function createRunDirect(
     id: run!.id,
     triggerSource: options?.triggerSource ?? "cli",
     scheduleId: options?.scheduleId ?? null,
+    chatThreadId: options?.chatThreadId ?? null,
   });
 
   return run!;
@@ -108,6 +110,7 @@ export async function seedTestRun(
     prompt?: string;
     continuedFromSessionId?: string;
     scheduleId?: string;
+    chatThreadId?: string;
     triggerSource?: string;
     createdAt?: Date;
     orgId?: string;
@@ -155,6 +158,7 @@ export async function seedTestRun(
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
       scheduleId: options?.scheduleId,
+      chatThreadId: options?.chatThreadId,
       triggerSource: options?.triggerSource,
       createdAt: options?.createdAt,
       startedAt: options?.startedAt,
