@@ -28,6 +28,16 @@ from auth import _opener, get_api_url, make_api_request
 from body_utils import decompress_body
 from logging_utils import log_proxy_entry
 
+# HTTP 2xx success range (RFC 9110).  Also defined in ``mitm_addon.py``; kept
+# local to avoid introducing a constants module for two callers.
+_HTTP_STATUS_OK_MIN = 200
+_HTTP_STATUS_OK_MAX = 300
+
+# SSE event boundary is ``\r\n\r\n`` (4 bytes).  When no boundary is found in
+# the current buffer we keep the last 3 bytes so a boundary split across the
+# next chunk can still complete.
+_SSE_BOUNDARY_TAIL = 3
+
 # ---------------------------------------------------------------------------
 # Dual pending counter: in-flight flows + pending reports
 #
@@ -176,7 +186,11 @@ def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
             else:
                 # No boundary found — discard everything except the
                 # last few bytes (could be a partial \r\n\r\n).
-                line_buf[:] = combined[-3:] if len(combined) > 3 else combined
+                line_buf[:] = (
+                    combined[-_SSE_BOUNDARY_TAIL:]
+                    if len(combined) > _SSE_BOUNDARY_TAIL
+                    else combined
+                )
                 return
             # Boundary found — fall through to process line_buf contents.
             # line_buf already has the data, so skip the extend.
@@ -853,7 +867,9 @@ def log_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     firewall_name = flow.metadata.get("firewall_name", "")
     if not is_billable_connector(firewall_name):
         return
-    if not flow.response or not (200 <= flow.response.status_code < 300):
+    if not flow.response or not (
+        _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_OK_MAX
+    ):
         return
     endpoint = flow.metadata.get("firewall_permission", "")
     if not endpoint:

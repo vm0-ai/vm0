@@ -5,6 +5,7 @@ import json
 import time
 import urllib.error
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
@@ -2211,8 +2212,6 @@ class TestAuthBaseUrlRewriteEdgeCases:
         # seed the request. We parse it back into ``real_flow`` kwargs
         # rather than mutating the read-only ``Request`` properties.
         if seed_url:
-            from urllib.parse import urlparse
-
             parsed = urlparse(seed_url)
             host = parsed.hostname or "firewall-placeholder.vm3.ai"
             real_path = parsed.path or "/"

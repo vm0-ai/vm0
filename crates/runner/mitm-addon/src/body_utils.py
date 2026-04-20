@@ -22,6 +22,14 @@ from mitmproxy import ctx, http
 # Cap for non-model-provider response body buffering and decompression output.
 STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
 
+# UTF-8 byte-boundary markers (RFC 3629).  Continuation bytes match
+# ``0b10xxxxxx`` → ``(byte & 0xC0) == _UTF8_CONT_MARK``.  Lead bytes fall
+# into four ranges by ``lead < _UTF8_LEAD_MAX_{N}BYTE`` for N = 1..3.
+_UTF8_CONT_MARK = 0x80
+_UTF8_LEAD_MAX_1BYTE = 0x80  # ASCII: 0xxxxxxx
+_UTF8_LEAD_MAX_2BYTE = 0xE0  # 2-byte lead: 110xxxxx
+_UTF8_LEAD_MAX_3BYTE = 0xF0  # 3-byte lead: 1110xxxx
+
 # Decompression cap for response bodies that need full parsing for usage
 # extraction (model-provider non-SSE JSON, billable-connector JSON).  Larger
 # than STREAM_BUFFER_LIMIT (which guards capture-mode body logging) so large
@@ -190,17 +198,17 @@ def _truncate_bytes_utf8_safe(data: bytes, max_size: int) -> bytes:
     # Find the start of the last character by scanning backwards
     # past continuation bytes (10xxxxxx = 0x80..0xBF).
     i = len(t)
-    while i > 0 and (t[i - 1] & 0xC0) == 0x80:
+    while i > 0 and (t[i - 1] & 0xC0) == _UTF8_CONT_MARK:
         i -= 1
     if i == 0:
         return t  # all continuation bytes — shouldn't happen in valid UTF-8
     lead = t[i - 1]
     # Determine the expected sequence length from the lead byte.
-    if lead < 0x80:
+    if lead < _UTF8_LEAD_MAX_1BYTE:
         expected = 1
-    elif lead < 0xE0:
+    elif lead < _UTF8_LEAD_MAX_2BYTE:
         expected = 2
-    elif lead < 0xF0:
+    elif lead < _UTF8_LEAD_MAX_3BYTE:
         expected = 3
     else:
         expected = 4

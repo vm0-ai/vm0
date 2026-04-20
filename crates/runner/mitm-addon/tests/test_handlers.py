@@ -4,6 +4,7 @@ import asyncio
 import gzip
 import json
 import time
+import urllib.error
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -2495,8 +2496,6 @@ class TestUsageWebhookDelivery:
 
     def test_closes_http_error_response(self, tmp_path, real_flow, fresh_usage_executor):
         """HTTPError sockets must be closed to avoid leaking; retries still apply."""
-        import urllib.error
-
         http_err = urllib.error.HTTPError(
             "https://api.vm0.ai", 500, "Internal Server Error", {}, None
         )

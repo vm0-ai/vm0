@@ -40,6 +40,14 @@ from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_en
 from matching import FirewallAllow, FirewallBlock, match_firewall_request
 from url_utils import get_original_url
 
+# HTTP status boundaries used in response-phase classification.  Also defined
+# in ``usage.py`` for the same reason; kept local because they're RFC-fixed
+# (never drift) and factoring them out for two callers adds no value.
+_HTTP_STATUS_OK_MIN = 200  # inclusive: start of 2xx success range
+_HTTP_STATUS_OK_MAX = 300  # exclusive: one past end of 2xx range
+_HTTP_STATUS_UNAUTHORIZED = 401
+_HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
+
 # ============================================================================
 # Addon Configuration
 # ============================================================================
@@ -313,7 +321,10 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # decision.  For any billable connector flow, ``request()`` has
     # already populated ``original_url`` before ``responseheaders`` fires.
     is_x_stream = False
-    if is_billable_connector and 200 <= flow.response.status_code < 300:
+    if (
+        is_billable_connector
+        and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_OK_MAX
+    ):
         stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
         is_x_stream = usage.is_x_stream_path(stream_path)
 
@@ -490,7 +501,11 @@ def response(flow: http.HTTPFlow) -> None:
     # us the token is no longer valid, overriding whatever the DB believes.
     # request_force_refresh enforces a cooldown so a persistent non-token 401
     # can't amplify into a loop of provider OAuth refresh calls (#9860).
-    if flow.response and flow.response.status_code == 401 and flow.metadata.get("firewall_base"):
+    if (
+        flow.response
+        and flow.response.status_code == _HTTP_STATUS_UNAUTHORIZED
+        and flow.metadata.get("firewall_base")
+    ):
         api_id = flow.metadata.get("firewall_api_id", "")
         if api_id:
             cache_key = (run_id, api_id)
@@ -498,7 +513,7 @@ def response(flow: http.HTTPFlow) -> None:
             request_force_refresh(cache_key)
 
     # Log errors to per-job proxy log and mitmproxy console
-    if flow.response and flow.response.status_code >= 400:
+    if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
         log_proxy_entry(
             proxy_log_path,
             "warn",
