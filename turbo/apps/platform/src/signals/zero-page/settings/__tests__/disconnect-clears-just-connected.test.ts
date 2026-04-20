@@ -33,10 +33,10 @@ describe("deleteConnector$ + justConnectedTypes$", () => {
       context.signal,
     );
 
-    expect(context.store.get(justConnectedTypes$).has("ahrefs")).toBe(true);
+    expect(context.store.get(justConnectedTypes$).has("ahrefs")).toBeTruthy();
 
     await context.store.set(disconnectConnector$, "ahrefs", context.signal);
 
-    expect(context.store.get(justConnectedTypes$).has("ahrefs")).toBe(false);
+    expect(context.store.get(justConnectedTypes$).has("ahrefs")).toBeFalsy();
   });
 });
