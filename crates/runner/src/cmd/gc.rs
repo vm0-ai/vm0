@@ -179,16 +179,15 @@ async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run
             "[dry-run] would delete orphaned rootfs images/{rootfs_hash} ({})",
             human_bytes(rootfs_size)
         );
-        return 0;
-    }
-    if let Err(e) = tokio::fs::remove_dir_all(rootfs_path).await {
+    } else if let Err(e) = tokio::fs::remove_dir_all(rootfs_path).await {
         warn!("failed to remove orphaned rootfs images/{rootfs_hash}: {e}");
         return 0;
+    } else {
+        info!(
+            "deleted orphaned rootfs images/{rootfs_hash} ({})",
+            human_bytes(rootfs_size)
+        );
     }
-    info!(
-        "deleted orphaned rootfs images/{rootfs_hash} ({})",
-        human_bytes(rootfs_size)
-    );
     rootfs_size
 }
 
@@ -345,14 +344,15 @@ async fn gc_nested_images(
                     "failed to remove images/{rootfs_hash}/snapshots/{}: {e}",
                     c.hash
                 );
+                continue;
             } else {
                 info!(
                     "deleted images/{rootfs_hash}/snapshots/{} ({})",
                     c.hash,
                     human_bytes(c.size)
                 );
-                total_freed += c.size;
             }
+            total_freed += c.size;
         }
 
         // Check if rootfs is now orphaned (no remaining snapshots).
@@ -1393,8 +1393,43 @@ mod tests {
         assert!(freed > 0);
     }
 
+    /// Dry-run over an orphaned rootfs (no `snapshots/` subdir) must count the
+    /// would-be-freed bytes via `try_delete_orphan_rootfs`. Regression guard
+    /// for the silent-zero bug where dry-run returned 0 and `run_gc` printed
+    /// "nothing to clean up" despite per-entry "would delete" log lines.
     #[tokio::test]
-    async fn gc_nested_images_dry_run_deletes_nothing() {
+    async fn gc_nested_images_dry_run_reports_orphan_rootfs_bytes() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let rootfs_dir = images_dir.join("orphan_rootfs_dry");
+        std::fs::create_dir_all(&rootfs_dir).unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        std::fs::File::open(&rootfs_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let (expected_size, _) = dir_stats(&rootfs_dir).await;
+        assert!(expected_size > 0, "test fixture must have non-zero size");
+
+        let freed = gc_nested_images(&home, None, true).await.unwrap();
+        assert!(rootfs_dir.exists(), "dry-run must not delete orphan rootfs");
+        assert_eq!(
+            freed, expected_size,
+            "dry-run must report would-be-freed bytes for orphan rootfs"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_dry_run_reports_would_be_freed() {
         use std::fs::FileTimes;
         use std::time::Duration;
 
@@ -1416,10 +1451,18 @@ mod tests {
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
+        // Capture the expected would-be-freed size before GC so the dry-run
+        // return value can be asserted exactly, not just "> 0".
+        let (expected_size, _) = dir_stats(&snap).await;
+        assert!(expected_size > 0, "test fixture must have non-zero size");
+
         // keep_latest=0 + dry_run: would delete but doesn't actually
         let freed = gc_nested_images(&home, Some(0), true).await.unwrap();
         assert!(snap.exists(), "dry-run must not delete");
-        assert_eq!(freed, 0, "dry-run must not count freed space");
+        assert_eq!(
+            freed, expected_size,
+            "dry-run must report would-be-freed bytes for consistency with gc_debootstrap/gc_job_logs/gc_workspace_orphans"
+        );
     }
 
     /// Empty `snapshots/` directory (not missing, just empty) → orphan rootfs deleted.
