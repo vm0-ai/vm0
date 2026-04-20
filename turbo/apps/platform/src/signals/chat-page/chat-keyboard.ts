@@ -1,10 +1,11 @@
 import { command } from "ccstate";
-import { matchShortcut } from "@vm0/ui";
+import { matchShortcut, isEditableTarget } from "@vm0/ui";
 import { chatThreads$, currentChatThreadId$ } from "../agent-chat.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { onDomEventFn } from "../utils.ts";
 import { currentChatThreadSignals$ } from "./create-chat-thread.ts";
+import { setChatShortcutHelpOpen$ } from "./chat-shortcut-help.ts";
 
 const navigateToAdjacentThread$ = command(
   async (
@@ -58,12 +59,14 @@ const scrollCurrentThread$ = command(
 //
 // These run even while focus is in the composer textarea, so we attach the
 // listener directly to `document` instead of going through setupGlobalShortcut
-// (which filters out editable targets).
+// (which filters out editable targets). Shortcuts whose key would collide
+// with plain typing (e.g. shift+/ → "?") explicitly skip editable targets.
 //
 // - mod+up / mod+down        → scroll messages to top / bottom
 // - mod+shift+up / shift+down → jump to previous / next thread in the list
 //   (mod+shift+up on the first thread escapes to /agents/:agentId/chat;
 //    mod+shift+down on the last thread is a no-op)
+// - shift+/                   → open keyboard shortcut help (non-editable only)
 export const setupChatPageKeyboard$ = command(
   ({ set }, signal: AbortSignal) => {
     document.addEventListener(
@@ -90,6 +93,11 @@ export const setupChatPageKeyboard$ = command(
         if (matchShortcut("mod+shift+arrowdown", e)) {
           e.preventDefault();
           await set(navigateToAdjacentThread$, "next", signal);
+          return;
+        }
+        if (matchShortcut("shift+/", e) && !isEditableTarget(e.target)) {
+          e.preventDefault();
+          set(setChatShortcutHelpOpen$, true);
           return;
         }
       }),

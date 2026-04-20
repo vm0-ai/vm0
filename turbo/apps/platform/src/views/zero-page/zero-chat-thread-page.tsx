@@ -48,6 +48,11 @@ import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
+import {
+  chatShortcutHelpOpen$,
+  setChatShortcutHelpOpen$,
+} from "../../signals/chat-page/chat-shortcut-help.ts";
+import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 
 import type {
   GroupedChatMessageGroup,
@@ -63,6 +68,32 @@ import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+
+const CHAT_SHORTCUT_SECTIONS = [
+  {
+    title: "Global",
+    shortcuts: [
+      { key: "shift+/", label: "Show shortcuts" },
+      { key: "mod+b", label: "Toggle sidebar" },
+    ],
+  },
+  {
+    title: "Messages",
+    shortcuts: [
+      { key: "mod+arrowup", label: "Scroll to top" },
+      { key: "mod+arrowdown", label: "Scroll to bottom" },
+      { key: "mod+shift+arrowup", label: "Previous thread" },
+      { key: "mod+shift+arrowdown", label: "Next thread" },
+    ],
+  },
+  {
+    title: "Composer",
+    shortcuts: [
+      { key: "enter", label: "Send message" },
+      { key: "escape", label: "Blur composer" },
+    ],
+  },
+] as const;
 
 function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
   const agentId = useLastResolved(thread.agentId$);
@@ -196,12 +227,24 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
 
 export function ZeroChatThreadPage() {
   const thread = useGet(currentChatThreadSignals$);
+  const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
+  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
 
   if (!thread) {
     return null;
   }
 
-  return <ZeroChatThreadPageInner thread={thread} />;
+  return (
+    <>
+      <ZeroChatThreadPageInner thread={thread} />
+      <ShortcutHelpDialog
+        open={shortcutHelpOpen}
+        onOpenChange={setShortcutHelpOpen}
+        description="Available shortcuts on this page"
+        sections={CHAT_SHORTCUT_SECTIONS}
+      />
+    </>
+  );
 }
 
 export function ZeroChatThreadPageInner({

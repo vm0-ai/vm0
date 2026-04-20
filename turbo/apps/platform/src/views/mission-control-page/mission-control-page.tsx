@@ -27,11 +27,40 @@ import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentListDialog } from "../zero-page/zero-sidebar-dialogs.tsx";
-import { ShortcutHelpDialog } from "./shortcut-help-dialog.tsx";
+import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import { TaskList } from "./task-list.tsx";
 import { TaskPanel } from "./task-panel.tsx";
 import { CollapsedTaskListBar } from "./collapsed-task-list-bar.tsx";
 import { VoiceButton, VoiceBanner } from "./voice-banner.tsx";
+
+const MISSION_CONTROL_SHORTCUT_SECTIONS = [
+  {
+    title: "Global",
+    shortcuts: [
+      { key: "shift+/", label: "Show shortcuts" },
+      { key: "j", label: "Next task" },
+      { key: "k", label: "Previous task" },
+      { key: "mod+b", label: "Toggle sidebar" },
+      { key: "c", label: "New chat" },
+      { key: "y", label: "Archive task" },
+    ],
+  },
+  {
+    title: "Task Card",
+    shortcuts: [
+      { key: "enter", label: "Open task" },
+      { key: "space", label: "Toggle panel" },
+    ],
+  },
+  {
+    title: "Task Panel",
+    shortcuts: [
+      { key: "mod+shift+enter", label: "Maximize / restore" },
+      { key: "escape", label: "Back to task card" },
+      { key: "ctrl+d", label: "Close panel" },
+    ],
+  },
+] as const;
 
 export function MissionControlPage() {
   const panelVisible = useLastResolved(missionControlPanelVisible$) ?? false;
@@ -131,7 +160,12 @@ export function MissionControlPage() {
         subagents={subagents}
         onNewChat={onNewChat}
       />
-      <ShortcutHelpDialog open={shortcutHelp} onOpenChange={setShortcutHelp} />
+      <ShortcutHelpDialog
+        open={shortcutHelp}
+        onOpenChange={setShortcutHelp}
+        description="Available shortcuts in Mission Control"
+        sections={MISSION_CONTROL_SHORTCUT_SECTIONS}
+      />
     </Group>
   );
 }

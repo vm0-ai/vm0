@@ -81,6 +81,12 @@ describe("matchShortcut", () => {
   it("should match space key", () => {
     expect(matchShortcut(" ", createEvent({ key: " " }))).toBe(true);
   });
+
+  it("should match shift+/ when event reports ? (US layout)", () => {
+    expect(
+      matchShortcut("shift+/", createEvent({ key: "?", shiftKey: true })),
+    ).toBe(true);
+  });
 });
 
 describe("processShortcut", () => {
