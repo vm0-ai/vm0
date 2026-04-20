@@ -84,19 +84,18 @@ export function isAuthError(
 }
 
 /**
- * Strict authenticator for the public `/api/v1/*` surface: only Clerk-issued
- * API Keys are accepted. Session cookies, PAT (`vm0_pat_`), and sandbox/zero
- * tokens are all rejected so these endpoints can never be reached without an
- * explicit, user-created API key. Verifies the key directly via
+ * Strict authenticator for the public `/api/v1/*` surface: any valid
+ * Clerk-issued API Key for the caller's user acts as a personal access token.
+ * Session cookies, CLI PAT (`vm0_pat_`), and sandbox/zero tokens are all
+ * rejected so these endpoints can never be reached without an explicit,
+ * user-created Clerk API key. Verifies the key directly via
  * `clerkClient.apiKeys.verify` and never consults Clerk's session, so it is
  * safe to use under routes where `clerkMiddleware` has been bypassed.
  *
- * Pass `requiredScope` to additionally require that scope on the key. Missing
- * scope returns 403; missing/invalid key returns 401.
+ * Missing/invalid/revoked/expired keys return 401.
  */
 export async function requireApiKeyAuth(
   authHeader: string | undefined,
-  requiredScope?: string,
 ): Promise<AuthContext | AuthErrorResponse> {
   const unauthorized: AuthErrorResponse = {
     status: 401 as const,
@@ -110,16 +109,5 @@ export async function requireApiKeyAuth(
   if (token.startsWith("vm0_")) return unauthorized;
   const authCtx = await authenticateClerkApiKey(token);
   if (!authCtx) return unauthorized;
-  if (requiredScope && !authCtx.scopes?.includes(requiredScope)) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: `Missing required scope: ${requiredScope}`,
-          code: "FORBIDDEN",
-        },
-      },
-    };
-  }
   return authCtx;
 }

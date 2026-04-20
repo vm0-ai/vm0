@@ -27,7 +27,6 @@ export type AuthContext = {
   capabilities?: readonly ZeroCapability[];
   runId?: string;
   tokenType?: AuthTokenType;
-  scopes?: readonly string[];
 };
 
 /**
@@ -159,7 +158,6 @@ export async function authenticateClerkApiKey(
   return {
     userId: apiKey.subject,
     orgId: claimedOrgId,
-    scopes: apiKey.scopes,
     tokenType: "api_key",
   };
 }

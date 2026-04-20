@@ -16,10 +16,7 @@ const router = tsr.router(chatThreadV1GetContract, {
   get: async ({ params, headers }) => {
     initServices();
 
-    const authCtx = await requireApiKeyAuth(
-      headers.authorization,
-      "chat-threads:read",
-    );
+    const authCtx = await requireApiKeyAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {

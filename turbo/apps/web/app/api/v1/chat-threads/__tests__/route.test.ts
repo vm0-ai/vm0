@@ -43,13 +43,12 @@ function bearerHeaders(secret: string) {
 function seedApiKey(
   secret: string,
   user: UserContext,
-  scopes: string[],
   overrides?: { revoked?: boolean; expired?: boolean },
 ) {
   registerMockApiKey(secret, {
     id: uniqueId("api-key"),
     subject: user.userId,
-    scopes,
+    scopes: [],
     claims: { orgId: user.orgId },
     revoked: overrides?.revoked,
     expired: overrides?.expired,
@@ -85,21 +84,9 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 403 when scope is missing", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, []);
-    const res = await getThread(
-      createTestRequest(GET_THREAD_URL(threadId), {
-        method: "GET",
-        headers: bearerHeaders(secret),
-      }),
-    );
-    expect(res.status).toBe(403);
-  });
-
   it("returns 401 when key is revoked", async () => {
     const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:read"], { revoked: true });
+    seedApiKey(secret, user, { revoked: true });
     const res = await getThread(
       createTestRequest(GET_THREAD_URL(threadId), {
         method: "GET",
@@ -109,9 +96,9 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 200 with thread detail when key has scope and owns thread", async () => {
+  it("returns 200 with thread detail when key owns thread", async () => {
     const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:read"]);
+    seedApiKey(secret, user);
     const res = await getThread(
       createTestRequest(GET_THREAD_URL(threadId), {
         method: "GET",
@@ -130,7 +117,7 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
 
   it("returns 404 when thread belongs to another user", async () => {
     const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:read"]);
+    seedApiKey(secret, user);
     const otherThreadId = randomUUID();
     const res = await getThread(
       createTestRequest(GET_THREAD_URL(otherThreadId), {
@@ -171,21 +158,9 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 403 when scope is missing", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:write"]);
-    const res = await getMessages(
-      createTestRequest(GET_MESSAGES_URL(threadId), {
-        method: "GET",
-        headers: bearerHeaders(secret),
-      }),
-    );
-    expect(res.status).toBe(403);
-  });
-
   it("returns 200 with messages", async () => {
     const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:read"]);
+    seedApiKey(secret, user);
     const res = await getMessages(
       createTestRequest(GET_MESSAGES_URL(threadId), {
         method: "GET",
@@ -203,7 +178,7 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
 
   it("returns 404 when thread belongs to another user", async () => {
     const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:read"]);
+    seedApiKey(secret, user);
     const otherThreadId = randomUUID();
     const res = await getMessages(
       createTestRequest(GET_MESSAGES_URL(otherThreadId), {
@@ -235,22 +210,9 @@ describe("POST /api/v1/chat-threads/messages", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 403 when scope is missing", async () => {
-    const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:read"]);
-    const res = await sendMessage(
-      createTestRequest(POST_MESSAGE_URL, {
-        method: "POST",
-        headers: bearerHeaders(secret),
-        body: JSON.stringify({ prompt: "hi" }),
-      }),
-    );
-    expect(res.status).toBe(403);
-  });
-
   it("returns 400 when no default agent is configured", async () => {
     const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:write"]);
+    seedApiKey(secret, user);
     const res = await sendMessage(
       createTestRequest(POST_MESSAGE_URL, {
         method: "POST",
@@ -265,7 +227,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
 
   it("returns 404 when posting to another user's existing thread", async () => {
     const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:write"]);
+    seedApiKey(secret, user);
     const otherThreadId = randomUUID();
     const res = await sendMessage(
       createTestRequest(POST_MESSAGE_URL, {
@@ -316,7 +278,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
     await updateOrgDefaultAgent(user.orgId, agentId);
 
     const secret = `ak_${uniqueId("secret")}`;
-    seedApiKey(secret, user, ["chat-threads:write"]);
+    seedApiKey(secret, user);
     const res = await sendMessage(
       createTestRequest(POST_MESSAGE_URL, {
         method: "POST",
