@@ -125,9 +125,12 @@ impl Shared {
     /// lock held. Idempotent: a second call preserves whatever `exits` the
     /// first call cached and performs no further work.
     ///
-    /// Both arms of the match restore `*guard` to a `Closed` variant carrying
-    /// the real cached `exits` — otherwise `mem::replace` would leave behind
-    /// the placeholder empty map and silently drop previously cached events.
+    /// `mem::replace` writes a placeholder `Closed { exits: HashMap::new() }`
+    /// so the old variant can be moved out for destructuring. The `Connected`
+    /// arm rebuilds `Closed` with the cached `exits`; the already-`Closed`
+    /// arm uses an `@` binding to write the whole variant back unchanged, so
+    /// "cached `exits` survive a double-close" is enforced by the match
+    /// binding rather than by convention.
     fn close(&self) {
         let maps_to_drop = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -146,8 +149,10 @@ impl Shared {
                     *guard = ConnectionState::Closed { exits };
                     Some((pending, pending_stdout, stdout_senders))
                 }
-                ConnectionState::Closed { exits } => {
-                    *guard = ConnectionState::Closed { exits };
+                closed @ ConnectionState::Closed { .. } => {
+                    // Reassign the whole variant; cached `exits` preserved
+                    // by binding, not manually reconstructed.
+                    *guard = closed;
                     None
                 }
             }
