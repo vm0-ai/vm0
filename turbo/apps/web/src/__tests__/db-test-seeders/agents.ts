@@ -317,7 +317,21 @@ export async function createTestSessionWithConversation(
   const versionId =
     existingVersionId ??
     (await createTestComposeVersion(agentComposeId, userId));
-  // Create run record
+  // Create session first (without conversation) so the run's FK can point at it.
+  const [session] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({
+      userId,
+      orgId: compose.orgId,
+      agentComposeId,
+      conversationId: null,
+    })
+    .returning({ id: agentSessions.id });
+  if (!session) {
+    throw new Error("Failed to seed agent session");
+  }
+  // Create run record (session_id NOT NULL + FK → must reference an existing
+  // agent_sessions row).
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
@@ -326,6 +340,7 @@ export async function createTestSessionWithConversation(
       agentComposeVersionId: versionId,
       status: "completed",
       prompt: "test prompt",
+      sessionId: session.id,
     })
     .returning({
       id: agentRuns.id,
@@ -340,17 +355,12 @@ export async function createTestSessionWithConversation(
       cliAgentSessionHistory: "[]",
     })
     .returning({ id: conversations.id });
-  // Create session with conversation
-  const [session] = await globalThis.services.db
-    .insert(agentSessions)
-    .values({
-      userId,
-      orgId: compose.orgId,
-      agentComposeId,
-      conversationId: conversation!.id,
-    })
-    .returning({ id: agentSessions.id });
-  return session!;
+  // Link the conversation back into the session so downstream lookups work.
+  await globalThis.services.db
+    .update(agentSessions)
+    .set({ conversationId: conversation!.id })
+    .where(eq(agentSessions.id, session.id));
+  return session;
 }
 
 /**

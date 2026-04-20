@@ -12,6 +12,7 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
+import { ensureTestAgentSession } from "./runs";
 import { grantOrgCredits } from "../../lib/zero/org/org-service";
 import {
   deductFromExpiresRecords,
@@ -228,6 +229,12 @@ export async function insertTestCreditUsage(
     createdBy: userId,
   });
 
+  const sessionId = await ensureTestAgentSession({
+    userId,
+    orgId,
+    agentComposeId: compose!.id,
+  });
+
   // Create a run (FK required by credit_usage)
   const [run] = await globalThis.services.db
     .insert(agentRuns)
@@ -237,6 +244,7 @@ export async function insertTestCreditUsage(
       agentComposeVersionId: versionId,
       prompt: "test",
       status: "completed",
+      sessionId,
     })
     .returning();
 
@@ -317,6 +325,12 @@ export async function insertTestClientCreditUsage(
       createdBy: userId,
     });
 
+    const sessionId = await ensureTestAgentSession({
+      userId,
+      orgId,
+      agentComposeId: compose!.id,
+    });
+
     const [run] = await globalThis.services.db
       .insert(agentRuns)
       .values({
@@ -325,6 +339,7 @@ export async function insertTestClientCreditUsage(
         agentComposeVersionId: versionId,
         prompt: "test",
         status: "completed",
+        sessionId,
       })
       .returning();
     runId = run!.id;
@@ -497,6 +512,11 @@ export async function createCompletedRun(
     content: {},
     createdBy: userId,
   });
+  const sessionId = await ensureTestAgentSession({
+    userId,
+    orgId,
+    agentComposeId: compose!.id,
+  });
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
@@ -506,6 +526,7 @@ export async function createCompletedRun(
       prompt: "test",
       status: "completed",
       completedAt,
+      sessionId,
     })
     .returning();
   return run!.id;

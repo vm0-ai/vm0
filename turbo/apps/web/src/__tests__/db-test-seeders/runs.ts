@@ -1,5 +1,6 @@
 import { and, eq, or } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
+import { agentSessions } from "../../db/schema/agent-session";
 import { zeroRuns } from "../../db/schema/zero-run";
 import {
   agentComposes,
@@ -17,15 +18,21 @@ import { generateCallbackSecret } from "../../lib/infra/callback/hmac";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 
 /**
- * Resolve orgId from a compose version ID.
+ * Resolve both orgId and agentComposeId from a compose version ID.
  *
- * @why-db-direct No API endpoint exposes orgId lookups by compose version.
- * Used internally by seeders that insert agent_runs records.
+ * @why-db-direct Seeders that insert agent_runs need agentComposeId to
+ * seed the prerequisite agent_sessions row (agent_runs.session_id is NOT
+ * NULL and FKs to agent_sessions).
  */
-export async function getOrgIdFromVersion(versionId: string): Promise<string> {
+export async function getOrgAndComposeFromVersion(
+  versionId: string,
+): Promise<{ orgId: string; composeId: string }> {
   initServices();
   const [row] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId })
+    .select({
+      orgId: agentComposes.orgId,
+      composeId: agentComposes.id,
+    })
     .from(agentComposeVersions)
     .innerJoin(
       agentComposes,
@@ -36,7 +43,36 @@ export async function getOrgIdFromVersion(versionId: string): Promise<string> {
   if (!row) {
     throw new Error(`Compose version ${versionId} not found`);
   }
-  return row.orgId;
+  return row;
+}
+
+/**
+ * Seed an agent_sessions row and return its id.
+ *
+ * @why-db-direct agent_runs.session_id is NOT NULL and FKs to
+ * agent_sessions. Seeders that insert into agent_runs directly (bypassing
+ * insertRunRecord / enqueueRun) must create the session row first.
+ */
+export async function ensureTestAgentSession(params: {
+  userId: string;
+  orgId: string;
+  agentComposeId: string;
+  conversationId?: string | null;
+}): Promise<string> {
+  initServices();
+  const [session] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({
+      userId: params.userId,
+      orgId: params.orgId,
+      agentComposeId: params.agentComposeId,
+      conversationId: params.conversationId ?? null,
+    })
+    .returning({ id: agentSessions.id });
+  if (!session) {
+    throw new Error("Failed to seed agent session");
+  }
+  return session.id;
 }
 
 /**
@@ -65,6 +101,7 @@ async function createRunDirect(
   userId: string,
   versionId: string,
   orgId: string,
+  agentComposeId: string,
   options: CreateRunDirectOptions = {},
 ): Promise<{ id: string }> {
   const {
@@ -80,6 +117,11 @@ async function createRunDirect(
     result,
     additionalVolumes = null,
   } = options;
+  const sessionId = await ensureTestAgentSession({
+    userId,
+    orgId,
+    agentComposeId,
+  });
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
@@ -89,6 +131,7 @@ async function createRunDirect(
       status,
       prompt,
       continuedFromSessionId,
+      sessionId,
       additionalVolumes,
       ...(createdAt ? { createdAt } : {}),
       ...(startedAt ? { startedAt } : {}),
@@ -168,6 +211,7 @@ export async function seedTestRun(
     userId,
     versionId,
     options?.orgId ?? compose.orgId,
+    agentComposeId,
     {
       status: options?.status ?? "pending",
       prompt: options?.prompt ?? "test prompt",
@@ -202,7 +246,14 @@ export async function seedCompletedTestRun(options: {
 }): Promise<string> {
   initServices();
 
-  const orgId = await getOrgIdFromVersion(options.composeVersionId);
+  const { orgId, composeId } = await getOrgAndComposeFromVersion(
+    options.composeVersionId,
+  );
+  const sessionId = await ensureTestAgentSession({
+    userId: options.userId,
+    orgId,
+    agentComposeId: composeId,
+  });
 
   const [row] = await globalThis.services.db
     .insert(agentRuns)
@@ -212,6 +263,7 @@ export async function seedCompletedTestRun(options: {
       agentComposeVersionId: options.composeVersionId,
       status: "completed",
       prompt: "test",
+      sessionId,
       createdAt: options.createdAt,
       startedAt: options.startedAt,
       completedAt: options.completedAt,
@@ -235,7 +287,14 @@ export async function seedStalePendingRun(
 ): Promise<string> {
   initServices();
 
-  const orgId = await getOrgIdFromVersion(agentComposeVersionId);
+  const { orgId, composeId } = await getOrgAndComposeFromVersion(
+    agentComposeVersionId,
+  );
+  const sessionId = await ensureTestAgentSession({
+    userId,
+    orgId,
+    agentComposeId: composeId,
+  });
 
   const staleCreatedAt = new Date(Date.now() - ageMs);
   const [run] = await globalThis.services.db
@@ -246,6 +305,7 @@ export async function seedStalePendingRun(
       agentComposeVersionId,
       status: "pending",
       prompt: "Stale pending run",
+      sessionId,
       createdAt: staleCreatedAt,
       lastHeartbeatAt: staleCreatedAt,
     })
@@ -273,6 +333,26 @@ export async function seedOrphanTestRun(
 ): Promise<{ runId: string }> {
   initServices();
 
+  // An orphan run still needs a valid session_id (NOT NULL + FK). Seed a
+  // throwaway compose + session to back the FK; the "orphan" semantics are
+  // about the null agent_compose_version_id, not the session.
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId,
+      orgId,
+      name: uniqueId("orphan-compose"),
+    })
+    .returning({ id: agentComposes.id });
+  if (!compose) {
+    throw new Error("Failed to seed orphan compose");
+  }
+  const sessionId = await ensureTestAgentSession({
+    userId,
+    orgId,
+    agentComposeId: compose.id,
+  });
+
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
@@ -281,6 +361,7 @@ export async function seedOrphanTestRun(
       agentComposeVersionId: null,
       status: options?.status ?? "completed",
       prompt: options?.prompt ?? "orphan run prompt",
+      sessionId,
     })
     .returning({ id: agentRuns.id });
   return { runId: run!.id };

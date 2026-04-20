@@ -4,7 +4,7 @@ import { runnerJobQueue } from "../../db/schema/runner-job-queue";
 import { runnerState } from "../../db/schema/runner-state";
 import { agentRuns } from "../../db/schema/agent-run";
 import { encryptSecretsMap } from "../../lib/shared/crypto/secrets-encryption";
-import { getOrgIdFromVersion } from "./runs";
+import { ensureTestAgentSession, getOrgAndComposeFromVersion } from "./runs";
 
 /**
  * Create a runner job queue entry with an associated agent run.
@@ -28,11 +28,17 @@ export async function createTestRunnerJob(
   runOverrides?: { appendSystemPrompt?: string; sessionId?: string },
 ): Promise<{ runId: string }> {
   initServices();
-  const orgId = await getOrgIdFromVersion(versionId);
+  const { orgId, composeId } = await getOrgAndComposeFromVersion(versionId);
 
   // sessionId belongs to runnerJobQueue (varchar affinity key), not agentRuns
-  // (uuid FK-to-be). Keep it out of the agentRuns insert.
+  // (uuid FK). Keep it out of the agentRuns insert.
   const { sessionId: _jobSessionId, ...agentRunOverrides } = runOverrides ?? {};
+
+  const agentRunSessionId = await ensureTestAgentSession({
+    userId,
+    orgId,
+    agentComposeId: composeId,
+  });
 
   const [run] = await globalThis.services.db
     .insert(agentRuns)
@@ -42,6 +48,7 @@ export async function createTestRunnerJob(
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
+      sessionId: agentRunSessionId,
       ...agentRunOverrides,
     })
     .returning({ id: agentRuns.id });

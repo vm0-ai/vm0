@@ -689,8 +689,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(runAfter?.sessionId).toBe(preCreatedSessionId);
     });
 
-    // Branch B: legacy continuation pre-deploy — continuedFromSessionId set, sessionId unset
-    it("should reuse continuedFromSessionId for legacy continuation runs", async () => {
+    // Branch B: legacy continuation pre-deploy — continuedFromSessionId set, sessionId unset.
+    // TODO(#10324): Remove this test together with checkpoint-service Branch B.
+    // Skipped because agent_runs.session_id is now NOT NULL; the legacy
+    // null-sessionId state this test reproduces is no longer reachable after
+    // issue #10323 tightened the schema. Branch B code still exists as dead
+    // code pending the follow-up cleanup PR.
+    it.skip("should reuse continuedFromSessionId for legacy continuation runs", async () => {
       // Pre-create a session and seed a run that continues from it WITHOUT
       // populating sessionId (simulates an in-flight continuation at deploy time).
       const priorSession = await createTestAgentSession(
@@ -738,8 +743,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(session?.conversationId).toBe(body.conversationId);
     });
 
-    // Branch C: legacy first-run pre-deploy — neither sessionId nor continuedFromSessionId set
-    it("should create a new session and backfill run.sessionId", async () => {
+    // Branch C: legacy first-run pre-deploy — neither sessionId nor continuedFromSessionId set.
+    // TODO(#10324): Remove this test together with checkpoint-service Branch C.
+    // Skipped because agent_runs.session_id is now NOT NULL; the legacy
+    // null-sessionId state this test reproduces is no longer reachable after
+    // issue #10323 tightened the schema. Branch C code still exists as dead
+    // code pending the follow-up cleanup PR.
+    it.skip("should create a new session and backfill run.sessionId", async () => {
       const { runId } = await seedTestRun(user.userId, testComposeId, {
         status: "running",
       });
