@@ -282,6 +282,62 @@ export const chatMessagesContract = c.router({
 });
 
 /**
+ * Single chat message in a search result.
+ * `content` is guaranteed non-null because the search route filters out
+ * placeholder rows where content is NULL.
+ */
+const chatSearchMessageSchema = z.object({
+  messageId: z.string(),
+  chatThreadId: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  createdAt: z.string(),
+  sequenceNumber: z.number().nullable(),
+  runId: z.string().nullable(),
+});
+
+const chatSearchResultSchema = z.object({
+  chatThreadId: z.string(),
+  agentName: z.string(),
+  matchedMessage: chatSearchMessageSchema,
+  contextBefore: z.array(chatSearchMessageSchema),
+  contextAfter: z.array(chatSearchMessageSchema),
+});
+
+const chatSearchResponseSchema = z.object({
+  results: z.array(chatSearchResultSchema),
+  hasMore: z.boolean(),
+});
+
+/**
+ * Chat search contract (GET /api/zero/chat/search)
+ * Searches chat messages within the caller's own threads in the caller's org.
+ * Authorization is enforced at the DB query level via userId + orgId filters.
+ */
+export const chatSearchContract = c.router({
+  search: {
+    method: "GET",
+    path: "/api/zero/chat/search",
+    headers: authHeadersSchema,
+    query: z.object({
+      keyword: z.string().min(1),
+      agent: z.string().optional(),
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(50).default(20),
+      before: z.coerce.number().min(0).max(10).default(0),
+      after: z.coerce.number().min(0).max(10).default(0),
+    }),
+    responses: {
+      200: chatSearchResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Search chat messages within caller's org (zero proxy)",
+  },
+});
+
+/**
  * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
  * Cursor-based pagination using message UUID as sinceId.
  */
@@ -322,6 +378,10 @@ export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
+export type ChatSearchContract = typeof chatSearchContract;
+export type ChatSearchResponse = z.infer<typeof chatSearchResponseSchema>;
+export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
+export type ChatSearchMessage = z.infer<typeof chatSearchMessageSchema>;
 
 export {
   chatThreadListItemSchema,
