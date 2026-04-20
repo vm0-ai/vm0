@@ -302,6 +302,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Expose Z.AI GLM-5.1 as a selectable model under the VM0 managed provider",
     enabled: false,
   },
+  [FeatureSwitchKey.ApiKeys]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the API Keys tab in Manage Account (Clerk UserProfile). When disabled, the tab is hidden even if API Keys are enabled in the Clerk dashboard.",
+    enabled: false,
+  },
   [FeatureSwitchKey.SlackAgentSwitch]: {
     maintainer: "yuma@vm0.ai",
     description:

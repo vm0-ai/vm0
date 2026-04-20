@@ -55,4 +55,5 @@ export enum FeatureSwitchKey {
   OrgCustomConnectors = "orgCustomConnectors",
   ModelProviderSelection = "modelProviderSelection",
   Vm0GlmModel = "vm0GlmModel",
+  ApiKeys = "apiKeys",
 }
