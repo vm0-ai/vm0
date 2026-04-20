@@ -57,7 +57,7 @@ pub struct ProcessExitEvent {
 
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
 ///
-/// All four registration tables (`pending`, `pending_stdout`, `stdout_senders`)
+/// The three registration tables (`pending`, `pending_stdout`, `stdout_senders`)
 /// live inside the `Connected` variant so they are structurally unreachable
 /// once the reader task has exited. `exits` lives in BOTH variants because it
 /// is an observation log — a cached exit event remains a valid answer to
@@ -705,8 +705,8 @@ impl VsockHost {
         // Cleanup helper: remove the pending_stdout entry if it's still there.
         // If `close()` already ran, the map is gone and the Closed branch is a
         // no-op; the stdout_tx inside the map was already dropped.
-        let drop_pending_stdout = |shared: &Shared| {
-            let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        let drop_pending_stdout = || {
+            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
             if let ConnectionState::Connected { pending_stdout, .. } = &mut *guard {
                 pending_stdout.remove(&seq);
             }
@@ -718,21 +718,21 @@ impl VsockHost {
         {
             Ok(resp) => resp,
             Err(e) => {
-                drop_pending_stdout(&self.shared);
+                drop_pending_stdout();
                 return Err(e);
             }
         };
 
         if resp.msg_type == MSG_ERROR {
             // No pid assigned — clean up pending stdout sender.
-            drop_pending_stdout(&self.shared);
+            drop_pending_stdout();
             let msg = vsock_proto::decode_error(&resp.payload)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             return Err(io::Error::other(msg));
         }
 
         if resp.msg_type != MSG_SPAWN_WATCH_RESULT {
-            drop_pending_stdout(&self.shared);
+            drop_pending_stdout();
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unexpected response type: 0x{:02X}", resp.msg_type),
