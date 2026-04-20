@@ -311,6 +311,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "user falls back to the org default agent with no footer. Staff-only during the " +
       "rollout window defined by `enabledOrgIdHashes`.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ModelProviderSelection]: {
     maintainer: "ethan@vm0.ai",
