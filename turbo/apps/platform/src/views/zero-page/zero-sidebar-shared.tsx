@@ -20,7 +20,7 @@ export function useChatThreadsTitleLabels() {
     titleLabel: unify ? "Chats" : `Chats with ${agentDisplayName}`,
     searchPlaceholder: unify
       ? "Search chats"
-      : `Search chats with ${agentDisplayName}`,
+      : `Search chat with ${agentDisplayName}`,
     newChatAriaLabel: unify ? "New chat" : `New chat with ${agentDisplayName}`,
   };
 }
