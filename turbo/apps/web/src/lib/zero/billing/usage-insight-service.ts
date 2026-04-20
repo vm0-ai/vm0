@@ -283,9 +283,11 @@ async function queryTopSchedules(
 
   const schedules: UsageInsightResponse["schedules"] = [];
   let scheduleOtherCredits = 0;
+  let hasScheduleOverflow = false;
   for (const row of rows.rows) {
     if (Number(row.rn) > 100) {
       scheduleOtherCredits = Number(row.credits);
+      hasScheduleOverflow = true;
     } else if (row.schedule_id) {
       schedules.push({
         scheduleId: row.schedule_id,
@@ -297,7 +299,7 @@ async function queryTopSchedules(
   }
 
   let scheduleOtherCount = 0;
-  if (scheduleOtherCredits > 0) {
+  if (hasScheduleOverflow) {
     const countRows = await db.execute<{ cnt: string }>(
       sql.raw(`
         WITH agg AS (
@@ -372,9 +374,11 @@ async function queryTopChats(
 
   const chats: UsageInsightResponse["chats"] = [];
   let chatOtherCredits = 0;
+  let hasChatOverflow = false;
   for (const row of rows.rows) {
     if (Number(row.rn) > 100) {
       chatOtherCredits = Number(row.credits);
+      hasChatOverflow = true;
     } else if (row.thread_id) {
       chats.push({
         threadId: row.thread_id,
@@ -386,7 +390,7 @@ async function queryTopChats(
   }
 
   let chatOtherCount = 0;
-  if (chatOtherCredits > 0) {
+  if (hasChatOverflow) {
     const countRows = await db.execute<{ cnt: string }>(
       sql.raw(`
         WITH agg AS (

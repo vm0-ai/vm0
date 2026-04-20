@@ -21,7 +21,8 @@ const router = tsr.router(zeroUsageInsightContract, {
 
     const { org } = await resolveOrg(authCtx);
 
-    // Validate timezone
+    // Validate timezone — Intl.DateTimeFormat constructor is the only standard
+    // API that synchronously throws on an unrecognised IANA timezone string.
     try {
       Intl.DateTimeFormat(undefined, { timeZone: query.tz });
     } catch {
