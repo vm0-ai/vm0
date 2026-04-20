@@ -20,6 +20,7 @@ import { processOrgCredits } from "../../../../../../src/lib/zero/credit/credit-
 import {
   isNotFound,
   isBadRequest,
+  isRunNotCancellable,
 } from "../../../../../../src/lib/shared/errors";
 import { after } from "next/server";
 
@@ -38,17 +39,19 @@ const router = tsr.router(zeroRunsCancelContract, {
     try {
       const result = await cancelRun(params.id, userId, org.orgId);
 
-      after(async () => {
-        const shouldProcessCredits = await dispatchCancelSideEffects(
-          result,
-          (orgId) => {
-            return drainOrgQueue(orgId, dispatchQueuedZeroRun);
-          },
-        );
-        if (shouldProcessCredits) {
-          await processOrgCredits(result.orgId);
-        }
-      });
+      if (!result.alreadyCancelled) {
+        after(async () => {
+          const shouldProcessCredits = await dispatchCancelSideEffects(
+            result,
+            (orgId) => {
+              return drainOrgQueue(orgId, dispatchQueuedZeroRun);
+            },
+          );
+          if (shouldProcessCredits) {
+            await processOrgCredits(result.orgId);
+          }
+        });
+      }
 
       return {
         status: 200 as const,
@@ -61,6 +64,9 @@ const router = tsr.router(zeroRunsCancelContract, {
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse("NOT_FOUND", error.message);
+      }
+      if (isRunNotCancellable(error)) {
+        return createErrorResponse("RUN_NOT_CANCELLABLE", error.message);
       }
       if (isBadRequest(error)) {
         return createErrorResponse("BAD_REQUEST", error.message);

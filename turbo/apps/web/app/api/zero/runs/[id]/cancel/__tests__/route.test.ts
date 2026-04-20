@@ -51,7 +51,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     expect(data.status).toBe("cancelled");
   });
 
-  it("should return 400 when run already completed", async () => {
+  it("should return 400 with RUN_NOT_CANCELLABLE when run already completed", async () => {
     const userId = uniqueId("zcanc-done");
     await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
@@ -64,6 +64,29 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       createTestRequest(cancelUrl(runId), { method: "POST" }),
     );
     expect(response.status).toBe(400);
+
+    const data = await response.json();
+    expect(data.error.code).toBe("RUN_NOT_CANCELLABLE");
+    expect(data.error.message).toContain("cannot be cancelled");
+  });
+
+  it("should return 200 when run is already cancelled (idempotent)", async () => {
+    const userId = uniqueId("zcanc-idem");
+    await setupOrg(userId);
+    const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
+    const { runId } = await seedTestRun(userId, compose.composeId, {
+      status: "cancelled",
+      completedAt: new Date(),
+    });
+
+    const response = await POST(
+      createTestRequest(cancelUrl(runId), { method: "POST" }),
+    );
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.id).toBe(runId);
+    expect(data.status).toBe("cancelled");
   });
 
   it("should return 404 when run not found", async () => {
