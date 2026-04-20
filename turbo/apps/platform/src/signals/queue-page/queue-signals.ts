@@ -2,9 +2,7 @@ import { command, state, computed } from "ccstate";
 import { zeroRunsQueueContract, zeroRunsCancelContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { setLoop } from "../utils.ts";
-
-const POLL_INTERVAL = 5000;
+import { awaitRealtimeReady$, setAblyLoop$ } from "../realtime.ts";
 
 const queueReload$ = state(0);
 
@@ -23,16 +21,22 @@ const reloadQueueData$ = command(({ set }) => {
   });
 });
 
+/**
+ * Subscribe to org-wide queue changes via Ably. The queue page daemon
+ * runs for the lifetime of the page; the loop body never returns true.
+ * Each `queue:changed` event refetches `queueData$`.
+ */
 export const startQueuePolling$ = command(
   async ({ set }, signal: AbortSignal) => {
-    await setLoop(
-      () => {
-        set(reloadQueueData$);
-        return false;
-      },
-      POLL_INTERVAL,
-      signal,
-    );
+    await set(awaitRealtimeReady$, signal);
+    signal.throwIfAborted();
+
+    const onQueueChanged$ = command(({ set }) => {
+      set(reloadQueueData$);
+      return false;
+    });
+
+    await set(setAblyLoop$, "queue:changed", onQueueChanged$, signal);
   },
 );
 

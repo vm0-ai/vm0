@@ -412,6 +412,8 @@ export async function insertTestChatMessage(params: {
   content: string | null;
   runId?: string | null;
   archivedAt?: Date | null;
+  attachFiles?: string[];
+  createdAt?: Date;
 }): Promise<{ id: string; createdAt: Date }> {
   initServices();
   const [row] = await globalThis.services.db
@@ -422,6 +424,8 @@ export async function insertTestChatMessage(params: {
       content: params.content,
       runId: params.runId ?? null,
       archivedAt: params.archivedAt ?? null,
+      attachFiles: params.attachFiles ?? null,
+      ...(params.createdAt ? { createdAt: params.createdAt } : {}),
     })
     .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
   if (!row) {

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.267.0](https://github.com/vm0-ai/vm0/compare/app-v0.266.0...app-v0.267.0) (2026-04-20)
+
+
+### Features
+
+* **connector:** add nano-banana platform-managed connector skeleton ([#9889](https://github.com/vm0-ai/vm0/issues/9889)) ([3bec579](https://github.com/vm0-ai/vm0/commit/3bec5793f167abcbc635987c606461552f95d38c))
+
+
+### Bug Fixes
+
+* **chat:** restore structured attach-files flow for web chat uploads ([#10264](https://github.com/vm0-ai/vm0/issues/10264)) ([1962608](https://github.com/vm0-ai/vm0/commit/196260877aaaec02d0403232d19b132f28107ccc))
+* **platform:** clear just-connected flag on connector disconnect ([#10274](https://github.com/vm0-ai/vm0/issues/10274)) ([dfa0588](https://github.com/vm0-ai/vm0/commit/dfa05889ae909947fea88174788a2dd9e2f6b10e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.212.0
+
 ## [0.266.0](https://github.com/vm0-ai/vm0/compare/app-v0.265.1...app-v0.266.0) (2026-04-20)
 
 

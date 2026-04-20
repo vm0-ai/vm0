@@ -5,6 +5,7 @@ import { setAblyLoop$, setupRealtime$ } from "../realtime.ts";
 import { clearAllDetached } from "../utils.ts";
 import {
   triggerAblyEvent,
+  triggerAblyReconnect,
   triggerAblyReauth,
   getAuthTokenHistory,
   resetAblySubscriptions,
@@ -92,6 +93,56 @@ describe("setAblyLoop$ with mock Ably", () => {
 
     expect(calls).toBe(3);
     controller.abort();
+  });
+
+  it("pokes every active subscriber on reconnect", async () => {
+    const { store, controller } = setupTestStore();
+
+    await store.set(setupRealtime$, controller.signal);
+
+    let callsA = 0;
+    let callsB = 0;
+    const loopA$ = command((_store, _signal: AbortSignal) => {
+      callsA++;
+      return false;
+    });
+    const loopB$ = command((_store, _signal: AbortSignal) => {
+      callsB++;
+      return false;
+    });
+
+    const loopAPromise = store.set(
+      setAblyLoop$,
+      "topic-a",
+      loopA$,
+      controller.signal,
+    );
+    const loopBPromise = store.set(
+      setAblyLoop$,
+      "topic-b",
+      loopB$,
+      controller.signal,
+    );
+
+    // Wait for both loops' first iteration + subscription registration.
+    await vi.waitFor(() => {
+      expect(callsA).toBe(1);
+      expect(callsB).toBe(1);
+      expect(hasSubscription("topic-a")).toBeTruthy();
+      expect(hasSubscription("topic-b")).toBeTruthy();
+    });
+
+    triggerAblyReconnect();
+
+    // Each subscriber gets poked once → each loop body runs again.
+    await vi.waitFor(() => {
+      expect(callsA).toBe(2);
+      expect(callsB).toBe(2);
+    });
+
+    controller.abort();
+    await expect(loopAPromise).rejects.toThrow();
+    await expect(loopBPromise).rejects.toThrow();
   });
 });
 

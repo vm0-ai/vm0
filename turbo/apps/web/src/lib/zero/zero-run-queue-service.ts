@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
+import { agentSessions } from "../../db/schema/agent-session";
 import { zeroRuns } from "../../db/schema/zero-run";
 import {
   agentComposeVersions,
@@ -55,6 +56,7 @@ import {
   checkModelProviderConfigured,
 } from "./zero-run-service";
 import { logger } from "../shared/logger";
+import { publishOrgSignal } from "./realtime";
 import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
 
 const log = logger("zero:run-queue-service");
@@ -89,6 +91,13 @@ export async function enqueueRun(
   // Org context is required from caller
   const orgId = params.orgId;
 
+  // composeId must be present on the zero path (resolved before enqueue).
+  // Without it we cannot stamp agent_sessions.agent_compose_id.
+  if (!params.composeId) {
+    throw new Error("enqueueRun requires params.composeId to be set");
+  }
+  const agentComposeId = params.composeId;
+
   // Encrypt the full CreateRunParams for later replay
   const paramsJson = JSON.stringify(params);
   const encryptedParams = encryptSecretsMap(
@@ -96,10 +105,34 @@ export async function enqueueRun(
     env().SECRETS_ENCRYPTION_KEY,
   );
 
-  // Insert agent_runs + queue entry atomically to prevent orphaned records
+  // Insert agent_runs + queue entry atomically to prevent orphaned records.
+  // Eagerly create the agent_sessions row too so sessionId is known on the
+  // POST response even for queued runs (same promise as synchronous runs).
   const expiresAt = new Date(Date.now() + QUEUE_TTL_MS);
 
   const run = await globalThis.services.db.transaction(async (tx) => {
+    let sessionId: string;
+    if (params.sessionId) {
+      sessionId = params.sessionId;
+    } else {
+      const [newSession] = await tx
+        .insert(agentSessions)
+        .values({
+          userId,
+          orgId,
+          agentComposeId,
+          artifactName: params.artifactName,
+          memoryName: params.memoryName,
+          conversationId: null,
+        })
+        .returning({ id: agentSessions.id });
+
+      if (!newSession) {
+        throw new Error("Failed to create queued agent session");
+      }
+      sessionId = newSession.id;
+    }
+
     const [inserted] = await tx
       .insert(agentRuns)
       .values({
@@ -113,6 +146,7 @@ export async function enqueueRun(
         secretNames: params.secrets ? Object.keys(params.secrets) : null,
         resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
         continuedFromSessionId: params.sessionId ?? null,
+        sessionId,
         lastHeartbeatAt: new Date(),
       })
       .returning();
@@ -130,15 +164,19 @@ export async function enqueueRun(
       expiresAt,
     });
 
-    return inserted;
+    return { ...inserted, sessionId };
   });
 
   log.debug(`Enqueued run ${run.id} for user ${userId}`);
+
+  // Notify all org members whose queue view should refresh.
+  await publishOrgSignal(orgId, "queue:changed");
 
   return {
     runId: run.id,
     status: "queued",
     createdAt: run.createdAt,
+    sessionId: run.sessionId,
   };
 }
 
@@ -169,40 +207,55 @@ export async function drainOrgQueue(
   const db = globalThis.services.db;
   const encryptionKey = env().SECRETS_ENCRYPTION_KEY;
 
-  for (;;) {
-    // Single transaction: advisory lock → concurrency check → dequeue → status update
-    const dequeued = await dequeueNextAtomic(db, orgId);
-    if (!dequeued) return; // Queue empty, entry skipped, or concurrency full
+  // anyTransition is set to true only after dequeueNextAtomic() returns a non-null
+  // result, meaning at least one run was successfully dequeued and transitioned to
+  // "pending". The outer try/finally guarantees publishOrgSignal() fires exactly once
+  // after all iterations complete (or after an unexpected throw). An unexpected throw
+  // from dequeueNextAtomic() or decryptSecretsMap() would only reach the finally block
+  // with anyTransition=true if a prior loop iteration had already dequeued a run, so
+  // the signal is always accurate: it fires only when real state has changed.
+  let anyTransition = false;
+  try {
+    for (;;) {
+      // Single transaction: advisory lock → concurrency check → dequeue → status update
+      const dequeued = await dequeueNextAtomic(db, orgId);
+      if (!dequeued) return; // Queue empty, entry skipped, or concurrency full
+      anyTransition = true;
 
-    // Decrypt CreateRunParams (outside transaction — no lock held)
-    const decryptedMap = decryptSecretsMap(
-      dequeued.encryptedParams,
-      encryptionKey,
-    );
-    if (!decryptedMap?.__params) {
-      log.error(`Failed to decrypt params for queued run ${dequeued.runId}`);
-      await markQueuedRunFailed(
-        dequeued.runId,
-        "Failed to decrypt queued run params",
+      // Decrypt CreateRunParams (outside transaction — no lock held)
+      const decryptedMap = decryptSecretsMap(
+        dequeued.encryptedParams,
+        encryptionKey,
       );
-      continue; // Try next entry
+      if (!decryptedMap?.__params) {
+        log.error(`Failed to decrypt params for queued run ${dequeued.runId}`);
+        await markQueuedRunFailed(
+          dequeued.runId,
+          "Failed to decrypt queued run params",
+        );
+        continue; // Try next entry
+      }
+
+      const params: CreateRunParams = JSON.parse(decryptedMap.__params);
+
+      // Dispatch the run (compose loading, authorization, execution)
+      try {
+        await dispatch(dequeued.runId, params);
+        log.debug(`Queued run ${dequeued.runId} dispatched successfully`);
+        return; // Successfully dispatched — done
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        log.error(
+          `Failed to dispatch queued run ${dequeued.runId}: ${errorMessage}`,
+        );
+        await markQueuedRunFailed(dequeued.runId, errorMessage);
+        continue; // Try next entry
+      }
     }
-
-    const params: CreateRunParams = JSON.parse(decryptedMap.__params);
-
-    // Dispatch the run (compose loading, authorization, execution)
-    try {
-      await dispatch(dequeued.runId, params);
-      log.debug(`Queued run ${dequeued.runId} dispatched successfully`);
-      return; // Successfully dispatched — done
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      log.error(
-        `Failed to dispatch queued run ${dequeued.runId}: ${errorMessage}`,
-      );
-      await markQueuedRunFailed(dequeued.runId, errorMessage);
-      continue; // Try next entry
+  } finally {
+    if (anyTransition) {
+      await publishOrgSignal(orgId, "queue:changed");
     }
   }
 }

@@ -57,6 +57,7 @@ import {
   currentChatThreadSignals$,
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
+import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -677,21 +678,44 @@ function PagedUserGroup({ group }: { group: GroupedChatMessageGroup }) {
 
 function PagedUserMessage({ message }: { message: PagedChatMessage }) {
   const content = message.content ?? "";
+  // Two attachment sources coexist: the structured `attachFiles` field
+  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
+  // over from messages sent before #10243 split the flows. Use the structured
+  // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
-  const displayContent = cleanContent.replace(/\n/g, "  \n");
+  // `ATTACH_ONLY_PLACEHOLDER` is the server-side placeholder stored when the
+  // user sent only files with no typed text — strip it so the bubble shows
+  // just the attachments.
+  const strippedContent =
+    message.attachFiles &&
+    message.attachFiles.length > 0 &&
+    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
+      ? ""
+      : cleanContent;
+  const displayContent = strippedContent.replace(/\n/g, "  \n");
   const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
   const openLightbox = (url: string) => {
     setLightboxUrl(url);
   };
 
-  const allAttachments = parsed.map((p) => {
-    return {
-      filename: p.filename,
-      url: p.url,
-      isImage: isImageFilename(p.filename),
-      isVideo: isVideoFilename(p.filename),
-    };
-  });
+  const allAttachments =
+    message.attachFiles && message.attachFiles.length > 0
+      ? message.attachFiles.map((f) => {
+          return {
+            filename: f.filename,
+            url: f.url,
+            isImage: isImageFilename(f.filename),
+            isVideo: isVideoFilename(f.filename),
+          };
+        })
+      : parsed.map((p) => {
+          return {
+            filename: p.filename,
+            url: p.url,
+            isImage: isImageFilename(p.filename),
+            isVideo: isVideoFilename(p.filename),
+          };
+        });
 
   return (
     <div data-role="user">

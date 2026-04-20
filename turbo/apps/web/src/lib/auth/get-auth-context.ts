@@ -1,5 +1,5 @@
 import { eq, and, gt } from "drizzle-orm";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import type { OrgRole, ZeroCapability } from "@vm0/core";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import {
@@ -14,6 +14,8 @@ import { logger } from "../shared/logger";
 
 const log = logger("auth:user");
 
+export type AuthTokenType = "session" | "pat" | "sandbox" | "zero" | "api_key";
+
 /**
  * Authentication context returned by getAuthContext.
  */
@@ -24,6 +26,7 @@ export type AuthContext = {
   sessionClaims?: Record<string, unknown>;
   capabilities?: readonly ZeroCapability[];
   runId?: string;
+  tokenType?: AuthTokenType;
 };
 
 /**
@@ -58,15 +61,20 @@ export async function getAuthContext(
           );
           if (!membership) {
             // User no longer a member — omit orgId to force resolveOrg rejection
-            return { userId: resolved.userId };
+            return { userId: resolved.userId, tokenType: "pat" };
           }
           return {
             userId: resolved.userId,
             orgId: resolved.orgId,
             orgRole: membership.role,
+            tokenType: "pat",
           };
         }
-        return { userId: resolved.userId, orgId: resolved.orgId };
+        return {
+          userId: resolved.userId,
+          orgId: resolved.orgId,
+          tokenType: "pat",
+        };
       }
       return null;
     }
@@ -86,22 +94,72 @@ export async function getAuthContext(
           );
           if (!membership) {
             // User no longer a member — omit orgId to force resolveOrg rejection
-            return { userId: resolved.userId };
+            return { userId: resolved.userId, tokenType: "pat" };
           }
           return {
             userId: resolved.userId,
             orgId: resolved.orgId,
             orgRole: membership.role,
+            tokenType: "pat",
           };
         }
-        return { userId: resolved.userId, orgId: resolved.orgId };
+        return {
+          userId: resolved.userId,
+          orgId: resolved.orgId,
+          tokenType: "pat",
+        };
       }
       return authenticateSandboxToken(token, options);
     }
+
+    // Non-vm0 opaque bearer — try Clerk API Key verification.
+    const apiKeyAuth = await authenticateClerkApiKey(token);
+    if (apiKeyAuth) return apiKeyAuth;
   }
 
   // Fall back to Clerk session auth
   return getClerkSessionAuth();
+}
+
+/**
+ * Verify a Clerk-issued API Key (opaque, created via the Clerk dashboard or
+ * `<APIKeys />` component). Returns an AuthContext keyed on the key's subject
+ * (a user id for user-scoped keys), including any scopes declared on the key.
+ * Returns null for any verification failure — callers treat that as 401.
+ */
+export async function authenticateClerkApiKey(
+  secret: string,
+): Promise<AuthContext | null> {
+  let apiKey: Awaited<
+    ReturnType<Awaited<ReturnType<typeof clerkClient>>["apiKeys"]["verify"]>
+  >;
+  try {
+    const client = await clerkClient();
+    apiKey = await client.apiKeys.verify(secret);
+  } catch (err) {
+    log.debug("Clerk API key verify failed", err);
+    return null;
+  }
+  if (apiKey.revoked || apiKey.expired) {
+    log.debug("Clerk API key revoked or expired", { id: apiKey.id });
+    return null;
+  }
+  // Only user-scoped keys are supported in v1. Org-scoped Clerk API keys
+  // carry an `org_`-prefixed subject and are rejected here so downstream
+  // code can assume subject === userId.
+  if (apiKey.subject.startsWith("org_")) {
+    log.debug("Clerk API key is org-scoped; v1 accepts user-scoped only", {
+      subject: apiKey.subject,
+    });
+    return null;
+  }
+  const claimedOrgId =
+    typeof apiKey.claims?.orgId === "string" ? apiKey.claims.orgId : undefined;
+  return {
+    userId: apiKey.subject,
+    orgId: claimedOrgId,
+    tokenType: "api_key",
+  };
 }
 
 /** Authenticate a sandbox-prefixed token (sandbox or zero scope). */
@@ -157,6 +215,7 @@ function resolveSandboxAuth(
     return {
       userId: sandboxAuth.userId,
       runId: sandboxAuth.runId,
+      tokenType: "sandbox",
     };
   }
 
@@ -186,6 +245,7 @@ function resolveZeroAuth(
       runId: zeroAuth.runId,
       orgId: zeroAuth.orgId,
       capabilities: [...zeroAuth.capabilities],
+      tokenType: "zero",
     };
   }
 
@@ -204,6 +264,7 @@ function resolveZeroAuth(
     runId: zeroAuth.runId,
     orgId: zeroAuth.orgId,
     capabilities: [...zeroAuth.capabilities],
+    tokenType: "zero",
   };
 }
 
@@ -266,6 +327,7 @@ async function getClerkSessionAuth(): Promise<AuthContext | null> {
     sessionClaims: authResult.sessionClaims as
       | Record<string, unknown>
       | undefined,
+    tokenType: "session",
   };
 }
 

@@ -15,6 +15,16 @@ const L = logger("Realtime");
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
 
 /**
+ * Registry of loop-poke callbacks. Each `setAblyLoop$` call adds its
+ * `pokeLoop` here on start and removes it on abort. `setupRealtime$`
+ * listens on `connection.on("connected")` and walks this set on every
+ * connect — fires once at bootstrap (registry empty, no-op) and again on
+ * each reconnect so every active loop refetches state and catches up on
+ * events missed during the disconnect.
+ */
+const subscriberPokeRegistry$ = state<ReadonlySet<() => void>>(new Set());
+
+/**
  * Deferred promise that `setupRealtime$` resolves once the user-scoped Ably
  * channel has been established. Consumers started from the view layer
  * before bootstrap finishes realtime setup (e.g. the sidebar thread-list
@@ -72,7 +82,8 @@ export const setupRealtime$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(platformRealtimeTokenContract);
 
-    // Verify the token endpoint works before loading Ably
+    // Health-check the token endpoint so bootstrap surfaces auth errors
+    // before handing the session over to the Ably SDK.
     await accept(client.create({ body: {} }), [200], {
       toast: false,
     });
@@ -94,15 +105,37 @@ export const setupRealtime$ = command(
 
     const deferred = createDeferredPromise(signal);
 
+    // Guard against the event firing after the deferred was already rejected
+    // by signal-abort (tests using detachedSetupPage can tear down before
+    // the mock's queued microtask runs).
     ably.connection.once("connected", () => {
-      deferred.resolve(true);
+      if (!deferred.settled()) {
+        deferred.resolve(true);
+      }
     });
     ably.connection.once("failed", (stateChange) => {
-      deferred.reject(
-        new Error(
-          `Ably connection failed: ${stateChange?.reason?.message ?? "unknown"}`,
-        ),
-      );
+      if (!deferred.settled()) {
+        deferred.reject(
+          new Error(
+            `Ably connection failed: ${stateChange?.reason?.message ?? "unknown"}`,
+          ),
+        );
+      }
+    });
+
+    // Poke every active loop on each reconnect so they refetch state and
+    // catch up on events missed during the disconnect. The first
+    // "connected" event (bootstrap) fires before any `setAblyLoop$` has
+    // registered, so the registry is empty and this is a no-op then.
+    ably.connection.on("connected", () => {
+      const registry = get(subscriberPokeRegistry$);
+      if (registry.size === 0) {
+        return;
+      }
+      L.debug(`reconnected, poking ${registry.size} subscriber(s)`);
+      for (const poke of registry) {
+        poke();
+      }
     });
 
     await deferred.promise;
@@ -165,7 +198,17 @@ export const setAblyLoop$ = command(
     document.addEventListener("visibilitychange", onVisibilityChange, {
       signal,
     });
+    set(subscriberPokeRegistry$, (prev) => {
+      const next = new Set(prev);
+      next.add(pokeLoop);
+      return next;
+    });
     signal.addEventListener("abort", () => {
+      set(subscriberPokeRegistry$, (prev) => {
+        const next = new Set(prev);
+        next.delete(pokeLoop);
+        return next;
+      });
       channel.unsubscribe(topic, callback);
     });
     await channel.subscribe(topic, callback);

@@ -537,6 +537,28 @@ class TestAddCaptureFields:
         assert entry["response_body"] == '{"result": "ok"}'
         assert entry["response_body_encoding"] == "utf-8"
 
+    def test_stream_buffer_gzip_empty_body_skips_body(self, real_flow):
+        """Bug #10287: a gzip frame that decompresses to b"" must not leak
+        the ~20 B compressed framing into ``response_body`` as base64."""
+        import gzip
+
+        compressed = gzip.compress(b"")
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            include_request_id=True,
+            response_content_type="application/json",
+            response_encoding="gzip",
+        )
+        flow.metadata["stream_buffer"] = bytearray(compressed)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert "response_body_encoding" not in entry
+        assert "response_headers" in entry  # headers still captured
+
 
 class TestDecompression:
     """Integration tests for decompression through add_capture_fields."""
@@ -624,10 +646,14 @@ class TestDecompression:
         assert entry["response_body"] == '{"ok": true}'
 
     def test_truncated_gzip_partial_decompress(self, real_flow):
-        """Truncated gzip buffer should yield partial decompressed content."""
+        """Truncated gzip buffer should yield the partial decompressed
+        content that zlib managed to decode before the cut, marked
+        truncated.  Input sized so halving the frame leaves zlib with
+        enough bytes to emit real payload (42 KB of 'x') rather than the
+        empty-output edge case covered by #10287."""
         import gzip
 
-        original = b"x" * 10000
+        original = b"x" * 100_000
         compressed = gzip.compress(original)
         truncated = compressed[: len(compressed) // 2]
         flow = self._make_flow_with_compressed_buffer(real_flow, truncated, "gzip", "text/plain")
@@ -636,6 +662,8 @@ class TestDecompression:
         add_capture_fields(flow, entry)
         assert "response_body" in entry
         assert entry["response_body_truncated"] is True
+        assert set(entry["response_body"]) == {"x"}  # partial 'x' run, never gzip framing
+        assert len(entry["response_body"]) > 1024  # meaningfully more than just the header
 
     def test_gzip_zip_bomb_capped(self, real_flow):
         """Decompressed output should not exceed buffer limit (zip bomb protection)."""
@@ -929,3 +957,40 @@ class TestDecompressBody:
         data = b'{"hello":"world"}'
         assert decompress_body(data, headers(("Content-Encoding", "identity"))) == data
         assert decompress_body(data, headers()) == data
+
+    def test_gzip_empty_body_returns_empty(self, headers):
+        # Bug #10287: a valid gzip frame that decompresses to b"" must not be
+        # reported back as the compressed bytes.  Before the fix,
+        # ``return result if result else data`` on the success path handed the
+        # raw ~20 B framing to the caller, which then base64-encoded it into
+        # the network log.
+        import gzip
+
+        compressed = gzip.compress(b"")
+        hdrs = headers(("Content-Encoding", "gzip"))
+        assert decompress_body(compressed, hdrs, max_output=64 * 1024) == b""
+
+    def test_deflate_empty_body_returns_empty(self, headers):
+        # Bug #10287: deflate shares the gzip branch but uses a different
+        # ``wbits`` — guard that the empty-body behaviour matches.
+        import zlib
+
+        compressed = zlib.compress(b"")
+        hdrs = headers(("Content-Encoding", "deflate"))
+        assert decompress_body(compressed, hdrs, max_output=64 * 1024) == b""
+
+    def test_brotli_empty_body_returns_empty(self, headers):
+        # Bug #10287: same pattern as gzip for the brotli branch.
+        import brotli
+
+        compressed = brotli.compress(b"")
+        hdrs = headers(("Content-Encoding", "br"))
+        assert decompress_body(compressed, hdrs, max_output=64 * 1024) == b""
+
+    def test_zstd_empty_body_returns_empty(self, headers):
+        # Bug #10287: same pattern as gzip for the zstd branch.
+        import zstandard
+
+        compressed = zstandard.ZstdCompressor().compress(b"")
+        hdrs = headers(("Content-Encoding", "zstd"))
+        assert decompress_body(compressed, hdrs, max_output=64 * 1024) == b""

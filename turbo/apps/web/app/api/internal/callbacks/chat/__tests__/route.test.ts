@@ -387,9 +387,6 @@ describe("POST /api/internal/callbacks/chat", () => {
     });
 
     it("should persist user + error messages on failed run", async () => {
-      vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-      reloadEnv();
-
       const { threadId, runId, secret } = await setupRunAndThread({
         status: "failed",
       });
@@ -463,11 +460,6 @@ describe("POST /api/internal/callbacks/chat", () => {
   });
 
   describe("Run-Updated Signal", () => {
-    beforeEach(() => {
-      vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-      reloadEnv();
-    });
-
     it("should publish chatThreadRunUpdated on completed", async () => {
       const { threadId, runId, secret } = await setupRunAndThread();
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);

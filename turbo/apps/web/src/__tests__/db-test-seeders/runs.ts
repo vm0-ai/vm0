@@ -549,6 +549,7 @@ export async function enqueueTestRun(params: {
   agentComposeVersionId: string;
   orgId: string;
   prompt: string;
+  composeId: string;
 }): Promise<{ runId: string; status: string; queuedAt: Date }> {
   initServices();
   const result = await enqueueRun(params);

@@ -149,6 +149,9 @@ export {
 // Domain modules - Zero Logs
 export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
 
+// Domain modules - Zero Chat
+export { searchZeroChat } from "./domains/zero-chat";
+
 // Domain modules - Logs
 export {
   getSystemLog,

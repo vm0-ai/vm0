@@ -3,6 +3,7 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestOrg,
+  insertTestPlatformConnector,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -66,5 +67,20 @@ describe("GET /api/zero/connectors", () => {
       createTestRequest("http://localhost:3000/api/zero/connectors"),
     );
     expect(response.status).toBe(401);
+  });
+
+  it("includes platform connectors when a row exists", async () => {
+    const userId = uniqueId("zcon-pl");
+    const { orgId } = await setupOrg(userId);
+    await insertTestPlatformConnector(orgId, userId, "nano-banana");
+
+    const response = await GET(createTestRequest(connectorsUrl()));
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    const platform = data.connectors.find((c: { type: string }) => {
+      return c.type === "nano-banana";
+    });
+    expect(platform).toBeDefined();
+    expect(platform.authMethod).toBe("platform");
   });
 });

@@ -3,6 +3,7 @@ import { initServices } from "../../lib/init-services";
 import { secrets } from "../../db/schema/secret";
 import { connectors } from "../../db/schema/connector";
 import { userConnectors } from "../../db/schema/user-connector";
+import { userPlatformConnectors } from "../../db/schema/user-platform-connector";
 import { decryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 
 // ---------------------------------------------------------------------------
@@ -81,4 +82,28 @@ export async function findUserConnectorTypes(
   return rows.map((r) => {
     return r.connectorType;
   });
+}
+
+/**
+ * Count rows in `user_platform_connectors` for a given (orgId, userId, type)
+ * tuple. Used by route tests to pin "POST is idempotent at the row level",
+ * not just via response status.
+ */
+export async function countPlatformConnectorRows(
+  orgId: string,
+  userId: string,
+  type: string,
+): Promise<number> {
+  initServices();
+  const rows = await globalThis.services.db
+    .select({ id: userPlatformConnectors.id })
+    .from(userPlatformConnectors)
+    .where(
+      and(
+        eq(userPlatformConnectors.orgId, orgId),
+        eq(userPlatformConnectors.userId, userId),
+        eq(userPlatformConnectors.type, type),
+      ),
+    );
+  return rows.length;
 }

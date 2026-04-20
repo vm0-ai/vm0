@@ -27,8 +27,10 @@ import {
   findTestRunnerJobEntry,
   findTestStorage,
   createTestCheckpoint,
+  getTestAgentSessionWithConversation,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/route";
+import { POST as completeWebhook } from "../../../webhooks/agent/complete/route";
 import { POST as pollRoute } from "../../../runners/poll/route";
 import type { AgentComposeYaml } from "../../../../../src/lib/infra/agent-compose/types";
 import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
@@ -1033,6 +1035,107 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     // Note: "Missing required secrets" validation is tested in the Validation
     // describe block above (lines 138-197).
+  });
+
+  describe("Eager Agent Session", () => {
+    const UUID_REGEX =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    it("should return sessionId on first POST and persist it on agent_runs", async () => {
+      const data = await createTestRun(testComposeId, "Eager session test");
+
+      expect(data.status).toBe("pending");
+      expect(data.sessionId).toBeDefined();
+      expect(data.sessionId).toMatch(UUID_REGEX);
+
+      const run = await findTestRunRecord(data.runId);
+      expect(run?.sessionId).toBe(data.sessionId);
+
+      const session = await getTestAgentSessionWithConversation(
+        data.sessionId!,
+      );
+      expect(session).toBeDefined();
+      expect(session?.userId).toBe(user.userId);
+      expect(session?.agentComposeId).toBe(testComposeId);
+      expect(session?.conversationId).toBeNull();
+    });
+
+    it("should reuse the existing session when continuing via sessionId", async () => {
+      // First run establishes a session
+      const first = await createTestRun(testComposeId, "First run");
+      expect(first.sessionId).toBeDefined();
+
+      // Bind a claude-code conversation (matches compose default framework)
+      // and mark the run complete so continuation validation passes and the
+      // concurrency limit does not block the follow-up run.
+      const sandboxToken = await generateSandboxToken(user.userId, first.runId);
+      const checkpointResponse = await checkpointWebhook(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${sandboxToken}`,
+            },
+            body: JSON.stringify({
+              runId: first.runId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "reuse-session-test",
+              cliAgentSessionHistoryHash:
+                "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
+            }),
+          },
+        ),
+      );
+      expect(checkpointResponse.status).toBe(200);
+
+      const completeResponse = await completeWebhook(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
+          },
+          body: JSON.stringify({ runId: first.runId, exitCode: 0 }),
+        }),
+      );
+      expect(completeResponse.status).toBe(200);
+
+      // Continue using the returned sessionId
+      const continued = await createTestRun(testComposeId, "Continue run", {
+        sessionId: first.sessionId,
+      });
+
+      expect(continued.sessionId).toBe(first.sessionId);
+
+      const continuedRun = await findTestRunRecord(continued.runId);
+      expect(continuedRun?.sessionId).toBe(first.sessionId);
+    });
+
+    it("should populate conversation_id after the checkpoint webhook fires", async () => {
+      const created = await createTestRun(testComposeId, "Checkpoint flow");
+      expect(created.sessionId).toBeDefined();
+
+      const beforeCheckpoint = await getTestAgentSessionWithConversation(
+        created.sessionId!,
+      );
+      expect(beforeCheckpoint?.conversationId).toBeNull();
+
+      const { agentSessionId, conversationId } = await completeTestRun(
+        user.userId,
+        created.runId,
+      );
+
+      // The checkpoint webhook should bind the conversation to the pre-created
+      // session (not allocate a new session).
+      expect(agentSessionId).toBe(created.sessionId);
+
+      const afterCheckpoint = await getTestAgentSessionWithConversation(
+        created.sessionId!,
+      );
+      expect(afterCheckpoint?.conversationId).toBe(conversationId);
+    });
   });
 
   describe("Checkpoint Resume", () => {

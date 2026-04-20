@@ -259,6 +259,59 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(data.messages[0].role).toBe("user");
   });
 
+  it("should resolve attach files with presigned URLs in paged messages", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      userId: testUserId,
+      role: "user",
+      content: "Analyze this data",
+      attachFiles: ["paged-resolve-uuid"],
+    });
+
+    context.mocks.s3.listS3Objects.mockImplementation(
+      async (_bucket: string, prefix: string) => {
+        if (prefix.includes("paged-resolve-uuid")) {
+          return [
+            {
+              key: `uploads/${testUserId}/paged-resolve-uuid/data.csv`,
+              size: 512,
+            },
+          ];
+        }
+        return [];
+      },
+    );
+    context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+      "https://presigned-url/data.csv",
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.messages).toHaveLength(1);
+    const userMsg = data.messages[0];
+    expect(userMsg.role).toBe("user");
+    expect(userMsg.attachFiles).toBeDefined();
+    expect(userMsg.attachFiles).toHaveLength(1);
+    expect(userMsg.attachFiles[0].id).toBe("paged-resolve-uuid");
+    expect(userMsg.attachFiles[0].filename).toBe("data.csv");
+    expect(userMsg.attachFiles[0].url).toBe("https://presigned-url/data.csv");
+  });
+
   it("should not expose run-level error on event-backed assistant rows", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {

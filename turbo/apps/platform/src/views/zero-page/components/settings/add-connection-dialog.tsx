@@ -1,5 +1,6 @@
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { Input } from "@vm0/ui/components/ui/input";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
@@ -17,6 +18,7 @@ import {
   allConnectorTypes$,
   pollingConnectorType$,
   connectAndSettle$,
+  enablePlatformConnector$,
   submitApiToken$,
   tokenFormSubmitting$,
   setTokenFormValue$,
@@ -36,10 +38,18 @@ import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
 // Inline markdown renderer for help text
 // ---------------------------------------------------------------------------
 
+// Only intended for trusted, source-controlled help text from
+// `CONNECTOR_TYPES[*].authMethods.*.helpText`. Do NOT feed user-supplied
+// strings into this renderer — the `[text]`, `**bold**`, and `> quote`
+// captures are verbatim-injected and would permit HTML smuggling.
 function renderMarkdown(text: string): string {
   return text
     .replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
+      // Only http(s) URLs are turned into anchors; other schemes fall through
+      // as literal text. `"` is also excluded from the href charclass so a
+      // stray quote cannot break out of the href attribute and inject
+      // siblings like `onclick` when feeding `dangerouslySetInnerHTML`.
+      /\[([^\]]+)\]\((https?:\/\/[^)"]+)\)/g,
       '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline">$1</a>',
     )
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
@@ -110,8 +120,14 @@ function ApiTokenForm({
         setSubmitting(null);
         clearForm(type);
         await onSuccess();
-      })().catch(() => {
+      })().catch((error: unknown) => {
         setSubmitting(null);
+        const message =
+          error instanceof Error ? error.message : "Please try again";
+        toast.error(`Failed to save ${config.label} credentials`, {
+          id: `connector-save-failed-${type}`,
+          description: message,
+        });
       }),
       Reason.DomCallback,
     );
@@ -161,6 +177,69 @@ function ApiTokenForm({
 }
 
 // ---------------------------------------------------------------------------
+// Platform confirmation form (platform-supplied connectors — no credentials, just terms)
+// ---------------------------------------------------------------------------
+
+function PlatformConfirmationForm({
+  type,
+  onSuccess,
+}: {
+  type: ConnectorType;
+  onSuccess: () => void | Promise<void>;
+}) {
+  const config = CONNECTOR_TYPES[type];
+  const platformConfig = config.authMethods.platform;
+  const enable = useSet(enablePlatformConnector$);
+  const pageSignal = useGet(pageSignal$);
+  const submittingType = useGet(tokenFormSubmitting$);
+  const setSubmitting = useSet(setTokenFormSubmitting$);
+  const submitting = submittingType === type;
+
+  if (!platformConfig) {
+    return null;
+  }
+
+  const handleEnable = () => {
+    if (submitting) {
+      return;
+    }
+    setSubmitting(type);
+    detach(
+      (async () => {
+        await enable(type, pageSignal);
+        setSubmitting(null);
+        await onSuccess();
+      })().catch((error: unknown) => {
+        setSubmitting(null);
+        const message =
+          error instanceof Error ? error.message : "Please try again";
+        toast.error(`Failed to enable ${config.label}`, {
+          id: `connector-enable-failed-${type}`,
+          description: message,
+        });
+      }),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {platformConfig.helpText && (
+        <div
+          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
+          dangerouslySetInnerHTML={{
+            __html: renderMarkdown(platformConfig.helpText),
+          }}
+        />
+      )}
+      <Button onClick={handleEnable} disabled={submitting} className="w-full">
+        {submitting ? "Enabling..." : (platformConfig.label ?? "Enable")}
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Connect modal content (OAuth button + token form, or just token form)
 // ---------------------------------------------------------------------------
 
@@ -180,6 +259,7 @@ function ConnectModalContent({
   const config = CONNECTOR_TYPES[item.type];
   const hasOAuth = item.availableAuthMethods.includes("oauth");
   const hasApiToken = item.availableAuthMethods.includes("api-token");
+  const hasPlatform = item.availableAuthMethods.includes("platform");
 
   // While OAuth is in progress, only show connecting state
   if (isPolling) {
@@ -231,6 +311,10 @@ function ConnectModalContent({
 
       {hasApiToken && (
         <ApiTokenForm type={item.type} item={item} onSuccess={onSuccess} />
+      )}
+
+      {hasPlatform && (
+        <PlatformConfirmationForm type={item.type} onSuccess={onSuccess} />
       )}
     </div>
   );

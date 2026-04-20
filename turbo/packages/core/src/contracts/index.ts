@@ -146,6 +146,7 @@ export {
   type StoragesListContract,
 } from "./storages";
 export {
+  sandboxReuseResultSchema,
   webhookEventsContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
@@ -158,6 +159,7 @@ export {
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
+  type SandboxReuseResult,
   type WebhookEventsContract,
   type WebhookCompleteContract,
   type WebhookCheckpointsContract,
@@ -289,6 +291,7 @@ export {
   chatThreadMarkReadContract,
   chatMessagesContract,
   chatThreadMessagesContract,
+  chatSearchContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
   modelSelectionRequestSchema,
@@ -304,6 +307,10 @@ export {
   type ChatThreadMarkReadContract,
   type ChatMessagesContract,
   type ChatThreadMessagesContract,
+  type ChatSearchContract,
+  type ChatSearchResponse,
+  type ChatSearchResult,
+  type ChatSearchMessage,
   type ChatThreadListItem,
   type ChatThreadDetail,
   type PagedChatMessage,
@@ -311,6 +318,18 @@ export {
   type AttachFile,
   type ResolvedAttachFile,
 } from "./chat-threads";
+export {
+  chatThreadV1GetContract,
+  chatThreadV1MessagesContract,
+  chatThreadV1SendContract,
+  chatThreadV1Schema,
+  chatMessageV1Schema,
+  type ChatThreadV1GetContract,
+  type ChatThreadV1MessagesContract,
+  type ChatThreadV1SendContract,
+  type ChatThreadV1,
+  type ChatMessageV1,
+} from "./chat-threads-v1";
 export {
   runnersPollContract,
   runnersJobClaimContract,
@@ -585,6 +604,7 @@ export {
 export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
+  zeroPlatformConnectorContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsSearchContract,
   zeroConnectorSessionsContract,
@@ -593,6 +613,7 @@ export {
   type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
+  type ZeroPlatformConnectorContract,
   type ZeroConnectorScopeDiffContract,
   type ZeroConnectorsSearchContract,
   type ZeroConnectorSessionsContract,

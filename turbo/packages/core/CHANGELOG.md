@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.212.0](https://github.com/vm0-ai/vm0/compare/core-v8.211.0...core-v8.212.0) (2026-04-20)
+
+
+### Features
+
+* **connector:** add nano-banana platform-managed connector skeleton ([#9889](https://github.com/vm0-ai/vm0/issues/9889)) ([3bec579](https://github.com/vm0-ai/vm0/commit/3bec5793f167abcbc635987c606461552f95d38c))
+
+
+### Bug Fixes
+
+* **chat:** restore structured attach-files flow for web chat uploads ([#10264](https://github.com/vm0-ai/vm0/issues/10264)) ([1962608](https://github.com/vm0-ai/vm0/commit/196260877aaaec02d0403232d19b132f28107ccc))
+
 ## [8.211.0](https://github.com/vm0-ai/vm0/compare/core-v8.210.1...core-v8.211.0) (2026-04-20)
 
 

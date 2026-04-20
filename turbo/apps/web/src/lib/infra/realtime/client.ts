@@ -7,34 +7,19 @@ const log = logger("realtime");
 
 let ablyClient: Ably.Rest | null = null;
 
-/**
- * Get the Ably REST client singleton.
- * Returns null if ABLY_API_KEY is not configured.
- */
-function getAblyClient(): Ably.Rest | null {
-  const apiKey = env().ABLY_API_KEY;
-  if (!apiKey) {
-    return null;
-  }
-
+function getAblyClient(): Ably.Rest {
   if (!ablyClient) {
-    ablyClient = new Ably.Rest({ key: apiKey });
+    ablyClient = new Ably.Rest({ key: env().ABLY_API_KEY });
     log.debug("Ably client initialized");
   }
 
   return ablyClient;
 }
 
-/**
- * Get channel name for a runner group
- */
 function getRunnerGroupChannelName(group: string): string {
   return `runner-group:${group}`;
 }
 
-/**
- * Get channel name for a platform user's push signal channel.
- */
 function getUserChannelName(userId: string): string {
   return `user:${userId}`;
 }
@@ -45,15 +30,9 @@ function getUserChannelName(userId: string): string {
  */
 export async function generatePlatformUserToken(
   userId: string,
-): Promise<Ably.TokenRequest | null> {
-  const client = getAblyClient();
-  if (!client) {
-    log.debug("Ably not configured, cannot generate platform user token");
-    return null;
-  }
-
+): Promise<Ably.TokenRequest> {
   const channelName = getUserChannelName(userId);
-  const tokenRequest = await client.auth.createTokenRequest({
+  const tokenRequest = await getAblyClient().auth.createTokenRequest({
     capability: {
       [channelName]: ["subscribe"],
     },
@@ -75,11 +54,6 @@ export async function publishUserSignal(
   payload: unknown = null,
 ): Promise<void> {
   const client = getAblyClient();
-  if (!client) {
-    log.debug("Ably not configured, skipping user signal");
-    return;
-  }
-
   await Promise.all(
     userIds.map(async (userId) => {
       const channel = client.channels.get(getUserChannelName(userId));
@@ -95,15 +69,9 @@ export async function publishUserSignal(
  */
 export async function generateRunnerGroupToken(
   group: string,
-): Promise<Ably.TokenRequest | null> {
-  const client = getAblyClient();
-  if (!client) {
-    log.debug("Ably not configured, cannot generate token");
-    return null;
-  }
-
+): Promise<Ably.TokenRequest> {
   const channelName = getRunnerGroupChannelName(group);
-  const tokenRequest = await client.auth.createTokenRequest({
+  const tokenRequest = await getAblyClient().auth.createTokenRequest({
     capability: {
       [channelName]: ["subscribe"],
     },
@@ -116,7 +84,8 @@ export async function generateRunnerGroupToken(
 /**
  * Publish job notification to a runner group's Ably channel.
  * Sends runId + profile so runner can pre-check resource budget before claiming.
- * Non-blocking - logs errors but doesn't throw.
+ * Non-blocking — logs errors but doesn't throw, because the job is already
+ * queued in DB and runners will eventually poll it even if Ably is degraded.
  */
 export async function publishJobNotification(
   group: string,
@@ -124,14 +93,10 @@ export async function publishJobNotification(
   profile: string,
   targetRunnerId: string | null = null,
 ): Promise<boolean> {
-  const client = getAblyClient();
-  if (!client) {
-    log.debug("Ably not configured, skipping job notification");
-    return false;
-  }
-
   try {
-    const channel = client.channels.get(getRunnerGroupChannelName(group));
+    const channel = getAblyClient().channels.get(
+      getRunnerGroupChannelName(group),
+    );
     await channel.publish("job", {
       runId,
       profile,
@@ -150,20 +115,18 @@ export async function publishJobNotification(
 
 /**
  * Publish cancel notification to a runner group's Ably channel.
- * Non-blocking - logs errors but doesn't throw.
+ * Non-blocking — logs errors but doesn't throw, because the cancellation is
+ * already committed in DB and the VM will stop at natural completion even if
+ * Ably is degraded.
  */
 export async function publishCancelNotification(
   group: string,
   runId: string,
 ): Promise<boolean> {
-  const client = getAblyClient();
-  if (!client) {
-    log.debug("Ably not configured, skipping cancel notification");
-    return false;
-  }
-
   try {
-    const channel = client.channels.get(getRunnerGroupChannelName(group));
+    const channel = getAblyClient().channels.get(
+      getRunnerGroupChannelName(group),
+    );
     await channel.publish("cancel", { runId });
     log.debug(
       `Published cancel notification ${runId} to runner-group:${group}`,

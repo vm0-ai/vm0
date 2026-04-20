@@ -20,6 +20,7 @@ export async function countUserRows(
     | "secrets"
     | "model_providers"
     | "connectors"
+    | "user_platform_connectors"
     | "variables"
     | "usage_daily"
     | "export_jobs"

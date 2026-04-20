@@ -12,16 +12,7 @@ import {
   onboardingSetupContract,
 } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-
-vi.mock("signal-timers", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("signal-timers")>();
-  return {
-    ...mod,
-    delay: () => {
-      return Promise.resolve();
-    },
-  };
-});
+import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 
 const context = testContext();
 
@@ -106,6 +97,14 @@ describe("onboarding connector permission dialog suppression", () => {
     // normally sets permissionDialogType$, but the onboarding wrapper
     // clears it immediately after.
     await user.click(screen.getByText("Connect"));
+
+    // Wait for the Ably subscription to be registered, then simulate the
+    // OAuth callback publishing `connector:changed` so connectConnector$
+    // observes the connector appear.
+    await waitFor(() => {
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+    triggerAblyEvent("connector:changed");
 
     // Wait for connector to show as connected
     await waitFor(() => {

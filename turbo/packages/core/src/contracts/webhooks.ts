@@ -12,6 +12,22 @@ import {
 const c = initContract();
 
 /**
+ * Sandbox reuse outcome. One enum value per code branch in the runner's
+ * reuse-decision block. `reused` means the sandbox was unparked from the idle
+ * pool; the remaining variants describe why reuse did not happen.
+ */
+export const sandboxReuseResultSchema = z.enum([
+  "reused",
+  "featureDisabled",
+  "noSessionId",
+  "poolMiss",
+  "profileMismatch",
+  "unparkFailed",
+]);
+
+export type SandboxReuseResult = z.infer<typeof sandboxReuseResultSchema>;
+
+/**
  * Agent event schema for webhook events
  * Note: Claude Code JSONL events have varying structures with different fields
  * depending on the event type (system, assistant, user, result, etc.)
@@ -94,6 +110,15 @@ export const webhookCompleteContract = c.router({
       runId: z.string().min(1, "runId is required"),
       exitCode: z.number(),
       error: z.string().optional(),
+      // Sandbox id the run executed against. Optional because a run that fails
+      // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
+      // the 255-char cap matches the DB column (defense in depth).
+      sandboxId: z.string().max(255).optional(),
+      // Sandbox reuse outcome. One enum value covers both "reused" and the
+      // non-reuse reasons, because (reused, reason) is a partial function —
+      // encoding it as one field makes inconsistent states unrepresentable.
+      // Optional/nullable for old runners and historical rows.
+      sandboxReuseResult: sandboxReuseResultSchema.optional(),
     }),
     responses: {
       200: z.object({

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET, DELETE, PATCH } from "../route";
 import { GET as listThreads, POST } from "../../route";
 import {
@@ -14,7 +14,6 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
-import { reloadEnv } from "../../../../../../src/env";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
 import { insertTestAssistantEventMessages } from "../../../../../../src/__tests__/db-test-seeders/agents";
@@ -455,9 +454,6 @@ describe("DELETE /api/zero/chat-threads/:id - Delete Thread", () => {
   });
 
   it("publishes threadListChanged on successful delete", async () => {
-    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-    reloadEnv();
-
     const createResponse = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
