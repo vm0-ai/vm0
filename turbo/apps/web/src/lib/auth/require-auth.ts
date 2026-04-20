@@ -1,5 +1,9 @@
 import type { ZeroCapability } from "@vm0/core";
-import { getAuthContext, type AuthContext } from "./get-auth-context";
+import {
+  authenticateClerkApiKey,
+  getAuthContext,
+  type AuthContext,
+} from "./get-auth-context";
 import {
   isSandboxToken,
   verifySandboxToken,
@@ -83,7 +87,9 @@ export function isAuthError(
  * Strict authenticator for the public `/api/v1/*` surface: only Clerk-issued
  * API Keys are accepted. Session cookies, PAT (`vm0_pat_`), and sandbox/zero
  * tokens are all rejected so these endpoints can never be reached without an
- * explicit, user-created API key.
+ * explicit, user-created API key. Verifies the key directly via
+ * `clerkClient.apiKeys.verify` and never consults Clerk's session, so it is
+ * safe to use under routes where `clerkMiddleware` has been bypassed.
  *
  * Pass `requiredScope` to additionally require that scope on the key. Missing
  * scope returns 403; missing/invalid key returns 401.
@@ -92,15 +98,18 @@ export async function requireApiKeyAuth(
   authHeader: string | undefined,
   requiredScope?: string,
 ): Promise<AuthContext | AuthErrorResponse> {
-  const authCtx = await getAuthContext(authHeader);
-  if (!authCtx || authCtx.tokenType !== "api_key") {
-    return {
-      status: 401 as const,
-      body: {
-        error: { message: "API key required", code: "UNAUTHORIZED" },
-      },
-    };
-  }
+  const unauthorized: AuthErrorResponse = {
+    status: 401 as const,
+    body: {
+      error: { message: "API key required", code: "UNAUTHORIZED" },
+    },
+  };
+  if (!authHeader?.startsWith("Bearer ")) return unauthorized;
+  const token = authHeader.substring(7);
+  // Reject any self-signed prefix on this surface — v1 is api_key only.
+  if (token.startsWith("vm0_")) return unauthorized;
+  const authCtx = await authenticateClerkApiKey(token);
+  if (!authCtx) return unauthorized;
   if (requiredScope && !authCtx.scopes?.includes(requiredScope)) {
     return {
       status: 403 as const,

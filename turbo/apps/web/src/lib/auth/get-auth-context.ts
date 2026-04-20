@@ -128,7 +128,7 @@ export async function getAuthContext(
  * (a user id for user-scoped keys), including any scopes declared on the key.
  * Returns null for any verification failure — callers treat that as 401.
  */
-async function authenticateClerkApiKey(
+export async function authenticateClerkApiKey(
   secret: string,
 ): Promise<AuthContext | null> {
   let apiKey: Awaited<
