@@ -3,6 +3,7 @@ import {
   chatThreadByIdContract,
   chatThreadsContract,
   FeatureSwitchKey,
+  type ChatThreadListItem,
   type ModelProviderType,
   type PersistedAttachment,
 } from "@vm0/core";
@@ -126,7 +127,7 @@ export const chatThreads$ = computed(async (get) => {
 
   const client = get(zeroClient$)(chatThreadsContract);
 
-  let threads;
+  let threads: ChatThreadListItem[];
   if (unifyChatThreads) {
     const result = await accept(client.list({ query: {} }), [200]);
     threads = result.body.threads;
