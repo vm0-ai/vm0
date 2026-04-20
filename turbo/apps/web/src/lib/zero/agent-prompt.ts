@@ -67,6 +67,7 @@ function buildAgentToolsPrompt(): string {
     "# Agent Tools",
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
     "- Discover available commands: `zero --help`.",
+    "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
     "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
     "- Slack messaging, file uploads, and file downloads: `zero slack --help`. Your replies are automatically sent to the originating thread — only use these commands for different channels/threads. Never use SLACK_TOKEN directly — it's a user OAuth token.",
     "- Download a Slack file attachment to local disk: `zero slack download-file -h` for usage and how to read different file types. Use this whenever a Slack message context includes a `[Slack file]` block.",
