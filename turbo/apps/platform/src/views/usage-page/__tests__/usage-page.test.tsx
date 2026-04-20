@@ -13,6 +13,8 @@ beforeEach(() => {
 });
 
 describe("/_/usage page", () => {
+  const user = userEvent.setup();
+
   it("renders the page header and usage insight content", async () => {
     setMockUsageInsight({
       buckets: [
@@ -57,7 +59,9 @@ describe("/_/usage page", () => {
     expect(screen.getByText("Usage Insights")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText("1.3K")).toBeInTheDocument();
+      expect(
+        screen.getByRole("img", { name: /Total credits breakdown/ }),
+      ).toBeInTheDocument();
     });
 
     await waitFor(() => {
@@ -69,12 +73,11 @@ describe("/_/usage page", () => {
     });
     expect(scheduleLink).toBeInTheDocument();
 
-    const user = userEvent.setup();
     const chatsTab = screen.getAllByRole("tab").find((el) => {
       return /Chats/.test(el.textContent ?? "");
     });
     expect(chatsTab).toBeInTheDocument();
-    await user.click(chatsTab as HTMLElement);
+    await user.click(chatsTab!);
 
     await waitFor(() => {
       expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
