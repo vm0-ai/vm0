@@ -63,6 +63,7 @@ import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as chatMessageSchema from "./schema/chat-message";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
+import * as redemptionCodesSchema from "./schema/redemption-codes";
 
 export const schema = {
   ...userSchema,
@@ -130,4 +131,5 @@ export const schema = {
   ...chatMessageSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorSecretSchema,
+  ...redemptionCodesSchema,
 };
