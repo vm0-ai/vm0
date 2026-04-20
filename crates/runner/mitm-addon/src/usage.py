@@ -29,14 +29,19 @@ from body_utils import decompress_body
 from logging_utils import log_proxy_entry
 
 # HTTP 2xx success range (RFC 9110).  Also defined in ``mitm_addon.py``; kept
-# local to avoid introducing a constants module for two callers.
+# local to avoid introducing a constants module for two callers.  The upper
+# bound is ``REDIRECT_MIN`` (300) because 300 is the first 3xx status — using
+# ``status < _HTTP_STATUS_REDIRECT_MIN`` reads as "still in 2xx" without the
+# ambiguity of an ``OK_MAX`` that is itself excluded from the OK range.
 _HTTP_STATUS_OK_MIN = 200
-_HTTP_STATUS_OK_MAX = 300
+_HTTP_STATUS_REDIRECT_MIN = 300
 
-# SSE event boundary is ``\r\n\r\n`` (4 bytes).  When no boundary is found in
-# the current buffer we keep the last 3 bytes so a boundary split across the
-# next chunk can still complete.
-_SSE_BOUNDARY_TAIL = 3
+# Longest SSE event boundary we scan for (``\r\n\r\n`` at 4 bytes; the other
+# candidate ``\n\n`` is shorter and therefore covered by the same tail).
+# When no boundary is found we keep ``_MAX_SEPARATOR_LEN - 1`` trailing bytes
+# so a boundary split across the next chunk can still complete — deriving
+# from the separator keeps the invariant visible if the separator set grows.
+_MAX_SEPARATOR_LEN = len(b"\r\n\r\n")
 
 # ---------------------------------------------------------------------------
 # Dual pending counter: in-flight flows + pending reports
@@ -186,11 +191,8 @@ def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
             else:
                 # No boundary found — discard everything except the
                 # last few bytes (could be a partial \r\n\r\n).
-                line_buf[:] = (
-                    combined[-_SSE_BOUNDARY_TAIL:]
-                    if len(combined) > _SSE_BOUNDARY_TAIL
-                    else combined
-                )
+                tail = _MAX_SEPARATOR_LEN - 1
+                line_buf[:] = combined[-tail:] if len(combined) > tail else combined
                 return
             # Boundary found — fall through to process line_buf contents.
             # line_buf already has the data, so skip the extend.
@@ -868,7 +870,7 @@ def log_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     if not is_billable_connector(firewall_name):
         return
     if not flow.response or not (
-        _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_OK_MAX
+        _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
     ):
         return
     endpoint = flow.metadata.get("firewall_permission", "")

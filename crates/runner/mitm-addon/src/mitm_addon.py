@@ -44,7 +44,7 @@ from url_utils import get_original_url
 # in ``usage.py`` for the same reason; kept local because they're RFC-fixed
 # (never drift) and factoring them out for two callers adds no value.
 _HTTP_STATUS_OK_MIN = 200  # inclusive: start of 2xx success range
-_HTTP_STATUS_OK_MAX = 300  # exclusive: one past end of 2xx range
+_HTTP_STATUS_REDIRECT_MIN = 300  # start of 3xx — doubles as the 2xx exclusive upper bound
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 
@@ -323,7 +323,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     is_x_stream = False
     if (
         is_billable_connector
-        and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_OK_MAX
+        and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
     ):
         stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
         is_x_stream = usage.is_x_stream_path(stream_path)
