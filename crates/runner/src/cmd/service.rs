@@ -330,9 +330,11 @@ async fn get_service_pid(unit: &str) -> RunnerResult<Option<u32>> {
 ///    because the process exited in the ~µs window before signal delivery.
 ///
 /// Either way the signal was not delivered, and the cause is the same:
-/// the runner is no longer around to receive it.
+/// the runner is no longer around to receive it. `Sent` carries the PID
+/// so callers can keep the pre-refactor `info!(…, pid, …)` structured
+/// field in their journald logs.
 enum ServiceSignalOutcome {
-    Sent,
+    Sent { pid: u32 },
     AlreadyGone,
 }
 
@@ -354,7 +356,7 @@ async fn signal_service_main(
     let raw_pid =
         i32::try_from(pid).map_err(|_| RunnerError::Internal(format!("PID {pid} out of range")))?;
     match nix::sys::signal::kill(nix::unistd::Pid::from_raw(raw_pid), sig) {
-        Ok(()) => Ok(ServiceSignalOutcome::Sent),
+        Ok(()) => Ok(ServiceSignalOutcome::Sent { pid }),
         Err(nix::errno::Errno::ESRCH) => Ok(ServiceSignalOutcome::AlreadyGone),
         Err(e) => Err(RunnerError::Internal(format!("{sig:?} to PID {pid}: {e}"))),
     }
@@ -726,7 +728,7 @@ async fn drain(args: ServiceDrainArgs) -> RunnerResult<()> {
     // run `systemctl disable` below so the unit does not auto-start at the
     // next boot.
     match signal_service_main(&unit, nix::sys::signal::Signal::SIGUSR1).await? {
-        ServiceSignalOutcome::Sent => info!(unit = %unit, "sent SIGUSR1 (drain)"),
+        ServiceSignalOutcome::Sent { pid } => info!(unit = %unit, pid, "sent SIGUSR1 (drain)"),
         ServiceSignalOutcome::AlreadyGone => {
             info!(unit = %unit, "runner already exited; drain signal not needed");
         }
@@ -784,8 +786,12 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
     // meaningless — so surface the same "not active" error the preflight
     // branch above already returns.
     match signal_service_main(&unit, nix::sys::signal::Signal::SIGUSR2).await? {
-        ServiceSignalOutcome::Sent => info!(unit = %unit, "sent SIGUSR2 (resume)"),
+        ServiceSignalOutcome::Sent { pid } => info!(unit = %unit, pid, "sent SIGUSR2 (resume)"),
         ServiceSignalOutcome::AlreadyGone => {
+            info!(
+                unit = %unit,
+                "runner exited between preflight and signal; refusing resume",
+            );
             return Err(RunnerError::Internal(format!(
                 "{unit} is not active — cannot resume an inactive runner"
             )));
