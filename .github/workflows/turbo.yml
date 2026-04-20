@@ -293,7 +293,7 @@ jobs:
           MATCHES=$(git ls-files 'turbo/packages/core/src/firewalls/*.generated.ts')
           if [ -n "$MATCHES" ]; then
             echo "::error::Generated firewall files must not be committed:"
-            echo "$MATCHES" | sed 's/^/  /'
+            echo "$MATCHES"
             echo ""
             echo "These files are produced by @vm0/firewalls-generator on postinstall"
             echo "(see turbo/packages/core/.gitignore). Fix: git rm --cached <files>"
