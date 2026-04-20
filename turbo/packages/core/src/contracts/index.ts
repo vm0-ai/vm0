@@ -312,6 +312,18 @@ export {
   type ResolvedAttachFile,
 } from "./chat-threads";
 export {
+  chatThreadV1GetContract,
+  chatThreadV1MessagesContract,
+  chatThreadV1SendContract,
+  chatThreadV1Schema,
+  chatMessageV1Schema,
+  type ChatThreadV1GetContract,
+  type ChatThreadV1MessagesContract,
+  type ChatThreadV1SendContract,
+  type ChatThreadV1,
+  type ChatMessageV1,
+} from "./chat-threads-v1";
+export {
   runnersPollContract,
   runnersJobClaimContract,
   runnersHeartbeatContract,

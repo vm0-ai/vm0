@@ -123,7 +123,12 @@ export default async function middleware(
     authHeader?.startsWith("Bearer " + SANDBOX_TOKEN_PREFIX) ||
     authHeader?.startsWith("Bearer " + PAT_TOKEN_PREFIX);
 
-  if (hasSelfSignedToken) {
+  // v1 API surface authenticates exclusively via Clerk-issued API Keys
+  // (verified server-side). Bypass Clerk middleware to keep its session
+  // detection away from opaque Bearer tokens that it cannot parse.
+  const isV1Api = request.nextUrl.pathname.startsWith("/api/v1/");
+
+  if (hasSelfSignedToken || isV1Api) {
     // Self-signed tokens (sandbox, PAT) are used by API endpoints which don't need Clerk auth.
     // Skip Clerk entirely and pass the request through with the original
     // Authorization header intact. This avoids relying on x-middleware-request-*
