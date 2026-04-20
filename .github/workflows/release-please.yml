@@ -980,6 +980,13 @@ jobs:
 
           echo "Updated rollback dashboard issue #${ISSUE_NUMBER}"
 
+  # CLI npm package is intentionally NOT gated on build-web / build-app /
+  # build-runner. It's a separately-versioned product on its own cadence;
+  # users install at arbitrary times, so CLI <-> web must already be
+  # bidirectionally compatible as a product invariant. Gating here would
+  # couple CLI releases to unrelated infra flakiness in the bundled-product
+  # pipeline. Do not add those builds to needs without rethinking the CLI
+  # compatibility contract.
   publish-npm:
     needs: [release-please, migrate-production]
     if: ${{ needs.release-please.outputs.cli_release_created == 'true' }}
