@@ -67,7 +67,7 @@ async function main(): Promise<void> {
       console.log(`ok   ${row.telegramBotId} → ${url}`);
       succeeded++;
     } catch (err) {
-      console.error(`fail ${row.telegramBotId} → ${url}:`, err);
+      console.error("fail %s → %s:", row.telegramBotId, url, err);
       failed++;
     }
   }
