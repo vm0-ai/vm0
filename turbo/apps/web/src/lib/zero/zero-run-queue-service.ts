@@ -207,20 +207,11 @@ export async function drainOrgQueue(
   const db = globalThis.services.db;
   const encryptionKey = env().SECRETS_ENCRYPTION_KEY;
 
-  // anyTransition is set to true only after dequeueNextAtomic() returns a non-null
-  // result, meaning at least one run was successfully dequeued and transitioned to
-  // "pending". The outer try/finally guarantees publishOrgSignal() fires exactly once
-  // after all iterations complete (or after an unexpected throw). An unexpected throw
-  // from dequeueNextAtomic() or decryptSecretsMap() would only reach the finally block
-  // with anyTransition=true if a prior loop iteration had already dequeued a run, so
-  // the signal is always accurate: it fires only when real state has changed.
-  let anyTransition = false;
   try {
     for (;;) {
       // Single transaction: advisory lock → concurrency check → dequeue → status update
       const dequeued = await dequeueNextAtomic(db, orgId);
       if (!dequeued) return; // Queue empty, entry skipped, or concurrency full
-      anyTransition = true;
 
       // Decrypt CreateRunParams (outside transaction — no lock held)
       const decryptedMap = decryptSecretsMap(
@@ -254,13 +245,14 @@ export async function drainOrgQueue(
       }
     }
   } finally {
-    if (anyTransition) {
-      // Swallow Ably failures so they don't mask an original throw propagating
-      // through this finally (finally-throw would replace the real error).
-      await publishOrgSignal(orgId, "queue:changed").catch((err: unknown) => {
-        log.error("Failed to publish queue:changed after drain", { err });
-      });
-    }
+    // Always publish after drain — either a run was dequeued (anyTransition) or
+    // the caller freed a concurrency slot and the queue view must refresh even
+    // when the queue was already empty. Swallow Ably failures so they don't mask
+    // an original throw propagating through this finally (finally-throw would
+    // replace the real error).
+    await publishOrgSignal(orgId, "queue:changed").catch((err: unknown) => {
+      log.error("Failed to publish queue:changed after drain", { err });
+    });
   }
 }
 
@@ -634,17 +626,8 @@ export async function dispatchQueuedZeroRun(
     });
   } catch (error) {
     await markRunFailed(runId, error);
-    // markRunFailed transitions the run to "failed" (a queue-relevant state
-    // change) but does not publish a signal itself. drainOrgQueue only
-    // publishes when it transitions a queued run, so a failure with an empty
-    // queue would otherwise leave the queue view stale.
-    await publishOrgSignal(params.orgId, "queue:changed").catch(
-      (err: unknown) => {
-        nonZeroLog.error("Failed to publish queue:changed after run failure", {
-          err,
-        });
-      },
-    );
+    // drainOrgQueue always publishes queue:changed in its finally block —
+    // including the empty-queue case — so no explicit publish is needed here.
     await drainOrgQueue(params.orgId, dispatchQueuedZeroRun).catch(
       (drainErr) => {
         nonZeroLog.error("Failed to drain org queue after run failure", {

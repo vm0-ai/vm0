@@ -13,6 +13,7 @@ import {
   expireQueueEntry,
   setTestRunStatus,
   updateOrgTier,
+  insertOrgMembersCacheEntry,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import type { CreateRunParams } from "../../infra/run/run-service";
@@ -25,6 +26,7 @@ import {
   dispatchQueuedZeroRun,
 } from "../zero-run-queue-service";
 import { seedTestRun } from "../../../__tests__/db-test-seeders/runs";
+import { mockAblyPublish } from "../../../__tests__/ably-mock";
 
 const context = testContext();
 
@@ -94,6 +96,20 @@ describe("run-queue-service", () => {
     it("should be a no-op when queue is empty", async () => {
       // Should not throw
       await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
+    });
+
+    it("should publish queue:changed even when queue is empty", async () => {
+      // Regression: a failed dispatch frees a concurrency slot; the queue view
+      // must refresh even when there are no queued runs waiting. Ably only fires
+      // when the org has members in cache, so we seed one entry here.
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        role: "admin",
+      });
+      mockAblyPublish.mockClear();
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
+      expect(mockAblyPublish).toHaveBeenCalledWith("queue:changed", null);
     });
 
     it("should dequeue and execute the oldest entry", async () => {
