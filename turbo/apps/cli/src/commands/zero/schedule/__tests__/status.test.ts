@@ -117,6 +117,50 @@ describe("zero schedule status command", () => {
       expect(logCalls).toContain("0 9 * * 1");
     });
 
+    it("should show full prompt without truncation with --prompt flag", async () => {
+      const longPrompt =
+        "a".repeat(120) +
+        " this is clearly past the 60-character preview limit";
+      const longSchedule = { ...mockSchedule, prompt: longPrompt };
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [longSchedule] });
+        }),
+      );
+
+      await statusCommand.parseAsync(["node", "cli", "my-agent", "--prompt"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(longPrompt);
+      expect(logCalls).not.toMatch(/a{57}\.\.\./);
+    });
+
+    it("should truncate prompt preview without --prompt flag", async () => {
+      const longPrompt =
+        "a".repeat(120) +
+        " this is clearly past the 60-character preview limit";
+      const longSchedule = { ...mockSchedule, prompt: longPrompt };
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [longSchedule] });
+        }),
+      );
+
+      await statusCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain(longPrompt);
+      expect(logCalls).toMatch(/a{57}\.\.\./);
+    });
+
     it("should display schedule when agent identifier is a UUID", async () => {
       const testUuid = "550e8400-e29b-41d4-a716-446655440000";
       const uuidCompose = { ...mockCompose, id: testUuid };
