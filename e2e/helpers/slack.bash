@@ -209,6 +209,59 @@ slack_dispatch_probe() {
         "$VM0_API_URL/api/test/slack-dispatch-probe"
 }
 
+# Poll test-state until a run reaches a terminal status or a timeout.
+# A run is considered terminal when its status is one of: completed,
+# succeeded, failed. Returns 0 on first matching run, 1 on timeout.
+# Usage: wait_for_slack_run_completion <team_id> [timeout_seconds]
+wait_for_slack_run_completion() {
+    local team_id="$1"
+    local timeout="${2:-180}"
+    local start=$SECONDS
+    local state status_value
+    while (( SECONDS - start < timeout )); do
+        state=$(slack_fetch_state "$team_id")
+        status_value=$(printf '%s' "$state" \
+            | jq -r '.recent_runs[0].status // ""' 2>/dev/null)
+        case "$status_value" in
+            completed|succeeded|failed)
+                echo "# run reached terminal status: $status_value after $((SECONDS - start))s" >&2
+                return 0
+                ;;
+        esac
+        sleep "${SLACK_POLL_INTERVAL_S:-3}"
+    done
+    echo "# wait_for_slack_run_completion: timed out after $((SECONDS - start))s for team $team_id" >&2
+    echo "# last state: $(slack_fetch_state "$team_id")" >&2
+    return 1
+}
+
+# Poll mock-call log until a chat.postMessage entry targeting the given
+# channel is present. Returns 0 on first match.
+# Usage: wait_for_slack_mock_post_message <team_id> <channel_id> [timeout_seconds]
+wait_for_slack_mock_post_message() {
+    local team_id="$1" channel="$2"
+    local timeout="${3:-60}"
+    local start=$SECONDS
+    local state match
+    while (( SECONDS - start < timeout )); do
+        state=$(slack_fetch_state "$team_id")
+        match=$(printf '%s' "$state" \
+            | jq -c --arg ch "$channel" '
+                [.mock_calls[]
+                 | select(.method == "chat.postMessage")
+                 | select(.channelId == $ch or (.bodyJson.channel // "") == $ch)]
+                | .[0]' 2>/dev/null)
+        if [[ -n "$match" && "$match" != "null" ]]; then
+            echo "$match"
+            return 0
+        fi
+        sleep "${SLACK_POLL_INTERVAL_S:-2}"
+    done
+    echo "# wait_for_slack_mock_post_message: timed out after $((SECONDS - start))s" >&2
+    echo "# last state mock_calls: $(printf '%s' "$state" | jq -c '.mock_calls')" >&2
+    return 1
+}
+
 # Substitute common placeholders in a JSON fixture file.
 # Usage: slack_render_fixture <path> <team_id> <channel_id> <user_id> [extra_ts]
 slack_render_fixture() {

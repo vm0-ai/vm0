@@ -24,6 +24,7 @@ import {
   upsertSlackInstallation,
 } from "../../../../src/lib/zero/slack/seed-install";
 import { seedDefaultAgent } from "../../../../src/lib/test-endpoints/seed-default-agent";
+import { e2eSlackMockCallLog } from "../../../../src/db/schema/e2e-slack-mock-call-log";
 
 /**
  * GET /api/test/slack-state?team_id=...
@@ -165,6 +166,23 @@ export async function GET(request: Request) {
     return null;
   })();
 
+  // Recent mock-endpoint calls so BATS can assert that the Slack callback
+  // actually posted a reply after the run completed. Each CI run gets its
+  // own Neon branch, so we surface deployment-wide entries — many Slack
+  // API methods (chat.postMessage) don't carry a team_id in the request,
+  // and filtering would silently drop them.
+  const mockCalls = await db
+    .select({
+      method: e2eSlackMockCallLog.method,
+      teamId: e2eSlackMockCallLog.teamId,
+      channelId: e2eSlackMockCallLog.channelId,
+      bodyJson: e2eSlackMockCallLog.bodyJson,
+      createdAt: e2eSlackMockCallLog.createdAt,
+    })
+    .from(e2eSlackMockCallLog)
+    .orderBy(desc(e2eSlackMockCallLog.createdAt))
+    .limit(50);
+
   return NextResponse.json({
     installation: installation ?? null,
     connections,
@@ -179,6 +197,7 @@ export async function GET(request: Request) {
       ),
     },
     resolved_slack_api_url: resolvedSlackApiUrl,
+    mock_calls: mockCalls,
   });
 }
 
@@ -323,6 +342,12 @@ export async function DELETE(request: Request) {
       await db.delete(agentRuns).where(inArray(agentRuns.id, ids));
     }
   }
+
+  // Clear the deployment-wide mock call log so each test starts fresh.
+  // Scoping by team_id would silently skip rows whose payload carried no
+  // team id (chat.postMessage — what the Slack callback actually hits).
+  // Safe to truncate here because each CI run has its own Neon branch.
+  await db.delete(e2eSlackMockCallLog);
 
   return NextResponse.json({ ok: true });
 }
