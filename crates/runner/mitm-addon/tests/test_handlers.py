@@ -2517,6 +2517,24 @@ class TestUsageWebhookDelivery:
 
         mock_sleep.assert_called_once_with(0.5)  # syscall boundary; pins retry backoff (#9991)
 
+    def test_programming_error_is_not_retried(self, tmp_path):
+        """TypeError from _post_webhook (e.g. non-serializable payload) must
+        propagate on the first attempt — no retry, no "giving up" log."""
+        proxy_log = tmp_path / "proxy.jsonl"
+        with patch.object(usage, "_post_webhook", side_effect=TypeError("boom")) as post:
+            with pytest.raises(TypeError, match="boom"):
+                usage._do_post_webhook_attempts(
+                    "https://api.vm0.ai/x",
+                    "tok",
+                    {"k": "v"},
+                    str(proxy_log),
+                    "usage",
+                    max_retries=1,
+                )
+            assert post.call_count == 1
+        if proxy_log.exists():
+            assert "giving up" not in proxy_log.read_text()
+
     def test_falls_back_to_sync_after_shutdown(self, tmp_path, real_flow, fresh_usage_executor):
         """After executor shutdown, delivery happens synchronously before return."""
         flow = self._model_flow(real_flow, tmp_path)

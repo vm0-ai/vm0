@@ -317,7 +317,7 @@ def _do_post_webhook_attempts(
                 **payload,
             )
             return
-        except Exception as exc:
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
             if attempt < max_retries:
                 log_proxy_entry(
                     proxy_log_path,
