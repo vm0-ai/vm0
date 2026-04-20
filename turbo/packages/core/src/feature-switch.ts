@@ -295,7 +295,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Expose Z.AI GLM-5.1 as a selectable model under the VM0 managed provider",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SlackAgentSwitch]: {
     maintainer: "yuma@vm0.ai",
