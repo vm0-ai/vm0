@@ -4,13 +4,31 @@ import { grantOrgCredits } from "../org/org-service";
 export const STARTER_GRANT_AMOUNT = 100_000;
 export const STARTER_GRANT_SOURCE = "starter_grant";
 
-type Tx = Parameters<
+/**
+ * The transaction handle passed to `ensureStarterCreditGrant`.
+ *
+ * This MUST be the parameter of `db.transaction(async (tx) => { ... })`,
+ * never the outer `db` handle itself. The helper performs two writes that
+ * must share a tx — if they split, the `credit_expires_record` row could
+ * land without the matching `org_metadata.credits` bump, and the partial
+ * unique index `uq_credit_expires_starter_grant` would then permanently
+ * pin the org at 0 credits.
+ *
+ * Drizzle's transaction callback type is structurally compatible with the
+ * outer db handle, so this alias is a documentation aid rather than a
+ * nominal guard. Callers must respect the tx-only contract.
+ */
+type StarterGrantTx = Parameters<
   Parameters<typeof globalThis.services.db.transaction>[0]
 >[0];
 
 /**
  * Idempotently give a free-tier org its 100k starter credits with a 1-month
  * expiry. Safe to call from any `org_metadata` insert path.
+ *
+ * Callers MUST pass a `StarterGrantTx` (i.e. run inside `db.transaction`).
+ * The helper performs two writes (credit_expires_record insert and
+ * grantOrgCredits) that must be atomic — see `StarterGrantTx` for details.
  *
  * Idempotency is enforced by the partial unique index
  *   uq_credit_expires_starter_grant ON (org_id) WHERE source = 'starter_grant'
@@ -23,7 +41,7 @@ type Tx = Parameters<
  * org gets 0 credits, which is visible in the UI and easy to catch.
  */
 export async function ensureStarterCreditGrant(
-  tx: Tx,
+  tx: StarterGrantTx,
   orgId: string,
 ): Promise<void> {
   const expiresAt = new Date();
