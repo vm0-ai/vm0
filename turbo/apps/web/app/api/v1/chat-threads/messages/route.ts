@@ -14,7 +14,7 @@ import { createZeroRun } from "../../../../../src/lib/zero/zero-run-service";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { resolveDefaultAgentId } from "../../../../../src/lib/zero/resolve-default-agent";
 import { buildWebChatPrompt } from "../../../../../src/lib/zero/integration-prompt";
-import { isApiError } from "../../../../../src/lib/shared/errors";
+import { isApiError, isNotFound } from "../../../../../src/lib/shared/errors";
 import {
   createChatThread,
   getChatThread,
@@ -33,6 +33,7 @@ import { publishUserSignal } from "../../../../../src/lib/infra/realtime/client"
 
 const router = tsr.router(chatThreadV1SendContract, {
   send: async ({ body, headers }) => {
+    const apiStartTime = Date.now();
     initServices();
 
     const authCtx = await requireApiKeyAuth(headers.authorization);
@@ -99,6 +100,7 @@ const router = tsr.router(chatThreadV1SendContract, {
         appendSystemPrompt: buildWebChatPrompt(),
         callbacks: [chatCallback],
         chatThreadId: threadId,
+        apiStartTime,
       });
 
       const userMessage = await insertChatMessage({
@@ -128,14 +130,18 @@ const router = tsr.router(chatThreadV1SendContract, {
         },
       };
     } catch (error) {
-      if (isApiError(error)) {
-        const status = error.code === "UNAUTHORIZED" ? 404 : error.statusCode;
-        const code = error.code === "UNAUTHORIZED" ? "NOT_FOUND" : error.code;
-        const message =
-          error.code === "UNAUTHORIZED" ? "Resource not found" : error.message;
+      if (isNotFound(error)) {
         return {
-          status: status as 400 | 401 | 403 | 404,
-          body: { error: { message, code } },
+          status: 404 as const,
+          body: {
+            error: { message: "Chat thread not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      if (isApiError(error)) {
+        return {
+          status: error.statusCode as 400 | 401 | 403 | 404,
+          body: { error: { message: error.message, code: error.code } },
         };
       }
       throw error;

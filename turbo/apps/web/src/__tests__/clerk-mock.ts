@@ -53,7 +53,6 @@ let mockUserIds: string[] = [];
 type MockApiKey = {
   id: string;
   subject: string;
-  scopes: string[];
   claims: Record<string, unknown> | null;
   revoked?: boolean;
   expired?: boolean;
@@ -368,7 +367,7 @@ export function mockClerk(options: {
           type: "api_key",
           name: key.id,
           subject: key.subject,
-          scopes: key.scopes,
+          scopes: [],
           claims: key.claims,
           revoked: key.revoked ?? false,
           revocationReason: null,

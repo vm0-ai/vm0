@@ -48,7 +48,6 @@ function seedApiKey(
   registerMockApiKey(secret, {
     id: uniqueId("api-key"),
     subject: user.userId,
-    scopes: [],
     claims: { orgId: user.orgId },
     revoked: overrides?.revoked,
     expired: overrides?.expired,
@@ -286,12 +285,13 @@ describe("POST /api/v1/chat-threads/messages", () => {
         body: JSON.stringify({ prompt: "hi" }),
       }),
     );
-    // 201 (full wiring ok) OR 4xx/5xx from the downstream run pipeline
-    // (e.g. no model provider configured) — either confirms we passed auth
-    // + scope + default-agent resolution. A 400 "No default agent" would
-    // mean resolveDefaultAgentId failed.
+    // Auth + scope + default-agent resolution must all pass (no 400/401/403).
+    // The run pipeline itself may fail in CI (e.g. no runner configured), so
+    // 201 or 500 are both acceptable — what matters is we are NOT gated before
+    // reaching createZeroRun.
     expect(res.status).not.toBe(400);
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(403);
+    expect([201, 500]).toContain(res.status);
   });
 });

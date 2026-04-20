@@ -4,6 +4,7 @@ import {
   tsr,
 } from "../../../../../../src/lib/ts-rest-handler";
 import { chatThreadV1MessagesContract } from "@vm0/core";
+import { z } from "zod";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireApiKeyAuth,
@@ -14,6 +15,8 @@ import {
   getMessagesSince,
 } from "../../../../../../src/lib/zero/chat-thread";
 import { isNotFound } from "../../../../../../src/lib/shared/errors";
+
+const messageRoleSchema = z.enum(["user", "assistant"]);
 
 const router = tsr.router(chatThreadV1MessagesContract, {
   list: async ({ params, query, headers }) => {
@@ -42,7 +45,7 @@ const router = tsr.router(chatThreadV1MessagesContract, {
           : (row.error ?? undefined);
         return {
           id: row.id,
-          role: row.role as "user" | "assistant",
+          role: messageRoleSchema.parse(row.role),
           content: row.content,
           runId: row.runId ?? undefined,
           error: effectiveError,
