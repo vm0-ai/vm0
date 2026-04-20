@@ -430,7 +430,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[60%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[90%] rounded-lg" />
@@ -443,7 +443,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[45%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[85%] rounded-lg" />
@@ -472,7 +472,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
       data-role="assistant"
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
@@ -486,7 +486,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
       </div>
       <div
         aria-hidden
-        className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+        className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
       >
         <div className="hidden @[900px]:block" />
         <div className="flex items-center py-2 gap-1 -ml-1" />
@@ -719,10 +719,10 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
 
   return (
     <div data-role="user">
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {displayContent && (
               <div className="px-4 py-3">
                 <Markdown
@@ -805,7 +805,7 @@ function PagedAssistantGroup({
       data-role="assistant"
       className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-3">
           {group.messages.map((msg) => {
@@ -830,7 +830,7 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
 
   if (message.error) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         <AssistantErrorContent error={message.error} />
       </div>
     );
@@ -838,7 +838,7 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
 
   if (message.content) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         <Markdown
           source={message.content}
           mediaPreview
@@ -901,7 +901,7 @@ function PagedGroupActions({
   };
 
   return (
-    <div className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+    <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
       <div className="hidden @[900px]:block" />
       <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-150">
         {firstRunId && (
