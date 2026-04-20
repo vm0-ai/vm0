@@ -2721,7 +2721,7 @@ mod tests {
     /// job pushed immediately at startup is processed without any tick
     /// having fired, observable via `heartbeat_count == 0`.
     #[tokio::test(start_paused = true)]
-    async fn startup_ticks_defer_past_first_select_poll() {
+    async fn heartbeat_tick_defers_past_first_select_poll() {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
