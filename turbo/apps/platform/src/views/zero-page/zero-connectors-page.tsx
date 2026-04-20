@@ -1,11 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import {
-  useGet,
-  useSet,
-  useLastLoadable,
-  useLastResolved,
-} from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconSearch,
   IconPlug,
@@ -15,12 +10,10 @@ import {
 } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
-  FeatureSwitchKey,
   type ConnectorType,
   isGoogleOAuthConnector,
 } from "@vm0/core";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   connectorsPageTab$,
   setConnectorsPageTab$,
@@ -288,9 +281,6 @@ export function ZeroConnectorsPage() {
   const permissionDialogType = useGet(permissionDialogType$);
   const setPermissionDialogType = useSet(setPermissionDialogType$);
   const optimisticConnected = useGet(justConnectedTypes$);
-  const features = useLastResolved(featureSwitch$);
-  const customConnectorsEnabled =
-    features?.[FeatureSwitchKey.OrgCustomConnectors] === true;
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
 
@@ -420,21 +410,19 @@ export function ZeroConnectorsPage() {
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-6">
-          {customConnectorsEnabled && (
-            <Tabs
-              value={activeTab}
-              onValueChange={(v) => {
-                return setActiveTab(v === "custom" ? "custom" : "builtin");
-              }}
-            >
-              <TabsList>
-                <TabsTrigger value="builtin">Built-in</TabsTrigger>
-                <TabsTrigger value="custom">Custom</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => {
+              return setActiveTab(v === "custom" ? "custom" : "builtin");
+            }}
+          >
+            <TabsList>
+              <TabsTrigger value="builtin">Built-in</TabsTrigger>
+              <TabsTrigger value="custom">Custom</TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-          {(!customConnectorsEnabled || activeTab === "builtin") && (
+          {activeTab === "builtin" && (
             <>
               {connected.length > 0 && (
                 <section className="flex flex-col gap-3">
@@ -501,9 +489,7 @@ export function ZeroConnectorsPage() {
             </>
           )}
 
-          {customConnectorsEnabled && activeTab === "custom" && (
-            <CustomConnectorsPanel />
-          )}
+          {activeTab === "custom" && <CustomConnectorsPanel />}
         </div>
       </main>
 

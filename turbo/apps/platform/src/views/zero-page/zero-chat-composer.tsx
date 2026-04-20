@@ -99,11 +99,13 @@ import {
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
+  audioInputQuota$,
   sttRecording$,
   sttTranscribing$,
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
+import { setBillingDialogOpen$ } from "../../signals/zero-page/billing.ts";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB — keep in sync with uploads/route.ts
 
@@ -481,10 +483,12 @@ function MicButton({
   onTranscribed: (text: string) => void;
 }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
+  const quota = useLastResolved(audioInputQuota$) ?? null;
   const recording = useGet(sttRecording$);
   const transcribing = useGet(sttTranscribing$);
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
+  const openBillingDialog = useSet(setBillingDialogOpen$);
   const signal = useGet(pageSignal$);
 
   if (!available) {
@@ -505,6 +509,10 @@ function MicButton({
         Reason.DomCallback,
       );
     } else {
+      if (quota && !quota.allowed) {
+        openBillingDialog(true);
+        return;
+      }
       detach(startRec(signal), Reason.DomCallback);
     }
   };

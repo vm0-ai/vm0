@@ -329,6 +329,24 @@ export async function setTestRunStatus(
 }
 
 /**
+ * Overwrite the `agent_runs.result` JSONB blob for a run.
+ *
+ * @why-db-direct `agent_runs.result` is populated by the runner / complete
+ * webhook. Tests that stand up a specific `agentSessionId` for session
+ * resolution need to seed it directly.
+ */
+export async function setTestRunResult(
+  runId: string,
+  result: Record<string, unknown>,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ result })
+    .where(eq(agentRuns.id, runId));
+}
+
+/**
  * Set model provider on a zero_runs record.
  *
  * @why-db-direct Sets model provider on zero_runs; no API for this field —

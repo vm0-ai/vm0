@@ -55,7 +55,7 @@ export function UsageInsightView() {
         <h2 className="text-sm font-medium text-foreground">Usage Insights</h2>
         <div className="flex items-center gap-2">
           <Select value={range} onValueChange={handleRangeChange}>
-            <SelectTrigger className="h-8 w-[90px] text-xs">
+            <SelectTrigger className="h-8 w-[120px] text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

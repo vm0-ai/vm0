@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey, zeroVoiceIoQuotaContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
@@ -45,6 +46,37 @@ function mockSttEndpoint(text = "transcribed text") {
     // (accepts multipart FormData audio body), so raw http is the only option.
     http.post("*/api/zero/voice-io/stt", () => {
       return HttpResponse.json({ text });
+    }),
+  );
+}
+
+function mockSttQuotaExceededEndpoint() {
+  server.use(
+    // mockApi cannot be used here: /api/zero/voice-io/stt has no ts-rest contract
+    // (accepts multipart FormData audio body), so raw http is the only option.
+    http.post("*/api/zero/voice-io/stt", () => {
+      return HttpResponse.json(
+        {
+          error: {
+            message: "Audio input quota exceeded",
+            code: "AUDIO_INPUT_QUOTA_EXCEEDED",
+          },
+          quota: { count: 3, limit: 3 },
+        },
+        { status: 402 },
+      );
+    }),
+  );
+}
+
+function mockQuotaEndpoint(quota: {
+  allowed: boolean;
+  count: number;
+  limit: number | null;
+}) {
+  server.use(
+    mockApi(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, quota);
     }),
   );
 }
@@ -286,6 +318,106 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
 
     await waitFor(() => {
       expect(textarea.value).toBe(`hello ${transcribedText}`);
+    });
+  });
+});
+
+describe("chat-i-035: mic button gates on audio input quota", () => {
+  beforeEach(() => {
+    stubMediaDevices();
+    stubMediaRecorder();
+  });
+
+  afterEach(() => {
+    clearMediaDevices();
+    vi.unstubAllGlobals();
+  });
+
+  it("should start recording when quota is available", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+    mockQuotaEndpoint({ allowed: true, count: 1, limit: 3 });
+    mockSttEndpoint();
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
+    });
+
+    const micButton = await waitFor(() => {
+      return screen.getByLabelText("Voice input");
+    });
+
+    await user.click(micButton);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Choose your plan")).not.toBeInTheDocument();
+  });
+
+  it("should open billing dialog without recording when quota is exhausted", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+    mockQuotaEndpoint({ allowed: false, count: 3, limit: 3 });
+
+    let sttCalls = 0;
+    server.use(
+      // mockApi cannot be used here: /api/zero/voice-io/stt has no ts-rest contract
+      // (accepts multipart FormData audio body), so raw http is the only option.
+      http.post("*/api/zero/voice-io/stt", () => {
+        sttCalls++;
+        return HttpResponse.json({ text: "should-not-be-called" });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
+    });
+
+    const micButton = await waitFor(() => {
+      return screen.getByLabelText("Voice input");
+    });
+
+    await user.click(micButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Choose your plan")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText("Stop recording")).not.toBeInTheDocument();
+    expect(sttCalls).toBe(0);
+  });
+
+  it("should open billing dialog when STT returns 402 quota-exceeded after recording", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+    mockQuotaEndpoint({ allowed: true, count: 2, limit: 3 });
+    mockSttQuotaExceededEndpoint();
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
+    });
+
+    const micButton = await waitFor(() => {
+      return screen.getByLabelText("Voice input");
+    });
+
+    await user.click(micButton);
+
+    const stopButton = await waitFor(() => {
+      return screen.getByLabelText("Stop recording");
+    });
+
+    await user.click(stopButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Choose your plan")).toBeInTheDocument();
     });
   });
 });

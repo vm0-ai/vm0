@@ -14,6 +14,7 @@ import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   IconArrowUpRight,
+  IconGift,
   IconMicrophone,
   IconPin,
   IconPlus,
@@ -21,13 +22,28 @@ import {
 } from "@tabler/icons-react";
 import {
   Button,
+  Input,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@vm0/ui/components/ui/dialog";
 import { FeatureSwitchKey } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  redeemCodeDialogOpen$,
+  redeemCodeInput$,
+  setRedeemCodeDialogOpen$,
+  setRedeemCodeInput$,
+} from "../../signals/zero-page/redeem-code-dialog.ts";
 import {
   currentChatAgentId$,
   currentChatAgentDisplayName$,
@@ -160,6 +176,79 @@ class TypewriterText extends Component<
       </>
     );
   }
+}
+
+function RedeemCodeButton() {
+  const setOpen = useSet(setRedeemCodeDialogOpen$);
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(true);
+            }}
+            className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+            aria-label="Redeem code"
+            data-testid="redeem-code-button"
+          >
+            <IconGift size={20} stroke={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">Redeem code</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function RedeemCodeDialog() {
+  const open = useGet(redeemCodeDialogOpen$);
+  const code = useGet(redeemCodeInput$);
+  const setOpen = useSet(setRedeemCodeDialogOpen$);
+  const setCode = useSet(setRedeemCodeInput$);
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        return !v && setOpen(false);
+      }}
+    >
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Redeem code</DialogTitle>
+          <DialogDescription>
+            Enter your redemption code to claim your reward.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-2">
+          <Input
+            value={code}
+            onChange={(e) => {
+              setCode(e.target.value);
+            }}
+            placeholder="Enter code"
+            autoFocus
+            data-testid="redeem-code-input"
+          />
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setOpen(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button disabled={!code.trim()}>Redeem</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
@@ -358,6 +447,8 @@ export function AgentChatPage() {
 
   const suggestedPrompts = useGet(suggestedPrompts$);
   const navigate = useSet(detachedNavigateTo$);
+  const features = useLastResolved(featureSwitch$);
+  const redeemCodeEnabled = features?.[FeatureSwitchKey.RedeemCode] ?? false;
   const pageSignal = useGet(pageSignal$);
 
   const handleSend = (text: string) => {
@@ -368,7 +459,8 @@ export function AgentChatPage() {
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
-        <div className="flex justify-end">
+        <div className="flex justify-end items-center gap-2">
+          {redeemCodeEnabled && <RedeemCodeButton />}
           <ChatHeaderAction pageSignal={pageSignal} />
         </div>
       </header>
@@ -518,6 +610,7 @@ export function AgentChatPage() {
           </div>
         </div>
       </main>
+      {redeemCodeEnabled && <RedeemCodeDialog />}
     </div>
   );
 }

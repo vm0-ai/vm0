@@ -3,6 +3,12 @@ import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
 import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
+import { getOrgTierSafe } from "../../../../../src/lib/zero/org/org-metadata-service";
+import { recordBehavior } from "../../../../../src/lib/zero/behavior/user-behavior-count-service";
+import {
+  AUDIO_INPUT_BEHAVIOR_KEY,
+  checkAudioInputQuota,
+} from "../../../../../src/lib/zero/voice-io/audio-input-policy";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -29,12 +35,13 @@ export async function POST(request: Request): Promise<Response> {
   // 1. Auth check
   const authHeader = request.headers.get("authorization");
   const authCtx = await getAuthContext(authHeader ?? undefined);
-  if (!authCtx) {
+  if (!authCtx || !authCtx.orgId) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const orgId = authCtx.orgId;
 
   // 2. Feature switch check
   const overrides = await loadFeatureSwitchOverrides(
@@ -53,7 +60,24 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 3. API key check
+  // 3. Quota check (free tier has a per-user limit; pro/team are unlimited)
+  const orgTier = await getOrgTierSafe(orgId);
+  const quota = await checkAudioInputQuota(orgId, authCtx.userId, orgTier);
+  if (!quota.allowed) {
+    return NextResponse.json(
+      {
+        error: {
+          message:
+            "Audio input quota exceeded. Upgrade to Pro or Team for unlimited audio input.",
+          code: "AUDIO_INPUT_QUOTA_EXCEEDED",
+        },
+        quota: { count: quota.count, limit: quota.limit },
+      },
+      { status: 402 },
+    );
+  }
+
+  // 4. API key check
   const apiKey = env().OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -67,7 +91,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 4. Parse multipart form data
+  // 5. Parse multipart form data
   const formData = await request.formData();
   const file = formData.get("file");
 
@@ -78,7 +102,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 5. Validate file size
+  // 6. Validate file size
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json(
       {
@@ -91,7 +115,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 6. Validate file type (strip codec suffix, e.g. "audio/webm;codecs=opus" → "audio/webm")
+  // 7. Validate file type (strip codec suffix, e.g. "audio/webm;codecs=opus" → "audio/webm")
   const baseMimeType = file.type.split(";")[0] ?? file.type;
   if (!ALLOWED_MIME_TYPES.has(baseMimeType)) {
     return NextResponse.json(
@@ -105,7 +129,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 7. Call OpenAI STT API
+  // 8. Call OpenAI STT API
   const openaiForm = new FormData();
   openaiForm.append("file", file, file.name || "audio.webm");
   openaiForm.append("model", "gpt-4o-mini-transcribe");
@@ -142,5 +166,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const result = (await openaiResponse.json()) as { text: string };
+
+  // 9. Record the successful audio input for free-tier quota accounting.
+  // Skipped on failure so infra errors don't burn the user's free quota.
+  if (orgTier === "free") {
+    await recordBehavior(orgId, authCtx.userId, AUDIO_INPUT_BEHAVIOR_KEY);
+  }
+
   return NextResponse.json({ text: result.text });
 }

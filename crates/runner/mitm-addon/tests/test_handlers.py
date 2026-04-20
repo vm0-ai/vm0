@@ -2517,6 +2517,28 @@ class TestUsageWebhookDelivery:
 
         mock_sleep.assert_called_once_with(0.5)  # syscall boundary; pins retry backoff (#9991)
 
+    def test_programming_error_is_not_retried(self, tmp_path):
+        """Non-retryable error (TypeError, ...) from the urllib boundary
+        must propagate on the first attempt — no retry, no "giving up"
+        log, and a forensic "non-retryable" log line so the pool-path
+        Future swallow doesn't erase the breadcrumb."""
+        proxy_log = tmp_path / "proxy.jsonl"
+        with patch.object(usage, "_opener") as mock_opener:
+            mock_opener.open.side_effect = TypeError("boom")
+            with pytest.raises(TypeError, match="boom"):
+                usage._do_post_webhook_attempts(
+                    "https://api.vm0.ai/x",
+                    "tok",
+                    {"k": "v"},
+                    str(proxy_log),
+                    "usage",
+                    max_retries=1,
+                )
+            assert mock_opener.open.call_count == 1  # urllib external boundary (#9991)
+        log_text = proxy_log.read_text()
+        assert "giving up" not in log_text
+        assert "non-retryable" in log_text
+
     def test_falls_back_to_sync_after_shutdown(self, tmp_path, real_flow, fresh_usage_executor):
         """After executor shutdown, delivery happens synchronously before return."""
         flow = self._model_flow(real_flow, tmp_path)

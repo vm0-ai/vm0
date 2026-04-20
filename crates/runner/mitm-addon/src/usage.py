@@ -287,7 +287,14 @@ def _post_webhook_with_retry(
     log_type: str,
     max_retries: int = 1,
 ) -> None:
-    """POST with retry.  Swallows all exceptions after final attempt."""
+    """POST with retry.
+
+    Swallows retryable network errors (``URLError``, ``OSError``,
+    ``TimeoutError``) after the final attempt.  Non-retryable errors
+    (``TypeError`` from a non-serializable payload, etc.) are logged
+    once via :func:`log_proxy_entry` and re-raised so callers see them
+    instead of silently losing the report.
+    """
     try:
         _do_post_webhook_attempts(
             url, sandbox_token, payload, proxy_log_path, log_type, max_retries
@@ -317,7 +324,7 @@ def _do_post_webhook_attempts(
                 **payload,
             )
             return
-        except Exception as exc:
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
             if attempt < max_retries:
                 log_proxy_entry(
                     proxy_log_path,
@@ -341,6 +348,22 @@ def _do_post_webhook_attempts(
                     attempt=attempt + 1,
                     **payload,
                 )
+        except Exception as exc:
+            # Non-retryable (TypeError on non-serializable payload,
+            # AttributeError, ValueError, ...).  Log once then re-raise so
+            # the pool path leaves a forensic breadcrumb before the Future
+            # swallows the exception.
+            log_proxy_entry(
+                proxy_log_path,
+                "error",
+                f"Webhook POST to {url} failed with non-retryable error: {exc}",
+                type=log_type,
+                url=url,
+                error=str(exc),
+                attempt=attempt + 1,
+                **payload,
+            )
+            raise
 
 
 usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")

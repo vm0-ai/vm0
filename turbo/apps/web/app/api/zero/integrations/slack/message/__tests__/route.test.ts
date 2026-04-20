@@ -23,7 +23,10 @@ import {
   generateSandboxToken,
   generateZeroToken,
 } from "../../../../../../../src/lib/auth/sandbox-token";
-import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
+import {
+  seedTestRun,
+  setTestRunSelectedModel,
+} from "../../../../../../../src/__tests__/db-test-seeders/runs";
 
 const URL = "http://localhost:3000/api/zero/integrations/slack/message";
 
@@ -368,7 +371,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(footerCtx.elements![0]!.text).toBe("Sent via My Assistant");
   });
 
-  it("appends schedule and creator in footer when run is triggered by a schedule", async () => {
+  it("appends schedule, creator, and model in footer when run is triggered by a schedule", async () => {
     const agentName = uniqueId("agent");
     const { composeId } = await createTestCompose(agentName);
     await createTestZeroAgent(user.orgId, agentName, {
@@ -385,6 +388,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
       scheduleId: schedule.id,
       triggerSource: "schedule",
     });
+    await setTestRunSelectedModel(runId, "claude-sonnet-4-6");
 
     // Seed Slack connection so the creator is resolvable
     const slackUserId = uniqueId("U-slack");
@@ -428,7 +432,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const footerCtx = blocks[blocks.length - 1]!;
     expect(footerCtx.type).toBe("context");
     expect(footerCtx.elements![0]!.text).toBe(
-      `Sent via My Assistant · Triggered by schedule "Daily standup summary" · Created by <@${slackUserId}>`,
+      `Sent via My Assistant · Triggered by schedule "Daily standup summary" · Created by <@${slackUserId}> · Claude Sonnet 4.6`,
     );
   });
 

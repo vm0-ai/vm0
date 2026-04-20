@@ -289,13 +289,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
     enabled: false,
   },
-  [FeatureSwitchKey.OrgCustomConnectors]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the org custom connectors surface — the Custom tab on the Connectors settings page (admin CRUD, member Connect) and the per-agent Custom Connectors section on Agent Authorization. Backend routes remain open; this flag only gates entry points in the UI.",
-    enabled: true,
-    enabledOrgIdHashes: [],
-  },
   [FeatureSwitchKey.Vm0GlmModel]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -332,6 +325,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Allows per-agent and per-schedule model selection, overriding the org default. " +
       "Staff-only during initial rollout.",
     enabled: true,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.RedeemCode]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show redeem-code gift icon and dialog in the agent chat page header",
+    enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };

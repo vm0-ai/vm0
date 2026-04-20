@@ -1,10 +1,17 @@
 import { command, computed, state } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  zeroVoiceIoQuotaContract,
+  type AudioInputQuotaResponse,
+} from "@vm0/core";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { fetch$ } from "../fetch.ts";
+import { zeroClient$ } from "../api-client.ts";
+import { setBillingDialogOpen$ } from "../zero-page/billing.ts";
 import { logger } from "../log.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { stopTts$ } from "./voice-io-tts.ts";
+import { accept } from "../../lib/accept.ts";
 
 const L = logger("VoiceIO:STT");
 
@@ -17,6 +24,7 @@ const internalTranscribing$ = state(false);
 const internalStream$ = state<MediaStream | null>(null);
 const internalChunks$ = state<Blob[]>([]);
 const internalRecorder$ = state<MediaRecorder | null>(null);
+const audioInputQuotaReload$ = state(0);
 
 // ---------------------------------------------------------------------------
 // Public computed
@@ -37,6 +45,21 @@ export const audioInputAvailable$ = computed(async (get) => {
     typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
   return featureEnabled && hasMic;
 });
+
+/**
+ * Async-loaded audio input quota for the current user/org.
+ * Re-fetches whenever `refreshAudioInputQuota$` is invoked (e.g., after a
+ * successful STT call or a 402 response).
+ */
+export const audioInputQuota$ = computed(
+  async (get): Promise<AudioInputQuotaResponse> => {
+    get(audioInputQuotaReload$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroVoiceIoQuotaContract);
+    const result = await accept(client.get(), [200], { toast: false });
+    return result.body;
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,6 +100,12 @@ const resetState$ = command(({ set }) => {
 // ---------------------------------------------------------------------------
 // Public commands
 // ---------------------------------------------------------------------------
+
+const refreshAudioInputQuota$ = command(({ set }) => {
+  set(audioInputQuotaReload$, (x) => {
+    return x + 1;
+  });
+});
 
 export const startRecording$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -181,6 +210,19 @@ export const stopAndTranscribe$ = command(
       });
 
       if (!response.ok) {
+        if (response.status === 402) {
+          const body = (await response.json().catch(() => {
+            return null;
+          })) as {
+            error?: { code?: string };
+          } | null;
+          if (body?.error?.code === "AUDIO_INPUT_QUOTA_EXCEEDED") {
+            set(refreshAudioInputQuota$);
+            set(setBillingDialogOpen$, true);
+            set(resetState$);
+            return "";
+          }
+        }
         L.error("STT API error", { status: response.status });
         toast.error("Transcription failed");
         set(resetState$);
@@ -189,6 +231,8 @@ export const stopAndTranscribe$ = command(
 
       const result = (await response.json()) as { text: string };
       text = result.text.trim();
+      // Refresh cached quota so the UI reflects the new count for free-tier users.
+      set(refreshAudioInputQuota$);
     } catch (error) {
       L.error("STT fetch failed", error);
       toast.error("Transcription failed");

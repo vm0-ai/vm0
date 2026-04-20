@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.2...vsock-host-v0.9.3) (2026-04-20)
+
+
+### Bug Fixes
+
+* **vsock-host:** encode connection state in type to prevent close races ([#10199](https://github.com/vm0-ai/vm0/issues/10199)) ([f3b62ce](https://github.com/vm0-ai/vm0/commit/f3b62ce6a692e56fd54ccd68804419ddfebac0a6))
+
 ## [0.9.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.1...vsock-host-v0.9.2) (2026-04-17)
 
 

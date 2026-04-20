@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { readFileSync } from "node:fs";
 import chalk from "chalk";
 import {
   isInteractive,
@@ -135,6 +136,7 @@ interface SetupOptions {
   interval?: string;
   timezone?: string;
   prompt?: string;
+  promptFile?: string;
   enable?: boolean;
   modelProvider?: string;
   model?: string;
@@ -358,12 +360,21 @@ async function gatherTimezone(
 
 async function gatherPromptText(
   optionPrompt: string | undefined,
+  optionPromptFile: string | undefined,
   existingPrompt: string | undefined | null,
 ): Promise<string | undefined> {
+  if (optionPrompt && optionPromptFile) {
+    throw new Error("Cannot use --prompt and --prompt-file together");
+  }
+
+  if (optionPromptFile) {
+    return readFileSync(optionPromptFile, "utf-8");
+  }
+
   if (optionPrompt) return optionPrompt;
 
   if (!isInteractive()) {
-    throw new Error("--prompt is required");
+    throw new Error("--prompt or --prompt-file is required");
   }
 
   return await promptText(
@@ -649,6 +660,10 @@ export const setupCommand = new Command()
   .option("-i, --interval <seconds>", "Interval in seconds for loop mode")
   .option("-z, --timezone <tz>", "IANA timezone")
   .option("-p, --prompt <text>", "Prompt to run")
+  .option(
+    "--prompt-file <path>",
+    "Read prompt from file (cannot be used with --prompt)",
+  )
   .option("-e, --enable", "Enable schedule immediately after creation")
   .option(
     "--model-provider <id>",
@@ -667,6 +682,7 @@ Examples:
   Monthly on the 1st:    zero schedule setup <agent-id> -f monthly -d 1 -t 08:00 -p "monthly review"
   One-time:              zero schedule setup <agent-id> -f once -d 2026-04-01 -t 14:00 -p "one-off task"
   Loop every 5 minutes:  zero schedule setup <agent-id> -f loop -i 300 -p "poll for updates"
+  Prompt from file:      zero schedule setup <agent-id> -f daily -t 09:00 --prompt-file ./prompt.md
   Create and enable:     zero schedule setup <agent-id> -f daily -t 09:00 -p "run report" --enable
   Override model:        zero schedule setup <agent-id> -f daily -t 09:00 -p "..." --model-provider <id> --model MiniMax-M2.7
   Reset model override:  zero schedule setup <agent-id> -f daily -t 09:00 -p "..." --model-provider default --model default
@@ -737,6 +753,7 @@ Notes:
       // 6. Gather prompt
       const promptText_ = await gatherPromptText(
         options.prompt,
+        options.promptFile,
         existingSchedule?.prompt,
       );
       if (!promptText_) {
