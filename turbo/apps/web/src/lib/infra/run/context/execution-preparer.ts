@@ -185,7 +185,7 @@ function extractMetadata(context: ExecutionContext) {
   return {
     resumedFromCheckpointId: context.resumedFromCheckpointId || null,
     continuedFromSessionId: context.continuedFromSessionId || null,
-    apiStartTime: context.apiStartTime ?? null,
+    apiStartTime: context.apiStartTime,
     userTimezone: context.userTimezone || null,
   };
 }

@@ -7,6 +7,7 @@ const baseCtx = {
   prompt: "prepare a voice chat briefing",
   appendSystemPrompt: "# Voice Chat Preparation\nDo the thing.",
   preparationId: "prep-1",
+  apiStartTime: 1000,
 };
 
 describe("adaptVoiceChatPrepareTrigger", () => {
@@ -24,6 +25,11 @@ describe("adaptVoiceChatPrepareTrigger", () => {
   it("sets triggerSource to 'voice-chat'", () => {
     const result = adaptVoiceChatPrepareTrigger(baseCtx);
     expect(result.triggerSource).toBe("voice-chat");
+  });
+
+  it("forwards apiStartTime", () => {
+    const result = adaptVoiceChatPrepareTrigger(baseCtx);
+    expect(result.apiStartTime).toBe(1000);
   });
 
   it("builds the prepare callback URL and payload", () => {

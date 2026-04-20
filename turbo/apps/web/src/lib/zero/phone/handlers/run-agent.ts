@@ -12,6 +12,7 @@ interface RunAgentParams {
   phoneContext: string;
   userId: string;
   callbackContext: PhoneCallbackPayload;
+  apiStartTime: number;
 }
 
 export async function runAgentForPhone(params: RunAgentParams): Promise<void> {

@@ -16,6 +16,7 @@ interface SlackTriggerContext {
   channelType?: "channel" | "dm" | "group_dm";
   threadTs?: string;
   callbackContext: SlackOrgCallbackPayload;
+  apiStartTime: number;
 }
 
 /**
@@ -42,6 +43,7 @@ export function adaptSlackTrigger(
     appendSystemPrompt,
     sessionId: ctx.sessionId,
     triggerSource: "slack",
+    apiStartTime: ctx.apiStartTime,
     userInfoExtras: ctx.userInfoExtras,
     callbacks: [
       {

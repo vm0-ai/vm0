@@ -10,6 +10,7 @@ function buildContext(
     agentId: "agent-abc",
     sessionId: "session-xyz",
     prompt: "Hello agent",
+    apiStartTime: 1000,
     callbackPayload: {
       emailThreadSessionId: "thread-1",
       inboundEmailId: "email-1",
@@ -35,6 +36,12 @@ describe("adaptEmailReplyTrigger", () => {
     expect(result.agentId).toBe(ctx.agentId);
     expect(result.sessionId).toBe(ctx.sessionId);
     expect(result.prompt).toBe(ctx.prompt);
+  });
+
+  it("forwards apiStartTime", () => {
+    const ctx = buildContext();
+    const result = adaptEmailReplyTrigger(ctx);
+    expect(result.apiStartTime).toBe(ctx.apiStartTime);
   });
 
   it("sets appendSystemPrompt to Email integration prompt", () => {

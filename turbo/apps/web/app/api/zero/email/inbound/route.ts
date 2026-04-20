@@ -96,6 +96,7 @@ async function handleComplaint(event: WebhookEvent): Promise<Response> {
  * Returns 200 immediately to acknowledge receipt.
  */
 export async function POST(request: Request): Promise<Response> {
+  const apiStartTime = Date.now();
   initServices();
 
   // 1. Extract Svix signature headers
@@ -146,9 +147,11 @@ export async function POST(request: Request): Promise<Response> {
       const result = hasReplyAddress
         ? await handleInboundEmailReply(
             event as Parameters<typeof handleInboundEmailReply>[0],
+            apiStartTime,
           )
         : await handleInboundEmailTrigger(
             event as Parameters<typeof handleInboundEmailTrigger>[0],
+            apiStartTime,
           );
 
       if (!result.ok && senderEmail) {

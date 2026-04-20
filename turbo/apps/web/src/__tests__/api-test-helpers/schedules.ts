@@ -8,7 +8,12 @@ import { DELETE as deleteScheduleRoute } from "../../../app/api/zero/schedules/[
 import { POST as enableScheduleRoute } from "../../../app/api/zero/schedules/[name]/enable/route";
 import { POST as disableScheduleRoute } from "../../../app/api/zero/schedules/[name]/disable/route";
 import { createTestRequest, getTestAuthContext } from "./core";
-import { resolveAgentIdFromCompose } from "../db-test-seeders/schedules";
+import {
+  resolveAgentIdFromCompose,
+  seedTestSchedule,
+} from "../db-test-seeders/schedules";
+
+export { seedTestSchedule };
 
 /**
  * Create a test schedule via the schedule API route.

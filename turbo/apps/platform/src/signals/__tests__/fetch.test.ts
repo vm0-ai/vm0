@@ -1,3 +1,13 @@
+/**
+ * Tests for the fetch$ wrapper itself (401 redirect, token refresh, retry).
+ *
+ * mockApi cannot be used in this file: the wrapper is exercised against
+ * synthetic URLs (`/test`, `/api/zero/items`) that do not correspond to any
+ * ts-rest contract — they exist solely to drive the wrapper's status-code and
+ * retry logic. Migrating them would require inventing contracts for paths
+ * that have no server-side implementation, so the `http.*` usage here is
+ * intentional and should remain exempt from the Phase 3 capstone rule (#10091).
+ */
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";

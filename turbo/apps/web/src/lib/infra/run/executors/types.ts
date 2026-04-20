@@ -75,7 +75,7 @@ export interface PreparedContext {
   captureNetworkBodies: boolean;
 
   // API start time for E2E timing metrics
-  apiStartTime: number | null;
+  apiStartTime: number;
 
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   // Injected as TZ environment variable in sandbox if not already set in environment

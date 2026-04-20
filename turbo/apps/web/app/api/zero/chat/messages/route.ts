@@ -204,6 +204,7 @@ async function resolveThread(
 
 const router = tsr.router(chatMessagesContract, {
   send: async ({ body, headers }) => {
+    const apiStartTime = Date.now();
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -321,6 +322,7 @@ const router = tsr.router(chatMessagesContract, {
         agentId: body.agentId,
         sessionId,
         triggerSource: "web",
+        apiStartTime,
         modelProvider,
         modelProviderId: override.providerId ?? undefined,
         selectedModelOverride: override.selectedModel ?? undefined,

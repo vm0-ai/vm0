@@ -124,6 +124,8 @@ describe("chat draft persistence across thread navigation", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
+      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
+      // which is out of scope for the mockApi helper (Phase 0 of #9707).
       http.post("*/api/zero/uploads", () => {
         // Signal that the upload request has arrived
         resolveUpload?.();

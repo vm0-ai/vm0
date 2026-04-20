@@ -84,7 +84,10 @@ interface SlackEventCallback {
 
 type SlackEvent = SlackUrlVerificationEvent | SlackEventCallback;
 
-function handleEventCallback(payload: SlackEventCallback) {
+function handleEventCallback(
+  payload: SlackEventCallback,
+  apiStartTime: number,
+) {
   const event = payload.event;
 
   if (event.type === "app_mention") {
@@ -99,6 +102,7 @@ function handleEventCallback(payload: SlackEventCallback) {
         messageTs: event.ts,
         threadTs: event.thread_ts,
         files: event.files,
+        apiStartTime,
       }).catch((error) => {
         log.error("Error handling org app_mention", { error });
       });
@@ -121,6 +125,7 @@ function handleEventCallback(payload: SlackEventCallback) {
         files: event.files,
         messageTs: event.ts,
         threadTs: event.thread_ts,
+        apiStartTime,
       }).catch((error) => {
         log.error("Error handling org direct_message", { error });
       });
@@ -182,6 +187,7 @@ function handleEventCallback(payload: SlackEventCallback) {
  * Must respond within 3 seconds to avoid Slack retries.
  */
 export async function POST(request: Request) {
+  const apiStartTime = Date.now();
   const { SLACK_SIGNING_SECRET } = env();
 
   if (!SLACK_SIGNING_SECRET) {
@@ -231,7 +237,7 @@ export async function POST(request: Request) {
     if (request.headers.get("x-slack-retry-num")) {
       return new Response("OK", { status: 200 });
     }
-    handleEventCallback(payload);
+    handleEventCallback(payload, apiStartTime);
     return new Response("OK", { status: 200 });
   }
 

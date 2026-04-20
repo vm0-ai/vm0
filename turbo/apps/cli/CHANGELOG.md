@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.124.0](https://github.com/vm0-ai/vm0/compare/cli-v9.123.0...cli-v9.124.0) (2026-04-20)
+
+
+### Features
+
+* add --prompt and --prompt-file flags to schedule commands ([c2d7b95](https://github.com/vm0-ai/vm0/commit/c2d7b9515b08482689b93ef01be0d7383db001ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.209.0
+
 ## [9.123.0](https://github.com/vm0-ai/vm0/compare/cli-v9.122.11...cli-v9.123.0) (2026-04-19)
 
 

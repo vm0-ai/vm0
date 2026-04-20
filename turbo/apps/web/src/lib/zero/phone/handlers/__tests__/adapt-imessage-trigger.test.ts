@@ -21,6 +21,7 @@ describe("adaptImessageTrigger", () => {
       fromNumber: "+15551234567",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     });
 
     expect(result.userId).toBe("user-1");
@@ -28,6 +29,7 @@ describe("adaptImessageTrigger", () => {
     expect(result.sessionId).toBe("sess-1");
     expect(result.prompt).toBe("hello");
     expect(result.triggerSource).toBe("imessage");
+    expect(result.apiStartTime).toBe(1000);
     expect(result.appendSystemPrompt).toContain("iMessage");
     expect(result.appendSystemPrompt).toContain("+15551234567");
 
@@ -49,6 +51,7 @@ describe("adaptImessageTrigger", () => {
       fromNumber: "+1",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     });
     expect(result.sessionId).toBeUndefined();
   });
@@ -61,6 +64,7 @@ describe("adaptImessageTrigger", () => {
       fromNumber: "+1",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     };
     const a = adaptImessageTrigger(ctx);
     const b = adaptImessageTrigger(ctx);

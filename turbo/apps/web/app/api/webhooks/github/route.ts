@@ -32,6 +32,7 @@ const log = logger("webhook:github");
  * Uses Next.js after() to process events in the background.
  */
 export async function POST(request: Request) {
+  const apiStartTime = Date.now();
   const { GITHUB_APP_WEBHOOK_SECRET, GITHUB_APP_SLUG } = env();
 
   if (!GITHUB_APP_WEBHOOK_SECRET) {
@@ -94,7 +95,11 @@ export async function POST(request: Request) {
     initServices();
 
     after(() => {
-      return handleIssuesEvent(parsed.data, GITHUB_APP_SLUG).catch((error) => {
+      return handleIssuesEvent(
+        parsed.data,
+        GITHUB_APP_SLUG,
+        apiStartTime,
+      ).catch((error) => {
         log.error("Error handling issues event", { error });
       });
     });
@@ -117,11 +122,13 @@ export async function POST(request: Request) {
     initServices();
 
     after(() => {
-      return handleIssueCommentEvent(parsed.data, GITHUB_APP_SLUG).catch(
-        (error) => {
-          log.error("Error handling issue_comment event", { error });
-        },
-      );
+      return handleIssueCommentEvent(
+        parsed.data,
+        GITHUB_APP_SLUG,
+        apiStartTime,
+      ).catch((error) => {
+        log.error("Error handling issue_comment event", { error });
+      });
     });
 
     return new Response("OK", { status: 200 });

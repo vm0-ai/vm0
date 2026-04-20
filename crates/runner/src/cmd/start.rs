@@ -2603,7 +2603,20 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Deterministic barrier: wait for run()'s main loop to have polled
+        // `discover_fut` into its await state. Only then is the Running-arm
+        // `select!` provably in place, which is the precondition for the
+        // silent `send_if_modified` below to land without waking the loop.
+        // A wall-clock sleep here flakes under coverage CI — see #10146.
+        // The 2s timeout gives a clear diagnostic if the "loop parks on
+        // discover" invariant ever regresses, rather than hanging until
+        // the outer test harness kills us.
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            env.handle.discover_entered.notified(),
+        )
+        .await
+        .expect("run() did not enter discover_fut select! within 2s");
 
         // Flip the watch value to Stopping without firing changed().
         env.mode_tx.send_if_modified(|v| {
@@ -2614,9 +2627,13 @@ mod tests {
         let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
+        // `wait_completion` is event-driven (fires on `provider.complete`), so
+        // this duration is a diagnostic cap for genuine hangs — not a budget
+        // for the run. A large cap absorbs coverage-CI slowdown of the full
+        // dispatch→executor→complete chain without flaking (see #10146).
         let c = env
             .handle
-            .wait_completion(run_id, Duration::from_secs(5))
+            .wait_completion(run_id, Duration::from_secs(30))
             .await;
         assert!(
             c.is_some(),
@@ -2640,7 +2657,19 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Wait for the main loop to park on `discover_fut` so the subsequent
+        // `trigger_stopping` lands on a steady-state loop rather than racing
+        // against startup. This test does not depend on the silent-flip
+        // semantics of `claim_after_stopping_sent_cancels_new_job` (it uses
+        // `trigger_stopping`, which fires `changed()`), but the same barrier
+        // is still the right "main loop is idle" signal — and deterministic
+        // under coverage CI, unlike the 50 ms sleep this replaces.
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            env.handle.discover_entered.notified(),
+        )
+        .await
+        .expect("run() did not enter discover_fut select! within 2s");
 
         // Enter Stopping first.
         env.trigger_stopping().await;

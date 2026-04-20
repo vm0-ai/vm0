@@ -49,6 +49,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       prompt: "Hello, world!",
       agentId,
       triggerSource: "web" as TriggerSource,
+      apiStartTime: Date.now(),
       ...overrides,
     };
   }

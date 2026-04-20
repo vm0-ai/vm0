@@ -26,6 +26,7 @@ const log = logger("api:zero-runs:trigger");
 
 const router = tsr.router(zeroRunsMainContract, {
   create: async ({ body, headers }) => {
+    const apiStartTime = Date.now();
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -128,6 +129,7 @@ const router = tsr.router(zeroRunsMainContract, {
         sessionId: body.sessionId,
         modelProvider: body.modelProvider,
         triggerSource: isAgentTriggered ? "agent" : "web",
+        apiStartTime,
         triggerAgentId,
         callbacks: agentCallbacks.length > 0 ? agentCallbacks : undefined,
       });

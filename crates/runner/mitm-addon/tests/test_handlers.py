@@ -800,6 +800,19 @@ class TestResponseHandler:
         assert "500" in content
         assert "api.example.com" in content
 
+    def test_pops_start_time_even_when_run_id_absent(self, real_flow, mitm_ctx):
+        # If the request handler tracked this flow's start time but the
+        # metadata ended up without vm_run_id (registry missing runId),
+        # response() must still pop the entry to avoid leaking into
+        # ``_request_start_times``.
+        flow = real_flow(with_response=False)
+        mitm_addon._request_start_times[flow.id] = 12345.0
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.id not in mitm_addon._request_start_times
+
 
 class TestSseUsageExtractor:
     """Tests for the incremental SSE usage parser."""
@@ -1549,6 +1562,9 @@ class TestErrorHandler:
         flow.id = "flow-err-1"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
+        # Matches the request handler's invariant: original_url is set
+        # alongside vm_run_id.
+        flow.metadata["original_url"] = "https://example.com/"
         flow.error = Error("connection reset")
         mitm_addon._request_start_times["flow-err-1"] = 12345.0
 

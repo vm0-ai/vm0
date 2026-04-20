@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.263.0](https://github.com/vm0-ai/vm0/compare/app-v0.262.0...app-v0.263.0) (2026-04-20)
+
+
+### Features
+
+* **platform:** make mod+b shortcut toggle desktop sidebar globally ([#10187](https://github.com/vm0-ai/vm0/issues/10187)) ([dbcc700](https://github.com/vm0-ai/vm0/commit/dbcc70070b620433c79bdf057a2c00b7a14e43ec))
+* **usage:** add per-user usage insight view behind usageAnalytics switch ([#10191](https://github.com/vm0-ai/vm0/issues/10191)) ([b749762](https://github.com/vm0-ai/vm0/commit/b74976215cd7b46d051d2e58d444ed88681a964e))
+
+
+### Refactoring
+
+* **platform:** clean up residual http.* overrides missed by phase 3 umbrella ([#10178](https://github.com/vm0-ai/vm0/issues/10178)) ([04df37a](https://github.com/vm0-ai/vm0/commit/04df37aa881bf578ea21eda561c3489801349c03)), closes [#10177](https://github.com/vm0-ai/vm0/issues/10177)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.209.0
+
 ## [0.262.0](https://github.com/vm0-ai/vm0/compare/app-v0.261.0...app-v0.262.0) (2026-04-19)
 
 
