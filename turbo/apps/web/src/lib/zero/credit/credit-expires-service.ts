@@ -46,6 +46,10 @@ export async function createExpiresRecord(
  * Selects active records ordered by expires_at ASC and decrements remaining
  * until the requested amount is covered. If total remaining < amount, the
  * excess comes from non-expiring credits (no error).
+ *
+ * Time-aware: expired rows are skipped so they can never back a spend, even
+ * if the caller forgot to settle first. Paired with `expireCredits` in the
+ * same transaction this is defensive; alone it still prevents the leak.
  */
 export async function deductFromExpiresRecords(
   tx: Tx,
@@ -64,6 +68,7 @@ export async function deductFromExpiresRecords(
       and(
         eq(creditExpiresRecord.orgId, orgId),
         gt(creditExpiresRecord.remaining, 0),
+        gt(creditExpiresRecord.expiresAt, new Date()),
       ),
     )
     .orderBy(asc(creditExpiresRecord.expiresAt))
@@ -131,6 +136,33 @@ export async function expireCredits(tx: Tx, orgId: string): Promise<number> {
 
   log.info("expired credits settled", { orgId, totalExpired });
   return totalExpired;
+}
+
+/**
+ * Sum of credits on rows that are already past their expiry but haven't been
+ * settled yet (i.e. `remaining > 0 AND expires_at <= now()`). These are
+ * already excluded from spend by `deductFromExpiresRecords`, but the
+ * `org_metadata.credits` aggregate still includes them until the next
+ * `expireCredits` call. Use this to present the true spendable balance on
+ * read paths that run outside the settlement transaction.
+ */
+export async function getUnsettledExpiredAmount(
+  orgId: string,
+): Promise<number> {
+  const db = globalThis.services.db;
+  const [row] = await db
+    .select({
+      total: sql<number>`COALESCE(SUM(${creditExpiresRecord.remaining}), 0)::int`,
+    })
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, orgId),
+        lte(creditExpiresRecord.expiresAt, new Date()),
+        gt(creditExpiresRecord.remaining, 0),
+      ),
+    );
+  return row?.total ?? 0;
 }
 
 /**

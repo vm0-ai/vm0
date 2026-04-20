@@ -10,6 +10,7 @@ import {
   createExpiresRecord,
   expireCredits,
   getExpiresRecordsSummary,
+  getUnsettledExpiredAmount,
 } from "../credit/credit-expires-service";
 import { logger } from "../../shared/logger";
 
@@ -722,9 +723,17 @@ export async function getBillingStatus(orgId: string): Promise<{
 
   const expirySummary = await getExpiresRecordsSummary(orgId);
 
+  // Subtract not-yet-settled expired credits so the displayed balance matches
+  // what the user can actually spend. Dormant non-subscription orgs never hit
+  // `expireCredits` until their next run, so the raw `credits` column can be
+  // inflated until then — this keeps the UI honest in the meantime.
+  const unsettledExpired = await getUnsettledExpiredAmount(orgId);
+  const rawCredits = org?.credits ?? 0;
+  const displayedCredits = Math.max(rawCredits - unsettledExpired, 0);
+
   return {
     tier: org?.tier ?? "free",
-    credits: org?.credits ?? 0,
+    credits: displayedCredits,
     subscriptionStatus: org?.subscriptionStatus ?? null,
     currentPeriodEnd: org?.currentPeriodEnd ?? null,
     cancelAtPeriodEnd: org?.cancelAtPeriodEnd ?? false,

@@ -2,7 +2,10 @@ import { eq, and, sql } from "drizzle-orm";
 import { creditUsage } from "../../../db/schema/credit-usage";
 import { creditPricing } from "../../../db/schema/credit-pricing";
 import { deductOrgCredits } from "../org/org-service";
-import { deductFromExpiresRecords } from "./credit-expires-service";
+import {
+  deductFromExpiresRecords,
+  expireCredits,
+} from "./credit-expires-service";
 import { triggerAutoRecharge } from "../billing/auto-recharge-service";
 import { evaluateMemberCaps } from "./member-credit-cap-service";
 import { logger } from "../../shared/logger";
@@ -110,8 +113,13 @@ export async function processOrgCredits(orgId: string): Promise<void> {
       processedCount++;
     }
 
-    // Deduct total credits from the org table within the same transaction
+    // Deduct total credits from the org table within the same transaction.
+    // Settle expired credits first so the aggregate balance and expires-row
+    // state are correct before this run's deduction lands — otherwise
+    // non-subscription orgs would never converge (no renewal to call
+    // expireCredits on their behalf).
     if (totalCredits > 0) {
+      await expireCredits(tx, orgId);
       await deductOrgCredits(tx, orgId, totalCredits);
       await deductFromExpiresRecords(tx, orgId, totalCredits);
     }
