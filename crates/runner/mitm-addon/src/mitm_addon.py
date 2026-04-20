@@ -398,15 +398,19 @@ def response(flow: http.HTTPFlow) -> None:
     """
     Handle response and log network activity.
     """
+    # Pop the start-time tracking entry before any early return so that
+    # flows the request handler tracked (line 181) but whose metadata
+    # indicates we should skip (e.g. registry entry without a runId) do
+    # not leak into ``_request_start_times``. Mirrors ``error()``.
+    start_time = _request_start_times.pop(flow.id, None)
+
     run_id = flow.metadata.get("vm_run_id", "")
     if not run_id:
         # Unregistered VM: the request handler returned before populating
         # metadata, so none of this handler's work applies.
         return
 
-    start_time = _request_start_times.pop(flow.id, None)
     latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
-
     original_url = flow.metadata["original_url"]
     firewall_action = flow.metadata.get("firewall_action", "ALLOW")
 
