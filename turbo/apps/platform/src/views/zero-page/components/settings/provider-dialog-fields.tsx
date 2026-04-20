@@ -295,8 +295,11 @@ function ModelSelector({
     return null;
   }
 
-  const models =
-    type === "vm0" ? getVm0VisibleModels(features) : (getModels(type) ?? []);
+  const models = (
+    type === "vm0" ? getVm0VisibleModels(features) : (getModels(type) ?? [])
+  ).filter((m) => {
+    return m !== "";
+  });
   const defaultModel = getUIDefaultModel(type) ?? getDefaultModel(type) ?? "";
   const canCustom = allowsCustomModel(type);
   const placeholder = getCustomModelPlaceholder(type) ?? "Enter model name";

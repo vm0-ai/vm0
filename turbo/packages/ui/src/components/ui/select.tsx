@@ -6,6 +6,8 @@ import { IconCheck, IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 
 import { cn } from "../../lib/utils";
 
+declare const process: { env: { NODE_ENV?: string } };
+
 const Select = SelectPrimitive.Root;
 
 const SelectGroup = SelectPrimitive.Group;
@@ -129,10 +131,19 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName;
 const SelectItem = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => {
+>(({ className, children, value, ...props }, ref) => {
+  if (value === "") {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(
+        '[@vm0/ui] <SelectItem> received an empty string `value`; skipping render to avoid Radix invariant crash. Use a non-empty sentinel such as "all" instead.',
+      );
+    }
+    return null;
+  }
   return (
     <SelectPrimitive.Item
       ref={ref}
+      value={value}
       className={cn(
         "relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors",
         className,
