@@ -250,10 +250,10 @@ describe("deleteUserData", () => {
     // Telegram: compose → installation → user link
     const tgInstallation = await insertTestTelegramInstallation({
       composeId,
-      adminUserId: userId,
+      ownerUserId: userId,
     });
     await insertTestTelegramUserLink({
-      installationId: tgInstallation.id,
+      installationId: tgInstallation.telegramBotId,
       telegramUserId: uniqueId("tg-user"),
       vm0UserId: userId,
     });

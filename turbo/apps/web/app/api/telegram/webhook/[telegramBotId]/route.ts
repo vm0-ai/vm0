@@ -26,7 +26,7 @@ interface TelegramWebhookUpdate {
 /**
  * Telegram Webhook Endpoint
  *
- * POST /api/telegram/webhook/[installationId]
+ * POST /api/telegram/webhook/[telegramBotId]
  *
  * Routing:
  * - /start command → handleStartCommand
@@ -41,22 +41,22 @@ interface TelegramWebhookUpdate {
  */
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ installationId: string }> },
+  { params }: { params: Promise<{ telegramBotId: string }> },
 ) {
   const apiStartTime = Date.now();
-  const { installationId } = await params;
+  const { telegramBotId } = await params;
 
   initServices();
 
   // Look up installation for webhook secret
   const [installation] = await globalThis.services.db
     .select({
-      id: telegramInstallations.id,
+      telegramBotId: telegramInstallations.telegramBotId,
       webhookSecret: telegramInstallations.webhookSecret,
       botUsername: telegramInstallations.botUsername,
     })
     .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
+    .where(eq(telegramInstallations.telegramBotId, telegramBotId))
     .limit(1);
 
   if (!installation) {
@@ -92,27 +92,27 @@ export async function POST(
       const command = parseBotCommand(messageText, installation.botUsername);
 
       if (command === "start") {
-        await handleStartCommand({ message }, installationId);
+        await handleStartCommand({ message }, telegramBotId);
         return;
       }
 
       if (command === "new_session") {
-        await handleNewSessionCommand({ message }, installationId);
+        await handleNewSessionCommand({ message }, telegramBotId);
         return;
       }
 
       if (command === "connect") {
-        await handleConnectCommand({ message }, installationId);
+        await handleConnectCommand({ message }, telegramBotId);
         return;
       }
 
       if (command === "disconnect") {
-        await handleDisconnectCommand({ message }, installationId);
+        await handleDisconnectCommand({ message }, telegramBotId);
         return;
       }
 
       if (command === "help") {
-        await handleHelpCommand({ message }, installationId);
+        await handleHelpCommand({ message }, telegramBotId);
         return;
       }
 
@@ -120,7 +120,7 @@ export async function POST(
       if (message.chat.type === "private") {
         await handleTelegramDirectMessage(
           { message },
-          installationId,
+          telegramBotId,
           apiStartTime,
         );
         return;
@@ -146,14 +146,17 @@ export async function POST(
       const isReplyToBot = message.reply_to_message?.from?.is_bot === true;
 
       if (hasBotMention || isReplyToBot) {
-        await handleTelegramMention({ message }, installationId, apiStartTime);
+        await handleTelegramMention({ message }, telegramBotId, apiStartTime);
         return;
       }
 
       // Non-matching message — store silently for context
-      await storeTelegramMessage(installationId, chatId, message);
+      await storeTelegramMessage(telegramBotId, chatId, message);
     })().catch((error) => {
-      log.error("Error handling telegram webhook", { error, installationId });
+      log.error("Error handling telegram webhook", {
+        error,
+        telegramBotId,
+      });
     });
   });
 

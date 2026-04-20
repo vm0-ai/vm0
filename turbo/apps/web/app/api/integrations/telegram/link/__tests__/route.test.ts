@@ -94,7 +94,7 @@ describe("/api/integrations/telegram/link", () => {
     it("returns linked: true with telegramUserId when linked", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
       });
 
@@ -164,7 +164,7 @@ describe("/api/integrations/telegram/link", () => {
     it("deletes user link and returns 204", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
       });
 

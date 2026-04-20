@@ -56,7 +56,7 @@ describe("/api/integrations/telegram", () => {
     it("returns bot info for linked admin user", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
       });
 
@@ -78,7 +78,7 @@ describe("/api/integrations/telegram", () => {
       const user = await context.setupUser();
       // Create installation with admin but no user link (omit vm0UserId)
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
       });
 
       const request = new Request(
@@ -117,7 +117,7 @@ describe("/api/integrations/telegram", () => {
       const user = await context.setupUser();
       // Create installation where admin is a different user
       await createTestTelegramInstallation({
-        adminUserId: "other-admin",
+        ownerUserId: "other-owner",
         vm0UserId: user.userId,
       });
 
@@ -139,7 +139,7 @@ describe("/api/integrations/telegram", () => {
     it("updates default agent for admin", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
       });
 
@@ -181,7 +181,7 @@ describe("/api/integrations/telegram", () => {
     it("returns 404 for non-admin user", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: "other-admin",
+        ownerUserId: "other-owner",
         vm0UserId: user.userId,
       });
 
@@ -199,7 +199,7 @@ describe("/api/integrations/telegram", () => {
     it("deletes installation and removes webhook for admin", async () => {
       const user = await context.setupUser();
       await createTestTelegramInstallation({
-        adminUserId: user.userId,
+        ownerUserId: user.userId,
         vm0UserId: user.userId,
       });
 

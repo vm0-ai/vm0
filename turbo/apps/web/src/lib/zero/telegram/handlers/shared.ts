@@ -302,14 +302,13 @@ export async function resolveSessionCompose(
  * create the user link with the correct Telegram user ID.
  */
 export function buildConnectUrl(
-  installationId: string,
   telegramBotId: string,
   telegramUserId: string,
   botToken: string,
 ): string {
   const appUrl = getAppUrl();
   const ts = Math.floor(Date.now() / 1000);
-  const sig = signConnectParams(installationId, telegramUserId, ts, botToken);
+  const sig = signConnectParams(telegramBotId, telegramUserId, ts, botToken);
   return `${appUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
 }
 

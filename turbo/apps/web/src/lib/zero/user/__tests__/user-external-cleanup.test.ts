@@ -59,7 +59,7 @@ describe("cleanupUserExternalServices", () => {
 
   it("deletes telegram user links", async () => {
     await createTestTelegramInstallation({
-      adminUserId: userId,
+      ownerUserId: userId,
       vm0UserId: userId,
     });
 
@@ -125,7 +125,7 @@ describe("cleanupUserExternalServices", () => {
   it("continues cleanup when one step fails (best-effort)", async () => {
     // Create a telegram user link that should be cleaned up
     await createTestTelegramInstallation({
-      adminUserId: userId,
+      ownerUserId: userId,
       vm0UserId: userId,
     });
 
@@ -143,7 +143,7 @@ describe("cleanupUserExternalServices", () => {
 
   it("is idempotent - calling twice produces no errors", async () => {
     await createTestTelegramInstallation({
-      adminUserId: userId,
+      ownerUserId: userId,
       vm0UserId: userId,
     });
 

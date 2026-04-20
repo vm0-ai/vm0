@@ -12,19 +12,19 @@ import { telegramInstallations } from "./telegram-installation";
 
 /**
  * Telegram Messages table
- * Stores messages received by the bot for context retrieval
- * Telegram Bot API has no history API, so we must store messages ourselves
- * Messages are retained for 30 days (cleaned up by cron job)
+ * Stores messages received by the bot for context retrieval.
+ * Telegram Bot API has no history API, so we must store messages ourselves.
+ * Messages are retained for 30 days (cleaned up by cron job).
  */
 export const telegramMessages = pgTable(
   "telegram_messages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    installationId: uuid("installation_id")
+    installationId: varchar("installation_id", { length: 255 })
       .notNull()
       .references(
         () => {
-          return telegramInstallations.id;
+          return telegramInstallations.telegramBotId;
         },
         { onDelete: "cascade" },
       ),
