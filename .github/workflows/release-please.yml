@@ -1501,7 +1501,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+                  text: "*Runner RS* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Success with warnings
         if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings == 'true' }}
@@ -1517,7 +1517,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ⚠️ Promoted with warnings\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*Runner RS* ⚠️ Promoted with warnings\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
