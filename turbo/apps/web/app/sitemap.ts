@@ -13,20 +13,6 @@ const baseUrl = "https://www.vm0.ai";
 // from code, so "last build = last changed" is a reasonable proxy.
 const BUILD_DATE = new Date();
 
-/**
- * Build hreflang alternates map for a localized path.
- */
-function buildAlternates(
-  localeLessPath: string,
-  availableLocales: readonly string[] = locales,
-): Record<string, string> {
-  const languages: Record<string, string> = {};
-  for (const loc of availableLocales) {
-    languages[loc] = `${baseUrl}/${loc}${localeLessPath}`;
-  }
-  return languages;
-}
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Pre-fetch blog posts once so we can both emit post URLs and derive a
   // realistic lastmod for the /blog index from the most recent post.
@@ -99,16 +85,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const urls: MetadataRoute.Sitemap = [];
 
-  // Localized static pages — one entry per locale with hreflang alternates
+  // Localized static pages
   for (const route of localizedRoutes) {
-    const alternates = buildAlternates(route.path);
     for (const locale of locales) {
       urls.push({
         url: `${baseUrl}/${locale}${route.path}`,
         lastModified: route.lastModified,
         changeFrequency: route.changeFrequency,
         priority: route.priority,
-        alternates: { languages: alternates },
       });
     }
   }
@@ -125,14 +109,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // Localized use-case detail pages
   for (const useCase of USE_CASES) {
-    const alternates = buildAlternates(`/use-cases/${useCase.slug}`);
     for (const locale of locales) {
       urls.push({
         url: `${baseUrl}/${locale}/use-cases/${useCase.slug}`,
         lastModified: BUILD_DATE,
         changeFrequency: "monthly",
         priority: 0.7,
-        alternates: { languages: alternates },
       });
     }
   }
@@ -145,8 +127,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       const available = await getPostAvailableLocales(post.slug, locales);
       if (available.length === 0) continue;
 
-      const alternates = buildAlternates(`/blog/posts/${post.slug}`, available);
-
       const imageUrl = post.cover.startsWith("http")
         ? post.cover
         : `${blogBaseUrl}${post.cover}`;
@@ -158,7 +138,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           changeFrequency: "monthly",
           priority: 0.7,
           images: [imageUrl],
-          alternates: { languages: alternates },
         });
       }
     }
