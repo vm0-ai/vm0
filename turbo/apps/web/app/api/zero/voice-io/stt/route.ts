@@ -121,9 +121,14 @@ export async function POST(request: Request): Promise<Response> {
   );
 
   if (!openaiResponse.ok) {
+    const errorBody = await openaiResponse.text();
     log.error("OpenAI STT API error", {
       status: openaiResponse.status,
       statusText: openaiResponse.statusText,
+      body: errorBody,
+      fileMime: file.type,
+      fileSize: file.size,
+      fileName: file.name,
     });
     return NextResponse.json(
       {
