@@ -1,5 +1,35 @@
 # Changelog
 
+## [12.265.0](https://github.com/vm0-ai/vm0/compare/web-v12.264.0...web-v12.265.0) (2026-04-20)
+
+
+### Features
+
+* **observability:** thread route-entry timestamp from handler to runner ([#10181](https://github.com/vm0-ai/vm0/issues/10181)) ([93c0676](https://github.com/vm0-ai/vm0/commit/93c06768f1731c0951195c4b57a8bae324eac00f))
+* **usage:** add per-user usage insight view behind usageAnalytics switch ([#10191](https://github.com/vm0-ai/vm0/issues/10191)) ([b749762](https://github.com/vm0-ai/vm0/commit/b74976215cd7b46d051d2e58d444ed88681a964e))
+
+
+### Bug Fixes
+
+* **connectors:** point docusign oauth at demo environment ([#10150](https://github.com/vm0-ai/vm0/issues/10150)) ([e606295](https://github.com/vm0-ai/vm0/commit/e606295c98068fc0b2d6178bfe4f5e2ed7f6ff00))
+* **seo:** convert next-intl locale redirects from 307 to 301 ([#10176](https://github.com/vm0-ai/vm0/issues/10176)) ([d4abc21](https://github.com/vm0-ai/vm0/commit/d4abc211acee1619f565f0a9e94ee6519385f10b))
+* **usage:** use relative billing period date in tests to avoid date-bomb ([#10175](https://github.com/vm0-ai/vm0/issues/10175)) ([a8eca1f](https://github.com/vm0-ai/vm0/commit/a8eca1ffd8ef1328b76f5a36e90ddc62fd2bf222))
+* **voice-io:** capture openai stt error body and file metadata in logs ([#10179](https://github.com/vm0-ai/vm0/issues/10179)) ([acf1514](https://github.com/vm0-ai/vm0/commit/acf151472c5fe9f3a0f36510acfc072bc680db54)), closes [#10058](https://github.com/vm0-ai/vm0/issues/10058)
+* **web:** add apple-touch-icon.png to stop clerk auth error ([#10192](https://github.com/vm0-ai/vm0/issues/10192)) ([0a40901](https://github.com/vm0-ai/vm0/commit/0a409018600ebee56683b018c1af1a62514ecf80)), closes [#9909](https://github.com/vm0-ai/vm0/issues/9909)
+
+
+### Refactoring
+
+* **observability:** group voice-chat start timestamp into options ([#10183](https://github.com/vm0-ai/vm0/issues/10183)) ([6ebbb6e](https://github.com/vm0-ai/vm0/commit/6ebbb6e39ee41242b54279a21d6d9b294e1e745c))
+* **voice-chat:** drop redundant mode type cast ([#10188](https://github.com/vm0-ai/vm0/issues/10188)) ([03012bd](https://github.com/vm0-ai/vm0/commit/03012bdad1174ec5bde882c49e783ed1b2d0e047))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.209.0
+
 ## [12.264.0](https://github.com/vm0-ai/vm0/compare/web-v12.263.0...web-v12.264.0) (2026-04-19)
 
 
