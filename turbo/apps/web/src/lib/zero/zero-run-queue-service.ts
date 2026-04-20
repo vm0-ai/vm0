@@ -255,7 +255,11 @@ export async function drainOrgQueue(
     }
   } finally {
     if (anyTransition) {
-      await publishOrgSignal(orgId, "queue:changed");
+      // Swallow Ably failures so they don't mask an original throw propagating
+      // through this finally (finally-throw would replace the real error).
+      await publishOrgSignal(orgId, "queue:changed").catch((err: unknown) => {
+        log.error("Failed to publish queue:changed after drain", { err });
+      });
     }
   }
 }
@@ -630,6 +634,17 @@ export async function dispatchQueuedZeroRun(
     });
   } catch (error) {
     await markRunFailed(runId, error);
+    // markRunFailed transitions the run to "failed" (a queue-relevant state
+    // change) but does not publish a signal itself. drainOrgQueue only
+    // publishes when it transitions a queued run, so a failure with an empty
+    // queue would otherwise leave the queue view stale.
+    await publishOrgSignal(params.orgId, "queue:changed").catch(
+      (err: unknown) => {
+        nonZeroLog.error("Failed to publish queue:changed after run failure", {
+          err,
+        });
+      },
+    );
     await drainOrgQueue(params.orgId, dispatchQueuedZeroRun).catch(
       (drainErr) => {
         nonZeroLog.error("Failed to drain org queue after run failure", {

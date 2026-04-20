@@ -36,6 +36,7 @@ import {
   drainOrgQueue,
   dispatchQueuedZeroRun,
 } from "./zero-run-queue-service";
+import { publishOrgSignal } from "./realtime";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import {
@@ -668,6 +669,13 @@ async function dispatchZeroRun(
     return dispatchResult;
   } catch (error) {
     await markRunFailed(record.run.id, error);
+    // markRunFailed transitions the run to "failed" (a queue-relevant state
+    // change) but does not publish a signal itself. drainOrgQueue only
+    // publishes when it transitions a queued run, so a failure with an empty
+    // queue would otherwise leave the queue view stale.
+    await publishOrgSignal(orgId, "queue:changed").catch((err: unknown) => {
+      log.error("Failed to publish queue:changed after run failure", { err });
+    });
     await drainOrgQueue(orgId, dispatchQueuedZeroRun).catch((drainErr) => {
       log.error("Failed to drain org queue after run failure", { drainErr });
     });

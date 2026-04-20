@@ -25,7 +25,6 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
-import { publishOrgSignal } from "../../../../../src/lib/zero/realtime";
 import { after } from "next/server";
 import { env } from "../../../../../src/env";
 
@@ -44,9 +43,6 @@ function scheduleTerminalSideEffects(
     await dispatchTerminalSideEffects(runId, status, errorMsg, () => {
       return drainOrgQueue(orgId, dispatchQueuedZeroRun);
     });
-    // Terminal transition frees a concurrency slot — notify the queue view
-    // even if the drain above was a no-op (empty queue).
-    await publishOrgSignal(orgId, "queue:changed");
     await processOrgCredits(orgId);
   });
 }
