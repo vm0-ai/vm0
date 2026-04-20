@@ -461,13 +461,30 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Idle pool cleanup interval (every 10 seconds)
     // -----------------------------------------------------------------------
-    let mut idle_cleanup = tokio::time::interval(Duration::from_secs(10));
+    // `interval` fires its first tick immediately. In the main-loop
+    // `tokio::select!` this can pre-empt `discover_fut` on its very first
+    // poll — the discover future parks on `rx.recv()` (Pending) while the
+    // interval tick is Ready, so select deterministically picks the tick.
+    // Inside the tick arm any silent watch flip (`send_if_modified(.., false)`)
+    // lands before the loop returns to the discover arm, and the top-of-loop
+    // `borrow_and_update()` then breaks out before the pending job is ever
+    // claimed. Delaying the first tick by one period keeps both arms Pending
+    // on entry, so `discover_fut` wins the first wake. No observable prod
+    // effect: idle cleanup on an empty pool and the first heartbeat were
+    // both fine to happen ~10s later.
+    let mut idle_cleanup = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_secs(10),
+        Duration::from_secs(10),
+    );
     idle_cleanup.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     // -----------------------------------------------------------------------
-    // Heartbeat interval (every 10 seconds)
+    // Heartbeat interval (every 10 seconds) — same first-tick delay as above.
     // -----------------------------------------------------------------------
-    let mut heartbeat_tick = tokio::time::interval(Duration::from_secs(10));
+    let mut heartbeat_tick = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_secs(10),
+        Duration::from_secs(10),
+    );
     heartbeat_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     // -----------------------------------------------------------------------
