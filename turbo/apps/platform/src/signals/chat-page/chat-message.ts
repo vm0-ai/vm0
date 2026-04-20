@@ -13,11 +13,16 @@ import {
   chatMessagesContract,
   chatThreadsContract,
   chatThreadByIdContract,
+  type AttachFile,
   type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import {
+  talkDraft$,
+  type ZeroChatAttachment,
+} from "../zero-page/chat-draft.ts";
 
 export {
   chatThreads$,
@@ -133,19 +138,63 @@ export const sendNewThreadMessage$ = command(
     modelSelection: ModelSelectionRequest | null,
     signal: AbortSignal,
   ): Promise<string | null> => {
-    if (!prompt.trim()) {
+    // Mirror the in-thread send path: resolve the talk-page draft's uploaded
+    // attachments so the first message carries structured `attachFiles` just
+    // like follow-ups do (fixes #10243 for the new-thread entry point).
+    const draft = get(talkDraft$);
+    const allAttachments = get(draft.attachments$);
+    const allInfos = await Promise.all(
+      allAttachments.map((a) => {
+        return get(a.fileInfo$);
+      }),
+    );
+    signal.throwIfAborted();
+
+    const ready = allAttachments
+      .map((a, i) => {
+        return { attachment: a, info: allInfos[i] };
+      })
+      .filter(
+        (
+          r,
+        ): r is {
+          attachment: ZeroChatAttachment;
+          info: { id: string; url: string };
+        } => {
+          return r.info !== null;
+        },
+      );
+
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedPrompt && ready.length === 0) {
       return null;
     }
+
+    const finalPrompt =
+      trimmedPrompt || (ready.length > 0 ? "(see attached files)" : "");
+
+    const attachFiles: AttachFile[] | undefined =
+      ready.length > 0
+        ? ready.map((r) => {
+            return {
+              id: r.info.id,
+              filename: r.attachment.filename,
+              contentType: r.attachment.contentType,
+              size: r.attachment.size,
+            };
+          })
+        : undefined;
 
     const client = get(zeroClient$)(chatMessagesContract);
     const result = await accept(
       client.send({
         body: {
           agentId,
-          prompt,
-          hasTextContent: prompt.trim().length > 0,
+          prompt: finalPrompt,
+          hasTextContent: trimmedPrompt.length > 0,
           clientMessageId: crypto.randomUUID(),
           modelSelection,
+          attachFiles,
         },
         fetchOptions: { signal },
       }),
@@ -153,6 +202,8 @@ export const sendNewThreadMessage$ = command(
     );
     signal.throwIfAborted();
 
+    // Drop the now-persisted attachments from the talk draft.
+    set(draft.clear$);
     set(reloadChatThreads$);
     return result.body.threadId;
   },
