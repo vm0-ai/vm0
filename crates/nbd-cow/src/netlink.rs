@@ -555,10 +555,7 @@ mod tests {
         let value: u64 = 0x0102030405060708;
         let nla = build_nla(5, &value.to_ne_bytes());
         assert_eq!(nla.len(), 12); // 4 header + 8 payload
-        assert_eq!(
-            u64::from_ne_bytes(nla[4..12].try_into().unwrap()),
-            value
-        );
+        assert_eq!(u64::from_ne_bytes(nla[4..12].try_into().unwrap()), value);
     }
 
     // --- build_nested_nla tests ---
