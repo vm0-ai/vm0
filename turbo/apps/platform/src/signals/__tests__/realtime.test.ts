@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { command, createStore } from "ccstate";
+import { platformRealtimeTokenContract } from "@vm0/core";
 import { setAblyLoop$, setupRealtime$ } from "../realtime.ts";
 import {
   triggerAblyEvent,
+  triggerAblyReauth,
+  getAuthTokenHistory,
   resetAblySubscriptions,
   hasSubscription,
 } from "../../mocks/ably.ts";
 import { server } from "../../mocks/server.ts";
 import { apiRealtimeHandlers } from "../../mocks/handlers/api-realtime.ts";
+import { mockApi } from "../../mocks/msw-contract.ts";
 import { mockUser, clearMockedAuth } from "../../__tests__/mock-auth.ts";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +90,57 @@ describe("setAblyLoop$ with mock Ably", () => {
     await loopPromise;
 
     expect(calls).toBe(3);
+    controller.abort();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setupRealtime$ authCallback freshness (regression for #10163)
+// ---------------------------------------------------------------------------
+
+describe("setupRealtime$ authCallback", () => {
+  it("fetches a fresh TokenRequest on every invocation", async () => {
+    const store = createStore();
+    const controller = new AbortController();
+
+    // Issue a distinct nonce per POST so freshness is observable.
+    let nonceCounter = 0;
+    server.use(
+      mockApi(platformRealtimeTokenContract.create, ({ respond }) => {
+        nonceCounter += 1;
+        return respond(200, {
+          keyName: "mock-key",
+          clientId: "test-user-123",
+          timestamp: Date.now(),
+          capability: '{"*":["*"]}',
+          nonce: `mock-nonce-${nonceCounter}`,
+          mac: "mock-mac",
+        });
+      }),
+    );
+    mockUser(
+      { id: "test-user-123", fullName: "Test User" },
+      { token: "test-token" },
+    );
+
+    await store.set(setupRealtime$, controller.signal);
+
+    // Bootstrap consumed one nonce for the fail-fast probe and one for the
+    // first authCallback invocation, so the Realtime mock captured nonce-2.
+    const firstHistory = getAuthTokenHistory();
+    expect(firstHistory).toHaveLength(1);
+    const firstBody = firstHistory[0] as { nonce: string };
+    expect(firstBody.nonce).toBe("mock-nonce-2");
+
+    // Simulate Ably proactively renewing the token after ttl elapses.
+    await triggerAblyReauth();
+
+    const secondHistory = getAuthTokenHistory();
+    expect(secondHistory).toHaveLength(2);
+    const secondBody = secondHistory[1] as { nonce: string };
+    expect(secondBody.nonce).toBe("mock-nonce-3");
+    expect(secondBody.nonce).not.toBe(firstBody.nonce);
+
     controller.abort();
   });
 });
