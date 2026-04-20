@@ -136,12 +136,9 @@ impl MockJobProvider {
 impl MockProviderHandle {
     /// Wait for a specific run's completion to appear, with timeout.
     ///
-    /// Event-driven: subscribes to `completion_notify` *before* checking the
-    /// vec, so a completion landing between the check and the wait still
-    /// wakes us. No polling sleep — the `timeout` is a diagnostic safety
-    /// cap for genuine hangs, not a wall-clock budget for the work itself.
-    /// This matters under coverage CI, where a polling loop with a 5 s
-    /// deadline raced instrumentation slowdown (see #10146).
+    /// Event-driven — see [`MockJobProvider::completion_notify`] for the
+    /// full rationale. `timeout` is a diagnostic cap for genuine hangs,
+    /// not a wall-clock work budget.
     pub async fn wait_completion(&self, run_id: RunId, timeout: Duration) -> Option<Completion> {
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
