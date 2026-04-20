@@ -389,10 +389,22 @@ jobs:
                   type: mrkdwn
                   text: "*Web App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Promote web staged deployment to production (traffic switch)
+  # Promote web staged deployment to production (traffic switch).
+  # Gates on all component builds — if any build fails, no component is
+  # promoted, so production never lands in a partial-release state
+  # (e.g. new web schema live while build-app failed and app/runner still old).
+  # build-app and build-runner may be skipped when their release didn't fire
+  # this cycle; `!failure() && !cancelled()` lets the job proceed in that case.
   promote-web-production:
-    needs: [release-please, migrate-production, build-web-production]
-    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
+    needs:
+      - release-please
+      - migrate-production
+      - build-web-production
+      - build-app-production
+      - build-runner-production
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.web_release_created == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
