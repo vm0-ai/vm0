@@ -3,8 +3,8 @@ import { getLoggers, Level, logger } from "../log";
 import type { DebugLoggers } from "../../types/global-method";
 import { FeatureSwitchKey } from "@vm0/core";
 import {
+  detachedSetFeatureSwitch$,
   featureSwitch$,
-  overrideFeatureSwitch$,
 } from "../external/feature-switch";
 import { inspectLogInput$ } from "./inspect-log-input";
 import { extendDebugLoggerLocalStorage$ } from "./loggers";
@@ -62,8 +62,8 @@ export const setupGlobalMethod$ = command(
 
     window._vm0.featureSwitches = new Proxy(features, {
       set(_, prop: FeatureSwitchKey, value: boolean) {
-        set(overrideFeatureSwitch$, { [prop]: value });
-        return value;
+        set(detachedSetFeatureSwitch$, { [prop]: value }, signal);
+        return true;
       },
     });
   },

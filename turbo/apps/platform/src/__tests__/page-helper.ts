@@ -22,7 +22,7 @@ import {
 import { updateSearchParams$ } from "../signals/route";
 import { vi } from "vitest";
 import type { FeatureSwitchKey } from "@vm0/core";
-import { setFeatureSwitchLocalStorage$ } from "../signals/external/feature-switch";
+import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
 
@@ -56,10 +56,7 @@ export async function setupPage(options: {
   }
 
   if (options.featureSwitches) {
-    options.context.store.set(
-      setFeatureSwitchLocalStorage$,
-      JSON.stringify(options.featureSwitches),
-    );
+    setMockFeatureSwitches(options.featureSwitches);
   }
 
   mockUser(

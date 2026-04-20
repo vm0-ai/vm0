@@ -15,9 +15,19 @@ export function resetMockFeatureSwitches(): void {
 }
 
 export function setMockFeatureSwitches(
-  switches: Record<string, boolean>,
+  switches: Partial<Record<string, boolean>>,
 ): void {
-  mockSwitches = { ...switches };
+  const next: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(switches)) {
+    if (value !== undefined) {
+      next[key] = value;
+    }
+  }
+  mockSwitches = next;
+}
+
+export function getMockFeatureSwitches(): Record<string, boolean> {
+  return mockSwitches;
 }
 
 export const apiFeatureSwitchesHandlers = [
@@ -28,5 +38,10 @@ export const apiFeatureSwitchesHandlers = [
   mockApi(zeroFeatureSwitchesContract.update, ({ body, respond }) => {
     mockSwitches = { ...mockSwitches, ...body.switches };
     return respond(200, { switches: mockSwitches });
+  }),
+
+  mockApi(zeroFeatureSwitchesContract.delete, ({ respond }) => {
+    mockSwitches = {};
+    return respond(200, { deleted: true as const });
   }),
 ];
