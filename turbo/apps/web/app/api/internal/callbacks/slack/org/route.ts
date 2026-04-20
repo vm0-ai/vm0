@@ -169,29 +169,19 @@ async function resolveFooterText(
   selectedModel: string | undefined,
 ): Promise<string | undefined> {
   const [respondedBy, mentionerCount, modelLabel] = await Promise.all([
-    resolveRespondedByLabel(orgId, payload.agentId).catch(() => {
-      return undefined;
-    }),
+    resolveRespondedByLabel(orgId, payload.agentId),
     countThreadMentioners(
       payload.workspaceId,
       payload.channelId,
       payload.threadTs,
-    ).catch(() => {
-      return 0;
-    }),
-    resolveModelIfNonDefault(orgId, selectedModel).catch(() => {
-      return undefined;
-    }),
+    ),
+    resolveModelIfNonDefault(orgId, selectedModel),
   ]);
 
   const parts: string[] = [];
   if (respondedBy) parts.push(respondedBy);
   if (mentionerCount > 2) {
-    const replyTo = await resolveReplyToMention(payload.connectionId).catch(
-      () => {
-        return undefined;
-      },
-    );
+    const replyTo = await resolveReplyToMention(payload.connectionId);
     if (replyTo) parts.push(`Reply to ${replyTo}`);
   }
   if (modelLabel) parts.push(modelLabel);
