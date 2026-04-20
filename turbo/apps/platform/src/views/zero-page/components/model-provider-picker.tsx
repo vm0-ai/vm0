@@ -12,6 +12,7 @@ import {
 } from "@vm0/ui";
 import {
   areProvidersCompatible,
+  getDefaultModel,
   getModels,
   MODEL_PROVIDER_TYPES,
   type ModelProviderResponse,
@@ -19,9 +20,27 @@ import {
 } from "@vm0/core";
 import {
   getModelDisplayName,
+  getUIDefaultModel,
   getUILabel,
   getVm0ModelMultiplier,
 } from "./settings/provider-ui-config";
+
+function resolveDefaultModel(
+  providers: ModelProviderResponse[],
+): string | null {
+  const defaultProvider = providers.find((p) => {
+    return p.isDefault;
+  });
+  if (!defaultProvider) {
+    return null;
+  }
+  return (
+    defaultProvider.selectedModel ??
+    getUIDefaultModel(defaultProvider.type) ??
+    getDefaultModel(defaultProvider.type) ??
+    null
+  );
+}
 
 export interface ModelProviderSelection {
   modelProviderId: string;
@@ -90,7 +109,13 @@ function TriggerLabel({
   compact,
 }: TriggerLabelProps) {
   if (!value) {
-    return <span>{placeholder}</span>;
+    const defaultModel = resolveDefaultModel(providers);
+    if (!defaultModel) {
+      return <span>{placeholder}</span>;
+    }
+    return (
+      <span className="truncate">{getModelDisplayName(defaultModel)}</span>
+    );
   }
   const displayName = getModelDisplayName(value.selectedModel);
   if (compact) {
@@ -173,9 +198,15 @@ export function ModelProviderPicker({
       <SelectTrigger className={cn("h-9 w-full", triggerClassName)}>
         <SelectValue
           placeholder={placeholder}
-          aria-label={
-            value ? getModelDisplayName(value.selectedModel) : placeholder
-          }
+          aria-label={(() => {
+            if (value) {
+              return getModelDisplayName(value.selectedModel);
+            }
+            const defaultModel = resolveDefaultModel(providers);
+            return defaultModel
+              ? getModelDisplayName(defaultModel)
+              : placeholder;
+          })()}
         >
           <TriggerLabel
             providers={providers}
@@ -209,12 +240,12 @@ export function ModelProviderPicker({
                     value={`${group.provider.id}::${model}`}
                     disabled={group.incompatible}
                   >
-                    <span className="flex items-center justify-between gap-3 w-full">
+                    <span className="flex items-center gap-3 w-full">
                       <span className="truncate">
                         {getModelDisplayName(model)}
                       </span>
                       {multiplier !== undefined && (
-                        <span className="shrink-0 rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                        <span className="ml-auto shrink-0 rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
                           {formatMultiplier(multiplier)}
                         </span>
                       )}
