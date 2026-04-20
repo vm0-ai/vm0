@@ -552,6 +552,8 @@ async def handle_firewall_request(
                 type="firewall",
                 firewall_base=firewall_base,
             )
+            flow.metadata["firewall_action"] = "ALLOW"
+            flow.metadata["firewall_error"] = "url_rewrite_forward_failed"
             flow.response = http.Response.make(
                 502,
                 json.dumps(
@@ -563,6 +565,7 @@ async def handle_firewall_request(
                 ).encode(),
                 {"Content-Type": "application/json"},
             )
+            return
 
         flow.metadata["auth_url_rewrite"] = True
         log_proxy_entry(

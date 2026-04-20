@@ -1,9 +1,11 @@
 """Tests for firewall subsystem: matching, caching, header injection, and HTTP fetching."""
 
+import asyncio
 import io
 import json
 import time
 import urllib.error
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 
@@ -2329,7 +2331,14 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert req_headers["X-Custom"] == "injected-value"
 
     async def test_forward_failure_returns_502(self, real_flow, mitm_ctx, tmp_path):
-        """forward_request exception produces a 502 error response."""
+        """forward_request exception produces a 502 error response and marks
+        firewall_error without falling through to the success-path metadata.
+
+        Regression for #10341: the except block previously lacked a ``return``,
+        so ``auth_url_rewrite`` and a misleading ``Firewall URL rewrite`` info
+        log were emitted on failure, and ``firewall_error`` was left unset —
+        making failed rewrites indistinguishable from successful ones in
+        dashboards."""
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
             real_flow, tmp_path
         )
@@ -2342,7 +2351,18 @@ class TestAuthBaseUrlRewriteEdgeCases:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["auth_url_rewrite"] is True
+        body = json.loads(flow.response.content)
+        assert body["error"] == "url_rewrite_forward_failed"
+        # Failure must not masquerade as a successful rewrite.
+        assert "auth_url_rewrite" not in flow.metadata
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        # Success-path log line must not be written.
+        log_path = Path(vm_info["networkLogPath"])
+        log_text = await asyncio.to_thread(
+            lambda: log_path.read_text() if log_path.exists() else ""
+        )
+        assert "Firewall URL rewrite:" not in log_text
 
     async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
         """Empty string base from server is treated as absent — no URL rewrite."""
