@@ -403,6 +403,10 @@ jobs:
       - build-e2b-template-production
       - sbom
       - resolve-image-cache
+    # Intentionally uses only !cancelled() (not !failure()) so this job runs even
+    # when upstream build jobs fail. The jq step below performs the actual failure
+    # check and exits 1, making the barrier explicit. Adding !failure() here would
+    # cause this job to be skipped on build failure, hiding the reason for the block.
     if: ${{ !cancelled() && needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -413,6 +417,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "$NEEDS_JSON" | jq .
+          # "skipped" is acceptable: some build jobs (e.g. build-e2b-template-production)
+          # are component-conditional and only run when their component has a release.
           failures=$(echo "$NEEDS_JSON" | jq -r '
             to_entries[]
             | select(.value.result != "success" and .value.result != "skipped")
