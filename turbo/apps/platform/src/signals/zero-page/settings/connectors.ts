@@ -76,7 +76,11 @@ export function matchesConnectorSearch(
   if (connector.helpText?.toLowerCase().includes(needle)) {
     return true;
   }
-  if (connector.tags?.some((t) => t.toLowerCase().includes(needle))) {
+  if (
+    connector.tags?.some((t) => {
+      return t.toLowerCase().includes(needle);
+    })
+  ) {
     return true;
   }
   return false;
