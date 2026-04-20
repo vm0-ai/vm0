@@ -321,3 +321,106 @@ function hasAgentSessionId(
     typeof (value as { agentSessionId: unknown }).agentSessionId === "string"
   );
 }
+
+/**
+ * Row shape returned by `getIncompleteRoundsSinceLastSuccess`. Kept here (and
+ * exported) so the prompt formatter can type its input without re-declaring
+ * the shape.
+ */
+type IncompleteRoundStatus = "cancelled" | "failed" | "timeout";
+
+interface IncompleteRoundRow {
+  runId: string;
+  runStatus: IncompleteRoundStatus;
+  role: "user" | "assistant";
+  content: string | null;
+  error: string | null;
+  attachFiles: ChatMessageAttachFiles | null;
+  createdAt: Date;
+  sequenceNumber: number | null;
+}
+
+function isIncompleteRunStatus(
+  value: string | null,
+): value is IncompleteRoundStatus {
+  return value === "cancelled" || value === "failed" || value === "timeout";
+}
+
+/**
+ * Return chat_messages rows from rounds the CLI session does NOT carry: runs
+ * that cancelled / failed / timed out after the most recent run whose
+ * `result.agentSessionId` was written. Ordered chronologically; grouped by
+ * runId in the caller (each row keeps its runId so the formatter can group).
+ *
+ * When the thread has no session-producing run yet, every incomplete round in
+ * the thread is returned (the CLI session is empty, so nothing is duplicated).
+ *
+ * Caps at the most recent `MAX_ROUNDS` distinct runIds to guard against a
+ * pathological cancel loop ballooning the prompt.
+ */
+export async function getIncompleteRoundsSinceLastSuccess(
+  chatThreadId: string,
+  options?: { maxRounds?: number },
+): Promise<IncompleteRoundRow[]> {
+  const maxRounds = options?.maxRounds ?? 20;
+
+  const rows = await globalThis.services.db
+    .select({
+      runId: chatMessages.runId,
+      role: chatMessages.role,
+      content: chatMessages.content,
+      error: chatMessages.error,
+      attachFiles: chatMessages.attachFiles,
+      createdAt: chatMessages.createdAt,
+      sequenceNumber: chatMessages.sequenceNumber,
+      runStatus: agentRuns.status,
+      runResult: agentRuns.result,
+    })
+    .from(chatMessages)
+    .leftJoin(agentRuns, eq(chatMessages.runId, agentRuns.id))
+    .where(eq(chatMessages.chatThreadId, chatThreadId))
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+
+  let anchorIndex = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (hasAgentSessionId(rows[i]!.runResult)) {
+      anchorIndex = i;
+    }
+  }
+
+  const candidates: IncompleteRoundRow[] = [];
+  for (let i = anchorIndex + 1; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (row.runId === null) continue;
+    if (!isIncompleteRunStatus(row.runStatus)) continue;
+    if (row.role !== "user" && row.role !== "assistant") continue;
+    candidates.push({
+      runId: row.runId,
+      runStatus: row.runStatus,
+      role: row.role,
+      content: row.content,
+      error: row.error,
+      attachFiles: row.attachFiles,
+      createdAt: row.createdAt,
+      sequenceNumber: row.sequenceNumber,
+    });
+  }
+
+  if (candidates.length === 0) return [];
+
+  const runIdOrder: string[] = [];
+  const seen = new Set<string>();
+  for (const row of candidates) {
+    if (!seen.has(row.runId)) {
+      seen.add(row.runId);
+      runIdOrder.push(row.runId);
+    }
+  }
+
+  if (runIdOrder.length <= maxRounds) return candidates;
+
+  const keep = new Set(runIdOrder.slice(runIdOrder.length - maxRounds));
+  return candidates.filter((row) => {
+    return keep.has(row.runId);
+  });
+}
