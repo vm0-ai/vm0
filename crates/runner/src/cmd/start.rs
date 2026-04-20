@@ -3480,8 +3480,10 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        // Wait for the first heartbeat tick to fire (initial interval fires
-        // immediately, but give the loop time to process it).
+        // Snapshot the heartbeat count before pushing a job. The first
+        // interval tick is now deferred by one period (`interval_at`), so
+        // `before` is typically 0; the 100 ms settle time just lets the
+        // main loop reach its idle select state.
         tokio::time::sleep(Duration::from_millis(100)).await;
         let before = env.handle.heartbeat_count();
 
