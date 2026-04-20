@@ -8,6 +8,7 @@ interface VoiceChatPrepareTriggerContext {
   prompt: string;
   appendSystemPrompt: string;
   preparationId: string;
+  apiStartTime: number;
 }
 
 export function adaptVoiceChatPrepareTrigger(
@@ -22,6 +23,7 @@ export function adaptVoiceChatPrepareTrigger(
     prompt: ctx.prompt,
     appendSystemPrompt: ctx.appendSystemPrompt,
     triggerSource: "voice-chat",
+    apiStartTime: ctx.apiStartTime,
     callbacks: [
       {
         url: `${getApiUrl()}/api/internal/callbacks/voice-chat-prepare`,

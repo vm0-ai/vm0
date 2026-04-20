@@ -9,6 +9,7 @@ interface GithubTriggerContext {
   prompt: string;
   appendSystemPrompt: string | undefined;
   callbackPayload: GitHubIssuesCallbackPayload;
+  apiStartTime: number;
 }
 
 export function adaptGithubTrigger(
@@ -21,6 +22,7 @@ export function adaptGithubTrigger(
     prompt: ctx.prompt,
     appendSystemPrompt: ctx.appendSystemPrompt,
     triggerSource: "github",
+    apiStartTime: ctx.apiStartTime,
     callbacks: [
       {
         url: `${getApiUrl()}/api/internal/callbacks/github/issues`,

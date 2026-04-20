@@ -10,6 +10,7 @@ describe("adaptScheduleTrigger", () => {
     appendSystemPrompt: "sys",
     timezone: "UTC",
     cronExpression: undefined as string | undefined,
+    apiStartTime: 1000,
   };
 
   it("maps loop trigger to loop callback URL and payload", () => {
@@ -24,6 +25,7 @@ describe("adaptScheduleTrigger", () => {
     expect(result.prompt).toBe("hello");
     expect(result.appendSystemPrompt).toBe("sys");
     expect(result.triggerSource).toBe("schedule");
+    expect(result.apiStartTime).toBe(1000);
 
     const callback = result.callbacks?.[0];
     if (!callback) {

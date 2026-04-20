@@ -30,9 +30,9 @@ export const sttTranscribing$ = computed((get) => {
   return get(internalTranscribing$);
 });
 
-export const audioIOAvailable$ = computed(async (get) => {
+export const audioInputAvailable$ = computed(async (get) => {
   const features = await get(featureSwitch$);
-  const featureEnabled = features[FeatureSwitchKey.AudioIO] ?? false;
+  const featureEnabled = features[FeatureSwitchKey.AudioInput] ?? false;
   const hasMic =
     typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
   return featureEnabled && hasMic;

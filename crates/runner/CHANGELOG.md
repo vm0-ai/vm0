@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.86.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.2...runner-rs-v0.86.3) (2026-04-20)
+
+
+### Bug Fixes
+
+* **mitm-addon:** use flow.request.scheme for original url ([#10180](https://github.com/vm0-ai/vm0/issues/10180)) ([4d01162](https://github.com/vm0-ai/vm0/commit/4d01162b0b8b00c644c52f99f1825d8e39a23859))
+
+
+### Refactoring
+
+* **mitm-addon:** tighten original_url invariant in response/error ([#10189](https://github.com/vm0-ai/vm0/issues/10189)) ([bf230ad](https://github.com/vm0-ai/vm0/commit/bf230add14c1d3b59ee96eb628c31c9822c123a9))
+
 ## [0.86.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.1...runner-rs-v0.86.2) (2026-04-19)
 
 

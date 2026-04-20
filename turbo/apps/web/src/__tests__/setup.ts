@@ -48,6 +48,9 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");
     // AgentPhone integration
     vi.stubEnv("AGENTPHONE_API_KEY", "test-agentphone-api-key");
+    // Stripe billing — `vi.mock("stripe", ...)` replaces the constructor, but
+    // init-services.ts throws before reaching it if STRIPE_SECRET_KEY is unset.
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake_for_testing");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     // App UI URL

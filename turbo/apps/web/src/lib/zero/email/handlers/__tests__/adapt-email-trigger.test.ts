@@ -9,6 +9,7 @@ function buildContext(
     userId: "user-123",
     agentId: "agent-abc",
     prompt: "Subject line\n\nBody content",
+    apiStartTime: 1000,
     callbackPayload: {
       senderEmail: "sender@example.com",
       agentId: "agent-abc",
@@ -38,6 +39,12 @@ describe("adaptEmailTriggerTrigger", () => {
     expect(result.userId).toBe(ctx.userId);
     expect(result.agentId).toBe(ctx.agentId);
     expect(result.prompt).toBe(ctx.prompt);
+  });
+
+  it("forwards apiStartTime", () => {
+    const ctx = buildContext();
+    const result = adaptEmailTriggerTrigger(ctx);
+    expect(result.apiStartTime).toBe(ctx.apiStartTime);
   });
 
   it("does not set sessionId (trigger flow starts a fresh session)", () => {

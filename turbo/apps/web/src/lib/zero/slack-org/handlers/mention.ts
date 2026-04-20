@@ -37,6 +37,7 @@ interface OrgMentionContext {
   messageTs: string;
   threadTs?: string;
   files?: SlackFile[];
+  apiStartTime: number;
 }
 
 /**
@@ -189,6 +190,7 @@ export async function handleOrgMention(
           : "channel",
     threadTs,
     callbackContext,
+    apiStartTime: context.apiStartTime,
   });
 
   if (status === "queued") {

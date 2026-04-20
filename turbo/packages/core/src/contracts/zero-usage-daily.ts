@@ -4,55 +4,6 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-// --- Daily Credits Contract ---
-
-const dailyCreditSchema = z.object({
-  date: z.string(),
-  creditsCharged: z.number(),
-});
-
-const dailyCreditByMemberSchema = z.object({
-  date: z.string(),
-  members: z.array(
-    z.object({
-      userId: z.string(),
-      email: z.string(),
-      creditsCharged: z.number(),
-    }),
-  ),
-});
-
-const usageDailyResponseSchema = z.object({
-  period: z
-    .object({
-      start: z.string(),
-      end: z.string(),
-    })
-    .nullable(),
-  daily: z.array(dailyCreditSchema),
-  dailyByMember: z.array(dailyCreditByMemberSchema),
-});
-
-export const zeroUsageDailyContract = c.router({
-  get: {
-    method: "GET",
-    path: "/api/zero/usage/daily",
-    headers: authHeadersSchema,
-    query: z.object({
-      dateFrom: z.string().optional(),
-      dateTo: z.string().optional(),
-      mode: z.enum(["total", "member"]).default("total"),
-    }),
-    responses: {
-      200: usageDailyResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Get daily credit usage for the org",
-  },
-});
-
 // --- Per-Run Records Contract ---
 
 const usageRunSchema = z.object({
@@ -107,11 +58,7 @@ export const zeroUsageRunsContract = c.router({
   },
 });
 
-export type ZeroUsageDailyContract = typeof zeroUsageDailyContract;
 export type ZeroUsageRunsContract = typeof zeroUsageRunsContract;
 
-export type UsageDailyResponse = z.infer<typeof usageDailyResponseSchema>;
-export type DailyCredit = z.infer<typeof dailyCreditSchema>;
-export type DailyCreditByMember = z.infer<typeof dailyCreditByMemberSchema>;
 export type UsageRun = z.infer<typeof usageRunSchema>;
 export type UsageRunsResponse = z.infer<typeof usageRunsResponseSchema>;

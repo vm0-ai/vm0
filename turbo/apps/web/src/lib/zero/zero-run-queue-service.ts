@@ -444,6 +444,9 @@ export async function dispatchQueuedZeroRun(
   params: CreateRunParams,
 ): Promise<void> {
   if (params.vars?.ZERO_AGENT_ID) {
+    // Queued dispatch anchors apiStart at dequeue, not the original request.
+    // The queue wait time is intentionally excluded from startup latency —
+    // merging it would hide queue-worker lag behind cold-start numbers.
     const apiStartTime = Date.now();
 
     // Generate fresh ZERO_TOKEN for queued dispatch
@@ -498,6 +501,7 @@ export async function dispatchQueuedZeroRun(
       agentCompose: composeContent,
       runId,
       agentName: params.agentName,
+      apiStartTime,
     });
 
     // Update zero_runs with resolved model fields before dispatch so metadata
@@ -529,6 +533,8 @@ export async function dispatchQueuedZeroRun(
 
   // Non-zero path — build infra context and dispatch directly
   const nonZeroLog = logger("zero:run-queue-service:non-zero");
+  // Anchored at dequeue for the same reason as the zero path above —
+  // queue wait is intentionally not part of startup latency.
   const apiStartTime = Date.now();
 
   const { composeContent, compose } = await loadCompose(
@@ -556,6 +562,7 @@ export async function dispatchQueuedZeroRun(
       runId,
       agentCompose: composeContent,
       continuedFromSessionId: params.sessionId,
+      apiStartTime,
     });
 
     await buildAndDispatchRun({

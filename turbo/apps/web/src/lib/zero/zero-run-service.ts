@@ -101,6 +101,13 @@ export interface CreateZeroRunParams {
   prompt: string;
   agentId: string;
   triggerSource: TriggerSource;
+  /**
+   * Epoch millis captured at the entry point (route handler first line, webhook
+   * handler first line, or equivalent). Used as the T_start anchor for startup
+   * latency telemetry — the caller owns the clock so the full path from request
+   * receipt through pre-flight checks is measured.
+   */
+  apiStartTime: number;
   sessionId?: string;
   appendSystemPrompt?: string;
   modelProvider?: string;
@@ -495,7 +502,7 @@ async function createZeroRunRecord(
   };
 
   // ── Round 3: Pre-flight checks (need compose content) ───────────────
-  const apiStartTime = Date.now();
+  const apiStartTime = params.apiStartTime;
   authorizeCompose(params.userId, resolved.orgId, preloadedCompose.compose);
   const authorizeTime = Date.now();
 
@@ -617,6 +624,7 @@ async function dispatchZeroRun(
       agentCompose: record.composeContent,
       agentName: runParams.agentName,
       preloadedUserTimezone: result.userTimezone,
+      apiStartTime: record.apiStartTime,
     });
 
     // 8. Dispatch with pre-built context (callbacks already registered above)

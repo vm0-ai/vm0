@@ -2,9 +2,8 @@
  * Sidebar running indicator tests.
  *
  * Covers the truth table for thread-row indicators:
- *  - isSelected            → no indicator
- *  - running && !selected  → sky-600 pulsing dot (Running)
- *  - unread && !running    → blue-500 dot (Unread)
+ *  - running               → sky-600 pulsing dot (Running), shown even when selected
+ *  - unread && !running    → primary (orange) dot (Unread), hidden when selected
  *  - running wins over unread
  *  - running row is not bold (font-medium stays bound to unread only,
  *    to avoid a weight flicker when the run finishes)
@@ -15,10 +14,15 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import {
+  chatThreadsContract,
+  chatThreadByIdContract,
+  chatThreadMessagesContract,
+} from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { threadListChanged } from "../../../mocks/mock-helpers.ts";
@@ -40,11 +44,11 @@ interface ThreadFixture {
 
 function mockAPIs(threadsRef: { current: ThreadFixture[] }) {
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: threadsRef.current });
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: threadsRef.current });
     }),
-    http.get("*/api/zero/chat-threads/:id", ({ params }) => {
-      return HttpResponse.json({
+    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
         id: params.id,
         title: null,
         agentId: DEFAULT_AGENT_ID,
@@ -55,8 +59,8 @@ function mockAPIs(threadsRef: { current: ThreadFixture[] }) {
         updatedAt: "2026-03-10T00:00:00Z",
       });
     }),
-    http.get("*/api/zero/chat-threads/:id/messages", () => {
-      return HttpResponse.json({ messages: [], hasMore: false });
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [] });
     }),
   );
 }
@@ -90,14 +94,16 @@ describe("sidebar running indicator", () => {
 
     await waitFor(() => {
       expect(within(getSidebar()).getByText("Active work")).toBeInTheDocument();
+      expect(
+        within(getSidebar()).getByLabelText("Running"),
+      ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
     });
-    expect(within(getSidebar()).getByLabelText("Running")).toBeInTheDocument();
-    expect(
-      within(getSidebar()).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
   });
 
-  it("does not render any indicator on the selected thread", async () => {
+  it("renders Running indicator on the selected thread when running", async () => {
     mockAPIs({
       current: [
         {
@@ -118,13 +124,43 @@ describe("sidebar running indicator", () => {
       expect(
         within(getSidebar()).getByText("Selected running"),
       ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).getByLabelText("Running"),
+      ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
     });
-    expect(
-      within(getSidebar()).queryByLabelText("Running"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(getSidebar()).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
+  });
+
+  it("does not render Unread indicator on the selected thread", async () => {
+    mockAPIs({
+      current: [
+        {
+          id: "thread-selected-unread",
+          title: "Selected unread",
+          agentId: DEFAULT_AGENT_ID,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+          isRead: false,
+          isArchived: false,
+          running: false,
+        },
+      ],
+    });
+    detachedSetupPage({ context, path: "/chats/thread-selected-unread" });
+
+    await waitFor(() => {
+      expect(
+        within(getSidebar()).getByText("Selected unread"),
+      ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Running"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("prefers Running over Unread when both conditions hold", async () => {
@@ -148,11 +184,13 @@ describe("sidebar running indicator", () => {
       expect(
         within(getSidebar()).getByText("Running and unread"),
       ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).getByLabelText("Running"),
+      ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
     });
-    expect(within(getSidebar()).getByLabelText("Running")).toBeInTheDocument();
-    expect(
-      within(getSidebar()).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
   });
 
   it("does not render the Running dot when ChatThreadReadIndicator flag is off", async () => {
@@ -177,10 +215,10 @@ describe("sidebar running indicator", () => {
       expect(
         within(getSidebar()).getByText("Running but gated"),
       ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Running"),
+      ).not.toBeInTheDocument();
     });
-    expect(
-      within(getSidebar()).queryByLabelText("Running"),
-    ).not.toBeInTheDocument();
   });
 
   it("reloads the list and shows the running dot when threadListChanged fires", async () => {

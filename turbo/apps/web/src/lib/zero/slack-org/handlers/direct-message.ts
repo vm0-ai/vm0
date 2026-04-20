@@ -40,6 +40,7 @@ interface OrgDirectMessageContext {
   messageTs: string;
   threadTs?: string;
   files?: SlackFile[];
+  apiStartTime: number;
 }
 
 /**
@@ -185,6 +186,7 @@ export async function handleOrgDirectMessage(
     channelType: "dm",
     threadTs,
     callbackContext,
+    apiStartTime: context.apiStartTime,
   });
 
   if (status === "queued") {

@@ -10,6 +10,7 @@ interface TelegramTriggerContext {
   threadContext: string;
   userId: string;
   callbackContext: TelegramCallbackPayload;
+  apiStartTime: number;
 }
 
 export function adaptTelegramTrigger(
@@ -22,6 +23,7 @@ export function adaptTelegramTrigger(
     appendSystemPrompt: buildTelegramPrompt(ctx.threadContext) || undefined,
     sessionId: ctx.sessionId,
     triggerSource: "telegram",
+    apiStartTime: ctx.apiStartTime,
     callbacks: [
       {
         url: `${getApiUrl()}/api/internal/callbacks/telegram`,

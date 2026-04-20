@@ -35,6 +35,7 @@ interface InboundEmailEvent {
  */
 export async function handleInboundEmailReply(
   event: InboundEmailEvent,
+  apiStartTime: number,
 ): Promise<HandlerResult> {
   const { email_id: emailId, to } = event.data;
 
@@ -167,6 +168,7 @@ export async function handleInboundEmailReply(
       agentId: session.agentId,
       sessionId: session.agentSessionId,
       prompt: replyContent,
+      apiStartTime,
       callbackPayload: {
         emailThreadSessionId: session.id,
         inboundEmailId: emailId,

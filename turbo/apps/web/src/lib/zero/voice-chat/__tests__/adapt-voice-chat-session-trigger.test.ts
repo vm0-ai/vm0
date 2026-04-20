@@ -7,6 +7,7 @@ const baseCtx = {
   prompt: "observe the voice-chat conversation",
   appendSystemPrompt: "# Voice Chat Session\nStart observing.",
   sessionId: "sess-1",
+  apiStartTime: 1000,
 };
 
 describe("adaptVoiceChatSessionTrigger", () => {
@@ -24,6 +25,11 @@ describe("adaptVoiceChatSessionTrigger", () => {
   it("sets triggerSource to 'voice-chat'", () => {
     const result = adaptVoiceChatSessionTrigger(baseCtx);
     expect(result.triggerSource).toBe("voice-chat");
+  });
+
+  it("forwards apiStartTime", () => {
+    const result = adaptVoiceChatSessionTrigger(baseCtx);
+    expect(result.apiStartTime).toBe(1000);
   });
 
   it("builds the session callback URL and payload", () => {

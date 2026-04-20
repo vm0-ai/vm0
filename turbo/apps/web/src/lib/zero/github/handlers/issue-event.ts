@@ -95,6 +95,7 @@ type GitHubComment = z.infer<typeof gitHubCommentSchema>;
 export async function handleIssuesEvent(
   payload: GitHubIssuesEvent,
   appSlug: string | undefined,
+  apiStartTime: number,
 ): Promise<void> {
   const { action, issue, label, repository, installation, sender } = payload;
 
@@ -142,6 +143,7 @@ export async function handleIssuesEvent(
     prompt,
     forceNewSession: true,
     appSlug,
+    apiStartTime,
   });
 }
 
@@ -158,6 +160,7 @@ export async function handleIssuesEvent(
 export async function handleIssueCommentEvent(
   payload: GitHubIssueCommentEvent,
   appSlug: string | undefined,
+  apiStartTime: number,
 ): Promise<void> {
   const { action, issue, comment, repository, installation, sender } = payload;
 
@@ -196,6 +199,7 @@ export async function handleIssueCommentEvent(
     commentId: String(comment.id),
     comment,
     appSlug,
+    apiStartTime,
   });
 }
 
@@ -211,6 +215,7 @@ interface DispatchParams {
   comment?: GitHubComment;
   forceNewSession?: boolean;
   appSlug: string | undefined;
+  apiStartTime: number;
 }
 
 /**
@@ -504,6 +509,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
         prompt: resolvedPrompt,
         appendSystemPrompt,
         callbackPayload,
+        apiStartTime: params.apiStartTime,
       }),
     );
 

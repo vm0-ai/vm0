@@ -790,7 +790,7 @@ export async function executeDueSchedules(): Promise<{
     }
 
     try {
-      await executeSchedule(schedule);
+      await executeSchedule(schedule, Date.now());
       executed++;
     } catch (error) {
       log.error(`Failed to execute schedule ${schedule.name}:`, error);
@@ -848,6 +848,7 @@ export async function executeDueSchedules(): Promise<{
  */
 export async function executeSchedule(
   schedule: typeof zeroAgentSchedules.$inferSelect,
+  apiStartTime: number,
 ): Promise<string> {
   log.debug(`Executing schedule ${schedule.name} (${schedule.id})`);
 
@@ -899,6 +900,7 @@ export async function executeSchedule(
       timezone: schedule.timezone,
       modelProviderId: schedule.modelProviderId,
       selectedModel: schedule.selectedModel,
+      apiStartTime,
     }),
   );
 

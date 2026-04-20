@@ -4,18 +4,13 @@ import { createPortal } from "react-dom";
 import { FeatureSwitchKey, type OrgMember, type MemberUsage } from "@vm0/core";
 import { IconUsers, IconPencil, IconLoader2 } from "@tabler/icons-react";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
-import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import { Button, Input } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import {
-  usageMembersAsync$,
-  usageTab$,
-  setUsageTab$,
-  type UsageTab,
-} from "../../../../signals/usage-page/usage-signals.ts";
+import { usageMembersAsync$ } from "../../../../signals/usage-page/usage-signals.ts";
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
-import { CreditsChart } from "../../../usage-page/components/credits-chart.tsx";
+import { UsageInsightView } from "../../../usage-page/components/usage-insight-view.tsx";
 import {
   billingStatusAsync$,
   apiTierToBillingTier,
@@ -388,43 +383,12 @@ function MembersTable({
 // ---------------------------------------------------------------------------
 
 export function OrgUsageTab() {
-  const adminLoadable = useLoadable(isOrgAdmin$);
-  const isAdmin =
-    adminLoadable.state === "hasData" ? adminLoadable.data : false;
-
-  const tab = useGet(usageTab$);
-  const setTab = useSet(setUsageTab$);
-  const handleTabChange = (value: string) => {
-    setTab(value as UsageTab);
-  };
-
   const features = useLastResolved(featureSwitch$);
   const analyticsEnabled = features?.[FeatureSwitchKey.UsageAnalytics] ?? false;
 
-  if (!isAdmin || !analyticsEnabled) {
-    return <OverviewSection />;
+  if (analyticsEnabled) {
+    return <UsageInsightView />;
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      <Tabs value={tab} onValueChange={handleTabChange}>
-        <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-          <TabsTrigger
-            value="overview"
-            className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-          >
-            Overview
-          </TabsTrigger>
-          <TabsTrigger
-            value="daily"
-            className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-          >
-            Daily
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-      {tab === "overview" && <OverviewSection />}
-      {tab === "daily" && <CreditsChart />}
-    </div>
-  );
+  return <OverviewSection />;
 }

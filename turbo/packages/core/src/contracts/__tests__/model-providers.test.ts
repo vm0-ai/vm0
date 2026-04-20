@@ -6,9 +6,11 @@ import {
   getModels,
   getDefaultModel,
   getEnvironmentMapping,
+  getVm0VisibleModels,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   type ModelProviderType,
 } from "../model-providers";
+import { FeatureSwitchKey } from "../../feature-switch-key";
 
 describe("getProviderBaseUrl", () => {
   it.each([
@@ -130,6 +132,26 @@ describe("model selection for Anthropic-native providers", () => {
   it("Anthropic-native providers have no ANTHROPIC_BASE_URL (use default)", () => {
     expect(getProviderBaseUrl("anthropic-api-key")).toBeNull();
     expect(getProviderBaseUrl("claude-code-oauth-token")).toBeNull();
+  });
+});
+
+describe("getVm0VisibleModels", () => {
+  it("kimi and minimax are always visible (no feature flag required)", () => {
+    const models = getVm0VisibleModels();
+    expect(models).toContain("kimi-k2.5");
+    expect(models).toContain("MiniMax-M2.7");
+  });
+
+  it("glm-5.1 is excluded when Vm0GlmModel flag is absent", () => {
+    const models = getVm0VisibleModels();
+    expect(models).not.toContain("glm-5.1");
+  });
+
+  it("glm-5.1 is included when Vm0GlmModel flag is enabled", () => {
+    const models = getVm0VisibleModels({
+      [FeatureSwitchKey.Vm0GlmModel]: true,
+    });
+    expect(models).toContain("glm-5.1");
   });
 });
 

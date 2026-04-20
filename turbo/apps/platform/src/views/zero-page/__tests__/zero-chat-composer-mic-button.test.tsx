@@ -40,8 +40,9 @@ function clearMediaDevices() {
 }
 
 function mockSttEndpoint(text = "transcribed text") {
-  // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
   server.use(
+    // mockApi cannot be used here: /api/zero/voice-io/stt has no ts-rest contract
+    // (accepts multipart FormData audio body), so raw http is the only option.
     http.post("*/api/zero/voice-io/stt", () => {
       return HttpResponse.json({ text });
     }),
@@ -127,7 +128,7 @@ describe("chat-d-032: mic button visibility with feature switch", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: false },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: false },
     });
 
     await waitFor(() => {
@@ -143,7 +144,7 @@ describe("chat-d-032: mic button visibility with feature switch", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     await waitFor(() => {
@@ -158,7 +159,7 @@ describe("chat-d-032: mic button visibility with feature switch", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     await waitFor(() => {
@@ -188,7 +189,7 @@ describe("chat-i-033: mic button recording interaction", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const micButton = await waitFor(() => {
@@ -224,7 +225,7 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const textarea = await waitFor(() => {
@@ -262,7 +263,7 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const textarea = await waitFor(() => {

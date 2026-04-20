@@ -3,8 +3,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
   zeroConnectorsMainContract,
   zeroUserConnectorsContract,
 } from "@vm0/core";
@@ -52,38 +50,6 @@ function mockConnectors() {
     },
   ]);
   server.use(
-    http.get("*/api/zero/connectors", () => {
-      return HttpResponse.json({
-        connectors: [
-          {
-            id: "d0000001-0000-4000-a000-000000000001",
-            type: "github",
-            authMethod: "oauth",
-            externalId: null,
-            externalUsername: "testuser",
-            externalEmail: null,
-            oauthScopes: ["repo"],
-            needsReconnect: false,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
-          },
-          {
-            id: "d0000002-0000-4000-a000-000000000002",
-            type: "linear",
-            authMethod: "oauth",
-            externalId: null,
-            externalUsername: "linearuser",
-            externalEmail: null,
-            oauthScopes: [],
-            needsReconnect: false,
-            createdAt: "2026-01-02T00:00:00Z",
-            updatedAt: "2026-01-02T00:00:00Z",
-          },
-        ],
-        configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
-        connectorProvidedSecretNames: [],
-      });
-    }),
     mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes: ["github"] });
     }),
@@ -115,8 +81,9 @@ describe("zero chat composer - file input", () => {
   it("shows attachment chip after a file is selected via the file input", async () => {
     const user = userEvent.setup();
     mockChatLifecycle();
-    // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
     server.use(
+      // mockApi cannot be used here: /api/zero/uploads accepts multipart FormData,
+      // which is out of scope for the mockApi helper (Phase 0 of #9707).
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({
           id: "upload-1",

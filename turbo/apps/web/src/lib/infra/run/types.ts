@@ -113,8 +113,9 @@ export interface ExecutionContext {
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies?: boolean;
 
-  // API start time for E2E timing metrics
-  apiStartTime?: number;
+  // API start time for E2E timing metrics — epoch millis captured at the route
+  // handler's first line by the caller (see issue #9936).
+  apiStartTime: number;
 }
 
 /**

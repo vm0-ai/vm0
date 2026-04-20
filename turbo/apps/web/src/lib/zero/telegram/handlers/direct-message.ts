@@ -38,6 +38,7 @@ const log = logger("telegram:dm");
 export async function handleTelegramDirectMessage(
   update: TelegramHandlerUpdate,
   installationId: string,
+  apiStartTime: number,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
   const message = update.message;
@@ -166,6 +167,7 @@ export async function handleTelegramDirectMessage(
     prompt: enrichedPrompt,
     threadContext: executionContext,
     userId: userLink.vm0UserId,
+    apiStartTime,
     callbackContext: {
       installationId,
       chatId,

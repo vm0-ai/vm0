@@ -12,6 +12,7 @@ interface RunAgentParams {
   fromNumber: string;
   userId: string;
   callbackContext: IMessageCallbackPayload;
+  apiStartTime: number;
 }
 
 export async function runAgentForIMessage(

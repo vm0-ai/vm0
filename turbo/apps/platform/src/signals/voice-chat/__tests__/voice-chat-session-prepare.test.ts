@@ -98,6 +98,9 @@ describe("chat mode preparation cache", () => {
     it("should not block page setup when preparation fails", async () => {
       await setup();
       server.use(
+        // mockApi cannot be used here: 500 is not declared in
+        // zeroVoiceChatPrepareTriggerContract.trigger responses, so this raw
+        // handler is the only way to simulate a server error.
         http.post("*/api/zero/voice-chat/prepare", () => {
           return new HttpResponse(null, { status: 500 });
         }),
@@ -179,6 +182,9 @@ describe("chat mode preparation cache", () => {
     it("should proceed to session when preparation API fails", async () => {
       await setup();
       server.use(
+        // mockApi cannot be used here: 500 is not declared in
+        // zeroVoiceChatPrepareTriggerContract.trigger responses, so this raw
+        // handler is the only way to simulate a server error.
         http.post("*/api/zero/voice-chat/prepare", () => {
           return new HttpResponse(null, { status: 500 });
         }),
@@ -364,6 +370,9 @@ describe("chat mode preparation cache", () => {
 
       // Mock context endpoint to fail
       server.use(
+        // mockApi cannot be used here: 500 is not declared in
+        // zeroVoiceChatContextContract.getEvents responses, so this raw
+        // handler is the only way to simulate a server error.
         http.get("*/api/zero/voice-chat/:sessionId/context", () => {
           return new HttpResponse(null, { status: 500 });
         }),

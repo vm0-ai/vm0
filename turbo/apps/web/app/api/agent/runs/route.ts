@@ -255,6 +255,7 @@ const router = tsr.router(runsMainContract, {
     };
   },
   create: async ({ body, headers }) => {
+    const apiStartTime = Date.now();
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -310,7 +311,6 @@ const router = tsr.router(runsMainContract, {
       }
 
       // 3. Load compose and authorize
-      const apiStartTime = Date.now();
       const { composeContent, compose } = await loadCompose(
         composeMeta.agentComposeVersionId,
         composeMeta.composeId,
@@ -394,6 +394,7 @@ const router = tsr.router(runsMainContract, {
           continuedFromSessionId: body.sessionId,
           debugNoMockClaude: body.debugNoMockClaude,
           captureNetworkBodies: body.captureNetworkBodies,
+          apiStartTime,
         });
 
         // 10. Dispatch
