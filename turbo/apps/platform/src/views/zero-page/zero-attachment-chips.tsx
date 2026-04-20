@@ -1,6 +1,7 @@
 import type { MouseEvent } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
+  IconDownload,
   IconFile,
   IconPhoto,
   IconVideo,
@@ -47,6 +48,35 @@ function getFileTypeIcon(filename: string): string | null {
 // ImageLightbox — full-screen image viewer
 // ---------------------------------------------------------------------------
 
+function filenameFromUrl(url: string): string {
+  const path = url.split("?")[0].split("#")[0];
+  const last = path.split("/").pop();
+  return last && last.length > 0 ? last : "image";
+}
+
+async function downloadUrl(url: string): Promise<void> {
+  const filename = filenameFromUrl(url);
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) {
+      throw new Error(`fetch failed: ${String(res.status)}`);
+    }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    // CORS / network failure — fall back to opening the asset in a new tab
+    // so the user can save it manually via the browser context menu.
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
 export function ImageLightbox({ url }: { url: string }) {
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightbox = useSet(setLightboxUrl$);
@@ -66,16 +96,28 @@ export function ImageLightbox({ url }: { url: string }) {
       role="dialog"
       aria-modal="true"
     >
-      <button
-        type="button"
-        onClick={() => {
-          return closeLightbox(null);
-        }}
-        className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-        aria-label="Close"
-      >
-        <IconX size={20} stroke={2} />
-      </button>
+      <div className="absolute top-4 right-4 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            void downloadUrl(url);
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+          aria-label="Download"
+        >
+          <IconDownload size={20} stroke={2} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            return closeLightbox(null);
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+          aria-label="Close"
+        >
+          <IconX size={20} stroke={2} />
+        </button>
+      </div>
       <img
         src={url}
         alt=""

@@ -1,9 +1,10 @@
 import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
-import { useGet } from "ccstate-react";
-import type { ComponentPropsWithoutRef } from "react";
+import { useGet, useSet } from "ccstate-react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { theme$ } from "../../signals/theme.ts";
+import { setLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 
 type RewriteArgs = Parameters<
   NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
@@ -183,7 +184,81 @@ function ResponsiveTable({ children }: ComponentPropsWithoutRef<"table">) {
   );
 }
 
-export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
+const IMAGE_URL_RE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?|#|$)/i;
+const VIDEO_URL_RE = /\.(mp4|webm|mov|ogv)(?:\?|#|$)/i;
+
+function PlainLink({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
+  return (
+    <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  );
+}
+
+function MediaLink({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
+  const openLightbox = useSet(setLightboxUrl$);
+
+  if (!href) {
+    return <PlainLink {...rest}>{children}</PlainLink>;
+  }
+
+  if (IMAGE_URL_RE.test(href)) {
+    const alt = typeof children === "string" ? children : "";
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          openLightbox(href);
+        }}
+        className="block max-w-full my-1 rounded-lg overflow-hidden cursor-zoom-in border border-foreground/10"
+      >
+        <img
+          src={href}
+          alt={alt}
+          className="max-h-32 max-w-full object-contain"
+        />
+      </button>
+    );
+  }
+
+  if (VIDEO_URL_RE.test(href)) {
+    return (
+      <video
+        src={href}
+        controls
+        className="max-h-96 max-w-full my-1 rounded-lg border border-foreground/10"
+      />
+    );
+  }
+
+  return (
+    <PlainLink href={href} {...rest}>
+      {children}
+    </PlainLink>
+  );
+}
+
+function renderMarkdownLink(
+  mediaPreview: boolean,
+): (
+  props: { children?: ReactNode } & ComponentPropsWithoutRef<"a">,
+) => ReactNode {
+  if (mediaPreview) {
+    return ({ children, ...props }) => {
+      return <MediaLink {...props}>{children}</MediaLink>;
+    };
+  }
+  return ({ children, ...props }) => {
+    return <PlainLink {...props}>{children}</PlainLink>;
+  };
+}
+
+export function Markdown({
+  className,
+  style,
+  mediaPreview = false,
+  ...rest
+}: MarkdownPreviewProps & { mediaPreview?: boolean }) {
   const theme = useGet(theme$);
   return (
     <MarkdownPreview
@@ -199,13 +274,7 @@ export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
       rehypeRewrite={rehypeRewriteHandler}
       components={{
         table: ResponsiveTable,
-        a: ({ children, ...props }) => {
-          return (
-            <a {...props} target="_blank" rel="noopener noreferrer">
-              {children}
-            </a>
-          );
-        },
+        a: renderMarkdownLink(mediaPreview),
       }}
       {...rest}
     />

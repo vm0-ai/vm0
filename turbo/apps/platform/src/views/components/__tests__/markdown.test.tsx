@@ -122,6 +122,94 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
   });
 });
 
+describe("chat-d-067: markdown image URL renders inline", () => {
+  it("should render an <img> for image link and hide the plain <a>", async () => {
+    const src = "https://example.com/cat.png";
+    server.use(
+      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "assistant",
+              content: `[cat](${src})`,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          id: "thread-img",
+          ...makeThreadBase(),
+          chatMessages: [
+            {
+              role: "assistant",
+              content: `[cat](${src})`,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-img" });
+
+    await waitFor(() => {
+      const img = document.querySelector(`img[src="${src}"]`);
+      expect(img).toBeInTheDocument();
+      expect(img).toHaveAttribute("alt", "cat");
+    });
+  });
+});
+
+describe("chat-d-068: markdown video URL renders inline", () => {
+  it("should render a <video controls> for video link", async () => {
+    const src = "https://example.com/clip.mp4";
+    server.use(
+      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "assistant",
+              content: `[clip](${src})`,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          id: "thread-video",
+          ...makeThreadBase(),
+          chatMessages: [
+            {
+              role: "assistant",
+              content: `[clip](${src})`,
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-video" });
+
+    await waitFor(() => {
+      const video = document.querySelector(`video[src="${src}"]`);
+      expect(video).toBeInTheDocument();
+      expect(video).toHaveAttribute("controls");
+    });
+  });
+});
+
 describe("chat-d-066: markdown links open in new tab", () => {
   it("should render links with target=_blank and rel=noopener noreferrer", async () => {
     server.use(
