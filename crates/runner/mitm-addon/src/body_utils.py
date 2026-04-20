@@ -150,19 +150,16 @@ def decompress_body(
             # wbits: gzip=16+MAX_WBITS, deflate=MAX_WBITS
             wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
             obj = zlib.decompressobj(wbits)
-            result = obj.decompress(data, max_length=max_output)
-            return result if result else data
+            return obj.decompress(data, max_length=max_output)
         if encoding == "br":
             dec = brotli.Decompressor()
-            result = dec.process(data)
-            return result[:max_output] if result else data
+            return dec.process(data)[:max_output]
         if encoding == "zstd":
             # stream_reader.read(n) reads *up to* n bytes: the full frame if
             # smaller than n, exactly n if larger — so total memory is bounded
             # by n plus ZSTD_DStream{In,Out}Size (~128 KB library buffers).
             with zstandard.ZstdDecompressor().stream_reader(data) as reader:
-                result = reader.read(max_output)
-            return result if result else data
+                return reader.read(max_output)
     except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
         with contextlib.suppress(AttributeError):
             # ctx.log unavailable outside mitmproxy runtime
