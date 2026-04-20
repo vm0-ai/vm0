@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { withErrorHandler } from "../../../lib/command";
+import { runLogsSearch, type LogsSearchCliOptions } from "../logs/search";
 
 const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;
 type Source = (typeof SUPPORTED_SOURCES)[number];
@@ -29,10 +30,19 @@ function collectSource(value: string, previous: string[]): string[] {
 }
 
 async function runLogsSource(
-  _query: string,
-  _options: SearchOptions,
+  query: string,
+  options: SearchOptions,
 ): Promise<void> {
-  throw new Error("zero search --source logs: not yet implemented");
+  const logsOptions: LogsSearchCliOptions = {
+    afterContext: options.afterContext,
+    beforeContext: options.beforeContext,
+    context: options.context,
+    agent: options.agent,
+    run: options.run,
+    since: options.since,
+    limit: options.limit,
+  };
+  await runLogsSearch(query, logsOptions);
 }
 
 async function runChatSource(

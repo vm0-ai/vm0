@@ -7,6 +7,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
 import { zeroSearchCommand, SEARCH_EXPLAINER } from "../index";
 
 describe("zero search command (scaffold)", () => {
@@ -75,19 +77,27 @@ describe("zero search command (scaffold)", () => {
     expect(errors).toContain("logs, chat, slack");
   });
 
-  it("routes --source logs to the not-yet-implemented placeholder", async () => {
-    await expect(
-      zeroSearchCommand.parseAsync([
-        "node",
-        "cli",
-        "hello",
-        "--source",
-        "logs",
-      ]),
-    ).rejects.toThrow("process.exit called");
+  it("routes --source logs to the logs-search backend", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
 
-    const errors = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errors).toContain("zero search --source logs: not yet implemented");
+    let called = false;
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
+        called = true;
+        return HttpResponse.json({ results: [], hasMore: false });
+      }),
+    );
+
+    await zeroSearchCommand.parseAsync([
+      "node",
+      "cli",
+      "hello",
+      "--source",
+      "logs",
+    ]);
+
+    expect(called).toBe(true);
   });
 
   it("--help output includes the three source descriptions", () => {
