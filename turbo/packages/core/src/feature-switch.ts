@@ -289,13 +289,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
     enabled: false,
   },
-  [FeatureSwitchKey.Vm0KimiModel]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Expose Moonshot Kimi K2.5 as a selectable model under the VM0 managed provider",
-    enabled: true,
-    enabledOrgIdHashes: [],
-  },
   [FeatureSwitchKey.Vm0GlmModel]: {
     maintainer: "ethan@vm0.ai",
     description:
