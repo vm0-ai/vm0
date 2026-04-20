@@ -2519,7 +2519,9 @@ class TestUsageWebhookDelivery:
 
     def test_programming_error_is_not_retried(self, tmp_path):
         """TypeError from _post_webhook (e.g. non-serializable payload) must
-        propagate on the first attempt — no retry, no "giving up" log."""
+        propagate on the first attempt — no retry, no "giving up" log, and
+        a forensic "non-retryable" log line so the pool-path Future swallow
+        doesn't erase the breadcrumb."""
         proxy_log = tmp_path / "proxy.jsonl"
         with patch.object(usage, "_post_webhook", side_effect=TypeError("boom")) as post:
             with pytest.raises(TypeError, match="boom"):
@@ -2532,8 +2534,9 @@ class TestUsageWebhookDelivery:
                     max_retries=1,
                 )
             assert post.call_count == 1
-        if proxy_log.exists():
-            assert "giving up" not in proxy_log.read_text()
+        log_text = proxy_log.read_text()
+        assert "giving up" not in log_text
+        assert "non-retryable" in log_text
 
     def test_falls_back_to_sync_after_shutdown(self, tmp_path, real_flow, fresh_usage_executor):
         """After executor shutdown, delivery happens synchronously before return."""

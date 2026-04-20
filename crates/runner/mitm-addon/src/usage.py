@@ -341,6 +341,22 @@ def _do_post_webhook_attempts(
                     attempt=attempt + 1,
                     **payload,
                 )
+        except Exception as exc:
+            # Non-retryable (TypeError on non-serializable payload,
+            # AttributeError, ValueError, ...).  Log once then re-raise so
+            # the pool path leaves a forensic breadcrumb before the Future
+            # swallows the exception.
+            log_proxy_entry(
+                proxy_log_path,
+                "error",
+                f"Webhook POST to {url} failed with non-retryable error: {exc}",
+                type=log_type,
+                url=url,
+                error=str(exc),
+                attempt=attempt + 1,
+                **payload,
+            )
+            raise
 
 
 usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
