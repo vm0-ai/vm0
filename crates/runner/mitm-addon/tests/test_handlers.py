@@ -1549,6 +1549,9 @@ class TestErrorHandler:
         flow.id = "flow-err-1"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
+        # Matches the request handler's invariant: original_url is set
+        # alongside vm_run_id.
+        flow.metadata["original_url"] = "https://example.com/"
         flow.error = Error("connection reset")
         mitm_addon._request_start_times["flow-err-1"] = 12345.0
 
