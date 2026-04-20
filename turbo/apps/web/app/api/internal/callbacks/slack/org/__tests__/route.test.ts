@@ -10,11 +10,14 @@ import {
   completeTestRun,
   createSignedCallbackRequest,
   setTestRunSelectedModel,
+  createTestOrgModelProvider,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
+  insertTestSlackOrgThreadSession,
 } from "../../../../../../../src/__tests__/db-test-seeders/slack";
+import { updateOrgDefaultAgent } from "../../../../../../../src/__tests__/db-test-seeders/org";
 import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
 import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
@@ -46,12 +49,38 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       workspaceId,
       orgId: user.orgId,
     });
+    const slackUserId = uniqueId("U-slack");
     const { connectionId } = await seedTestSlackOrgConnection({
-      slackUserId: uniqueId("U-slack"),
+      slackUserId,
       slackWorkspaceId: slackWorkspaceId,
       vm0UserId: user.userId,
     });
-    return { workspaceId: slackWorkspaceId, connectionId };
+    return { workspaceId: slackWorkspaceId, connectionId, slackUserId };
+  }
+
+  /**
+   * Seed N additional Slack connections with pre-existing thread sessions in
+   * the given thread. Used to simulate other Slack users having mentioned the
+   * agent earlier in the same thread.
+   */
+  async function seedAdditionalMentioners(
+    workspaceId: string,
+    channelId: string,
+    threadTs: string,
+    count: number,
+  ): Promise<void> {
+    for (let i = 0; i < count; i++) {
+      const { connectionId: extraConnId } = await seedTestSlackOrgConnection({
+        slackUserId: uniqueId("U-extra"),
+        slackWorkspaceId: workspaceId,
+        vm0UserId: uniqueId("vm0-u"),
+      });
+      await insertTestSlackOrgThreadSession({
+        connectionId: extraConnId,
+        slackChannelId: channelId,
+        slackThreadTs: threadTs,
+      });
+    }
   }
 
   it("rejects request with invalid payload (missing required fields)", async () => {
@@ -442,7 +471,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(blocksStr).toContain("Audit");
   });
 
-  it("includes model name in footer blocks when selectedModel is set on the run", async () => {
+  it("includes model name when selectedModel is set and org has no default provider", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
     const { runId } = await seedTestRun(user.userId, composeId, {
@@ -484,9 +513,11 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(blocksStr).toContain("Claude Opus 4.7");
   });
 
-  it("omits powered-by footer when no selectedModel is set on the run", async () => {
+  it("omits footer entirely when default agent, no selectedModel, and one thread mentioner", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
+    // Mark this compose as the org default so `Responded by` is suppressed.
+    await updateOrgDefaultAgent(user.orgId, composeId);
     const { runId } = await seedTestRun(user.userId, composeId, {
       prompt: "Test prompt",
     });
@@ -521,10 +552,332 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     const mockClient = new WebClient();
     const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
       .calls[0]![0] as { blocks: unknown[] };
-    // No model name in footer when selectedModel is not set
     const blocksStr = JSON.stringify(call.blocks);
     expect(blocksStr).not.toContain("Claude");
-    expect(blocksStr).not.toContain("Sonnet");
-    expect(blocksStr).not.toContain("Haiku");
+    expect(blocksStr).not.toContain("Reply to");
+    expect(blocksStr).not.toContain("Responded by");
+  });
+
+  it("shows `Responded by X` when the responding agent is not the org default", async () => {
+    const { workspaceId, connectionId } = await setupOrgSlack();
+    const agentName = uniqueId("custom");
+    const { composeId } = await createTestCompose(agentName);
+    // Do NOT set org default — this compose stays non-default.
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).toContain(`Responded by ${agentName}`);
+  });
+
+  it("omits `Responded by` when the responding agent is the org default", async () => {
+    const { workspaceId, connectionId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("default-agent"));
+    await updateOrgDefaultAgent(user.orgId, composeId);
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).not.toContain("Responded by");
+  });
+
+  it("omits model from footer when selectedModel matches org default", async () => {
+    await createTestOrgModelProvider(
+      "anthropic-api-key",
+      "test-api-key",
+      "claude-sonnet-4-6",
+    );
+    const { workspaceId, connectionId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("agent"), {
+      skipDefaultApiKey: true,
+    });
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await setTestRunSelectedModel(runId, "claude-sonnet-4-6");
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).not.toContain("Claude Sonnet 4.6");
+  });
+
+  it("includes model in footer when selectedModel differs from org default", async () => {
+    await createTestOrgModelProvider(
+      "anthropic-api-key",
+      "test-api-key",
+      "claude-sonnet-4-6",
+    );
+    const { workspaceId, connectionId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("agent"), {
+      skipDefaultApiKey: true,
+    });
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await setTestRunSelectedModel(runId, "claude-opus-4-7");
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).toContain("Claude Opus 4.7");
+  });
+
+  it("shows `Reply to <@U>` when the thread has more than two distinct mentioners", async () => {
+    const { workspaceId, connectionId, slackUserId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    // Two other Slack users already mentioned the agent in this thread.
+    // Combined with the current user, that brings distinct mentioners to 3.
+    await seedAdditionalMentioners(workspaceId, channelId, threadTs, 2);
+
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).toContain(`Reply to <@${slackUserId}>`);
+  });
+
+  it("omits `Reply to` when the thread has only two distinct mentioners", async () => {
+    const { workspaceId, connectionId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    // One other mentioner + the current user = 2 distinct, below threshold.
+    await seedAdditionalMentioners(workspaceId, channelId, threadTs, 1);
+
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).not.toContain("Reply to");
+  });
+
+  it("renders combined footer with `Reply to` and model joined by `·`", async () => {
+    await createTestOrgModelProvider(
+      "anthropic-api-key",
+      "test-api-key",
+      "claude-sonnet-4-6",
+    );
+    const { workspaceId, connectionId, slackUserId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("agent"), {
+      skipDefaultApiKey: true,
+    });
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await setTestRunSelectedModel(runId, "claude-opus-4-7");
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    await seedAdditionalMentioners(workspaceId, channelId, threadTs, 2);
+
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).toContain(`Reply to <@${slackUserId}> · Claude Opus 4.7`);
   });
 });

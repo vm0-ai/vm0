@@ -177,11 +177,11 @@ describe("buildAgentResponseMessage", () => {
     expect(markdownBlock.text).toBe(content);
   });
 
-  it("renders triggeredBy as a context block with no divider (weakened footer)", () => {
+  it("renders footerText as a context block with no divider (weakened footer)", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/activity/run-123",
-      "Sent via my-agent",
+      "Reply to <@U123> · Claude Opus 4.7",
     );
 
     // Should have: markdown, audit context, attribution context — no divider
@@ -195,24 +195,21 @@ describe("buildAgentResponseMessage", () => {
     });
     expect(contextBlocks).toHaveLength(2);
 
-    // First context: audit link only
     const auditText = (contextBlocks[0] as { elements: { text: string }[] })
       .elements[0]!.text;
     expect(auditText).toContain("Audit");
-    expect(auditText).not.toContain("Sent via");
+    expect(auditText).not.toContain("Reply to");
 
-    // Second context: attribution (no divider above)
     const attrText = (contextBlocks[1] as { elements: { text: string }[] })
       .elements[0]!.text;
-    expect(attrText).toBe("Sent via my-agent");
+    expect(attrText).toBe("Reply to <@U123> · Claude Opus 4.7");
   });
 
-  it("combines triggeredBy and model into one context block joined by ·", () => {
+  it("renders footerText alone when no logs url is provided", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       undefined,
-      "Sent via my-agent",
-      "claude-sonnet-4-6",
+      "Claude Sonnet 4.6",
     );
 
     const dividerBlocks = blocks.filter((b) => {
@@ -226,27 +223,10 @@ describe("buildAgentResponseMessage", () => {
     expect(contextBlocks).toHaveLength(1);
     expect(
       (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
-    ).toBe("Sent via my-agent · Claude Sonnet 4.6");
-  });
-
-  it("renders model-only attribution when triggeredBy is absent", () => {
-    const blocks = buildAgentResponseMessage(
-      "Response text",
-      undefined,
-      undefined,
-      "claude-sonnet-4-6",
-    );
-
-    const contextBlocks = blocks.filter((b) => {
-      return b.type === "context";
-    });
-    expect(contextBlocks).toHaveLength(1);
-    expect(
-      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
     ).toBe("Claude Sonnet 4.6");
   });
 
-  it("adds no attribution block when neither triggeredBy nor modelName is provided", () => {
+  it("adds no attribution block when footerText is not provided", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/activity/run-123",
