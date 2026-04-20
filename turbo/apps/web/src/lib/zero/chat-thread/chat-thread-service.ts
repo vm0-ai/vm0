@@ -3,6 +3,7 @@ import { chatThreads } from "../../../db/schema/chat-thread";
 import { chatMessages } from "../../../db/schema/chat-message";
 import { zeroRuns } from "../../../db/schema/zero-run";
 import { agentRuns } from "../../../db/schema/agent-run";
+import { zeroAgents } from "../../../db/schema/zero-agent";
 import { notFound } from "../../shared/errors";
 import {
   getMessagesByThreadId,
@@ -51,24 +52,34 @@ export async function createChatThread(
 }
 
 /**
- * List chat threads for a user + agent compose, ordered by the latest
- * message's createdAt desc (threads with no messages fall back to the
- * thread's own createdAt). This reflects real conversation activity —
- * `chat_threads.updatedAt` only changes on title/draft edits, not on new
- * messages, so sorting by it would bury actively-used threads.
+ * List chat threads for a user, ordered by the latest message's createdAt desc
+ * (threads with no messages fall back to the thread's own createdAt). This
+ * reflects real conversation activity — `chat_threads.updatedAt` only changes
+ * on title/draft edits, not on new messages, so sorting by it would bury
+ * actively-used threads.
+ *
+ * When `agentComposeId` is supplied, filters to that agent. Otherwise returns
+ * every thread the user owns within `orgId` (cross-org isolation enforced in
+ * SQL via the `zero_agents.org_id` join predicate).
  *
  * Joins each thread to its most recent message and returns that message's
  * read/archive state. Threads whose last message is archived are hidden
  * (user intent: archiving the last message dismisses the thread from the
  * list). Threads with no messages yet are kept (last-message columns null).
+ *
+ * Each row also carries the owning agent's id and avatar_url so the unified
+ * view can render per-row avatars without an extra client lookup.
  */
 export async function listChatThreads(
   userId: string,
-  agentComposeId: string,
+  orgId: string,
+  agentComposeId?: string,
 ): Promise<
   Array<{
     id: string;
     title: string | null;
+    agentId: string;
+    agentAvatarUrl: string | null;
     createdAt: Date;
     updatedAt: Date;
     isRead: boolean;
@@ -88,10 +99,21 @@ export async function listChatThreads(
     .from(chatMessages)
     .as("last_message");
 
+  const filters = [
+    eq(chatThreads.userId, userId),
+    eq(zeroAgents.orgId, orgId),
+    isNull(lastMessage.archivedAt),
+  ];
+  if (agentComposeId) {
+    filters.push(eq(chatThreads.agentComposeId, agentComposeId));
+  }
+
   const threads = await globalThis.services.db
     .select({
       id: chatThreads.id,
       title: chatThreads.title,
+      agentId: chatThreads.agentComposeId,
+      agentAvatarUrl: zeroAgents.avatarUrl,
       createdAt: chatThreads.createdAt,
       updatedAt: chatThreads.updatedAt,
       isRead: sql<boolean>`CASE
@@ -109,17 +131,12 @@ export async function listChatThreads(
       )`,
     })
     .from(chatThreads)
+    .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
     .leftJoin(
       lastMessage,
       and(eq(lastMessage.chatThreadId, chatThreads.id), eq(lastMessage.rn, 1)),
     )
-    .where(
-      and(
-        eq(chatThreads.userId, userId),
-        eq(chatThreads.agentComposeId, agentComposeId),
-        isNull(lastMessage.archivedAt),
-      ),
-    )
+    .where(and(...filters))
     .orderBy(
       desc(sql`COALESCE(${lastMessage.createdAt}, ${chatThreads.createdAt})`),
     );

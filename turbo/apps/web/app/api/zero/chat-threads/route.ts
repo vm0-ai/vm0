@@ -85,33 +85,35 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
     const { userId } = authCtx;
-
-    const [compose] = await globalThis.services.db
-      .select({ orgId: agentComposes.orgId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, query.agentId))
-      .limit(1);
-
-    if (!compose) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: "Agent not found", code: "NOT_FOUND" },
-        },
-      };
-    }
-
     const callerOrgId = authCtx.orgId ?? null;
-    if (callerOrgId !== compose.orgId) {
+
+    if (callerOrgId === null) {
       return {
-        status: 404 as const,
+        status: 401 as const,
         body: {
-          error: { message: "Agent not found", code: "NOT_FOUND" },
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
         },
       };
     }
 
-    const threads = await listChatThreads(userId, query.agentId);
+    if (query.agentId) {
+      const [compose] = await globalThis.services.db
+        .select({ orgId: agentComposes.orgId })
+        .from(agentComposes)
+        .where(eq(agentComposes.id, query.agentId))
+        .limit(1);
+
+      if (!compose || callerOrgId !== compose.orgId) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+    }
+
+    const threads = await listChatThreads(userId, callerOrgId, query.agentId);
 
     return {
       status: 200 as const,
@@ -120,7 +122,11 @@ const router = tsr.router(chatThreadsContract, {
           return {
             id: t.id,
             title: t.title,
-            agentId: query.agentId,
+            agentId: t.agentId,
+            agent: {
+              id: t.agentId,
+              avatarUrl: t.agentAvatarUrl,
+            },
             createdAt: t.createdAt.toISOString(),
             updatedAt: t.updatedAt.toISOString(),
             isRead: t.isRead,

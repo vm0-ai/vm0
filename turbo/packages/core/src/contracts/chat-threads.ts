@@ -33,7 +33,23 @@ const persistedAttachmentSchema = z.object({
 const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
+  /**
+   * Deprecated: will be removed once every consumer reads `agent.id`.
+   * Kept temporarily so existing fixtures still parse while the unified-list
+   * feature switch rolls out.
+   */
   agentId: z.string(),
+  /**
+   * Owning agent snapshot. Always emitted by the server; kept optional on the
+   * schema so older fixtures that predate the unified-list rollout still
+   * validate until they are migrated.
+   */
+  agent: z
+    .object({
+      id: z.string(),
+      avatarUrl: z.string().nullable(),
+    })
+    .optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   /**
@@ -153,13 +169,15 @@ export const chatThreadsContract = c.router({
     path: "/api/zero/chat-threads",
     headers: authHeadersSchema,
     query: z.object({
-      agentId: z.string().min(1, "agentId is required"),
+      agentId: z.string().min(1).optional(),
     }),
     responses: {
       200: z.object({ threads: z.array(chatThreadListItemSchema) }),
       401: apiErrorSchema,
+      404: apiErrorSchema,
     },
-    summary: "List chat threads for an agent",
+    summary:
+      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId.",
   },
 });
 
