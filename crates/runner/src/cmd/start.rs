@@ -4497,8 +4497,13 @@ mod tests {
             .handle
             .wait_completion(run_id, Duration::from_secs(5))
             .await;
-        assert!(c.is_some(), "fresh-create job should still complete");
-        assert_eq!(c.unwrap().exit_code, 0);
+        let c = c.expect("fresh-create job should still complete");
+        assert_eq!(c.exit_code, 0);
+        assert_eq!(
+            c.reuse_result,
+            Some(SandboxReuseResult::UnparkFailed),
+            "completion must tag the unpark-failure branch",
+        );
 
         // After the dust settles:
         //   - unpark called exactly once (the failed take-side call);
@@ -4513,6 +4518,51 @@ mod tests {
             counter.park_call_count(),
             1,
             "expected exactly one park (the fresh-create's)"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Reuse-enabled job whose session has no idle entry reports PoolMiss
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_enabled_empty_pool_reports_pool_miss() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let idle_pool = Arc::clone(&config.idle_pool);
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Empty pool + resume_session set + feature on → PoolMiss branch.
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-missing")),
+        );
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("job should complete");
+        assert_eq!(completion.exit_code, 0);
+        assert_eq!(
+            completion.reuse_result,
+            Some(SandboxReuseResult::PoolMiss),
+            "empty-pool reuse attempt must tag PoolMiss",
+        );
+        assert!(
+            completion.sandbox_id.is_some(),
+            "fresh create still allocates a sandbox id",
+        );
+        // Sanity: no one was in the pool to begin with.
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            1,
+            "fresh-create sandbox re-parks into the pool",
         );
 
         shutdown(&env, run_handle).await;
