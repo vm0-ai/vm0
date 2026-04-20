@@ -44,6 +44,15 @@ function escapeLikePattern(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
+/**
+ * A chat message row as returned by the search and context queries.
+ * `content` arrives as `string | null` from Drizzle, but every query in
+ * this route includes `isNotNull(chatMessages.content)` in its WHERE
+ * clause. `toChatMessage` asserts that invariant at the boundary rather
+ * than silently coalescing a null into `""`, so a future regression that
+ * drops the guard surfaces as a clear runtime error instead of empty
+ * strings in the API response.
+ */
 interface ChatMessageRow {
   messageId: string;
   chatThreadId: string;
@@ -62,11 +71,19 @@ interface ChatMessageRow {
 const chatRoleSchema = z.enum(["user", "assistant"]);
 
 function toChatMessage(row: ChatMessageRow): ChatSearchMessage {
+  if (row.content === null) {
+    // WHERE clauses in this route guarantee non-null content; hitting this
+    // means the guard was removed upstream. Fail loudly rather than paper
+    // over it with an empty string.
+    throw new Error(
+      "chat search invariant violated: message content is null despite isNotNull filter",
+    );
+  }
   return {
     messageId: row.messageId,
     chatThreadId: row.chatThreadId,
     role: chatRoleSchema.parse(row.role),
-    content: row.content ?? "",
+    content: row.content,
     createdAt: row.createdAt.toISOString(),
     sequenceNumber: row.sequenceNumber,
     runId: row.runId,
