@@ -194,4 +194,4 @@ export {
 export { completeVoiceChatPreparation } from "./domains/zero-voice-chat-prepare";
 
 // Domain modules - Web
-export { downloadWebFile } from "./domains/web";
+export { downloadWebFile, uploadWebFile } from "./domains/web";

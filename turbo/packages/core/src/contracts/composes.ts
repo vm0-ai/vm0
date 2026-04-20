@@ -41,6 +41,8 @@ export const ZERO_CAPABILITIES = [
   "connector:read",
   "computer-use:write",
   "voice-chat:write",
+  "file:read",
+  "file:write",
 ] as const;
 
 /** Inferred union type of all zero capability strings. */
@@ -88,6 +90,8 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       group: "Voice Chat",
       label: "Read and write voice chat context",
     },
+    "file:read": { group: "Files", label: "Download uploaded files" },
+    "file:write": { group: "Files", label: "Upload files" },
   };
 
 /**
