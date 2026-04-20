@@ -863,6 +863,12 @@ export {
   type FreshPreparation,
 } from "./zero-voice-chat-prepare";
 export {
+  zeroVoiceIoQuotaContract,
+  audioInputQuotaResponseSchema,
+  type ZeroVoiceIoQuotaContract,
+  type AudioInputQuotaResponse,
+} from "./zero-voice-io-quota";
+export {
   tasksContract,
   taskItemSchema,
   taskTypeSchema,

@@ -5,9 +5,17 @@ import {
   testContext,
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
-import { createTestOrg } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestOrg,
+  updateOrgTier,
+} from "../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
+import { readBehaviorCount } from "../../../../../../src/__tests__/db-test-seeders/behavior";
+import {
+  AUDIO_INPUT_BEHAVIOR_KEY,
+  AUDIO_INPUT_FREE_QUOTA,
+} from "../../../../../../src/lib/zero/voice-io/audio-input-policy";
 
 vi.mock("@vm0/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@vm0/core")>();
@@ -174,5 +182,110 @@ describe("POST /api/zero/voice-io/stt", () => {
     const body = await response.json();
     expect(response.status).toBe(500);
     expect(body.error.code).toBe("INTERNAL_SERVER_ERROR");
+  });
+
+  describe("org tier quota gating", () => {
+    it("should not increment the counter for a pro org across multiple successes", async () => {
+      const userId = uniqueId("stt-pro");
+      const { orgId } = await setupOrg(userId);
+      await updateOrgTier(orgId, "pro");
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json({ text: "pro transcript" });
+        }),
+      );
+
+      for (let i = 0; i < 5; i++) {
+        const response = await POST(createSttRequest(createAudioFile()));
+        expect(response.status).toBe(200);
+      }
+
+      const count = await readBehaviorCount(
+        orgId,
+        userId,
+        AUDIO_INPUT_BEHAVIOR_KEY,
+      );
+      expect(count).toBe(0);
+    });
+
+    it("should increment the counter on each successful free-tier call up to the quota", async () => {
+      const userId = uniqueId("stt-free");
+      const { orgId } = await setupOrg(userId);
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json({ text: "free transcript" });
+        }),
+      );
+
+      for (let i = 1; i <= AUDIO_INPUT_FREE_QUOTA; i++) {
+        const response = await POST(createSttRequest(createAudioFile()));
+        expect(response.status).toBe(200);
+        const count = await readBehaviorCount(
+          orgId,
+          userId,
+          AUDIO_INPUT_BEHAVIOR_KEY,
+        );
+        expect(count).toBe(i);
+      }
+    });
+
+    it("should return 402 once the free-tier quota is exhausted and leave the counter unchanged", async () => {
+      const userId = uniqueId("stt-free-exceed");
+      const { orgId } = await setupOrg(userId);
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json({ text: "ok" });
+        }),
+      );
+
+      // Exhaust the quota with AUDIO_INPUT_FREE_QUOTA successful calls
+      for (let i = 0; i < AUDIO_INPUT_FREE_QUOTA; i++) {
+        const ok = await POST(createSttRequest(createAudioFile()));
+        expect(ok.status).toBe(200);
+      }
+
+      const response = await POST(createSttRequest(createAudioFile()));
+      const body = await response.json();
+      expect(response.status).toBe(402);
+      expect(body.error.code).toBe("AUDIO_INPUT_QUOTA_EXCEEDED");
+      expect(body.quota).toEqual({
+        count: AUDIO_INPUT_FREE_QUOTA,
+        limit: AUDIO_INPUT_FREE_QUOTA,
+      });
+
+      const count = await readBehaviorCount(
+        orgId,
+        userId,
+        AUDIO_INPUT_BEHAVIOR_KEY,
+      );
+      expect(count).toBe(AUDIO_INPUT_FREE_QUOTA);
+    });
+
+    it("should not increment the counter when OpenAI fails on the first free-tier call", async () => {
+      const userId = uniqueId("stt-free-infra-fail");
+      const { orgId } = await setupOrg(userId);
+
+      server.use(
+        http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+          return HttpResponse.json(
+            { error: { message: "boom" } },
+            { status: 500 },
+          );
+        }),
+      );
+
+      const response = await POST(createSttRequest(createAudioFile()));
+      expect(response.status).toBe(500);
+
+      const count = await readBehaviorCount(
+        orgId,
+        userId,
+        AUDIO_INPUT_BEHAVIOR_KEY,
+      );
+      expect(count).toBe(0);
+    });
   });
 });
