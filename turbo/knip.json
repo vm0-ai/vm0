@@ -105,6 +105,7 @@
     "apps/cli/src/lib/utils/paginate.ts",
     "apps/web/src/lib/auth/sandbox-token.ts",
     "apps/web/src/lib/infra/storage/volume-upload.ts",
+    "apps/web/src/lib/zero/voice-chat-candidate/adapt-task-trigger.ts",
     "scripts/rebuild-snapshots.ts",
     "scripts/rebuild-snapshots-from-db.ts",
     "scripts/analyze-cpuprofile.mjs",

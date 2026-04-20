@@ -58,7 +58,11 @@ export async function completeVoiceChatCandidateTask(params: {
   result: string | null;
   error: string | null;
   agentId: string;
-}): Promise<{ item: ItemRow; task: TaskRow }> {
+}): Promise<{
+  item: ItemRow;
+  task: TaskRow;
+  session: { id: string; userId: string };
+}> {
   const db = globalThis.services.db;
 
   const outcome = await db.transaction(async (tx) => {
@@ -168,7 +172,11 @@ export async function completeVoiceChatCandidateTask(params: {
     await cancelSessionPendingRuns(outcome.session);
   }
 
-  return { task: outcome.task, item: outcome.item };
+  return {
+    task: outcome.task,
+    item: outcome.item,
+    session: { id: outcome.session.id, userId: outcome.session.userId },
+  };
 }
 
 export async function listPendingVoiceChatCandidateTasks(
