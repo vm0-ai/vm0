@@ -739,8 +739,18 @@ impl VsockHost {
             ));
         }
 
-        let pid = vsock_proto::decode_spawn_watch_result(&resp.payload)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        // If `decode_spawn_watch_result` fails here, reader's identical
+        // decode also failed: reader's `&&` chain short-circuited and did
+        // NOT move `pending_stdout[seq]` to `stdout_senders[pid]`, so our
+        // entry is still in `pending_stdout` and must be cleaned up before
+        // returning.
+        let pid = match vsock_proto::decode_spawn_watch_result(&resp.payload) {
+            Ok(pid) => pid,
+            Err(e) => {
+                drop_pending_stdout();
+                return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
+            }
+        };
 
         // Channel already moved from pending_stdout to stdout_senders by reader_loop.
         Ok((pid, stdout_rx))
@@ -1277,6 +1287,58 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(pid, 222);
+    }
+
+    /// The guest replies with `MSG_SPAWN_WATCH_RESULT` but its payload is
+    /// malformed (not a valid u32). Host's `decode_spawn_watch_result` fails
+    /// AFTER the msg_type check has passed; reader's identical decode also
+    /// failed and did NOT move `pending_stdout[seq]` to `stdout_senders`, so
+    /// the entry is still there and must be cleaned up. A follow-up
+    /// `spawn_watch` succeeding on the same connection proves the cleanup
+    /// worked.
+    #[tokio::test]
+    async fn test_spawn_watch_malformed_result_cleans_up() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            // First spawn_watch: reply with correct msg_type but truncated
+            // payload (3 bytes, not the required 4 for a u32 pid).
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            let bad_payload = b"\x00\x01\x02";
+            let bad_resp =
+                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, bad_payload).unwrap();
+            guest.write_all(&bad_resp).await.unwrap();
+
+            // Second spawn_watch: well-formed response with pid=333.
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            let ok_payload = vsock_proto::encode_spawn_watch_result(333);
+            let ok_resp =
+                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &ok_payload).unwrap();
+            guest.write_all(&ok_resp).await.unwrap();
+
+            let mut discard = [0u8; 1];
+            let _ = guest.read(&mut discard).await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+
+        let err = host
+            .spawn_watch("bad-payload-cmd", 0, &[], false, None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+
+        let (pid, _stdout_rx) = host
+            .spawn_watch("good-cmd", 0, &[], false, None)
+            .await
+            .unwrap();
+        assert_eq!(pid, 333);
     }
 
     #[tokio::test]
