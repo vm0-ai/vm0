@@ -283,9 +283,6 @@ fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, content)
         .map_err(|e| RunnerError::Internal(format!("write {}: {e}", tmp.display())))?;
-    // Clean up tmp on rename failure — unlike short-lived dirs elsewhere in
-    // the crate, unit files live in /etc/systemd/system/ which no GC path
-    // sweeps, and the staged content contains Environment= secrets.
     let result = std::fs::rename(&tmp, path).map_err(|e| {
         RunnerError::Internal(format!(
             "rename {} -> {}: {e}",
@@ -293,6 +290,9 @@ fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
             path.display()
         ))
     });
+    // Unlike short-lived dirs elsewhere in the crate, unit files live in
+    // /etc/systemd/system/ which no GC path sweeps, and the staged content
+    // contains Environment= secrets.
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
