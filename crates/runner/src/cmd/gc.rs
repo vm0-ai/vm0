@@ -265,6 +265,13 @@ async fn gc_nested_images(
             }
         };
 
+        // Track whether any snapshot (or stale non-snapshot entry) would
+        // remain in `snapshots/` after this GC pass. Used below in place of
+        // a physical `read_dir` check so dry-run correctly predicts
+        // orphan-rootfs eligibility — the physical tree is unchanged in
+        // dry-run, so `read_dir` would always see the pre-GC state.
+        let mut any_snapshot_survives = false;
+
         // Collect snapshot candidates.
         let mut candidates: Vec<GcCandidate> = Vec::new();
         while let Some(snap_entry) =
@@ -276,9 +283,11 @@ async fn gc_nested_images(
                 .and_then(|n| n.to_str())
                 .map(String::from)
             else {
+                any_snapshot_survives = true;
                 continue;
             };
             if !snap_path.is_dir() {
+                any_snapshot_survives = true;
                 continue;
             }
 
@@ -295,9 +304,11 @@ async fn gc_nested_images(
                     });
                 }
                 LockProbe::Held => {
+                    any_snapshot_survives = true;
                     info!("images/{rootfs_hash}/snapshots/{snap_hash}: in use, skipping");
                 }
                 LockProbe::Error(e) => {
+                    any_snapshot_survives = true;
                     info!(
                         "images/{rootfs_hash}/snapshots/{snap_hash}: lock probe failed ({e}), skipping"
                     );
@@ -310,6 +321,7 @@ async fn gc_nested_images(
         candidates.retain(|c| {
             let age = now.duration_since(c.mtime).unwrap_or_default();
             if age < GC_MIN_AGE {
+                any_snapshot_survives = true;
                 info!(
                     "images/{rootfs_hash}/snapshots/{}: too recent ({}s), keeping",
                     c.hash,
@@ -325,6 +337,7 @@ async fn gc_nested_images(
         candidates.sort_by_key(|c| std::cmp::Reverse(c.mtime));
         let keep_count = keep_latest.unwrap_or(0);
         for c in candidates.iter().take(keep_count) {
+            any_snapshot_survives = true;
             info!(
                 "images/{rootfs_hash}/snapshots/{}: keeping (latest unused, {})",
                 c.hash,
@@ -344,6 +357,7 @@ async fn gc_nested_images(
                     "failed to remove images/{rootfs_hash}/snapshots/{}: {e}",
                     c.hash
                 );
+                any_snapshot_survives = true;
                 continue;
             } else {
                 info!(
@@ -355,14 +369,22 @@ async fn gc_nested_images(
             total_freed += c.size;
         }
 
-        // Check if rootfs is now orphaned (no remaining snapshots).
-        // Only delete rootfs if we hold the exclusive rootfs lock.
-        let has_snapshots = match tokio::fs::read_dir(&snapshots_dir).await {
-            Ok(mut rd) => rd.next_entry().await.ok().flatten().is_some(),
-            Err(_) => false,
-        };
-        if !has_snapshots && can_delete_rootfs {
-            total_freed += try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
+        // If no snapshot would remain, the rootfs becomes orphan. Only
+        // delete rootfs if we also hold the exclusive rootfs lock.
+        if !any_snapshot_survives && can_delete_rootfs {
+            // In dry-run, `try_delete_orphan_rootfs` stats the rootfs
+            // before removal, which still includes the snapshot subdirs
+            // we already counted in the loop above (nothing was physically
+            // removed). In real-mode the snapshot subdirs are gone by the
+            // time it runs, so the stat naturally excludes them. Subtract
+            // the overlap in dry-run to match real-mode totals.
+            let rootfs_bytes = try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
+            let overlap: u64 = if dry_run {
+                candidates.iter().skip(keep_count).map(|c| c.size).sum()
+            } else {
+                0
+            };
+            total_freed += rootfs_bytes.saturating_sub(overlap);
         }
     }
 
@@ -1428,6 +1450,11 @@ mod tests {
         );
     }
 
+    /// Dry-run with keep_latest=0 over a rootfs whose only snapshot would be
+    /// deleted: the rootfs becomes logically orphan, so the total covers the
+    /// snapshot + rootfs.ext4 + metadata — i.e. the whole rootfs directory.
+    /// Mirrors what a real `gc` run would free (snapshot physically deleted,
+    /// then rootfs dir deleted).
     #[tokio::test]
     async fn gc_nested_images_dry_run_reports_would_be_freed() {
         use std::fs::FileTimes;
@@ -1450,18 +1477,74 @@ mod tests {
             .unwrap()
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
+        // Age-gate the rootfs too so try_delete_orphan_rootfs doesn't
+        // skip it as "too recent".
+        std::fs::File::open(&rootfs_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
 
-        // Capture the expected would-be-freed size before GC so the dry-run
-        // return value can be asserted exactly, not just "> 0".
-        let (expected_size, _) = dir_stats(&snap).await;
+        // The whole rootfs dir would vanish under real GC (all snapshots
+        // deleted → rootfs becomes orphan → rootfs deleted). Dry-run must
+        // report the same total.
+        let (expected_size, _) = dir_stats(&rootfs_dir).await;
         assert!(expected_size > 0, "test fixture must have non-zero size");
 
-        // keep_latest=0 + dry_run: would delete but doesn't actually
         let freed = gc_nested_images(&home, Some(0), true).await.unwrap();
-        assert!(snap.exists(), "dry-run must not delete");
+        assert!(snap.exists(), "dry-run must not delete snapshot");
+        assert!(
+            rootfs_dir.exists(),
+            "dry-run must not delete rootfs directory"
+        );
         assert_eq!(
             freed, expected_size,
-            "dry-run must report would-be-freed bytes for consistency with gc_debootstrap/gc_job_logs/gc_workspace_orphans"
+            "dry-run must report total rootfs bytes when all snapshots would be deleted"
+        );
+    }
+
+    /// Dry-run with keep_latest=1 over a rootfs with 2 eligible snapshots:
+    /// one snapshot would survive, rootfs is NOT orphan, total covers only
+    /// the deleted snapshot — not the rootfs itself.
+    #[tokio::test]
+    async fn gc_nested_images_dry_run_partial_kept_no_orphan() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let images_dir = home.images_dir();
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let rootfs_dir = images_dir.join("rootfs_partial");
+        let snap_old = rootfs_dir.join("snapshots").join("snap_old");
+        let snap_new = rootfs_dir.join("snapshots").join("snap_new");
+        for d in [&snap_old, &snap_new] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("snapshot.bin"), b"data").unwrap();
+        }
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&snap_old)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+        let new_time = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        std::fs::File::open(&snap_new)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(new_time))
+            .unwrap();
+
+        let (expected_size, _) = dir_stats(&snap_old).await;
+        assert!(expected_size > 0, "test fixture must have non-zero size");
+
+        let freed = gc_nested_images(&home, Some(1), true).await.unwrap();
+        assert!(snap_old.exists(), "dry-run must not delete snapshot");
+        assert!(snap_new.exists(), "kept snapshot must survive dry-run");
+        assert_eq!(
+            freed, expected_size,
+            "dry-run must report only the deleted snapshot bytes; rootfs stays because snap_new survives"
         );
     }
 
