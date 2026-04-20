@@ -60,6 +60,12 @@ pub struct MockJobProvider {
     /// sleeping. `notify_one` queues a permit, so a test that waits after
     /// the signal fired still wakes immediately.
     discover_entered: Arc<Notify>,
+    /// Fired by `complete()` after a completion is appended to `completions`.
+    /// `wait_completion` subscribes to this before checking the vec, so any
+    /// completion that lands between the check and the wake is still observed.
+    /// Event-driven waiting eliminates the polling loop whose wall-clock
+    /// deadline was racing coverage-CI slowdown (see #10146).
+    completion_notify: Arc<Notify>,
 }
 
 /// Test-side handle for driving the mock provider.
@@ -69,6 +75,8 @@ pub struct MockProviderHandle {
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
     /// See [`MockJobProvider::discover_entered`].
     pub discover_entered: Arc<Notify>,
+    /// See [`MockJobProvider::completion_notify`].
+    completion_notify: Arc<Notify>,
 }
 
 impl MockJobProvider {
@@ -94,6 +102,7 @@ impl MockJobProvider {
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
         let discover_entered = Arc::new(Notify::new());
+        let completion_notify = Arc::new(Notify::new());
         let provider = Arc::new(Self {
             discovery: Mutex::new(rx),
             poll_delay,
@@ -102,12 +111,14 @@ impl MockJobProvider {
             heartbeats: Arc::clone(&heartbeats),
             cancel,
             discover_entered: Arc::clone(&discover_entered),
+            completion_notify: Arc::clone(&completion_notify),
         });
         let handle = MockProviderHandle {
             discover_tx: tx,
             completions,
             heartbeats,
             discover_entered,
+            completion_notify,
         };
         (provider, handle)
     }
@@ -124,19 +135,36 @@ impl MockJobProvider {
 
 impl MockProviderHandle {
     /// Wait for a specific run's completion to appear, with timeout.
+    ///
+    /// Event-driven: subscribes to `completion_notify` *before* checking the
+    /// vec, so a completion landing between the check and the wait still
+    /// wakes us. No polling sleep — the `timeout` is a diagnostic safety
+    /// cap for genuine hangs, not a wall-clock budget for the work itself.
+    /// This matters under coverage CI, where a polling loop with a 5 s
+    /// deadline raced instrumentation slowdown (see #10146).
     pub async fn wait_completion(&self, run_id: RunId, timeout: Duration) -> Option<Completion> {
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
+            let notified = self.completion_notify.notified();
+            tokio::pin!(notified);
+            // Register interest before checking the vec — any notify_waiters
+            // fired after this enable() will wake this future.
+            notified.as_mut().enable();
+
             {
                 let comps = self.completions.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(c) = comps.iter().find(|c| c.run_id == run_id) {
                     return Some(c.clone());
                 }
             }
-            if tokio::time::Instant::now() >= deadline {
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
                 return None;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            if tokio::time::timeout(remaining, notified).await.is_err() {
+                return None;
+            }
         }
     }
 
@@ -194,6 +222,9 @@ impl JobProvider for MockJobProvider {
                 exit_code,
                 error: error.map(String::from),
             });
+        // Wake all pending `wait_completion` waiters — they re-scan the vec
+        // and return if their run_id is now present.
+        self.completion_notify.notify_waiters();
     }
 
     async fn heartbeat(&self, state: &HeartbeatState) {

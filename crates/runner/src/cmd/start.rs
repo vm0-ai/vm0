@@ -2627,9 +2627,13 @@ mod tests {
         let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
+        // `wait_completion` is event-driven (fires on `provider.complete`), so
+        // this duration is a diagnostic cap for genuine hangs — not a budget
+        // for the run. A large cap absorbs coverage-CI slowdown of the full
+        // dispatch→executor→complete chain without flaking (see #10146).
         let c = env
             .handle
-            .wait_completion(run_id, Duration::from_secs(5))
+            .wait_completion(run_id, Duration::from_secs(30))
             .await;
         assert!(
             c.is_some(),
