@@ -319,12 +319,12 @@ export async function buildAndDispatchRun(opts: {
     const dispatchTime = Date.now();
 
     // Record per-step timing metrics for latency diagnosis.
-    // Note: apiStart is captured at the route handler's first line (issue #9936),
-    // so api_step_authorize now spans everything from request receipt through
-    // pre-flight checks up to authorizeCompose() returning — not just the
-    // authorize call itself.
+    // Note: timings.apiStart is captured at the route handler's first line
+    // (issue #9936) to anchor end-to-end startup latency. The per-op steps
+    // below start from timings.authorize because the route-entry → authorize
+    // segment covers many heterogeneous call paths (auth, resolve, pre-flight)
+    // whose aggregate is not a meaningful single metric.
     const steps = [
-      { op: "api_step_authorize", ms: timings.authorize - timings.apiStart },
       {
         op: "api_step_validate_and_insert",
         ms: timings.transaction - timings.authorize,
