@@ -215,10 +215,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Voice Chat feature and API endpoints",
     enabled: false,
   },
-  [FeatureSwitchKey.AudioIO]: {
+  [FeatureSwitchKey.AudioInput]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable audio input/output features in chat (TTS read-aloud, auto-read, voice input)",
+      "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
+    enabled: false,
+  },
+  [FeatureSwitchKey.AudioOutput]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
     enabled: false,
   },
   [FeatureSwitchKey.MissionControlSidebar]: {

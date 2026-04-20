@@ -81,10 +81,10 @@ function VoiceChatStatusLeaf() {
 
 function AutoReadToggleLeaf() {
   const features = useLastResolved(featureSwitch$);
-  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
-  if (!audioIOEnabled) {
+  if (!audioOutputEnabled) {
     return null;
   }
   return (

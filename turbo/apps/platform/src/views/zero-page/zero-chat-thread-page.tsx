@@ -144,7 +144,7 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const displayName = useLastResolved(thread.agentDisplayName$);
   const features = useLastResolved(featureSwitch$);
-  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
 
@@ -158,7 +158,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         <span className="font-semibold text-foreground">{displayName}</span>
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        {audioIOEnabled && (
+        {audioOutputEnabled && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -826,7 +826,7 @@ function PagedGroupActions({
   const copyMessage = useSet(thread.copyMessage$);
 
   const features = useLastResolved(featureSwitch$);
-  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const playingRunId = useGet(ttsPlayingRunId$);
   const firstRunId = group.messages.find((m) => {
     return m.runId;
@@ -906,7 +906,7 @@ function PagedGroupActions({
             </Tooltip>
           </TooltipProvider>
         )}
-        {content && audioIOEnabled && firstRunId && (
+        {content && audioOutputEnabled && firstRunId && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
