@@ -224,4 +224,37 @@ describe("GET /api/zero/redemption-codes (list)", () => {
     expect(redeemedRow?.redeemedByUserId).toBe("user_redeemer");
     expect(redeemedRow?.creditsPerCode).toBe(200);
   });
+
+  describe("EXTRA_STAFF_USER_IDS env override", () => {
+    const original = process.env.EXTRA_STAFF_USER_IDS;
+
+    afterEach(() => {
+      if (original === undefined) {
+        delete process.env.EXTRA_STAFF_USER_IDS;
+      } else {
+        process.env.EXTRA_STAFF_USER_IDS = original;
+      }
+      reloadEnv();
+    });
+
+    it("allows listing for a non-staff user whose id is in EXTRA_STAFF_USER_IDS", async () => {
+      const { userId } = await setupNonStaffOrg();
+      process.env.EXTRA_STAFF_USER_IDS = `some-other-user, ${userId} ,another`;
+      reloadEnv();
+
+      const response = await GET(createListRequest());
+
+      expect(response.status).toBe(200);
+    });
+
+    it("still 403 when the user id is not listed", async () => {
+      await setupNonStaffOrg();
+      process.env.EXTRA_STAFF_USER_IDS = "some-other-user,another";
+      reloadEnv();
+
+      const response = await GET(createListRequest());
+
+      expect(response.status).toBe(403);
+    });
+  });
 });

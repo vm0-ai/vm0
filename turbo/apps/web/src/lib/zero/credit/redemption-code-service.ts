@@ -269,7 +269,17 @@ export async function redeemRedemptionCode(
   } catch (err) {
     // Every failed call (bad code, already redeemed, expired) counts toward
     // the per-user rate limit budget — this is the attack surface we care about.
-    await recordRedeemAttempt(opts.userId, false);
+    // Swallow secondary accounting-write failures so the original redeem error
+    // (the one the caller actually needs to see) always surfaces cleanly.
+    try {
+      await recordRedeemAttempt(opts.userId, false);
+    } catch (recordErr) {
+      log.error("failed to record redeem failure attempt", {
+        userId: opts.userId,
+        error:
+          recordErr instanceof Error ? recordErr.message : String(recordErr),
+      });
+    }
     throw err;
   }
 
