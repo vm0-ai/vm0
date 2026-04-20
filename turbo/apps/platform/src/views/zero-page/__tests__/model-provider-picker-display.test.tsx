@@ -11,7 +11,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -88,6 +88,10 @@ async function openProfileTab(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("model-provider-picker - display with null value", () => {
+  beforeEach(() => {
+    resetMockOrgModelProviders();
+  });
+
   // MPKR-D-001: When value is null and default provider has a selectedModel,
   // the trigger must show that model's display name, not blank or placeholder.
   it("shows default provider selectedModel display name when value is null (MPKR-D-001)", async () => {

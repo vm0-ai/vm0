@@ -188,6 +188,13 @@ export function ModelProviderPicker({
       return a.isVm0 ? -1 : 1;
     });
 
+  const defaultModelName = resolveDefaultModel(providers);
+  const triggerAriaLabel = value
+    ? getModelDisplayName(value.selectedModel)
+    : defaultModelName !== null
+      ? getModelDisplayName(defaultModelName)
+      : placeholder;
+
   return (
     <Select
       value={encodeValue(value)}
@@ -196,18 +203,7 @@ export function ModelProviderPicker({
       }}
     >
       <SelectTrigger className={cn("h-9 w-full", triggerClassName)}>
-        <SelectValue
-          placeholder={placeholder}
-          aria-label={(() => {
-            if (value) {
-              return getModelDisplayName(value.selectedModel);
-            }
-            const defaultModel = resolveDefaultModel(providers);
-            return defaultModel
-              ? getModelDisplayName(defaultModel)
-              : placeholder;
-          })()}
-        >
+        <SelectValue placeholder={placeholder} aria-label={triggerAriaLabel}>
           <TriggerLabel
             providers={providers}
             value={value}
