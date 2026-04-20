@@ -8,6 +8,7 @@ import {
   MODEL_PROVIDER_TYPES,
   getVm0ConcreteProviderType,
   getVm0Vendor,
+  getVm0ApiModel,
   type ModelProviderType,
   type ModelProviderFramework,
 } from "@vm0/core";
@@ -171,6 +172,7 @@ async function resolveVm0Provider(
 ): Promise<ModelProviderSecretResult> {
   const concreteType = getVm0ConcreteProviderType(selectedModel);
   const vendor = getVm0Vendor(selectedModel);
+  const apiModel = getVm0ApiModel(selectedModel);
   const poolKey = await getVm0ApiKey(vendor);
   if (!poolKey) {
     throw badRequest(`No API key available for vendor "${vendor}"`);
@@ -183,7 +185,7 @@ async function resolveVm0Provider(
   const injectedEnvironment = resolveEnvironmentMapping(
     concreteType,
     concreteSecretName,
-    selectedModel,
+    apiModel,
   );
 
   log.debug(

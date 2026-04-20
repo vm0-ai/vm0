@@ -11,6 +11,7 @@ import { mockClerk } from "./clerk-mock";
 import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
+  getVm0ApiModel,
   VM0_MODEL_TO_PROVIDER,
 } from "@vm0/core";
 
@@ -137,6 +138,16 @@ describe("VM0 managed model provider", () => {
         "anthropic-api-key",
       );
       expect(getVm0Vendor("claude-opus-4-6")).toBe("anthropic");
+    });
+
+    it("should resolve glm-5.1 to openrouter-api-key with z-ai/glm-5.1 upstream id", () => {
+      expect(getVm0ConcreteProviderType("glm-5.1")).toBe("openrouter-api-key");
+      expect(getVm0Vendor("glm-5.1")).toBe("openrouter");
+      expect(getVm0ApiModel("glm-5.1")).toBe("z-ai/glm-5.1");
+    });
+
+    it("should fall back to display name when no apiModel override is set", () => {
+      expect(getVm0ApiModel("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
     });
 
     it("should throw for unknown models", () => {
