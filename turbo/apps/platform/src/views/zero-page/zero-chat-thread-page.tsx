@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   useGet,
   useSet,
@@ -313,9 +312,7 @@ function ChatThreadComposer({
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const allFinished =
-    allFinishedLoadable.state === "hasData"
-      ? allFinishedLoadable.data
-      : false;
+    allFinishedLoadable.state === "hasData" ? allFinishedLoadable.data : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const sending = !allFinished || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
@@ -455,22 +452,15 @@ const THINKING_PHRASES = [
   "On it...",
 ];
 
-function useRotatingPhrase(active: boolean): string {
-  const [index, setIndex] = useState(0);
-  useEffect(() => {
-    if (!active) {
-      return;
-    }
-    const id = setInterval(() => {
-      setIndex((i) => {
-        return (i + 1) % THINKING_PHRASES.length;
-      });
-    }, 3500);
-    return () => {
-      clearInterval(id);
-    };
-  }, [active]);
-  return THINKING_PHRASES[index]!;
+// Deterministic hash so each turn gets a stable phrase seeded from the
+// last group's id — variety across turns without mutable timer state.
+function pickPhrase(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) | 0;
+  }
+  const idx = Math.abs(h) % THINKING_PHRASES.length;
+  return THINKING_PHRASES[idx]!;
 }
 
 function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
@@ -478,7 +468,6 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
   const running =
     allFinishedLoadable.state === "hasData" && !allFinishedLoadable.data;
-  const label = useRotatingPhrase(running);
 
   if (!running) {
     return null;
@@ -486,6 +475,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
 
   const lastGroup = groups[groups.length - 1];
   const lastIsAssistant = lastGroup?.role === "assistant";
+  const label = pickPhrase(lastGroup?.beginMessageId ?? "zero");
 
   if (lastIsAssistant) {
     // Inline continuation — align with the assistant grid, no new avatar,
