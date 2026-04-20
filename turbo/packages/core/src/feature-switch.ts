@@ -3,9 +3,16 @@
  *
  * Provides centralized feature flag management with user-identity based overrides.
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
+ *
+ * NOT AN AUTHORIZATION BOUNDARY. Any authenticated user can self-enable any
+ * switch via `POST /api/zero/feature-switches` — overrides are read by
+ * `isFeatureEnabled` before the registry. For money-granting, credential,
+ * or privilege-escalation endpoints, gate with a hard identity check
+ * (e.g. `isStaffOrg()` from `./staff-org`) instead of this system.
  */
 
 import { FeatureSwitchKey } from "./feature-switch-key";
+import { STAFF_ORG_ID_HASHES, fnv1a } from "./identity-hash";
 
 export interface FeatureSwitch {
   readonly maintainer: string;
@@ -22,23 +29,6 @@ export interface FeatureSwitchContext {
   readonly orgId?: string;
   readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
-
-/**
- * FNV-1a 32-bit hash — fast, synchronous, no crypto API needed.
- * Returns an 8-character lowercase hex string.
- */
-function fnv1a(input: string): string {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
-}
-
-const STAFF_ORG_ID_HASHES: readonly string[] = [
-  "afce210e", // org_3ANttyrbWYJk6JKRSTRLEsbsDLe
-];
 
 /**
  * Registry of all feature switches
@@ -351,6 +341,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "agent avatar render, and the unscoped request shape. New-chat creation " +
       "still uses the current-agent fallback.",
     enabled: false,
+  },
+  [FeatureSwitchKey.RedemptionCodes]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show the internal /_/redemption-codes page (mint + redeem UI). " +
+      "UI-visibility gate only — the mint endpoint is independently " +
+      "protected by a STAFF_ORG_ID_HASHES identity check on the server, " +
+      "so this flag does NOT authorize minting.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

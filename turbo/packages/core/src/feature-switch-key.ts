@@ -58,4 +58,5 @@ export enum FeatureSwitchKey {
   RedeemCode = "redeemCode",
   UnifyChatThreads = "unifyChatThreads",
   Vm0GlmModel = "vm0GlmModel",
+  RedemptionCodes = "redemptionCodes",
 }

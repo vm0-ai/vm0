@@ -845,6 +845,18 @@ export {
   type ZeroComputerUseHostContract,
 } from "./zero-computer-use";
 export {
+  zeroRedemptionCodesMintContract,
+  zeroRedemptionCodesRedeemContract,
+  MAX_CREDITS_PER_CODE,
+  MAX_QUANTITY_PER_MINT,
+  type ZeroRedemptionCodesMintContract,
+  type ZeroRedemptionCodesRedeemContract,
+  type MintRedemptionCodesRequest,
+  type MintRedemptionCodesResponse,
+  type RedeemRedemptionCodeRequest,
+  type RedeemRedemptionCodeResponse,
+} from "./zero-redemption-codes";
+export {
   zeroInsightsContract,
   zeroInsightsRangeContract,
   type ZeroInsightsContract,
