@@ -57,29 +57,32 @@ describe("/_/usage page", () => {
     expect(screen.getByText("Usage Insights")).toBeInTheDocument();
 
     await waitFor(() => {
+      expect(screen.getByText("1.3K")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
       expect(screen.getByText("My Schedule")).toBeInTheDocument();
     });
 
-    expect(
-      screen.getAllByRole("link").find((el) => {
-        return /My Schedule/.test(el.textContent ?? "");
-      }),
-    ).toBeDefined();
+    const scheduleLink = screen.getAllByRole("link").find((el) => {
+      return /My Schedule/.test(el.textContent ?? "");
+    });
+    expect(scheduleLink).toBeInTheDocument();
 
     const user = userEvent.setup();
     const chatsTab = screen.getAllByRole("tab").find((el) => {
       return /Chats/.test(el.textContent ?? "");
     });
-    await user.click(chatsTab!);
+    expect(chatsTab).toBeInTheDocument();
+    await user.click(chatsTab as HTMLElement);
 
     await waitFor(() => {
       expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
     });
 
-    expect(
-      screen.getAllByRole("link").find((el) => {
-        return /Chat with Agent/.test(el.textContent ?? "");
-      }),
-    ).toBeDefined();
+    const chatLink = screen.getAllByRole("link").find((el) => {
+      return /Chat with Agent/.test(el.textContent ?? "");
+    });
+    expect(chatLink).toBeInTheDocument();
   });
 });
