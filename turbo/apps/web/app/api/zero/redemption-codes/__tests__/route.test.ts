@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "../route";
 import { seedRedemptionCode } from "../../../../../src/__tests__/db-test-seeders/redemption-codes";
 import {
@@ -93,20 +93,14 @@ describe("POST /api/zero/redemption-codes (mint)", () => {
   );
 
   describe("EXTRA_STAFF_USER_IDS env override", () => {
-    const original = process.env.EXTRA_STAFF_USER_IDS;
-
     afterEach(() => {
-      if (original === undefined) {
-        delete process.env.EXTRA_STAFF_USER_IDS;
-      } else {
-        process.env.EXTRA_STAFF_USER_IDS = original;
-      }
+      vi.unstubAllEnvs();
       reloadEnv();
     });
 
     it("allows minting for a non-staff user whose id is in EXTRA_STAFF_USER_IDS", async () => {
       const { userId } = await setupNonStaffOrg();
-      process.env.EXTRA_STAFF_USER_IDS = `some-other-user, ${userId} ,another`;
+      vi.stubEnv("EXTRA_STAFF_USER_IDS", `some-other-user, ${userId} ,another`);
       reloadEnv();
 
       const response = await POST(
@@ -118,7 +112,7 @@ describe("POST /api/zero/redemption-codes (mint)", () => {
 
     it("still 403 when the user id is not listed", async () => {
       await setupNonStaffOrg();
-      process.env.EXTRA_STAFF_USER_IDS = "some-other-user,another";
+      vi.stubEnv("EXTRA_STAFF_USER_IDS", "some-other-user,another");
       reloadEnv();
 
       const response = await POST(
@@ -226,20 +220,14 @@ describe("GET /api/zero/redemption-codes (list)", () => {
   });
 
   describe("EXTRA_STAFF_USER_IDS env override", () => {
-    const original = process.env.EXTRA_STAFF_USER_IDS;
-
     afterEach(() => {
-      if (original === undefined) {
-        delete process.env.EXTRA_STAFF_USER_IDS;
-      } else {
-        process.env.EXTRA_STAFF_USER_IDS = original;
-      }
+      vi.unstubAllEnvs();
       reloadEnv();
     });
 
     it("allows listing for a non-staff user whose id is in EXTRA_STAFF_USER_IDS", async () => {
       const { userId } = await setupNonStaffOrg();
-      process.env.EXTRA_STAFF_USER_IDS = `some-other-user, ${userId} ,another`;
+      vi.stubEnv("EXTRA_STAFF_USER_IDS", `some-other-user, ${userId} ,another`);
       reloadEnv();
 
       const response = await GET(createListRequest());
@@ -249,7 +237,7 @@ describe("GET /api/zero/redemption-codes (list)", () => {
 
     it("still 403 when the user id is not listed", async () => {
       await setupNonStaffOrg();
-      process.env.EXTRA_STAFF_USER_IDS = "some-other-user,another";
+      vi.stubEnv("EXTRA_STAFF_USER_IDS", "some-other-user,another");
       reloadEnv();
 
       const response = await GET(createListRequest());
