@@ -51,7 +51,6 @@ export enum FeatureSwitchKey {
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
-  OrgCustomConnectors = "orgCustomConnectors",
   ModelProviderSelection = "modelProviderSelection",
   Vm0KimiModel = "vm0KimiModel",
   Vm0GlmModel = "vm0GlmModel",

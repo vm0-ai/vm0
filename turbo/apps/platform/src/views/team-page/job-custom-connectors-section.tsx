@@ -6,7 +6,7 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { FeatureSwitchKey, type CustomConnectorResponse } from "@vm0/core";
+import type { CustomConnectorResponse } from "@vm0/core";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
@@ -15,7 +15,6 @@ import {
   saveZeroJobCustomConnectors$,
   zeroJobAddedCustomConnectors$,
 } from "../../signals/zero-page/job-detail/custom-connectors.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { CustomConnectorIcon } from "../zero-page/components/settings/custom-connector-icon.tsx";
@@ -69,8 +68,6 @@ function CustomConnectorPermissionRow({
 }
 
 export function JobCustomConnectorsSection() {
-  const features = useLastResolved(featureSwitch$);
-  const enabled = features?.[FeatureSwitchKey.OrgCustomConnectors] === true;
   const connectors = useLastResolved(customConnectors$);
   const addedLoadable = useLastLoadable(zeroJobAddedCustomConnectors$);
   const added = addedLoadable.state === "hasData" ? addedLoadable.data : [];
@@ -81,7 +78,7 @@ export function JobCustomConnectorsSection() {
   const pageSignal = useGet(pageSignal$);
   const saving = saveLoadable.state === "loading";
 
-  if (!enabled || !connectors || connectors.length === 0) {
+  if (!connectors || connectors.length === 0) {
     return null;
   }
 
