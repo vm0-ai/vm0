@@ -43,48 +43,65 @@ export async function getOrgIdFromVersion(versionId: string): Promise<string> {
  * Create a run record directly in the database.
  * Internal helper used by seedTestRun.
  */
+type CreateRunDirectOptions = {
+  status?: string;
+  prompt?: string;
+  continuedFromSessionId?: string;
+  scheduleId?: string;
+  chatThreadId?: string;
+  triggerSource?: string;
+  createdAt?: Date;
+  startedAt?: Date;
+  completedAt?: Date;
+  result?: Record<string, unknown>;
+  additionalVolumes?: Array<{
+    name: string;
+    version?: string;
+    mountPath: string;
+  }>;
+};
+
 async function createRunDirect(
   userId: string,
   versionId: string,
   orgId: string,
-  options?: {
-    status?: string;
-    prompt?: string;
-    continuedFromSessionId?: string;
-    scheduleId?: string;
-    triggerSource?: string;
-    createdAt?: Date;
-    startedAt?: Date;
-    completedAt?: Date;
-    result?: Record<string, unknown>;
-    additionalVolumes?: Array<{
-      name: string;
-      version?: string;
-      mountPath: string;
-    }>;
-  },
+  options: CreateRunDirectOptions = {},
 ): Promise<{ id: string }> {
+  const {
+    status = "running",
+    prompt = "test prompt",
+    continuedFromSessionId,
+    scheduleId = null,
+    chatThreadId = null,
+    triggerSource = "cli",
+    createdAt,
+    startedAt,
+    completedAt,
+    result,
+    additionalVolumes = null,
+  } = options;
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
       userId,
       orgId,
       agentComposeVersionId: versionId,
-      status: options?.status ?? "running",
-      prompt: options?.prompt ?? "test prompt",
-      continuedFromSessionId: options?.continuedFromSessionId,
-      additionalVolumes: options?.additionalVolumes ?? null,
-      ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
-      ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
-      ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
-      ...(options?.result ? { result: options.result } : {}),
+      status,
+      prompt,
+      continuedFromSessionId,
+      additionalVolumes,
+      ...(createdAt ? { createdAt } : {}),
+      ...(startedAt ? { startedAt } : {}),
+      ...(completedAt ? { completedAt } : {}),
+      ...(result ? { result } : {}),
     })
     .returning({ id: agentRuns.id });
 
   await globalThis.services.db.insert(zeroRuns).values({
     id: run!.id,
-    triggerSource: options?.triggerSource ?? "cli",
-    scheduleId: options?.scheduleId ?? null,
+    triggerSource,
+    scheduleId,
+    chatThreadId,
   });
 
   return run!;
@@ -108,6 +125,7 @@ export async function seedTestRun(
     prompt?: string;
     continuedFromSessionId?: string;
     scheduleId?: string;
+    chatThreadId?: string;
     triggerSource?: string;
     createdAt?: Date;
     orgId?: string;
@@ -155,6 +173,7 @@ export async function seedTestRun(
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
       scheduleId: options?.scheduleId,
+      chatThreadId: options?.chatThreadId,
       triggerSource: options?.triggerSource,
       createdAt: options?.createdAt,
       startedAt: options?.startedAt,

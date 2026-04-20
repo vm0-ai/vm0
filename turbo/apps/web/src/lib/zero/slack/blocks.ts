@@ -1,4 +1,5 @@
 import type { Block, KnownBlock, View, MarkdownBlock } from "@slack/web-api";
+import { getModelDisplayName } from "@vm0/core";
 import { getAppUrl } from "../url";
 
 /**
@@ -427,12 +428,16 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
  * @param content - The agent's response content
  * @param logsUrl - Optional URL to the run logs
  * @param triggeredBy - Optional attribution text shown as a separate context block below a divider
+ * @param modelName - Optional raw model ID shown alongside modelName in footer
+ * @param slackUserName - Optional Slack display name shown alongside modelName in footer
  * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
   content: string,
   logsUrl?: string,
   triggeredBy?: string,
+  modelName?: string,
+  slackUserName?: string,
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
 
@@ -452,6 +457,13 @@ export function buildAgentResponseMessage(
 
   if (triggeredBy) {
     blocks.push(...buildFooterBlocks(triggeredBy));
+  }
+
+  if (modelName || slackUserName) {
+    const parts: string[] = [];
+    if (slackUserName) parts.push(`Sent from ${slackUserName}`);
+    if (modelName) parts.push(getModelDisplayName(modelName));
+    blocks.push(...buildFooterBlocks(parts.join(" · ")));
   }
 
   return blocks;

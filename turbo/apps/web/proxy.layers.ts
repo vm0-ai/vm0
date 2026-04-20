@@ -181,10 +181,24 @@ export const localeGuardLayer: ProxyLayer = (ctx) => {
   return null;
 };
 
-/** Apply i18n for page routes. */
+/**
+ * Apply i18n for page routes.
+ *
+ * next-intl redirects locale-less paths (e.g. /use-cases/foo) with 307
+ * (temporary).  We convert those to 301 (permanent) so search engines
+ * consolidate PageRank on the canonical /en/… URL.
+ */
 export const i18nLayer: ProxyLayer = (ctx) => {
   if (ctx.routeKind === "page") {
-    return intlMiddleware(ctx.request);
+    const response = intlMiddleware(ctx.request);
+    if (response.status === 307 && response.headers.get("location")) {
+      const url = new URL(
+        response.headers.get("location")!,
+        ctx.request.nextUrl.origin,
+      );
+      return NextResponse.redirect(url, 301);
+    }
+    return response;
   }
   return null;
 };

@@ -10,6 +10,7 @@ interface PhoneTriggerContext {
   phoneContext: string;
   userId: string;
   callbackContext: PhoneCallbackPayload;
+  apiStartTime: number;
 }
 
 export function adaptPhoneTrigger(
@@ -22,6 +23,7 @@ export function adaptPhoneTrigger(
     appendSystemPrompt: buildPhonePrompt(ctx.phoneContext) || undefined,
     sessionId: ctx.sessionId,
     triggerSource: "phone",
+    apiStartTime: ctx.apiStartTime,
     callbacks: [
       {
         url: `${getApiUrl()}/api/internal/callbacks/phone`,

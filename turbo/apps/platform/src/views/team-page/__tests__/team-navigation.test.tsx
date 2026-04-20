@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
+  chatThreadsContract,
   zeroComposesMainContract,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
@@ -40,8 +40,8 @@ function createMockTeamWithSubagents() {
 function mockAPIs() {
   setMockTeam(createMockTeamWithSubagents());
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: [] });
     }),
     mockApi(zeroComposesMainContract.getByName, ({ respond }) => {
       return respond(200, {

@@ -12,13 +12,13 @@ import {
 } from "@vm0/ui";
 import {
   areProvidersCompatible,
+  getModelDisplayName,
   getModels,
   MODEL_PROVIDER_TYPES,
   type ModelProviderResponse,
   type ModelProviderType,
 } from "@vm0/core";
 import {
-  getModelDisplayName,
   getUILabel,
   getVm0ModelMultiplier,
 } from "./settings/provider-ui-config";

@@ -43,8 +43,9 @@ describe("zeroClient$ 401 redirect", () => {
       withoutRender: true,
     });
 
-    // Keep raw http.get for 403 since it's not in zeroOrgContract.get's defined responses
     server.use(
+      // mockApi cannot be used here: 403 is not declared in zeroOrgContract.get responses,
+      // so this raw handler is the only way to simulate a forbidden response for this test.
       http.get("*/api/zero/org", () => {
         return HttpResponse.json(
           { error: { message: "Forbidden", code: "FORBIDDEN" } },

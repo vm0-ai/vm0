@@ -68,12 +68,10 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "kimi-k2.5": {
     concreteType: "moonshot-api-key",
     vendor: "moonshot",
-    featureFlag: FeatureSwitchKey.Vm0KimiModel,
   },
   "MiniMax-M2.7": {
     concreteType: "minimax-api-key",
     vendor: "minimax",
-    featureFlag: FeatureSwitchKey.Vm0MinimaxModel,
   },
 };
 

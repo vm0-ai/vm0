@@ -12,6 +12,7 @@ import {
   MODEL_PROVIDER_TYPES,
   getAuthMethodsForType,
   getSecretsForAuthMethod,
+  getModelDisplayName,
   getModels,
   getVm0VisibleModels,
   getDefaultModel,
@@ -24,7 +25,6 @@ import {
   getUIDefaultModel,
   getUISecretField,
   getUIAuthMethodLabel,
-  getModelDisplayName,
 } from "./provider-ui-config.ts";
 import { ClaudeCodeSetupPrompt } from "./setup-prompt.tsx";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
@@ -295,8 +295,11 @@ function ModelSelector({
     return null;
   }
 
-  const models =
-    type === "vm0" ? getVm0VisibleModels(features) : (getModels(type) ?? []);
+  const models = (
+    type === "vm0" ? getVm0VisibleModels(features) : (getModels(type) ?? [])
+  ).filter((m) => {
+    return m !== "";
+  });
   const defaultModel = getUIDefaultModel(type) ?? getDefaultModel(type) ?? "";
   const canCustom = allowsCustomModel(type);
   const placeholder = getCustomModelPlaceholder(type) ?? "Enter model name";

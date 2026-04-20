@@ -215,10 +215,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Voice Chat feature and API endpoints",
     enabled: false,
   },
-  [FeatureSwitchKey.AudioIO]: {
+  [FeatureSwitchKey.AudioInput]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable audio input/output features in chat (TTS read-aloud, auto-read, voice input)",
+      "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
+    enabled: false,
+  },
+  [FeatureSwitchKey.AudioOutput]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
     enabled: false,
   },
   [FeatureSwitchKey.MissionControlSidebar]: {
@@ -287,29 +293,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the org custom connectors surface — the Custom tab on the Connectors settings page (admin CRUD, member Connect) and the per-agent Custom Connectors section on Agent Authorization. Backend routes remain open; this flag only gates entry points in the UI.",
-    enabled: false,
-    enabledOrgIdHashes: [],
-  },
-  [FeatureSwitchKey.Vm0KimiModel]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Expose Moonshot Kimi K2.5 as a selectable model under the VM0 managed provider",
     enabled: true,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabledOrgIdHashes: [],
   },
   [FeatureSwitchKey.Vm0GlmModel]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Expose Z.AI GLM-5.1 as a selectable model under the VM0 managed provider",
-    enabled: true,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.Vm0MinimaxModel]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Expose MiniMax M2.7 as a selectable model under the VM0 managed provider",
-    enabled: true,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: false,
   },
   [FeatureSwitchKey.SlackAgentSwitch]: {
     maintainer: "yuma@vm0.ai",

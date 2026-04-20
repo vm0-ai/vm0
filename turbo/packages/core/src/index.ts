@@ -1,5 +1,6 @@
 // Core package exports
 export * from "./variable-expander";
+export * from "./usage-source-bucket";
 export * from "./contracts";
 export * from "./org-reference";
 export * from "./version-id";
@@ -13,3 +14,4 @@ export * from "./instructions-frontmatter";
 export * from "./firewall-loader";
 export * from "./firewalls";
 export * from "./timezone";
+export * from "./model-display-name";

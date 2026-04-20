@@ -86,8 +86,10 @@ describe("fetchFreshPreparations$", () => {
 
   it("should throw on API error", async () => {
     setup();
-    // raw http override: 500 is not a declared contract status for this endpoint
     server.use(
+      // mockApi cannot be used here: 500 is not declared in
+      // zeroVoiceChatPrepareListContract.list responses, so this raw handler
+      // is the only way to simulate a server error.
       http.get("*/api/zero/voice-chat/prepare/list", () => {
         return new HttpResponse(null, { status: 500 });
       }),

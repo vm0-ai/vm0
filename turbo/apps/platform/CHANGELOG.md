@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.264.0](https://github.com/vm0-ai/vm0/compare/app-v0.263.0...app-v0.264.0) (2026-04-20)
+
+
+### Features
+
+* **platform:** update thread list indicator behavior ([#10155](https://github.com/vm0-ai/vm0/issues/10155)) ([9e5296f](https://github.com/vm0-ai/vm0/commit/9e5296faf44f94e0d20bfb32c2b6ec6b7ecc0ea2))
+
+
+### Bug Fixes
+
+* **platform:** filter empty model values in ModelSelector to avoid radix crash ([#10186](https://github.com/vm0-ai/vm0/issues/10186)) ([cba2efd](https://github.com/vm0-ai/vm0/commit/cba2efdef57ecf931b32c1040d95a157a15ecb75))
+* **platform:** refetch ably token on every auth callback invocation ([#10185](https://github.com/vm0-ai/vm0/issues/10185)) ([28d8b1f](https://github.com/vm0-ai/vm0/commit/28d8b1f1ebd161853bd5941ec8d166d45d3777b7))
+* **platform:** skip connector add when already enabled ([#10195](https://github.com/vm0-ai/vm0/issues/10195)) ([7df69e5](https://github.com/vm0-ai/vm0/commit/7df69e5184178f6e57a2e4b88ae20376a0e120b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.209.1
+
+## [0.263.0](https://github.com/vm0-ai/vm0/compare/app-v0.262.0...app-v0.263.0) (2026-04-20)
+
+
+### Features
+
+* **platform:** make mod+b shortcut toggle desktop sidebar globally ([#10187](https://github.com/vm0-ai/vm0/issues/10187)) ([dbcc700](https://github.com/vm0-ai/vm0/commit/dbcc70070b620433c79bdf057a2c00b7a14e43ec))
+* **usage:** add per-user usage insight view behind usageAnalytics switch ([#10191](https://github.com/vm0-ai/vm0/issues/10191)) ([b749762](https://github.com/vm0-ai/vm0/commit/b74976215cd7b46d051d2e58d444ed88681a964e))
+
+
+### Refactoring
+
+* **platform:** clean up residual http.* overrides missed by phase 3 umbrella ([#10178](https://github.com/vm0-ai/vm0/issues/10178)) ([04df37a](https://github.com/vm0-ai/vm0/commit/04df37aa881bf578ea21eda561c3489801349c03)), closes [#10177](https://github.com/vm0-ai/vm0/issues/10177)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.209.0
+
 ## [0.262.0](https://github.com/vm0-ai/vm0/compare/app-v0.261.0...app-v0.262.0) (2026-04-19)
 
 

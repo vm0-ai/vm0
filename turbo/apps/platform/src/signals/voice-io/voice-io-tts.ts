@@ -3,7 +3,7 @@ import { fetch$ } from "../fetch.ts";
 import { fetchTtsAudio } from "../../lib/voice-io/tts-fetch.ts";
 import { logger } from "../log.ts";
 
-const L = logger("AudioIO:TTS");
+const L = logger("AudioOutput:TTS");
 
 // ---------------------------------------------------------------------------
 // Internal state

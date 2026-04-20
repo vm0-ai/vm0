@@ -8,8 +8,8 @@ import {
   FeatureSwitchKey,
   chatThreadsContract,
   zeroAgentsByIdContract,
+  zeroTeamContract,
 } from "@vm0/core";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 
@@ -51,8 +51,8 @@ function mockAPIs({
   }[];
 } = {}) {
   server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
+    mockApi(zeroTeamContract.list, ({ respond }) => {
+      return respond(200, [
         {
           id: "c0000000-0000-4000-a000-000000000001",
           displayName: null,

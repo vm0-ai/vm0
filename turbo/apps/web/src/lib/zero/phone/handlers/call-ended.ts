@@ -35,7 +35,10 @@ interface CallEndedEvent {
  * 2. If found, create a follow-up run with the transcript
  *    so the agent can process the user's response
  */
-export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
+export async function handleCallEnded(
+  event: CallEndedEvent,
+  apiStartTime: number,
+): Promise<void> {
   const { callId, agentId: apAgentId, fromNumber, direction, channel } = event;
 
   if (channel !== "voice") {
@@ -44,7 +47,7 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
   }
 
   if (direction === "outbound") {
-    await handleOutboundCallEnded(event);
+    await handleOutboundCallEnded(event, apiStartTime);
     return;
   }
 
@@ -126,6 +129,7 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
     phoneContext,
     userId,
     callbackContext: callbackPayload,
+    apiStartTime,
   });
 
   log.info("Phone run dispatched", { callId, orgId: org.orgId });
@@ -135,7 +139,10 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
  * Handle an outbound call_ended event for fire-and-forget calls.
  * Consumes the pending record and creates a follow-up run with the transcript.
  */
-async function handleOutboundCallEnded(event: CallEndedEvent): Promise<void> {
+async function handleOutboundCallEnded(
+  event: CallEndedEvent,
+  apiStartTime: number,
+): Promise<void> {
   const { callId } = event;
 
   // Check if this outbound call was registered as fire-and-forget.
@@ -190,6 +197,7 @@ async function handleOutboundCallEnded(event: CallEndedEvent): Promise<void> {
     phoneContext,
     userId: pending.userId,
     callbackContext: callbackPayload,
+    apiStartTime,
   });
 
   log.info("Follow-up run dispatched for outbound call", {

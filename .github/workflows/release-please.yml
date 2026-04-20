@@ -390,9 +390,51 @@ jobs:
                   text: "*Web App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Promote web staged deployment to production (traffic switch)
+  # Fan-in barrier: all build-phase jobs must finish (success or skipped) before
+  # any promote-phase job starts. If any build fails, this job fails, which in
+  # turn blocks every promote via their `needs: builds-complete` edge.
+  builds-complete:
+    needs:
+      - release-please
+      - migrate-production
+      - build-web-production
+      - build-app-production
+      - build-runner-production
+      - build-e2b-template-production
+      - sbom
+      - resolve-image-cache
+    # Intentionally uses only !cancelled() (not !failure()) so this job runs even
+    # when upstream build jobs fail. The jq step below performs the actual failure
+    # check and exits 1, making the barrier explicit. Adding !failure() here would
+    # cause this job to be skipped on build failure, hiding the reason for the block.
+    if: ${{ !cancelled() && needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no build failed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$NEEDS_JSON" | jq .
+          # "skipped" is acceptable: some build jobs (e.g. build-e2b-template-production)
+          # are component-conditional and only run when their component has a release.
+          failures=$(echo "$NEEDS_JSON" | jq -r '
+            to_entries[]
+            | select(.value.result != "success" and .value.result != "skipped")
+            | .key
+          ')
+          if [ -n "$failures" ]; then
+            echo "::error::Build-phase jobs did not succeed: $failures"
+            exit 1
+          fi
+          echo "✅ All build-phase jobs succeeded or were skipped."
+
   promote-web-production:
-    needs: [release-please, migrate-production, build-web-production]
-    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
+    needs: [release-please, builds-complete, build-web-production]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.web_release_created == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -611,7 +653,7 @@ jobs:
 
   # Promote app staged deployment to production (traffic switch)
   promote-app-production:
-    needs: [release-please, migrate-production, build-app-production, promote-web-production]
+    needs: [release-please, builds-complete, build-app-production, promote-web-production]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.app_release_created == 'true'
@@ -965,8 +1007,10 @@ jobs:
           echo "Updated rollback dashboard issue #${ISSUE_NUMBER}"
 
   publish-npm:
-    needs: [release-please, migrate-production]
-    if: ${{ needs.release-please.outputs.cli_release_created == 'true' }}
+    needs: [release-please, builds-complete]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.cli_release_created == 'true'
     runs-on: ubuntu-latest
     environment: npm
     permissions:
@@ -1329,7 +1373,7 @@ jobs:
   # the schema and API it targets are live. Host-level prep
   # (provision-runner, provision-monitoring) already ran in build.
   promote-runner-production:
-    needs: [release-please, migrate-production, promote-web-production, resolve-image-cache, build-runner-production]
+    needs: [release-please, builds-complete, promote-web-production, resolve-image-cache, build-runner-production]
     if: >-
       !failure() && !cancelled() &&
       needs.release-please.outputs.runner_rs_release_created == 'true'

@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.209.1](https://github.com/vm0-ai/vm0/compare/core-v8.209.0...core-v8.209.1) (2026-04-20)
+
+
+### Refactoring
+
+* **models:** ungate kimi and minimax, disable glm flag ([#10201](https://github.com/vm0-ai/vm0/issues/10201)) ([291d8d8](https://github.com/vm0-ai/vm0/commit/291d8d8361dc7febd2188b22b2e535a7860ed003))
+
+## [8.209.0](https://github.com/vm0-ai/vm0/compare/core-v8.208.0...core-v8.209.0) (2026-04-20)
+
+
+### Features
+
+* enable OrgCustomConnectors feature flag by default ([#10157](https://github.com/vm0-ai/vm0/issues/10157)) ([95b7adc](https://github.com/vm0-ai/vm0/commit/95b7adce2f320c394948d00f0dee0f0e64b9db31))
+* **usage:** add per-user usage insight view behind usageAnalytics switch ([#10191](https://github.com/vm0-ai/vm0/issues/10191)) ([b749762](https://github.com/vm0-ai/vm0/commit/b74976215cd7b46d051d2e58d444ed88681a964e))
+
+
+### Bug Fixes
+
+* **connectors:** point docusign oauth at demo environment ([#10150](https://github.com/vm0-ai/vm0/issues/10150)) ([e606295](https://github.com/vm0-ai/vm0/commit/e606295c98068fc0b2d6178bfe4f5e2ed7f6ff00))
+
 ## [8.208.0](https://github.com/vm0-ai/vm0/compare/core-v8.207.0...core-v8.208.0) (2026-04-19)
 
 

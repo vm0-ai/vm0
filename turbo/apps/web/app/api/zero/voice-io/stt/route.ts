@@ -41,14 +41,14 @@ export async function POST(request: Request): Promise<Response> {
     authCtx.orgId,
     authCtx.userId,
   );
-  const enabled = isFeatureEnabled(FeatureSwitchKey.AudioIO, {
+  const enabled = isFeatureEnabled(FeatureSwitchKey.AudioInput, {
     orgId: authCtx.orgId,
     userId: authCtx.userId,
     overrides,
   });
   if (!enabled) {
     return NextResponse.json(
-      { error: { message: "Audio I/O is not enabled", code: "FORBIDDEN" } },
+      { error: { message: "Audio input is not enabled", code: "FORBIDDEN" } },
       { status: 403 },
     );
   }
@@ -121,9 +121,14 @@ export async function POST(request: Request): Promise<Response> {
   );
 
   if (!openaiResponse.ok) {
+    const errorBody = await openaiResponse.text();
     log.error("OpenAI STT API error", {
       status: openaiResponse.status,
       statusText: openaiResponse.statusText,
+      body: errorBody,
+      fileMime: file.type,
+      fileSize: file.size,
+      fileName: file.name,
     });
     return NextResponse.json(
       {

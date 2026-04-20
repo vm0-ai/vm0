@@ -17,6 +17,7 @@ interface RunAgentParams {
   threadContext: string;
   userId: string;
   callbackContext: TelegramCallbackPayload;
+  apiStartTime: number;
 }
 
 interface RunAgentResult {

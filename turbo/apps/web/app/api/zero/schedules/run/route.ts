@@ -12,6 +12,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const apiStartTime = Date.now();
   initServices();
 
   const authHeader = request.headers.get("authorization");
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const runId = await executeSchedule(schedule);
+  const runId = await executeSchedule(schedule, apiStartTime);
 
   return Response.json({ runId }, { status: 201 });
 }

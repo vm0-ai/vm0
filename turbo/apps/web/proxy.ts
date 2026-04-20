@@ -124,16 +124,27 @@ export default async function middleware(
     authHeader?.startsWith("Bearer " + PAT_TOKEN_PREFIX);
 
   // v1 API surface authenticates exclusively via Clerk-issued API Keys
-  // (verified server-side). Bypass Clerk middleware to keep its session
-  // detection away from opaque Bearer tokens that it cannot parse.
-  const isV1Api = request.nextUrl.pathname.startsWith("/api/v1/");
-
-  if (hasSelfSignedToken || isV1Api) {
-    // Self-signed tokens (sandbox, PAT) are used by API endpoints which don't need Clerk auth.
-    // Skip Clerk entirely and pass the request through with the original
-    // Authorization header intact. This avoids relying on x-middleware-request-*
-    // header restoration which doesn't work reliably in Next.js dev mode.
+  // (verified server-side). Bypass Clerk middleware entirely so its session
+  // detection never touches the opaque Bearer tokens it cannot parse.
+  if (request.nextUrl.pathname.startsWith("/api/v1/")) {
     return NextResponse.next();
+  }
+
+  // Self-signed tokens (sandbox, PAT) are only consumed by /api/* endpoints.
+  // Bypass Clerk for those paths so it doesn't try to parse the non-JWT token.
+  // For non-API paths (pages, bot/scanner traffic), strip the header before
+  // calling Clerk so auth() in server components resolves to an anonymous
+  // session instead of throwing "clerkMiddleware not detected".
+  if (hasSelfSignedToken) {
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.next();
+    }
+    const scrubbedHeaders = new Headers(request.headers);
+    scrubbedHeaders.delete("authorization");
+    const scrubbedRequest = new NextRequest(request, {
+      headers: scrubbedHeaders,
+    });
+    return clerk(scrubbedRequest, event);
   }
 
   return clerk(request, event);
