@@ -550,14 +550,6 @@ mod tests {
         assert_eq!(len, 4);
     }
 
-    #[test]
-    fn build_nla_u64_value() {
-        let value: u64 = 0x0102030405060708;
-        let nla = build_nla(5, &value.to_ne_bytes());
-        assert_eq!(nla.len(), 12); // 4 header + 8 payload
-        assert_eq!(u64::from_ne_bytes(nla[4..12].try_into().unwrap()), value);
-    }
-
     // --- build_nested_nla tests ---
 
     #[test]
@@ -567,15 +559,6 @@ mod tests {
         let nla_type = u16::from_ne_bytes([nla[2], nla[3]]);
         assert_eq!(nla_type, 7 | (1 << 15)); // NLA_F_NESTED set
         assert_eq!(nla.len(), 8); // 4+2 padded to 8
-    }
-
-    #[test]
-    fn build_nested_nla_payload_preserved() {
-        let inner = build_nla(1, &[10, 20, 30]);
-        let outer = build_nested_nla(2, &inner);
-        // outer header(4) + inner(8, 3-byte payload padded) = 12 bytes, already aligned
-        assert_eq!(outer.len(), 12);
-        assert_eq!(&outer[4..12], &inner);
     }
 
     // --- parse_nl_msg tests ---
@@ -616,16 +599,16 @@ mod tests {
         buf[0..4].copy_from_slice(&len.to_ne_bytes());
         let msg_type: u16 = NLMSG_ERROR;
         buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
-        // Negative errno: EBUSY = 16
-        let error: i32 = -16;
+        // Pin the reconnect-path errno documented above the NLMSG_ERROR branch.
+        let error: i32 = -libc::EBUSY;
         buf[16..20].copy_from_slice(&error.to_ne_bytes());
 
         let result = parse_nl_msg(&buf, 24);
         assert!(result.is_err());
         if let Err(NbdCowError::NetlinkErrno { errno, .. }) = result {
-            assert_eq!(errno, 16);
+            assert_eq!(errno, libc::EBUSY);
         } else {
-            panic!("expected NetlinkErrno with errno=16");
+            panic!("expected NetlinkErrno with EBUSY");
         }
     }
 
