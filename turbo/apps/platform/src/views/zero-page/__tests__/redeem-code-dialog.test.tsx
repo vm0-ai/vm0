@@ -77,7 +77,9 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    expect(screen.getByPlaceholderText("VM0-XXXX-XXXX")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX"),
+    ).toBeInTheDocument();
     expect(getButtonByText("Redeem")).toBeDisabled();
   });
 
@@ -95,7 +97,7 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await user.click(giftButton);
 
     const input = await waitFor(() => {
-      return screen.getByPlaceholderText("VM0-XXXX-XXXX");
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
     });
 
     await user.type(input, "   ");
@@ -128,7 +130,7 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await user.click(giftButton);
 
     const input = await waitFor(() => {
-      return screen.getByPlaceholderText("VM0-XXXX-XXXX");
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
     });
     await user.type(input, "VM0-ABCD-EFGH");
 
@@ -166,7 +168,7 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await user.click(giftButton);
 
     const input = await waitFor(() => {
-      return screen.getByPlaceholderText("VM0-XXXX-XXXX");
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
     });
     await user.type(input, "VM0-BADD-BADD");
     await user.click(getButtonByText("Redeem"));
@@ -194,7 +196,7 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await user.click(giftButton);
 
     const input = (await waitFor(() => {
-      return screen.getByPlaceholderText("VM0-XXXX-XXXX");
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
     })) as HTMLInputElement;
     await user.type(input, "CODE123");
     expect(input.value).toBe("CODE123");
@@ -208,7 +210,7 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await user.click(screen.getByLabelText("Redeem code"));
 
     const reopenedInput = (await waitFor(() => {
-      return screen.getByPlaceholderText("VM0-XXXX-XXXX");
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
     })) as HTMLInputElement;
     expect(reopenedInput.value).toBe("");
   });

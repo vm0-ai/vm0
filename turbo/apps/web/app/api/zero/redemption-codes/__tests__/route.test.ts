@@ -141,7 +141,9 @@ describe("POST /api/zero/redemption-codes (mint)", () => {
     for (const code of data.codes) {
       // Every minted code must carry the VM0- prefix — the redeem endpoint
       // rejects anything without it before touching the DB.
-      expect(code.code).toMatch(/^VM0-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+      expect(code.code).toMatch(
+        /^VM0-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/,
+      );
       expect(code.creditsPerCode).toBe(2500);
       expect(new Date(code.expiresAt).getTime()).toBeGreaterThan(Date.now());
     }

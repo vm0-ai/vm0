@@ -254,8 +254,8 @@ function RedeemCodeDialog() {
           <DialogTitle>Redeem code</DialogTitle>
           <DialogDescription>
             Enter the redemption code you received (format:{" "}
-            <code className="font-mono">VM0-XXXX-XXXX</code>) to add credits to
-            your workspace.
+            <code className="font-mono">VM0-XXXX-XXXX-XXXX-XXXX</code>) to add
+            credits to your workspace.
           </DialogDescription>
         </DialogHeader>
         <div className="py-2">
@@ -269,7 +269,7 @@ function RedeemCodeDialog() {
                 handleRedeem();
               }
             }}
-            placeholder="VM0-XXXX-XXXX"
+            placeholder="VM0-XXXX-XXXX-XXXX-XXXX"
             disabled={inFlight}
             autoFocus
             className="font-mono"

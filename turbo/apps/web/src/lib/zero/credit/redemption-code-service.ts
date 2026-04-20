@@ -33,13 +33,20 @@ const MAX_COLLISION_RETRIES = 5;
  */
 const REDEMPTION_CODE_PREFIX = "VM0";
 
+/**
+ * Random-suffix length in characters. `generateCode(N)` produces
+ * `N` random chars grouped by 4 and joined with "-", so 16 gives
+ * "XXXX-XXXX-XXXX-XXXX" (~78 bits of entropy over a 30-char alphabet).
+ */
+const REDEMPTION_CODE_RANDOM_LENGTH = 16;
+
 function formatCode(randomSuffix: string): string {
   return `${REDEMPTION_CODE_PREFIX}-${randomSuffix}`;
 }
 
 /** Short, log-safe representation of a code (keeps the prefix, masks the rest). */
 function redactCode(): string {
-  return `${REDEMPTION_CODE_PREFIX}-****-****`;
+  return `${REDEMPTION_CODE_PREFIX}-****-****-****-****`;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +129,7 @@ export async function mintRedemptionCodes(
       let attemptsUsed = 0;
       for (let attempt = 0; attempt < MAX_COLLISION_RETRIES; attempt++) {
         attemptsUsed = attempt + 1;
-        const code = formatCode(generateCode());
+        const code = formatCode(generateCode(REDEMPTION_CODE_RANDOM_LENGTH));
         const rows = await tx
           .insert(redemptionCodes)
           .values({
