@@ -17,6 +17,7 @@ import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
 import { zeroSkillCommand } from "./commands/zero/skill";
 import { zeroLogsCommand } from "./commands/zero/logs";
+import { zeroSearchCommand } from "./commands/zero/search";
 import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
 import { zeroComputerUseCommand } from "./commands/zero/computer-use";
 import { zeroPhoneCommand } from "./commands/zero/phone";
@@ -40,6 +41,7 @@ const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   schedule: "schedule:read",
   doctor: null,
   logs: "agent-run:read",
+  search: "chat-message:read",
   chat: "chat-message:write",
   slack: "slack:write",
   whoami: null,
@@ -63,6 +65,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroSlackCommand,
   zeroVariableCommand,
   zeroLogsCommand,
+  zeroSearchCommand,
   zeroWhoamiCommand,
   zeroSkillCommand,
   zeroDeveloperSupportCommand,
