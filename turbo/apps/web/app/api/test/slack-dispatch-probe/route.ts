@@ -50,6 +50,7 @@ export async function POST(request: Request) {
 
   initServices();
 
+  const apiStartTime = Date.now();
   try {
     if (body.channel_type === "im") {
       await handleOrgDirectMessage({
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
         userId: body.user_id,
         messageText: body.message_text,
         messageTs: body.message_ts,
+        apiStartTime,
       });
     } else {
       await handleOrgMention({
@@ -67,6 +69,7 @@ export async function POST(request: Request) {
         userId: body.user_id,
         messageText: body.message_text,
         messageTs: body.message_ts,
+        apiStartTime,
       });
     }
     return NextResponse.json({ ok: true });
