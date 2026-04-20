@@ -50,20 +50,14 @@ describe("internal connector logos - display (ORG-D-118)", () => {
     const connectorTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
     // Verify at least one connector type and its label appears in the document
     // (labels and type keys may appear multiple times due to icon display variants).
-    // Use a longer timeout: the route setup involves a dynamic import which can be
-    // slow under CI load, causing intermittent failures at the default 5000ms.
-    await waitFor(
-      () => {
-        expect(
-          screen.queryAllByText(CONNECTOR_TYPES[connectorTypes[0]].label)
-            .length,
-        ).toBeGreaterThan(0);
-        expect(screen.queryAllByText(connectorTypes[0]).length).toBeGreaterThan(
-          0,
-        );
-      },
-      { timeout: 15000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.queryAllByText(CONNECTOR_TYPES[connectorTypes[0]].label).length,
+      ).toBeGreaterThan(0);
+      expect(screen.queryAllByText(connectorTypes[0]).length).toBeGreaterThan(
+        0,
+      );
+    });
     // All connectors are rendered at once, so sync checks suffice after the first waitFor
     for (const type of connectorTypes) {
       expect(screen.queryAllByText(type).length).toBeGreaterThan(0);
@@ -75,14 +69,11 @@ describe("internal connector logos - display (ORG-D-119)", () => {
   it("heading displays the count of connector types", async () => {
     detachedSetupPage({ context, path: "/__internal-connector-logos" });
     const connectorTypes = Object.keys(CONNECTOR_TYPES);
-    await waitFor(
-      () => {
-        expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-          connectorTypes.length.toString(),
-        );
-      },
-      { timeout: 15000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+        connectorTypes.length.toString(),
+      );
+    });
   });
 });
 
@@ -91,16 +82,13 @@ describe("internal connector logos - interaction (ORG-I-121)", () => {
     const user = userEvent.setup();
     detachedSetupPage({ context, path: "/__internal-connector-logos" });
     // Default size button is "128" — clicking "16" should switch to a smaller size
-    await waitFor(
-      () => {
-        expect(
-          screen.getAllByRole("button").find((el) => {
-            return /128/.test(el.textContent ?? "");
-          }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 15000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return /128/.test(el.textContent ?? "");
+        }),
+      ).toBeInTheDocument();
+    });
     const btn16 = screen.getAllByRole("button").find((el) => {
       return /^16$/.test(el.textContent ?? "");
     });
