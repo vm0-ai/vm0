@@ -5,6 +5,7 @@ import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
 import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
@@ -47,6 +48,20 @@ function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
 
 function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
+}
+
+/**
+ * Look up the run's selected model ID for the footer attribution.
+ */
+async function resolveSelectedModel(
+  runId: string,
+): Promise<string | undefined> {
+  const [zeroRun] = await globalThis.services.db
+    .select({ selectedModel: zeroRuns.selectedModel })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  return zeroRun?.selectedModel ?? undefined;
 }
 
 /**
@@ -157,16 +172,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         SECRETS_ENCRYPTION_KEY,
       );
       const slackClient = createSlackClient(token);
-      try {
-        await setThreadStatus(
-          slackClient,
-          payload.channelId,
-          payload.threadTs,
-          "is thinking...",
-        );
-      } catch (err) {
-        log.debug("Failed to refresh thread status", { runId, error: err });
-      }
+      // Fire-and-forget: setStatus is a UI hint; failure must not abort the 200 response
+      // that acknowledges the progress notification to the dispatcher.
+      setThreadStatus(
+        slackClient,
+        payload.channelId,
+        payload.threadTs,
+        "is thinking...",
+      ).catch((err: unknown) => {
+        log.warn("Failed to set thinking thread status", { runId, error: err });
+      });
     }
 
     return NextResponse.json({ success: true });
@@ -204,6 +219,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .where(eq(agentRuns.id, runId))
     .limit(1);
 
+  const selectedModel = await resolveSelectedModel(runId);
+
   const overrides = await loadFeatureSwitchOverrides(
     runContext?.orgId,
     runContext?.userId,
@@ -234,7 +251,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl, triggeredBy),
+      blocks: buildAgentResponseMessage(
+        responseText,
+        logsUrl,
+        triggeredBy,
+        selectedModel,
+      ),
     });
   }
 
@@ -249,12 +271,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await saveRunSummary(runId, "slack", runContext.prompt, combinedOutput);
   }
 
-  // Clear assistant thinking status
-  try {
-    await setThreadStatus(client, payload.channelId, payload.threadTs, "");
-  } catch (err) {
-    log.debug("Failed to clear thread status", { runId, error: err });
-  }
+  // Fire-and-forget: clearing the status is a UI hint; failure must not affect
+  // the 200 response that acknowledges successful message delivery to the dispatcher.
+  setThreadStatus(client, payload.channelId, payload.threadTs, "").catch(
+    (err: unknown) => {
+      log.warn("Failed to clear thread status", { runId, error: err });
+    },
+  );
 
   log.debug("Slack org callback processed successfully", { runId });
   return NextResponse.json({ success: true });

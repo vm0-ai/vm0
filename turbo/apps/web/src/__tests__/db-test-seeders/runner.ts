@@ -30,6 +30,10 @@ export async function createTestRunnerJob(
   initServices();
   const orgId = await getOrgIdFromVersion(versionId);
 
+  // sessionId belongs to runnerJobQueue (varchar affinity key), not agentRuns
+  // (uuid FK-to-be). Keep it out of the agentRuns insert.
+  const { sessionId: _jobSessionId, ...agentRunOverrides } = runOverrides ?? {};
+
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
@@ -38,7 +42,7 @@ export async function createTestRunnerJob(
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
-      ...runOverrides,
+      ...agentRunOverrides,
     })
     .returning({ id: agentRuns.id });
 

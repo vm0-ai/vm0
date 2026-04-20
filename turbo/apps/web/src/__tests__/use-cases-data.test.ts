@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { CONNECTOR_TYPES } from "@vm0/core";
 import { USE_CASES, buildPromptHref } from "../../app/[locale]/use-cases/data";
+import { locales, type Locale } from "../../i18n";
+import deMessages from "../../messages/de.json";
+import enMessages from "../../messages/en.json";
+import esMessages from "../../messages/es.json";
+import jaMessages from "../../messages/ja.json";
 
 describe("use cases data", () => {
   it("every connector id maps to a real CONNECTOR_TYPES key", () => {
@@ -15,6 +20,101 @@ describe("use cases data", () => {
       }
     }
     expect(invalid).toEqual([]);
+  });
+});
+
+type MessagesShape = {
+  useCases: {
+    content: Record<string, unknown>;
+  };
+};
+
+const messagesByLocale: Record<Locale, MessagesShape> = {
+  en: enMessages,
+  de: deMessages,
+  es: esMessages,
+  ja: jaMessages,
+};
+
+// Guards the exact shape the use-case page and client call `.map`/`t()` on at
+// runtime. A slug added to USE_CASES without matching translations in every
+// locale crashed SSR in production (issue #10059, Sentry WEB-2F) — this test
+// turns that class of content drift into a red CI check.
+describe("use cases translation coverage", () => {
+  it("every (slug, locale) has the runtime-required translation shape", () => {
+    const problems: string[] = [];
+    const STRING_KEYS = ["title", "description", "scenario", "timeSaved"];
+    const HEADING_KEYS = [
+      "scenario",
+      "prompt",
+      "steps",
+      "nextActions",
+      "integrations",
+      "tips",
+    ];
+
+    for (const locale of locales) {
+      const content = messagesByLocale[locale].useCases.content;
+
+      for (const uc of USE_CASES) {
+        const prefix = `${locale} :: ${uc.slug}`;
+        const entry = content[uc.slug];
+
+        if (!entry || typeof entry !== "object") {
+          problems.push(`${prefix} :: missing content entry`);
+          continue;
+        }
+        const e = entry as Record<string, unknown>;
+
+        for (const key of STRING_KEYS) {
+          const value = e[key];
+          if (typeof value !== "string" || value.length === 0) {
+            problems.push(
+              `${prefix} :: ${key} is not a non-empty string (${typeof value})`,
+            );
+          }
+        }
+
+        const headings = e.headings;
+        if (!headings || typeof headings !== "object") {
+          problems.push(
+            `${prefix} :: headings is not an object (${typeof headings})`,
+          );
+        } else {
+          const h = headings as Record<string, unknown>;
+          for (const hKey of HEADING_KEYS) {
+            const value = h[hKey];
+            if (typeof value !== "string" || value.length === 0) {
+              problems.push(
+                `${prefix} :: headings.${hKey} is not a non-empty string (${typeof value})`,
+              );
+            }
+          }
+        }
+
+        const arrayChecks: Array<readonly [string, unknown, number]> = [
+          ["steps", e.steps, uc.stepCount],
+          ["nextActions", e.nextActions, uc.nextActionCount],
+          ["tips", e.tips, uc.tipCount],
+          ["promptVariants", e.promptVariants, uc.promptVariantCount],
+          ["integrations", e.integrations, uc.integrationCount],
+          ["slackPreview", e.slackPreview, uc.slackPreviewCount],
+        ];
+        for (const [key, value, expected] of arrayChecks) {
+          if (!Array.isArray(value)) {
+            problems.push(
+              `${prefix} :: ${key} is not an array (${typeof value})`,
+            );
+          } else if (value.length !== expected) {
+            problems.push(
+              `${prefix} :: ${key} length ${value.length} != expected ${expected}`,
+            );
+          }
+        }
+      }
+    }
+
+    expect(problems).toEqual([]);
   });
 });
 

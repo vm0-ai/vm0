@@ -30,7 +30,7 @@ export function ShortcutHelpDialog({
               { key: "shift+?", label: "Show shortcuts" },
               { key: "j", label: "Next task" },
               { key: "k", label: "Previous task" },
-              { key: "mod+b", label: "Toggle task list" },
+              { key: "mod+b", label: "Toggle sidebar" },
               { key: "c", label: "New chat" },
               { key: "y", label: "Archive task" },
             ]}

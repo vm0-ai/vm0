@@ -509,4 +509,123 @@ mod tests {
             }
         }
     }
+
+    // --- build_nla tests ---
+
+    #[test]
+    fn build_nla_basic() {
+        let payload: &[u8] = &[0xAA, 0xBB];
+        let nla = build_nla(42, payload);
+        // NLA header: len(2) + type(2) = 4 bytes
+        let len = u16::from_ne_bytes([nla[0], nla[1]]);
+        let nla_type = u16::from_ne_bytes([nla[2], nla[3]]);
+        assert_eq!(len, 6); // 4 header + 2 payload
+        assert_eq!(nla_type, 42);
+        assert_eq!(&nla[4..6], payload);
+    }
+
+    #[test]
+    fn build_nla_padding_to_4byte_alignment() {
+        // 3-byte payload → 7 bytes total → padded to 8
+        let payload: &[u8] = &[1, 2, 3];
+        let nla = build_nla(1, payload);
+        assert_eq!(nla.len(), 8);
+        assert_eq!(&nla[4..7], payload);
+        assert_eq!(nla[7], 0); // padding byte
+    }
+
+    #[test]
+    fn build_nla_no_padding_when_aligned() {
+        // 4-byte payload → 8 bytes total → already aligned
+        let payload: &[u8] = &[1, 2, 3, 4];
+        let nla = build_nla(1, payload);
+        assert_eq!(nla.len(), 8);
+    }
+
+    #[test]
+    fn build_nla_empty_payload() {
+        let nla = build_nla(99, &[]);
+        assert_eq!(nla.len(), 4); // header only, already aligned
+        let len = u16::from_ne_bytes([nla[0], nla[1]]);
+        assert_eq!(len, 4);
+    }
+
+    // --- build_nested_nla tests ---
+
+    #[test]
+    fn build_nested_nla_sets_nested_flag() {
+        let payload: &[u8] = &[0xDE, 0xAD];
+        let nla = build_nested_nla(7, payload);
+        let nla_type = u16::from_ne_bytes([nla[2], nla[3]]);
+        assert_eq!(nla_type, 7 | (1 << 15)); // NLA_F_NESTED set
+        assert_eq!(nla.len(), 8); // 4+2 padded to 8
+    }
+
+    // --- parse_nl_msg tests ---
+
+    #[test]
+    fn parse_nl_msg_ack() {
+        let mut buf = vec![0u8; 24];
+        // nlmsghdr: len(4) + type(2) + flags(2) + seq(4) + pid(4) = 16 bytes
+        let len = 24u32;
+        buf[0..4].copy_from_slice(&len.to_ne_bytes());
+        let msg_type: u16 = NLMSG_ERROR;
+        buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
+        // NLMSG_ERROR body: error code at offset 16 (4 bytes), error=0 means ACK
+        let error: i32 = 0;
+        buf[16..20].copy_from_slice(&error.to_ne_bytes());
+
+        let result = parse_nl_msg(&buf, 24);
+        assert!(matches!(result, Ok(NlMsg::Ack)));
+    }
+
+    #[test]
+    fn parse_nl_msg_reply() {
+        let mut buf = vec![0u8; 20];
+        let len = 20u32;
+        buf[0..4].copy_from_slice(&len.to_ne_bytes());
+        // Use a non-NLMSG_ERROR type
+        let msg_type: u16 = 0x0019; // arbitrary genetlink family id
+        buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
+
+        let result = parse_nl_msg(&buf, 20);
+        assert!(matches!(result, Ok(NlMsg::Reply)));
+    }
+
+    #[test]
+    fn parse_nl_msg_error_errno() {
+        let mut buf = vec![0u8; 24];
+        let len = 24u32;
+        buf[0..4].copy_from_slice(&len.to_ne_bytes());
+        let msg_type: u16 = NLMSG_ERROR;
+        buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
+        // Pin the reconnect-path errno documented above the NLMSG_ERROR branch.
+        let error: i32 = -libc::EBUSY;
+        buf[16..20].copy_from_slice(&error.to_ne_bytes());
+
+        let result = parse_nl_msg(&buf, 24);
+        assert!(result.is_err());
+        if let Err(NbdCowError::NetlinkErrno { errno, .. }) = result {
+            assert_eq!(errno, libc::EBUSY);
+        } else {
+            panic!("expected NetlinkErrno with EBUSY");
+        }
+    }
+
+    #[test]
+    fn parse_nl_msg_too_short() {
+        let buf = [0u8; 15];
+        let result = parse_nl_msg(&buf, 15);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_nl_msg_error_response_truncated() {
+        let mut buf = vec![0u8; 18]; // type present but error field incomplete
+        let msg_type: u16 = NLMSG_ERROR;
+        buf[4..6].copy_from_slice(&msg_type.to_ne_bytes());
+
+        let result = parse_nl_msg(&buf, 18);
+        assert!(result.is_err());
+    }
 }

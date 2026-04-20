@@ -2926,6 +2926,498 @@
           "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
           "Pair with Document Decisions to auto-log the brief to Notion — useful for recurring reviews where you want a historical snapshot per week."
         ]
+      },
+      "daily-email-triage": {
+        "title": "Triage your inbox in two minutes — not two hours",
+        "description": "Zero reads your Gmail, separates signal from noise, and sends a prioritized Slack summary with action items — so you start the day informed, not buried.",
+        "timeSaved": "~20 min saved per day",
+        "headings": {
+          "scenario": "Why email overload kills your morning momentum",
+          "prompt": "How to ask Zero to triage your inbox",
+          "steps": "How Zero turns 200 emails into a 2-minute read",
+          "nextActions": "Turn your inbox summary into action",
+          "integrations": "Required integrations: Gmail and Slack",
+          "tips": "Best practices for automated email triage"
+        },
+        "scenario": "Monday morning, 8:59 AM. You open Gmail to 200+ unread messages. Most are noise — GitHub notifications, automated alerts, marketing blasts you'll never read. Buried in there: a security alert about exposed credentials in your repo, a failed payment notice from your cloud provider, and a client request that needs a response today. You could spend 30 minutes skimming subject lines, or you could ask Zero to sort the urgent from the ignorable and send you a clean summary in Slack before your first coffee cools down.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero check my Gmail for emails from the past 24 hours. Flag anything urgent — security alerts, billing issues, client messages. Send me a Slack DM with action items at the top and a summary table of everything else."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero triage my inbox — what needs my attention today?"
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every weekday at 7am, check my Gmail for new emails from the past 24 hours. Flag security alerts, billing issues, and client messages. DM me the summary in Slack."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero triage my inbox"
+          },
+          {
+            "name": "Zero",
+            "text": "Here's your inbox triage for today:\n\n🔴 **ACTION REQUIRED**\n• **GitHub Security Alert** — Possible passwords detected in `vm0-ai/vm0`. 2 notifications. Anyone with read access can view exposed credentials. Review and rotate immediately.\n• **Cloud Billing** — Payment failed for team plan (renewal due Apr 7). Update your payment method.\n\n⚠️ **May Need Attention**\n• Zoom receipt (account ending 3482) — for your records\n• npm published @vm0/cli@9.123.0 — confirmation\n\n📬 **Skimmable** (~180 automated GitHub notifications, 1 Medium digest)\n\nTotal unread: ~201. Only 2 items need your input."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero connects to Gmail and pulls recent emails",
+            "description": "Zero authenticates with your Gmail account and fetches emails from the time window you specify — typically the past 24 hours. It reads headers, sender info, and snippets to understand what each message is about."
+          },
+          {
+            "title": "Zero categorizes and prioritizes every message",
+            "description": "Zero sorts emails into priority tiers: action-required items like security alerts and client requests rise to the top, informational updates get grouped into a skimmable table, and pure noise (marketing blasts, auto-notifications with no action) gets summarized in one line."
+          },
+          {
+            "title": "Zero sends a structured Slack summary with action items",
+            "description": "The triage report lands in your Slack DM or a team channel — action items first, attention-needed items next, and a one-line summary of the rest. Each item includes the sender, subject, and why it matters. No more scrolling through 200 emails to find the three that matter."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Draft replies to flagged emails",
+            "description": "Ask Zero to draft responses to the urgent items it found.",
+            "examplePrompt": "@Zero draft a reply to the GitHub security alert email asking for the specific file paths affected"
+          },
+          {
+            "title": "Create issues for action items",
+            "description": "Turn email action items into tracked GitHub or Linear issues.",
+            "examplePrompt": "@Zero create a GitHub issue for the security alert about exposed passwords — label it security and assign it to me"
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule this triage to run every morning before you start work.",
+            "examplePrompt": "@Zero every weekday at 7am, triage my Gmail and DM me the summary in Slack"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail — read access to scan incoming emails, headers, and snippets. Zero only reads; it never modifies or deletes your messages."
+          },
+          {
+            "description": "Slack — used to deliver the triage summary as a DM or channel post. Only needed if you want the report in Slack instead of inline."
+          }
+        ],
+        "tips": [
+          "Narrow the scope by asking Zero to focus on specific senders, labels, or folders — \"only triage emails from clients and billing\" cuts noise further.",
+          "Pair with the Slack triage use case for full communication coverage — email + Slack triage covers your two busiest inboxes.",
+          "Add context about what counts as urgent for your team. Zero adapts — tell it once that \"GitHub security alerts are always P0\" and it remembers."
+        ]
+      },
+      "auto-test-coverage": {
+        "title": "Auto-write tests for every code change — overnight",
+        "description": "Zero scans merged PRs for untested files, writes tests following your conventions, and opens a PR — so you start each day with better coverage.",
+        "timeSaved": "~45 min saved per day",
+        "headings": {
+          "scenario": "Why test coverage always slips — and how to fix it",
+          "prompt": "How to ask Zero to auto-cover your code",
+          "steps": "How Zero writes tests while you sleep",
+          "nextActions": "Keep your coverage climbing",
+          "integrations": "Required integrations: GitHub and Slack",
+          "tips": "Best practices for automated test generation"
+        },
+        "scenario": "It's Tuesday morning. CI is red — coverage dropped from 82% to 79% overnight because someone merged a new feature with zero tests. Again. You could stop what you're doing, read their code, and write tests yourself. Or you could have Zero do it every morning at 4 AM, so when you sit down, there's already a test PR waiting for review.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero check all merged PRs from the past 24 hours in vm0-ai/vm0. For each changed file that has no corresponding test file, write integration tests following the project's testing patterns. Open a single PR with all new tests."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero write tests for yesterday's merged changes"
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every day at 4am, scan the repo for views changed in the past 24 hours that lack test coverage. Write tests and open a PR."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero write tests for yesterday's merged changes"
+          },
+          {
+            "name": "Zero",
+            "text": "Scanned 6 merged PRs from the past 24 hours. Found 3 files without test coverage:\n\n| File | PR | Tests Added |\n|------|-----|------------|\n| `sidebar-threads.tsx` | #10149 | 4 test cases |\n| `job-custom-connectors.tsx` | #10148 | 6 test cases |\n| `model-picker.tsx` | #10144 | 3 test cases |\n\nOpened PR #10153 with all 13 new tests. CI is running — I'll update when it passes."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scans merged PRs for uncovered files",
+            "description": "Zero queries GitHub for recently merged pull requests, lists every changed file, and cross-references against your test directory. Files that have no corresponding test file get flagged for coverage."
+          },
+          {
+            "title": "Zero writes tests following your project's conventions",
+            "description": "Zero reads the source file, understands the component or function's interface, checks your existing test patterns (framework, imports, helpers, assertion style), and writes tests that blend in — same structure, same patterns, same quality bar."
+          },
+          {
+            "title": "Zero opens a PR and posts a summary",
+            "description": "All generated tests land in a single pull request with a clear description of what's covered. Zero posts a summary table to Slack showing which files got tests and how many. CI runs automatically, and Zero follows up with the result."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Review and merge the test PR",
+            "description": "Check the generated tests and merge if they look good.",
+            "examplePrompt": "@Zero what's the CI status on the test PR #10153?"
+          },
+          {
+            "title": "Exclude generated or config files",
+            "description": "Tell Zero which files to skip so it focuses on meaningful coverage.",
+            "examplePrompt": "@Zero when auto-covering tests, skip any files in generated/, *.d.ts, and config files"
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule daily test generation so coverage never slips again.",
+            "examplePrompt": "@Zero every day at 4am, scan for merged changes without tests, write them, and open a PR"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub — read access to scan merged PRs and changed files. Write access to open pull requests with generated tests."
+          },
+          {
+            "description": "Slack — posts a summary of generated tests and CI results to your team channel."
+          }
+        ],
+        "tips": [
+          "Be explicit about your test framework and patterns — \"use vitest with @testing-library/react, follow the arrange-act-assert pattern\" produces much better output.",
+          "Run it overnight so the test PR is ready for review when the team starts work. 4 AM is a good default — it runs after any late-night merges.",
+          "Chain with tech-debt-scan for comprehensive code health: tech debt catches anti-patterns, auto-test-coverage catches gaps, together they keep your codebase clean."
+        ]
+      },
+      "daily-user-analysis": {
+        "title": "Daily product analytics — zero manual queries",
+        "description": "Zero queries your production database on a schedule, analyzes user behavior, and posts a structured report to Slack — so you spot trends before they become problems.",
+        "timeSaved": "~30 min saved per day",
+        "headings": {
+          "scenario": "Why you're always the last to know when something changes",
+          "prompt": "How to ask Zero to run daily user analysis",
+          "steps": "How Zero turns raw queries into a morning report",
+          "nextActions": "Turn data into product decisions",
+          "integrations": "Required integrations: vm0 (production DB access) and Slack",
+          "tips": "Best practices for automated product analytics"
+        },
+        "scenario": "Wednesday, 10 AM. A power user just churned and you had no idea. Their usage dropped 80% over the past week, but nobody was watching the right metric. You could write a SQL query, but you'd need to remember the schema, join six tables, export the result, and format a report. Or you could let Zero run the same analysis every morning and flag the anomaly before the user even leaves.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero connect to the production database and analyze external user behavior over the past 24 hours. Report on: total runs by org, top users by activity, trigger source breakdown (web vs CLI vs schedule), any anomalies or spikes. Post the summary to #user-insights."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero run the daily user analysis report"
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every day at 7am, run the external user behavior analysis for the past 24 hours. Post the structured report to Slack #user-insights."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero run the daily user analysis"
+          },
+          {
+            "name": "Zero",
+            "text": "**External User Analysis — Past 24 Hours**\n\n📊 **Overview**: 22 runs across 9 external orgs (95.5% completion rate)\n\n🏆 **Top Orgs**:\n| Org Hash | Runs | Triggers | Connectors Used |\n|----------|------|----------|----------------|\n| `3ce467...` | 9 | web-only | Slack, GitHub |\n| `8767e...` | 6 | web + schedule | 6 connectors |\n| `f2a41...` | 3 | schedule | Slack |\n\n🚩 **Worth Watching**:\n• `8767e...` — Chinese-speaking power user, 6 connectors active, likely evaluating for team rollout\n• `3ce467...` — 9 runs in 24h, all via web UI — new user exploring capabilities\n\n✅ No anomalies. No failures flagged."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero connects to your production database",
+            "description": "Zero securely connects to your read-only database using your existing credential management. It never writes to production — only runs SELECT queries against analytics tables."
+          },
+          {
+            "title": "Zero runs analysis queries and detects patterns",
+            "description": "Zero executes a series of queries: total runs by organization, trigger source breakdown (web, CLI, scheduled), connector usage patterns, and anomaly detection — comparing current metrics against trailing averages to flag anything unusual."
+          },
+          {
+            "title": "Zero posts a structured report to Slack",
+            "description": "The analysis lands in your analytics channel with clear tables, ranked lists, and flagged items. Power users, churn risks, and adoption patterns are called out explicitly — not buried in a spreadsheet you'll never open."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Dig deeper into a flagged user",
+            "description": "Follow up on a user that Zero flagged as worth watching.",
+            "examplePrompt": "@Zero pull the full run history for org 8767e... — what prompts are they running?"
+          },
+          {
+            "title": "Export the data for a weekly review",
+            "description": "Build on the daily analysis for a weekly or monthly rollup.",
+            "examplePrompt": "@Zero create a weekly summary from the past 7 days of user analysis reports and post it to #product"
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule this analysis to run every morning before standup.",
+            "examplePrompt": "@Zero every day at 7am, run the external user analysis and post to #user-insights"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "vm0 — provides secure read-only access to your production database. Zero connects via your existing credential vault, runs SELECT queries only, and never exposes raw user data."
+          },
+          {
+            "description": "Slack — delivers the structured analysis report to your team channel. Required if you want automated delivery instead of reading results inline."
+          }
+        ],
+        "tips": [
+          "Define your key metrics upfront — tell Zero which numbers matter (DAU, runs per org, connector adoption) so it knows what to flag versus what to summarize.",
+          "Always de-identify user data in reports. Zero can hash org IDs and redact emails by default — just tell it to.",
+          "Schedule this alongside your morning brief for a complete picture: system health from the brief, user health from the analysis."
+        ]
+      },
+      "evening-brief": {
+        "title": "Ship a concise end-of-day summary — automatically",
+        "description": "Zero collects today's Slack conversations, merged PRs, and closed issues, then posts a digest to your team channel — so everyone knows what shipped without scrolling through 50 messages.",
+        "timeSaved": "~15 min saved per day",
+        "headings": {
+          "scenario": "Why \"what did we ship today?\" is the hardest question at 6 PM",
+          "prompt": "How to ask Zero to write the evening brief",
+          "steps": "How Zero compiles your day into a digest",
+          "nextActions": "Build on your evening brief",
+          "integrations": "Required integrations: Slack and GitHub",
+          "tips": "Best practices for automated daily digests"
+        },
+        "scenario": "It's 6 PM on Friday. The CEO asks in the all-hands channel: \"What did we ship this week?\" Someone starts scrolling through Slack, someone else opens GitHub, and 15 minutes later you have a rough list that's missing three PRs and misattributes two features. Zero does this automatically — every evening it reads the day's activity, categorizes it by person and project, and posts a clean summary that answers the question before anyone asks.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero summarize today's work. Check #all-vm0 for key conversations, list all merged PRs by author, and highlight any closed issues. Post the summary back to #all-vm0."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero evening brief"
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every weekday at 6pm, compile the evening brief: today's Slack conversations, merged PRs, closed issues. Post to #all-vm0."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero evening brief"
+          },
+          {
+            "name": "Zero",
+            "text": "**Evening Brief — Apr 19**\n\n🚀 **Shipped Today (5 PRs merged)**\n\n| Author | PR | Summary |\n|--------|-----|----------|\n| Ethan | #10149 | Per-run model picker next to send button |\n| Qiqi | #10148 | Batch connectors (15 new integrations) |\n| Qiqi | #10150 | DocuSign OAuth demo environment fix |\n| David | #10153 | Auto-test coverage for changed views |\n| Lancy | #10147 | Voice chat echo cancellation fix |\n\n📋 **Closed Issues**: #9682, #9515, #8030\n\n💬 **Key Discussions**: Pricing tier adjustments, merge queue health, Exa connector approval"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scans today's Slack conversations",
+            "description": "Zero reads messages from your team channels — filtering out bot noise and automated messages — to surface key discussions, decisions, and action items from the day."
+          },
+          {
+            "title": "Zero pulls merged PRs and closed issues from GitHub",
+            "description": "Zero queries GitHub for all merged pull requests and closed issues from today, groups them by author, and extracts a one-line summary of each change from the PR title and description."
+          },
+          {
+            "title": "Zero posts a structured digest to your team channel",
+            "description": "The evening brief lands in your all-hands channel: merged PRs in a table sorted by author, closed issues, and a summary of key Slack discussions. Everyone sees what shipped — without scrolling through 50 messages or opening GitHub."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Add product metrics to the brief",
+            "description": "Enrich the evening brief with today's traffic, signups, or revenue data.",
+            "examplePrompt": "@Zero include Plausible traffic data and new signups in tonight's evening brief"
+          },
+          {
+            "title": "Forward to stakeholders",
+            "description": "Send the brief to executives or investors who want a weekly rollup.",
+            "examplePrompt": "@Zero every Friday, compile a weekly version of the evening brief and email it to our investors"
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule the evening brief for your team's end-of-day.",
+            "examplePrompt": "@Zero every weekday at 6pm, compile the evening brief and post to #all-vm0"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack — read access to team channels for conversation history. Write access to post the evening brief digest."
+          },
+          {
+            "description": "GitHub — read access to query merged PRs and closed issues for the day."
+          }
+        ],
+        "tips": [
+          "Customize which channels Zero monitors — most teams only want 2-3 channels in the brief, not every single one.",
+          "Pair with the morning brief for full daily coverage: morning brief tells you what to watch, evening brief tells you what actually happened.",
+          "Adjust the schedule to your team's rhythm — 6 PM works for most teams, but distribute it later if you have members in later time zones."
+        ]
+      },
+      "cost-optimizer": {
+        "title": "Cut AI spending without cutting quality",
+        "description": "Zero audits your agent runs, classifies tasks by complexity, and recommends model switches that save money — so you stop using Opus for tasks that Sonnet handles just fine.",
+        "timeSaved": "~20 min saved per week",
+        "headings": {
+          "scenario": "Why your AI bill keeps creeping up",
+          "prompt": "How to ask Zero to optimize your AI costs",
+          "steps": "How Zero identifies savings opportunities",
+          "nextActions": "Implement cost optimizations safely",
+          "integrations": "Required integrations: vm0 and Slack",
+          "tips": "Best practices for AI cost optimization"
+        },
+        "scenario": "End of month. The AI infrastructure bill lands: $17K this month, up from $12K last month. You dig in and find that the daily tech debt scan — which runs a few grep scripts and files GitHub issues — is using Claude Opus. The merge queue monitor, which checks if CI is green and posts to Slack, is also on Opus. Neither task needs anything close to Opus. You could audit every schedule manually, or you could ask Zero to classify each task by complexity and recommend which ones to downgrade.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero audit all agent schedules and runs. Classify each task as low, medium, or high complexity based on the actual work done. Recommend which tasks can safely switch to a cheaper model without quality loss. Post the report to Slack."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero which of my agent tasks are over-provisioned on model tier?"
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday at 9am, audit all agent runs from the past week. Classify by complexity, identify over-provisioned tasks, and post cost optimization recommendations to #dev."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero which tasks are over-provisioned?"
+          },
+          {
+            "name": "Zero",
+            "text": "**Cost Optimization Audit — This Week**\n\n🟢 **Already optimal** (keep as-is):\n• morning-brief (Sonnet) — multi-source aggregation, justified\n• pr-review-merge (Sonnet) — code review when triggered, justified\n\n🟡 **Over-provisioned** (safe to downgrade):\n| Task | Current Model | Recommended | Est. Savings |\n|------|--------------|-------------|-------------|\n| tech-debt-scan | Opus | GLM-5.1 | ~5-10x |\n| merge-queue-monitor | Sonnet | GLM-5.1 | ~3x |\n| standup-summary | Sonnet | GPT-4o mini | ~4x |\n| daily-email-check | Sonnet | GPT-4o mini | ~4x |\n\n🔴 **Needs human review**:\n• auto-test-coverage — writes real code, borderline. Try Sonnet for a week and compare pass rates.\n\n**Estimated monthly savings: $2,400-3,800**"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero audits all agent runs and token usage",
+            "description": "Zero queries your agent run logs, examines what each task actually does — how many turns, what tools it calls, how complex the reasoning is — and calculates the current cost per task."
+          },
+          {
+            "title": "Zero classifies tasks by complexity tier",
+            "description": "Zero sorts tasks into three buckets: low complexity (read-and-summarize, grep-and-post), medium complexity (multi-source aggregation, structured analysis), and high complexity (code generation, open-ended reasoning). Each tier gets a recommended model."
+          },
+          {
+            "title": "Zero posts actionable recommendations with savings estimates",
+            "description": "The cost audit lands in Slack with a clear table: current model, recommended model, and estimated savings per task. Zero flags which switches are safe to make immediately and which need a trial period to verify quality."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Switch a low-risk task to a cheaper model",
+            "description": "Start with the safest recommendation and verify quality holds.",
+            "examplePrompt": "@Zero switch the merge-queue-monitor schedule to use GLM-5.1 instead of Sonnet"
+          },
+          {
+            "title": "Run a comparison test",
+            "description": "Run the same task on both models and compare outputs before committing.",
+            "examplePrompt": "@Zero run the tech-debt-scan prompt on both Opus and GLM-5.1, then compare the results side by side"
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule weekly cost audits so spending never creeps up unnoticed.",
+            "examplePrompt": "@Zero every Monday at 9am, audit agent costs and post optimization recommendations to #dev"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "vm0 — provides access to agent run logs, schedule configurations, and model billing data. Zero uses this to analyze what each task does and what it costs."
+          },
+          {
+            "description": "Slack — delivers the cost optimization report to your engineering or dev channel."
+          }
+        ],
+        "tips": [
+          "Start with low-risk tasks — monitoring, notifications, and daily summaries are safe to downgrade first. Code generation and open-ended reasoning should be last.",
+          "Track quality metrics before and after each switch. If error-triage-daily starts missing issues after a model change, revert immediately.",
+          "Review cost reports weekly, not monthly — small leaks compound fast, and a weekly cadence catches problems before the bill arrives."
+        ]
+      },
+      "merge-queue-monitor": {
+        "title": "Catch stuck PRs before they block your release",
+        "description": "Zero monitors your GitHub merge queue, diagnoses why PRs are stuck, and alerts the right people — so your release pipeline never stalls silently.",
+        "timeSaved": "~10 min saved per day",
+        "headings": {
+          "scenario": "Why your release pipeline stalls and nobody notices",
+          "prompt": "How to ask Zero to watch your merge queue",
+          "steps": "How Zero detects and diagnoses stuck PRs",
+          "nextActions": "Keep your pipeline flowing",
+          "integrations": "Required integrations: GitHub and Slack",
+          "tips": "Best practices for merge queue monitoring"
+        },
+        "scenario": "PR #9842 has been in the merge queue for two hours. CI failed on a flaky test that's unrelated to the PR's changes. Three more PRs are stacked behind it. Nobody noticed because everyone is heads-down on their own work, and GitHub doesn't send a notification when a PR gets stuck in the queue. The release is blocked. By the time someone discovers it at 4 PM, half the day's deploy window is gone. Zero catches this in minutes.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero monitor the vm0-ai/vm0 merge queue. Check for PRs that have been in the queue for more than 30 minutes with failing CI. Diagnose the failure cause and alert the PR author in Slack."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero is anything stuck in the merge queue?"
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every day at noon, check the merge queue for stuck PRs. If any PR has been queued for over 30 minutes with CI failures, diagnose and post an alert to #dev."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero is anything stuck in the merge queue?"
+          },
+          {
+            "name": "Zero",
+            "text": "**Merge Queue Status — vm0-ai/vm0**\n\n⚠️ **1 PR stuck** (queued 2h 14m):\n\n**PR #9842** — feat: add chat thread read indicator\n• Status: CI failing (1 of 14 checks)\n• Failed check: `cli-e2e-03-runner` — timeout after 8 minutes\n• Root cause: Known flaky test (unrelated to PR changes)\n• Blocking: 3 PRs behind it in the queue\n• Author: @Qiqi\n\n**Recommended action**: Re-run the failed check. If it passes, PR should merge within minutes.\n\n3 other PRs in queue — all healthy, waiting their turn."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero checks the merge queue on your schedule",
+            "description": "Zero queries GitHub's merge queue API and examines each queued PR — how long it's been waiting, whether CI is passing, and whether it's blocking other PRs behind it."
+          },
+          {
+            "title": "Zero diagnoses why stuck PRs are stuck",
+            "description": "For any PR that's been queued too long or has failing checks, Zero reads the CI logs, identifies the specific failing test or check, and determines whether it's related to the PR's changes or a known infrastructure issue."
+          },
+          {
+            "title": "Zero alerts the right people with actionable context",
+            "description": "Instead of a generic \"PR is stuck\" notification, Zero posts a detailed diagnosis to Slack: which check failed, why it failed, who authored the PR, and what action will unblock it. The right person sees it and acts — no detective work required."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Re-run a failed CI check",
+            "description": "Ask Zero to re-run the specific failing check to clear a flaky test.",
+            "examplePrompt": "@Zero re-run the cli-e2e-03-runner check on PR #9842"
+          },
+          {
+            "title": "Whitelist known flaky tests",
+            "description": "Tell Zero which tests are known to be flaky so it doesn't over-alert.",
+            "examplePrompt": "@Zero note that cli-e2e-03-runner is a known flaky test — don't alert on it unless it fails 3 times in a row"
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule merge queue checks to match your team's PR velocity.",
+            "examplePrompt": "@Zero every day at noon and 4pm, check the merge queue and alert on stuck PRs in #dev"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub — read access to the merge queue, CI check status, and PR details. Optional write access to re-run failed checks."
+          },
+          {
+            "description": "Slack — posts merge queue alerts with diagnosis details to your engineering channel."
+          }
+        ],
+        "tips": [
+          "Set the check frequency to match your team's PR velocity — high-velocity teams need hourly checks, most teams are fine with twice daily.",
+          "Maintain a list of known flaky tests and tell Zero to exclude them from alerts. This prevents alert fatigue and keeps the signal strong.",
+          "Chain with auto-merge-releases for a full release pipeline: merge-queue-monitor catches stuck PRs, auto-merge-releases ships the release once the queue clears."
+        ]
       }
     },
     "filter": {

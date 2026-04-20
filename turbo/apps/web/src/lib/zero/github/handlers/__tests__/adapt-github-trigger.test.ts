@@ -10,6 +10,7 @@ function buildContext(
     sessionId: "session-xyz",
     prompt: "Please investigate this issue",
     appendSystemPrompt: "# GitHub Issue Context\n\n...",
+    apiStartTime: 1000,
     callbackPayload: {
       installationId: "install-row-1",
       repo: "vm0-ai/vm0",
@@ -37,6 +38,12 @@ describe("adaptGithubTrigger", () => {
     expect(result.sessionId).toBe(ctx.sessionId);
     expect(result.prompt).toBe(ctx.prompt);
     expect(result.appendSystemPrompt).toBe(ctx.appendSystemPrompt);
+  });
+
+  it("forwards apiStartTime", () => {
+    const ctx = buildContext();
+    const result = adaptGithubTrigger(ctx);
+    expect(result.apiStartTime).toBe(ctx.apiStartTime);
   });
 
   it("passes through undefined sessionId for a new session", () => {

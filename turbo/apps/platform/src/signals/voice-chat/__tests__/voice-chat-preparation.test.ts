@@ -151,6 +151,9 @@ describe("voice-chat-preparation signals", () => {
   it("should set status to failed when endpoint returns error", async () => {
     await setup();
     server.use(
+      // mockApi cannot be used here: 500 is not declared in
+      // zeroVoiceChatPrepareTriggerContract.trigger responses, so this raw
+      // handler is the only way to simulate a server error.
       http.post("*/api/zero/voice-chat/prepare", () => {
         return new HttpResponse(null, { status: 500 });
       }),

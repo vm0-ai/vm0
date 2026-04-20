@@ -9,10 +9,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { zeroSlackConnectContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import {
   setMockSlackConnectData,
   resetMockSlackConnect,
@@ -126,17 +127,14 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
     let submittedBody: unknown;
 
     server.use(
-      http.post(
-        "*/api/zero/integrations/slack/connect",
-        async ({ request }) => {
-          submittedBody = await request.json();
-          return HttpResponse.json({
-            success: true,
-            connectionId: "conn-001",
-            role: "member",
-          });
-        },
-      ),
+      mockApi(zeroSlackConnectContract.connect, ({ body, respond }) => {
+        submittedBody = body;
+        return respond(200, {
+          success: true,
+          connectionId: "conn-001",
+          role: "member",
+        });
+      }),
     );
 
     detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });

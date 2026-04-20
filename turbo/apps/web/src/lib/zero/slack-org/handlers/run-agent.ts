@@ -23,6 +23,7 @@ interface RunAgentParams {
   channelType?: "channel" | "dm" | "group_dm";
   threadTs?: string;
   callbackContext: SlackOrgCallbackPayload;
+  apiStartTime: number;
 }
 
 interface RunAgentResult {
@@ -65,6 +66,7 @@ export async function runAgentForSlackOrg(
         channelType: params.channelType,
         threadTs: params.threadTs,
         callbackContext: params.callbackContext,
+        apiStartTime: params.apiStartTime,
       }),
     );
 

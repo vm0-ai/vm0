@@ -50,6 +50,9 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("AGENTPHONE_API_KEY", "test-agentphone-api-key");
     // Realtime pub/sub (Ably) — required env; tests use a mocked Ably client
     vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
+    // Stripe billing — `vi.mock("stripe", ...)` replaces the constructor, but
+    // init-services.ts throws before reaching it if STRIPE_SECRET_KEY is unset.
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake_for_testing");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     // App UI URL

@@ -3,6 +3,7 @@ import { initServices } from "../../lib/init-services";
 import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { zeroAgents } from "../../db/schema/zero-agent";
+import { uniqueId } from "../test-helpers";
 
 // ============================================================================
 // Schedule Seeders
@@ -77,6 +78,36 @@ export async function setScheduleConsecutiveFailures(
         eq(zeroAgentSchedules.name, name),
       ),
     );
+}
+
+/**
+ * Seed a schedule record directly in the database.
+ *
+ * @why-db-direct Creates schedules directly for bulk testing (e.g. top-100
+ * truncation tests). The API creates one schedule at a time and would be
+ * impractical for seeding large numbers of schedules.
+ *
+ * @returns The schedule ID
+ */
+export async function seedTestSchedule(params: {
+  agentId: string;
+  userId: string;
+  orgId: string;
+  name?: string;
+}): Promise<string> {
+  initServices();
+  const [sched] = await globalThis.services.db
+    .insert(zeroAgentSchedules)
+    .values({
+      agentId: params.agentId,
+      userId: params.userId,
+      orgId: params.orgId,
+      name: params.name ?? uniqueId("sched"),
+      cronExpression: "0 0 * * *",
+      prompt: "test",
+    })
+    .returning({ id: zeroAgentSchedules.id });
+  return sched!.id;
 }
 
 /**

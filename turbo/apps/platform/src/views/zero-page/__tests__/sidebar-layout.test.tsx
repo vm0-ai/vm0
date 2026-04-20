@@ -16,7 +16,10 @@ import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { setSidebarExpanded$ } from "../../../signals/zero-page/zero-nav.ts";
+import {
+  setSidebarExpanded$,
+  sidebarOff$,
+} from "../../../signals/zero-page/zero-nav.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -204,6 +207,26 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
         screen.getByRole("heading", { name: "Members" }),
       ).toBeInTheDocument();
     });
+  });
+});
+
+describe("sidebar layout - mod+b toggles desktop sidebar (SIDEBAR-D-055)", () => {
+  it("toggles sidebarOff$ each time mod+b is pressed", async () => {
+    const user = userEvent.setup();
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/agents" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
+    });
+
+    expect(context.store.get(sidebarOff$)).toBeFalsy();
+
+    await user.keyboard("{Control>}b{/Control}");
+    expect(context.store.get(sidebarOff$)).toBeTruthy();
+
+    await user.keyboard("{Control>}b{/Control}");
+    expect(context.store.get(sidebarOff$)).toBeFalsy();
   });
 });
 

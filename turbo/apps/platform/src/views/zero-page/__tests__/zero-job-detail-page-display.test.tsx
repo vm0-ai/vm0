@@ -197,8 +197,8 @@ describe("zero job detail page - connector display", () => {
       expect(screen.getByText("Linear")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Search connectors"));
-    await user.type(screen.getByPlaceholderText("Search connectors..."), "sla");
+    await user.click(screen.getByLabelText("Find connectors"));
+    await user.type(screen.getByPlaceholderText("Find connectors..."), "sla");
 
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();

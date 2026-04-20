@@ -13,7 +13,11 @@ import {
   type ConnectorResponse,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
-import { connectors$, reloadConnectors$ } from "../../external/connectors.ts";
+import {
+  connectors$,
+  deleteConnector$,
+  reloadConnectors$,
+} from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { delay } from "signal-timers";
@@ -38,6 +42,8 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
+  /** Lowercase aliases/keywords used by connector search (from CONNECTOR_TYPES). */
+  tags: readonly string[];
   connected: boolean;
   connector: ConnectorResponse | null;
   /** Auth methods available for this connector (considering feature flags). */
@@ -48,6 +54,42 @@ export interface ConnectorTypeWithStatus {
   scopeMismatch: boolean;
   /** True if OAuth token refresh failed and user needs to reconnect. */
   needsReconnect: boolean;
+}
+
+/**
+ * Case-insensitive substring match across label, type, helpText, and tags.
+ * Returns true when `search` is empty, so callers can use it directly as a filter.
+ */
+export function matchesConnectorSearch(
+  search: string,
+  connector: {
+    label: string;
+    type: string;
+    helpText?: string;
+    tags?: readonly string[];
+  },
+): boolean {
+  const needle = search.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  if (connector.label.toLowerCase().includes(needle)) {
+    return true;
+  }
+  if (connector.type.toLowerCase().includes(needle)) {
+    return true;
+  }
+  if (connector.helpText?.toLowerCase().includes(needle)) {
+    return true;
+  }
+  if (
+    connector.tags?.some((t) => {
+      return t.toLowerCase().includes(needle);
+    })
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export const allConnectorTypes$ = computed(async (get) => {
@@ -85,6 +127,7 @@ export const allConnectorTypes$ = computed(async (get) => {
         type,
         label: isExperimental ? `[Experimental] ${config.label}` : config.label,
         helpText: config.helpText,
+        tags: config.tags ?? [],
         connected: connector !== null,
         connector,
         availableAuthMethods,
@@ -277,6 +320,28 @@ const internalJustConnectedTypes$ = state<Set<string>>(new Set());
 export const justConnectedTypes$ = computed((get) => {
   return get(internalJustConnectedTypes$);
 });
+
+/**
+ * Disconnect a connector and clear its optimistic "just connected" flag.
+ *
+ * Without this cleanup, a connector that was connected earlier in the session
+ * stays in the Connected section of /connectors after disconnect because the
+ * optimistic override in allConnectorTypes$ wins over the fresh
+ * `connected = false` from the API (regression #10272).
+ */
+export const disconnectConnector$ = command(
+  async ({ set }, type: ConnectorType, signal: AbortSignal): Promise<void> => {
+    await set(deleteConnector$, type, signal);
+    set(internalJustConnectedTypes$, (prev) => {
+      if (!prev.has(type)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(type);
+      return next;
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Post-connect permission dialog state

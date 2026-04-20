@@ -99,15 +99,15 @@ function ChatThreadItem({
               : "text-sidebar-foreground hover:bg-sidebar-accent"
         }`}
       >
-        {!isSelected && isRunning && (
+        {isRunning && (
           <span
             className="shrink-0 h-2 w-2 rounded-full bg-sky-600 animate-pulse"
             aria-label="Running"
           />
         )}
-        {!isSelected && !isRunning && isUnread && (
+        {!isRunning && !isSelected && isUnread && (
           <span
-            className="shrink-0 h-2 w-2 rounded-full bg-blue-500"
+            className="shrink-0 h-2 w-2 rounded-full bg-primary"
             aria-label="Unread"
           />
         )}

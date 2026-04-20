@@ -1,5 +1,59 @@
 # Changelog
 
+## [8.211.0](https://github.com/vm0-ai/vm0/compare/core-v8.210.1...core-v8.211.0) (2026-04-20)
+
+
+### Features
+
+* add zero web upload-file and file:read/file:write caps ([#10256](https://github.com/vm0-ai/vm0/issues/10256)) ([497dc17](https://github.com/vm0-ai/vm0/commit/497dc17f454d584e1427b10a6ae3e28a63c7c726))
+* **cli:** scaffold zero search command and chat-message:read capability ([#10251](https://github.com/vm0-ai/vm0/issues/10251)) ([bc6cb51](https://github.com/vm0-ai/vm0/commit/bc6cb51312022317278d86896e360cca6ef777f4))
+* **voice-io:** gate audio input by org tier with free-tier quota ([#10258](https://github.com/vm0-ai/vm0/issues/10258)) ([2df8bb8](https://github.com/vm0-ai/vm0/commit/2df8bb8bf4baf7fbc744e20a621bd9a1107ba552))
+
+
+### Bug Fixes
+
+* **api:** make run cancel idempotent for already-cancelled runs ([#10267](https://github.com/vm0-ai/vm0/issues/10267)) ([6c8cf17](https://github.com/vm0-ai/vm0/commit/6c8cf17438e34699207cd38bfafe294a1e3478a1)), closes [#10168](https://github.com/vm0-ai/vm0/issues/10168)
+
+## [8.210.1](https://github.com/vm0-ai/vm0/compare/core-v8.210.0...core-v8.210.1) (2026-04-20)
+
+
+### Refactoring
+
+* **connectors:** remove org custom connectors feature switch ([#10229](https://github.com/vm0-ai/vm0/issues/10229)) ([a5e1b60](https://github.com/vm0-ai/vm0/commit/a5e1b601bcef3f4d0eaa20e959c28b04cffa9131))
+
+## [8.210.0](https://github.com/vm0-ai/vm0/compare/core-v8.209.1...core-v8.210.0) (2026-04-20)
+
+
+### Features
+
+* enable OrgCustomConnectors feature flag by default ([#10157](https://github.com/vm0-ai/vm0/issues/10157)) ([#10161](https://github.com/vm0-ai/vm0/issues/10161)) ([397c6d9](https://github.com/vm0-ai/vm0/commit/397c6d998dc52c6341decf66dca5a7742512774a))
+* **slack:** add Powered by model footer to agent messages ([#10156](https://github.com/vm0-ai/vm0/issues/10156)) ([b7d399d](https://github.com/vm0-ai/vm0/commit/b7d399d06f542cf38d1e217961f75e4b5be87192))
+
+
+### Refactoring
+
+* **core:** split audio i/o feature switch into input and output flags ([#10209](https://github.com/vm0-ai/vm0/issues/10209)) ([f6670cd](https://github.com/vm0-ai/vm0/commit/f6670cd9b1bfc7d6bb21cd66b505749d60c968b2)), closes [#10207](https://github.com/vm0-ai/vm0/issues/10207)
+
+## [8.209.1](https://github.com/vm0-ai/vm0/compare/core-v8.209.0...core-v8.209.1) (2026-04-20)
+
+
+### Refactoring
+
+* **models:** ungate kimi and minimax, disable glm flag ([#10201](https://github.com/vm0-ai/vm0/issues/10201)) ([291d8d8](https://github.com/vm0-ai/vm0/commit/291d8d8361dc7febd2188b22b2e535a7860ed003))
+
+## [8.209.0](https://github.com/vm0-ai/vm0/compare/core-v8.208.0...core-v8.209.0) (2026-04-20)
+
+
+### Features
+
+* enable OrgCustomConnectors feature flag by default ([#10157](https://github.com/vm0-ai/vm0/issues/10157)) ([95b7adc](https://github.com/vm0-ai/vm0/commit/95b7adce2f320c394948d00f0dee0f0e64b9db31))
+* **usage:** add per-user usage insight view behind usageAnalytics switch ([#10191](https://github.com/vm0-ai/vm0/issues/10191)) ([b749762](https://github.com/vm0-ai/vm0/commit/b74976215cd7b46d051d2e58d444ed88681a964e))
+
+
+### Bug Fixes
+
+* **connectors:** point docusign oauth at demo environment ([#10150](https://github.com/vm0-ai/vm0/issues/10150)) ([e606295](https://github.com/vm0-ai/vm0/commit/e606295c98068fc0b2d6178bfe4f5e2ed7f6ff00))
+
 ## [8.208.0](https://github.com/vm0-ai/vm0/compare/core-v8.207.0...core-v8.208.0) (2026-04-19)
 
 

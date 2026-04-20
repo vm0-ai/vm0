@@ -253,49 +253,85 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       expect(data.error.message).toContain("No such run");
     });
 
-    it("should return 400 when cancelling already completed run", async () => {
-      const run = await createTestRun(testComposeId, "Run to complete");
+    it("should return 200 when cancelling an already-cancelled run (idempotent)", async () => {
+      const run = await createTestRun(testComposeId, "Run to cancel twice");
 
-      // Cancel it first
-      await POST(
+      // First cancel — real transition.
+      const first = await POST(
         createTestRequest(
           `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
           { method: "POST" },
         ),
       );
+      expect(first.status).toBe(200);
 
-      // Try to cancel again
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
-        { method: "POST" },
+      const recordAfterFirst = await findTestRunRecord(run.runId);
+      expect(recordAfterFirst!.status).toBe("cancelled");
+      const firstCompletedAt = recordAfterFirst!.completedAt;
+
+      // Second cancel on the same run — server should treat it as a replay.
+      const response = await POST(
+        createTestRequest(
+          `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
+          { method: "POST" },
+        ),
       );
-
-      const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(400);
-      expect(data.error.message).toContain("cannot be cancelled");
+      expect(response.status).toBe(200);
+      expect(data.id).toBe(run.runId);
+      expect(data.status).toBe("cancelled");
+      expect(data.message).toBe("Run cancelled successfully");
+
+      // Replay must not rewrite completedAt or re-run side effects.
+      const recordAfterSecond = await findTestRunRecord(run.runId);
+      expect(recordAfterSecond!.status).toBe("cancelled");
+      expect(recordAfterSecond!.completedAt?.getTime()).toBe(
+        firstCompletedAt?.getTime(),
+      );
     });
 
-    it("should not overwrite a concurrently completed run", async () => {
-      const run = await createTestRun(testComposeId, "Run to cancel");
+    it("should return 400 with RUN_NOT_CANCELLABLE for terminal non-cancelled statuses", async () => {
+      for (const status of ["completed", "failed", "timeout"] as const) {
+        const run = await createTestRun(
+          testComposeId,
+          `Run in ${status} state`,
+        );
+        await setTestRunStatus(run.runId, status);
 
-      // Simulate a concurrent completion between the SELECT and the transaction
-      await setTestRunStatus(run.runId, "completed");
+        const response = await POST(
+          createTestRequest(
+            `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
+            { method: "POST" },
+          ),
+        );
+        const data = await response.json();
 
-      // Cancel should fail — either fast-path or transaction guard catches it
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
-        { method: "POST" },
+        expect(response.status).toBe(400);
+        expect(data.error.code).toBe("RUN_NOT_CANCELLABLE");
+        expect(data.error.message).toContain("cannot be cancelled");
+
+        const record = await findTestRunRecord(run.runId);
+        expect(record!.status).toBe(status);
+      }
+    });
+
+    it("should return 200 on concurrent transition to cancelled (race idempotent)", async () => {
+      const run = await createTestRun(testComposeId, "Run cancelled by winner");
+
+      // Simulate a concurrent winner that already moved the run to 'cancelled'.
+      await setTestRunStatus(run.runId, "cancelled");
+
+      const response = await POST(
+        createTestRequest(
+          `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
+          { method: "POST" },
+        ),
       );
+      const data = await response.json();
 
-      const response = await POST(request);
-
-      expect(response.status).toBe(400);
-
-      // Run should still be completed (not overwritten to cancelled)
-      const record = await findTestRunRecord(run.runId);
-      expect(record!.status).toBe("completed");
+      expect(response.status).toBe(200);
+      expect(data.status).toBe("cancelled");
     });
   });
 

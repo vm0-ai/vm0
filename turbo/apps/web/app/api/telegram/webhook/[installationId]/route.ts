@@ -43,6 +43,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ installationId: string }> },
 ) {
+  const apiStartTime = Date.now();
   const { installationId } = await params;
 
   initServices();
@@ -117,7 +118,11 @@ export async function POST(
 
       // Private chat (DM)
       if (message.chat.type === "private") {
-        await handleTelegramDirectMessage({ message }, installationId);
+        await handleTelegramDirectMessage(
+          { message },
+          installationId,
+          apiStartTime,
+        );
         return;
       }
 
@@ -141,7 +146,7 @@ export async function POST(
       const isReplyToBot = message.reply_to_message?.from?.is_bot === true;
 
       if (hasBotMention || isReplyToBot) {
-        await handleTelegramMention({ message }, installationId);
+        await handleTelegramMention({ message }, installationId, apiStartTime);
         return;
       }
 

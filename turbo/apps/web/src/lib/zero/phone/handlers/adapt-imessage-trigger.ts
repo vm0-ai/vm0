@@ -10,6 +10,7 @@ interface ImessageTriggerContext {
   fromNumber: string;
   userId: string;
   callbackContext: IMessageCallbackPayload;
+  apiStartTime: number;
 }
 
 export function adaptImessageTrigger(
@@ -22,6 +23,7 @@ export function adaptImessageTrigger(
     appendSystemPrompt: buildIMessagePrompt(ctx.fromNumber) || undefined,
     sessionId: ctx.sessionId,
     triggerSource: "imessage",
+    apiStartTime: ctx.apiStartTime,
     callbacks: [
       {
         url: `${getApiUrl()}/api/internal/callbacks/imessage`,

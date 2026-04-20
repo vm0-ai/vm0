@@ -23,6 +23,7 @@ describe("adaptTelegramTrigger", () => {
       threadContext: "previous message\nanother",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     });
 
     expect(result.userId).toBe("user-1");
@@ -30,6 +31,7 @@ describe("adaptTelegramTrigger", () => {
     expect(result.sessionId).toBe("sess-1");
     expect(result.prompt).toBe("hello");
     expect(result.triggerSource).toBe("telegram");
+    expect(result.apiStartTime).toBe(1000);
     expect(result.appendSystemPrompt).toContain("Telegram");
 
     const callback = result.callbacks?.[0];
@@ -50,6 +52,7 @@ describe("adaptTelegramTrigger", () => {
       threadContext: "",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     });
 
     // The `|| undefined` coercion rule: appendSystemPrompt is never "".
@@ -66,6 +69,7 @@ describe("adaptTelegramTrigger", () => {
       threadContext: "ctx",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     });
     expect(result.sessionId).toBeUndefined();
   });
@@ -78,6 +82,7 @@ describe("adaptTelegramTrigger", () => {
       threadContext: "ctx",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     };
     const a = adaptTelegramTrigger(ctx);
     const b = adaptTelegramTrigger(ctx);

@@ -1,8 +1,60 @@
 import { WebClient } from "@slack/web-api";
 import type { Block, KnownBlock, View } from "@slack/web-api";
+import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 
 const log = logger("slack:client");
+
+/**
+ * Resolve the Slack Web API base URL. Returns undefined to use the
+ * `@slack/web-api` default (https://slack.com/api/). E2E tests running
+ * against a Vercel preview set `E2E_SLACK_MOCK_ENABLED=1` so outbound
+ * traffic is redirected to `/api/test/slack-mock/` on the same deployment.
+ *
+ * Throws when the mock flag is set but `VERCEL_URL` is unavailable, so
+ * a misconfigured preview fails loudly instead of silently hitting the
+ * real `slack.com` API.
+ */
+function resolveSlackApiUrl(): string | undefined {
+  const e = env();
+  if (e.SLACK_API_URL) return e.SLACK_API_URL;
+  const flag = e.E2E_SLACK_MOCK_ENABLED;
+  const mockEnabled = flag === "1" || flag === "true";
+  if (!mockEnabled) return undefined;
+  if (!e.VERCEL_URL) {
+    throw new Error(
+      "E2E_SLACK_MOCK_ENABLED=1 but VERCEL_URL is unset; cannot redirect Slack Web API traffic to the preview mock routes",
+    );
+  }
+  return `https://${e.VERCEL_URL}/api/test/slack-mock/`;
+}
+
+function buildWebClient(token?: string): WebClient {
+  const slackApiUrl = resolveSlackApiUrl();
+  if (!slackApiUrl) {
+    return new WebClient(token);
+  }
+  // When the base URL is redirected to this deployment's own mock routes
+  // (e2e mode), add the Vercel protection bypass header so the lambda's
+  // self-requests can get past deployment protection. Without it the
+  // mock endpoints return Vercel's HTML auth page and the WebClient
+  // retry loop hangs until the caller times out.
+  const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
+  const headers: Record<string, string> = bypass
+    ? { "x-vercel-protection-bypass": bypass }
+    : {};
+  return new WebClient(token, {
+    slackApiUrl,
+    headers,
+    // Fail fast in e2e — the default retryPolicy keeps retrying on
+    // network errors or 5xx for ~15s total. One retry is plenty when
+    // the peer is our own mock on the same deployment.
+    retryConfig: { retries: 1 },
+    // Keep request timeout short so we don't silently burn the lambda
+    // budget on a misrouted mock call.
+    timeout: 5000,
+  });
+}
 
 /**
  * Create a Slack Web API client
@@ -11,7 +63,7 @@ const log = logger("slack:client");
  * @returns WebClient instance
  */
 export function createSlackClient(token: string): WebClient {
-  return new WebClient(token);
+  return buildWebClient(token);
 }
 
 /**
@@ -199,7 +251,7 @@ export async function exchangeOAuthCode(
   authedUserId: string;
   scope: string;
 }> {
-  const client = new WebClient();
+  const client = buildWebClient();
   const result = await client.oauth.v2.access({
     client_id: clientId,
     client_secret: clientSecret,
@@ -242,7 +294,7 @@ export async function exchangeOAuthCodeForUser(
   teamId: string;
   authedUserId: string;
 }> {
-  const client = new WebClient();
+  const client = buildWebClient();
   const result = await client.oauth.v2.access({
     client_id: clientId,
     client_secret: clientSecret,

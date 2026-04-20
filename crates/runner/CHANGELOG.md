@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.87.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.4...runner-rs-v0.87.0) (2026-04-20)
+
+
+### Features
+
+* **observability:** add startup and wrap-up latency telemetry ([#10257](https://github.com/vm0-ai/vm0/issues/10257)) ([33028a1](https://github.com/vm0-ai/vm0/commit/33028a10e8ad6218d0255ed69c9af8ba88f41f1a)), closes [#9936](https://github.com/vm0-ai/vm0/issues/9936)
+
+
+### Bug Fixes
+
+* **mitm-addon:** narrow webhook retry catch to retryable errors ([#10228](https://github.com/vm0-ai/vm0/issues/10228)) ([03ee3c8](https://github.com/vm0-ai/vm0/commit/03ee3c8be82672a545aae9cab9266df51715f9f4))
+* **runner:** count dry-run bytes in gc_nested_images ([#10232](https://github.com/vm0-ai/vm0/issues/10232)) ([79910d7](https://github.com/vm0-ai/vm0/commit/79910d7272e954b04532fc6573276839c91f2f0b))
+* **runner:** delay first interval tick to avoid racing discover_fut ([#10219](https://github.com/vm0-ai/vm0/issues/10219)) ([a7a3006](https://github.com/vm0-ai/vm0/commit/a7a30068caa0265e4572f0c81ade09465cfeaae1))
+
+## [0.86.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.3...runner-rs-v0.86.4) (2026-04-20)
+
+## [0.86.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.2...runner-rs-v0.86.3) (2026-04-20)
+
+
+### Bug Fixes
+
+* **mitm-addon:** use flow.request.scheme for original url ([#10180](https://github.com/vm0-ai/vm0/issues/10180)) ([4d01162](https://github.com/vm0-ai/vm0/commit/4d01162b0b8b00c644c52f99f1825d8e39a23859))
+
+
+### Refactoring
+
+* **mitm-addon:** tighten original_url invariant in response/error ([#10189](https://github.com/vm0-ai/vm0/issues/10189)) ([bf230ad](https://github.com/vm0-ai/vm0/commit/bf230add14c1d3b59ee96eb628c31c9822c123a9))
+
 ## [0.86.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.1...runner-rs-v0.86.2) (2026-04-19)
 
 

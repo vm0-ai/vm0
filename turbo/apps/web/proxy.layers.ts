@@ -74,6 +74,7 @@ const intlMiddleware = createIntlMiddleware({
   defaultLocale,
   localePrefix: "always",
   localeDetection: true,
+  alternateLinks: false,
 });
 
 // ---------------------------------------------------------------------------
@@ -181,10 +182,29 @@ export const localeGuardLayer: ProxyLayer = (ctx) => {
   return null;
 };
 
-/** Apply i18n for page routes. */
+/**
+ * Apply i18n for page routes.
+ *
+ * next-intl redirects locale-less paths (e.g. /use-cases/foo) with 307
+ * (temporary).  We convert those to 301 (permanent) so search engines
+ * consolidate PageRank on the canonical /en/… URL.
+ */
 export const i18nLayer: ProxyLayer = (ctx) => {
   if (ctx.routeKind === "page") {
-    return intlMiddleware(ctx.request);
+    // Root path is served via rewrite in next.config.js so that "/" returns
+    // 200 and stays indexable. Skip i18n here to prevent next-intl from
+    // redirecting it to "/en" before the rewrite can apply.
+    if (ctx.request.nextUrl.pathname === "/") return null;
+
+    const response = intlMiddleware(ctx.request);
+    if (response.status === 307 && response.headers.get("location")) {
+      const url = new URL(
+        response.headers.get("location")!,
+        ctx.request.nextUrl.origin,
+      );
+      return NextResponse.redirect(url, 301);
+    }
+    return response;
   }
   return null;
 };

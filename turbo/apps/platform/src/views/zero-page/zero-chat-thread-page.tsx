@@ -144,7 +144,7 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const displayName = useLastResolved(thread.agentDisplayName$);
   const features = useLastResolved(featureSwitch$);
-  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
 
@@ -158,7 +158,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         <span className="font-semibold text-foreground">{displayName}</span>
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        {audioIOEnabled && (
+        {audioOutputEnabled && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -227,6 +227,7 @@ export function ZeroChatThreadPageInner({
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -290,6 +291,7 @@ export function ZeroChatThreadPageInner({
       </div>
 
       <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
+      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
     </div>
   );
 }
@@ -677,8 +679,10 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
   const content = message.content ?? "";
   const { cleanContent, parsed } = parseInlineAttachments(content);
   const displayContent = cleanContent.replace(/\n/g, "  \n");
-  const lightboxUrl = useGet(attachmentLightboxUrl$);
   const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
+  const openLightbox = (url: string) => {
+    setLightboxUrl(url);
+  };
 
   const allAttachments = parsed.map((p) => {
     return {
@@ -697,7 +701,11 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
             {displayContent && (
               <div className="px-4 py-3">
-                <Markdown source={displayContent} />
+                <Markdown
+                  source={displayContent}
+                  mediaPreview
+                  onImageClick={openLightbox}
+                />
               </div>
             )}
             {allAttachments.length > 0 && (
@@ -750,7 +758,6 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
           </div>
         </div>
       </div>
-      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
     </div>
   );
 }
@@ -792,6 +799,11 @@ function PagedAssistantGroup({
 }
 
 function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
+  const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
+  const openLightbox = (url: string) => {
+    setLightboxUrl(url);
+  };
+
   if (message.error) {
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
@@ -803,7 +815,11 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
   if (message.content) {
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-        <Markdown source={message.content} />
+        <Markdown
+          source={message.content}
+          mediaPreview
+          onImageClick={openLightbox}
+        />
       </div>
     );
   }
@@ -826,7 +842,7 @@ function PagedGroupActions({
   const copyMessage = useSet(thread.copyMessage$);
 
   const features = useLastResolved(featureSwitch$);
-  const audioIOEnabled = features?.[FeatureSwitchKey.AudioIO] ?? false;
+  const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const playingRunId = useGet(ttsPlayingRunId$);
   const firstRunId = group.messages.find((m) => {
     return m.runId;
@@ -906,7 +922,7 @@ function PagedGroupActions({
             </Tooltip>
           </TooltipProvider>
         )}
-        {content && audioIOEnabled && firstRunId && (
+        {content && audioOutputEnabled && firstRunId && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>

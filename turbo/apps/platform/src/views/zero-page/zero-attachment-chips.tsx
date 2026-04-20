@@ -1,6 +1,7 @@
 import type { MouseEvent } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
+  IconDownload,
   IconFile,
   IconPhoto,
   IconVideo,
@@ -8,6 +9,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
+import { logger } from "../../signals/log.ts";
 import {
   lightboxUrl$,
   setLightboxUrl$,
@@ -16,6 +18,8 @@ import {
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docCsvIcon from "./assets/doc-csv.svg";
+
+const log = logger("zero-attachment-chips");
 
 /**
  * Return the icon path for a known file extension, or null for unknown types.
@@ -47,6 +51,53 @@ function getFileTypeIcon(filename: string): string | null {
 // ImageLightbox — full-screen image viewer
 // ---------------------------------------------------------------------------
 
+function filenameFromUrl(url: string): string {
+  const path = url.split("?")[0].split("#")[0];
+  const last = path.split("/").pop();
+  return last && last.length > 0 ? last : "image";
+}
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(blobUrl);
+}
+
+// Fetch the asset as a blob, degrading to a new-tab fallback on network /
+// CORS failure. The `.catch` is intentionally scoped to the fetch branch so
+// only network failures fall back — any synchronous DOM / blob failure after
+// a successful fetch is a real bug and propagates to the caller. The
+// fallback logs the underlying error so unexpected failures surface in
+// Sentry instead of being silently mis-classified as "CORS".
+function fetchBlobOrOpen(url: string): Promise<Blob | null> {
+  return fetch(url, { mode: "cors" })
+    .then((res) => {
+      if (!res.ok) {
+        throw new Error(`fetch failed: ${String(res.status)}`);
+      }
+      return res.blob();
+    })
+    .catch((error: unknown) => {
+      log.warn("downloadUrl: fetch failed, falling back to window.open", error);
+      window.open(url, "_blank", "noopener,noreferrer");
+      return null;
+    });
+}
+
+function downloadUrl(url: string): Promise<void> {
+  const filename = filenameFromUrl(url);
+  return fetchBlobOrOpen(url).then((blob) => {
+    if (blob !== null) {
+      triggerBlobDownload(blob, filename);
+    }
+  });
+}
+
 export function ImageLightbox({ url }: { url: string }) {
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightbox = useSet(setLightboxUrl$);
@@ -66,16 +117,30 @@ export function ImageLightbox({ url }: { url: string }) {
       role="dialog"
       aria-modal="true"
     >
-      <button
-        type="button"
-        onClick={() => {
-          return closeLightbox(null);
-        }}
-        className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-        aria-label="Close"
-      >
-        <IconX size={20} stroke={2} />
-      </button>
+      <div className="absolute top-4 right-4 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            downloadUrl(url).catch((error: unknown) => {
+              log.error("downloadUrl: unexpected failure", error);
+            });
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+          aria-label="Download"
+        >
+          <IconDownload size={20} stroke={2} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            return closeLightbox(null);
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+          aria-label="Close"
+        >
+          <IconX size={20} stroke={2} />
+        </button>
+      </div>
       <img
         src={url}
         alt=""

@@ -177,18 +177,18 @@ describe("buildAgentResponseMessage", () => {
     expect(markdownBlock.text).toBe(content);
   });
 
-  it("should show triggeredBy as separate context block below audit with divider", () => {
+  it("renders triggeredBy as a context block with no divider (weakened footer)", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/activity/run-123",
-      'Triggered by schedule "Send a greeting message daily at 9 AM"',
+      "Sent via my-agent",
     );
 
-    // Should have: markdown, audit context, divider, attribution context
+    // Should have: markdown, audit context, attribution context — no divider
     const dividerBlocks = blocks.filter((b) => {
       return b.type === "divider";
     });
-    expect(dividerBlocks).toHaveLength(1);
+    expect(dividerBlocks).toHaveLength(0);
 
     const contextBlocks = blocks.filter((b) => {
       return b.type === "context";
@@ -199,17 +199,54 @@ describe("buildAgentResponseMessage", () => {
     const auditText = (contextBlocks[0] as { elements: { text: string }[] })
       .elements[0]!.text;
     expect(auditText).toContain("Audit");
-    expect(auditText).not.toContain("Triggered by");
+    expect(auditText).not.toContain("Sent via");
 
-    // Second context: attribution (after divider)
+    // Second context: attribution (no divider above)
     const attrText = (contextBlocks[1] as { elements: { text: string }[] })
       .elements[0]!.text;
-    expect(attrText).toBe(
-      'Triggered by schedule "Send a greeting message daily at 9 AM"',
-    );
+    expect(attrText).toBe("Sent via my-agent");
   });
 
-  it("should not add attribution block when triggeredBy is not provided", () => {
+  it("combines triggeredBy and model into one context block joined by ·", () => {
+    const blocks = buildAgentResponseMessage(
+      "Response text",
+      undefined,
+      "Sent via my-agent",
+      "claude-sonnet-4-6",
+    );
+
+    const dividerBlocks = blocks.filter((b) => {
+      return b.type === "divider";
+    });
+    expect(dividerBlocks).toHaveLength(0);
+
+    const contextBlocks = blocks.filter((b) => {
+      return b.type === "context";
+    });
+    expect(contextBlocks).toHaveLength(1);
+    expect(
+      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
+    ).toBe("Sent via my-agent · Claude Sonnet 4.6");
+  });
+
+  it("renders model-only attribution when triggeredBy is absent", () => {
+    const blocks = buildAgentResponseMessage(
+      "Response text",
+      undefined,
+      undefined,
+      "claude-sonnet-4-6",
+    );
+
+    const contextBlocks = blocks.filter((b) => {
+      return b.type === "context";
+    });
+    expect(contextBlocks).toHaveLength(1);
+    expect(
+      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
+    ).toBe("Claude Sonnet 4.6");
+  });
+
+  it("adds no attribution block when neither triggeredBy nor modelName is provided", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/activity/run-123",

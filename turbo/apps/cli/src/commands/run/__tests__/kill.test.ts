@@ -118,8 +118,9 @@ describe("run kill command", () => {
           return HttpResponse.json(
             {
               error: {
-                message: "Run cannot be cancelled: already completed",
-                code: "BAD_REQUEST",
+                message:
+                  "Run cannot be cancelled: current status is 'completed'",
+                code: "RUN_NOT_CANCELLABLE",
               },
             },
             { status: 400 },
@@ -135,6 +136,31 @@ describe("run kill command", () => {
         expect.stringContaining("cannot be cancelled"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should print success when server returns 200 for an already-cancelled run", async () => {
+      const runId = "run-already-cancelled";
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs/:id/cancel",
+          ({ params }) => {
+            return HttpResponse.json({
+              id: params.id,
+              status: "cancelled",
+              message: "Run cancelled successfully",
+            });
+          },
+        ),
+      );
+
+      // parseAsync must resolve (no process.exit) — the idempotent 200 is a
+      // plain success from the CLI's perspective.
+      await killCommand.parseAsync(["node", "cli", runId]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("cancelled");
+      expect(logCalls).toContain(runId);
     });
 
     it("should handle generic API error", async () => {

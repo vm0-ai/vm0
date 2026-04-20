@@ -1,5 +1,8 @@
 import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
-import { integrationsSlackMessageContract } from "@vm0/core";
+import {
+  integrationsSlackMessageContract,
+  getModelDisplayName,
+} from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
@@ -53,6 +56,18 @@ async function resolveScheduleLabel(
     .where(eq(zeroRuns.id, runId))
     .limit(1);
   return row?.description ?? undefined;
+}
+
+/** Best-effort resolution of the selected model for the run. */
+async function resolveSelectedModel(
+  runId: string,
+): Promise<string | undefined> {
+  const [row] = await globalThis.services.db
+    .select({ selectedModel: zeroRuns.selectedModel })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  return row?.selectedModel ?? undefined;
 }
 
 /** Best-effort resolution of the Slack user mention for the run owner. */
@@ -113,17 +128,21 @@ async function resolveFooterParts(
 ): Promise<string[]> {
   if (!authRunId) return [];
 
-  const [agentLabel, scheduleLabel, userMention] = await Promise.all([
-    resolveAgentLabel(authRunId).catch(() => {
-      return undefined;
-    }),
-    resolveScheduleLabel(authRunId).catch(() => {
-      return undefined;
-    }),
-    resolveUserMention(authRunId).catch(() => {
-      return undefined;
-    }),
-  ]);
+  const [agentLabel, scheduleLabel, userMention, selectedModel] =
+    await Promise.all([
+      resolveAgentLabel(authRunId).catch(() => {
+        return undefined;
+      }),
+      resolveScheduleLabel(authRunId).catch(() => {
+        return undefined;
+      }),
+      resolveUserMention(authRunId).catch(() => {
+        return undefined;
+      }),
+      resolveSelectedModel(authRunId).catch(() => {
+        return undefined;
+      }),
+    ]);
 
   const parts: string[] = [];
   if (agentLabel) parts.push(`Sent via ${agentLabel}`);
@@ -135,6 +154,7 @@ async function resolveFooterParts(
         : `Triggered by ${userMention}`,
     );
   }
+  if (selectedModel) parts.push(getModelDisplayName(selectedModel));
   return parts;
 }
 

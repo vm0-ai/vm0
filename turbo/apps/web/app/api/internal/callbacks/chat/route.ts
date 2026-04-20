@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse, after } from "next/server";
+import { eq, sql } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { chatMessages } from "../../../../../src/db/schema/chat-message";
+import { recordSandboxOperation } from "../../../../../src/lib/infra/metrics/instruments";
 import {
   insertChatMessage,
   insertAssistantEventMessages,
@@ -108,6 +110,44 @@ async function loadPriorTitleContext(
 }
 
 /**
+ * Emit the `last_event_to_complete` metric for Morning Brief wrap-up
+ * aggregation. Both timestamps are read from the DB in a single query so
+ * the measurement is single-source-of-truth with no cross-host clock skew.
+ * Filters on `sequence_number IS NOT NULL` to exclude user messages and
+ * placeholder/error rows, keeping the metric grounded in real agent output.
+ */
+async function recordLastEventToComplete(runId: string): Promise<void> {
+  const [row] = await globalThis.services.db
+    .select({
+      completedAt: agentRuns.completedAt,
+      lastEventAt: sql<Date | null>`(
+        SELECT MAX(${chatMessages.createdAt})
+        FROM ${chatMessages}
+        WHERE ${chatMessages.runId} = ${agentRuns.id}
+          AND ${chatMessages.role} = 'assistant'
+          AND ${chatMessages.sequenceNumber} IS NOT NULL
+      )`,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+
+  if (!row?.completedAt || !row.lastEventAt) return;
+
+  const lastEventMs =
+    row.lastEventAt instanceof Date
+      ? row.lastEventAt.getTime()
+      : new Date(row.lastEventAt).getTime();
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "last_event_to_complete",
+    durationMs: Math.max(0, row.completedAt.getTime() - lastEventMs),
+    success: true,
+    runId,
+  });
+}
+
+/**
  * Handle completed run: final sweep for any events the consumer missed,
  * then generate title and push notification.
  */
@@ -125,6 +165,14 @@ async function handleCompleted(
   if (items.length > 0) {
     await insertAssistantEventMessages(runId, threadId, userId, items);
   }
+
+  // Wrap-up latency: gap from last assistant event row to run terminal
+  // transition. Scheduled via after() so the DB query and Axiom ingest
+  // don't block the callback response. Runs after the final sweep above
+  // so it isn't racing events the live consumer dropped.
+  after(() => {
+    return recordLastEventToComplete(runId);
+  });
 
   // Use last assistant text for downstream (title, summary, notification)
   const lastResultText =

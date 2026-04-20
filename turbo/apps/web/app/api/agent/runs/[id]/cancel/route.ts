@@ -19,6 +19,7 @@ import { processOrgCredits } from "../../../../../../src/lib/zero/credit/credit-
 import {
   isNotFound,
   isBadRequest,
+  isRunNotCancellable,
 } from "../../../../../../src/lib/shared/errors";
 import { logger } from "../../../../../../src/lib/shared/logger";
 import { after } from "next/server";
@@ -64,20 +65,22 @@ const router = tsr.router(runsCancelContract, {
     try {
       const result = await cancelRun(runId, userId, orgId);
 
-      after(async () => {
-        const shouldProcessCredits = await dispatchCancelSideEffects(
-          result,
-          (orgId) => {
-            return drainOrgQueue(orgId, dispatchQueuedZeroRun);
-          },
-        );
-        if (shouldProcessCredits) {
-          await processOrgCredits(result.orgId);
-        }
-      });
+      if (!result.alreadyCancelled) {
+        after(async () => {
+          const shouldProcessCredits = await dispatchCancelSideEffects(
+            result,
+            (orgId) => {
+              return drainOrgQueue(orgId, dispatchQueuedZeroRun);
+            },
+          );
+          if (shouldProcessCredits) {
+            await processOrgCredits(result.orgId);
+          }
+        });
+      }
 
       log.debug(
-        `Run ${runId} cancelled by user ${userId}, sandbox: ${result.sandboxId ?? "none"}`,
+        `Run ${runId} cancel handled for user ${userId}, alreadyCancelled=${String(result.alreadyCancelled)}, sandbox: ${result.sandboxId ?? "none"}`,
       );
 
       return {
@@ -94,6 +97,14 @@ const router = tsr.router(runsCancelContract, {
           status: 404 as const,
           body: {
             error: { message: error.message, code: "NOT_FOUND" },
+          },
+        };
+      }
+      if (isRunNotCancellable(error)) {
+        return {
+          status: 400 as const,
+          body: {
+            error: { message: error.message, code: "RUN_NOT_CANCELLABLE" },
           },
         };
       }

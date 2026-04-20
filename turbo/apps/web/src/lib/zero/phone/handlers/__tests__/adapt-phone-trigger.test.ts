@@ -19,6 +19,7 @@ describe("adaptPhoneTrigger", () => {
       phoneContext: "# Phone Call Context\nCaller: +1",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     });
 
     expect(result.userId).toBe("user-1");
@@ -26,6 +27,7 @@ describe("adaptPhoneTrigger", () => {
     expect(result.sessionId).toBe("sess-1");
     expect(result.prompt).toBe("transcript");
     expect(result.triggerSource).toBe("phone");
+    expect(result.apiStartTime).toBe(1000);
     expect(result.appendSystemPrompt).toContain("Phone");
 
     const callback = result.callbacks?.[0];
@@ -46,6 +48,7 @@ describe("adaptPhoneTrigger", () => {
       phoneContext: "",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     });
 
     if (result.appendSystemPrompt !== undefined) {
@@ -61,6 +64,7 @@ describe("adaptPhoneTrigger", () => {
       phoneContext: "ctx",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     });
     expect(result.sessionId).toBeUndefined();
   });
@@ -73,6 +77,7 @@ describe("adaptPhoneTrigger", () => {
       phoneContext: "ctx",
       userId: "user-1",
       callbackContext: baseCallback,
+      apiStartTime: 1000,
     };
     const a = adaptPhoneTrigger(ctx);
     const b = adaptPhoneTrigger(ctx);

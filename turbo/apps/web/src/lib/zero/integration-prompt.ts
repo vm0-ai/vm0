@@ -447,3 +447,98 @@ export function buildWebAttachFilesPrompt(
 
   return blocks.join("\n");
 }
+
+export interface WebChatIncompleteRoundMessage {
+  role: "user" | "assistant";
+  content: string | null;
+  error: string | null;
+  attachFiles: string[] | null;
+}
+
+export interface WebChatIncompleteRound {
+  runId: string;
+  status: "cancelled" | "failed" | "timeout";
+  messages: WebChatIncompleteRoundMessage[];
+}
+
+const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
+const WEB_CHAT_INCOMPLETE_PREAMBLE = [
+  "The rounds below were sent in this thread but their runs did not complete",
+  "(cancelled, failed, or timed out), so the CLI session history does not",
+  "contain them. Treat them as part of the conversation you are having with",
+  "the user. RELATIVE_INDEX 0 is the most recent incomplete round.",
+].join("\n");
+
+function truncateForIncompleteContext(value: string): string {
+  if (value.length <= WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP) return value;
+  return `${value.slice(0, WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP)}…[truncated]`;
+}
+
+function formatIncompleteAttachFiles(ids: string[] | null | undefined): string {
+  if (!ids || ids.length === 0) return "";
+  return ids
+    .map((id) => {
+      return `[Web file]\n   [ID] ${id}`;
+    })
+    .join("\n");
+}
+
+function formatIncompleteMessage(msg: WebChatIncompleteRoundMessage): string {
+  const attach = formatIncompleteAttachFiles(msg.attachFiles);
+  if (msg.role === "user") {
+    const body =
+      msg.content !== null && msg.content !== ""
+        ? truncateForIncompleteContext(msg.content)
+        : "[empty message]";
+    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
+  }
+  if (msg.content !== null && msg.content !== "") {
+    return `Assistant (partial): ${truncateForIncompleteContext(msg.content)}`;
+  }
+  return "Assistant: [no response before run ended]";
+}
+
+/**
+ * Build a transcript block describing previous rounds whose runs did not
+ * complete (cancelled / failed / timed out). Appended to the web chat system
+ * prompt so the next run sees the messages the user still has on screen, even
+ * though they are absent from the CLI session history.
+ *
+ * Empty input returns `""` so the caller can simply `filter(Boolean).join()`.
+ */
+export function buildWebChatIncompleteContext(
+  rounds: WebChatIncompleteRound[],
+): string {
+  if (rounds.length === 0) return "";
+
+  const total = rounds.length;
+  const blocks = rounds.map((round, index) => {
+    const relativeIndex = index - total + 1;
+    const hasAssistant = round.messages.some((m) => {
+      return m.role === "assistant";
+    });
+    const rendered = round.messages.map(formatIncompleteMessage);
+    if (!hasAssistant) {
+      rendered.push("Assistant: [no response before run ended]");
+    }
+    const lines = [
+      "---",
+      "",
+      `- RELATIVE_INDEX: ${relativeIndex}`,
+      `- RUN_STATUS: ${round.status}`,
+      "",
+      ...rendered,
+    ];
+    return lines.join("\n");
+  });
+
+  return [
+    "# Incomplete Rounds Context",
+    "",
+    WEB_CHAT_INCOMPLETE_PREAMBLE,
+    "",
+    blocks.join("\n\n"),
+    "",
+    "---",
+  ].join("\n");
+}

@@ -461,13 +461,30 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Idle pool cleanup interval (every 10 seconds)
     // -----------------------------------------------------------------------
-    let mut idle_cleanup = tokio::time::interval(Duration::from_secs(10));
+    // `interval` fires its first tick immediately. In the main-loop
+    // `tokio::select!` this can pre-empt `discover_fut` on its very first
+    // poll — the discover future parks on `rx.recv()` (Pending) while the
+    // interval tick is Ready, so select deterministically picks the tick.
+    // Inside the tick arm any silent watch flip (`send_if_modified(.., false)`)
+    // lands before the loop returns to the discover arm, and the top-of-loop
+    // `borrow_and_update()` then breaks out before the pending job is ever
+    // claimed. Delaying the first tick by one period keeps both arms Pending
+    // on entry, so `discover_fut` wins the first wake. No observable prod
+    // effect: idle cleanup on an empty pool and the first heartbeat were
+    // both fine to happen ~10s later.
+    let mut idle_cleanup = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_secs(10),
+        Duration::from_secs(10),
+    );
     idle_cleanup.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     // -----------------------------------------------------------------------
-    // Heartbeat interval (every 10 seconds)
+    // Heartbeat interval (every 10 seconds) — same first-tick delay as above.
     // -----------------------------------------------------------------------
-    let mut heartbeat_tick = tokio::time::interval(Duration::from_secs(10));
+    let mut heartbeat_tick = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_secs(10),
+        Duration::from_secs(10),
+    );
     heartbeat_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     // -----------------------------------------------------------------------
@@ -2603,7 +2620,20 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Deterministic barrier: wait for run()'s main loop to have polled
+        // `discover_fut` into its await state. Only then is the Running-arm
+        // `select!` provably in place, which is the precondition for the
+        // silent `send_if_modified` below to land without waking the loop.
+        // A wall-clock sleep here flakes under coverage CI — see #10146.
+        // The 2s timeout gives a clear diagnostic if the "loop parks on
+        // discover" invariant ever regresses, rather than hanging until
+        // the outer test harness kills us.
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            env.handle.discover_entered.notified(),
+        )
+        .await
+        .expect("run() did not enter discover_fut select! within 2s");
 
         // Flip the watch value to Stopping without firing changed().
         env.mode_tx.send_if_modified(|v| {
@@ -2614,9 +2644,13 @@ mod tests {
         let run_id = RunId::new_v4();
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
+        // `wait_completion` is event-driven (fires on `provider.complete`), so
+        // this duration is a diagnostic cap for genuine hangs — not a budget
+        // for the run. A large cap absorbs coverage-CI slowdown of the full
+        // dispatch→executor→complete chain without flaking (see #10146).
         let c = env
             .handle
-            .wait_completion(run_id, Duration::from_secs(5))
+            .wait_completion(run_id, Duration::from_secs(30))
             .await;
         assert!(
             c.is_some(),
@@ -2640,7 +2674,19 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Wait for the main loop to park on `discover_fut` so the subsequent
+        // `trigger_stopping` lands on a steady-state loop rather than racing
+        // against startup. This test does not depend on the silent-flip
+        // semantics of `claim_after_stopping_sent_cancels_new_job` (it uses
+        // `trigger_stopping`, which fires `changed()`), but the same barrier
+        // is still the right "main loop is idle" signal — and deterministic
+        // under coverage CI, unlike the 50 ms sleep this replaces.
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            env.handle.discover_entered.notified(),
+        )
+        .await
+        .expect("run() did not enter discover_fut select! within 2s");
 
         // Enter Stopping first.
         env.trigger_stopping().await;
@@ -2659,6 +2705,54 @@ mod tests {
             Ok(Err(e)) => panic!("task panicked: {e}"),
             Err(_) => panic!("hard shutdown should exit within 2s"),
         }
+    }
+
+    /// Regression for #10146 / #10223: the main-loop `idle_cleanup` and
+    /// `heartbeat_tick` intervals must defer their first tick past the
+    /// configured period, so neither arm is Ready on the first `select!`
+    /// poll. Otherwise they pre-empt `discover_fut` (which parks on
+    /// `rx.recv()` → Pending) and any silent `mode_tx` flip during the
+    /// tick body breaks the loop before the pending job is ever claimed.
+    ///
+    /// The behavioral test `claim_after_stopping_sent_cancels_new_job`
+    /// only triggers the underlying race under `cargo llvm-cov`, so a
+    /// silent revert of `interval_at` → `interval` would not fail it on
+    /// the default CI path. This test pins the invariant directly: a
+    /// job pushed immediately at startup is processed without any tick
+    /// having fired, observable via `heartbeat_count == 0`.
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_tick_defers_past_first_select_poll() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            env.handle.discover_entered.notified(),
+        )
+        .await
+        .expect("run() did not enter discover_fut select! within 2s");
+
+        // `minimal_context` → no session → completion path does not trigger
+        // `park_notify`, so any heartbeat observed here came from the
+        // interval tick (the path we want to prove did NOT fire).
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job must complete");
+
+        assert_eq!(
+            env.handle.heartbeat_count(),
+            0,
+            "heartbeat tick fired before the startup job was processed — \
+             is the main-loop interval `interval_at(now + period, period)` \
+             instead of `interval(period)`?"
+        );
+
+        shutdown(&env, run_handle).await;
     }
 
     /// `handle_drain_signal` state guard: SIGUSR1 is honored only from
@@ -3434,8 +3528,10 @@ mod tests {
         let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
-        // Wait for the first heartbeat tick to fire (initial interval fires
-        // immediately, but give the loop time to process it).
+        // Snapshot the heartbeat count before pushing a job. The first
+        // interval tick is now deferred by one period (`interval_at`), so
+        // `before` is typically 0; the 100 ms settle time just lets the
+        // main loop reach its idle select state.
         tokio::time::sleep(Duration::from_millis(100)).await;
         let before = env.handle.heartbeat_count();
 

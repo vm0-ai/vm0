@@ -68,6 +68,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
+  matchesConnectorSearch,
   selectedConnectorType$,
   setSelectedConnectorType$,
   justConnectedTypes$,
@@ -98,12 +99,14 @@ import {
   setPopoverSortOrder$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
-  audioIOAvailable$,
+  audioInputAvailable$,
+  audioInputQuota$,
   sttRecording$,
   sttTranscribing$,
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
+import { setBillingDialogOpen$ } from "../../signals/zero-page/billing.ts";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB — keep in sync with uploads/route.ts
 
@@ -160,6 +163,8 @@ interface ZeroChatComposerProps {
 interface ComposerConnectorItem {
   type: string;
   label: string;
+  helpText: string;
+  tags: readonly string[];
   connected: boolean;
   added: boolean;
 }
@@ -216,11 +221,9 @@ function AddConnectorsDialog({
 }) {
   const search = useGet(addDialogSearch$);
   const setSearch = useSet(setAddDialogSearch$);
-  const filtered = search.trim()
-    ? unconnected.filter((item) => {
-        return item.label.toLowerCase().includes(search.toLowerCase());
-      })
-    : unconnected;
+  const filtered = unconnected.filter((item) => {
+    return matchesConnectorSearch(search, item);
+  });
 
   return (
     <Dialog
@@ -241,7 +244,7 @@ function AddConnectorsDialog({
         <div className="shrink-0">
           <Input
             type="text"
-            placeholder="Search connectors..."
+            placeholder="Find connectors..."
             value={search}
             onChange={(e) => {
               return setSearch(e.target.value);
@@ -342,7 +345,7 @@ function ConnectorsPopoverButton({
   const visibleConnectors =
     showSearch && search.trim()
       ? sorted.filter((c) => {
-          return c.label.toLowerCase().includes(search.toLowerCase());
+          return matchesConnectorSearch(search, c);
         })
       : sorted.slice(0, 20);
 
@@ -390,7 +393,7 @@ function ConnectorsPopoverButton({
               <div className="px-3 py-1 border-b border-border/50">
                 <input
                   type="text"
-                  placeholder="Search connectors..."
+                  placeholder="Find connectors..."
                   value={search}
                   onChange={(e) => {
                     return setSearch(e.target.value);
@@ -480,11 +483,13 @@ function MicButton({
 }: {
   onTranscribed: (text: string) => void;
 }) {
-  const available = useLastResolved(audioIOAvailable$) ?? false;
+  const available = useLastResolved(audioInputAvailable$) ?? false;
+  const quota = useLastResolved(audioInputQuota$) ?? null;
   const recording = useGet(sttRecording$);
   const transcribing = useGet(sttTranscribing$);
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
+  const openBillingDialog = useSet(setBillingDialogOpen$);
   const signal = useGet(pageSignal$);
 
   if (!available) {
@@ -505,6 +510,10 @@ function MicButton({
         Reason.DomCallback,
       );
     } else {
+      if (quota && !quota.allowed) {
+        openBillingDialog(true);
+        return;
+      }
       detach(startRec(signal), Reason.DomCallback);
     }
   };
@@ -740,6 +749,8 @@ export function ZeroChatComposer({
     return {
       type: c.type,
       label: c.label,
+      helpText: c.helpText,
+      tags: c.tags,
       connected: c.connected || optimisticConnected.has(c.type),
       added: addedSet.has(c.type),
     };

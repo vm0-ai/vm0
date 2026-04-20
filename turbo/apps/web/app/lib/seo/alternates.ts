@@ -24,6 +24,7 @@ export function buildLocaleAlternates(
   for (const loc of emitLocales) {
     languages[loc] = `${BASE_URL}/${loc}${normalized}`;
   }
+  languages["x-default"] = `${BASE_URL}/${defaultLocale}${normalized}`;
 
   return {
     canonical: `${BASE_URL}/${currentLocale}${normalized}`,

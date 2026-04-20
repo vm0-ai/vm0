@@ -1,4 +1,5 @@
 import type { Block, KnownBlock, View, MarkdownBlock } from "@slack/web-api";
+import { getModelDisplayName } from "@vm0/core";
 import { getAppUrl } from "../url";
 
 /**
@@ -422,17 +423,24 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
 }
 
 /**
- * Build an agent response message with optional logs link
+ * Build an agent response message with optional logs link.
+ *
+ * The attribution footer (triggeredBy + model) renders as a single context
+ * block without a divider — a deliberately weaker visual than
+ * `buildFooterBlocks`, which is reserved for longer schedule/user footers
+ * from the outbound `/integrations/slack/message` path.
  *
  * @param content - The agent's response content
  * @param logsUrl - Optional URL to the run logs
- * @param triggeredBy - Optional attribution text shown as a separate context block below a divider
+ * @param triggeredBy - Optional agent attribution (e.g. "Sent via my-agent")
+ * @param modelName - Optional raw model ID; rendered via `getModelDisplayName`
  * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
   content: string,
   logsUrl?: string,
   triggeredBy?: string,
+  modelName?: string,
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
 
@@ -450,8 +458,20 @@ export function buildAgentResponseMessage(
     });
   }
 
-  if (triggeredBy) {
-    blocks.push(...buildFooterBlocks(triggeredBy));
+  const attributionParts: string[] = [];
+  if (triggeredBy) attributionParts.push(triggeredBy);
+  if (modelName) attributionParts.push(getModelDisplayName(modelName));
+
+  if (attributionParts.length > 0) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: attributionParts.join(" · "),
+        },
+      ],
+    });
   }
 
   return blocks;

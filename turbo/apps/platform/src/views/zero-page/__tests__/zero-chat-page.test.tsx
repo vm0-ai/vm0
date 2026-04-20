@@ -203,7 +203,7 @@ describe("zero chat page - connectors popover", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByPlaceholderText("Search connectors..."),
+        screen.getByPlaceholderText("Find connectors..."),
       ).toBeInTheDocument();
     });
   });
@@ -225,7 +225,7 @@ describe("zero chat page - connectors popover", () => {
     // Dialog should show available (unconnected) connectors with Connect buttons
     await waitFor(() => {
       expect(
-        screen.getByPlaceholderText("Search connectors..."),
+        screen.getByPlaceholderText("Find connectors..."),
       ).toBeInTheDocument();
     });
 
@@ -252,7 +252,7 @@ describe("zero chat page - connectors popover", () => {
     await user.click(addButton);
 
     const searchInput = await waitFor(() => {
-      return screen.getByPlaceholderText("Search connectors...");
+      return screen.getByPlaceholderText("Find connectors...");
     });
 
     // Before filtering: GitHub should be visible

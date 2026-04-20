@@ -23,7 +23,8 @@ function errorResponse(
  * GET /api/zero/web/download-file?file_id=<id>
  *
  * Downloads a web-uploaded file from S3 and streams it to the caller.
- * Authenticates via ZERO_TOKEN (any sandbox capability accepted).
+ * Authenticates via ZERO_TOKEN with file:read capability (CLI PAT and Clerk
+ * session bypass the capability check).
  * File ownership is enforced by S3 key structure: uploads/${userId}/${fileId}/...
  */
 export async function GET(request: NextRequest): Promise<Response> {
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const authHeader = request.headers.get("authorization") ?? undefined;
   const authCtx = await getAuthContext(authHeader, {
-    acceptAnySandboxCapability: true,
+    requiredCapability: "file:read",
   });
   if (!authCtx) {
     return errorResponse(401, "Not authenticated", "UNAUTHORIZED");

@@ -56,6 +56,8 @@ function initEnv() {
       SLACK_CLIENT_ID: z.string().min(1).optional(),
       SLACK_CLIENT_SECRET: z.string().min(1).optional(),
       SLACK_SIGNING_SECRET: z.string().min(1).optional(),
+      SLACK_API_URL: z.url().optional(),
+      E2E_SLACK_MOCK_ENABLED: z.enum(["true", "false", "1", "0"]).optional(),
       VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent compose/agent UUID for new integrations
       // Ahrefs OAuth (for connector)
       AHREFS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
@@ -215,6 +217,7 @@ function initEnv() {
       CLAUDE_CODE_VERSION_URL: z.url().optional(),
       // Vercel platform detection
       VERCEL: z.string().optional(),
+      VERCEL_URL: z.string().optional(),
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
       // AgentPhone (platform-level phone channel)
       AGENTPHONE_API_KEY: z.string().min(1).optional(),
@@ -270,6 +273,8 @@ function initEnv() {
       SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,
       SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
+      SLACK_API_URL: process.env.SLACK_API_URL,
+      E2E_SLACK_MOCK_ENABLED: process.env.E2E_SLACK_MOCK_ENABLED,
       VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
       AHREFS_OAUTH_CLIENT_ID: process.env.AHREFS_OAUTH_CLIENT_ID,
       AHREFS_OAUTH_CLIENT_SECRET: process.env.AHREFS_OAUTH_CLIENT_SECRET,
@@ -374,6 +379,7 @@ function initEnv() {
       VM0_DEBUG: process.env.VM0_DEBUG,
       CLAUDE_CODE_VERSION_URL: process.env.CLAUDE_CODE_VERSION_URL,
       VERCEL: process.env.VERCEL,
+      VERCEL_URL: process.env.VERCEL_URL,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
       AGENTPHONE_API_KEY: process.env.AGENTPHONE_API_KEY,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-auth-context";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import {
   uploadS3Buffer,
   generatePresignedUrl,
@@ -30,15 +30,17 @@ const ALLOWED_TYPES = new Set([
 export async function POST(request: NextRequest) {
   initServices();
 
-  const userId = await getUserId(
+  const authCtx = await getAuthContext(
     request.headers.get("authorization") ?? undefined,
+    { requiredCapability: "file:write" },
   );
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const userId = authCtx.userId;
 
   const formData = await request.formData();
   const file = formData.get("file");
@@ -77,8 +79,8 @@ export async function POST(request: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   await uploadS3Buffer(bucket, s3Key, buffer, file.type);
 
-  // Generate a presigned GET URL valid for 24 hours
-  const url = await generatePresignedUrl(bucket, s3Key, 86400, sanitizedName);
+  // Generate a presigned GET URL valid for 7 days (max SigV4 TTL)
+  const url = await generatePresignedUrl(bucket, s3Key, 604800, sanitizedName);
 
   log.debug(
     `Uploaded ${sanitizedName} (${file.size} bytes) for user ${userId}`,

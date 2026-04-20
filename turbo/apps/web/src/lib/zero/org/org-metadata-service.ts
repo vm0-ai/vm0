@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
+import { orgTierSchema, type OrgTier } from "@vm0/core";
 import { orgMetadata } from "../../../db/schema/org-metadata";
-import { notFound } from "../../shared/errors";
+import { isNotFound, notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { getStripe } from "../stripe";
 
@@ -34,6 +35,21 @@ export async function getOrgMetadata(orgId: string): Promise<OrgMetadata> {
     tier: row.tier,
     credits: row.credits,
   };
+}
+
+/**
+ * Read the org tier from org_metadata, defaulting to "free" for brand-new
+ * orgs that don't have an org_metadata row yet. Unknown tier strings in the
+ * database will fail-fast via Zod parsing rather than silently pass through.
+ */
+export async function getOrgTierSafe(orgId: string): Promise<OrgTier> {
+  try {
+    const { tier } = await getOrgMetadata(orgId);
+    return orgTierSchema.parse(tier);
+  } catch (error) {
+    if (isNotFound(error)) return "free";
+    throw error;
+  }
 }
 
 /**

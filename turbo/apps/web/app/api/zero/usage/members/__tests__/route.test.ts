@@ -57,6 +57,19 @@ describe("GET /api/zero/usage/members", () => {
   beforeEach(async () => {
     context.setupMocks();
     await context.setupUser();
+    // Default so the Stripe refresh path in getOrgBillingPeriod never hits an
+    // undefined response. Tests that exercise a stale/missing period still
+    // benefit from a valid shape here.
+    stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+      items: {
+        data: [
+          {
+            current_period_end:
+              Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+          },
+        ],
+      },
+    });
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -84,7 +97,7 @@ describe("GET /api/zero/usage/members", () => {
 
   it("returns aggregated usage for single user with processed records", async () => {
     const { userId, orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),
@@ -132,7 +145,7 @@ describe("GET /api/zero/usage/members", () => {
 
   it("returns separate aggregation for multiple users", async () => {
     const { orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),
@@ -177,7 +190,7 @@ describe("GET /api/zero/usage/members", () => {
 
   it("excludes pending records from aggregation", async () => {
     const { userId, orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),

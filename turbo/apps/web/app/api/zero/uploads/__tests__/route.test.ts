@@ -5,12 +5,18 @@ import {
   testContext,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import {
+  generateZeroToken,
+  generateSandboxToken,
+} from "../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
 function createUploadRequest(
   file: File | null,
   userId?: string | null,
+  authToken?: string,
 ): NextRequest {
   const formData = new FormData();
   if (file) {
@@ -22,6 +28,9 @@ function createUploadRequest(
   if (userId === null) {
     // explicitly unauthenticated
     headers["x-no-auth"] = "true";
+  }
+  if (authToken) {
+    headers["authorization"] = `Bearer ${authToken}`;
   }
 
   return new NextRequest("http://localhost:3000/api/zero/uploads", {
@@ -41,12 +50,38 @@ describe("POST /api/zero/uploads", () => {
 
   describe("Authentication", () => {
     it("should reject unauthenticated requests", async () => {
-      const { mockClerk } =
-        await import("../../../../../src/__tests__/clerk-mock");
       mockClerk({ userId: null });
 
       const file = new File(["hello"], "test.txt", { type: "text/plain" });
       const request = createUploadRequest(file, null);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("should accept ZERO_TOKEN with file:write capability", async () => {
+      mockClerk({ userId: null });
+      const token = await generateZeroToken(user.userId, "run-1", user.orgId);
+
+      const file = new File(["hello"], "hello.txt", { type: "text/plain" });
+      const request = createUploadRequest(file, undefined, token);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.filename).toBe("hello.txt");
+    });
+
+    it("should reject sandbox token without file:write capability", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-1");
+
+      const file = new File(["hello"], "hello.txt", { type: "text/plain" });
+      const request = createUploadRequest(file, undefined, token);
 
       const response = await POST(request);
 

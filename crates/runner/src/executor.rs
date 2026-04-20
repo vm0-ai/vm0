@@ -75,7 +75,7 @@ pub async fn execute_job(
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
 
-    record_api_latency(&context, &mut telemetry);
+    record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
     let outcome = match execute_new_sandbox(
         factory,
@@ -122,7 +122,7 @@ pub async fn execute_job_reuse(
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
 
-    record_api_latency(&context, &mut telemetry);
+    record_api_latency("api_to_vm_start", &context, &mut telemetry);
     telemetry.record("vm_reuse", Duration::ZERO, true, None);
 
     let source_ip = idle_entry.source_ip.clone();
@@ -146,12 +146,12 @@ pub async fn execute_job_reuse(
     (outcome, telemetry)
 }
 
-fn record_api_latency(context: &ExecutionContext, telemetry: &mut JobTelemetry) {
+fn record_api_latency(action_type: &str, context: &ExecutionContext, telemetry: &mut JobTelemetry) {
     if let Some(api_start_ms) = context.api_start_time {
         let now_ms = chrono::Utc::now().timestamp_millis() as f64;
         let elapsed_ms = (now_ms - api_start_ms).max(0.0);
         telemetry.record(
-            "api_to_vm_start",
+            action_type,
             Duration::from_millis(elapsed_ms as u64),
             true,
             None,
@@ -474,6 +474,9 @@ async fn run_in_sandbox(
             return Err(e.into());
         }
     };
+
+    // Claude Code process has a PID now — record end-to-end startup latency.
+    record_api_latency("api_to_spawn", context, telemetry);
 
     // Spawn background task to drain stdout chunks and write to host log file.
     let host_log_path = config.log_paths.system_log(context.run_id);

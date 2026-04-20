@@ -1,5 +1,114 @@
 # Changelog
 
+## [12.269.0](https://github.com/vm0-ai/vm0/compare/web-v12.268.0...web-v12.269.0) (2026-04-20)
+
+
+### Features
+
+* add zero web upload-file and file:read/file:write caps ([#10256](https://github.com/vm0-ai/vm0/issues/10256)) ([497dc17](https://github.com/vm0-ai/vm0/commit/497dc17f454d584e1427b10a6ae3e28a63c7c726))
+* **cli:** scaffold zero search command and chat-message:read capability ([#10251](https://github.com/vm0-ai/vm0/issues/10251)) ([bc6cb51](https://github.com/vm0-ai/vm0/commit/bc6cb51312022317278d86896e360cca6ef777f4))
+* **observability:** add startup and wrap-up latency telemetry ([#10257](https://github.com/vm0-ai/vm0/issues/10257)) ([33028a1](https://github.com/vm0-ai/vm0/commit/33028a10e8ad6218d0255ed69c9af8ba88f41f1a)), closes [#9936](https://github.com/vm0-ai/vm0/issues/9936)
+* **voice-io:** gate audio input by org tier with free-tier quota ([#10258](https://github.com/vm0-ai/vm0/issues/10258)) ([2df8bb8](https://github.com/vm0-ai/vm0/commit/2df8bb8bf4baf7fbc744e20a621bd9a1107ba552))
+
+
+### Bug Fixes
+
+* **api:** make run cancel idempotent for already-cancelled runs ([#10267](https://github.com/vm0-ai/vm0/issues/10267)) ([6c8cf17](https://github.com/vm0-ai/vm0/commit/6c8cf17438e34699207cd38bfafe294a1e3478a1)), closes [#10168](https://github.com/vm0-ai/vm0/issues/10168)
+
+
+### Refactoring
+
+* **slack:** unify agent response footer and move model into outbound footer ([#10255](https://github.com/vm0-ai/vm0/issues/10255)) ([d957ea1](https://github.com/vm0-ai/vm0/commit/d957ea13661ddef52c53572fbbb9132ea3ebac3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.211.0
+
+## [12.268.0](https://github.com/vm0-ai/vm0/compare/web-v12.267.0...web-v12.268.0) (2026-04-20)
+
+
+### Features
+
+* **web:** add user_behavior_count table and service ([#10226](https://github.com/vm0-ai/vm0/issues/10226)) ([3dac320](https://github.com/vm0-ai/vm0/commit/3dac3202637f20e1203de84634a6f1621440fb6c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.210.1
+
+## [12.267.0](https://github.com/vm0-ai/vm0/compare/web-v12.266.0...web-v12.267.0) (2026-04-20)
+
+
+### Features
+
+* **slack:** add Powered by model footer to agent messages ([#10156](https://github.com/vm0-ai/vm0/issues/10156)) ([b7d399d](https://github.com/vm0-ai/vm0/commit/b7d399d06f542cf38d1e217961f75e4b5be87192))
+
+
+### Bug Fixes
+
+* **web:** strip self-signed token on non-api paths to keep clerk running ([#10214](https://github.com/vm0-ai/vm0/issues/10214)) ([9493c0e](https://github.com/vm0-ai/vm0/commit/9493c0e9932d646019195e61ba107ab882419738)), closes [#10164](https://github.com/vm0-ai/vm0/issues/10164)
+
+
+### Refactoring
+
+* **core:** split audio i/o feature switch into input and output flags ([#10209](https://github.com/vm0-ai/vm0/issues/10209)) ([f6670cd](https://github.com/vm0-ai/vm0/commit/f6670cd9b1bfc7d6bb21cd66b505749d60c968b2)), closes [#10207](https://github.com/vm0-ai/vm0/issues/10207)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.210.0
+
+## [12.266.0](https://github.com/vm0-ai/vm0/compare/web-v12.265.0...web-v12.266.0) (2026-04-20)
+
+
+### Features
+
+* **web:** add 6 new use case pages ([#10196](https://github.com/vm0-ai/vm0/issues/10196)) ([58b9952](https://github.com/vm0-ai/vm0/commit/58b9952dc803bbf14a1c8c8ab387fd4633d12718))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.209.1
+
+## [12.265.0](https://github.com/vm0-ai/vm0/compare/web-v12.264.0...web-v12.265.0) (2026-04-20)
+
+
+### Features
+
+* **observability:** thread route-entry timestamp from handler to runner ([#10181](https://github.com/vm0-ai/vm0/issues/10181)) ([93c0676](https://github.com/vm0-ai/vm0/commit/93c06768f1731c0951195c4b57a8bae324eac00f))
+* **usage:** add per-user usage insight view behind usageAnalytics switch ([#10191](https://github.com/vm0-ai/vm0/issues/10191)) ([b749762](https://github.com/vm0-ai/vm0/commit/b74976215cd7b46d051d2e58d444ed88681a964e))
+
+
+### Bug Fixes
+
+* **connectors:** point docusign oauth at demo environment ([#10150](https://github.com/vm0-ai/vm0/issues/10150)) ([e606295](https://github.com/vm0-ai/vm0/commit/e606295c98068fc0b2d6178bfe4f5e2ed7f6ff00))
+* **seo:** convert next-intl locale redirects from 307 to 301 ([#10176](https://github.com/vm0-ai/vm0/issues/10176)) ([d4abc21](https://github.com/vm0-ai/vm0/commit/d4abc211acee1619f565f0a9e94ee6519385f10b))
+* **usage:** use relative billing period date in tests to avoid date-bomb ([#10175](https://github.com/vm0-ai/vm0/issues/10175)) ([a8eca1f](https://github.com/vm0-ai/vm0/commit/a8eca1ffd8ef1328b76f5a36e90ddc62fd2bf222))
+* **voice-io:** capture openai stt error body and file metadata in logs ([#10179](https://github.com/vm0-ai/vm0/issues/10179)) ([acf1514](https://github.com/vm0-ai/vm0/commit/acf151472c5fe9f3a0f36510acfc072bc680db54)), closes [#10058](https://github.com/vm0-ai/vm0/issues/10058)
+* **web:** add apple-touch-icon.png to stop clerk auth error ([#10192](https://github.com/vm0-ai/vm0/issues/10192)) ([0a40901](https://github.com/vm0-ai/vm0/commit/0a409018600ebee56683b018c1af1a62514ecf80)), closes [#9909](https://github.com/vm0-ai/vm0/issues/9909)
+
+
+### Refactoring
+
+* **observability:** group voice-chat start timestamp into options ([#10183](https://github.com/vm0-ai/vm0/issues/10183)) ([6ebbb6e](https://github.com/vm0-ai/vm0/commit/6ebbb6e39ee41242b54279a21d6d9b294e1e745c))
+* **voice-chat:** drop redundant mode type cast ([#10188](https://github.com/vm0-ai/vm0/issues/10188)) ([03012bd](https://github.com/vm0-ai/vm0/commit/03012bdad1174ec5bde882c49e783ed1b2d0e047))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.209.0
+
 ## [12.264.0](https://github.com/vm0-ai/vm0/compare/web-v12.263.0...web-v12.264.0) (2026-04-19)
 
 

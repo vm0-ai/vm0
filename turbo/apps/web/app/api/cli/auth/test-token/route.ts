@@ -36,8 +36,16 @@ async function ensureTestOrg(userId: string): Promise<{ orgId: string }> {
   // entries during E2E test runs (avoids Clerk API calls + 429 rate limits).
   const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
+  // Sort by membership createdAt so the picked org is deterministic across
+  // callers (Slack test-state seeder uses the same ordering via
+  // resolveTestOrgId); prevents picking a different org if the test user
+  // accumulates multiple memberships from CI pollution.
+  const ordered = [...memberships.data].sort((a, b) => {
+    return a.createdAt - b.createdAt;
+  });
+
   // Find first org: check org_cache first, populate from Clerk if missing
-  for (const membership of memberships.data) {
+  for (const membership of ordered) {
     const orgId = membership.organization.id;
     const [cached] = await globalThis.services.db
       .select({ orgId: orgCache.orgId })

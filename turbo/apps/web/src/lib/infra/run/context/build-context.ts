@@ -35,6 +35,7 @@ interface BuildInfraContextParams {
   resumedFromCheckpointId?: string;
   resumeSession?: ResumeSession;
   resumeArtifact?: ArtifactSnapshot;
+  apiStartTime: number;
 }
 
 interface BuildInfraContextResult {
@@ -91,7 +92,7 @@ export function buildInfraExecutionContext(
     continuedFromSessionId: params.continuedFromSessionId,
     debugNoMockClaude: params.debugNoMockClaude,
     captureNetworkBodies: params.captureNetworkBodies,
-    apiStartTime: Date.now(),
+    apiStartTime: params.apiStartTime,
   };
 
   return { context };

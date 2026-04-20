@@ -130,4 +130,23 @@ describe("addZeroConnector$", () => {
     expect(capturedBody!.enabledTypes).toContain("slack");
     expect(capturedBody!.enabledTypes).toContain("github");
   });
+
+  it("should not fire a PUT when the connector is already enabled", async () => {
+    let putCalls = 0;
+
+    mockAgentApi(["slack"]);
+
+    server.use(
+      mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
+        putCalls += 1;
+        return respond(200, { enabledTypes: body.enabledTypes });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    await context.store.set(addZeroConnector$, "slack", context.signal);
+
+    expect(putCalls).toBe(0);
+  });
 });

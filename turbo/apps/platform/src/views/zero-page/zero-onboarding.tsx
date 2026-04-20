@@ -46,6 +46,7 @@ import {
 import {
   allConnectorTypes$,
   connectConnector$,
+  matchesConnectorSearch,
   pollingConnectorType$,
   selectedConnectorType$,
   setSelectedConnectorType$,
@@ -156,12 +157,14 @@ function SelectConnectorsContent() {
     (typeof CONNECTOR_TYPES)[ConnectorType],
   ][];
 
-  const needle = search.trim().toLowerCase();
-  const filtered = needle
-    ? connectorEntries.filter(([, config]) => {
-        return config.label.toLowerCase().includes(needle);
-      })
-    : connectorEntries;
+  const filtered = connectorEntries.filter(([type, config]) => {
+    return matchesConnectorSearch(search, {
+      label: config.label,
+      type,
+      helpText: config.helpText,
+      tags: config.tags,
+    });
+  });
 
   const selectedSet = new Set(selectedConnectors);
 
@@ -184,7 +187,7 @@ function SelectConnectorsContent() {
         />
         <Input
           type="text"
-          placeholder="Search connectors..."
+          placeholder="Find connectors..."
           value={search}
           onChange={(e) => {
             return setSearch(e.target.value);

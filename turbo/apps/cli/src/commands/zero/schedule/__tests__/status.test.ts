@@ -7,7 +7,7 @@
  * - Real (internal): All CLI code, formatters, validators
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { statusCommand } from "../status";
@@ -57,15 +57,10 @@ describe("zero schedule status command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
+    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
-  });
-
-  afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
   });
 
   describe("successful status", () => {
@@ -115,6 +110,50 @@ describe("zero schedule status command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("0 9 * * 1");
+    });
+
+    it("should show full prompt without truncation with --prompt flag", async () => {
+      const longPrompt =
+        "a".repeat(120) +
+        " this is clearly past the 60-character preview limit";
+      const longSchedule = { ...mockSchedule, prompt: longPrompt };
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [longSchedule] });
+        }),
+      );
+
+      await statusCommand.parseAsync(["node", "cli", "my-agent", "--prompt"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(longPrompt);
+      expect(logCalls).not.toMatch(/a{57}\.\.\./);
+    });
+
+    it("should truncate prompt preview without --prompt flag", async () => {
+      const longPrompt =
+        "a".repeat(120) +
+        " this is clearly past the 60-character preview limit";
+      const longSchedule = { ...mockSchedule, prompt: longPrompt };
+
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [longSchedule] });
+        }),
+      );
+
+      await statusCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain(longPrompt);
+      expect(logCalls).toMatch(/a{57}\.\.\./);
     });
 
     it("should display schedule when agent identifier is a UUID", async () => {

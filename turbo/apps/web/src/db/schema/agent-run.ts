@@ -30,6 +30,7 @@ export const agentRuns = pgTable(
     ),
     resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
     continuedFromSessionId: uuid("continued_from_session_id"),
+    sessionId: uuid("session_id"),
     status: varchar("status", { length: 20 }).notNull(),
     prompt: text("prompt").notNull(),
     appendSystemPrompt: text("append_system_prompt"),
@@ -78,6 +79,7 @@ export const agentRuns = pgTable(
         table.status,
         table.createdAt.desc(),
       ),
+      index("idx_agent_runs_session").on(table.sessionId),
     ];
   },
 );

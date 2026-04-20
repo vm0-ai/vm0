@@ -43,12 +43,14 @@ import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupPhonePage$ } from "./phone-page/phone-page-setup.ts";
 import { setupVoiceChatPage$ } from "./voice-chat/voice-chat-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
+import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
 import { setupRealtime$ } from "./realtime.ts";
 import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
+import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -189,6 +191,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupVoiceChatPage$),
   },
   {
+    path: ROUTES.usage,
+    setup: setupAuthPageWrapper(setupUsagePage$),
+  },
+  {
     path: ROUTES.onboarding,
     setup: setupAuthPageWrapper(setupOnboardingPage$),
   },
@@ -321,6 +327,7 @@ export const bootstrap$ = command(
       set(setupNotificationListener$, signal),
       set(setupInstallPrompt$, signal),
       set(setupPwaEdgeSwipe$, signal),
+      set(setupSidebarShortcut$, signal),
       set(startSkeletonCycling$, signal),
       (async () => {
         await set(setupClerk$, signal);

@@ -31,6 +31,7 @@ interface MessageReceivedEvent {
  */
 export async function handleMessageReceived(
   event: MessageReceivedEvent,
+  apiStartTime: number,
 ): Promise<void> {
   const { messageId, agentId: apAgentId, fromNumber, body, channel } = event;
 
@@ -95,6 +96,7 @@ export async function handleMessageReceived(
     fromNumber,
     userId,
     callbackContext: callbackPayload,
+    apiStartTime,
   });
 
   log.info("iMessage run dispatched", {

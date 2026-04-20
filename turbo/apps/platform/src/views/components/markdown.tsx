@@ -2,7 +2,7 @@ import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
 import { useGet } from "ccstate-react";
-import type { ComponentPropsWithoutRef } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { theme$ } from "../../signals/theme.ts";
 
 type RewriteArgs = Parameters<
@@ -183,8 +183,121 @@ function ResponsiveTable({ children }: ComponentPropsWithoutRef<"table">) {
   );
 }
 
-export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
+function isImageUrl(href: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?|#|$)/i.test(href);
+}
+
+function isVideoUrl(href: string): boolean {
+  return /\.(mp4|webm|mov|ogv)(?:\?|#|$)/i.test(href);
+}
+
+/**
+ * Only `http:` / `https:` URLs are safe to render as `<img src>` or `<video src>`.
+ * Blocks `javascript:`, `data:`, `file:`, etc. in assistant-rendered markdown.
+ */
+function isSafeMediaUrl(href: string): boolean {
+  return /^https?:\/\//i.test(href);
+}
+
+function PlainLink({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
+  return (
+    <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  );
+}
+
+function MediaLink({
+  href,
+  children,
+  onImageClick,
+  ...rest
+}: ComponentPropsWithoutRef<"a"> & {
+  onImageClick?: (url: string) => void;
+}) {
+  if (!href || !isSafeMediaUrl(href)) {
+    return (
+      <PlainLink href={href} {...rest}>
+        {children}
+      </PlainLink>
+    );
+  }
+
+  if (isImageUrl(href)) {
+    const alt = typeof children === "string" ? children : "";
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          onImageClick?.(href);
+        }}
+        className="block max-w-full my-1 rounded-lg overflow-hidden cursor-zoom-in border border-foreground/10"
+      >
+        <img
+          src={href}
+          alt={alt}
+          className="max-h-32 max-w-full object-contain"
+        />
+      </button>
+    );
+  }
+
+  if (isVideoUrl(href)) {
+    return (
+      <video
+        src={href}
+        controls
+        className="max-h-96 max-w-full my-1 rounded-lg border border-foreground/10"
+      />
+    );
+  }
+
+  return (
+    <PlainLink href={href} {...rest}>
+      {children}
+    </PlainLink>
+  );
+}
+
+function MarkdownLinkRenderer(
+  props: { children?: ReactNode } & ComponentPropsWithoutRef<"a"> & {
+      mediaPreview: boolean;
+      onImageClick: ((url: string) => void) | undefined;
+    },
+) {
+  const { mediaPreview, onImageClick, children, ...rest } = props;
+  if (mediaPreview) {
+    return (
+      <MediaLink {...rest} onImageClick={onImageClick}>
+        {children}
+      </MediaLink>
+    );
+  }
+  return <PlainLink {...rest}>{children}</PlainLink>;
+}
+
+export function Markdown({
+  className,
+  style,
+  mediaPreview = false,
+  onImageClick,
+  ...rest
+}: MarkdownPreviewProps & {
+  mediaPreview?: boolean;
+  onImageClick?: (url: string) => void;
+}) {
   const theme = useGet(theme$);
+  const renderLink = (
+    props: { children?: ReactNode } & ComponentPropsWithoutRef<"a">,
+  ) => {
+    return (
+      <MarkdownLinkRenderer
+        {...props}
+        mediaPreview={mediaPreview}
+        onImageClick={onImageClick}
+      />
+    );
+  };
   return (
     <MarkdownPreview
       className={`!bg-transparent !text-foreground text-sm ${className ?? ""}`}
@@ -199,13 +312,7 @@ export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
       rehypeRewrite={rehypeRewriteHandler}
       components={{
         table: ResponsiveTable,
-        a: ({ children, ...props }) => {
-          return (
-            <a {...props} target="_blank" rel="noopener noreferrer">
-              {children}
-            </a>
-          );
-        },
+        a: renderLink,
       }}
       {...rest}
     />
