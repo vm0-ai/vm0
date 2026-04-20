@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isTestEndpointAllowed } from "../../../../../src/lib/test-endpoints/guard";
+import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint-guard";
 
 export async function POST(request: Request) {
   if (!isTestEndpointAllowed(request)) {

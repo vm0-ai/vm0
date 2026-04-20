@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { isTestEndpointAllowed } from "../../../../src/lib/test-endpoints/guard";
+import { isTestEndpointAllowed } from "../../../../src/lib/auth/test-endpoint-guard";
 import { handleOrgMention } from "../../../../src/lib/zero/slack-org/handlers/mention";
 import { handleOrgDirectMessage } from "../../../../src/lib/zero/slack-org/handlers/direct-message";
 

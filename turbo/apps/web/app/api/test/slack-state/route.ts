@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
-import { isTestEndpointAllowed } from "../../../../src/lib/test-endpoints/guard";
+import { isTestEndpointAllowed } from "../../../../src/lib/auth/test-endpoint-guard";
 import { slackOrgInstallations } from "../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../src/db/schema/slack-org-connection";
 import { agentRuns } from "../../../../src/db/schema/agent-run";

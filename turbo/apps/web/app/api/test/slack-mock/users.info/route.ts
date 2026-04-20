@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isTestEndpointAllowed } from "../../../../../src/lib/test-endpoints/guard";
+import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint-guard";
 import { SLACK_E2E_FIXTURES } from "../../../../../src/lib/test-endpoints/slack-mock-fixtures";
 
 async function readUserId(request: Request): Promise<string> {
