@@ -1,3 +1,4 @@
+import * as React from "react";
 import {
   useGet,
   useSet,
@@ -9,7 +10,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   IconAlertCircle,
-  IconLoader2,
   IconPhoto,
   IconChartLine,
   IconPlayerStop,
@@ -439,64 +439,150 @@ function ChatSkeleton() {
 // Thinking indicator — shown the entire time a run is active
 // ---------------------------------------------------------------------------
 
-const THINKING_PHRASES = [
-  "Cooking...",
-  "Pondering...",
-  "Noodling...",
-  "Warming up...",
-  "Connecting the dots...",
-  "Working it out...",
-  "Crunching bits...",
-  "Chasing electrons...",
-  "Summoning an answer...",
-  "On it...",
+const BLOCK_COLORS = [
+  "#e8a0b4",
+  "#c4705a",
+  "#f5b88a",
+  "#a8b560",
+  "#6bb5a0",
+  "#7baed4",
+  "#b09eda",
+  "#d4a87b",
+  "#e07878",
+  "#82c4c2",
 ] as const;
 
-// Deterministic hash so each turn gets a stable phrase seeded from the
-// last group's id — variety across turns without mutable timer state.
-function pickPhrase(seed: string): string {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (h * 31 + seed.charCodeAt(i)) | 0;
-  }
-  const idx = Math.abs(h) % THINKING_PHRASES.length;
-  return THINKING_PHRASES[idx]!;
+function useRandomBlockColors(): [string, string, string] {
+  return React.useMemo(() => {
+    const shuffled = [...BLOCK_COLORS].sort(() => Math.random() - 0.5);
+    return [shuffled[0]!, shuffled[1]!, shuffled[2]!];
+  }, []);
+}
+
+const THINKING_PHRASES = [
+  "Brewing...",
+  "Piecing together...",
+  "Spinning up...",
+  "On it...",
+  "Assembling...",
+  "Sketching out...",
+  "Mapping it...",
+  "Wiring up...",
+  "Shaping...",
+  "Tuning in...",
+] as const;
+
+const PHRASE_INTERVAL_MS = 3500;
+
+function useRotatingPhrase(active: boolean): string {
+  const [index, setIndex] = React.useState(() =>
+    Math.floor(Math.random() * THINKING_PHRASES.length),
+  );
+  React.useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const id = setInterval(() => {
+      setIndex((prev) => (prev + 1) % THINKING_PHRASES.length);
+    }, PHRASE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [active]);
+  return THINKING_PHRASES[index]!;
+}
+
+function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
+  const phrases = [
+    (t: string) => `Wrapped up at ${t}`,
+    (t: string) => `All done — ${t}`,
+    (t: string) => `Delivered at ${t}`,
+    (t: string) => `Finished at ${t}, at your service`,
+    (t: string) => `That was a wrap — ${t}`,
+    (t: string) => `Mission complete, ${t}`,
+    (t: string) => `Signed off at ${t}`,
+    (t: string) => `Done and dusted — ${t}`,
+  ] as const;
+  const time = lastMsg
+    ? new Date(lastMsg.createdAt).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "just now";
+  const pick = phrases[Math.floor(Math.random() * phrases.length)]!;
+  return pick(time);
+}
+
+function useDonePhrase(lastMsg: PagedChatMessage | undefined): string {
+  const msgId = lastMsg?.id;
+  return React.useMemo(() => {
+    return formatDonePhrase(lastMsg);
+    // Re-compute only when the message changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgId]);
 }
 
 function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const running =
+  const runActive =
     allFinishedLoadable.state === "hasData" && !allFinishedLoadable.data;
-
-  if (!running) {
-    return null;
-  }
+  const [c1, c2, c3] = useRandomBlockColors();
+  const blockStyle = {
+    "--zb-c1": c1,
+    "--zb-c2": c2,
+    "--zb-c3": c3,
+  } as React.CSSProperties;
 
   const lastGroup = groups[groups.length - 1];
   const lastIsAssistant = lastGroup?.role === "assistant";
-  const label = pickPhrase(lastGroup?.beginMessageId ?? "zero");
+  const waitingForAssistant = !!lastGroup && !lastIsAssistant;
+  const running = runActive || waitingForAssistant;
+  const label = useRotatingPhrase(running);
+  const lastMsg = lastIsAssistant
+    ? lastGroup.messages[lastGroup.messages.length - 1]
+    : undefined;
+  const donePhrase = useDonePhrase(lastMsg);
 
-  if (lastIsAssistant) {
-    // Inline continuation — align with the assistant grid, no new avatar,
-    // no bubble padding. Sits directly under the last message text.
+  if (!lastGroup) {
+    return null;
+  }
+
+  // Shared inline row with fixed h-5 to prevent layout jump on transition
+  if (lastIsAssistant || !running) {
     return (
       <div
         data-role="assistant-thinking"
-        className="-mt-4 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start animate-in fade-in duration-300"
+        className="-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
       >
         <div className="hidden @[900px]:block" />
-        <div className="flex items-center gap-2 min-w-0">
-          <IconLoader2
-            size={14}
-            className="animate-spin text-foreground/50 shrink-0"
-          />
-          <p className="zero-shimmer-text text-xs truncate">{label}</p>
+        <div className="min-w-0">
+          {running ? (
+            <div className="flex items-center gap-2 h-5">
+              <span className="zero-blocks shrink-0" style={blockStyle}>
+                <span />
+                <span />
+                <span />
+              </span>
+              <p className="zero-shimmer-text text-xs truncate">{label}</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5 h-5 justify-center">
+              <div className="h-px w-full bg-border/40" />
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] italic text-muted-foreground/40 font-serif shrink-0">
+                  {donePhrase}
+                </p>
+                <div className="h-px flex-1 bg-border/40" />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
+  // Waiting for first assistant response — show bubble with avatar
   return (
     <div
       data-role="assistant"
@@ -506,10 +592,11 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
         <AssistantBubbleAvatar thread={thread} />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
-            <IconLoader2
-              size={14}
-              className="animate-spin text-foreground/50 shrink-0"
-            />
+            <span className="zero-blocks shrink-0" style={blockStyle}>
+              <span />
+              <span />
+              <span />
+            </span>
             <p className="zero-shimmer-text text-xs truncate">{label}</p>
           </div>
         </div>
@@ -707,6 +794,16 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
   const openLightbox = (url: string) => {
     setLightboxUrl(url);
   };
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = () => {
+    if (!cleanContent) {
+      return;
+    }
+    navigator.clipboard.writeText(cleanContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   const allAttachments = parsed.map((p) => {
     return {
@@ -718,7 +815,7 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
   });
 
   return (
-    <div data-role="user">
+    <div data-role="user" className="group">
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
@@ -780,6 +877,22 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
               </div>
             )}
           </div>
+          {cleanContent && (
+            <div className="flex justify-end mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label="Copy message"
+              >
+                {copied ? (
+                  <IconCheck size={18} stroke={1.5} />
+                ) : (
+                  <IconCopy size={18} stroke={1.5} />
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -903,7 +1016,7 @@ function PagedGroupActions({
   return (
     <div className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
       <div className="hidden @[900px]:block" />
-      <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-150">
+      <div className="flex items-center pt-2 pb-1 gap-1 -ml-1">
         {firstRunId && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>

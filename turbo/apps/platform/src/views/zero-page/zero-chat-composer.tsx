@@ -872,7 +872,7 @@ export function ZeroChatComposer({
                 }
                 setInputRef?.(el);
               }}
-              className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
+              className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 border-0 min-h-[88px] focus:outline-none focus:ring-0"
               rows={3}
               placeholder={
                 sending
