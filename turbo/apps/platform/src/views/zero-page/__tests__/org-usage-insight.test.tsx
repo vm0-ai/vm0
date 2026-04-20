@@ -4,16 +4,14 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
-import {
-  setMockUsageInsight,
-  resetMockUsageInsight,
-} from "../../../mocks/handlers/api-usage-insight.ts";
+import { setMockUsageInsight } from "../../../mocks/handlers/api-usage-insight.ts";
+import { resetAllMockHandlers } from "../../../mocks/handlers/index.ts";
 import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
 beforeEach(() => {
-  resetMockUsageInsight();
+  resetAllMockHandlers();
 });
 
 describe("org usage tab — usage insight view", () => {
@@ -73,7 +71,7 @@ describe("org usage tab — usage insight view", () => {
   it("shows OverviewSection (credit balance) when usageAnalytics is disabled", async () => {
     setMockBillingStatus({
       tier: "pro",
-      credits: 8_000,
+      credits: 8000,
       subscriptionStatus: "active",
       hasSubscription: true,
     });

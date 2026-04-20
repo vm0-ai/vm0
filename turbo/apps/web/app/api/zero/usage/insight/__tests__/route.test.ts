@@ -15,7 +15,11 @@ import {
   seedTestCompose,
   insertTestChatThread,
 } from "../../../../../../src/__tests__/db-test-seeders/agents";
-import { triggerSourceSchema } from "@vm0/core";
+import {
+  triggerSourceSchema,
+  type UsageInsightResponse,
+  type UsageInsightBucket,
+} from "@vm0/core";
 
 import { GET } from "../route";
 
@@ -74,7 +78,7 @@ describe("GET /api/zero/usage/insight", () => {
       makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
     );
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data = (await response.json()) as UsageInsightResponse;
 
     // Shape check
     expect(Array.isArray(data.buckets)).toBe(true);
@@ -88,12 +92,12 @@ describe("GET /api/zero/usage/insight", () => {
 
     // Totals across bucket series should be <= grandTotal
     const bucketSum = data.buckets.reduce(
-      (sum: number, b: { series: Record<string, number> }) => {
+      (sum: number, b: UsageInsightBucket) => {
         const seriesSum = Object.values(b.series).reduce(
           (s: number, v: number) => {
             return s + v;
           },
-          0 as number,
+          0,
         );
         return sum + seriesSum;
       },
@@ -129,14 +133,12 @@ describe("GET /api/zero/usage/insight", () => {
       makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
     );
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data = (await response.json()) as UsageInsightResponse;
 
     // Aggregate all buckets by key
     const totalByBucket: Record<string, number> = {};
     for (const bucket of data.buckets) {
-      for (const [key, val] of Object.entries(
-        bucket.series as Record<string, number>,
-      )) {
+      for (const [key, val] of Object.entries(bucket.series)) {
         totalByBucket[key] = (totalByBucket[key] ?? 0) + val;
       }
     }
@@ -180,12 +182,12 @@ describe("GET /api/zero/usage/insight", () => {
       makeRequest({ range: "7d", groupBy: "agent", tz: "UTC" }),
     );
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data = (await response.json()) as UsageInsightResponse;
 
     // Collect all unique series keys across buckets
     const seriesKeys = new Set<string>();
     for (const bucket of data.buckets) {
-      for (const key of Object.keys(bucket.series as Record<string, number>)) {
+      for (const key of Object.keys(bucket.series)) {
         seriesKeys.add(key);
       }
     }
@@ -238,16 +240,18 @@ describe("GET /api/zero/usage/insight", () => {
       makeRequest({ range: "24h", groupBy: "source", tz: "UTC" }),
     );
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data = (await response.json()) as UsageInsightResponse;
 
     // Should have at least 2 buckets (different hours)
     expect(data.buckets.length).toBeGreaterThanOrEqual(2);
 
     // The two buckets should have different timestamps
     if (data.buckets.length >= 2) {
-      const ts0 = data.buckets[0].ts as string;
-      const ts1 = data.buckets[data.buckets.length - 1].ts as string;
-      expect(ts0).not.toBe(ts1);
+      const first = data.buckets[0];
+      const last = data.buckets[data.buckets.length - 1];
+      if (first && last) {
+        expect(first.ts).not.toBe(last.ts);
+      }
     }
   });
 
@@ -279,7 +283,7 @@ describe("GET /api/zero/usage/insight", () => {
       makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
     );
     expect(responseUtc.status).toBe(200);
-    const dataUtc = await responseUtc.json();
+    const dataUtc = (await responseUtc.json()) as UsageInsightResponse;
 
     const responseLa = await GET(
       makeRequest({
@@ -289,13 +293,11 @@ describe("GET /api/zero/usage/insight", () => {
       }),
     );
     expect(responseLa.status).toBe(200);
-    const dataLa = await responseLa.json();
+    const dataLa = (await responseLa.json()) as UsageInsightResponse;
 
     // Find the bucket containing our specific 42 credits row in each timezone
     // We look for the bucket where credits sum to exactly 42
-    const findBucketWith42Credits = (
-      buckets: Array<{ ts: string; series: Record<string, number> }>,
-    ) => {
+    const findBucketWith42Credits = (buckets: UsageInsightBucket[]) => {
       return buckets.find((b) => {
         const total = Object.values(b.series).reduce((s: number, v: number) => {
           return s + v;
@@ -355,7 +357,7 @@ describe("GET /api/zero/usage/insight", () => {
       makeRequest({ range: "28d", groupBy: "source", tz: "UTC" }),
     );
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data = (await response.json()) as UsageInsightResponse;
 
     expect(data.schedules.length).toBe(100);
     expect(data.scheduleOtherCount).toBe(5);
@@ -409,7 +411,7 @@ describe("GET /api/zero/usage/insight", () => {
       makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
     );
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data = (await response.json()) as UsageInsightResponse;
 
     // grandTotalCredits should only include the main user's 100 credits, not other user's 999
     expect(data.grandTotalCredits).toBe(100);
@@ -449,10 +451,10 @@ describe("GET /api/zero/usage/insight", () => {
       makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
     );
     expect(response.status).toBe(200);
-    const data = await response.json();
+    const data = (await response.json()) as UsageInsightResponse;
 
     expect(data.chats.length).toBeGreaterThanOrEqual(1);
-    const chat = data.chats.find((c: { threadId: string }) => {
+    const chat = data.chats.find((c) => {
       return c.threadId === threadId;
     });
     expect(chat).toBeDefined();
