@@ -16,19 +16,13 @@ class TestGetOriginalUrl:
         assert get_original_url(flow) == "http://example.com/"
 
     def test_https_non_standard_port(self, real_flow):
-        # Regression for #10082: scheme must come from the TLS handshake,
-        # not from the destination port. On :8443 the old code inferred
-        # http:// and firewall rules written against https:// stopped
-        # matching.
-        flow = real_flow(host="example.com", port=8443)
-        assert get_original_url(flow) == "https://example.com:8443/"
-
-    def test_non_standard_port_preserved_when_host_header_lacks_port(self, real_flow):
-        # The Host header (``example.com``) does not carry the port, but
-        # the connection is on :8443. The reconstructed URL must still
-        # include :8443 so firewall rules can match the actual target.
-        # mitmproxy's ``pretty_url`` would drop the port here because it
-        # reads the Host header; we intentionally use ``port`` instead.
+        # Pins two invariants at once for the #10082 regression:
+        # - scheme comes from the TLS handshake, not from the port (so
+        #   :8443 stays ``https://``, not ``http://`` as before the fix);
+        # - the destination port is included even when the Host header
+        #   has no port (the Host-lacks-port precondition is asserted
+        #   below — mitmproxy's ``pretty_url`` would drop the port here,
+        #   which is why we don't use it).
         flow = real_flow(host="example.com", port=8443)
         assert flow.request.headers.get("Host") == "example.com"
         assert get_original_url(flow) == "https://example.com:8443/"

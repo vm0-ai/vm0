@@ -2148,17 +2148,17 @@ class TestAuthBaseUrlRewriteEdgeCases:
         tmp_path,
         *,
         path="/hook",
-        pretty_url=None,
+        seed_url=None,
         resolved_base="https://discord.com/api/webhooks/123/abc",
         rel_path="/",
     ):
-        # ``pretty_url`` lets callers seed a specific scheme://host/path?query
-        # on the request.  We parse it back into ``real_flow`` kwargs rather
-        # than mutating the read-only ``Request.pretty_url`` property.
-        if pretty_url:
+        # ``seed_url`` lets callers specify a scheme://host/path?query to
+        # seed the request. We parse it back into ``real_flow`` kwargs
+        # rather than mutating the read-only ``Request`` properties.
+        if seed_url:
             from urllib.parse import urlparse
 
-            parsed = urlparse(pretty_url)
+            parsed = urlparse(seed_url)
             host = parsed.hostname or "firewall-placeholder.vm3.ai"
             real_path = parsed.path or "/"
             if parsed.query:

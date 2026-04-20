@@ -63,10 +63,10 @@ def real_flow():
     """Factory that builds a real :class:`mitmproxy.http.HTTPFlow`.
 
     Parameters mirror the handful of attributes the addon reads from the
-    flow: client IP, request method/host/port/path/body/headers, response
-    status/body/headers/encoding.  The returned flow has ``flow.metadata``
-    empty (addon fills it in) and, when ``with_response=False``, no
-    response attached.
+    flow: client IP, request scheme/method/host/port/path/body/headers,
+    response status/body/headers/encoding. The returned flow has
+    ``flow.metadata`` empty (addon fills it in) and, when
+    ``with_response=False``, no response attached.
     """
 
     def _build(
