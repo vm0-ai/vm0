@@ -21,12 +21,12 @@
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{Notify, oneshot};
+use tokio::sync::{Notify, mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
@@ -55,6 +55,42 @@ pub struct ProcessExitEvent {
     pub stderr: Vec<u8>,
 }
 
+/// Connection lifecycle, expressed as data rather than a separate atomic flag.
+///
+/// All four registration tables (`pending`, `pending_stdout`, `stdout_senders`)
+/// live inside the `Connected` variant so they are structurally unreachable
+/// once the reader task has exited. `exits` lives in BOTH variants because it
+/// is an observation log — a cached exit event remains a valid answer to
+/// `wait_for_exit` after the connection closes.
+///
+/// The invariant "connection is closed ⇔ registrations are impossible" is
+/// enforced by the type: every code path that cares about liveness must
+/// `match`, which precludes the old footgun of reading a stale close flag
+/// without taking the corresponding lock.
+enum ConnectionState {
+    Connected {
+        /// Pending request responses: seq → oneshot sender.
+        pending: HashMap<u32, oneshot::Sender<RawMessage>>,
+        /// Pre-registered stdout senders: request seq → channel sender.
+        /// `spawn_watch` inserts here BEFORE sending the request so that
+        /// `reader_loop` can move the sender to `stdout_senders` atomically
+        /// when it processes the `spawn_watch_result` — before any
+        /// `stdout_chunk` for that pid is processed.
+        pending_stdout: HashMap<u32, mpsc::UnboundedSender<Vec<u8>>>,
+        /// Stdout chunk senders: pid → channel sender.
+        /// Populated by `reader_loop` when it processes `spawn_watch_result`,
+        /// fed by `reader_loop` when it processes `stdout_chunk`.
+        stdout_senders: HashMap<u32, mpsc::UnboundedSender<Vec<u8>>>,
+        /// Cached process exit events (unsolicited, seq=0).
+        exits: HashMap<u32, ProcessExitEvent>,
+    },
+    Closed {
+        /// Preserved across the close transition: callers of `wait_for_exit`
+        /// can still retrieve an exit event that was cached before close.
+        exits: HashMap<u32, ProcessExitEvent>,
+    },
+}
+
 /// Shared state between the reader task and public API methods.
 struct Shared {
     /// Serialises writes to the stream.
@@ -63,29 +99,12 @@ struct Shared {
     /// Handshake uses seq=1 before Shared is created, so post-handshake
     /// sequences start at 2 to avoid collisions.
     seq: AtomicU32,
-    /// Pending request responses: seq → oneshot sender.
-    pending: std::sync::Mutex<HashMap<u32, oneshot::Sender<RawMessage>>>,
-    /// Cached process exit events (unsolicited, seq=0).
-    exits: std::sync::Mutex<HashMap<u32, ProcessExitEvent>>,
-    /// Notified when a new exit event arrives.
+    /// Single source of truth for connection liveness plus all per-connection
+    /// registration tables. See [`ConnectionState`].
+    state: std::sync::Mutex<ConnectionState>,
+    /// Notified when a new exit event lands in `exits` or when the connection
+    /// closes. Pure signalling — all state is in `state`.
     exit_notify: Notify,
-    /// Stdout chunk senders: pid → channel sender.
-    /// Populated by `reader_loop` when it processes `spawn_watch_result`,
-    /// fed by `reader_loop` when it processes `stdout_chunk`.
-    stdout_senders: std::sync::Mutex<HashMap<u32, tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
-    /// Pre-registered stdout senders: request seq → channel sender.
-    /// `spawn_watch` inserts here BEFORE sending the request so that
-    /// `reader_loop` can move the sender to `stdout_senders` atomically
-    /// when it processes the `spawn_watch_result` — before any `stdout_chunk`
-    /// for that pid is processed. This eliminates the race where early
-    /// chunks could be dropped.
-    pending_stdout: std::sync::Mutex<HashMap<u32, tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
-    /// Set to `true` when the reader task exits (before `closed.notify_waiters()`).
-    /// Checked by `request` and `wait_for_exit` to detect a close that happened
-    /// before their `Notified` futures were created.
-    is_closed: AtomicBool,
-    /// Notified when the connection is lost (reader task exited).
-    closed: Notify,
 }
 
 impl Shared {
@@ -97,6 +116,45 @@ impl Shared {
                 return seq;
             }
             // Wrapped to 0 — skip it.
+        }
+    }
+
+    /// Transition `Connected → Closed`, preserving the cached `exits` map and
+    /// dropping the three registration tables outside the state lock so that
+    /// oneshot/mpsc sender drops (which wake their receivers) run without the
+    /// lock held. Idempotent: a second call preserves whatever `exits` the
+    /// first call cached and performs no further work.
+    ///
+    /// Both arms of the match restore `*guard` to a `Closed` variant carrying
+    /// the real cached `exits` — otherwise `mem::replace` would leave behind
+    /// the placeholder empty map and silently drop previously cached events.
+    fn close(&self) {
+        let maps_to_drop = {
+            let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            match std::mem::replace(
+                &mut *guard,
+                ConnectionState::Closed {
+                    exits: HashMap::new(),
+                },
+            ) {
+                ConnectionState::Connected {
+                    pending,
+                    pending_stdout,
+                    stdout_senders,
+                    exits,
+                } => {
+                    *guard = ConnectionState::Closed { exits };
+                    Some((pending, pending_stdout, stdout_senders))
+                }
+                ConnectionState::Closed { exits } => {
+                    *guard = ConnectionState::Closed { exits };
+                    None
+                }
+            }
+        };
+        if let Some(maps) = maps_to_drop {
+            drop(maps);
+            self.exit_notify.notify_waiters();
         }
     }
 }
@@ -157,21 +215,21 @@ async fn reader_loop(
             if msg.msg_type == MSG_STDOUT_CHUNK && msg.seq == 0 {
                 if let Ok((pid, data)) = vsock_proto::decode_stdout_chunk(&msg.payload) {
                     let sender = {
-                        shared
-                            .stdout_senders
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .get(&pid)
-                            .cloned()
+                        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                        match &*guard {
+                            ConnectionState::Connected { stdout_senders, .. } => {
+                                stdout_senders.get(&pid).cloned()
+                            }
+                            ConnectionState::Closed { .. } => None,
+                        }
                     };
                     if let Some(tx) = sender {
                         // Best-effort: if receiver is dropped, remove sender.
                         if tx.send(data.to_vec()).is_err() {
-                            shared
-                                .stdout_senders
-                                .lock()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .remove(&pid);
+                            let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                            if let ConnectionState::Connected { stdout_senders, .. } = &mut *guard {
+                                stdout_senders.remove(&pid);
+                            }
                         }
                     }
                 }
@@ -179,12 +237,6 @@ async fn reader_loop(
                 if let Ok((pid, exit_code, stdout, stderr)) =
                     vsock_proto::decode_process_exit(&msg.payload)
                 {
-                    // Close stdout channel for this pid (if any).
-                    shared
-                        .stdout_senders
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .remove(&pid);
                     let event = ProcessExitEvent {
                         pid,
                         exit_code,
@@ -192,64 +244,56 @@ async fn reader_loop(
                         stderr: stderr.to_vec(),
                     };
                     {
-                        let mut exits = shared.exits.lock().unwrap_or_else(|e| e.into_inner());
-                        exits.insert(pid, event);
+                        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                        if let ConnectionState::Connected {
+                            stdout_senders,
+                            exits,
+                            ..
+                        } = &mut *guard
+                        {
+                            // Close stdout channel for this pid (if any).
+                            stdout_senders.remove(&pid);
+                            exits.insert(pid, event);
+                        }
                     }
                     shared.exit_notify.notify_waiters();
                 }
             } else {
                 // For spawn_watch_result: move the pre-registered stdout sender
                 // from pending_stdout to stdout_senders BEFORE dispatching the
-                // response. This ensures the channel is keyed by pid in
+                // response — under one lock so the channel is keyed by pid in
                 // stdout_senders before any subsequent MSG_STDOUT_CHUNK arrives.
-                if msg.msg_type == MSG_SPAWN_WATCH_RESULT
-                    && let Ok(pid) = vsock_proto::decode_spawn_watch_result(&msg.payload)
-                {
-                    let sender = shared
-                        .pending_stdout
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .remove(&msg.seq);
-                    if let Some(tx) = sender {
-                        shared
-                            .stdout_senders
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .insert(pid, tx);
+                let response_sender = {
+                    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                    match &mut *guard {
+                        ConnectionState::Connected {
+                            pending,
+                            pending_stdout,
+                            stdout_senders,
+                            ..
+                        } => {
+                            if msg.msg_type == MSG_SPAWN_WATCH_RESULT
+                                && let Ok(pid) =
+                                    vsock_proto::decode_spawn_watch_result(&msg.payload)
+                                && let Some(tx) = pending_stdout.remove(&msg.seq)
+                            {
+                                stdout_senders.insert(pid, tx);
+                            }
+                            pending.remove(&msg.seq)
+                        }
+                        ConnectionState::Closed { .. } => None,
                     }
-                }
-                let sender = {
-                    let mut pending = shared.pending.lock().unwrap_or_else(|e| e.into_inner());
-                    pending.remove(&msg.seq)
                 };
-                if let Some(tx) = sender {
+                if let Some(tx) = response_sender {
                     let _ = tx.send(msg);
                 }
             }
         }
     }
-    // Connection lost — drop all pending senders so receivers get RecvError.
-    shared
-        .pending
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clear();
-    // Close all stdout channels so consumers see the stream end.
-    shared
-        .stdout_senders
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clear();
-    shared
-        .pending_stdout
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clear();
-    // Set flag BEFORE notify so that callers who haven't registered yet
-    // can detect the close via the flag.
-    shared.is_closed.store(true, Ordering::Release);
-    shared.closed.notify_waiters();
-    shared.exit_notify.notify_waiters();
+    // Connection lost — transition state to Closed. `close()` drops all
+    // registration maps outside the lock (waking every pending receiver
+    // with `RecvError`) and fires `exit_notify` so `wait_for_exit` wakes.
+    shared.close();
 }
 
 impl VsockHost {
@@ -304,13 +348,13 @@ impl VsockHost {
         let shared = Arc::new(Shared {
             writer: tokio::sync::Mutex::new(write_half),
             seq: AtomicU32::new(2),
-            pending: std::sync::Mutex::new(HashMap::new()),
-            exits: std::sync::Mutex::new(HashMap::new()),
+            state: std::sync::Mutex::new(ConnectionState::Connected {
+                pending: HashMap::new(),
+                pending_stdout: HashMap::new(),
+                stdout_senders: HashMap::new(),
+                exits: HashMap::new(),
+            }),
             exit_notify: Notify::new(),
-            stdout_senders: std::sync::Mutex::new(HashMap::new()),
-            pending_stdout: std::sync::Mutex::new(HashMap::new()),
-            is_closed: AtomicBool::new(false),
-            closed: Notify::new(),
         });
 
         let reader_shared = Arc::clone(&shared);
@@ -408,48 +452,39 @@ impl VsockHost {
         let data = vsock_proto::encode(msg_type, seq, payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-        // Register for close notification BEFORE inserting pending entry so
-        // we don't miss a close that happens between insert and select!.
-        let closed_notified = self.shared.closed.notified();
-        tokio::pin!(closed_notified);
-        closed_notified.as_mut().enable();
-
+        // Register under the state lock: `Closed` short-circuits to an
+        // immediate error, and insertion into `pending` is serialised with
+        // the `Connected → Closed` transition in `close()`. There is no
+        // post-write `is_closed` check because close is observed via the
+        // oneshot receiver becoming `Closed` when `close()` drops the map.
         let (tx, rx) = oneshot::channel();
         {
-            let mut pending = self
-                .shared
-                .pending
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            pending.insert(seq, tx);
+            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+            match &mut *guard {
+                ConnectionState::Closed { .. } => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "connection closed",
+                    ));
+                }
+                ConnectionState::Connected { pending, .. } => {
+                    pending.insert(seq, tx);
+                }
+            }
         }
 
         // Write to stream; clean up pending entry on failure.
         if let Err(e) = self.shared.writer.lock().await.write_all(&data).await {
-            self.shared
-                .pending
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .remove(&seq);
+            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let ConnectionState::Connected { pending, .. } = &mut *guard {
+                pending.remove(&seq);
+            }
             return Err(e);
         }
 
-        // If the reader already exited before we registered, closed_notified
-        // may never fire. The flag catches this case.
-        if self.shared.is_closed.load(Ordering::Acquire) {
-            self.shared
-                .pending
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .remove(&seq);
-            return Err(io::Error::new(
-                io::ErrorKind::ConnectionReset,
-                "connection closed",
-            ));
-        }
-
-        // biased: prioritise the response channel over connection-closed so
-        // that a response arriving just before EOF is not lost.
+        // `rx` returns `Ok(msg)` when the reader dispatches a response and
+        // `Err(RecvError)` when `close()` drops the `Connected` variant. The
+        // timeout arm is the only other way out.
         tokio::select! {
             biased;
             result = rx => {
@@ -459,12 +494,11 @@ impl VsockHost {
                 ))
             }
             _ = tokio::time::sleep(timeout) => {
-                self.shared.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&seq);
+                let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                if let ConnectionState::Connected { pending, .. } = &mut *guard {
+                    pending.remove(&seq);
+                }
                 Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
-            }
-            _ = closed_notified => {
-                self.shared.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&seq);
-                Err(io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"))
             }
         }
     }
@@ -651,15 +685,32 @@ impl VsockHost {
         // sending the request. reader_loop will atomically move it from
         // pending_stdout[seq] to stdout_senders[pid] when it processes the
         // spawn_watch_result — before any stdout_chunk for that pid.
-        let (stdout_tx, stdout_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (stdout_tx, stdout_rx) = mpsc::unbounded_channel();
         let seq = self.shared.next_seq();
         {
-            self.shared
-                .pending_stdout
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .insert(seq, stdout_tx);
+            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+            match &mut *guard {
+                ConnectionState::Closed { .. } => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "connection closed",
+                    ));
+                }
+                ConnectionState::Connected { pending_stdout, .. } => {
+                    pending_stdout.insert(seq, stdout_tx);
+                }
+            }
         }
+
+        // Cleanup helper: remove the pending_stdout entry if it's still there.
+        // If `close()` already ran, the map is gone and the Closed branch is a
+        // no-op; the stdout_tx inside the map was already dropped.
+        let drop_pending_stdout = |shared: &Shared| {
+            let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let ConnectionState::Connected { pending_stdout, .. } = &mut *guard {
+                pending_stdout.remove(&seq);
+            }
+        };
 
         let resp = match self
             .request_raw(MSG_SPAWN_WATCH, seq, &payload, Duration::from_secs(30))
@@ -667,33 +718,21 @@ impl VsockHost {
         {
             Ok(resp) => resp,
             Err(e) => {
-                self.shared
-                    .pending_stdout
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .remove(&seq);
+                drop_pending_stdout(&self.shared);
                 return Err(e);
             }
         };
 
         if resp.msg_type == MSG_ERROR {
             // No pid assigned — clean up pending stdout sender.
-            self.shared
-                .pending_stdout
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .remove(&seq);
+            drop_pending_stdout(&self.shared);
             let msg = vsock_proto::decode_error(&resp.payload)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             return Err(io::Error::other(msg));
         }
 
         if resp.msg_type != MSG_SPAWN_WATCH_RESULT {
-            self.shared
-                .pending_stdout
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .remove(&seq);
+            drop_pending_stdout(&self.shared);
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unexpected response type: 0x{:02X}", resp.msg_type),
@@ -713,53 +752,42 @@ impl VsockHost {
     pub async fn wait_for_exit(&self, pid: u32, timeout: Duration) -> io::Result<ProcessExitEvent> {
         let deadline = Instant::now() + timeout;
         loop {
-            // Register interest in notifications BEFORE checking the cache.
-            // `enable()` ensures that a `notify_waiters()` call between the
-            // cache check and `select!` is not lost.
+            // Register interest BEFORE checking the cache so a `notify_waiters`
+            // firing between the cache check and `select!` still wakes us.
             let exit_notified = self.shared.exit_notify.notified();
-            let closed_notified = self.shared.closed.notified();
-            tokio::pin!(exit_notified, closed_notified);
+            tokio::pin!(exit_notified);
             exit_notified.as_mut().enable();
-            closed_notified.as_mut().enable();
 
-            // Check cache after enabling — any notification from this point on
-            // is guaranteed to wake us.
+            // `match state` covers both the cache check and the closed signal
+            // under one lock. The two arms are exhaustive siblings — the
+            // Closed arm's cache re-check cannot be forgotten by a reviewer
+            // because there is no sequential "check is_closed → maybe retry"
+            // dance to get wrong.
             {
-                let mut exits = self.shared.exits.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(event) = exits.remove(&pid) {
-                    return Ok(event);
+                let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                match &mut *guard {
+                    ConnectionState::Connected { exits, .. } => {
+                        if let Some(event) = exits.remove(&pid) {
+                            return Ok(event);
+                        }
+                    }
+                    ConnectionState::Closed { exits } => {
+                        if let Some(event) = exits.remove(&pid) {
+                            return Ok(event);
+                        }
+                        return Err(io::Error::new(
+                            io::ErrorKind::ConnectionReset,
+                            "connection closed",
+                        ));
+                    }
                 }
-            }
-
-            // If the reader already exited before we created the Notified
-            // futures, notify_waiters() has already fired and won't fire
-            // again. The is_closed flag catches this case.
-            if self.shared.is_closed.load(Ordering::Acquire) {
-                let mut exits = self.shared.exits.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(event) = exits.remove(&pid) {
-                    return Ok(event);
-                }
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
             }
 
             tokio::select! {
                 biased;
                 _ = exit_notified => {
-                    // Notification received — re-check cache on next iteration.
-                }
-                _ = closed_notified => {
-                    // Check one last time — event might have been cached before close.
-                    let mut exits = self.shared.exits.lock().unwrap_or_else(|e| e.into_inner());
-                    if let Some(event) = exits.remove(&pid) {
-                        return Ok(event);
-                    }
-                    return Err(io::Error::new(
-                        io::ErrorKind::ConnectionReset,
-                        "connection closed",
-                    ));
+                    // Either a new exit event, or `close()` fired its
+                    // `exit_notify.notify_waiters()` — re-check on next iter.
                 }
                 _ = tokio::time::sleep_until(deadline) => {
                     return Err(io::Error::new(io::ErrorKind::TimedOut, "wait timeout"));
@@ -1485,6 +1513,48 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    }
+
+    /// Regression for #10076: the guest writes the exec response and then
+    /// immediately closes the socket. The reader dispatches the response,
+    /// then observes EOF and transitions state to `Closed`. Before the fix,
+    /// `request_raw` would observe `is_closed=true` after `write_all` and
+    /// return `ConnectionReset`, discarding the already-delivered response
+    /// sitting in `rx`. Under the new `ConnectionState` refactor the
+    /// `is_closed` early-exit no longer exists — the response must be
+    /// returned via the biased `rx` arm of `select!`.
+    #[tokio::test]
+    async fn test_response_then_close_returns_ok() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            // Read the exec request.
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_EXEC);
+
+            // Write the response and close the socket. The response must
+            // race with EOF such that reader_loop processes both before the
+            // host's `request_raw` returns from its select!.
+            let payload = vsock_proto::encode_exec_result(0, b"race-survived", b"");
+            let resp = vsock_proto::encode(MSG_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+            drop(guest);
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let result = host.exec("echo race", 5000, &[], false).await;
+
+        // The response was delivered before close; the refactor guarantees
+        // it is returned via `rx` rather than being shadowed by a close
+        // observation.
+        let result = result.expect("response delivered before close must not be lost");
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, b"race-survived");
     }
 
     /// Prove the core requirement: wait_for_exit and exec can run concurrently.
