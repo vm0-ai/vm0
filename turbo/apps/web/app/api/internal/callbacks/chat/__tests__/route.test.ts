@@ -24,7 +24,10 @@ import { POST } from "../route";
 import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
 import webpush, { WebPushError } from "web-push";
-import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import {
+  seedTestRun,
+  setTestRunStatus,
+} from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 vi.mock("web-push", async (importActual) => {
@@ -456,6 +459,45 @@ describe("POST /api/internal/callbacks/chat", () => {
       // Failed runs don't have agentSessionId in result, so latestSessionId is null
       const threadSessionId = await getThreadSessionId(threadId);
       expect(threadSessionId).toBeNull();
+    });
+  });
+
+  describe("Wrap-up Metric", () => {
+    it("should flush Axiom after recording last_event_to_complete in after()", async () => {
+      // Regression: recordLastEventToComplete runs inside next/server `after()`
+      // in a bare NextResponse route (not ts-rest-handler), so the response-
+      // boundary auto-flush doesn't cover it. Without an explicit flushAxiom(),
+      // Vercel freezes the lambda before the Axiom SDK's batch timer fires
+      // and the sample is dropped in prod. See #10300.
+      const { threadId, runId, secret } = await setupRunAndThread();
+      // Populate agent_runs.completed_at so the metric's guard passes —
+      // seedTestRun doesn't back-fill the timestamp when status='completed'.
+      await setTestRunStatus(runId, "completed");
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          sequenceNumber: 0,
+          eventData: {
+            message: { content: [{ type: "text", text: "done" }] },
+          },
+        },
+      ]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      context.mocks.axiom.flushAxiom.mockClear();
+      await context.mocks.flushAfter();
+      expect(context.mocks.axiom.flushAxiom).toHaveBeenCalled();
     });
   });
 
