@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.125.0](https://github.com/vm0-ai/vm0/compare/cli-v9.124.3...cli-v9.125.0) (2026-04-20)
+
+
+### Features
+
+* add zero web upload-file and file:read/file:write caps ([#10256](https://github.com/vm0-ai/vm0/issues/10256)) ([497dc17](https://github.com/vm0-ai/vm0/commit/497dc17f454d584e1427b10a6ae3e28a63c7c726))
+* **cli:** implement zero search --source slack static recipe ([#10270](https://github.com/vm0-ai/vm0/issues/10270)) ([dbb30e7](https://github.com/vm0-ai/vm0/commit/dbb30e79d1ea64cc6c7466e6b1eb897b489664b7))
+* **cli:** scaffold zero search command and chat-message:read capability ([#10251](https://github.com/vm0-ai/vm0/issues/10251)) ([bc6cb51](https://github.com/vm0-ai/vm0/commit/bc6cb51312022317278d86896e360cca6ef777f4))
+
+
+### Bug Fixes
+
+* **api:** make run cancel idempotent for already-cancelled runs ([#10267](https://github.com/vm0-ai/vm0/issues/10267)) ([6c8cf17](https://github.com/vm0-ai/vm0/commit/6c8cf17438e34699207cd38bfafe294a1e3478a1)), closes [#10168](https://github.com/vm0-ai/vm0/issues/10168)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.211.0
+
 ## [9.124.3](https://github.com/vm0-ai/vm0/compare/cli-v9.124.2...cli-v9.124.3) (2026-04-20)
 
 

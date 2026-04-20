@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.266.0](https://github.com/vm0-ai/vm0/compare/app-v0.265.1...app-v0.266.0) (2026-04-20)
+
+
+### Features
+
+* **platform:** render image and video links inline in chat ([#10254](https://github.com/vm0-ai/vm0/issues/10254)) ([6e775f1](https://github.com/vm0-ai/vm0/commit/6e775f1e0051b61c6fb30efe161a63b08566ea55))
+* **voice-io:** gate audio input by org tier with free-tier quota ([#10258](https://github.com/vm0-ai/vm0/issues/10258)) ([2df8bb8](https://github.com/vm0-ai/vm0/commit/2df8bb8bf4baf7fbc744e20a621bd9a1107ba552))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.211.0
+
 ## [0.265.1](https://github.com/vm0-ai/vm0/compare/app-v0.265.0...app-v0.265.1) (2026-04-20)
 
 

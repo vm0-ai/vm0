@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.269.0](https://github.com/vm0-ai/vm0/compare/web-v12.268.0...web-v12.269.0) (2026-04-20)
+
+
+### Features
+
+* add zero web upload-file and file:read/file:write caps ([#10256](https://github.com/vm0-ai/vm0/issues/10256)) ([497dc17](https://github.com/vm0-ai/vm0/commit/497dc17f454d584e1427b10a6ae3e28a63c7c726))
+* **cli:** scaffold zero search command and chat-message:read capability ([#10251](https://github.com/vm0-ai/vm0/issues/10251)) ([bc6cb51](https://github.com/vm0-ai/vm0/commit/bc6cb51312022317278d86896e360cca6ef777f4))
+* **observability:** add startup and wrap-up latency telemetry ([#10257](https://github.com/vm0-ai/vm0/issues/10257)) ([33028a1](https://github.com/vm0-ai/vm0/commit/33028a10e8ad6218d0255ed69c9af8ba88f41f1a)), closes [#9936](https://github.com/vm0-ai/vm0/issues/9936)
+* **voice-io:** gate audio input by org tier with free-tier quota ([#10258](https://github.com/vm0-ai/vm0/issues/10258)) ([2df8bb8](https://github.com/vm0-ai/vm0/commit/2df8bb8bf4baf7fbc744e20a621bd9a1107ba552))
+
+
+### Bug Fixes
+
+* **api:** make run cancel idempotent for already-cancelled runs ([#10267](https://github.com/vm0-ai/vm0/issues/10267)) ([6c8cf17](https://github.com/vm0-ai/vm0/commit/6c8cf17438e34699207cd38bfafe294a1e3478a1)), closes [#10168](https://github.com/vm0-ai/vm0/issues/10168)
+
+
+### Refactoring
+
+* **slack:** unify agent response footer and move model into outbound footer ([#10255](https://github.com/vm0-ai/vm0/issues/10255)) ([d957ea1](https://github.com/vm0-ai/vm0/commit/d957ea13661ddef52c53572fbbb9132ea3ebac3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.211.0
+
 ## [12.268.0](https://github.com/vm0-ai/vm0/compare/web-v12.267.0...web-v12.268.0) (2026-04-20)
 
 
