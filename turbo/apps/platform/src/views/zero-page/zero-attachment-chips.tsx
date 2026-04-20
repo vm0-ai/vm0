@@ -9,6 +9,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
+import { logger } from "../../signals/log.ts";
 import {
   lightboxUrl$,
   setLightboxUrl$,
@@ -17,6 +18,8 @@ import {
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docCsvIcon from "./assets/doc-csv.svg";
+
+const log = logger("zero-attachment-chips");
 
 /**
  * Return the icon path for a known file extension, or null for unknown types.
@@ -54,27 +57,45 @@ function filenameFromUrl(url: string): string {
   return last && last.length > 0 ? last : "image";
 }
 
-async function downloadUrl(url: string): Promise<void> {
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(blobUrl);
+}
+
+// Fetch the asset as a blob, degrading to a new-tab fallback on network /
+// CORS failure. The `.catch` is intentionally scoped to the fetch branch so
+// only network failures fall back — any synchronous DOM / blob failure after
+// a successful fetch is a real bug and propagates to the caller. The
+// fallback logs the underlying error so unexpected failures surface in
+// Sentry instead of being silently mis-classified as "CORS".
+function fetchBlobOrOpen(url: string): Promise<Blob | null> {
+  return fetch(url, { mode: "cors" })
+    .then((res) => {
+      if (!res.ok) {
+        throw new Error(`fetch failed: ${String(res.status)}`);
+      }
+      return res.blob();
+    })
+    .catch((error: unknown) => {
+      log.warn("downloadUrl: fetch failed, falling back to window.open", error);
+      window.open(url, "_blank", "noopener,noreferrer");
+      return null;
+    });
+}
+
+function downloadUrl(url: string): Promise<void> {
   const filename = filenameFromUrl(url);
-  try {
-    const res = await fetch(url, { mode: "cors" });
-    if (!res.ok) {
-      throw new Error(`fetch failed: ${String(res.status)}`);
+  return fetchBlobOrOpen(url).then((blob) => {
+    if (blob !== null) {
+      triggerBlobDownload(blob, filename);
     }
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(blobUrl);
-  } catch {
-    // CORS / network failure — fall back to opening the asset in a new tab
-    // so the user can save it manually via the browser context menu.
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
+  });
 }
 
 export function ImageLightbox({ url }: { url: string }) {
@@ -100,7 +121,9 @@ export function ImageLightbox({ url }: { url: string }) {
         <button
           type="button"
           onClick={() => {
-            void downloadUrl(url);
+            downloadUrl(url).catch((error: unknown) => {
+              log.error("downloadUrl: unexpected failure", error);
+            });
           }}
           className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
           aria-label="Download"
