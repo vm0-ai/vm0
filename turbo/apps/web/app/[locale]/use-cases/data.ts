@@ -1279,7 +1279,11 @@ export const USE_CASES: UseCase[] = [
       { connector: VM0, required: true },
       { connector: SLACK, required: true },
     ],
-    relatedSlugs: ["auto-merge-releases", "production-db-query", "tech-debt-scan"],
+    relatedSlugs: [
+      "auto-merge-releases",
+      "production-db-query",
+      "tech-debt-scan",
+    ],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
