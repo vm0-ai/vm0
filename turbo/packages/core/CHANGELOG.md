@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.209.1](https://github.com/vm0-ai/vm0/compare/core-v8.209.0...core-v8.209.1) (2026-04-20)
+
+
+### Refactoring
+
+* **models:** ungate kimi and minimax, disable glm flag ([#10201](https://github.com/vm0-ai/vm0/issues/10201)) ([291d8d8](https://github.com/vm0-ai/vm0/commit/291d8d8361dc7febd2188b22b2e535a7860ed003))
+
 ## [8.209.0](https://github.com/vm0-ai/vm0/compare/core-v8.208.0...core-v8.209.0) (2026-04-20)
 
 

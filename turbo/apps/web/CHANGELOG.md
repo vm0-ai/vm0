@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.266.0](https://github.com/vm0-ai/vm0/compare/web-v12.265.0...web-v12.266.0) (2026-04-20)
+
+
+### Features
+
+* **web:** add 6 new use case pages ([#10196](https://github.com/vm0-ai/vm0/issues/10196)) ([58b9952](https://github.com/vm0-ai/vm0/commit/58b9952dc803bbf14a1c8c8ab387fd4633d12718))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.209.1
+
 ## [12.265.0](https://github.com/vm0-ai/vm0/compare/web-v12.264.0...web-v12.265.0) (2026-04-20)
 
 
