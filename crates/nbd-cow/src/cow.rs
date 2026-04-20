@@ -875,6 +875,56 @@ mod tests {
         assert_eq!(retry_calls, vec![(2 * 4096, 0xA2), (3 * 4096, 0xA3)]);
     }
 
+    #[test]
+    fn flush_buffered_fails_on_last_block_preserves_only_last() {
+        let (_b, _c, mut cow) = seed_cow_with_writes(&[(0, 0xA0), (1, 0xA1), (2, 0xA2), (3, 0xA3)]);
+
+        let mut call_count = 0;
+        let err = cow
+            .flush_buffered(|_off, _data| {
+                call_count += 1;
+                if call_count <= 3 {
+                    Ok(())
+                } else {
+                    // Fail on the 4th call (i=3, last block).
+                    Err(std::io::Error::from(std::io::ErrorKind::StorageFull))
+                }
+            })
+            .unwrap_err();
+        assert!(matches!(err, NbdCowError::Io(_)));
+
+        // Guards the skip(i) arithmetic at the tail boundary: only block 3
+        // should be restored; blocks [0..=2] stay written.
+        assert_eq!(cow.dirty_block_count(), 3);
+        assert_eq!(cow.buffered_block_count(), 1);
+        assert_eq!(cow.buffer_bytes(), 4096);
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(3 * 4096, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xA3));
+    }
+
+    #[test]
+    fn flush_ensure_cow_fd_failure_preserves_buffer() {
+        let base = create_base_image(&vec![0x00; 8 * 4096]);
+        // Parent directory does not exist — ensure_cow_fd's File::open fails ENOENT.
+        let bad_cow_path = std::path::Path::new("/nonexistent-dir-for-nbd-cow-test/cow.bin");
+        let mut cow =
+            CowLayer::new(base.path(), bad_cow_path, 8 * 4096, 4096, 1024 * 1024).unwrap();
+
+        cow.write(0, &vec![0xEE; 4096]).unwrap();
+        cow.write(4096, &vec![0xDD; 4096]).unwrap();
+        assert_eq!(cow.buffered_block_count(), 2);
+
+        let err = cow.flush().unwrap_err();
+        assert!(matches!(err, NbdCowError::Io(_)));
+
+        // ensure_cow_fd early-exit must not have touched buffer state.
+        assert_eq!(cow.buffered_block_count(), 2);
+        assert_eq!(cow.buffer_bytes(), 2 * 4096);
+        assert_eq!(cow.dirty_block_count(), 0);
+    }
+
     // Sanity check that the full flush() wiring — ensure_cow_fd, try_clone,
     // closure routing to write_all_at — survives an end-to-end real I/O failure.
     // /dev/full always returns ENOSPC on write, so this covers "fail on first block"
