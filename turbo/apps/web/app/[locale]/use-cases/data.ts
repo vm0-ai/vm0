@@ -29,7 +29,7 @@ export interface AvatarConfig {
   hairStyle: number;
   hairColor: number;
   expression: number;
-  intensity: string;
+  intensity: "d" | "m" | "h";
 }
 
 export interface UseCase {
@@ -1190,7 +1190,7 @@ export const USE_CASES: UseCase[] = [
     relatedSlugs: ["tech-debt-scan", "pr-review", "error-triage-daily"],
     stepCount: 3,
     nextActionCount: 3,
-    integrationCount: 3,
+    integrationCount: 2,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
