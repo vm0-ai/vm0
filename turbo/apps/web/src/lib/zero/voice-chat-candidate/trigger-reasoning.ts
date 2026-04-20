@@ -62,11 +62,32 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     return;
   }
 
+  // Step 1b — re-read the session after winning the CAS lock. The snapshot
+  // from step 0 may be stale if another tick completed between step 0 and the
+  // CAS acquisition (e.g. concurrent triggers where the first tick finished
+  // and released the lock before the second tick ran its CAS). Using the stale
+  // contextSeq / contextVersion would cause a spurious reasoner call and a
+  // guaranteed version-contention drop on the write, wasting an LLM round-trip.
+  const [freshSession] = await db
+    .select()
+    .from(featureCandidateVoiceChatSessions)
+    .where(eq(featureCandidateVoiceChatSessions.id, sessionId))
+    .limit(1);
+  if (!freshSession || freshSession.status !== "active") {
+    await db
+      .update(featureCandidateVoiceChatSessions)
+      .set({ reasoningStatus: "idle" })
+      .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
+    return;
+  }
+  // Replace the stale snapshot with the fresh one for all subsequent steps.
+  const currentSession = freshSession;
+
   // Step 2 — snapshot new items + pending tasks. If neither has anything to
   // reason about, skip the LLM call entirely and just release the lock.
   const newItems = await readVoiceChatCandidateItems(
     sessionId,
-    session.contextSeq,
+    currentSession.contextSeq,
   );
   const pendingTasks = await listPendingVoiceChatCandidateTasks(sessionId);
 
@@ -78,7 +99,9 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
   // Step 3 — resolve the agent "system prompt". AgentComposeYaml has no
   // dedicated systemPrompt field, so we use the first agent's description
   // as the closest available semantic slot; empty string otherwise.
-  const agentSystemPrompt = await resolveAgentSystemPrompt(session.agentId);
+  const agentSystemPrompt = await resolveAgentSystemPrompt(
+    currentSession.agentId,
+  );
 
   // Step 4 — determine the highest seq we are about to snapshot against,
   // which becomes the session's new contextSeq on a successful write.
@@ -89,12 +112,12 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
             return i.seq;
           }),
         )
-      : session.contextSeq;
+      : currentSession.contextSeq;
 
   // Step 5 — call the Reasoner. Returns null on any failure path.
   const newContext = await callReasoner({
     agentSystemPrompt,
-    currentContext: session.context,
+    currentContext: currentSession.context,
     newItems: newItems.map((i) => {
       return {
         seq: i.seq,
@@ -120,7 +143,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
       .set({
         context: newContext,
         contextSeq: newMaxSeq,
-        contextVersion: session.contextVersion + 1,
+        contextVersion: currentSession.contextVersion + 1,
         lastReasoningAt: new Date(),
         reasoningStatus: "idle",
       })
@@ -129,7 +152,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
           eq(featureCandidateVoiceChatSessions.id, sessionId),
           eq(
             featureCandidateVoiceChatSessions.contextVersion,
-            session.contextVersion,
+            currentSession.contextVersion,
           ),
         ),
       )
@@ -137,7 +160,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
 
     if (updated.length > 0) {
       await publishUserSignal(
-        [session.userId],
+        [currentSession.userId],
         `voice-chat-candidate:${sessionId}`,
       );
     } else {
