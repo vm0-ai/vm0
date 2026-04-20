@@ -63,16 +63,21 @@ class TestLoadRegistry:
         with patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)):
             mitm_addon.load_registry()  # initial load (has run-abc-123)
 
-            # Simulate cached headers and locks for run-abc-123
+            # Simulate cached headers, locks, markers, and refresh timestamps
+            # for run-abc-123
             auth._firewall_header_cache[("run-abc-123", "api-0")] = {
                 "headers": {"Authorization": "Bearer tok"},
             }
             auth._cache_locks[("run-abc-123", "api-0")] = asyncio.Lock()
+            auth._force_refresh_markers.add(("run-abc-123", "api-0"))
+            auth._last_force_refresh_at[("run-abc-123", "api-0")] = 100.0
             # Also cache for run-other (will appear in new registry)
             auth._firewall_header_cache[("run-other", "api-0")] = {
                 "headers": {"Authorization": "Bearer other"},
             }
             auth._cache_locks[("run-other", "api-0")] = asyncio.Lock()
+            auth._force_refresh_markers.add(("run-other", "api-0"))
+            auth._last_force_refresh_at[("run-other", "api-0")] = 200.0
 
             # Update registry: remove run-abc-123, add run-other
             new_data = {"vms": {"10.200.0.99": {"runId": "run-other"}}, "updatedAt": 0}
@@ -80,12 +85,16 @@ class TestLoadRegistry:
 
             mitm_addon.load_registry()  # reload triggers eviction
 
-        # run-abc-123 cache and lock should be evicted (no longer in registry)
+        # run-abc-123 state should be evicted (no longer in registry)
         assert ("run-abc-123", "api-0") not in auth._firewall_header_cache
         assert ("run-abc-123", "api-0") not in auth._cache_locks
-        # run-other cache and lock should remain (still in registry)
+        assert ("run-abc-123", "api-0") not in auth._force_refresh_markers
+        assert ("run-abc-123", "api-0") not in auth._last_force_refresh_at
+        # run-other state should remain (still in registry)
         assert ("run-other", "api-0") in auth._firewall_header_cache
         assert ("run-other", "api-0") in auth._cache_locks
+        assert ("run-other", "api-0") in auth._force_refresh_markers
+        assert ("run-other", "api-0") in auth._last_force_refresh_at
 
 
 class TestGetVmInfo:

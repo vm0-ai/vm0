@@ -753,7 +753,7 @@ class TestResponseHandler:
         assert entry["response_size"] == 50000  # from Content-Length header
 
     def test_401_firewall_cache_invalidation(self, real_flow, mitm_ctx, headers):
-        """401 response with firewall_base pops the cache entry."""
+        """401 response with firewall_base pops the cache entry and marks force-refresh (#9860)."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-1"
         flow.metadata["vm_client_ip"] = "10.200.0.5"
@@ -777,6 +777,58 @@ class TestResponseHandler:
 
         # Cache entry should have been removed
         assert cache_key not in auth._firewall_header_cache
+        # Force-refresh marker must be set so the next /firewall/auth fetch
+        # refreshes the token regardless of DB tokenExpiresAt (#9860).
+        assert cache_key in auth._force_refresh_markers
+
+    def test_401_within_cooldown_does_not_re_mark(self, real_flow, mitm_ctx, headers):
+        """A second 401 within the force-refresh cooldown window must NOT
+        re-mark — otherwise a persistent non-token 401 (scope, resource-
+        level reject) would amplify into a loop of OAuth refresh calls and
+        hit the provider's rate limits (#9860)."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata["vm_run_id"] = "run-conn-cd"
+        flow.metadata["vm_client_ip"] = "10.200.0.5"
+        flow.metadata["vm_network_log_path"] = ""
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_base"] = "https://api.github.com"
+        flow.metadata["firewall_api_id"] = "run-conn-cd:0"
+        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        cache_key = ("run-conn-cd", "run-conn-cd:0")
+        # Simulate: a forced refresh JUST completed a moment ago
+        auth._last_force_refresh_at[cache_key] = time.time()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        # Marker was suppressed by the cooldown
+        assert cache_key not in auth._force_refresh_markers
+
+    def test_401_after_cooldown_re_marks(self, real_flow, mitm_ctx, headers):
+        """Once the cooldown has elapsed, a subsequent 401 re-marks — the
+        rate limit only throttles, it doesn't permanently lock out real
+        token-invalidation recovery (#9860)."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata["vm_run_id"] = "run-conn-re"
+        flow.metadata["vm_client_ip"] = "10.200.0.5"
+        flow.metadata["vm_network_log_path"] = ""
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_base"] = "https://api.github.com"
+        flow.metadata["firewall_api_id"] = "run-conn-re:0"
+        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        cache_key = ("run-conn-re", "run-conn-re:0")
+        # Simulate: last forced refresh happened well before the cooldown window
+        auth._last_force_refresh_at[cache_key] = time.time() - auth._FORCE_REFRESH_COOLDOWN_SECS - 1
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        # Cooldown elapsed → marker re-added
+        assert cache_key in auth._force_refresh_markers
 
     def test_error_status_logs_warning(self, tmp_path, real_flow, headers):
         """Response with status >= 400 writes to per-job proxy log."""

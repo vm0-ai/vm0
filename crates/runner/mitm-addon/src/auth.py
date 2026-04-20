@@ -31,6 +31,59 @@ _firewall_header_cache: dict[tuple[str, str], dict] = {}
 # Per-key locks to coalesce concurrent fetches for the same (run_id, api_id)
 _cache_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
+# (run_id, api_id) pairs for which the upstream just returned 401 — the next
+# /firewall/auth fetch must force a token refresh regardless of the DB's
+# tokenExpiresAt, since the provider has silently invalidated it (user
+# revoked, admin rotated, clock skew). Consumed + cleared in
+# get_firewall_headers before each fetch. See #9860.
+_force_refresh_markers: set[tuple[str, str]] = set()
+
+# Timestamp of the last consumed force-refresh per (run_id, api_id). Used to
+# rate-limit amplification when an upstream persistently returns 401 for a
+# non-token reason (scope mismatch, resource-level reject, IP block).
+# Without this, every 401 would trigger an OAuth refresh call — hitting
+# provider rate limits and potentially tripping abuse detection. See #9860.
+_last_force_refresh_at: dict[tuple[str, str], float] = {}
+
+# Cooldown window for re-marking a force-refresh. Caps amplification at
+# 30 refreshes/hour/key under a persistent non-token 401 loop — safely
+# below Google's 50/hour/user OAuth refresh limit (the tightest known).
+# The first force-refresh after a real token invalidation always fires
+# immediately; the cooldown only affects REPEATED forced refreshes, so
+# happy-path recovery is unaffected.
+_FORCE_REFRESH_COOLDOWN_SECS = 120.0
+
+
+def request_force_refresh(cache_key: tuple[str, str]) -> None:
+    """Request a forced token refresh on the next /firewall/auth fetch.
+
+    No-op if a forced refresh already completed within
+    ``_FORCE_REFRESH_COOLDOWN_SECS`` — rate limiter for the case where the
+    token is actually fine but the endpoint rejects for another reason
+    (scope, resource-level permission). See #9860.
+
+    Design notes for future changes:
+
+    * The consume timestamp in ``_last_force_refresh_at`` is written **before**
+      ``fetch_firewall_headers`` is awaited in ``get_firewall_headers``, not
+      after. Recording after would allow a 401 arriving during the fetch to
+      re-add the marker; after the fetch completes and writes the cache, a
+      later cache miss would then consume the stale marker and trigger an
+      unnecessary second refresh. The trade-off is that a failed fetch
+      (webhook down, ``TOKEN_REFRESH_FAILED``, etc.) still burns the
+      cooldown — intentional, because if the refresh grant itself is broken,
+      retrying faster than once per cooldown wouldn't help and would hammer
+      the provider.
+    * ``time.time()`` is used for the cooldown (not ``time.monotonic()``) for
+      consistency with the rest of this module, which compares wall-clock
+      ``expiresAt`` values from the webhook. An NTP backward step could
+      freeze the cooldown until wall-clock catches up; on NTP-slewed runners
+      this is not a realistic concern.
+    """
+    last = _last_force_refresh_at.get(cache_key, 0.0)
+    if time.time() - last >= _FORCE_REFRESH_COOLDOWN_SECS:
+        _force_refresh_markers.add(cache_key)
+
 
 def evict_stale_cache_keys(active_run_ids: set[str]) -> None:
     """Remove cache entries for runs no longer in the registry."""
@@ -38,6 +91,12 @@ def evict_stale_cache_keys(active_run_ids: set[str]) -> None:
     for k in stale:
         _firewall_header_cache.pop(k, None)
         _cache_locks.pop(k, None)
+    stale_markers = [k for k in _force_refresh_markers if k[0] not in active_run_ids]
+    for k in stale_markers:
+        _force_refresh_markers.discard(k)
+    stale_ts = [k for k in _last_force_refresh_at if k[0] not in active_run_ids]
+    for k in stale_ts:
+        _last_force_refresh_at.pop(k, None)
 
 
 def get_api_url() -> str:
@@ -78,6 +137,7 @@ def _fetch_firewall_headers_sync(
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
+    force_refresh: bool = False,
 ) -> dict:
     """Synchronous helper — runs in a thread to avoid blocking the event loop.
 
@@ -94,6 +154,8 @@ def _fetch_firewall_headers_sync(
         body["secretConnectorMap"] = secret_connector_map
     if vars_map:
         body["vars"] = vars_map
+    if force_refresh:
+        body["forceRefresh"] = True
     data = json.dumps(body).encode()
     req = make_api_request(url, data, sandbox_token)
     try:
@@ -122,11 +184,15 @@ async def fetch_firewall_headers(
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
+    force_refresh: bool = False,
 ) -> dict:
     """Resolve auth headers via server-side decryption.
 
     When secret_connector_map is provided, the auth endpoint can refresh
     expired OAuth tokens and returns an expiresAt timestamp for TTL caching.
+
+    When force_refresh is True, the endpoint refreshes OAuth tokens regardless
+    of DB tokenExpiresAt — used after the upstream returns 401 (#9860).
 
     Uses asyncio.to_thread to avoid blocking mitmproxy's event loop.
     """
@@ -141,6 +207,7 @@ async def fetch_firewall_headers(
         vars_map,
         auth_base,
         auth_query,
+        force_refresh,
     )
 
 
@@ -280,6 +347,17 @@ async def get_firewall_headers(
             if hit:
                 return hit
 
+        # Consume the force-refresh marker inside the lock so concurrent
+        # coroutines for the same (run_id, api_id) cannot both trigger a
+        # refresh — the one that loses the lock will see the fresh cache
+        # on its double-check above and never reach this path. Record the
+        # consume timestamp so request_force_refresh() suppresses re-marking
+        # within the cooldown window (guards against 401-amplification).
+        force_refresh = cache_key in _force_refresh_markers
+        _force_refresh_markers.discard(cache_key)
+        if force_refresh:
+            _last_force_refresh_at[cache_key] = time.time()
+
         result = await fetch_firewall_headers(
             encrypted_secrets,
             auth_headers,
@@ -288,6 +366,7 @@ async def get_firewall_headers(
             vars_map,
             auth_base,
             auth_query,
+            force_refresh=force_refresh,
         )
         headers = result["headers"]
         resolved_secrets = result.get("resolvedSecrets", [])

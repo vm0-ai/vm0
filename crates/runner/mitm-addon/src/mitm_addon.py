@@ -34,6 +34,7 @@ from auth import (
     _firewall_header_cache,
     evict_stale_cache_keys,
     handle_firewall_request,
+    request_force_refresh,
 )
 from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
 from matching import FirewallAllow, FirewallBlock, match_firewall_request
@@ -483,12 +484,18 @@ def response(flow: http.HTTPFlow) -> None:
     # Billable connector usage observation (issue #9504, stage 0).
     usage.log_connector_usage(flow, run_id)
 
-    # Invalidate firewall header cache on 401 so next request gets fresh headers
+    # Invalidate firewall header cache on 401 so next request gets fresh headers.
+    # Also request a force-refresh so the next /firewall/auth fetch refreshes
+    # the OAuth token regardless of DB tokenExpiresAt — the provider just told
+    # us the token is no longer valid, overriding whatever the DB believes.
+    # request_force_refresh enforces a cooldown so a persistent non-token 401
+    # can't amplify into a loop of provider OAuth refresh calls (#9860).
     if flow.response and flow.response.status_code == 401 and flow.metadata.get("firewall_base"):
         api_id = flow.metadata.get("firewall_api_id", "")
         if api_id:
             cache_key = (run_id, api_id)
             _firewall_header_cache.pop(cache_key, None)
+            request_force_refresh(cache_key)
 
     # Log errors to per-job proxy log and mitmproxy console
     if flow.response and flow.response.status_code >= 400:

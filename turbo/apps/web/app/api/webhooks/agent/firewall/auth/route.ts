@@ -22,6 +22,11 @@ const bodySchema = z.object({
   authQuery: z.record(z.string(), z.string()).optional(),
   secretConnectorMap: z.record(z.string(), z.string()).optional(),
   vars: z.record(z.string(), z.string()).optional(),
+  // Set by the mitm addon after an upstream 401 so the refresh filter
+  // below overrides DB tokenExpiresAt. Covers the case where the provider
+  // silently invalidates a token while DB expiry is still in the future
+  // (user revoked, admin rotated, clock skew). See #9860.
+  forceRefresh: z.boolean().optional(),
 });
 
 const log = logger("webhook:firewall-auth");
@@ -77,6 +82,7 @@ async function refreshExpiredTokens(
   secrets: Record<string, string>,
   secretConnectorMap: Record<string, string>,
   referencedKeys: Set<string>,
+  forceRefresh: boolean,
 ): Promise<RefreshResult> {
   // Find which referenced secrets are refreshable OAuth tokens
   const refreshable = new Map<string, string>();
@@ -123,7 +129,14 @@ async function refreshExpiredTokens(
   // "needs refresh" so we backfill tokenExpiresAt. All connectors reaching this
   // filter are refreshable OAuth (pre-filtered in resolve-connectors.ts), so
   // their access tokens DO expire by definition. See #9836.
+  //
+  // `forceRefresh` overrides DB expiry entirely: the mitm addon sets this
+  // after the upstream returns 401, indicating the provider invalidated the
+  // token out-of-band. Without this, a future tokenExpiresAt would cause the
+  // filter to skip the refresh and the 401 loop would continue until DB
+  // expiry elapses (#9860).
   const toRefresh = connectorTypes.filter((ct) => {
+    if (forceRefresh) return true;
     const tokenExpiry = expiryMap.get(ct);
     if (tokenExpiry === undefined || tokenExpiry === null) return true;
     return tokenExpiry <= now + REFRESH_BUFFER_SECS;
@@ -403,7 +416,7 @@ function resolveTemplates(
  * on demand and an expiresAt timestamp is returned for addon-side TTL caching.
  *
  * Auth: Sandbox JWT
- * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?, vars? }
+ * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?, vars?, forceRefresh? }
  * Response: { headers, base?, query?, expiresAt?, resolvedSecrets, refreshedConnectors, refreshedSecrets }
  *           or 424 { error } when referenced secrets/vars are missing (connector not configured)
  *           or 502 { error } when token refresh fails
@@ -458,6 +471,7 @@ export async function POST(request: Request) {
     authQuery,
     secretConnectorMap,
     vars,
+    forceRefresh,
   } = parsed.data;
 
   // Decrypt secrets
@@ -512,6 +526,7 @@ export async function POST(request: Request) {
       secrets,
       secretConnectorMap,
       referenced.secrets,
+      forceRefresh ?? false,
     );
     expiresAt = result.expiresAt;
     refreshedConnectors = result.refreshedConnectors;

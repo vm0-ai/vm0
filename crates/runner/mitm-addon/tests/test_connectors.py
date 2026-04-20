@@ -1212,7 +1212,14 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is False
         # fetch_firewall_headers wraps urllib; args-once-with pins the cache-miss contract (#9991).
         mock_fetch.assert_called_once_with(
-            encrypted, auth_templates, "tok-xyz", None, None, None, None
+            encrypted,
+            auth_templates,
+            "tok-xyz",
+            None,
+            None,
+            None,
+            None,
+            force_refresh=False,
         )
 
         # Verify the cache was populated
@@ -1332,6 +1339,54 @@ class TestGetFirewallHeaders:
 
         assert "base" not in result
         assert result["cache_hit"] is True
+
+    async def test_force_refresh_marker_triggers_forced_fetch(self, headers):
+        """When a force-refresh marker is set, the next fetch passes
+        force_refresh=True, the marker is cleared, and the consume timestamp
+        is recorded so the cooldown can suppress re-marking (#9860)."""
+        cache_key = ("run-1", "api-1")
+        auth._force_refresh_markers.add(cache_key)
+        before = time.time()
+
+        mock_fetch = AsyncMock(return_value={"headers": {"Authorization": "Bearer new"}})
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        # force_refresh kwarg must be True
+        assert mock_fetch.call_args.kwargs["force_refresh"] is True
+        # Marker cleared after consumption
+        assert cache_key not in auth._force_refresh_markers
+        # Consume timestamp recorded for cooldown enforcement
+        assert auth._last_force_refresh_at[cache_key] >= before
+
+    async def test_force_refresh_absent_passes_false(self, headers):
+        """Without a marker, fetch is called with force_refresh=False (#9860)."""
+        mock_fetch = AsyncMock(return_value={"headers": {}})
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            await auth.get_firewall_headers("run-1", "api-2", "iv:tag:data", {}, "tok-xyz")
+
+        assert mock_fetch.call_args.kwargs["force_refresh"] is False
+        # No consume timestamp written when force-refresh didn't happen
+        assert ("run-1", "api-2") not in auth._last_force_refresh_at
+
+    async def test_force_refresh_marker_ignored_on_cache_hit(self, headers):
+        """Fast-path cache hit does NOT consume the force-refresh marker —
+        marker survives until the next actual fetch (#9860)."""
+        cache_key = ("run-1", "api-1")
+        auth._firewall_header_cache[cache_key] = {
+            "headers": {"Authorization": "Bearer cached"},
+            "expiresAt": None,
+        }
+        auth._force_refresh_markers.add(cache_key)
+
+        mock_fetch = AsyncMock()
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            result = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert result["cache_hit"] is True
+        mock_fetch.assert_not_called()
+        # Marker preserved for next real fetch
+        assert cache_key in auth._force_refresh_markers
 
 
 # =========================================================================
