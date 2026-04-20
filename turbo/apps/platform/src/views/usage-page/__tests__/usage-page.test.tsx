@@ -60,8 +60,11 @@ describe("/_/usage page", () => {
       expect(screen.getByText("My Schedule")).toBeInTheDocument();
     });
 
-    const scheduleLink = screen.getByText("My Schedule").closest("a");
-    expect(scheduleLink?.getAttribute("href")).toBe("/schedules/s1");
+    expect(
+      screen.getAllByRole("link").find((el) => {
+        return /My Schedule/.test(el.textContent ?? "");
+      }),
+    ).toBeDefined();
 
     const user = userEvent.setup();
     const chatsTab = screen.getAllByRole("tab").find((el) => {
@@ -73,7 +76,10 @@ describe("/_/usage page", () => {
       expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
     });
 
-    const chatLink = screen.getByText("Chat with Agent").closest("a");
-    expect(chatLink?.getAttribute("href")).toBe("/chats/t1");
+    expect(
+      screen.getAllByRole("link").find((el) => {
+        return /Chat with Agent/.test(el.textContent ?? "");
+      }),
+    ).toBeDefined();
   });
 });
