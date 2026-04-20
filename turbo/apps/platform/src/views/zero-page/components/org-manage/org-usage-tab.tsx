@@ -1,16 +1,14 @@
-import { useGet, useLoadable, useSet, useLastResolved } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { createPortal } from "react-dom";
-import { FeatureSwitchKey, type OrgMember, type MemberUsage } from "@vm0/core";
+import type { OrgMember, MemberUsage } from "@vm0/core";
 import { IconUsers, IconPencil, IconLoader2 } from "@tabler/icons-react";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { Button, Input } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { usageMembersAsync$ } from "../../../../signals/usage-page/usage-signals.ts";
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
-import { UsageInsightView } from "../../../usage-page/components/usage-insight-view.tsx";
 import {
   billingStatusAsync$,
   apiTierToBillingTier,
@@ -383,12 +381,5 @@ function MembersTable({
 // ---------------------------------------------------------------------------
 
 export function OrgUsageTab() {
-  const features = useLastResolved(featureSwitch$);
-  const analyticsEnabled = features?.[FeatureSwitchKey.UsageAnalytics] ?? false;
-
-  if (analyticsEnabled) {
-    return <UsageInsightView />;
-  }
-
   return <OverviewSection />;
 }

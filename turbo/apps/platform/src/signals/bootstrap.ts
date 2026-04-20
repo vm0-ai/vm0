@@ -43,6 +43,7 @@ import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupPhonePage$ } from "./phone-page/phone-page-setup.ts";
 import { setupVoiceChatPage$ } from "./voice-chat/voice-chat-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
+import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
@@ -188,6 +189,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.voiceChat,
     setup: setupAuthPageWrapper(setupVoiceChatPage$),
+  },
+  {
+    path: ROUTES.usage,
+    setup: setupAuthPageWrapper(setupUsagePage$),
   },
   {
     path: ROUTES.onboarding,
