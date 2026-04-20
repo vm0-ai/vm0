@@ -89,11 +89,13 @@ describe("sidebar running indicator", () => {
 
     await waitFor(() => {
       expect(within(getSidebar()).getByText("Active work")).toBeInTheDocument();
+      expect(
+        within(getSidebar()).getByLabelText("Running"),
+      ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
     });
-    expect(within(getSidebar()).getByLabelText("Running")).toBeInTheDocument();
-    expect(
-      within(getSidebar()).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
   });
 
   it("renders Running indicator on the selected thread when running", async () => {
@@ -117,11 +119,13 @@ describe("sidebar running indicator", () => {
       expect(
         within(getSidebar()).getByText("Selected running"),
       ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).getByLabelText("Running"),
+      ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
     });
-    expect(within(getSidebar()).getByLabelText("Running")).toBeInTheDocument();
-    expect(
-      within(getSidebar()).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
   });
 
   it("does not render Unread indicator on the selected thread", async () => {
@@ -145,13 +149,13 @@ describe("sidebar running indicator", () => {
       expect(
         within(getSidebar()).getByText("Selected unread"),
       ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Running"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
     });
-    expect(
-      within(getSidebar()).queryByLabelText("Running"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(getSidebar()).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
   });
 
   it("prefers Running over Unread when both conditions hold", async () => {
@@ -175,11 +179,13 @@ describe("sidebar running indicator", () => {
       expect(
         within(getSidebar()).getByText("Running and unread"),
       ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).getByLabelText("Running"),
+      ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
     });
-    expect(within(getSidebar()).getByLabelText("Running")).toBeInTheDocument();
-    expect(
-      within(getSidebar()).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
   });
 
   it("does not render the Running dot when ChatThreadReadIndicator flag is off", async () => {
@@ -204,10 +210,10 @@ describe("sidebar running indicator", () => {
       expect(
         within(getSidebar()).getByText("Running but gated"),
       ).toBeInTheDocument();
+      expect(
+        within(getSidebar()).queryByLabelText("Running"),
+      ).not.toBeInTheDocument();
     });
-    expect(
-      within(getSidebar()).queryByLabelText("Running"),
-    ).not.toBeInTheDocument();
   });
 
   it("reloads the list and shows the running dot when threadListChanged fires", async () => {
