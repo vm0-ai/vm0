@@ -3,6 +3,7 @@ import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES, type RouteKey } from "../route-paths.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
+import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 
 export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
   set(detachedNavigateTo$, "/chats/:threadId", {
@@ -36,6 +37,17 @@ export const toggleSidebarOff$ = command(({ get, set }) => {
   } else {
     set(setSidebarOffRaw$, "1");
   }
+});
+
+export const setupSidebarShortcut$ = command(({ set }, signal: AbortSignal) => {
+  setupGlobalShortcut(
+    {
+      "mod+b": () => {
+        set(toggleSidebarOff$);
+      },
+    },
+    signal,
+  );
 });
 
 const internalSidebarExpanded$ = state(false);

@@ -49,6 +49,7 @@ import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
 import { setupRealtime$ } from "./realtime.ts";
 import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
+import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -321,6 +322,7 @@ export const bootstrap$ = command(
       set(setupNotificationListener$, signal),
       set(setupInstallPrompt$, signal),
       set(setupPwaEdgeSwipe$, signal),
+      set(setupSidebarShortcut$, signal),
       set(startSkeletonCycling$, signal),
       (async () => {
         await set(setupClerk$, signal);

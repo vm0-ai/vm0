@@ -3,7 +3,6 @@ import { matchShortcut } from "@vm0/ui";
 import {
   activePanelId$,
   toggleMaximizeTask$,
-  toggleTaskList$,
 } from "./mission-control-panels.ts";
 import {
   addOptimisticTask$,
@@ -129,9 +128,6 @@ export const setupMissionControlKeyboard$ = command(
         },
         j: () => {
           set(navigateTaskList$, "next");
-        },
-        "mod+b": () => {
-          set(toggleTaskList$);
         },
         c: () => {
           set(setNewChatDialogOpen$, true);
