@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.269.1](https://github.com/vm0-ai/vm0/compare/app-v0.269.0...app-v0.269.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **platform:** prevent chat message grid overflow on long content ([#10320](https://github.com/vm0-ai/vm0/issues/10320)) ([260371e](https://github.com/vm0-ai/vm0/commit/260371e3db21bd311ff10840e70be6ea065ceed9))
+
 ## [0.269.0](https://github.com/vm0-ai/vm0/compare/app-v0.268.0...app-v0.269.0) (2026-04-20)
 
 

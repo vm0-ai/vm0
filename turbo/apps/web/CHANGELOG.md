@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.273.0](https://github.com/vm0-ai/vm0/compare/web-v12.272.0...web-v12.273.0) (2026-04-20)
+
+
+### Features
+
+* **db:** add feature_candidate_voice_chat_* tables + migration ([#10319](https://github.com/vm0-ai/vm0/issues/10319)) ([ea9e88d](https://github.com/vm0-ai/vm0/commit/ea9e88d17af821cff1a5b40db7e268990d634308)), closes [#10305](https://github.com/vm0-ai/vm0/issues/10305)
+
+
+### Bug Fixes
+
+* **firewall:** force-refresh oauth token when provider returns 401 ([#9860](https://github.com/vm0-ai/vm0/issues/9860)) ([#10294](https://github.com/vm0-ai/vm0/issues/10294)) ([96fcb01](https://github.com/vm0-ai/vm0/commit/96fcb01248e71bf5ce2ed24d7b6bfafd3ba1394f))
+
 ## [12.272.0](https://github.com/vm0-ai/vm0/compare/web-v12.271.0...web-v12.272.0) (2026-04-20)
 
 

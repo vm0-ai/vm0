@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.88.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.0...runner-rs-v0.88.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **firewall:** force-refresh oauth token when provider returns 401 ([#9860](https://github.com/vm0-ai/vm0/issues/9860)) ([#10294](https://github.com/vm0-ai/vm0/issues/10294)) ([96fcb01](https://github.com/vm0-ai/vm0/commit/96fcb01248e71bf5ce2ed24d7b6bfafd3ba1394f))
+
 ## [0.88.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.87.2...runner-rs-v0.88.0) (2026-04-20)
 
 
