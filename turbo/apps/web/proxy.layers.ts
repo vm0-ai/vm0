@@ -191,6 +191,11 @@ export const localeGuardLayer: ProxyLayer = (ctx) => {
  */
 export const i18nLayer: ProxyLayer = (ctx) => {
   if (ctx.routeKind === "page") {
+    // Root path is served via rewrite in next.config.js so that "/" returns
+    // 200 and stays indexable. Skip i18n here to prevent next-intl from
+    // redirecting it to "/en" before the rewrite can apply.
+    if (ctx.request.nextUrl.pathname === "/") return null;
+
     const response = intlMiddleware(ctx.request);
     if (response.status === 307 && response.headers.get("location")) {
       const url = new URL(
