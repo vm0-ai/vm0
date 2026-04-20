@@ -2,7 +2,6 @@ import { sql, and, eq, gte, lt, inArray, desc, count } from "drizzle-orm";
 import {
   type MemberUsage,
   type UsageMembersResponse,
-  type UsageDailyResponse,
   type UsageRunsResponse,
 } from "@vm0/core";
 import { getOrgBillingPeriod } from "../org/org-metadata-service";
@@ -181,126 +180,6 @@ async function resolveEmails(userIds: string[]): Promise<Map<string, string>> {
   }
 
   return emailMap;
-}
-
-interface DailyCreditsOptions {
-  dateFrom?: string;
-  dateTo?: string;
-  mode: "total" | "member";
-}
-
-/**
- * Get daily credit usage for an org.
- * mode=total: aggregate all members into a single daily total.
- * mode=member: break down by member per day.
- */
-export async function getDailyCredits(
-  orgId: string,
-  options: DailyCreditsOptions,
-): Promise<UsageDailyResponse> {
-  const billingPeriod = await getOrgBillingPeriod(orgId);
-  const db = globalThis.services.db;
-
-  // Fall back to last 30 days when no billing period (free tier / no subscription).
-  const now = new Date();
-  const defaultFrom =
-    billingPeriod?.start ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const defaultTo = billingPeriod?.end ?? now;
-
-  const dateFrom = options.dateFrom ? new Date(options.dateFrom) : defaultFrom;
-  const dateTo = options.dateTo ? new Date(options.dateTo) : defaultTo;
-
-  const period = billingPeriod
-    ? {
-        start: billingPeriod.start.toISOString(),
-        end: billingPeriod.end.toISOString(),
-      }
-    : null;
-
-  if (options.mode === "member") {
-    const rows = await db
-      .select({
-        date: sql<string>`DATE(${creditUsage.createdAt})`.as("date"),
-        userId: creditUsage.userId,
-        creditsCharged:
-          sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-            "credits_charged",
-          ),
-      })
-      .from(creditUsage)
-      .where(
-        and(
-          eq(creditUsage.orgId, orgId),
-          eq(creditUsage.status, "processed"),
-          gte(creditUsage.createdAt, dateFrom),
-          lt(creditUsage.createdAt, dateTo),
-        ),
-      )
-      .groupBy(sql`DATE(${creditUsage.createdAt})`, creditUsage.userId)
-      .orderBy(sql`DATE(${creditUsage.createdAt})`);
-
-    const uniqueUserIds = [
-      ...new Set(
-        rows.map((r) => {
-          return r.userId;
-        }),
-      ),
-    ];
-    const emailMap = await resolveEmails(uniqueUserIds);
-
-    // Group by date
-    const byDate = new Map<
-      string,
-      { userId: string; email: string; creditsCharged: number }[]
-    >();
-    for (const row of rows) {
-      const dateStr = String(row.date);
-      if (!byDate.has(dateStr)) {
-        byDate.set(dateStr, []);
-      }
-      byDate.get(dateStr)!.push({
-        userId: row.userId,
-        email: emailMap.get(row.userId) ?? "unknown",
-        creditsCharged: Number(row.creditsCharged),
-      });
-    }
-
-    const dailyByMember = [...byDate.entries()].map(([date, members]) => {
-      return { date, members };
-    });
-
-    return { period, daily: [], dailyByMember };
-  }
-
-  // mode=total
-  const rows = await db
-    .select({
-      date: sql<string>`DATE(${creditUsage.createdAt})`.as("date"),
-      creditsCharged:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits_charged",
-        ),
-    })
-    .from(creditUsage)
-    .where(
-      and(
-        eq(creditUsage.orgId, orgId),
-        eq(creditUsage.status, "processed"),
-        gte(creditUsage.createdAt, dateFrom),
-        lt(creditUsage.createdAt, dateTo),
-      ),
-    )
-    .groupBy(sql`DATE(${creditUsage.createdAt})`)
-    .orderBy(sql`DATE(${creditUsage.createdAt})`);
-
-  const daily = rows.map((row) => {
-    return {
-      date: String(row.date),
-      creditsCharged: Number(row.creditsCharged),
-    };
-  });
-
-  return { period, daily, dailyByMember: [] };
 }
 
 interface UsageRunsOptions {
