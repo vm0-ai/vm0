@@ -188,10 +188,7 @@ export const localeGuardLayer: ProxyLayer = (ctx) => {
 export const i18nLayer: ProxyLayer = (ctx) => {
   if (ctx.routeKind === "page") {
     const response = intlMiddleware(ctx.request);
-    if (
-      response.status === 307 &&
-      response.headers.get("location")
-    ) {
+    if (response.status === 307 && response.headers.get("location")) {
       const url = new URL(
         response.headers.get("location")!,
         ctx.request.nextUrl.origin,
