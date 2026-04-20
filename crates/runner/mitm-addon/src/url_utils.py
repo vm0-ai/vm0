@@ -9,8 +9,17 @@ from mitmproxy import http
 
 
 def get_original_url(flow: http.HTTPFlow) -> str:
-    """Reconstruct the original target URL from the request."""
-    scheme = "https" if flow.request.port == 443 else "http"
+    """Reconstruct the original target URL from the request.
+
+    Uses ``flow.request.scheme`` (populated from the TLS handshake) rather
+    than inferring from the destination port, and anchors the authority
+    on ``pretty_host`` (Host header if present) combined with the actual
+    destination port. ``pretty_url`` is intentionally not used: it takes
+    the port from the Host header, so a request to ``host:8443`` with a
+    plain ``Host: host`` (no port) would lose the ``:8443`` and break
+    firewall rule matching.
+    """
+    scheme = flow.request.scheme
     host = flow.request.pretty_host
     port = flow.request.port
 

@@ -1,36 +1,43 @@
 """Tests for URL and logging utility functions."""
 
 import json
-from unittest.mock import MagicMock
+
+from mitmproxy.test import tflow, tutils
 
 from logging_utils import log_proxy_entry
 from url_utils import get_original_url
 
 
-def _make_flow(host, port, path="/", scheme=None):
-    """Create a minimal mock flow for get_original_url."""
-    flow = MagicMock()
-    flow.request.pretty_host = host
-    flow.request.port = port
-    flow.request.path = path
-    return flow
-
-
 class TestGetOriginalUrl:
-    def test_https_default_port(self):
-        flow = _make_flow("example.com", 443)
+    def test_https_default_port(self, real_flow):
+        flow = real_flow(host="example.com", port=443)
         assert get_original_url(flow) == "https://example.com/"
 
     def test_http_default_port(self):
-        flow = _make_flow("example.com", 80)
+        # real_flow hardcodes scheme=https; build a cleartext flow directly.
+        flow = tflow.tflow(req=tutils.treq(scheme=b"http", host=b"example.com", port=80, path=b"/"))
         assert get_original_url(flow) == "http://example.com/"
 
-    def test_https_non_standard_port(self):
-        flow = _make_flow("example.com", 8443)
-        assert get_original_url(flow) == "http://example.com:8443/"
+    def test_https_non_standard_port(self, real_flow):
+        # Regression for #10082: scheme must come from the TLS handshake,
+        # not from the destination port. On :8443 the old code inferred
+        # http:// and firewall rules written against https:// stopped
+        # matching.
+        flow = real_flow(host="example.com", port=8443)
+        assert get_original_url(flow) == "https://example.com:8443/"
 
-    def test_with_path_and_query(self):
-        flow = _make_flow("api.example.com", 443, "/v1/data?key=val")
+    def test_non_standard_port_preserved_when_host_header_lacks_port(self, real_flow):
+        # The Host header (``example.com``) does not carry the port, but
+        # the connection is on :8443. The reconstructed URL must still
+        # include :8443 so firewall rules can match the actual target.
+        # mitmproxy's ``pretty_url`` would drop the port here because it
+        # reads the Host header; we intentionally use ``port`` instead.
+        flow = real_flow(host="example.com", port=8443)
+        assert flow.request.headers.get("Host") == "example.com"
+        assert get_original_url(flow) == "https://example.com:8443/"
+
+    def test_with_path_and_query(self, real_flow):
+        flow = real_flow(host="api.example.com", port=443, path="/v1/data?key=val")
         assert get_original_url(flow) == "https://api.example.com/v1/data?key=val"
 
 
