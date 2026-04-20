@@ -283,13 +283,20 @@ fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, content)
         .map_err(|e| RunnerError::Internal(format!("write {}: {e}", tmp.display())))?;
-    std::fs::rename(&tmp, path).map_err(|e| {
+    // Clean up tmp on rename failure — unlike short-lived dirs elsewhere in
+    // the crate, unit files live in /etc/systemd/system/ which no GC path
+    // sweeps, and the staged content contains Environment= secrets.
+    let result = std::fs::rename(&tmp, path).map_err(|e| {
         RunnerError::Internal(format!(
             "rename {} -> {}: {e}",
             tmp.display(),
             path.display()
         ))
-    })
+    });
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// Check whether a systemd unit is active (running or activating).
@@ -1083,6 +1090,21 @@ mod tests {
         write_unit_file(&path, "content").unwrap();
         let tmp = path.with_extension("tmp");
         assert!(!tmp.exists(), "tmp file must be consumed by rename");
+    }
+
+    #[test]
+    fn write_unit_file_cleans_up_tmp_on_rename_failure() {
+        // Rename fails when the target path is an existing directory
+        // (EISDIR). Verifies the staged `.tmp` — which may contain
+        // Environment= secrets — is removed so it doesn't persist in
+        // /etc/systemd/system/.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("target.service");
+        std::fs::create_dir(&path).unwrap();
+        let result = write_unit_file(&path, "secret=xyz");
+        assert!(result.is_err(), "rename onto existing dir must fail");
+        let tmp = path.with_extension("tmp");
+        assert!(!tmp.exists(), "tmp file must be cleaned up on failure");
     }
 
     // -----------------------------------------------------------------
