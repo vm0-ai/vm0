@@ -26,6 +26,7 @@ import {
   IconSparkles,
   IconLayoutDashboard,
   IconMenu2,
+  IconGift,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import {
@@ -186,6 +187,15 @@ const FOOTER_NAV = [
     icon: IconChartBar as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.UsageAnalytics,
+  },
+  {
+    id: "redemptionCodes",
+    activeKeys: ["redemptionCodes"],
+    pathname: "/_/redemption-codes",
+    label: "Redemption Codes",
+    icon: IconGift as NavIcon,
+    iconImg: undefined,
+    featureGate: FeatureSwitchKey.RedemptionCodes,
   },
 ] as const satisfies readonly FooterNavItem[];
 

@@ -74,7 +74,8 @@ export type SidebarNavId =
   | "voiceChat"
   | "missionControl"
   | "lab"
-  | "usage";
+  | "usage"
+  | "redemptionCodes";
 
 export function isChatRoute(key: RouteKey | null): boolean {
   return (
@@ -103,6 +104,7 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
       missionControl: ROUTES.missionControl,
       lab: ROUTES.lab,
       usage: ROUTES.usage,
+      redemptionCodes: ROUTES.redemptionCodes,
     } satisfies Record<
       Exclude<SidebarNavId, "queues">,
       (typeof ROUTES)[keyof typeof ROUTES]
