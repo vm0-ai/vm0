@@ -1,11 +1,10 @@
 import type { MetadataRoute } from "next";
+import { locales, defaultLocale } from "../i18n";
 import { isBlogEnabled } from "../src/env";
 import { getPosts, getPostAvailableLocales } from "./lib/blog/data-source";
 import { getBlogBaseUrl } from "./lib/blog/config";
 import { USE_CASES } from "./[locale]/use-cases/data";
 
-const locales = ["en", "de", "es", "ja"] as const;
-const defaultLocale = "en";
 const baseUrl = "https://www.vm0.ai";
 
 // Build-time date bumps on every deploy so the sitemap stays fresh without
