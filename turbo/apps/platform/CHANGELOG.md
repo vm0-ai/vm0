@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.268.0](https://github.com/vm0-ai/vm0/compare/app-v0.267.0...app-v0.268.0) (2026-04-20)
+
+
+### Features
+
+* **api:** add v1 chat-threads endpoints gated by clerk api keys ([#10225](https://github.com/vm0-ai/vm0/issues/10225)) ([bd6d7a3](https://github.com/vm0-ai/vm0/commit/bd6d7a3322cd6c064d8184826d00d0e0d7dd96e1))
+* **platform:** add totals bar and tabbed detail sections to usage insight ([#10271](https://github.com/vm0-ai/vm0/issues/10271)) ([4ebe470](https://github.com/vm0-ai/vm0/commit/4ebe470a3c1cecf64bfc23901bd404acc0b5ea01))
+
+
+### Refactoring
+
+* **platform:** replace queue polling with realtime signals ([#10277](https://github.com/vm0-ai/vm0/issues/10277)) ([f4cc455](https://github.com/vm0-ai/vm0/commit/f4cc455fde74f079358cb0a2e6f0596ed2216e0c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.213.0
+
 ## [0.267.0](https://github.com/vm0-ai/vm0/compare/app-v0.266.0...app-v0.267.0) (2026-04-20)
 
 

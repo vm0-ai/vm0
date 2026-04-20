@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.213.0](https://github.com/vm0-ai/vm0/compare/core-v8.212.0...core-v8.213.0) (2026-04-20)
+
+
+### Features
+
+* **api:** add v1 chat-threads endpoints gated by clerk api keys ([#10225](https://github.com/vm0-ai/vm0/issues/10225)) ([bd6d7a3](https://github.com/vm0-ai/vm0/commit/bd6d7a3322cd6c064d8184826d00d0e0d7dd96e1))
+* **runs:** eagerly create agent session at run insertion ([#10290](https://github.com/vm0-ai/vm0/issues/10290)) ([345b309](https://github.com/vm0-ai/vm0/commit/345b309d9dad267f6ca343caebac0e7928ece0be)), closes [#10249](https://github.com/vm0-ai/vm0/issues/10249)
+* **web:** persist sandbox reuse result on agent runs ([#10291](https://github.com/vm0-ai/vm0/issues/10291)) ([6a42ee9](https://github.com/vm0-ai/vm0/commit/6a42ee9b1fdd2670ae101bddf48da3a1e470a62c)), closes [#10233](https://github.com/vm0-ai/vm0/issues/10233)
+
 ## [8.212.0](https://github.com/vm0-ai/vm0/compare/core-v8.211.0...core-v8.212.0) (2026-04-20)
 
 

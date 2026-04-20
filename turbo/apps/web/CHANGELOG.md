@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.271.0](https://github.com/vm0-ai/vm0/compare/web-v12.270.0...web-v12.271.0) (2026-04-20)
+
+
+### Features
+
+* **api:** add v1 chat-threads endpoints gated by clerk api keys ([#10225](https://github.com/vm0-ai/vm0/issues/10225)) ([bd6d7a3](https://github.com/vm0-ai/vm0/commit/bd6d7a3322cd6c064d8184826d00d0e0d7dd96e1))
+* **runs:** eagerly create agent session at run insertion ([#10290](https://github.com/vm0-ai/vm0/issues/10290)) ([345b309](https://github.com/vm0-ai/vm0/commit/345b309d9dad267f6ca343caebac0e7928ece0be)), closes [#10249](https://github.com/vm0-ai/vm0/issues/10249)
+* **web:** persist sandbox reuse result on agent runs ([#10291](https://github.com/vm0-ai/vm0/issues/10291)) ([6a42ee9](https://github.com/vm0-ai/vm0/commit/6a42ee9b1fdd2670ae101bddf48da3a1e470a62c)), closes [#10233](https://github.com/vm0-ai/vm0/issues/10233)
+
+
+### Refactoring
+
+* **platform:** replace queue polling with realtime signals ([#10277](https://github.com/vm0-ai/vm0/issues/10277)) ([f4cc455](https://github.com/vm0-ai/vm0/commit/f4cc455fde74f079358cb0a2e6f0596ed2216e0c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.213.0
+
 ## [12.270.0](https://github.com/vm0-ai/vm0/compare/web-v12.269.0...web-v12.270.0) (2026-04-20)
 
 

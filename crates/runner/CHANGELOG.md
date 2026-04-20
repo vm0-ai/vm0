@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.87.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.87.1...runner-rs-v0.87.2) (2026-04-20)
+
+
+### Bug Fixes
+
+* **mitm-addon:** return decompressed bytes for empty-body frames ([#10293](https://github.com/vm0-ai/vm0/issues/10293)) ([d68f78f](https://github.com/vm0-ai/vm0/commit/d68f78f4b1973bd9d40d9725477b63801bc73582))
+* **runner:** clean up stale .tmp file when systemd unit rename fails ([#10295](https://github.com/vm0-ai/vm0/issues/10295)) ([0bf5dcf](https://github.com/vm0-ai/vm0/commit/0bf5dcfb91e5778857a81deafca7a1e942ce8343))
+
 ## [0.87.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.87.0...runner-rs-v0.87.1) (2026-04-20)
 
 
