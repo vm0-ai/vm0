@@ -15,5 +15,7 @@ export const setupUsagePage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updateDocumentTitle$, "Usage");
   await set(hideAppSkeleton$, signal);
 
-  await set(onboardGuard$, signal);
+  if (await set(onboardGuard$, signal)) {
+    return;
+  }
 });
