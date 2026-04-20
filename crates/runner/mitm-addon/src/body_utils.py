@@ -140,7 +140,10 @@ def decompress_body(
       bodies from the pre-configured model-provider and billable-connector
       allowlist (not arbitrary user-supplied URLs).
 
-    Returns the original data unchanged if not compressed or on error.
+    Returns the original data unchanged when the encoding is missing,
+    ``identity``, or unrecognised, and on decompression error.  A valid
+    frame that decodes to an empty body returns ``b""`` — callers that
+    short-circuit via ``if not body`` rely on that (see #10287).
     """
     encoding = headers.get("content-encoding", "").strip().lower()
     if not encoding or encoding == "identity":
