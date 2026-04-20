@@ -1104,7 +1104,7 @@ export const USE_CASES: UseCase[] = [
     integrationCount: 3,
     tipCount: 3,
     promptVariantCount: 3,
-    slackPreviewCount: 2,
+    slackPreviewCount: 1,
   },
 
   {
