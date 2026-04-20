@@ -88,11 +88,11 @@ export const detachedSetFeatureSwitch$ = command(
     overrides: Partial<Record<FeatureSwitchKey, boolean>>,
     signal: AbortSignal,
   ) => {
-    set(setFeatureSwitch$, overrides, signal).catch((error: unknown) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      throw error;
+    // toast.error is already shown by accept() on API failure.
+    // Swallow all rejections here so the fire-and-forget proxy setter does
+    // not produce an unhandled promise rejection in the browser console.
+    set(setFeatureSwitch$, overrides, signal).catch((_error: unknown) => {
+      return;
     });
   },
 );
