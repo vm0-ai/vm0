@@ -22,12 +22,17 @@ type AuthCallback = (
   cb: (error: AuthCallbackError, token: AuthCallbackToken) => void,
 ) => void;
 
+type FailedStateChange = { reason?: { message?: string } };
+type ConnectionEventListener = (stateChange?: FailedStateChange) => void;
+
 const subscriptions = new Map<string, Set<Callback>>();
 
 let capturedAuthCallback: AuthCallback | null = null;
 let tokenBodies: AuthCallbackToken[] = [];
-let connectedListener: (() => void) | null = null;
+let connectedListener: ConnectionEventListener | null = null;
+let failedListener: ConnectionEventListener | null = null;
 let hasConnected = false;
+let failedStateChange: FailedStateChange | null = null;
 
 /**
  * Fire all callbacks subscribed to `topic`. Call this from test helpers
@@ -67,7 +72,9 @@ export function resetAblySubscriptions(): void {
   capturedAuthCallback = null;
   tokenBodies = [];
   connectedListener = null;
+  failedListener = null;
   hasConnected = false;
+  failedStateChange = null;
 }
 
 /** Debug: check if a topic has active subscriptions. */
@@ -117,14 +124,24 @@ const fakeChannel = {
 export class Realtime {
   auth = { clientId: "test-user-123" };
   connection = {
-    once(event: string, callback: () => void) {
-      if (event !== "connected") {
-        return;
-      }
-      if (hasConnected) {
-        queueMicrotask(callback);
-      } else {
-        connectedListener = callback;
+    once(event: string, callback: ConnectionEventListener) {
+      if (event === "connected") {
+        if (hasConnected) {
+          queueMicrotask(() => {
+            callback();
+          });
+        } else {
+          connectedListener = callback;
+        }
+      } else if (event === "failed") {
+        if (failedStateChange) {
+          const stateChange = failedStateChange;
+          queueMicrotask(() => {
+            callback(stateChange);
+          });
+        } else {
+          failedListener = callback;
+        }
       }
     },
   };
@@ -137,19 +154,30 @@ export class Realtime {
   constructor(config?: { authCallback?: AuthCallback }) {
     if (config?.authCallback) {
       capturedAuthCallback = config.authCallback;
-      // Real Ably surfaces auth failures via connection state (which we
-      // don't model here), so swallow rejections to keep test teardown
-      // quiet when a fetch is aborted mid-flight.
       invokeAuthCallback(config.authCallback)
         .then(() => {
           hasConnected = true;
           const listener = connectedListener;
           connectedListener = null;
           if (listener) {
-            queueMicrotask(listener);
+            queueMicrotask(() => {
+              listener();
+            });
           }
         })
-        .catch(() => {});
+        .catch((error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          failedStateChange = { reason: { message } };
+          const listener = failedListener;
+          failedListener = null;
+          if (listener) {
+            const stateChange = failedStateChange;
+            queueMicrotask(() => {
+              listener(stateChange);
+            });
+          }
+        });
     } else {
       queueMicrotask(() => {
         hasConnected = true;

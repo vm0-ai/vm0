@@ -140,4 +140,47 @@ describe("setupRealtime$ authCallback", () => {
 
     controller.abort();
   });
+
+  it("forwards endpoint errors to ably's callback on renewal", async () => {
+    const store = createStore();
+    const controller = new AbortController();
+
+    // First two calls succeed (bootstrap probe + initial auth). The third
+    // — standing in for Ably's proactive renewal — returns 500 so we can
+    // assert the authCallback's error path is wired up correctly.
+    let call = 0;
+    server.use(
+      mockApi(platformRealtimeTokenContract.create, ({ respond }) => {
+        call += 1;
+        if (call >= 3) {
+          return respond(500, {
+            error: {
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Realtime service unavailable",
+            },
+          });
+        }
+        return respond(200, {
+          keyName: "mock-key",
+          clientId: "test-user-123",
+          timestamp: Date.now(),
+          capability: '{"*":["*"]}',
+          nonce: `mock-nonce-${call.toString()}`,
+          mac: "mock-mac",
+        });
+      }),
+    );
+    mockUser(
+      { id: "test-user-123", fullName: "Test User" },
+      { token: "test-token" },
+    );
+
+    await store.set(setupRealtime$, controller.signal);
+
+    await expect(triggerAblyReauth()).rejects.toThrow(
+      "Realtime service unavailable",
+    );
+
+    controller.abort();
+  });
 });
