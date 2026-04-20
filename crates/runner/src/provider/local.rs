@@ -15,7 +15,8 @@ use tracing::{info, warn};
 
 use super::JobProvider;
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use sandbox::SandboxId;
 
 /// Poll interval for discovering new job files.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -233,8 +234,14 @@ impl JobProvider for LocalProvider {
                 // same reason — both write the same parse error, last rename
                 // wins, submitter sees one consistent result.
                 let _ = std::fs::remove_file(&claim_file);
-                self.complete(run_id, 1, Some(&format!("invalid job JSON: {e}")))
-                    .await;
+                self.complete(
+                    run_id,
+                    1,
+                    Some(&format!("invalid job JSON: {e}")),
+                    None,
+                    None,
+                )
+                .await;
                 let _ = std::fs::remove_file(&job_file);
                 return None;
             }
@@ -275,7 +282,14 @@ impl JobProvider for LocalProvider {
         })
     }
 
-    async fn complete(&self, run_id: RunId, exit_code: i32, error: Option<&str>) {
+    async fn complete(
+        &self,
+        run_id: RunId,
+        exit_code: i32,
+        error: Option<&str>,
+        _sandbox_id: Option<SandboxId>,
+        _reuse_result: Option<SandboxReuseResult>,
+    ) {
         let response = JobResponse {
             run_id,
             exit_code,
@@ -370,7 +384,7 @@ mod tests {
         assert_eq!(ctx.run_id, run_id);
         assert_eq!(ctx.prompt, "hello world");
 
-        provider.complete(run_id, 0, None).await;
+        provider.complete(run_id, 0, None, None, None).await;
 
         let resp = read_result(dir.path(), job_id);
         assert_eq!(resp.exit_code, 0);
@@ -429,8 +443,10 @@ mod tests {
         assert_eq!(ctx2.prompt, "job2");
         assert_ne!(run_id1, run_id2);
 
-        provider.complete(run_id1, 0, None).await;
-        provider.complete(run_id2, 1, Some("test error")).await;
+        provider.complete(run_id1, 0, None, None, None).await;
+        provider
+            .complete(run_id2, 1, Some("test error"), None, None)
+            .await;
 
         let resp1 = read_result(dir.path(), job1);
         assert_eq!(resp1.exit_code, 0);
@@ -586,7 +602,7 @@ mod tests {
         let cancel_path = dir.path().join(format!("{run_id}.cancel"));
         std::fs::write(&cancel_path, b"").unwrap();
 
-        provider.complete(run_id, 0, None).await;
+        provider.complete(run_id, 0, None, None, None).await;
 
         assert!(
             !cancel_path.exists(),

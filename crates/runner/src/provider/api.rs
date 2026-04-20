@@ -14,7 +14,10 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
-use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse};
+use crate::types::{
+    CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse, SandboxReuseResult,
+};
+use sandbox::SandboxId;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -306,7 +309,14 @@ impl JobProvider for ApiProvider {
         }
     }
 
-    async fn complete(&self, run_id: RunId, exit_code: i32, error: Option<&str>) {
+    async fn complete(
+        &self,
+        run_id: RunId,
+        exit_code: i32,
+        error: Option<&str>,
+        sandbox_id: Option<SandboxId>,
+        reuse_result: Option<SandboxReuseResult>,
+    ) {
         let token = self.tokens.lock().await.remove(&run_id);
         let token = match token {
             Some(t) => t,
@@ -319,10 +329,18 @@ impl JobProvider for ApiProvider {
             }
         };
 
-        if let Err(e) = self.api.complete(&token, run_id, exit_code, error).await {
+        if let Err(e) = self
+            .api
+            .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
+            .await
+        {
             warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
             tokio::time::sleep(Duration::from_secs(2)).await;
-            if let Err(e) = self.api.complete(&token, run_id, exit_code, error).await {
+            if let Err(e) = self
+                .api
+                .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
+                .await
+            {
                 error!(run_id = %run_id, error = %e, "failed to report completion after retry");
             }
         }
@@ -584,11 +602,15 @@ impl ApiClient {
         run_id: RunId,
         exit_code: i32,
         error: Option<&str>,
+        sandbox_id: Option<SandboxId>,
+        reuse_result: Option<SandboxReuseResult>,
     ) -> RunnerResult<()> {
         let body = CompleteRequest {
             run_id,
             exit_code,
             error: error.map(String::from),
+            sandbox_id,
+            sandbox_reuse_result: reuse_result,
         };
 
         let resp = self

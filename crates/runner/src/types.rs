@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -267,6 +268,30 @@ pub struct CompleteRequest {
     pub exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Sandbox the run executed against. `None` when no sandbox was
+    /// provisioned (e.g. a pre-claim failure); otherwise set on every
+    /// completion regardless of reuse status.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_id: Option<SandboxId>,
+    /// Outcome of the sandbox-reuse decision made before this run started.
+    /// `None` is reserved for callers that cannot determine it (tests, future
+    /// transports); the runner itself always sets this.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_reuse_result: Option<SandboxReuseResult>,
+}
+
+/// Outcome of the sandbox-reuse decision made at job dispatch time. `Reused`
+/// means the VM was unparked from the idle pool; the other variants name the
+/// branch that caused a fresh create. Wire name: `sandboxReuseResult`.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SandboxReuseResult {
+    Reused,
+    FeatureDisabled,
+    NoSessionId,
+    PoolMiss,
+    ProfileMismatch,
+    UnparkFailed,
 }
 
 #[cfg(test)]
@@ -446,12 +471,16 @@ mod tests {
                 .unwrap(),
             exit_code: 0,
             error: None,
+            sandbox_id: None,
+            sandbox_reuse_result: None,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert!(json.get("runId").is_some());
         assert!(json.get("exitCode").is_some());
-        // error omitted when None
+        // optionals omitted when None
         assert!(json.get("error").is_none());
+        assert!(json.get("sandboxId").is_none());
+        assert!(json.get("sandboxReuseResult").is_none());
     }
 
     #[test]
@@ -462,9 +491,52 @@ mod tests {
                 .unwrap(),
             exit_code: 1,
             error: Some("timeout".into()),
+            sandbox_id: None,
+            sandbox_reuse_result: None,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["error"], "timeout");
+    }
+
+    #[test]
+    fn complete_request_with_reuse_fields() {
+        let sid: SandboxId = "11111111-2222-3333-4444-555555555555".parse().unwrap();
+        let req = CompleteRequest {
+            run_id: "550e8400-e29b-41d4-a716-446655440000"
+                .parse::<RunId>()
+                .unwrap(),
+            exit_code: 0,
+            error: None,
+            sandbox_id: Some(sid),
+            sandbox_reuse_result: Some(SandboxReuseResult::Reused),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["sandboxId"], "11111111-2222-3333-4444-555555555555");
+        assert_eq!(json["sandboxReuseResult"], "reused");
+    }
+
+    #[test]
+    fn sandbox_reuse_result_serializes_camel_case() {
+        assert_eq!(
+            serde_json::to_value(SandboxReuseResult::FeatureDisabled).unwrap(),
+            serde_json::json!("featureDisabled"),
+        );
+        assert_eq!(
+            serde_json::to_value(SandboxReuseResult::NoSessionId).unwrap(),
+            serde_json::json!("noSessionId"),
+        );
+        assert_eq!(
+            serde_json::to_value(SandboxReuseResult::PoolMiss).unwrap(),
+            serde_json::json!("poolMiss"),
+        );
+        assert_eq!(
+            serde_json::to_value(SandboxReuseResult::ProfileMismatch).unwrap(),
+            serde_json::json!("profileMismatch"),
+        );
+        assert_eq!(
+            serde_json::to_value(SandboxReuseResult::UnparkFailed).unwrap(),
+            serde_json::json!("unparkFailed"),
+        );
     }
 
     #[test]
