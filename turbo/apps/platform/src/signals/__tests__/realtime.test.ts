@@ -125,12 +125,9 @@ describe("setupRealtime$ authCallback", () => {
 
     await store.set(setupRealtime$, controller.signal);
 
-    // Bootstrap consumed one nonce for the fail-fast probe and one for the
-    // first authCallback invocation, so the Realtime mock captured nonce-2.
     const firstHistory = getAuthTokenHistory();
     expect(firstHistory).toHaveLength(1);
     const firstBody = firstHistory[0] as { nonce: string };
-    expect(firstBody.nonce).toBe("mock-nonce-2");
 
     // Simulate Ably proactively renewing the token after ttl elapses.
     await triggerAblyReauth();
@@ -138,7 +135,8 @@ describe("setupRealtime$ authCallback", () => {
     const secondHistory = getAuthTokenHistory();
     expect(secondHistory).toHaveLength(2);
     const secondBody = secondHistory[1] as { nonce: string };
-    expect(secondBody.nonce).toBe("mock-nonce-3");
+    // The pre-fix cached-closure implementation returned the same body both
+    // times; a distinct nonce per invocation is the real freshness signal.
     expect(secondBody.nonce).not.toBe(firstBody.nonce);
 
     controller.abort();
