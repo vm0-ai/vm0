@@ -347,11 +347,12 @@ export async function DELETE(request: Request) {
     }
   }
 
-  // Clear the deployment-wide mock call log so each test starts fresh.
-  // Scoping by team_id would silently skip rows whose payload carried no
-  // team id (chat.postMessage — what the Slack callback actually hits).
-  // Safe to truncate here because each CI run has its own Neon branch.
-  await db.delete(e2eSlackMockCallLog);
+  // Do NOT truncate e2e_slack_mock_call_log — BATS assertions already
+  // scope to the test's channel id, and concurrent tests on the same
+  // Neon branch (e.g. ser-t07-slack in cli-e2e-01-serial racing t40 in
+  // cli-e2e-03-runner) would otherwise wipe each other's postMessage
+  // rows between insert and poll. If noise accumulation is ever a
+  // problem, use an age-based filter here rather than blanket DELETE.
 
   return NextResponse.json({ ok: true });
 }
