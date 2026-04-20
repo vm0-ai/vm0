@@ -117,17 +117,11 @@ export async function POST(request: Request) {
       });
     }
 
-    const run = await dispatchSlowBrain(
-      session,
-      org.orgId,
-      userId,
-      agentId,
+    const run = await dispatchSlowBrain(session, org.orgId, userId, agentId, {
+      mode,
+      prompt,
       apiStartTime,
-      {
-        mode,
-        prompt,
-      },
-    );
+    });
 
     return NextResponse.json({
       session: {

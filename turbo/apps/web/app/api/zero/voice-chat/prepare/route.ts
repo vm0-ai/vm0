@@ -113,16 +113,11 @@ export async function POST(request: Request) {
       mode,
       prompt,
     );
-    const run = await dispatchPreparationRun(
-      preparation.id,
-      userId,
-      agentId,
+    const run = await dispatchPreparationRun(preparation.id, userId, agentId, {
+      mode: mode as "chat" | "meeting",
+      prompt,
       apiStartTime,
-      {
-        mode: mode as "chat" | "meeting",
-        prompt,
-      },
-    );
+    });
 
     return NextResponse.json({
       preparation: {

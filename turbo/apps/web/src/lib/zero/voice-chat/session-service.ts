@@ -144,12 +144,14 @@ export async function dispatchSlowBrain(
   orgId: string,
   userId: string,
   agentId: string,
-  apiStartTime: number,
-  options?: { mode?: "chat" | "meeting"; prompt?: string },
+  options: {
+    mode?: "chat" | "meeting";
+    prompt?: string;
+    apiStartTime: number;
+  },
 ): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
-  const meetingPrompt =
-    options?.mode === "meeting" ? options.prompt : undefined;
+  const meetingPrompt = options.mode === "meeting" ? options.prompt : undefined;
 
   const appendSystemPrompt = meetingPrompt
     ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
@@ -176,7 +178,7 @@ export async function dispatchSlowBrain(
       prompt,
       appendSystemPrompt,
       sessionId: session.id,
-      apiStartTime,
+      apiStartTime: options.apiStartTime,
     }),
   );
 

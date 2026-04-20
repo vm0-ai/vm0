@@ -164,12 +164,14 @@ export async function dispatchPreparationRun(
   preparationId: string,
   userId: string,
   agentId: string,
-  apiStartTime: number,
-  options?: { mode?: "chat" | "meeting"; prompt?: string },
+  options: {
+    mode?: "chat" | "meeting";
+    prompt?: string;
+    apiStartTime: number;
+  },
 ): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
-  const meetingPrompt =
-    options?.mode === "meeting" ? options.prompt : undefined;
+  const meetingPrompt = options.mode === "meeting" ? options.prompt : undefined;
 
   const appendSystemPrompt = meetingPrompt
     ? buildVoiceChatMeetingPreparePrompt(meetingPrompt)
@@ -186,7 +188,7 @@ export async function dispatchPreparationRun(
       prompt,
       appendSystemPrompt,
       preparationId,
-      apiStartTime,
+      apiStartTime: options.apiStartTime,
     }),
   );
 
