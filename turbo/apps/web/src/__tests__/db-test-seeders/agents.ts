@@ -469,6 +469,41 @@ export async function addTestRunToThread(
 }
 
 /**
+ * Overwrite `chat_messages.attach_files` for every row belonging to a run.
+ *
+ * @why-db-direct Send-time inserts only stamp IDs for the user row. Tests
+ * that stand up a cancelled round with attachments must backfill this blob
+ * after the send endpoint persists the row.
+ */
+export async function setTestChatMessageAttachFiles(
+  runId: string,
+  ids: string[],
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatMessages)
+    .set({ attachFiles: ids })
+    .where(eq(chatMessages.runId, runId));
+}
+
+/**
+ * Overwrite `chat_messages.content` for every row belonging to a run.
+ *
+ * @why-db-direct Simulates an overlong user body without exercising the
+ * body-length limits enforced by the public API.
+ */
+export async function setTestChatMessageContent(
+  runId: string,
+  content: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatMessages)
+    .set({ content })
+    .where(eq(chatMessages.runId, runId));
+}
+
+/**
  * Insert event-backed assistant messages for a run.
  *
  * @why-db-direct Event-backed messages are inserted by the chat-assistant

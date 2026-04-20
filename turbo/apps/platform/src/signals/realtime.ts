@@ -3,6 +3,7 @@ import { platformRealtimeTokenContract } from "@vm0/core";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
+import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import { createDeferredPromise, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
 
@@ -77,16 +78,10 @@ export const setupRealtime$ = command(
     });
     signal.throwIfAborted();
 
-    const token = await accept(
-      client.create({ body: {}, fetchOptions: { signal } }),
-      [200],
-    );
-    signal.throwIfAborted();
-
     const ably = new Realtime({
-      authCallback: (_params, callback) => {
-        callback(null, token.body);
-      },
+      // Ably TokenRequest is single-use — see lib/ably-auth.ts for why
+      // every invocation must fetch a freshly-signed request.
+      authCallback: createAblyAuthCallback(client, signal),
       autoConnect: true,
       disconnectedRetryTimeout: 5000,
       suspendedRetryTimeout: 15_000,

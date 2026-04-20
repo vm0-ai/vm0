@@ -18,6 +18,8 @@ import { chatThreads } from "../../../../../src/db/schema/chat-thread";
 import {
   buildWebChatPrompt,
   buildWebAttachFilesPrompt,
+  buildWebChatIncompleteContext,
+  type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
 import { isApiError } from "../../../../../src/lib/shared/errors";
 import {
@@ -29,6 +31,7 @@ import {
   insertChatMessage,
   getLatestSessionIdForThread,
   getMessagesByThreadId,
+  getIncompleteRoundsSinceLastSuccess,
   publishThreadListChanged,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
 import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
@@ -65,12 +68,13 @@ function buildContinueFromScheduleSystemPrompt(
 
 function buildAppendSystemPrompt(
   continueFromSchedulePrompt: string | undefined,
+  incompleteContext: string,
 ): string {
-  const parts = [buildWebChatPrompt()];
-  if (continueFromSchedulePrompt) {
-    parts.push(continueFromSchedulePrompt);
-  }
-  return parts.join("\n\n");
+  return [buildWebChatPrompt(), incompleteContext, continueFromSchedulePrompt]
+    .filter((part) => {
+      return typeof part === "string" && part.length > 0;
+    })
+    .join("\n\n");
 }
 
 /**
@@ -89,6 +93,7 @@ interface ResolvedThread {
   sessionId: string | undefined;
   previousContext: { role: "user" | "assistant"; content: string }[];
   continueFromSchedulePrompt: string | undefined;
+  incompleteContext: string;
 }
 
 /**
@@ -159,6 +164,7 @@ async function resolveThread(
       sessionId: undefined,
       previousContext: [],
       continueFromSchedulePrompt: undefined,
+      incompleteContext: "",
     };
   }
 
@@ -176,6 +182,11 @@ async function resolveThread(
         content: m.content as string,
       };
     });
+
+  const incompleteRows = await getIncompleteRoundsSinceLastSuccess(thread.id);
+  const incompleteContext = buildWebChatIncompleteContext(
+    groupIncompleteRoundsByRunId(incompleteRows),
+  );
 
   let continueFromSchedulePrompt: string | undefined;
   if (thread.sourceScheduleRunId && messages.length === 0) {
@@ -199,7 +210,41 @@ async function resolveThread(
     sessionId,
     previousContext,
     continueFromSchedulePrompt,
+    incompleteContext,
   };
+}
+
+/**
+ * Collapse the flat chronological rows from `getIncompleteRoundsSinceLastSuccess`
+ * into per-run groups. Row order is preserved so the user message (inserted on
+ * send with no `sequence_number`) stays ahead of any assistant event rows.
+ */
+function groupIncompleteRoundsByRunId(
+  rows: Awaited<ReturnType<typeof getIncompleteRoundsSinceLastSuccess>>,
+): WebChatIncompleteRound[] {
+  const byRunId = new Map<string, WebChatIncompleteRound>();
+  const order: string[] = [];
+  for (const row of rows) {
+    let round = byRunId.get(row.runId);
+    if (!round) {
+      round = {
+        runId: row.runId,
+        status: row.runStatus,
+        messages: [],
+      };
+      byRunId.set(row.runId, round);
+      order.push(row.runId);
+    }
+    round.messages.push({
+      role: row.role,
+      content: row.content,
+      error: row.error,
+      attachFiles: row.attachFiles,
+    });
+  }
+  return order.map((id) => {
+    return byRunId.get(id)!;
+  });
 }
 
 const router = tsr.router(chatMessagesContract, {
@@ -265,6 +310,7 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         previousContext,
         continueFromSchedulePrompt,
+        incompleteContext,
       } = await resolveThread(authCtx.userId, body.agentId, body.threadId);
 
       const override = await resolveRunModelOverride(
@@ -326,7 +372,10 @@ const router = tsr.router(chatMessagesContract, {
         modelProvider,
         modelProviderId: override.providerId ?? undefined,
         selectedModelOverride: override.selectedModel ?? undefined,
-        appendSystemPrompt: buildAppendSystemPrompt(continueFromSchedulePrompt),
+        appendSystemPrompt: buildAppendSystemPrompt(
+          continueFromSchedulePrompt,
+          incompleteContext,
+        ),
         callbacks: [chatCallback],
         chatThreadId: threadId,
       });

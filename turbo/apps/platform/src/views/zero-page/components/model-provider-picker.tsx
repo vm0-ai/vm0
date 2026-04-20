@@ -13,13 +13,13 @@ import {
 import {
   areProvidersCompatible,
   getDefaultModel,
+  getModelDisplayName,
   getModels,
   MODEL_PROVIDER_TYPES,
   type ModelProviderResponse,
   type ModelProviderType,
 } from "@vm0/core";
 import {
-  getModelDisplayName,
   getUIDefaultModel,
   getUILabel,
   getVm0ModelMultiplier,

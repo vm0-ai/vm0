@@ -128,7 +128,7 @@ describe("chat-d-032: mic button visibility with feature switch", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: false },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: false },
     });
 
     await waitFor(() => {
@@ -144,7 +144,7 @@ describe("chat-d-032: mic button visibility with feature switch", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     await waitFor(() => {
@@ -159,7 +159,7 @@ describe("chat-d-032: mic button visibility with feature switch", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     await waitFor(() => {
@@ -189,7 +189,7 @@ describe("chat-i-033: mic button recording interaction", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const micButton = await waitFor(() => {
@@ -225,7 +225,7 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const textarea = await waitFor(() => {
@@ -263,7 +263,7 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioIO]: true },
+      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const textarea = await waitFor(() => {

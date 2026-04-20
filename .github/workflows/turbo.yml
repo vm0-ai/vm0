@@ -846,6 +846,7 @@ jobs:
             SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
             SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
             SLACK_REDIRECT_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
+            E2E_SLACK_MOCK_ENABLED=1
             PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
             SENTRY_DSN_WEB=${{ secrets.SENTRY_DSN_WEB }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -1320,6 +1321,13 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
+          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
+          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
+          # Slack tests override BATS_TEST_TIMEOUT to 90s at file scope,
+          # so the polling budget can go up to ~60s and still leave
+          # margin for the state fetch + seed round-trips.
+          SLACK_POLL_TIMEOUT_S: 60
+          SLACK_POLL_INTERVAL_S: 3
 
       - name: Print E2E trace log
         if: always()
@@ -1867,6 +1875,14 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
           E2E_RUNNER_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+runner@vm0-e2e.ai
+          # Slack round-trip test (t40-slack-roundtrip.bats) needs the
+          # preview's signing secret so bash can HMAC-sign webhook
+          # payloads that match what /api/zero/slack/{commands,events}
+          # validate. Also tunes the polling knobs for the full
+          # dispatch → runner → callback round-trip.
+          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
+          SLACK_POLL_TIMEOUT_S: 60
+          SLACK_POLL_INTERVAL_S: 3
 
       - name: Print E2E trace log
         if: always()

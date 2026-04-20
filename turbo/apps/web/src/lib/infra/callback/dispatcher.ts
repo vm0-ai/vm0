@@ -137,14 +137,26 @@ async function dispatchSingleCallback(
     })
     .where(eq(agentRunCallbacks.id, id));
 
+  // When the callback URL points back at this deployment (e.g. the
+  // default VM0_API_URL on a Vercel preview), the lambda's outbound
+  // fetch to its own domain hits Vercel's deployment-protection page
+  // unless we include the bypass header. Production leaves
+  // VERCEL_AUTOMATION_BYPASS_SECRET unset, so the header is omitted and
+  // behavior is unchanged.
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-VM0-Signature": signature,
+    "X-VM0-Timestamp": timestamp.toString(),
+  };
+  const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypass) {
+    headers["x-vercel-protection-bypass"] = bypass;
+  }
+
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-VM0-Signature": signature,
-        "X-VM0-Timestamp": timestamp.toString(),
-      },
+      headers,
       body,
     });
 

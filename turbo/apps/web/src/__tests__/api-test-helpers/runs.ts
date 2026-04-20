@@ -9,6 +9,7 @@ import { createTestRequest } from "./core";
 export {
   markRunningRunsAsCompleted,
   setTestRunStatus,
+  setTestRunResult,
   setTestRunModelProvider,
   setTestRunSelectedModel,
   insertTestZeroRun,

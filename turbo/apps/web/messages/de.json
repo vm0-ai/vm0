@@ -2926,6 +2926,498 @@
           "Vor dem Veröffentlichen prüfen. Zero erstellt standardmäßig Entwürfe — nutzen Sie den Strapi-Admin-Link, den Zero zurückgibt, um jede Sprache vor dem Go-Live zu überprüfen.",
           "Geben Sie Zero Markenkontext. Fügen Sie Ihre Brand-Voice-Richtlinien oder einen Beispielbeitrag aus der Zielsprache ein — die Ausgabe wird spürbar markengerechter."
         ]
+      },
+      "daily-email-triage": {
+        "title": "Sortieren Sie Ihren Posteingang in zwei Minuten — nicht in zwei Stunden",
+        "description": "Zero liest Ihre Gmail, trennt Signal von Rauschen und sendet eine priorisierte Slack-Zusammenfassung mit Handlungselementen — damit Sie informiert in den Tag starten, nicht begraben.",
+        "timeSaved": "~20 Min. pro Tag gespart",
+        "headings": {
+          "scenario": "Warum E-Mail-Überlastung Ihren Morgen zerstört",
+          "prompt": "So bitten Sie Zero, Ihren Posteingang zu sortieren",
+          "steps": "Wie Zero 200 E-Mails in eine 2-Minuten-Lektüre verwandelt",
+          "nextActions": "Machen Sie aus Ihrer Posteingangs-Zusammenfassung Handlungen",
+          "integrations": "Benötigte Integrationen: Gmail und Slack",
+          "tips": "Best Practices für automatisches E-Mail-Triage"
+        },
+        "scenario": "Montagmorgen, 8:59 Uhr. Sie öffnen Gmail: 200+ ungelesene Nachrichten. Die meisten sind Rauschen — GitHub-Benachrichtigungen, automatische Warnungen, Marketing-Mails, die Sie nie lesen werden. Darin versteckt: eine Sicherheitswarnung zu offenen Zugangsdaten in Ihrem Repo, eine fehlgeschlagene Zahlungsbenachrichtigung Ihres Cloud-Anbieters und eine Kundenanfrage, die heute beantwortet werden muss. Sie könnten 30 Minuten damit verbringen, Betreffzeilen zu überfliegen — oder Zero bitten, das Dringende vom Ignorierbaren zu trennen und Ihnen eine saubere Zusammenfassung in Slack zu schicken, bevor Ihr erster Kaffee kalt wird.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero prüfe meine Gmail auf E-Mails der letzten 24 Stunden. Markiere alles Dringende — Sicherheitswarnungen, Rechnungsprobleme, Kundenanfragen. Schick mir eine Slack-DM mit Handlungselementen oben und einer Zusammenfassungstabelle für alles andere."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero sortiere meinen Posteingang — was braucht heute meine Aufmerksamkeit?"
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Werktag um 7 Uhr morgens, prüfe meine Gmail auf neue E-Mails der letzten 24 Stunden. Markiere Sicherheitswarnungen, Rechnungsprobleme und Kundenanfragen. Schick mir die Zusammenfassung als Slack-DM."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero sortiere meinen Posteingang"
+          },
+          {
+            "name": "Zero",
+            "text": "Hier ist Ihre Posteingangs-Sortierung für heute:\n\n🔴 **HANDLUNGSBEDARF**\n• **GitHub-Sicherheitswarnung** — Mögliche Passwörter in vm0-ai/vm0 erkannt. 2 Benachrichtigungen. Jeder mit Lesezugriff kann die Anmeldeinformationen einsehen. Sofort prüfen und rotieren.\n• **Cloud-Abrechnung** — Zahlung für Team-Plan fehlgeschlagen (Verlängerung fällig am 7. Apr.). Bitte Zahlungsmethode aktualisieren.\n\n⚠️ **Evtl. erforderlich**\n• Zoom-Quittung (Konto endend auf 3482) — zur Akte\n• npm veröffentlicht @vm0/cli@9.123.0 — Bestätigung\n\n📬 **Überfliegbar** (~180 automatische GitHub-Benachrichtigungen, 1 Medium-Digest)\n\nUngelesen gesamt: ~201. Nur 2 Elemente erfordern Ihr Eingreifen."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero verbindet sich mit Gmail und ruft aktuelle E-Mails ab",
+            "description": "Zero authentifiziert sich bei Ihrem Gmail-Konto und ruft E-Mails aus dem von Ihnen angegebenen Zeitraum ab — normalerweise die letzten 24 Stunden. Es liest Header, Absenderinformationen und Snippets, um zu verstehen, worum es bei jeder Nachricht geht."
+          },
+          {
+            "title": "Zero kategorisiert und priorisiert jede Nachricht",
+            "description": "Zero sortiert E-Mails in Prioritätsstufen: Handlungsbedarf wie Sicherheitswarnungen und Kundenanfragen steigen nach oben, informative Updates werden in einer überfliegbaren Tabelle gruppiert, und reines Rauschen wird in einer Zeile zusammengefasst."
+          },
+          {
+            "title": "Zero sendet eine strukturierte Slack-Zusammenfassung mit Handlungselementen",
+            "description": "Der Triage-Bericht landet in Ihrer Slack-DM oder einem Teamkanal — Handlungselemente zuerst, dann aufmerksamkeitsbedürftige Elemente und eine Einzeilenzusammenfassung des Rests. Jedes Element enthält Absender, Betreff und warum es wichtig ist. Nie wieder 200 E-Mails durchscrollen, um die drei zu finden, die zählen."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Antworten auf markierte E-Mails entwerfen",
+            "description": "Zero bitten, Antworten auf die gefundenen dringenden Elemente zu entwerfen.",
+            "examplePrompt": "@Zero entwerfe eine Antwort auf die GitHub-Sicherheitswarnung und frage nach den betroffenen Dateipfaden"
+          },
+          {
+            "title": "Handlungselemente in Issues umwandeln",
+            "description": "E-Mail-Aktionselemente in nachverfolgte GitHub- oder Linear-Issues umwandeln.",
+            "examplePrompt": "@Zero erstelle ein GitHub-Issue für die Sicherheitswarnung zu offenen Passwörtern — Label: security, mir zuweisen"
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Diese Triage so planen, dass sie jeden Morgen vor Arbeitsbeginn läuft.",
+            "examplePrompt": "@Zero jeden Werktag um 7 Uhr morgens meinen Posteingang sortieren und als Slack-DM zusammenfassen"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Gmail — Lesezugriff zum Scannen eingehender E-Mails, Header und Snippets. Zero liest nur; es werden niemals Nachrichten geändert oder gelöscht."
+          },
+          {
+            "description": "Slack — verwendet, um die Triage-Zusammenfassung als DM oder Kanal-Post zuzustellen. Nur erforderlich, wenn Sie den Bericht in Slack statt inline erhalten möchten."
+          }
+        ],
+        "tips": [
+          "Grenzen Sie den Umfang ein, indem Sie Zero bitten, sich auf bestimmte Absender, Labels oder Ordner zu konzentrieren.",
+          "Kombinieren Sie mit dem Slack-Triage-Use-Case für volle Kommunikationsabdeckung — E-Mail + Slack-Triage deckt Ihre zwei frequentiertesten Posteingänge ab.",
+          "Fügen Sie Kontext hinzu, was für Ihr Team als dringend gilt. Zero passt sich an — sagen Sie einmal „GitHub-Sicherheitswarnungen sind immer P0“ und es merkt es sich."
+        ]
+      },
+      "auto-test-coverage": {
+        "title": "Automatisch Tests für jede Code-Änderung schreiben — über Nacht",
+        "description": "Zero scannt gemergte PRs auf ungetestete Dateien, schreibt Tests nach Ihren Konventionen und öffnet einen PR — damit Sie jeden Tag mit besserer Code-Abdeckung starten.",
+        "timeSaved": "~45 Min. pro Tag gespart",
+        "headings": {
+          "scenario": "Warum die Testabdeckung immer wieder sinkt — und wie man es behebt",
+          "prompt": "So bitten Sie Zero, Ihren Code automatisch abzudecken",
+          "steps": "Wie Zero Tests schreibt, während Sie schlafen",
+          "nextActions": "Halten Sie Ihre Abdeckung am Steigen",
+          "integrations": "Benötigte Integrationen: GitHub und Slack",
+          "tips": "Best Practices für automatische Test-Generierung"
+        },
+        "scenario": "Dienstagmorgen. CI ist rot — die Abdeckung ist über Nacht von 82% auf 79% gesunken, weil jemand ein neues Feature ohne Tests gemergt hat. Schon wieder. Sie könnten Ihre Arbeit unterbrechen, den Code lesen und selbst Tests schreiben. Oder Sie lassen Zero jeden Morgen um 4 Uhr die Arbeit erledigen, sodass beim Hinsetzen bereits ein Test-PR zur Überprüfung bereitsteht.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero prüfe alle gemergten PRs der letzten 24 Stunden in vm0-ai/vm0. Schreibe für jede geänderte Datei ohne entsprechende Testdatei Integrationstests nach den Testmustern des Projekts. Öffne einen einzelnen PR mit allen neuen Tests."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero schreibe Tests für die gestrigen gemergten Änderungen"
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Tag um 4 Uhr morgens, scanne das Repo nach Views, die sich in den letzten 24 Stunden geändert haben und keine Testabdeckung haben. Schreibe Tests und öffne einen PR."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero schreibe Tests für die gestrigen gemergten Änderungen"
+          },
+          {
+            "name": "Zero",
+            "text": "6 gemergte PRs der letzten 24 Stunden gescannt. 3 Dateien ohne Testabdeckung gefunden:\n\n| Datei | PR | Neue Tests |\n|------|-----|------------|\n| `sidebar-threads.tsx` | #10149 | 4 Testfälle |\n| `job-custom-connectors.tsx` | #10148 | 6 Testfälle |\n| `model-picker.tsx` | #10144 | 3 Testfälle |\n\nPR #10153 mit allen 13 neuen Tests geöffnet. CI läuft — ich melde mich, wenn alles grün ist."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scannt gemergte PRs nach ungedeckten Dateien",
+            "description": "Zero fragt GitHub nach kürzlich gemergten Pull Requests ab, listet jede geänderte Datei auf und gleicht mit Ihrem Test-Verzeichnis ab. Dateien ohne entsprechende Testdatei werden für Abdeckung markiert."
+          },
+          {
+            "title": "Zero schreibt Tests nach den Konventionen Ihres Projekts",
+            "description": "Zero liest die Quelldatei, versteht die Schnittstelle der Komponente oder Funktion, prüft Ihre bestehenden Testmuster und schreibt Tests, die sich nahtlos einfügen — gleiche Struktur, gleiche Muster, gleicher Qualitätsstandard."
+          },
+          {
+            "title": "Zero öffnet einen PR und postet eine Zusammenfassung",
+            "description": "Alle generierten Tests landen in einem einzelnen Pull Request mit einer klaren Beschreibung. Zero postet eine Zusammenfassungstabelle in Slack. CI läuft automatisch, und Zero folgt mit dem Ergebnis nach."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Test-PR überprüfen und mergen",
+            "description": "Die generierten Tests prüfen und mergen, wenn sie gut aussehen.",
+            "examplePrompt": "@Zero wie ist der CI-Status beim Test-PR #10153?"
+          },
+          {
+            "title": "Generierte oder Konfigurationsdateien ausschließen",
+            "description": "Zero mitteilen, welche Dateien übersprungen werden sollen.",
+            "examplePrompt": "@Zero beim automatischen Testen Dateien in generated/, *.d.ts und Konfigurationsdateien überspringen"
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Tägliche Test-Generierung einplanen.",
+            "examplePrompt": "@Zero jeden Tag um 4 Uhr morgens nach ungetesteten Änderungen suchen, Tests schreiben und einen PR öffnen"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub — Lesezugriff zum Scannen gemergter PRs und geänderter Dateien. Schreibzugriff zum Öffnen von Pull Requests mit generierten Tests."
+          },
+          {
+            "description": "Slack — postet eine Zusammenfassung der generierten Tests und CI-Ergebnisse in Ihren Teamkanal."
+          }
+        ],
+        "tips": [
+          "Seien Sie explizit bezüglich Ihres Test-Frameworks und Ihrer Muster — „verwende vitest mit @testing-library/react, folge dem Arrange-Act-Assert-Muster“ liefert deutlich bessere Ergebnisse.",
+          "Lassen Sie es über Nacht laufen, damit der Test-PR zur Überprüfung bereit ist, wenn das Team anfängt. 4 Uhr morgens ist ein guter Standard.",
+          "Kombinieren Sie mit tech-debt-scan für umfassende Code-Qualität: Tech-Debt erkennt Anti-Patterns, auto-test-coverage erkennt Lücken — zusammen halten sie Ihre Codebasis sauber."
+        ]
+      },
+      "daily-user-analysis": {
+        "title": "Tägliche Produktanalyse — null manuelle Queries",
+        "description": "Zero fragt Ihre Produktionsdatenbank nach Zeitplan ab, analysiert Nutzerverhalten und postet einen strukturierten Bericht in Slack — damit Sie Trends entdecken, bevor sie zu Problemen werden.",
+        "timeSaved": "~30 Min. pro Tag gespart",
+        "headings": {
+          "scenario": "Warum Sie immer der Letzte sind, der von Änderungen erfährt",
+          "prompt": "So bitten Sie Zero, die tägliche Nutzeranalyse durchzuführen",
+          "steps": "Wie Zero rohe Queries in einen Morgenbericht verwandelt",
+          "nextActions": "Daten in Produktentscheidungen umwandeln",
+          "integrations": "Benötigte Integrationen: vm0 (Produktions-DB-Zugriff) und Slack",
+          "tips": "Best Practices für automatische Produktanalyse"
+        },
+        "scenario": "Mittwoch, 10 Uhr. Ein Power-User hat sich gerade abgemeldet und Sie hatten keine Ahnung. Die Nutzung war in der letzten Woche um 80% gesunken, aber niemand hat die richtige Metrik im Blick gehabt. Sie könnten eine SQL-Abfrage schreiben, müssten aber das Schema kennen, sechs Tabellen joinen, das Ergebnis exportieren und einen Bericht formatieren. Oder Zero jeden Morgen dieselbe Analyse ausführen lassen und die Anomalie kennzeichnen, bevor der Nutzer überhaupt geht.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero verbinde dich mit der Produktionsdatenbank und analysiere das externe Nutzerverhalten der letzten 24 Stunden. Berichte über: Gesamt-Läufe pro Organisation, Top-Nutzer nach Aktivität, Trigger-Quellen-Aufschlüsselung (web vs. CLI vs. schedule), alle Anomalien oder Spitzen. Poste die Zusammenfassung in #user-insights."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero führe den täglichen Nutzeranalyse-Bericht aus"
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Tag um 7 Uhr morgens die externe Nutzerverhaltensanalyse der letzten 24 Stunden ausführen. Strukturierten Bericht in Slack #user-insights posten."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero führe die tägliche Nutzeranalyse aus"
+          },
+          {
+            "name": "Zero",
+            "text": "**Externe Nutzeranalyse — Letzte 24 Stunden**\n\n📊 **Überblick**: 22 Läufe über 9 externe Organisationen (95,5% Abschlussrate)\n\n🏆 **Top-Organisationen**:\n| Org-Hash | Läufe | Trigger | Genutzte Connectors |\n|----------|------|----------|----------------|\n| `3ce467...` | 9 | nur web | Slack, GitHub |\n| `8767e...` | 6 | web + schedule | 6 Connectors |\n| `f2a41...` | 3 | schedule | Slack |\n\n🚩 **Im Blick behalten**:\n• `8767e...` — chinesischsprachiger Power-User, 6 Connectors aktiv\n• `3ce467...` — 9 Läufe in 24h, alle via Web-UI — neuer Nutzer\n\n✅ Keine Anomalien. Keine markierungswürdigen Ausfälle."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero verbindet sich mit Ihrer Produktionsdatenbank",
+            "description": "Zero verbindet sich sicher mit Ihrer schreibgeschützten Datenbank über Ihr bestehendes Credential-Management. Es schreibt niemals in die Produktion — nur SELECT-Abfragen gegen Analysetabellen."
+          },
+          {
+            "title": "Zero führt Analyseabfragen aus und erkennt Muster",
+            "description": "Zero führt eine Reihe von Abfragen aus: Gesamt-Läufe pro Organisation, Trigger-Quellen-Aufschlüsselung, Connector-Nutzungsmuster und Anomalieerkennung — aktuelle Metriken werden mit gleitenden Durchschnitten verglichen."
+          },
+          {
+            "title": "Zero postet einen strukturierten Bericht in Slack",
+            "description": "Die Analyse landet in Ihrem Analyse-Kanal mit klaren Tabellen, Ranglisten und markierten Elementen. Power-User, Churn-Risiken und Adoptionsmuster werden explizit hervorgehoben."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einen markierten Nutzer genauer untersuchen",
+            "description": "Einem Nutzer nachgehen, den Zero als beobachtenswert markiert hat.",
+            "examplePrompt": "@Zero rufe die vollständige Lauf-Historie für Organisation 8767e... ab"
+          },
+          {
+            "title": "Daten für eine wöchentliche Übersicht exportieren",
+            "description": "Auf der täglichen Analyse eine Wochenübersicht aufbauen.",
+            "examplePrompt": "@Zero erstelle eine wöchentliche Zusammenfassung aus den Nutzeranalyse-Berichten der letzten 7 Tage und poste sie in #product"
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Diese Analyse so planen, dass sie jeden Morgen vor dem Standup läuft.",
+            "examplePrompt": "@Zero jeden Tag um 7 Uhr morgens die externe Nutzeranalyse ausführen und in #user-insights posten"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "vm0 — bietet sicheren schreibgeschützten Zugriff auf Ihre Produktionsdatenbank. Zero verbindet sich über Ihren bestehenden Credential-Vault und führt nur SELECT-Abfragen aus."
+          },
+          {
+            "description": "Slack — liefert den strukturierten Analysebericht in Ihren Teamkanal. Erforderlich bei automatischer Zustellung."
+          }
+        ],
+        "tips": [
+          "Definieren Sie Ihre Schlüsselmetriken im Voraus — DAU, Läufe pro Org, Connector-Adoption — damit Zero weiß, was es markieren versus zusammenfassen soll.",
+          "Nutzerdaten in Berichten immer anonymisieren. Zero kann standardmäßig Org-IDs hashen und E-Mails schwärzen.",
+          "Planen Sie dies zusammen mit Ihrem Morgen-Brief: System-Health aus dem Brief, Nutzer-Health aus der Analyse."
+        ]
+      },
+      "evening-brief": {
+        "title": "Liefert automatisch ein präzises Tages-Fazit für Ihr Team",
+        "description": "Zero sammelt die Slack-Konversationen des Tages, gemergten PRs und geschlossenen Issues und postet einen Digest in Ihren Teamkanal — damit jeder weiß, was geliefert wurde, ohne 50 Nachrichten zu durchsuchen.",
+        "timeSaved": "~15 Min. pro Tag gespart",
+        "headings": {
+          "scenario": "Warum „Was haben wir heute geliefert?“ um 18 Uhr die schwerste Frage ist",
+          "prompt": "So bitten Sie Zero, den Abend-Brief zu schreiben",
+          "steps": "Wie Zero Ihren Tag zu einem Digest zusammenfasst",
+          "nextActions": "Bauen Sie auf Ihrem Abend-Brief auf",
+          "integrations": "Benötigte Integrationen: Slack und GitHub",
+          "tips": "Best Practices für automatische Tages-Digests"
+        },
+        "scenario": "Freitag, 18 Uhr. Der CEO fragt im All-Hands-Kanal: „Was haben wir diese Woche geliefert?“ Jemand scrollt durch Slack, ein anderer öffnet GitHub, und 15 Minuten später gibt es eine grobe Liste, der drei PRs fehlen und zwei Funktionen falsch zugeordnet sind. Zero macht das automatisch — jeden Abend liest es die Aktivität des Tages, kategorisiert sie nach Person und Projekt und postet eine saubere Zusammenfassung, bevor jemand fragt.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero fasse die heutige Arbeit zusammen. Prüfe #all-vm0 auf wichtige Konversationen, liste alle gemergten PRs nach Autor auf und hebe geschlossene Issues hervor. Poste die Zusammenfassung zurück in #all-vm0."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero Abend-Brief"
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Werktag um 18 Uhr den Abend-Brief erstellen: heutige Slack-Konversationen, gemergte PRs, geschlossene Issues. In #all-vm0 posten."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero Abend-Brief"
+          },
+          {
+            "name": "Zero",
+            "text": "**Abend-Brief — 19. Apr.**\n\n🚀 **Heute geliefert (5 PRs gemergt)**\n\n| Autor | PR | Zusammenfassung |\n|--------|-----|----------|\n| Ethan | #10149 | Laufbezogene Modellauswahl neben Senden-Button |\n| Qiqi | #10148 | Batch-Connectors (15 neue Integrationen) |\n| Qiqi | #10150 | DocuSign OAuth Demo-Umgebungs-Fix |\n| David | #10153 | Auto-Test-Abdeckung für geänderte Views |\n| Lancy | #10147 | Voice-Chat Echo-Cancelation-Fix |\n\n📋 **Geschlossene Issues**: #9682, #9515, #8030\n\n💬 **Wichtige Diskussionen**: Preistuning, Merge-Queue-Gesundheit, Exa-Connector-Genehmigung"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scannt die Slack-Konversationen des Tages",
+            "description": "Zero liest Nachrichten aus Ihren Teamkanälen — filtert Bot-Rauschen heraus — um wichtige Diskussionen, Entscheidungen und Handlungselemente des Tages hervorzuheben."
+          },
+          {
+            "title": "Zero ruft gemergte PRs und geschlossene Issues von GitHub ab",
+            "description": "Zero fragt GitHub nach allen heute gemergten Pull Requests und geschlossenen Issues ab, gruppiert sie nach Autor und extrahiert eine Zusammenfassung jeder Änderung."
+          },
+          {
+            "title": "Zero postet einen strukturierten Digest in Ihren Teamkanal",
+            "description": "Der Abend-Brief landet im All-Hands-Kanal: gemergte PRs in einer nach Autor sortierten Tabelle, geschlossene Issues und eine Zusammenfassung wichtiger Slack-Diskussionen."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Produktmetriken zum Brief hinzufügen",
+            "description": "Den Abend-Brief mit Traffic-, Anmeldungs- oder Umsatzdaten anreichern.",
+            "examplePrompt": "@Zero in den heutigen Abend-Brief Plausible-Traffic-Daten und Neuanmeldungen aufnehmen"
+          },
+          {
+            "title": "An Stakeholder weiterleiten",
+            "description": "Den Brief an Führungskräfte oder Investoren senden.",
+            "examplePrompt": "@Zero jeden Freitag eine Wochenversion des Abend-Briefs erstellen und an unsere Investoren mailen"
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Den Abend-Brief für das Feierabend Ihres Teams einplanen.",
+            "examplePrompt": "@Zero jeden Werktag um 18 Uhr den Abend-Brief erstellen und in #all-vm0 posten"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack — Lesezugriff auf Teamkanäle für Konversationsverlauf. Schreibzugriff zum Posten des Abend-Brief-Digests."
+          },
+          {
+            "description": "GitHub — Lesezugriff zum Abfragen gemergter PRs und geschlossener Issues des Tages."
+          }
+        ],
+        "tips": [
+          "Passen Sie an, welche Kanäle Zero überwacht — die meisten Teams möchten nur 2-3 Kanäle im Brief.",
+          "Kombinieren Sie mit dem Morgen-Brief für volle Tagesabdeckung: Der Morgen-Brief sagt, worauf Sie achten sollen, der Abend-Brief, was tatsächlich passiert ist.",
+          "Passen Sie den Zeitplan an den Rhythmus Ihres Teams an — 18 Uhr funktioniert für die meisten Teams."
+        ]
+      },
+      "cost-optimizer": {
+        "title": "Senken Sie Ihre AI-Ausgaben ohne Qualitätsverlust",
+        "description": "Zero auditiert Ihre Agent-Läufe, klassifiziert Aufgaben nach Komplexität und empfiehlt Modellwechsel, die Geld sparen — damit Sie nicht länger Opus für Aufgaben nutzen, die Sonnet genauso gut erledigt.",
+        "timeSaved": "~20 Min. pro Woche gespart",
+        "headings": {
+          "scenario": "Warum Ihre AI-Rechnung unaufhörlich steigt",
+          "prompt": "So bitten Sie Zero, Ihre AI-Kosten zu optimieren",
+          "steps": "Wie Zero Einsparpotenziale identifiziert",
+          "nextActions": "Kostenoptimierungen sicher umsetzen",
+          "integrations": "Benötigte Integrationen: vm0 und Slack",
+          "tips": "Best Practices für AI-Kostenoptimierung"
+        },
+        "scenario": "Monatsende. Die AI-Infrastruktur-Rechnung kommt: 17.000 $ diesen Monat, hoch von 12.000 $ im letzten. Sie graben tiefer und finden: Der tägliche Tech-Debt-Scan nutzt Claude Opus. Der Merge-Queue-Monitor läuft ebenfalls auf Opus. Keine der Aufgaben braucht auch nur ansatzweise Opus. Sie könnten jeden Schedule manuell auditieren — oder Zero jede Aufgabe nach Komplexität klassifizieren und Empfehlungen geben lassen, welche downgegradet werden können.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero auditiere alle Agent-Schedules und -Läufe. Klassifiziere jede Aufgabe als niedrig, mittel oder hoch komplex basierend auf der tatsächlichen Arbeit. Empfiehl, welche Aufgaben sicher auf ein günstigeres Modell wechseln können ohne Qualitätsverlust. Poste den Bericht in Slack."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero welche meiner Agent-Aufgaben sind überdimensioniert beim Modell-Tier?"
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Montag um 9 Uhr morgens alle Agent-Läufe der letzten Woche auditieren. Nach Komplexität klassifizieren, überdimensionierte Aufgaben identifizieren und Kostenoptimierungs-Empfehlungen in #dev posten."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero welche Aufgaben sind überdimensioniert?"
+          },
+          {
+            "name": "Zero",
+            "text": "**Kostenoptimierungs-Audit — Diese Woche**\n\n🟢 **Bereits optimal** (beibehalten):\n• morning-brief (Sonnet) — Multi-Quellen-Aggregation, gerechtfertigt\n• pr-review-merge (Sonnet) — Code-Review bei Auslösung, gerechtfertigt\n\n🟡 **Überdimensioniert** (sicher downgraden):\n| Aufgabe | Aktuelles Modell | Empfehlung | Gesch. Einsparung |\n|------|--------------|-------------|-------------|\n| tech-debt-scan | Opus | GLM-5.1 | ~5-10x |\n| merge-queue-monitor | Sonnet | GLM-5.1 | ~3x |\n| standup-summary | Sonnet | GPT-4o mini | ~4x |\n| daily-email-check | Sonnet | GPT-4o mini | ~4x |\n\n🔴 **Manuelle Prüfung erforderlich**:\n• auto-test-coverage — schreibt echten Code, Grenzbereich.\n\n**Geschätzte monatliche Einsparung: 2.400–3.800 $**"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero auditiert alle Agent-Läufe und Token-Nutzung",
+            "description": "Zero fragt Ihre Agent-Lauf-Protokolle ab, untersucht was jede Aufgabe tatsächlich tut und berechnet die aktuellen Kosten pro Aufgabe."
+          },
+          {
+            "title": "Zero klassifiziert Aufgaben nach Komplexitätsstufen",
+            "description": "Zero sortiert Aufgaben in drei Kategorien: niedrige Komplexität (lesen und zusammenfassen), mittlere Komplexität (Multi-Quellen-Aggregation) und hohe Komplexität (Code-Generierung). Jede Stufe bekommt ein empfohlenes Modell."
+          },
+          {
+            "title": "Zero postet umsetzbare Empfehlungen mit Einspar-Schätzungen",
+            "description": "Das Kosten-Audit landet in Slack mit einer klaren Tabelle: aktuelles Modell, empfohlenes Modell und geschätzte Einsparung pro Aufgabe."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Eine Niedrig-Risiko-Aufgabe auf ein günstigeres Modell umstellen",
+            "description": "Mit der sichersten Empfehlung starten.",
+            "examplePrompt": "@Zero den merge-queue-monitor-Schedule von Sonnet auf GLM-5.1 umstellen"
+          },
+          {
+            "title": "Einen Vergleichstest durchführen",
+            "description": "Dasselbe Task auf beiden Modellen ausführen und Outputs vergleichen.",
+            "examplePrompt": "@Zero den tech-debt-scan-Prompt sowohl auf Opus als auch GLM-5.1 ausführen und die Ergebnisse nebeneinander vergleichen"
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Wöchentliche Kosten-Audits einplanen.",
+            "examplePrompt": "@Zero jeden Montag um 9 Uhr Agent-Kosten auditieren und Optimierungsempfehlungen in #dev posten"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "vm0 — bietet Zugriff auf Agent-Lauf-Protokolle, Schedule-Konfigurationen und Modellabrechnungsdaten."
+          },
+          {
+            "description": "Slack — liefert den Kostenoptimierungs-Bericht in Ihren Engineering- oder Dev-Kanal."
+          }
+        ],
+        "tips": [
+          "Beginnen Sie mit Niedrig-Risiko-Aufgaben — Monitoring, Benachrichtigungen und tägliche Zusammenfassungen können zuerst sicher downgegradet werden.",
+          "Verfolgen Sie Qualitätsmetriken vor und nach jedem Wechsel. Wenn error-triage-daily nach einer Modelländerung Issues übersehen beginnt, sofort zurücksetzen.",
+          "Kostenberichte wöchentlich überprüfen, nicht monatlich — kleine Lecks addieren sich schnell."
+        ]
+      },
+      "merge-queue-monitor": {
+        "title": "Erkennen Sie feststeckende PRs, bevor sie Ihr Release blockieren",
+        "description": "Zero überwacht Ihre GitHub-Merge-Queue, diagnostiziert warum PRs feststecken und alarmiert die richtigen Personen — damit Ihre Release-Pipeline nie unbemerkt stoppt.",
+        "timeSaved": "~10 Min. pro Tag gespart",
+        "headings": {
+          "scenario": "Warum Ihre Release-Pipeline stoppt und niemand es merkt",
+          "prompt": "So bitten Sie Zero, Ihre Merge-Queue zu überwachen",
+          "steps": "Wie Zero feststeckende PRs erkennt und diagnostiziert",
+          "nextActions": "Halten Sie Ihre Pipeline am Laufen",
+          "integrations": "Benötigte Integrationen: GitHub und Slack",
+          "tips": "Best Practices für Merge-Queue-Überwachung"
+        },
+        "scenario": "PR #9842 sitzt seit zwei Stunden in der Merge-Queue. CI scheitert an einem instabilen Test, der nichts mit den PR-Änderungen zu tun hat. Drei weitere PRs stapeln sich dahinter. Niemand hat es bemerkt, weil alle in ihre eigene Arbeit vertieft sind. Das Release ist blockiert. Bis es jemand um 16 Uhr entdeckt, ist das halbe Tages-Deploy-Fenster vorbei. Zero erfasst das in Minuten.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero überwache die vm0-ai/vm0 Merge-Queue. Prüfe auf PRs, die länger als 30 Minuten mit fehlerhaftem CI in der Queue sind. Diagnostiziere die Fehlerursache und alarmiere den PR-Autor in Slack."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero ist etwas in der Merge-Queue feststeckend?"
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Tag um Mittag die Merge-Queue auf feststeckende PRs prüfen. Wenn ein PR länger als 30 Minuten mit CI-Fehlern in der Queue ist, diagnostizieren und in #dev alarmieren."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero ist etwas in der Merge-Queue feststeckend?"
+          },
+          {
+            "name": "Zero",
+            "text": "**Merge-Queue-Status — vm0-ai/vm0**\n\n⚠️ **1 PR feststeckend** (seit 2h 14m in der Queue):\n\n**PR #9842** — feat: Chat-Thread-Leseanzeige hinzufügen\n• Status: CI fehlgeschlagen (1 von 14 Checks)\n• Fehlgeschlagener Check: `cli-e2e-03-runner` — Timeout nach 8 Minuten\n• Ursache: Bekannter instabiler Test (unabhängig von PR-Änderungen)\n• Blockiert: 3 PRs dahinter in der Queue\n• Autor: @Qiqi\n\n**Empfohlene Aktion**: Den fehlgeschlagenen Check erneut ausführen. Wenn er besteht, sollte der PR innerhalb weniger Minuten gemergt werden.\n\n3 weitere PRs in der Queue — alle gesund, warten auf ihren Reihe."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero prüft die Merge-Queue nach Ihrem Zeitplan",
+            "description": "Zero fragt die GitHub Merge-Queue-API ab und untersucht jeden gelisteten PR — wie lange er wartet, ob CI grün ist und ob er andere PRs blockiert."
+          },
+          {
+            "title": "Zero diagnostiziert, warum feststeckende PRs feststecken",
+            "description": "Für jeden PR mit fehlerhaften Checks liest Zero die CI-Protokolle, identifiziert den spezifischen fehlgeschlagenen Test und bestimmt, ob er mit den PR-Änderungen zusammenhängt oder ein bekanntes Infrastruktur-Problem ist."
+          },
+          {
+            "title": "Zero alarmiert die richtigen Personen mit nutzbarem Kontext",
+            "description": "Zero postet eine detaillierte Diagnose in Slack: welcher Check fehlgeschlagen ist, warum, wer den PR erstellt hat und welche Aktion ihn entblockt. Die richtige Person sieht es und handelt — keine Detektivarbeit nötig."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einen fehlgeschlagenen CI-Check erneut ausführen",
+            "description": "Zero bitten, den spezifischen Check neu auszuführen.",
+            "examplePrompt": "@Zero den cli-e2e-03-runner-Check auf PR #9842 erneut ausführen"
+          },
+          {
+            "title": "Bekannte instabile Tests auf die Whitelist setzen",
+            "description": "Zero mitteilen, welche Tests als instabil bekannt sind.",
+            "examplePrompt": "@Zero notiere cli-e2e-03-runner als bekannten instabilen Test — nicht alarmieren, außer bei 3 aufeinanderfolgenden Fehlschlägen"
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Merge-Queue-Prüfungen einplanen.",
+            "examplePrompt": "@Zero jeden Tag um Mittag und 16 Uhr die Merge-Queue prüfen und bei feststeckenden PRs in #dev alarmieren"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub — Lesezugriff auf die Merge-Queue, CI-Check-Status und PR-Details. Optionaler Schreibzugriff zum erneuten Ausführen fehlgeschlagener Checks."
+          },
+          {
+            "description": "Slack — postet Merge-Queue-Alarme mit Diagnose-Details in Ihren Engineering-Kanal."
+          }
+        ],
+        "tips": [
+          "Passen Sie die Prüffrequenz an die PR-Geschwindigkeit Ihres Teams an — High-Velocity-Teams brauchen stündliche Checks, für die meisten Teams reichen zweimal täglich.",
+          "Pflegen Sie eine Liste bekannter instabiler Tests und weisen Sie Zero an, sie von Alarmen auszunehmen. Das verhindert Alarmmüdigkeit.",
+          "Kombinieren Sie mit auto-merge-releases für eine vollständige Release-Pipeline: merge-queue-monitor erkennt feststeckende PRs, auto-merge-releases liefert das Release, sobald die Queue frei ist."
+        ]
       }
     },
     "filter": {

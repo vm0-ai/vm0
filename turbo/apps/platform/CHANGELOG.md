@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.265.0](https://github.com/vm0-ai/vm0/compare/app-v0.264.0...app-v0.265.0) (2026-04-20)
+
+
+### Features
+
+* **slack:** add Powered by model footer to agent messages ([#10156](https://github.com/vm0-ai/vm0/issues/10156)) ([b7d399d](https://github.com/vm0-ai/vm0/commit/b7d399d06f542cf38d1e217961f75e4b5be87192))
+
+
+### Bug Fixes
+
+* **platform:** silence expected 404 agent-not-found errors in sentry ([#10208](https://github.com/vm0-ai/vm0/issues/10208)) ([854f608](https://github.com/vm0-ai/vm0/commit/854f608d8d68f3176399197dd51deaf886f50c60)), closes [#10167](https://github.com/vm0-ai/vm0/issues/10167)
+
+
+### Refactoring
+
+* **core:** split audio i/o feature switch into input and output flags ([#10209](https://github.com/vm0-ai/vm0/issues/10209)) ([f6670cd](https://github.com/vm0-ai/vm0/commit/f6670cd9b1bfc7d6bb21cd66b505749d60c968b2)), closes [#10207](https://github.com/vm0-ai/vm0/issues/10207)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.210.0
+
+## [0.264.0](https://github.com/vm0-ai/vm0/compare/app-v0.263.0...app-v0.264.0) (2026-04-20)
+
+
+### Features
+
+* **platform:** update thread list indicator behavior ([#10155](https://github.com/vm0-ai/vm0/issues/10155)) ([9e5296f](https://github.com/vm0-ai/vm0/commit/9e5296faf44f94e0d20bfb32c2b6ec6b7ecc0ea2))
+
+
+### Bug Fixes
+
+* **platform:** filter empty model values in ModelSelector to avoid radix crash ([#10186](https://github.com/vm0-ai/vm0/issues/10186)) ([cba2efd](https://github.com/vm0-ai/vm0/commit/cba2efdef57ecf931b32c1040d95a157a15ecb75))
+* **platform:** refetch ably token on every auth callback invocation ([#10185](https://github.com/vm0-ai/vm0/issues/10185)) ([28d8b1f](https://github.com/vm0-ai/vm0/commit/28d8b1f1ebd161853bd5941ec8d166d45d3777b7))
+* **platform:** skip connector add when already enabled ([#10195](https://github.com/vm0-ai/vm0/issues/10195)) ([7df69e5](https://github.com/vm0-ai/vm0/commit/7df69e5184178f6e57a2e4b88ae20376a0e120b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.209.1
+
 ## [0.263.0](https://github.com/vm0-ai/vm0/compare/app-v0.262.0...app-v0.263.0) (2026-04-20)
 
 
