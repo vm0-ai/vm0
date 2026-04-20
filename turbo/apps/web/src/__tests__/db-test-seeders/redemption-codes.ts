@@ -15,6 +15,9 @@ export async function seedRedemptionCode(opts: {
   expiresAt?: Date;
   createdByOrgId?: string;
   createdByUserId?: string;
+  redeemedByOrgId?: string;
+  redeemedByUserId?: string;
+  redeemedAt?: Date;
 }): Promise<void> {
   initServices();
   await globalThis.services.db.insert(redemptionCodes).values({
@@ -23,5 +26,8 @@ export async function seedRedemptionCode(opts: {
     createdByOrgId: opts.createdByOrgId ?? "org_creator",
     createdByUserId: opts.createdByUserId ?? "user_creator",
     expiresAt: opts.expiresAt ?? new Date(Date.now() + 86_400_000),
+    redeemedByOrgId: opts.redeemedByOrgId,
+    redeemedByUserId: opts.redeemedByUserId,
+    redeemedAt: opts.redeemedAt,
   });
 }

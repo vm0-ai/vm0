@@ -5,7 +5,7 @@
  * Authorization (staff-only mint) is enforced at the API route; this module
  * only deals with persistence and the atomic single-use guarantee.
  */
-import { and, count, eq, gt, gte, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNull } from "drizzle-orm";
 import { redemptionCodes } from "../../../db/schema/redemption-codes";
 import { redemptionCodeAttempts } from "../../../db/schema/redemption-code-attempts";
 import { orgMetadata } from "../../../db/schema/org-metadata";
@@ -276,4 +276,42 @@ export async function redeemRedemptionCode(
   });
 
   return result;
+}
+
+interface ListedRedemptionCode {
+  code: string;
+  creditsPerCode: number;
+  createdAt: Date;
+  createdByUserId: string;
+  expiresAt: Date;
+  redeemedAt: Date | null;
+  redeemedByUserId: string | null;
+  redeemedByOrgId: string | null;
+}
+
+const LIST_REDEMPTION_CODES_LIMIT = 500;
+
+/**
+ * Return minted redemption codes newest-first, with redemption status. Staff
+ * use this to trace which codes are outstanding, who redeemed what, and when.
+ * Callers must already have passed the staff gate at the route layer — this
+ * function does no authorization.
+ */
+export async function listRedemptionCodes(): Promise<ListedRedemptionCode[]> {
+  const db = globalThis.services.db;
+  const rows = await db
+    .select({
+      code: redemptionCodes.code,
+      creditsPerCode: redemptionCodes.creditsPerCode,
+      createdAt: redemptionCodes.createdAt,
+      createdByUserId: redemptionCodes.createdByUserId,
+      expiresAt: redemptionCodes.expiresAt,
+      redeemedAt: redemptionCodes.redeemedAt,
+      redeemedByUserId: redemptionCodes.redeemedByUserId,
+      redeemedByOrgId: redemptionCodes.redeemedByOrgId,
+    })
+    .from(redemptionCodes)
+    .orderBy(desc(redemptionCodes.createdAt))
+    .limit(LIST_REDEMPTION_CODES_LIMIT);
+  return rows;
 }

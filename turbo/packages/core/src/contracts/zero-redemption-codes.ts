@@ -54,6 +54,45 @@ export type ZeroRedemptionCodesMintContract =
   typeof zeroRedemptionCodesMintContract;
 
 // ---------------------------------------------------------------------------
+// List (staff-only trace of minted codes + redemption status)
+// ---------------------------------------------------------------------------
+
+const listResponseSchema = z.object({
+  codes: z.array(
+    z.object({
+      code: z.string(),
+      creditsPerCode: z.number(),
+      createdAt: z.string(),
+      createdByUserId: z.string(),
+      expiresAt: z.string(),
+      redeemedAt: z.string().nullable(),
+      redeemedByUserId: z.string().nullable(),
+      redeemedByOrgId: z.string().nullable(),
+    }),
+  ),
+});
+
+export type ListRedemptionCodesResponse = z.infer<typeof listResponseSchema>;
+
+export const zeroRedemptionCodesListContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/redemption-codes",
+    headers: authHeadersSchema,
+    responses: {
+      200: listResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List minted redemption codes with redemption status (staff-only)",
+  },
+});
+
+export type ZeroRedemptionCodesListContract =
+  typeof zeroRedemptionCodesListContract;
+
+// ---------------------------------------------------------------------------
 // Redeem
 // ---------------------------------------------------------------------------
 

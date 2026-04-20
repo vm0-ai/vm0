@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { POST } from "../route";
+import { GET, POST } from "../route";
+import { seedRedemptionCode } from "../../../../../src/__tests__/db-test-seeders/redemption-codes";
 import {
   createTestRequest,
   createTestOrg,
@@ -165,5 +166,62 @@ describe("POST /api/zero/redemption-codes (mint)", () => {
     await setupStaffOrg();
     const response = await POST(createMintRequest(body));
     expect(response.status).toBe(400);
+  });
+});
+
+describe("GET /api/zero/redemption-codes (list)", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  function createListRequest() {
+    return createTestRequest(mintUrl(), { method: "GET" });
+  }
+
+  it("returns 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+    const response = await GET(createListRequest());
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 403 for a non-staff org", async () => {
+    await setupNonStaffOrg();
+    const response = await GET(createListRequest());
+    expect(response.status).toBe(403);
+  });
+
+  it("lists codes with redemption status for a staff org", async () => {
+    await setupStaffOrg();
+
+    // Unique test codes. The list endpoint doesn't validate format, so we can
+    // use short unique strings here.
+    const outstanding = `VM0-LIST-OUT-${uniqueId("out").slice(-8).toUpperCase()}`;
+    const redeemed = `VM0-LIST-RED-${uniqueId("red").slice(-8).toUpperCase()}`;
+
+    await seedRedemptionCode({ code: outstanding, creditsPerCode: 100 });
+    await seedRedemptionCode({
+      code: redeemed,
+      creditsPerCode: 200,
+      redeemedByUserId: "user_redeemer",
+      redeemedByOrgId: "org_redeemer",
+      redeemedAt: new Date(),
+    });
+
+    const response = await GET(createListRequest());
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    const outstandingRow = data.codes.find((c: { code: string }) => {
+      return c.code === outstanding;
+    });
+    expect(outstandingRow?.redeemedAt).toBeNull();
+    expect(outstandingRow?.creditsPerCode).toBe(100);
+
+    const redeemedRow = data.codes.find((c: { code: string }) => {
+      return c.code === redeemed;
+    });
+    expect(redeemedRow?.redeemedAt).not.toBeNull();
+    expect(redeemedRow?.redeemedByUserId).toBe("user_redeemer");
+    expect(redeemedRow?.creditsPerCode).toBe(200);
   });
 });

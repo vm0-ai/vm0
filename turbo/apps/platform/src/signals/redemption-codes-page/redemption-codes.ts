@@ -1,5 +1,9 @@
 import { command, computed, state } from "ccstate";
-import { zeroRedemptionCodesMintContract } from "@vm0/core";
+import {
+  zeroRedemptionCodesListContract,
+  zeroRedemptionCodesMintContract,
+  type ListRedemptionCodesResponse,
+} from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -45,6 +49,47 @@ export const mintCodes$ = command(
     const result = await accept(Promise.resolve(response), [200]);
     signal.throwIfAborted();
     set(internalMintedCodes$, result.body.codes);
+    // Invalidate the history cache so the newly minted rows show up on the
+    // History tab without a manual refresh.
+    set(reloadMintedCodesHistory$);
     return result.body;
   },
 );
+
+// ---------------------------------------------------------------------------
+// History (staff-only list of minted codes + redemption status)
+// ---------------------------------------------------------------------------
+
+export type MintedCodeHistoryRow = ListRedemptionCodesResponse["codes"][number];
+
+const historyReload$ = state(0);
+
+export const mintedCodesHistory$ = computed(
+  async (get): Promise<MintedCodeHistoryRow[]> => {
+    get(historyReload$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroRedemptionCodesListContract);
+    const result = await accept(client.list(), [200]);
+    return result.body.codes;
+  },
+);
+
+export const reloadMintedCodesHistory$ = command(({ set }) => {
+  set(historyReload$, (x) => {
+    return x + 1;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tab state (Mint | History)
+// ---------------------------------------------------------------------------
+
+export type RedemptionCodesTab = "mint" | "history";
+
+const internalActiveTab$ = state<RedemptionCodesTab>("mint");
+export const activeTab$ = computed((get) => {
+  return get(internalActiveTab$);
+});
+export const setActiveTab$ = command(({ set }, tab: RedemptionCodesTab) => {
+  set(internalActiveTab$, tab);
+});
