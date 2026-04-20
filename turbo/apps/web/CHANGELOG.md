@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.272.0](https://github.com/vm0-ai/vm0/compare/web-v12.271.0...web-v12.272.0) (2026-04-20)
+
+
+### Features
+
+* **platform:** add unifyChatThreads feature switch ([#10162](https://github.com/vm0-ai/vm0/issues/10162)) ([#10276](https://github.com/vm0-ai/vm0/issues/10276)) ([03a1c0a](https://github.com/vm0-ai/vm0/commit/03a1c0a3ac15f305e8fea907f52208750bdb4f1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.214.0
+
 ## [12.271.0](https://github.com/vm0-ai/vm0/compare/web-v12.270.0...web-v12.271.0) (2026-04-20)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.88.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.87.2...runner-rs-v0.88.0) (2026-04-20)
+
+
+### Features
+
+* **runner:** emit sandbox id and reuse result in completion payload ([#10303](https://github.com/vm0-ai/vm0/issues/10303)) ([a5699ac](https://github.com/vm0-ai/vm0/commit/a5699ac69c35971f6c419f21799a30caf9017893))
+
+
+### Bug Fixes
+
+* **runner:** tolerate runner-exit race in service drain/resume ([#10302](https://github.com/vm0-ai/vm0/issues/10302)) ([4e0be4c](https://github.com/vm0-ai/vm0/commit/4e0be4c01218fc143f01845f2370b1d40945537c))
+
 ## [0.87.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.87.1...runner-rs-v0.87.2) (2026-04-20)
 
 

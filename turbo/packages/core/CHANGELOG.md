@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.214.0](https://github.com/vm0-ai/vm0/compare/core-v8.213.0...core-v8.214.0) (2026-04-20)
+
+
+### Features
+
+* **platform:** add unifyChatThreads feature switch ([#10162](https://github.com/vm0-ai/vm0/issues/10162)) ([#10276](https://github.com/vm0-ai/vm0/issues/10276)) ([03a1c0a](https://github.com/vm0-ai/vm0/commit/03a1c0a3ac15f305e8fea907f52208750bdb4f1d))
+
 ## [8.213.0](https://github.com/vm0-ai/vm0/compare/core-v8.212.0...core-v8.213.0) (2026-04-20)
 
 
