@@ -57,6 +57,19 @@ describe("GET /api/zero/usage/members", () => {
   beforeEach(async () => {
     context.setupMocks();
     await context.setupUser();
+    // Default so the Stripe refresh path in getOrgBillingPeriod never hits an
+    // undefined response. Tests that exercise a stale/missing period still
+    // benefit from a valid shape here.
+    stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+      items: {
+        data: [
+          {
+            current_period_end:
+              Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+          },
+        ],
+      },
+    });
   });
 
   it("returns 401 when not authenticated", async () => {

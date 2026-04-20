@@ -38,7 +38,8 @@ export enum FeatureSwitchKey {
   AuditLink = "auditLink",
   PhoneIntegration = "phoneIntegration",
   VoiceChat = "voiceChat",
-  AudioIO = "audioIO",
+  AudioInput = "audioInput",
+  AudioOutput = "audioOutput",
   MissionControlSidebar = "missionControlSidebar",
   AutoSkill = "autoSkill",
   SandboxReuse = "sandboxReuse",
@@ -52,7 +53,5 @@ export enum FeatureSwitchKey {
   StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
   ModelProviderSelection = "modelProviderSelection",
-  Vm0KimiModel = "vm0KimiModel",
   Vm0GlmModel = "vm0GlmModel",
-  Vm0MinimaxModel = "vm0MinimaxModel",
 }

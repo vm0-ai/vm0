@@ -150,4 +150,31 @@ describe("proxy middleware: sandbox token handling", () => {
     expect(capturedClerkRequest).toBeDefined();
     expect(capturedClerkRequest!.headers.get("authorization")).toBe(token);
   });
+
+  it("should strip sandbox token and still call Clerk on non-API paths", async () => {
+    // Bot/scanner traffic: sandbox token sent to a page route. Without this
+    // behavior, Clerk middleware is skipped and any server component calling
+    // auth() throws "clerkMiddleware not detected". See issue #10164.
+    const token = "Bearer vm0_sandbox_header.payload.signature";
+    const request = new NextRequest("https://www.vm0.ai/en", {
+      headers: { authorization: token },
+    });
+
+    await middleware(request, createMockEvent());
+
+    expect(capturedClerkRequest).toBeDefined();
+    expect(capturedClerkRequest!.headers.get("authorization")).toBeNull();
+  });
+
+  it("should strip PAT token and still call Clerk on non-API paths", async () => {
+    const token = "Bearer vm0_pat_header.payload.signature";
+    const request = new NextRequest("https://www.vm0.ai/", {
+      headers: { authorization: token },
+    });
+
+    await middleware(request, createMockEvent());
+
+    expect(capturedClerkRequest).toBeDefined();
+    expect(capturedClerkRequest!.headers.get("authorization")).toBeNull();
+  });
 });

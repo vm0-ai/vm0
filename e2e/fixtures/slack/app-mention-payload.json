@@ -1,0 +1,16 @@
+{
+  "token": "xoxb-test",
+  "team_id": "{{TEAM_ID}}",
+  "api_app_id": "A_E2E_APP",
+  "type": "event_callback",
+  "event_id": "Ev_E2E_MENTION",
+  "event_time": 1700000000,
+  "event": {
+    "type": "app_mention",
+    "user": "{{USER_ID}}",
+    "text": "<@U_E2E_BOT> hello from e2e",
+    "ts": "{{TS}}",
+    "channel": "{{CHANNEL_ID}}",
+    "event_ts": "{{TS}}"
+  }
+}
