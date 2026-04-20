@@ -863,6 +863,111 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
   });
 
+  describe("Sandbox reuse outcome", () => {
+    it("should persist sandboxId and reuse outcome when reuse succeeded", async () => {
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+      });
+      const token = await createTestSandboxToken(user.userId, runId);
+      const sandboxId = randomUUID();
+
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+            sandboxId,
+            sandboxReuseResult: "reused",
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+
+      const run = await findTestRunRecord(runId);
+      expect(run!.sandboxId).toBe(sandboxId);
+      expect(run!.sandboxReuseResult).toBe("reused");
+    });
+
+    it("should persist sandboxId and reuse outcome when reuse was blocked", async () => {
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+      });
+      const token = await createTestSandboxToken(user.userId, runId);
+      const sandboxId = randomUUID();
+
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+            sandboxId,
+            sandboxReuseResult: "poolMiss",
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+
+      const run = await findTestRunRecord(runId);
+      expect(run!.sandboxId).toBe(sandboxId);
+      expect(run!.sandboxReuseResult).toBe("poolMiss");
+    });
+
+    it("should leave sandboxId and reuse outcome null when fields are omitted", async () => {
+      // Backwards-compat: old runners post without the new fields.
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+      });
+      const token = await createTestSandboxToken(user.userId, runId);
+
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+
+      const run = await findTestRunRecord(runId);
+      expect(run!.sandboxId).toBeNull();
+      expect(run!.sandboxReuseResult).toBeNull();
+    });
+
+    it("should reject invalid sandboxReuseResult value", async () => {
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+            sandboxReuseResult: "someInvalidValue",
+          }),
+        }),
+      );
+      expect(response.status).toBe(400);
+    });
+  });
+
   // Race between cleanup-sandboxes cron and webhook/complete: the cron stamps
   // `timeout` first with a generic heartbeat message, then the sandbox's own
   // completion webhook arrives. The webhook must upgrade the run state. Error

@@ -146,6 +146,7 @@ export {
   type StoragesListContract,
 } from "./storages";
 export {
+  sandboxReuseResultSchema,
   webhookEventsContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
@@ -158,6 +159,7 @@ export {
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
+  type SandboxReuseResult,
   type WebhookEventsContract,
   type WebhookCompleteContract,
   type WebhookCheckpointsContract,
