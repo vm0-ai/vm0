@@ -287,7 +287,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the org custom connectors surface — the Custom tab on the Connectors settings page (admin CRUD, member Connect) and the per-agent Custom Connectors section on Agent Authorization. Backend routes remain open; this flag only gates entry points in the UI.",
-    enabled: false,
+    enabled: true,
     enabledOrgIdHashes: [],
   },
   [FeatureSwitchKey.Vm0KimiModel]: {
