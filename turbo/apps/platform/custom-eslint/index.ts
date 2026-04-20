@@ -24,6 +24,7 @@
  * - no-test-delay: Disallow manual delays/timers in tests — use createDeferredPromise + waitFor
  * - require-accept: Enforce that zeroClient$ calls are wrapped in accept()
  * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
+ * - no-raw-msw-http: Disallow raw http.* MSW handlers for internal /api/zero/* paths — use mockApi(contract.route, ...)
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -54,6 +55,7 @@ import requireAccept from "./rules/require-accept.ts";
 import noGetByRoleName from "./rules/no-get-by-role-name.ts";
 import noUserClearTab from "./rules/no-user-clear-tab.ts";
 import noDuplicateRouteParam from "./rules/no-duplicate-route-param.ts";
+import noRawMswHttp from "./rules/no-raw-msw-http.ts";
 
 const plugin = {
   meta: {
@@ -89,6 +91,7 @@ const plugin = {
     "no-get-by-role-name": noGetByRoleName,
     "no-user-clear-tab": noUserClearTab,
     "no-duplicate-route-param": noDuplicateRouteParam,
+    "no-raw-msw-http": noRawMswHttp,
   },
 };
 
