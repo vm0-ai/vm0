@@ -114,7 +114,7 @@ export async function POST(request: Request) {
       prompt,
     );
     const run = await dispatchPreparationRun(preparation.id, userId, agentId, {
-      mode: mode as "chat" | "meeting",
+      mode,
       prompt,
       apiStartTime,
     });
