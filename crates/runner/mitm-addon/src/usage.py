@@ -36,12 +36,12 @@ from logging_utils import log_proxy_entry
 _HTTP_STATUS_OK_MIN = 200
 _HTTP_STATUS_REDIRECT_MIN = 300
 
-# Longest SSE event boundary we scan for (``\r\n\r\n`` at 4 bytes; the other
-# candidate ``\n\n`` is shorter and therefore covered by the same tail).
-# When no boundary is found we keep ``_MAX_SEPARATOR_LEN - 1`` trailing bytes
-# so a boundary split across the next chunk can still complete — deriving
-# from the separator keeps the invariant visible if the separator set grows.
-_MAX_SEPARATOR_LEN = len(b"\r\n\r\n")
+# SSE event boundaries we scan for.  When no boundary is found we keep
+# ``_MAX_SEPARATOR_LEN - 1`` trailing bytes so a boundary split across the
+# next chunk can still complete.  Deriving the max from the tuple means
+# adding a longer separator here updates the tail automatically.
+_SSE_SEPARATORS: tuple[bytes, ...] = (b"\r\n\r\n", b"\n\n")
+_MAX_SEPARATOR_LEN = max(len(s) for s in _SSE_SEPARATORS)
 
 # ---------------------------------------------------------------------------
 # Dual pending counter: in-flight flows + pending reports
@@ -178,7 +178,7 @@ def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
         if skipping["active"]:
             # Look for \n\n or \r\n\r\n in existing buf + new chunk.
             combined = line_buf + chunk
-            for sep in (b"\r\n\r\n", b"\n\n"):
+            for sep in _SSE_SEPARATORS:
                 idx = combined.find(sep)
                 if idx != -1:
                     # Found event boundary — line_buf gets the remainder.
