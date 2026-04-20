@@ -42,6 +42,13 @@ export function createAblyAuthCallback(
           );
           callback(null, res.body);
         } catch (error) {
+          // Signal aborts happen because `setupRealtime$` already called
+          // `ably.close()` — reporting that to Ably's callback would be
+          // spurious noise (and in tests would trip the mock's "failed"
+          // path during teardown).
+          if (signal.aborted) {
+            return;
+          }
           callback(
             error instanceof Error ? error.message : String(error),
             null,
