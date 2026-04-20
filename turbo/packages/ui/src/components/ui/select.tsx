@@ -129,20 +129,10 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName;
 const SelectItem = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, value, ...props }, ref) => {
-  if (value === "") {
-    // Log in every environment so the upstream data defect stays discoverable
-    // in production monitoring (via browser devtools or console-capturing error
-    // reporters) instead of being silently swallowed.
-    console.error(
-      '[@vm0/ui] <SelectItem> received an empty string `value`; skipping render to avoid Radix invariant crash. Use a non-empty sentinel such as "all" instead.',
-    );
-    return null;
-  }
+>(({ className, children, ...props }, ref) => {
   return (
     <SelectPrimitive.Item
       ref={ref}
-      value={value}
       className={cn(
         "relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors",
         className,
