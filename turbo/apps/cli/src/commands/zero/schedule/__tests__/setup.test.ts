@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { writeFileSync, unlinkSync, mkdtempSync, rmdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { server } from "../../../../mocks/server";
@@ -63,15 +63,10 @@ describe("zero schedule setup command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
+    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
-  });
-
-  afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
   });
 
   describe("successful setup (non-interactive)", () => {
@@ -209,15 +204,18 @@ describe("zero schedule setup command", () => {
   });
 
   describe("prompt from file", () => {
+    let tmpDir: string;
     let promptPath: string;
 
     beforeEach(() => {
-      promptPath = join(tmpdir(), "schedule-prompt.md");
+      tmpDir = mkdtempSync(join(tmpdir(), "schedule-prompt-"));
+      promptPath = join(tmpDir, "prompt.md");
       writeFileSync(promptPath, "prompt loaded from file");
     });
 
     afterEach(() => {
       unlinkSync(promptPath);
+      rmdirSync(tmpDir);
     });
 
     it("should send file content as prompt when --prompt-file is used", async () => {
