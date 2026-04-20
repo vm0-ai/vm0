@@ -90,9 +90,12 @@ teardown_file() {
 
     # The terminal status must be successful — a failed run indicates
     # the runner picked up the job but mock-claude's bash exited non-zero.
+    # Filter to slack-triggered runs because parallel tests in the same
+    # shard (t05/t17) create non-slack runs that would otherwise be
+    # recent_runs[0].
     local state status_value
     state=$(slack_fetch_state "$TEAM_ID")
-    status_value=$(echo "$state" | jq -r '.recent_runs[0].status')
+    status_value=$(echo "$state" | jq -r '[.recent_runs[] | select(.triggerSource == "slack")][0].status // ""')
     [[ "$status_value" == "completed" || "$status_value" == "succeeded" ]] || {
         echo "# run ended in non-successful state: $status_value" >&2
         echo "# state: $state" >&2

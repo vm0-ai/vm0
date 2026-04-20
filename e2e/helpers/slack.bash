@@ -220,8 +220,12 @@ wait_for_slack_run_completion() {
     local state status_value
     while (( SECONDS - start < timeout )); do
         state=$(slack_fetch_state "$team_id")
+        # Filter to slack-triggered runs so parallel tests hitting the
+        # same preview (runs with triggerSource=null from t05/t17 etc.)
+        # don't get picked up as the run we're waiting on.
         status_value=$(printf '%s' "$state" \
-            | jq -r '.recent_runs[0].status // ""' 2>/dev/null)
+            | jq -r '[.recent_runs[] | select(.triggerSource == "slack")][0].status // ""' \
+            2>/dev/null)
         case "$status_value" in
             completed|succeeded|failed)
                 echo "# run reached terminal status: $status_value after $((SECONDS - start))s" >&2

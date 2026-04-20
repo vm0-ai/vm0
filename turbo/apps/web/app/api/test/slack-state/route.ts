@@ -76,6 +76,10 @@ export async function GET(request: Request) {
   // LEFT JOIN so we also surface agent_runs inserted without a matching
   // zero_runs row (which can happen if dispatch fails between the two
   // inserts). Makes BATS diagnostics far more informative.
+  //
+  // Limit is 50 so parallel tests in the same runner shard (which share
+  // the preview and DB) can't push the slack run out of the window
+  // before the BATS assertion reads it.
   const recentRuns = installation?.orgId
     ? await db
         .select({
@@ -91,7 +95,7 @@ export async function GET(request: Request) {
         .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
         .where(eq(agentRuns.orgId, installation.orgId))
         .orderBy(desc(agentRuns.createdAt))
-        .limit(10)
+        .limit(50)
     : [];
 
   const orgMeta = installation?.orgId
