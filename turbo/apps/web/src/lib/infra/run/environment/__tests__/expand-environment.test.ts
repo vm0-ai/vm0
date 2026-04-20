@@ -17,7 +17,6 @@ function makeCompose(environment: Record<string, string>) {
 
 const githubService: ExpandedFirewallConfig = {
   name: "github",
-  ref: "github",
   apis: [
     {
       base: "https://api.github.com",
@@ -31,7 +30,6 @@ const githubService: ExpandedFirewallConfig = {
 
 const slackService: ExpandedFirewallConfig = {
   name: "slack",
-  ref: "slack",
   apis: [
     {
       base: "https://slack.com/api",
@@ -43,7 +41,6 @@ const slackService: ExpandedFirewallConfig = {
 
 const airtableService: ExpandedFirewallConfig = {
   name: "airtable",
-  ref: "airtable",
   apis: [
     {
       base: "https://api.airtable.com",

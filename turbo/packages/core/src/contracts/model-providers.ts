@@ -474,7 +474,6 @@ function mpFirewall(
     : secretRef;
   return {
     name: `model-provider:${type}`,
-    ref: `model-provider:${type}`,
     apis: [
       {
         base: getFirewallBaseUrl(type),

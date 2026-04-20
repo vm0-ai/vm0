@@ -1554,7 +1554,6 @@ mod tests {
             "cliAgentType": "claude-code",
             "firewalls": [{
                 "name": "github",
-                "ref": "github",
                 "apis": [{
                     "base": "https://api.github.com",
                     "auth": {
@@ -1578,7 +1577,6 @@ mod tests {
         let svcs = ctx.firewalls.unwrap();
         assert_eq!(svcs.len(), 1);
         assert_eq!(svcs[0].name, "github");
-        assert_eq!(svcs[0].ref_key, "github");
         assert_eq!(svcs[0].apis.len(), 1);
         assert_eq!(svcs[0].apis[0].base, "https://api.github.com");
         let perms = svcs[0].apis[0].permissions.as_ref().unwrap();

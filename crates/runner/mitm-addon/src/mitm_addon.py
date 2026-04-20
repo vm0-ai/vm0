@@ -239,21 +239,20 @@ async def request(flow: http.HTTPFlow) -> None:
             log_proxy_entry(
                 proxy_log_path,
                 "warn",
-                f"Firewall {result.ref}: no matching permission for {result.method} {result.path}",
+                f"Firewall {result.name}: no matching permission for {result.method} {result.path}",
                 type="firewall_block",
-                ref=result.ref,
+                name=result.name,
             )
             flow.metadata["firewall_action"] = "DENY"
             flow.metadata["firewall_base"] = result.base
             flow.metadata["firewall_name"] = result.name
-            flow.metadata["firewall_ref"] = result.ref
             error_body = json.dumps(
                 {
                     "error": "permission_denied",
                     "message": "Request blocked: no matching permission rule",
                     "method": result.method,
                     "path": result.path,
-                    "ref": result.ref,
+                    "name": result.name,
                     "permissions": list(result.permissions),
                     "base": result.base,
                 }

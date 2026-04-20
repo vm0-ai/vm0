@@ -22,7 +22,7 @@ describe("builtin firewall validation", () => {
     it(`${connectorType} — passes full firewall validation`, () => {
       const firewall = getConnectorFirewall(connectorType);
       expect(() => {
-        return collectAndValidatePermissions(connectorType, firewall);
+        return collectAndValidatePermissions(firewall);
       }).not.toThrow();
     });
   }

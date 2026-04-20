@@ -744,7 +744,7 @@ describe("POST /api/zero/runs", () => {
       const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
       const slackFirewall = firewalls!.find((fw) => {
-        return fw.ref === "slack";
+        return fw.name === "slack";
       });
       expect(slackFirewall).toBeDefined();
       const permNames = slackFirewall!.apis[0]!.permissions!.map((p) => {
@@ -783,7 +783,7 @@ describe("POST /api/zero/runs", () => {
       const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
       const slackFw = firewalls!.find((fw) => {
-        return fw.ref === "slack";
+        return fw.name === "slack";
       });
       expect(slackFw).toBeDefined();
 
@@ -817,7 +817,7 @@ describe("POST /api/zero/runs", () => {
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
       const slackFw = job!.executionContext.firewalls?.find((fw) => {
-        return fw.ref === "slack";
+        return fw.name === "slack";
       });
       expect(slackFw).toBeDefined();
       expect(slackFw!.apis[0]!.permissions!.length).toBeGreaterThan(0);
@@ -850,10 +850,10 @@ describe("POST /api/zero/runs", () => {
       const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
       const ghFw = firewalls!.find((fw) => {
-        return fw.ref === "github";
+        return fw.name === "github";
       });
       const slackFw = firewalls!.find((fw) => {
-        return fw.ref === "slack";
+        return fw.name === "slack";
       });
       expect(ghFw).toBeDefined();
       expect(slackFw).toBeDefined();

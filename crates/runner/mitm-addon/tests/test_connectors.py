@@ -21,20 +21,20 @@ from matching import (
 )
 
 
-def _wrap_firewalls(apis, name="test", ref="test"):
+def _wrap_firewalls(apis, name="test"):
     """Wrap a list of API entries into a firewall entry list."""
-    return [{"name": name, "ref": ref, "apis": apis}]
+    return [{"name": name, "apis": apis}]
 
 
 def _grant_all(firewalls, unknown_policy="deny"):
-    """Build networkPolicies that grants all permissions for each ref."""
+    """Build networkPolicies that grants all permissions for each firewall."""
     result = {}
     for fw in firewalls or []:
         perms = set()
         for api in fw.get("apis", []):
             for perm in api.get("permissions", []):
                 perms.add(perm["name"])
-        result[fw["ref"]] = {
+        result[fw["name"]] = {
             "allow": list(perms),
             "deny": [],
             "ask": [],
@@ -136,7 +136,6 @@ class TestMatchFirewallRequest:
                 {"base": "https://api.github.com", "auth": {"headers": {}}},
             ],
             name="github",
-            ref="github",
         )
         result = matching.match_firewall_request(
             "https://api.github.com/repos",
@@ -146,7 +145,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallBlock)
         assert result.base == "https://api.github.com"
-        assert result.ref == "github"
+        assert result.name == "github"
         assert result.method == "GET"
         assert result.path == "/repos"
         assert result.permissions == ()
@@ -161,7 +160,6 @@ class TestMatchFirewallRequest:
                 }
             ],
             name="github",
-            ref="github",
         )
         result = matching.match_firewall_request(
             "https://api.github.com/repos/octocat/hello",
@@ -449,7 +447,6 @@ class TestMatchFirewallRequest:
         fw_configs = [
             {
                 "name": "github",
-                "ref": "github",
                 "apis": [
                     {
                         "base": "https://api.github.com",
@@ -460,7 +457,6 @@ class TestMatchFirewallRequest:
             },
             {
                 "name": "slack",
-                "ref": "slack",
                 "apis": [
                     {
                         "base": "https://slack.com/api",
@@ -618,7 +614,6 @@ class TestMatchFirewallRequest:
                 }
             ],
             name="zendesk",
-            ref="zendesk",
         )
         result = matching.match_firewall_request(
             "https://acme.zendesk.com/api/v2/tickets",
@@ -642,7 +637,6 @@ class TestMatchFirewallRequest:
                 }
             ],
             name="zendesk",
-            ref="zendesk",
         )
         result = matching.match_firewall_request(
             "https://acme.zendesk.com/api/v2/users",
@@ -754,7 +748,6 @@ class TestMatchFirewallRequest:
         fw_configs = [
             {
                 "name": "github",
-                "ref": "github",
                 "apis": [
                     {
                         "base": "https://api.github.com",
@@ -765,7 +758,6 @@ class TestMatchFirewallRequest:
             },
             {
                 "name": "zendesk",
-                "ref": "zendesk",
                 "apis": [
                     {
                         "base": "https://{sub}.zendesk.com",
@@ -1414,7 +1406,6 @@ class TestHandleFirewallRequest:
         }
         match_info = {
             "name": "github",
-            "ref": "github",
             "permission": "repo-read",
             "rule": "GET /repos/{owner}/{repo}",
             "params": {"owner": "octocat", "repo": "hello"},
@@ -1450,7 +1441,6 @@ class TestHandleFirewallRequest:
 
         # Audit metadata
         assert flow.metadata["firewall_name"] == "github"
-        assert flow.metadata["firewall_ref"] == "github"
         assert flow.metadata["firewall_permission"] == "repo-read"
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
@@ -1465,7 +1455,7 @@ class TestHandleFirewallRequest:
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
         }
-        match_info = {"name": "github", "ref": "github"}
+        match_info = {"name": "github"}
 
         with (
             patch.object(
@@ -1498,7 +1488,7 @@ class TestHandleFirewallRequest:
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": "",
         }
-        match_info = {"name": "github", "ref": "github"}
+        match_info = {"name": "github"}
 
         with (
             patch.object(
@@ -1533,7 +1523,7 @@ class TestHandleFirewallRequest:
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
         }
-        match_info = {"name": "github", "ref": "github"}
+        match_info = {"name": "github"}
 
         with (
             patch.object(
@@ -1571,7 +1561,7 @@ class TestHandleFirewallRequest:
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
         }
-        match_info = {"name": "htmlcsstoimage", "ref": "htmlcsstoimage"}
+        match_info = {"name": "htmlcsstoimage"}
 
         with (
             patch.object(
@@ -1600,7 +1590,7 @@ class TestHandleFirewallRequest:
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
         vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "networkLogPath": ""}
-        match_info = {"name": "github", "ref": "github"}
+        match_info = {"name": "github"}
 
         with mitm_ctx():
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
@@ -1842,7 +1832,6 @@ class TestAuthBaseUrlRewrite:
         }
         match_info = {
             "name": "discord-webhook",
-            "ref": "discord-webhook",
             "permission": "send-message",
             "rule": "POST /",
             "params": {},
@@ -1887,7 +1876,6 @@ class TestAuthBaseUrlRewrite:
         }
         match_info = {
             "name": "bitrix",
-            "ref": "bitrix",
             "permission": "crm",
             "rule": "ANY /crm.{method}",
             "params": {"uid": "0", "code": "placeholder", "method": "deal.list.json"},
@@ -1934,7 +1922,6 @@ class TestAuthBaseUrlRewrite:
         }
         match_info = {
             "name": "discord-webhook",
-            "ref": "discord-webhook",
             "permission": "send-message",
             "rule": "POST /",
             "params": {},
@@ -1979,7 +1966,6 @@ class TestAuthBaseUrlRewrite:
         }
         match_info = {
             "name": "bitrix",
-            "ref": "bitrix",
             "permission": "crm",
             "rule": "ANY /crm.{method}",
             "params": {},
@@ -2025,7 +2011,6 @@ class TestAuthBaseUrlRewrite:
         }
         match_info = {
             "name": "test",
-            "ref": "test",
             "permission": "send",
             "rule": "POST /",
             "params": {},
@@ -2067,7 +2052,6 @@ class TestAuthBaseUrlRewrite:
         }
         match_info = {
             "name": "github",
-            "ref": "github",
             "permission": "repo-read",
             "rule": "GET /repos/{owner}/{repo}",
             "params": {},
@@ -2102,7 +2086,6 @@ class TestMatchFirewallRequestRelPath:
                 }
             ],
             name="discord-webhook",
-            ref="discord-webhook",
         )
         result = matching.match_firewall_request(
             "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
@@ -2123,7 +2106,6 @@ class TestMatchFirewallRequestRelPath:
                 }
             ],
             name="bitrix",
-            ref="bitrix",
         )
         result = matching.match_firewall_request(
             "https://firewall-placeholder.vm3.ai/bitrix/rest/0/placeholder/crm.deal.list",
@@ -2233,7 +2215,6 @@ class TestAuthBaseUrlRewriteEdgeCases:
         }
         match_info = {
             "name": "test",
-            "ref": "test",
             "permission": "send",
             "rule": "POST /",
             "params": {},
@@ -2286,7 +2267,6 @@ class TestAuthBaseUrlRewriteEdgeCases:
         }
         match_info = {
             "name": "gh",
-            "ref": "gh",
             "permission": "read",
             "rule": "GET /repos/{owner}/{repo}",
             "params": {},
@@ -2383,7 +2363,6 @@ class TestAuthQueryInjection:
         }
         match_info = {
             "name": "serpapi",
-            "ref": "serpapi",
             "permission": "search",
             "rule": "GET /search",
             "params": {},
@@ -2421,7 +2400,6 @@ class TestAuthQueryInjection:
         }
         match_info = {
             "name": "serpapi",
-            "ref": "serpapi",
             "permission": "search",
             "rule": "GET /search",
             "params": {},
@@ -2460,7 +2438,6 @@ class TestAuthQueryInjection:
         }
         match_info = {
             "name": "ex",
-            "ref": "ex",
             "permission": "read",
             "rule": "GET /data",
             "params": {},
@@ -2498,7 +2475,6 @@ class TestAuthQueryInjection:
         }
         match_info = {
             "name": "test",
-            "ref": "test",
             "permission": "send",
             "rule": "POST /",
             "params": {},
@@ -2540,7 +2516,6 @@ class TestAuthQueryInjection:
         }
         match_info = {
             "name": "gh",
-            "ref": "gh",
             "permission": "read",
             "rule": "GET /repos/{owner}/{repo}",
             "params": {},
@@ -3870,7 +3845,6 @@ class TestGraphQLFieldCoverage:
         return [
             {
                 "name": "test",
-                "ref": "test",
                 "apis": [
                     {
                         "base": "https://api.example.com",
@@ -4204,7 +4178,6 @@ class TestThreeLevelMatching:
                 }
             ],
             name="github",
-            ref="github",
         )
 
     def test_allowed_permission_passes(self):
@@ -4398,7 +4371,6 @@ class TestThreeLevelMatching:
                 }
             ],
             name="hubspot",
-            ref="hubspot",
         )
         policies = {"hubspot": {"allow": [], "unknownPolicy": "allow"}}
         result = matching.match_firewall_request(
@@ -4424,7 +4396,6 @@ class TestThreeLevelMatching:
                 }
             ],
             name="github",
-            ref="github",
         )
         policies = {
             "github": {"allow": ["repo-admin"], "deny": ["repo-read"], "unknownPolicy": "deny"}
@@ -4452,7 +4423,6 @@ class TestThreeLevelMatching:
                 }
             ],
             name="github",
-            ref="github",
         )
         policies = {
             "github": {
@@ -4475,7 +4445,6 @@ class TestThreeLevelMatching:
         fws = [
             {
                 "name": "github",
-                "ref": "github",
                 "apis": [
                     {
                         "base": "https://api.github.com",
@@ -4488,7 +4457,6 @@ class TestThreeLevelMatching:
             },
             {
                 "name": "slack",
-                "ref": "slack",
                 "apis": [
                     {
                         "base": "https://slack.com/api",
@@ -4512,7 +4480,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallAllow)
-        assert result.match_info["ref"] == "github"
+        assert result.match_info["name"] == "github"
 
         # Slack: channels:read explicitly denied → DENY
         result = matching.match_firewall_request(
@@ -4531,7 +4499,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallAllow)
-        assert result.match_info["ref"] == "slack"
+        assert result.match_info["name"] == "slack"
         assert result.match_info["permission"] == ""
 
     def test_different_unknown_policy_per_ref(self, headers):
@@ -4539,12 +4507,10 @@ class TestThreeLevelMatching:
         fws = [
             {
                 "name": "github",
-                "ref": "github",
                 "apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}],
             },
             {
                 "name": "slack",
-                "ref": "slack",
                 "apis": [{"base": "https://slack.com/api", "auth": {"headers": {}}}],
             },
         ]
@@ -4583,7 +4549,6 @@ class TestThreeLevelMatching:
                 }
             ],
             name="github",
-            ref="github",
         )
         policies = {"github": {"allow": [], "deny": ["repo-write"], "unknownPolicy": "allow"}}
         result = matching.match_firewall_request(
@@ -4615,7 +4580,6 @@ class TestThreeLevelMatching:
                 }
             ],
             name="github",
-            ref="github",
         )
         policies = {"github": {"allow": [], "deny": ["repo-read"], "unknownPolicy": "deny"}}
         result = matching.match_firewall_request(
@@ -4641,7 +4605,6 @@ class TestThreeLevelMatching:
                 }
             ],
             name="github",
-            ref="github",
         )
         policies = {
             "github": {"allow": [], "deny": ["repo-read", "repo-write"], "unknownPolicy": "deny"}
@@ -4667,7 +4630,6 @@ class TestThreeLevelMatching:
                 }
             ],
             name="github",
-            ref="github",
         )
         # networkPolicies exists but has no entry for "github" → fully permissive
         policies = {"slack": {"allow": [], "unknownPolicy": "allow"}}
@@ -4706,7 +4668,6 @@ class TestThreeLevelMatching:
                 },
             ],
             name="github",
-            ref="github",
         )
         policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
 

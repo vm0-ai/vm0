@@ -43,7 +43,6 @@ function makeSnapshot(runId: string, userId: string): RunContextSnapshot {
     firewalls: [
       {
         name: "test-fw",
-        ref: "test-ref",
         apis: [
           {
             base: "https://api.example.com",

@@ -237,10 +237,7 @@ async function resolveSecretsAndEnvironment(
   const firewallSourceTypes = allowedConnectorTypes ?? connectorTypes;
   const connectorPermissionConfigs: ExpandedFirewallConfig[] = [
     ...firewallSourceTypes.filter(isFirewallConnectorType).map((type) => {
-      return {
-        ...getConnectorFirewall(type),
-        ref: type,
-      };
+      return { ...getConnectorFirewall(type) };
     }),
     ...customConnectorResult.firewalls,
   ];

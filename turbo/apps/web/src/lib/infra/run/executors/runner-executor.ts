@@ -229,7 +229,6 @@ function sanitizeFirewalls(
   return firewalls.map((fw) => {
     return {
       name: fw.name,
-      ref: fw.ref,
       apis: fw.apis.map((api) => {
         return {
           base: api.base,

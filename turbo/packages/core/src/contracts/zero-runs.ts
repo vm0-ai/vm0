@@ -171,7 +171,6 @@ const runContextArtifactSchema = z.object({
 
 const runContextFirewallSchema = z.object({
   name: z.string(),
-  ref: z.string(),
   apis: z.array(
     z.object({
       base: z.string(),

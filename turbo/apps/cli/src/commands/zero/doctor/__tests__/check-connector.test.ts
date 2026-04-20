@@ -65,7 +65,6 @@ const runContextResponse = {
   firewalls: [
     {
       name: "github",
-      ref: "github",
       apis: [
         {
           base: "https://api.github.com",

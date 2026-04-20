@@ -172,13 +172,10 @@ export function validateRule(
  * Validates uniqueness and that "all" is not used as a permission name.
  */
 export function collectAndValidatePermissions(
-  ref: string,
   serviceConfig: FirewallConfig,
 ): Set<string> {
   if (serviceConfig.apis.length === 0) {
-    throw new Error(
-      `Firewall "${serviceConfig.name}" (ref "${ref}") has no api entries`,
-    );
+    throw new Error(`Firewall "${serviceConfig.name}" has no api entries`);
   }
   const available = new Set<string>();
   for (const api of serviceConfig.apis) {
@@ -196,22 +193,22 @@ export function collectAndValidatePermissions(
     for (const perm of api.permissions) {
       if (!perm.name) {
         throw new Error(
-          `Firewall "${serviceConfig.name}" (ref "${ref}") has a permission with empty name`,
+          `Firewall "${serviceConfig.name}" has a permission with empty name`,
         );
       }
       if (perm.name === "all") {
         throw new Error(
-          `Firewall "${serviceConfig.name}" (ref "${ref}") has a permission named "all", which is a reserved keyword`,
+          `Firewall "${serviceConfig.name}" has a permission named "all", which is a reserved keyword`,
         );
       }
       if (seen.has(perm.name)) {
         throw new Error(
-          `Duplicate permission name "${perm.name}" in API entry "${api.base}" of firewall "${serviceConfig.name}" (ref "${ref}")`,
+          `Duplicate permission name "${perm.name}" in API entry "${api.base}" of firewall "${serviceConfig.name}"`,
         );
       }
       if (perm.rules.length === 0) {
         throw new Error(
-          `Permission "${perm.name}" in firewall "${serviceConfig.name}" (ref "${ref}") has no rules`,
+          `Permission "${perm.name}" in firewall "${serviceConfig.name}" has no rules`,
         );
       }
       for (const rule of perm.rules) {
@@ -226,16 +223,16 @@ export function collectAndValidatePermissions(
 
 /**
  * Resolve a firewall selections map to expanded configs.
- * Pure function: takes a map of firewall refs → permission selections and returns
+ * Pure function: takes a map of firewall names → permission selections and returns
  * fully resolved ExpandedFirewallConfig[].
  *
- * Input:  Record<ref, { permissions: string[] | "all" }>
+ * Input:  Record<name, { permissions: string[] | "all" }>
  * Output: ExpandedFirewallConfig[]
  *
  * Validates permission names, filters api_entries to only include selected permissions,
  * and drops entries with no remaining APIs.
  *
- * @param selections - Map of firewall refs to permission selections
+ * @param selections - Map of firewall names to permission selections
  * @param fetchFn - Optional fetch function for HTTP requests (injectable for tests)
  */
 export async function resolveFirewallSelections(
@@ -249,18 +246,15 @@ export async function resolveFirewallSelections(
   if (entries.length === 0) return expanded;
 
   const resolvedConfigs = await Promise.all(
-    entries.map(([ref]) => {
-      return fetchFirewallConfig(ref, fetchFn);
+    entries.map(([name]) => {
+      return fetchFirewallConfig(name, fetchFn);
     }),
   );
 
   for (let i = 0; i < entries.length; i++) {
-    const [ref, selection] = entries[i]!;
+    const [, selection] = entries[i]!;
     const serviceConfig = resolvedConfigs[i]!;
-    const availablePermissions = collectAndValidatePermissions(
-      ref,
-      serviceConfig,
-    );
+    const availablePermissions = collectAndValidatePermissions(serviceConfig);
 
     // Validate selected permissions exist
     if (selection.permissions !== "all") {
@@ -268,7 +262,7 @@ export async function resolveFirewallSelections(
         if (!availablePermissions.has(name)) {
           const available = [...availablePermissions].join(", ");
           throw new Error(
-            `Permission "${name}" does not exist in firewall "${serviceConfig.name}" (ref "${ref}"). Available: ${available}`,
+            `Permission "${name}" does not exist in firewall "${serviceConfig.name}". Available: ${available}`,
           );
         }
       }
@@ -302,7 +296,6 @@ export async function resolveFirewallSelections(
 
     const entry: ExpandedFirewallConfig = {
       name: serviceConfig.name,
-      ref,
       apis: filteredApis,
     };
     if (serviceConfig.description !== undefined)

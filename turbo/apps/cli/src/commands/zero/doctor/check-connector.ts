@@ -215,7 +215,7 @@ function printConnectorDomains(
   runContext: RunContextResponse,
 ): void {
   const matchingEntry = runContext.firewalls.find((fw) => {
-    return fw.ref === ctx.connectorType;
+    return fw.name === ctx.connectorType;
   });
 
   if (!matchingEntry) {

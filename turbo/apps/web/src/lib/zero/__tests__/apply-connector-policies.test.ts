@@ -3,11 +3,10 @@ import type { ExpandedFirewallConfig } from "@vm0/core";
 import { applyConnectorPolicies } from "../build-zero-context";
 
 function makeFirewall(
-  overrides: Partial<ExpandedFirewallConfig> & { ref: string },
+  overrides: Partial<ExpandedFirewallConfig> & { name: string },
 ): ExpandedFirewallConfig {
   return {
-    name: overrides.name ?? overrides.ref,
-    ref: overrides.ref,
+    name: overrides.name,
     apis: overrides.apis ?? [
       {
         base: `https://api.example.com`,
@@ -24,7 +23,7 @@ describe("applyConnectorPolicies", () => {
       { name: "repo-write", rules: ["PUT /repos/{owner}/{repo}"] },
     ];
     const fw = makeFirewall({
-      ref: "github",
+      name: "github",
       apis: [
         {
           base: "https://api.github.com",
@@ -59,7 +58,7 @@ describe("applyConnectorPolicies", () => {
       { name: "issues-read", rules: ["GET /repos/{owner}/{repo}/issues"] },
     ];
     const fw = makeFirewall({
-      ref: "github",
+      name: "github",
       apis: [
         {
           base: "https://api.github.com",
@@ -94,7 +93,7 @@ describe("applyConnectorPolicies", () => {
 
   it("passes empty permissions as-is when firewall has none", () => {
     const fw = makeFirewall({
-      ref: "custom-api",
+      name: "custom-api",
       apis: [
         {
           base: "https://api.custom.com",
@@ -127,7 +126,7 @@ describe("applyConnectorPolicies", () => {
 
   it("passes empty permissions when all api permissions are empty arrays", () => {
     const fw = makeFirewall({
-      ref: "custom-api",
+      name: "custom-api",
       apis: [
         {
           base: "https://api.custom.com",
@@ -154,7 +153,7 @@ describe("applyConnectorPolicies", () => {
 
   it("sets unknownPolicy from unknownPolicy param", () => {
     const fw = makeFirewall({
-      ref: "github",
+      name: "github",
       apis: [
         {
           base: "https://api.github.com",
@@ -180,7 +179,7 @@ describe("applyConnectorPolicies", () => {
 
   it("classifies ask policy into ask array", () => {
     const fw = makeFirewall({
-      ref: "github",
+      name: "github",
       apis: [
         {
           base: "https://api.github.com",
@@ -214,7 +213,7 @@ describe("applyConnectorPolicies", () => {
 
   it("defaults unknownPolicy to allow when ref absent from unknownPermissionPolicies", () => {
     const fw = makeFirewall({
-      ref: "github",
+      name: "github",
       apis: [
         {
           base: "https://api.github.com",

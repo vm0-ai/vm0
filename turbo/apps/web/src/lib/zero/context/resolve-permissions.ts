@@ -52,7 +52,7 @@ export function mergePermissions(
   // Model provider firewalls — always fully permissive, grant all permissions
   const autoConfigs = modelProviderFirewall ? [modelProviderFirewall] : [];
   if (modelProviderFirewall) {
-    networkPolicies[modelProviderFirewall.ref] = {
+    networkPolicies[modelProviderFirewall.name] = {
       allow: collectPermissionNames(modelProviderFirewall.apis),
       deny: [],
       ask: [],
@@ -87,11 +87,12 @@ interface ConnectorPoliciesResult {
 }
 
 /**
- * Build full (unfiltered) firewall configs + per-ref networkPolicies.
+ * Build full (unfiltered) firewall configs + per-firewall networkPolicies.
  *
  * Firewalls now carry ALL permissions (no filtering). The networkPolicies
- * map tells the proxy which permissions the user authorized and whether
- * unknown endpoints (not matching any rule) should be allowed.
+ * map (keyed by firewall name) tells the proxy which permissions the user
+ * authorized and whether unknown endpoints (not matching any rule) should
+ * be allowed.
  */
 export function applyConnectorPolicies(
   connectorFirewalls: ExpandedFirewallConfig[],
@@ -101,7 +102,7 @@ export function applyConnectorPolicies(
   const networkPolicies: NetworkPolicies = {};
 
   for (const fw of connectorFirewalls) {
-    const refPolicy = policies?.[fw.ref];
+    const firewallPolicy = policies?.[fw.name];
 
     // Build full (unfiltered) firewall entry — pass permissions as-is
     const apis = fw.apis.map((api) => {
@@ -112,14 +113,14 @@ export function applyConnectorPolicies(
       };
     });
 
-    firewalls.push({ name: fw.name, ref: fw.ref, apis });
+    firewalls.push({ name: fw.name, apis });
 
-    // Build networkPolicies for this ref — always explicit, never omit.
-    const unknownPolicy = refPolicy?.unknownPolicy ?? "allow";
+    // Build networkPolicies for this firewall — always explicit, never omit.
+    const unknownPolicy = firewallPolicy?.unknownPolicy ?? "allow";
     const allPermNames = collectPermissionNames(fw.apis);
-    if (!refPolicy) {
+    if (!firewallPolicy) {
       // No policies configured → all granted, none denied
-      networkPolicies[fw.ref] = {
+      networkPolicies[fw.name] = {
         allow: allPermNames,
         deny: [],
         ask: [],
@@ -130,7 +131,7 @@ export function applyConnectorPolicies(
       const deny: string[] = [];
       const ask: string[] = [];
       for (const name of allPermNames) {
-        const policy = refPolicy.policies[name];
+        const policy = firewallPolicy.policies[name];
         if (policy === "allow") {
           allow.push(name);
         } else if (policy === "deny") {
@@ -139,7 +140,7 @@ export function applyConnectorPolicies(
           ask.push(name);
         }
       }
-      networkPolicies[fw.ref] = { allow, deny, ask, unknownPolicy };
+      networkPolicies[fw.name] = { allow, deny, ask, unknownPolicy };
     }
   }
 
