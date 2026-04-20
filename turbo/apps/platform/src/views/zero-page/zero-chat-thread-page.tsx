@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   useGet,
   useSet,
@@ -309,15 +310,14 @@ function ChatThreadComposer({
 }) {
   const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
   const hasMessages = groups.length > 0;
-  const rawDisplayName = useLastResolved(thread.agentDisplayName$);
-  const displayName = rawDisplayName ?? "Zero";
+  const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const hasAllFinished = allFinishedLoadable.state === "hasData";
-  const allFinished = hasAllFinished ? allFinishedLoadable.data : false;
+  const allFinished =
+    allFinishedLoadable.state === "hasData"
+      ? allFinishedLoadable.data
+      : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const sending = !allFinished || sendLoadable.state === "loading";
-  const showWorking =
-    rawDisplayName !== undefined && hasAllFinished && !allFinished;
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
@@ -397,21 +397,6 @@ function ChatThreadComposer({
               : undefined
           }
         />
-        <div
-          aria-hidden={!showWorking}
-          className={cn(
-            "flex items-center justify-end gap-1.5 mt-2 pr-1 transition-opacity",
-            !showWorking && "opacity-0",
-          )}
-        >
-          <IconLoader2
-            size={12}
-            className="animate-spin text-foreground/50 shrink-0"
-          />
-          <span className="zero-shimmer-text text-xs">
-            {displayName} is working...
-          </span>
-        </div>
       </div>
     </footer>
   );
@@ -454,16 +439,72 @@ function ChatSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
-// Thinking indicator — shown when waiting for assistant response
+// Thinking indicator — shown the entire time a run is active
 // ---------------------------------------------------------------------------
+
+const THINKING_PHRASES = [
+  "Cooking...",
+  "Pondering...",
+  "Noodling...",
+  "Warming up...",
+  "Connecting the dots...",
+  "Working it out...",
+  "Crunching bits...",
+  "Chasing electrons...",
+  "Summoning an answer...",
+  "On it...",
+];
+
+function useRotatingPhrase(active: boolean): string {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const id = setInterval(() => {
+      setIndex((i) => {
+        return (i + 1) % THINKING_PHRASES.length;
+      });
+    }, 3500);
+    return () => {
+      clearInterval(id);
+    };
+  }, [active]);
+  return THINKING_PHRASES[index]!;
+}
 
 function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const groups = useLastResolved(thread.groupedChatMessages$) ?? [];
-  const lastGroup = groups[groups.length - 1];
-  const show = lastGroup && lastGroup.role !== "assistant";
+  const allFinishedLoadable = useLastLoadable(thread.allFinished$);
+  const running =
+    allFinishedLoadable.state === "hasData" && !allFinishedLoadable.data;
+  const label = useRotatingPhrase(running);
 
-  if (!show) {
+  if (!running) {
     return null;
+  }
+
+  const lastGroup = groups[groups.length - 1];
+  const lastIsAssistant = lastGroup?.role === "assistant";
+
+  if (lastIsAssistant) {
+    // Inline continuation — align with the assistant grid, no new avatar,
+    // no bubble padding. Sits directly under the last message text.
+    return (
+      <div
+        data-role="assistant-thinking"
+        className="-mt-4 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start animate-in fade-in duration-300"
+      >
+        <div className="hidden @[900px]:block" />
+        <div className="flex items-center gap-2 min-w-0">
+          <IconLoader2
+            size={14}
+            className="animate-spin text-foreground/50 shrink-0"
+          />
+          <p className="zero-shimmer-text text-xs truncate">{label}</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -479,16 +520,9 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
               size={14}
               className="animate-spin text-foreground/50 shrink-0"
             />
-            <p className="zero-shimmer-text text-xs truncate">Thinking...</p>
+            <p className="zero-shimmer-text text-xs truncate">{label}</p>
           </div>
         </div>
-      </div>
-      <div
-        aria-hidden
-        className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
-      >
-        <div className="hidden @[900px]:block" />
-        <div className="flex items-center py-2 gap-1 -ml-1" />
       </div>
     </div>
   );
