@@ -8,7 +8,6 @@ import {
   findTestCheckpoint,
   findTestRunRecord,
   getTestAgentSessionWithConversation,
-  createTestAgentSession,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
@@ -687,111 +686,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       // run.sessionId unchanged
       const runAfter = await findTestRunRecord(testRunId);
       expect(runAfter?.sessionId).toBe(preCreatedSessionId);
-    });
-
-    // Branch B: legacy continuation pre-deploy — continuedFromSessionId set, sessionId unset.
-    // TODO(#10324): Remove this test together with checkpoint-service Branch B.
-    // Skipped because agent_runs.session_id is now NOT NULL; the legacy
-    // null-sessionId state this test reproduces is no longer reachable after
-    // issue #10323 tightened the schema. Branch B code still exists as dead
-    // code pending the follow-up cleanup PR.
-    it.skip("should reuse continuedFromSessionId for legacy continuation runs", async () => {
-      // Pre-create a session and seed a run that continues from it WITHOUT
-      // populating sessionId (simulates an in-flight continuation at deploy time).
-      const priorSession = await createTestAgentSession(
-        user.userId,
-        testComposeId,
-      );
-      const { runId } = await seedTestRun(user.userId, testComposeId, {
-        status: "running",
-        continuedFromSessionId: priorSession.id,
-      });
-
-      const runBefore = await findTestRunRecord(runId);
-      expect(runBefore?.sessionId).toBeNull();
-      expect(runBefore?.continuedFromSessionId).toBe(priorSession.id);
-
-      const token = await createTestSandboxToken(user.userId, runId);
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            runId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "branch-b-session",
-            cliAgentSessionHistoryHash: sha256("branch-b"),
-          }),
-        },
-      );
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as {
-        agentSessionId: string;
-        conversationId: string;
-      };
-
-      expect(body.agentSessionId).toBe(priorSession.id);
-
-      const session = await getTestAgentSessionWithConversation(
-        priorSession.id,
-      );
-      expect(session?.conversationId).toBe(body.conversationId);
-    });
-
-    // Branch C: legacy first-run pre-deploy — neither sessionId nor continuedFromSessionId set.
-    // TODO(#10324): Remove this test together with checkpoint-service Branch C.
-    // Skipped because agent_runs.session_id is now NOT NULL; the legacy
-    // null-sessionId state this test reproduces is no longer reachable after
-    // issue #10323 tightened the schema. Branch C code still exists as dead
-    // code pending the follow-up cleanup PR.
-    it.skip("should create a new session and backfill run.sessionId", async () => {
-      const { runId } = await seedTestRun(user.userId, testComposeId, {
-        status: "running",
-      });
-
-      const runBefore = await findTestRunRecord(runId);
-      expect(runBefore?.sessionId).toBeNull();
-      expect(runBefore?.continuedFromSessionId).toBeNull();
-
-      const token = await createTestSandboxToken(user.userId, runId);
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            runId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "branch-c-session",
-            cliAgentSessionHistoryHash: sha256("branch-c"),
-          }),
-        },
-      );
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as {
-        agentSessionId: string;
-        conversationId: string;
-      };
-
-      expect(body.agentSessionId).toBeTruthy();
-
-      // Run.sessionId was backfilled to the newly created session
-      const runAfter = await findTestRunRecord(runId);
-      expect(runAfter?.sessionId).toBe(body.agentSessionId);
-
-      const session = await getTestAgentSessionWithConversation(
-        body.agentSessionId,
-      );
-      expect(session?.conversationId).toBe(body.conversationId);
     });
   });
 });

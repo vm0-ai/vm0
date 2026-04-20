@@ -66,11 +66,13 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
 /**
  * Extended error type for dispatch failures that includes run metadata.
  * When createRun() fails after the run record is created (post-INSERT),
- * the error is augmented with runId so callers can return partial
- * results if needed.
+ * the error is augmented with runId and sessionId so callers can return
+ * partial results (e.g. 201 with status=failed) that still satisfy the
+ * required-sessionId response contract.
  */
 export interface RunDispatchError extends Error {
   runId?: string;
+  sessionId?: string;
 }
 
 export function isRunDispatchError(error: unknown): error is RunDispatchError {
@@ -276,9 +278,18 @@ export async function markRunFailed(
     await dispatchTerminalSideEffects(runId, "failed", errorMessage);
   }
 
-  // Attach run metadata so callers can return partial results
+  // Attach run metadata so callers can return partial results. sessionId is
+  // always populated post-INSERT (see #10323 — agent_runs.session_id NOT NULL).
   if (error instanceof Error) {
     (error as RunDispatchError).runId = runId;
+    const [row] = await globalThis.services.db
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+      .limit(1);
+    if (row) {
+      (error as RunDispatchError).sessionId = row.sessionId;
+    }
   }
 }
 

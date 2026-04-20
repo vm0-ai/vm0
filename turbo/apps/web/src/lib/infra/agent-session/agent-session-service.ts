@@ -2,11 +2,7 @@ import { eq } from "drizzle-orm";
 import { agentSessions } from "../../../db/schema/agent-session";
 import { conversations } from "../../../db/schema/conversation";
 import { notFound } from "../../shared/errors";
-import type {
-  AgentSessionData,
-  AgentSessionWithConversation,
-  CreateAgentSessionInput,
-} from "./types";
+import type { AgentSessionData, AgentSessionWithConversation } from "./types";
 
 /**
  * Agent Session Service - Pure Infra Functions
@@ -49,31 +45,6 @@ export async function getAgentSessionWithConversation(
         }
       : null,
   };
-}
-
-/**
- * Create a new agent session
- */
-export async function createAgentSession(
-  input: CreateAgentSessionInput,
-): Promise<AgentSessionData> {
-  const [session] = await globalThis.services.db
-    .insert(agentSessions)
-    .values({
-      userId: input.userId,
-      orgId: input.orgId,
-      agentComposeId: input.agentComposeId,
-      artifactName: input.artifactName,
-      memoryName: input.memoryName,
-      conversationId: input.conversationId,
-    })
-    .returning();
-
-  if (!session) {
-    throw new Error("Failed to create agent session");
-  }
-
-  return mapToAgentSessionData(session);
 }
 
 /**

@@ -7,13 +7,15 @@ import { isRunDispatchError } from "../infra/run";
  * Mirrors the handleCreateRunError pattern from /api/agent/runs.
  */
 export function handleCreateRunError(error: unknown) {
-  // Dispatch errors with a runId take priority -- return partial result
-  if (isRunDispatchError(error) && error.runId) {
+  // Dispatch errors with a runId take priority -- return partial result.
+  // sessionId is populated by markRunFailed() post-INSERT (see #10323).
+  if (isRunDispatchError(error) && error.runId && error.sessionId) {
     return {
       status: 201 as const,
       body: {
         runId: error.runId,
         status: "failed" as const,
+        sessionId: error.sessionId,
         error: error.message,
       },
     };

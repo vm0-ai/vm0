@@ -90,15 +90,16 @@ async function enforceCaptureNetworkBodiesGate(
  */
 function handleCreateRunError(error: unknown) {
   if (isApiError(error)) {
-    // Post-INSERT errors have runId attached by markRunFailed().
+    // Post-INSERT errors have runId + sessionId attached by markRunFailed().
     // Return 201 with failed status so the client can track the run.
     const dispatchError = error as RunDispatchError;
-    if (dispatchError.runId) {
+    if (dispatchError.runId && dispatchError.sessionId) {
       return {
         status: 201 as const,
         body: {
           runId: dispatchError.runId,
           status: "failed" as const,
+          sessionId: dispatchError.sessionId,
           error: error.message,
         },
       };
@@ -118,12 +119,13 @@ function handleCreateRunError(error: unknown) {
 
   // Non-API errors with runId (unexpected dispatch failures)
   const dispatchError = error as RunDispatchError;
-  if (dispatchError.runId) {
+  if (dispatchError.runId && dispatchError.sessionId) {
     return {
       status: 201 as const,
       body: {
         runId: dispatchError.runId,
         status: "failed" as const,
+        sessionId: dispatchError.sessionId,
         error: "Run failed",
       },
     };

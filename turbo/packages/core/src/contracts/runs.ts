@@ -90,10 +90,8 @@ const createRunResponseSchema = z.object({
   runId: z.string(),
   status: runStatusSchema,
   sandboxId: z.string().optional(),
-  // Agent session id — eagerly created at run insertion so the first POST
-  // response carries it. Optional for backward compatibility with runs created
-  // before the eager-session rollout (Release 2 will tighten to required).
-  sessionId: z.string().uuid().optional(),
+  // Agent session id — eagerly created at run insertion, always present.
+  sessionId: z.string().uuid(),
   output: z.string().optional(),
   error: z.string().optional(),
   executionTimeMs: z.number().optional(),
