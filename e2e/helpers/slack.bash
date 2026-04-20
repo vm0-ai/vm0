@@ -160,7 +160,14 @@ wait_for_slack_run() {
     local state count
     while (( SECONDS - start < timeout )); do
         state=$(slack_fetch_state "$team_id")
-        count=$(printf '%s' "$state" | jq -r '.recent_runs | length' 2>/dev/null)
+        # Only count rows where zero_runs.trigger_source has landed — the
+        # state endpoint LEFT JOINs, so a run in flight (agent_runs insert
+        # committed, zero_runs insert still pending in createZeroRunRecord)
+        # would otherwise match with null triggerSource and race the
+        # subsequent assertions on recent_runs[0].
+        count=$(printf '%s' "$state" \
+            | jq -r '[.recent_runs[] | select(.triggerSource == "slack")] | length' \
+            2>/dev/null)
         if [[ "$count" =~ ^[0-9]+$ && "$count" -gt 0 ]]; then
             return 0
         fi

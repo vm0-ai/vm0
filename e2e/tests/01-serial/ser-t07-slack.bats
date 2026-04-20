@@ -121,6 +121,11 @@ teardown_file() {
 }
 
 @test "slack: app_mention dispatches an agent run" {
+    # Reset first so the dispatch-probe's run from the previous test doesn't
+    # mask a partial-insert race on this test's own async dispatch (where
+    # agent_runs lands before zero_runs and recent_runs[0] has a null
+    # triggerSource via the LEFT JOIN).
+    slack_reset_state "$TEAM_ID"
     local seed_resp vm0_user_id
     seed_resp=$(slack_seed_state "$TEAM_ID" "$SLACK_USER_ID" --with-connection --with-default-agent)
     vm0_user_id=$(echo "$seed_resp" | jq -r '.vm0_user_id')
