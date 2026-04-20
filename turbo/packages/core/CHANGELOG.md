@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.215.0](https://github.com/vm0-ai/vm0/compare/core-v8.214.0...core-v8.215.0) (2026-04-20)
+
+
+### Features
+
+* **credits:** add internal redemption codes page (mint + redeem) ([#10241](https://github.com/vm0-ai/vm0/issues/10241)) ([d012b77](https://github.com/vm0-ai/vm0/commit/d012b775da1a9d42c446ecf072e731c1cc4a8fc7))
+
+
+### Bug Fixes
+
+* **core:** route glm-5.1 through openrouter with upstream model override ([#10321](https://github.com/vm0-ai/vm0/issues/10321)) ([c72a464](https://github.com/vm0-ai/vm0/commit/c72a464bf288513e28461bc75366443c5b086902))
+
+
+### Refactoring
+
+* **platform:** drop client-only override layer from feature switches ([#10316](https://github.com/vm0-ai/vm0/issues/10316)) ([e42e0db](https://github.com/vm0-ai/vm0/commit/e42e0db5162412ac5296415c95cb941101ab27f3))
+* **runs:** remove legacy session-creation fallback and require session id ([#10337](https://github.com/vm0-ai/vm0/issues/10337)) ([9133cef](https://github.com/vm0-ai/vm0/commit/9133cef3439ade00456cc778d94e5ef237d64465))
+
 ## [8.214.0](https://github.com/vm0-ai/vm0/compare/core-v8.213.0...core-v8.214.0) (2026-04-20)
 
 

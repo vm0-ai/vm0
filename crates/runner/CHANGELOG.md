@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.88.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.1...runner-rs-v0.88.2) (2026-04-20)
+
+
+### Bug Fixes
+
+* **mitm-addon:** return after url rewrite forward failure ([#10351](https://github.com/vm0-ai/vm0/issues/10351)) ([143baf2](https://github.com/vm0-ai/vm0/commit/143baf210c2a255f9633fbe86411596a5d8a7a68)), closes [#10341](https://github.com/vm0-ai/vm0/issues/10341)
+
 ## [0.88.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.0...runner-rs-v0.88.1) (2026-04-20)
 
 

@@ -1,5 +1,36 @@
 # Changelog
 
+## [12.274.0](https://github.com/vm0-ai/vm0/compare/web-v12.273.0...web-v12.274.0) (2026-04-20)
+
+
+### Features
+
+* **credits:** add internal redemption codes page (mint + redeem) ([#10241](https://github.com/vm0-ai/vm0/issues/10241)) ([d012b77](https://github.com/vm0-ai/vm0/commit/d012b775da1a9d42c446ecf072e731c1cc4a8fc7))
+* **web:** add /api/zero/voice-chat-candidate route handlers ([#10346](https://github.com/vm0-ai/vm0/issues/10346)) ([cebe14d](https://github.com/vm0-ai/vm0/commit/cebe14d8be3ef6dd9e82641a593b804f5a7585fc))
+* **web:** add voice-chat-candidate reasoner and trigger-reasoning tick ([#10338](https://github.com/vm0-ai/vm0/issues/10338)) ([28b881d](https://github.com/vm0-ai/vm0/commit/28b881d0285ffbb876c8c517d8df1ec8185e2f7a))
+* **web:** add voice-chat-candidate server services ([#10333](https://github.com/vm0-ai/vm0/issues/10333)) ([95043b6](https://github.com/vm0-ai/vm0/commit/95043b6efa4583b57b493cbb4f2797e0940b7fa2))
+* **web:** add voice-chat-candidate task-run callback and trigger adapter ([#10344](https://github.com/vm0-ai/vm0/issues/10344)) ([2d61d22](https://github.com/vm0-ai/vm0/commit/2d61d2221505cfbc533213b26fda8d064359094e))
+* **web:** extend voice-chat-cleanup cron for candidate sessions ([#10345](https://github.com/vm0-ai/vm0/issues/10345)) ([9eb5729](https://github.com/vm0-ai/vm0/commit/9eb57291bb5bea2a87a4447fb8a56d1f71bd6b63)), closes [#10297](https://github.com/vm0-ai/vm0/issues/10297) [#10312](https://github.com/vm0-ai/vm0/issues/10312)
+
+
+### Bug Fixes
+
+* **core:** route glm-5.1 through openrouter with upstream model override ([#10321](https://github.com/vm0-ai/vm0/issues/10321)) ([c72a464](https://github.com/vm0-ai/vm0/commit/c72a464bf288513e28461bc75366443c5b086902))
+* **web:** re-read session after cas lock acquisition to prevent stale snapshot ([#10347](https://github.com/vm0-ai/vm0/issues/10347)) ([f3d7f01](https://github.com/vm0-ai/vm0/commit/f3d7f01f731484e5e9d081f87f27ad85f6b327f3))
+
+
+### Refactoring
+
+* **platform:** drop client-only override layer from feature switches ([#10316](https://github.com/vm0-ai/vm0/issues/10316)) ([e42e0db](https://github.com/vm0-ai/vm0/commit/e42e0db5162412ac5296415c95cb941101ab27f3))
+* **runs:** remove legacy session-creation fallback and require session id ([#10337](https://github.com/vm0-ai/vm0/issues/10337)) ([9133cef](https://github.com/vm0-ai/vm0/commit/9133cef3439ade00456cc778d94e5ef237d64465))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.215.0
+
 ## [12.273.0](https://github.com/vm0-ai/vm0/compare/web-v12.272.0...web-v12.273.0) (2026-04-20)
 
 

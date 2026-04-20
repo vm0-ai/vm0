@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.270.0](https://github.com/vm0-ai/vm0/compare/app-v0.269.1...app-v0.270.0) (2026-04-20)
+
+
+### Features
+
+* **credits:** add internal redemption codes page (mint + redeem) ([#10241](https://github.com/vm0-ai/vm0/issues/10241)) ([d012b77](https://github.com/vm0-ai/vm0/commit/d012b775da1a9d42c446ecf072e731c1cc4a8fc7))
+* **platform:** add voice-chat-candidate views and signals (physically separate) ([#10332](https://github.com/vm0-ai/vm0/issues/10332)) ([678e3cc](https://github.com/vm0-ai/vm0/commit/678e3ccc30eb67cc2d41c699157d18d9702a5d42))
+* **platform:** register voice-chat-candidate route + bootstrap + sidebar ([#10348](https://github.com/vm0-ai/vm0/issues/10348)) ([09c7afb](https://github.com/vm0-ai/vm0/commit/09c7afbe38a43c989296df97dae5f98778b63279)), closes [#10315](https://github.com/vm0-ai/vm0/issues/10315)
+
+
+### Bug Fixes
+
+* **platform:** align chat composer model picker display with send body ([#10343](https://github.com/vm0-ai/vm0/issues/10343)) ([7c0c36d](https://github.com/vm0-ai/vm0/commit/7c0c36de49a8f7b333a77beea8f5568934c6d9d6))
+* **platform:** show only toggled-on connectors in trigger icons ([#10336](https://github.com/vm0-ai/vm0/issues/10336)) ([fede821](https://github.com/vm0-ai/vm0/commit/fede8215e25ea5fb6b7b636b43e95c4ad1af6473))
+
+
+### Refactoring
+
+* **platform:** drop client-only override layer from feature switches ([#10316](https://github.com/vm0-ai/vm0/issues/10316)) ([e42e0db](https://github.com/vm0-ai/vm0/commit/e42e0db5162412ac5296415c95cb941101ab27f3))
+
+
+### Performance Improvements
+
+* **platform:** conditionally render collapsed sidebar ([#10331](https://github.com/vm0-ai/vm0/issues/10331)) ([813fd4e](https://github.com/vm0-ai/vm0/commit/813fd4e5a9bfaec18fedbff9e4b56be91affaffd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.215.0
+
 ## [0.269.1](https://github.com/vm0-ai/vm0/compare/app-v0.269.0...app-v0.269.1) (2026-04-20)
 
 
