@@ -770,6 +770,14 @@ export {
   type UsageRunsResponse,
 } from "./zero-usage-daily";
 export {
+  zeroUsageInsightContract,
+  type ZeroUsageInsightContract,
+  type UsageInsightResponse,
+  type UsageInsightBucket,
+  type UsageInsightScheduleRow,
+  type UsageInsightChatRow,
+} from "./zero-usage-insight";
+export {
   zeroTeamContract,
   teamComposeItemSchema,
   type ZeroTeamContract,

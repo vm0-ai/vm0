@@ -1,5 +1,6 @@
 // Core package exports
 export * from "./variable-expander";
+export * from "./usage-source-bucket";
 export * from "./contracts";
 export * from "./org-reference";
 export * from "./version-id";
