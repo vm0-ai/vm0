@@ -28,6 +28,7 @@ import {
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { orgModelProviders$ } from "../external/org-model-providers.ts";
 import { agentById } from "../agent.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
@@ -154,13 +155,29 @@ function createModelSelection(
         return user.value;
       }
       const thread = await get(threadData$);
-      if (!thread?.modelProviderId || !thread.selectedModel) {
-        return null;
+      if (thread?.modelProviderId && thread.selectedModel) {
+        return {
+          modelProviderId: thread.modelProviderId,
+          selectedModel: thread.selectedModel,
+        };
       }
-      return {
-        modelProviderId: thread.modelProviderId,
-        selectedModel: thread.selectedModel,
-      };
+      // No thread override → seed from the org default provider so the
+      // picker's displayed model is the one the send body carries. Without
+      // this seed, the picker trigger silently shows the org default (via
+      // its null-value fallback) while the request sends `modelSelection:
+      // null`, which the backend resolves against `zero_agents.selected_model`
+      // — not against the org default — producing a display/run mismatch.
+      const { modelProviders } = await get(orgModelProviders$);
+      const defaultProvider = modelProviders.find((p) => {
+        return p.isDefault;
+      });
+      if (defaultProvider?.selectedModel) {
+        return {
+          modelProviderId: defaultProvider.id,
+          selectedModel: defaultProvider.selectedModel,
+        };
+      }
+      return null;
     },
   );
 

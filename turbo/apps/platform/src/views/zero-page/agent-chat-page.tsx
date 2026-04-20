@@ -453,7 +453,7 @@ export function AgentChatPage() {
       FeatureSwitchKey.ModelProviderSelection
     ] ?? false;
   const orgProviders = useLastResolved(orgModelProviders$);
-  const modelSelection = useGet(chatPageModelSelection$);
+  const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
   const setModelSelection = useSet(setChatPageModelSelection$);
 
   const handleSendMessage = (message: string) => {
