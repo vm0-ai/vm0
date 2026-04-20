@@ -54,6 +54,10 @@ export function initSentry(): void {
       // expected side effect of the in-flight redirect, not a real failure.
       "Not authenticated",
       "Authentication required",
+      // 404 for stale agent references (deleted agents, cross-org bookmarks,
+      // pinned IDs that no longer resolve). Surfaced to users as a toast and
+      // not actionable in Sentry.
+      "Agent not found",
       // Expected API errors surfaced as toasts — not actionable in Sentry
       "Credits depleted",
       "Insufficient credits",
