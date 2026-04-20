@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
 import { zeroVoiceChatCandidateContract } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
@@ -335,14 +336,9 @@ describe("voice-chat-candidate session", () => {
     }
     vi.stubGlobal("Audio", FakeAudio);
 
-    const originalFetch = globalThis.fetch;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-        if (String(input).includes("api.openai.com")) {
-          return Promise.resolve(new Response("answer-sdp", { status: 200 }));
-        }
-        return originalFetch(input, init);
+    server.use(
+      http.post("https://api.openai.com/v1/realtime", () => {
+        return new HttpResponse("answer-sdp", { status: 200 });
       }),
     );
   }

@@ -1,4 +1,4 @@
-// TODO(#10313): split large commands to comply with max-lines-per-function (128)
+// TODO(#10334): split large commands to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { command, computed, state } from "ccstate";
 import {
@@ -29,6 +29,10 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 
 // Hardcoded Talker model per epic #10297. No model picker in candidate v1.
 const TALKER_MODEL = "gpt-realtime-mini";
+
+// Hardcoded per epic #10297 parity with voice-chat-session.ts. Follow-up tracked
+// in a separate issue to route through env() alongside the sibling implementation.
+const OPENAI_REALTIME_BASE_URL = "https://api.openai.com/v1/realtime";
 
 const HANDS_FREE_VAD_CONFIG = {
   type: "semantic_vad",
@@ -567,7 +571,7 @@ const setupWebRTC$ = command(
     signal.throwIfAborted();
 
     const sdpRes = await globalThis.fetch(
-      `https://api.openai.com/v1/realtime?model=${TALKER_MODEL}`,
+      `${OPENAI_REALTIME_BASE_URL}?model=${TALKER_MODEL}`,
       {
         method: "POST",
         headers: {
