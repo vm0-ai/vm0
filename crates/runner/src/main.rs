@@ -152,7 +152,7 @@ fn init_tracing_with_file(
     Ok(guard)
 }
 
-/// Initialize tracing with stderr output only (no rolling log file).
+/// Initialize tracing with stderr output only (no rolling log file on disk).
 fn init_tracing_stderr() {
     tracing_subscriber::fmt().init();
 }
