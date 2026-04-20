@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { writeFileSync, unlinkSync, mkdtempSync, rmdirSync } from "node:fs";
+import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { server } from "../../../../mocks/server";
@@ -214,8 +214,7 @@ describe("zero schedule setup command", () => {
     });
 
     afterEach(() => {
-      unlinkSync(promptPath);
-      rmdirSync(tmpDir);
+      rmSync(tmpDir, { recursive: true, force: true });
     });
 
     it("should send file content as prompt when --prompt-file is used", async () => {
