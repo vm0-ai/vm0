@@ -1,0 +1,1591 @@
+name: Crates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  merge_group:
+
+concurrency:
+  group: crates-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'main') }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Detect release-please context across all event types (PR, push, merge queue).
+  detect-release:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Check for release-please
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref || '' }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          MQ_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [[ "$HEAD_REF" == release-please--branches--* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release-please PR detected (branch: $HEAD_REF)"
+            exit 0
+          fi
+          if [[ "$EVENT_NAME" == "push" ]] && [[ "$COMMIT_MSG" == chore:\ release* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release-please push detected (message: $COMMIT_MSG)"
+            exit 0
+          fi
+          if [[ "$EVENT_NAME" == "merge_group" ]] && [[ -n "$MQ_HEAD_REF" ]]; then
+            PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
+            if [[ -n "$PR_NUM" ]]; then
+              PR_BRANCH=$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefName --jq .headRefName 2>/dev/null || echo "")
+              if [[ "$PR_BRANCH" == release-please--branches--* ]]; then
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                echo "Release-please merge queue entry detected (PR #$PR_NUM, branch: $PR_BRANCH)"
+                exit 0
+              fi
+            fi
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Not a release-please context"
+
+  detect:
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
+    outputs:
+      any-changed: ${{ steps.detect.outputs.any-changed }}
+      ci-changed: ${{ steps.detect.outputs.ci-changed }}
+      ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
+      runner-changed: ${{ steps.detect.outputs.runner-changed }}
+      guest-init-changed: ${{ steps.detect.outputs.guest-init-changed }}
+      guest-download-changed: ${{ steps.detect.outputs.guest-download-changed }}
+      guest-agent-changed: ${{ steps.detect.outputs.guest-agent-changed }}
+      guest-mock-claude-changed: ${{ steps.detect.outputs.guest-mock-claude-changed }}
+      guest-reseed-changed: ${{ steps.detect.outputs.guest-reseed-changed }}
+      nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
+      metal-host: ${{ steps.host.outputs.host }}
+      metal-job-ref: ${{ steps.host.outputs.job-ref }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed crates
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.event.pull_request.base.ref }}"
+          else
+            BASE_REF="HEAD^"
+          fi
+          # In CI containers, the repo may be owned by a different user (host vs container).
+          # Git 2.35.2+ rejects such repos unless marked as safe.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+
+          # Check if the workflow file or ansible playbooks changed
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^\.github/workflows/crates\.yml$|^ansible/"; then
+            echo "ci-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ci-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # scripts/crate-changed.sh: exit 0=changed, 1=not changed, 2+=error
+          check_crate() {
+            local rc=0
+            ./scripts/crate-changed.sh "$1" "$BASE_REF" && rc=0 || rc=$?
+            if [ $rc -eq 0 ]; then
+              echo "$1-changed=true" >> "$GITHUB_OUTPUT"
+            elif [ $rc -eq 1 ]; then
+              echo "$1-changed=false" >> "$GITHUB_OUTPUT"
+            else
+              exit $rc
+            fi
+          }
+          check_crate ably-subscriber
+          check_crate runner
+          check_crate guest-init
+          check_crate guest-download
+          check_crate guest-agent
+          check_crate guest-mock-claude
+          check_crate guest-reseed
+          check_crate nbd-cow
+
+          # Aggregate: true if any crate or CI config changed
+          if grep -q "=true" "$GITHUB_OUTPUT"; then
+            echo "any-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Select metal host
+        id: host
+        env:
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MQ_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            JOB_REF="pr-${PR_NUMBER}-test"
+          elif [ "$EVENT_NAME" = "merge_group" ]; then
+            MQ_PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
+            if [ -n "$MQ_PR_NUM" ]; then
+              JOB_REF="pr-${MQ_PR_NUM}-test"
+            else
+              echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_HEAD_REF"
+              exit 1
+            fi
+          else
+            JOB_REF="staging-test"
+          fi
+
+          HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep . || true)
+          NUM_HOSTS=$(echo "$HOSTS" | grep -c . || true)
+          if [ "$NUM_HOSTS" -lt 1 ]; then
+            echo "No metal hosts configured, skipping host selection"
+            exit 0
+          fi
+          HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
+          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
+          HOST=$(echo "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
+          echo "host=${HOST}" >> "$GITHUB_OUTPUT"
+          echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
+          echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS}, job-ref: ${JOB_REF})"
+
+  check:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
+    needs: [detect]
+    if: needs.detect.outputs.any-changed == 'true'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: check
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check formatting
+        run: |
+          cd crates
+          cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: |
+          cd crates
+          cargo clippy --all-targets --all-features
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Run tests with coverage
+        run: |
+          cd crates
+          cargo llvm-cov --all-targets --all-features --lcov --output-path lcov.info
+
+      - name: Upload coverage to Codecov
+        if: success() || failure()
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: crates/lcov.info
+          flags: rust
+
+      - name: Run ably-subscriber smoke test
+        if: |
+          needs.detect.outputs.ably-subscriber-changed == 'true' ||
+          needs.detect.outputs.ci-changed == 'true'
+        env:
+          ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
+        run: |
+          cd crates
+          cargo run -p ably-subscriber --example smoke_test
+
+  mitm-addon-test:
+    runs-on: ubuntu-latest
+    needs: [detect]
+    if: needs.detect.outputs.any-changed == 'true'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Lint and format check
+        run: |
+          cd crates/runner/mitm-addon
+          pip install ".[dev]"
+          ruff check .
+          ruff format --check .
+
+      - name: Run mitm-addon tests
+        run: |
+          cd crates/runner/mitm-addon
+          pip install ".[test]"
+          python -m pytest tests/ -v
+
+  nbd-cow-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
+    needs: [detect]
+    if: |
+      needs.detect.outputs.ci-changed == 'true' ||
+      needs.detect.outputs.nbd-cow-changed == 'true'
+    timeout-minutes: 5
+    env:
+      TARGET_TRIPLE: aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          # Separate key from runner-build to avoid cache reservation race (#9447)
+          shared-key: aarch64-musl-nbd
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cross-compile nbd-cow tests for ARM64
+        run: |
+          cd crates
+          cargo test --no-run --release --target "$TARGET_TRIPLE" -p nbd-cow
+          TEST_BIN=$(find "target/$TARGET_TRIPLE/release/deps" -name "integration-*" -executable -type f | head -1)
+          cp "$TEST_BIN" "target/nbd-cow-integration-test"
+          echo "TEST_BIN=crates/target/nbd-cow-integration-test" >> "$GITHUB_ENV"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Run nbd-cow integration tests on metal
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOST: ${{ needs.detect.outputs.metal-host }}
+          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          REMOTE_BIN="/tmp/nbd-cow-test-${JOB_REF}"
+          scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo modprobe nbd nbds_max=4096 && sudo ${REMOTE_BIN} --ignored --test-threads=1"
+
+  runner-build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
+    needs: [detect]
+    if: |
+      needs.detect.outputs.ci-changed == 'true' ||
+      needs.detect.outputs.runner-changed == 'true' ||
+      needs.detect.outputs.guest-init-changed == 'true' ||
+      needs.detect.outputs.guest-download-changed == 'true' ||
+      needs.detect.outputs.guest-agent-changed == 'true' ||
+      needs.detect.outputs.guest-mock-claude-changed == 'true' ||
+      needs.detect.outputs.guest-reseed-changed == 'true'
+    timeout-minutes: 20
+    env:
+      TARGET_TRIPLE: aarch64-unknown-linux-musl
+    outputs:
+      host: ${{ needs.detect.outputs.metal-host }}
+      job-ref: ${{ needs.detect.outputs.metal-job-ref }}
+      default-rootfs-hash: ${{ steps.build.outputs.default-rootfs-hash }}
+      default-snapshot-hash: ${{ steps.build.outputs.default-snapshot-hash }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: aarch64-musl-release
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # IMPORTANT: these compile settings (--release, default linker, no
+      # custom RUSTFLAGS) must match release-please.yml so rootfs_hash is
+      # identical across pipelines and R2 cache hits on deploy. See #9192.
+      - name: Cross-compile guest binaries for ARM64
+        run: |
+          cd crates
+          cargo build --release --target "$TARGET_TRIPLE" \
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
+
+      - name: Cross-compile runner with embedded guests for ARM64
+        run: |
+          cd crates
+          GUEST_AGENT_PATH="target/$TARGET_TRIPLE/release/guest-agent" \
+          GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/release/guest-download" \
+          GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
+          GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
+          GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
+          cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
+
+      - id: short-sha
+        run: echo "sha=$(echo "${GITHUB_SHA:-unknown}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload runner binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: runner-${{ steps.short-sha.outputs.sha }}-aarch64-linux
+          path: crates/target/${{ env.TARGET_TRIPLE }}/ci/runner
+          retention-days: 7
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Provision metal hosts
+        uses: ./.github/actions/provision
+        with:
+          hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          metal-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          grafana-cloud-api-key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+
+      - name: Deploy and build on metal host
+        id: build
+        shell: bash
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOST: ${{ needs.detect.outputs.metal-host }}
+          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+          # R2 credentials for the runner build image cache. Inlined into the
+          # remote sudo invocation below — sudo strips env by default.
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+        run: |
+          set -euo pipefail
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+          TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
+
+          # Clean previous run artifacts and upload runner (guests are embedded)
+          echo "=== Deploying runner to ${HOST}:${BIN_DIR} ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} /var/lib/vm0-runner/runners/${JOB_REF}-bench /var/lib/vm0-runner/runners/${JOB_REF}-local && sudo mkdir -p ${BIN_DIR}"
+          # shellcheck disable=SC2029
+          < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"
+
+          # Clean up old rootfs/snapshots, keep the 3 most recent deploys.
+          # R2_* env vars are inlined so `runner gc` can also sweep stale R2 image
+          # objects — without them, R2-side cleanup is silently skipped.
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo \
+            R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
+            R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
+            R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
+            R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
+            ${BIN_DIR}/runner gc --keep-latest 3"
+
+          # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
+          echo "=== Running setup ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
+
+          # Run build (rootfs via Docker + snapshot via Firecracker).
+          # R2_* env vars are inlined after `sudo` so they reach the runner
+          # process — sudo's default `env_reset` would otherwise strip them.
+          # Use tee to stream output in real-time while capturing for hash extraction
+          echo "=== Building vm0/default ==="
+          BUILD_LOG_DEFAULT=$(mktemp)
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo \
+            R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
+            R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
+            R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
+            R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
+            ${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
+          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
+          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
+          rm -f "$BUILD_LOG_DEFAULT"
+
+          if [ -z "$DEFAULT_ROOTFS_HASH" ] || [ -z "$DEFAULT_SNAPSHOT_HASH" ]; then
+            echo "ERROR: Failed to extract rootfs_hash or snapshot_hash"
+            exit 1
+          fi
+          echo "default-rootfs-hash=${DEFAULT_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
+          echo "default-snapshot-hash=${DEFAULT_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
+
+  runner-benchmark:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Run benchmark
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+          # shellcheck disable=SC2088
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-bench"
+
+          echo "=== Generating config ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --name ${JOB_REF}-bench \
+            --group vm0/development-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-bench \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running benchmark (default) ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner benchmark \
+            --config ${RUNNER_DIR}/runner.yaml \
+            --profile vm0/default \
+            'curl -sf --max-time 10 https://www.vm0.ai'"
+
+          echo "=== Running benchmark (browser automation) ==="
+          # Retry once — snapshot restore can trigger transient Chromium
+          # ERR_NETWORK_CHANGED due to stale netlink messages.
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner benchmark \
+            --config ${RUNNER_DIR}/runner.yaml \
+            --profile vm0/default \
+            '(agent-browser open https://github.com/ && agent-browser get title && agent-browser close) || (sleep 2 && agent-browser open https://github.com/ && agent-browser get title && agent-browser close)'"
+
+  runner-exec:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test runner exec
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --name ${JOB_REF}-exec \
+            --group vm0/exec-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-exec \
+            --max-concurrent 2 \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running exec test ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-exec"
+          SVC="${JOB_REF}-exec"
+          GROUP="vm0/exec-${JOB_REF}"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+          }
+          trap cleanup EXIT
+
+          # Clean up any residual transient unit from a previous CI run.
+          # stop() returns Ok when no service exists, so no need for || true.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+
+          # Start transient runner service
+          echo "--- Starting runner ---"
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # Submit a long-running job in background (keeps sandbox alive during tests)
+          echo "--- Submitting long-running job ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+
+          # Wait for OUR runner's sandbox to have a control socket.
+          # Read the sandbox_id from our runner's status.json (not from
+          # /run/vm0/sock/) to avoid matching sandboxes from parallel CI
+          # jobs (benchmark, upgrade). `runner exec` / socket paths are
+          # keyed by sandbox_id (#9552), which differs from run_id.
+          echo "--- Waiting for sandbox control socket ---"
+          for i in $(seq 1 60); do
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$SANDBOX_ID" ] && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
+            SANDBOX_ID=""
+            sleep 1
+          done
+          [ -z "$SANDBOX_ID" ] && fail "control socket not found after 60s"
+          echo "Found sandbox: $SANDBOX_ID"
+
+          # Test 1: basic exec
+          echo "--- Test: basic exec ---"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo hello-from-exec)
+          echo "$OUTPUT" | grep -q "hello-from-exec" || fail "expected 'hello-from-exec', got: $OUTPUT"
+          echo "PASS: basic exec"
+
+          # Test 2: exit code propagation
+          echo "--- Test: exit code propagation ---"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- false && fail "expected non-zero exit"
+          echo "PASS: exit code propagation"
+
+          # Test 3: prefix matching
+          echo "--- Test: prefix matching ---"
+          PREFIX=$(echo "$SANDBOX_ID" | cut -c1-8)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$PREFIX" -- hostname)
+          [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
+          echo "PASS: prefix matching"
+
+          # Test 4: argv boundary preservation — regression guard for #9019.
+          # NOTE: each assertion relies on the surrounding bash (this
+          # heredoc, running on the metal runner) to tokenise quoted
+          # arguments and pass them to runner as separate argv entries.
+          # For example `echo "hello world"` reaches runner as
+          # ["echo", "hello world"] (two tokens); runner then shell-quotes
+          # each before sending to the guest sh.
+          echo "--- Test: argv boundary preservation ---"
+          # Space in an argument is preserved as one token
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo "hello world")
+          [ "$OUTPUT" = "hello world" ] || fail "space in arg: got '$OUTPUT'"
+          # Single quote in an argument is escaped correctly
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo "it's working")
+          [ "$OUTPUT" = "it's working" ] || fail "single quote in arg: got '$OUTPUT'"
+          # Shell metachars must NOT be expanded by the guest shell
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo '$HOME')
+          [ "$OUTPUT" = '$HOME' ] || fail "variable expanded: got '$OUTPUT'"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo '*.nonexistent')
+          [ "$OUTPUT" = '*.nonexistent' ] || fail "glob expanded: got '$OUTPUT'"
+          # Backtick command substitution must NOT be executed (injection guard)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo '`date`')
+          [ "$OUTPUT" = '`date`' ] || fail "backtick expanded: got '$OUTPUT'"
+          # Double quote inside an argument survives the round-trip
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo 'say "hi"')
+          [ "$OUTPUT" = 'say "hi"' ] || fail "double quote in arg: got '$OUTPUT'"
+          # Non-ASCII UTF-8 in an argument
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo "你好")
+          [ "$OUTPUT" = "你好" ] || fail "utf-8 arg: got '$OUTPUT'"
+          # Explicit shell: pipes and redirects work through `sh -c`
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c 'printf abc | wc -c')
+          [ "$(echo "$OUTPUT" | tr -d ' ')" = '3' ] || fail "sh -c pipe: got '$OUTPUT'"
+          # env VAR=val PROG: env (not shell) sets the variable for PROG
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- env FOO=bar printenv FOO)
+          [ "$OUTPUT" = 'bar' ] || fail "env VAR=val: got '$OUTPUT'"
+          # Path containing a space — the original issue case
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c 'echo content > "/tmp/spaced file.txt"'
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat "/tmp/spaced file.txt")
+          [ "$OUTPUT" = 'content' ] || fail "space in path: got '$OUTPUT'"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- rm "/tmp/spaced file.txt"
+          # --sudo flag must not bypass argv quoting
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- echo "root with space")
+          [ "$OUTPUT" = "root with space" ] || fail "--sudo quoting: got '$OUTPUT'"
+          echo "PASS: argv boundary preservation"
+
+          # Test 5: verify pre-installed language runtimes and databases
+          echo "--- Test: runtime availability ---"
+          for cmd in \
+            "node --version" \
+            "npm --version" \
+            "python3 --version" \
+            "pip3 --version" \
+            "ruby --version" \
+            "bundler --version" \
+            "php --version" \
+            "composer --version" \
+            "javac -version" \
+            "mvn --version" \
+            "gradle --version" \
+            "go version" \
+            "rustc --version" \
+            "cargo --version" \
+            "gcc --version" \
+            "g++ --version" \
+            "clang --version" \
+            "make --version" \
+            "cmake --version" \
+            "psql --version" \
+            "redis-server --version"; do
+            OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- $cmd 2>&1) \
+              || fail "command failed: $cmd"
+            echo "  $cmd -> $(echo "$OUTPUT" | head -1)"
+          done
+          # Verify PostgreSQL can actually start (not just psql --version).
+          # Test with TCP on localhost — users will connect via localhost:5432.
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "mkdir -p /tmp/pgdata && /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -A trust && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata -l /tmp/pgdata/log -o \"-c listen_addresses='localhost'\" start && pg_isready -h localhost && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata stop" \
+            || { sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL start"; }
+          echo "  PostgreSQL start/stop: ok"
+          echo "PASS: runtime availability"
+
+          # Test 6: verify /etc/environment is loaded for both user and root
+          # [sync:etc-environment] Keep in sync with: crates/runner/scripts/build-rootfs.sh
+          echo "--- Test: environment variables ---"
+          EXPECTED_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          declare -A EXPECTED_ENV=(
+            [LANG]="C.UTF-8"
+            [NPM_CONFIG_UPDATE_NOTIFIER]="false"
+            [NODE_EXTRA_CA_CERTS]="/usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+            [SSL_CERT_FILE]="/etc/ssl/certs/ca-certificates.crt"
+            [REQUESTS_CA_BUNDLE]="/etc/ssl/certs/ca-certificates.crt"
+            [CARGO_HTTP_CAINFO]="/etc/ssl/certs/ca-certificates.crt"
+          )
+          check_env() {
+            local label=$1 sudo_flag=$2
+            for var in "${!EXPECTED_ENV[@]}"; do
+              val=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" $sudo_flag -- printenv "$var") \
+                || fail "$label: $var not set"
+              [ "$val" = "${EXPECTED_ENV[$var]}" ] \
+                || fail "$label: $var='$val', expected '${EXPECTED_ENV[$var]}'"
+              echo "  $label $var=$val"
+            done
+            val=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" $sudo_flag -- printenv PATH) \
+              || fail "$label: PATH not set"
+            echo "$val" | grep -qF "$EXPECTED_PATH" \
+              || fail "$label: PATH missing '$EXPECTED_PATH' in: $val"
+            echo "  $label PATH=$val"
+          }
+          check_env "user" ""
+          check_env "root" "--sudo"
+          echo "PASS: environment variables"
+
+          # Test 7: verify HTTPS works through proxy for each runtime
+          # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
+          echo "--- Test: HTTPS through proxy ---"
+          TLS_URL="https://www.vm0.ai"
+          tls_check() {
+            local label=$1 cmd=$2 t=${3:-15}
+            OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "timeout $t $cmd" 2>&1) \
+              || fail "HTTPS $label: $OUTPUT"
+            echo "  HTTPS $label: ok"
+          }
+          tls_check "curl"      "curl -sf --max-time 10 $TLS_URL"
+          tls_check "wget"      "wget -qO /dev/null --timeout=10 $TLS_URL"
+          tls_check "git"       "git ls-remote --exit-code https://github.com/anthropics/anthropic-sdk-python.git HEAD"
+          tls_check "python"    "python3 -c \"import urllib.request; urllib.request.urlopen('$TLS_URL')\""
+          tls_check "node"      "node -e \"require('https').get('$TLS_URL',r=>{r.resume();r.on('end',()=>process.exit(0))}).on('error',e=>{console.error(e);process.exit(1)})\""
+          tls_check "ruby"      "ruby -e \"require 'net/http'; Net::HTTP.get(URI('$TLS_URL'))\""
+          tls_check "php"       "php -r \"file_get_contents('$TLS_URL');\""
+          tls_check "cargo"     "env CARGO_HOME=/tmp/cargo-test cargo search --limit 1 serde" 30
+          tls_check "chromium"  "chromium --headless --disable-gpu --no-sandbox --dump-dom $TLS_URL 2>/dev/null | head -1" 30
+
+          # Java and Go need multi-line scripts — write temp files then run
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "printf '%s\n' 'import java.net.*;import java.net.http.*;' 'var c=HttpClient.newHttpClient();' 'var r=HttpRequest.newBuilder(URI.create(\"$TLS_URL\")).build();' 'c.send(r,HttpResponse.BodyHandlers.discarding());' '/exit' | timeout 30 jshell -" \
+            || fail "HTTPS java"
+          echo "  HTTPS java: ok"
+
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "cd /tmp && printf '%s\n' 'package main' 'import (' '\"net/http\"' '\"os\"' ')' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && timeout 30 go run tls.go $TLS_URL" \
+            || fail "HTTPS go"
+          echo "  HTTPS go: ok"
+          echo "PASS: HTTPS through proxy"
+
+          # Test 8: verify DNS resolution works inside sandbox
+          # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
+          echo "--- Test: DNS resolution ---"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- getent hosts localhost 2>&1) \
+            || fail "localhost resolution failed: $OUTPUT"
+          echo "  localhost: $OUTPUT"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- getent hosts github.com 2>&1) \
+            || fail "user DNS resolution failed: $OUTPUT"
+          echo "  user: $OUTPUT"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- getent hosts example.com 2>&1) \
+            || fail "root DNS resolution failed: $OUTPUT"
+          echo "  root: $OUTPUT"
+          echo "PASS: DNS resolution"
+
+          # Stop transient service (kills sandbox, submit terminates naturally)
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          trap - EXIT
+
+          echo "=== Exec test passed ==="
+          REMOTE_SCRIPT
+
+  runner-cancel:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test runner local cancel
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --name ${JOB_REF}-cancel \
+            --group vm0/cancel-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-cancel \
+            --max-concurrent 2 \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running cancel test ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-cancel"
+          SVC="${JOB_REF}-cancel"
+          GROUP="vm0/cancel-${JOB_REF}"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+          }
+          trap cleanup EXIT
+
+          # Clean up any residual transient unit from a previous CI run.
+          # stop() returns Ok when no service exists, so no need for || true.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+
+          # Start transient runner service
+          echo "--- Starting runner ---"
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # Submit a long-running job in background
+          echo "--- Submitting long-running job ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+          SUBMIT_PID=$!
+
+          # Wait for sandbox to be running. Post #9552, run_id and sandbox_id
+          # are distinct: `runner local cancel` takes the run_id (what submit
+          # returned), while the socket path uses sandbox_id. Read both from
+          # status.json rather than picking the first UUID we see.
+          echo "--- Waiting for sandbox ---"
+          for i in $(seq 1 60); do
+            RUN_ID=$(sudo jq -r '.active_runs[0].run_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$RUN_ID" ] && [ -n "$SANDBOX_ID" ] \
+              && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
+            RUN_ID=""
+            SANDBOX_ID=""
+            sleep 1
+          done
+          [ -z "$RUN_ID" ] && fail "sandbox not found after 60s"
+          echo "Found run $RUN_ID (sandbox $SANDBOX_ID)"
+
+          # Test 1: cancel the job via runner local cancel
+          echo "--- Test: runner local cancel ---"
+          sudo "$BIN_DIR/runner" local cancel --run "$RUN_ID" --group "$GROUP" || fail "cancel command failed"
+          echo "PASS: cancel command succeeded"
+
+          # Test 2: submit should exit quickly (not after 300s timeout)
+          echo "--- Test: waiting for submit to finish ---"
+          SECONDS=0
+          wait "$SUBMIT_PID"
+          SUBMIT_EXIT=$?
+          ELAPSED=$SECONDS
+          echo "Submit exited with code $SUBMIT_EXIT in ${ELAPSED}s"
+          # Cancel should kill the job within 30s, not after the 300s submit timeout
+          [ "$ELAPSED" -lt 30 ] || fail "submit took ${ELAPSED}s to exit — cancel likely did not work"
+          # Cancelled job returns non-zero exit code
+          [ "$SUBMIT_EXIT" -ne 0 ] || fail "expected non-zero exit from cancelled job, got 0"
+          echo "PASS: submit exited with non-zero after cancel (${ELAPSED}s)"
+
+          # Stop transient service
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          trap - EXIT
+
+          echo "=== Cancel test passed ==="
+          REMOTE_SCRIPT
+
+  runner-drain-resume:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test runner service drain + resume
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --name ${JOB_REF}-drain \
+            --group vm0/drain-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-drain \
+            --max-concurrent 2 \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running drain + resume test ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-drain"
+          SVC="${JOB_REF}-drain"
+          UNIT="vm0-runner-${SVC}.service"
+          GROUP="vm0/drain-${JOB_REF}"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+          status_mode() {
+            sudo jq -r '.mode // empty' "$RUNNER_DIR/status.json" 2>/dev/null
+          }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+          }
+          trap cleanup EXIT
+
+          # Clean up any residual transient unit from a previous CI run.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+
+          # Start transient runner service.
+          echo "--- Starting runner ---"
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # Submit a long-running job in background so we can drain mid-flight.
+          # Duration must exceed the drain+verify+resume+verify window below
+          # so the job survives the round trip — otherwise jobs.is_empty()
+          # would auto-Stop the runner before resume can take effect.
+          echo "--- Submitting long-running job ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 45 && echo done' &
+          SUBMIT_A_PID=$!
+
+          # Wait for sandbox to appear in status.json.
+          echo "--- Waiting for sandbox ---"
+          for i in $(seq 1 60); do
+            RUN_ID=$(sudo jq -r '.active_runs[0].run_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$RUN_ID" ] && break
+            sleep 1
+          done
+          [ -z "$RUN_ID" ] && fail "sandbox not found after 60s"
+          echo "Found run $RUN_ID"
+
+          # Test 1: drain while the job is in-flight → mode=draining.
+          echo "--- Test: service drain (mid-flight) ---"
+          sudo "$BIN_DIR/runner" service drain --name "$SVC" || fail "drain command failed"
+
+          for i in $(seq 1 10); do
+            [ "$(status_mode)" = "draining" ] && break
+            sleep 1
+          done
+          [ "$(status_mode)" = "draining" ] \
+            || fail "expected mode=draining, got '$(status_mode)'"
+          echo "PASS: mode=draining"
+
+          # Unit must still be active — the in-flight job keeps it alive.
+          sudo systemctl is-active --quiet "$UNIT" \
+            || fail "unit should still be active during Draining"
+
+          # Test 2: a job submitted *during* Draining must stay pending —
+          # the Draining arm does not poll discover, so the queued file
+          # should not be claimed until Running resumes.
+          echo "--- Test: submit during drain stays pending ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo B done' &
+          SUBMIT_B_PID=$!
+
+          # Continuously monitor for 10s that B stays pending (submit PID
+          # alive) and active_runs stays at 1 (A only). Sampling once after
+          # a fixed sleep can miss a transient claim-then-release bug; a
+          # continuous poll catches it at the iteration where the invariant
+          # breaks.
+          for i in $(seq 1 10); do
+            if ! kill -0 "$SUBMIT_B_PID" 2>/dev/null; then
+              fail "B submit completed at t=${i}s during Draining — runner should not claim new jobs"
+            fi
+            ACTIVE_COUNT=$(sudo jq -r '.active_runs | length' "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ "$ACTIVE_COUNT" = "1" ] \
+              || fail "active_runs changed to '$ACTIVE_COUNT' at t=${i}s — runner claimed B during Draining"
+            sleep 1
+          done
+          echo "PASS: B is pending, only A is active throughout 10s of Draining"
+
+          # Test 3: resume → mode=running.
+          echo "--- Test: service resume ---"
+          sudo "$BIN_DIR/runner" service resume --name "$SVC" || fail "resume command failed"
+
+          for i in $(seq 1 10); do
+            [ "$(status_mode)" = "running" ] && break
+            sleep 1
+          done
+          [ "$(status_mode)" = "running" ] \
+            || fail "expected mode=running after resume, got '$(status_mode)'"
+          echo "PASS: mode=running after resume"
+
+          # Test 4: the pending B is picked up after resume and completes.
+          echo "--- Test: drain-era submit executes after resume ---"
+          SECONDS=0
+          wait "$SUBMIT_B_PID"
+          SUBMIT_B_EXIT=$?
+          B_ELAPSED=$SECONDS
+          echo "B exited with code $SUBMIT_B_EXIT in ${B_ELAPSED}s"
+          [ "$SUBMIT_B_EXIT" -eq 0 ] \
+            || fail "B expected exit 0, got $SUBMIT_B_EXIT"
+          [ "$B_ELAPSED" -lt 60 ] \
+            || fail "B took ${B_ELAPSED}s — discover did not resume properly"
+          echo "PASS: B completed after resume"
+
+          # Test 5: a fresh submit after resume also executes — confirms the
+          # runner is back to full operation, not just flushing the backlog.
+          echo "--- Test: fresh submit after resume executes ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo C done' \
+            || fail "C submit failed after resume"
+          echo "PASS: fresh submit after resume completed"
+
+          # Test 6: the long-running A that straddled drain+resume finishes
+          # normally (exit 0) — drain must not cancel in-flight jobs.
+          echo "--- Test: A completes normally through drain+resume ---"
+          wait "$SUBMIT_A_PID"
+          SUBMIT_A_EXIT=$?
+          [ "$SUBMIT_A_EXIT" -eq 0 ] \
+            || fail "A expected exit 0, got $SUBMIT_A_EXIT — job was killed"
+          echo "PASS: A completed normally through drain+resume"
+
+          # Test 7: drain on an idle runner → auto-Stop path. With no active
+          # jobs the Draining arm immediately commits to Stopping and the
+          # unit transitions to inactive.
+          echo "--- Test: drain with no jobs → auto-Stop ---"
+          sudo "$BIN_DIR/runner" service drain --name "$SVC" || fail "second drain failed"
+
+          for i in $(seq 1 30); do
+            sudo systemctl is-active --quiet "$UNIT" || break
+            sleep 1
+          done
+          if sudo systemctl is-active --quiet "$UNIT"; then
+            fail "unit still active 30s after drain on idle runner"
+          fi
+          echo "PASS: unit stopped via auto-Stop"
+
+          # Test 8: resume refused on an inactive unit (is_unit_active guard).
+          echo "--- Test: resume refused after stop ---"
+          if sudo "$BIN_DIR/runner" service resume --name "$SVC" 2>&1; then
+            fail "resume on inactive unit should have failed"
+          fi
+          echo "PASS: resume correctly refused on inactive unit"
+
+          trap - EXIT
+          echo "=== Drain + resume test passed ==="
+          REMOTE_SCRIPT
+
+  runner-balloon:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test balloon memory reclaim
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --name ${JOB_REF}-balloon \
+            --group vm0/balloon-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-balloon \
+            --max-concurrent 2 \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running balloon test ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-balloon"
+          SVC="${JOB_REF}-balloon"
+          GROUP="vm0/balloon-${JOB_REF}"
+
+          fail() {
+            echo "FAIL: $1"
+            echo "--- Diagnostics ---"
+            echo "Balloon stats:"
+            sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics 2>/dev/null \
+              | jq . 2>/dev/null || echo "(unavailable)"
+            echo "Host dmesg (last 10 lines):"
+            sudo dmesg | tail -10 2>/dev/null || true
+            exit 1
+          }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+          }
+          trap cleanup EXIT
+
+          # Clean up any residual transient unit from a previous CI run.
+          # stop() returns Ok when no service exists, so no need for || true.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+
+          # Start transient runner service
+          echo "--- Starting runner ---"
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # Submit a long-running job in background (keeps sandbox alive during tests)
+          echo "--- Submitting long-running job ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+
+          # Wait for sandbox control socket. Socket and api.sock paths use
+          # sandbox_id (distinct from run_id after #9552). `runner exec`
+          # resolves its CLI arg against sandbox_id sock dirs, so SANDBOX_ID
+          # is what we need here.
+          echo "--- Waiting for sandbox control socket ---"
+          for i in $(seq 1 60); do
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            [ -n "$SANDBOX_ID" ] && [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] && break
+            SANDBOX_ID=""
+            sleep 1
+          done
+          [ -z "$SANDBOX_ID" ] && fail "control socket not found after 60s"
+          echo "Found sandbox: $SANDBOX_ID"
+
+          API_SOCK="/run/vm0/sock/$SANDBOX_ID/api.sock"
+
+          # Helper: read current balloon actual_mib (returns 0 if VM is dead)
+          balloon_mib() {
+            local val
+            val=$(sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
+              | jq -r '.actual_mib // 0' 2>/dev/null)
+            echo "${val:-0}"
+          }
+
+          # Helper: read guest MemAvailable in kB (returns 0 if exec fails)
+          guest_avail_kb() {
+            local val
+            val=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- grep MemAvailable /proc/meminfo 2>/dev/null \
+              | tr -s ' ' | cut -d' ' -f2)
+            echo "${val:-0}"
+          }
+
+          # Helper: check if VM is still alive
+          vm_alive() {
+            sudo curl -sf --unix-socket "$API_SOCK" http://localhost/ >/dev/null 2>&1
+          }
+
+          # Test 1: idle inflate — balloon controller gradually reclaims idle guest memory
+          # With per-tick cap (256 MiB), balloon inflates over multiple ticks.
+          echo "--- Test 1: balloon idle inflate ---"
+          ACTUAL=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            [ "${ACTUAL:-0}" -gt 0 ] && break
+            sleep 1
+          done
+          [ "$ACTUAL" -gt 0 ] || fail "balloon did not inflate: actual_mib=$ACTUAL"
+          echo "PASS: balloon idle inflate (actual_mib=$ACTUAL)"
+
+          # Wait for balloon to stabilize (enters hysteresis band)
+          echo "--- Waiting for balloon to stabilize ---"
+          PREV=0
+          STABLE_COUNT=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            if [ "$ACTUAL" -eq "$PREV" ] && [ "$ACTUAL" -gt 0 ]; then
+              STABLE_COUNT=$((STABLE_COUNT + 1))
+              [ "$STABLE_COUNT" -ge 2 ] && break
+            else
+              STABLE_COUNT=0
+            fi
+            PREV=$ACTUAL
+            sleep 3
+          done
+          INFLATE_MIB=$ACTUAL
+          echo "Balloon stabilized at ${INFLATE_MIB} MiB"
+
+          # Verify guest-side: MemAvailable decreased
+          AVAIL=$(guest_avail_kb)
+          [ "$AVAIL" -lt 1536000 ] || fail "MemAvailable too high after balloon: ${AVAIL}kB (expected < 1536000kB)"
+          echo "PASS: guest MemAvailable reduced (${AVAIL}kB)"
+
+          # Test 2: deflate under memory pressure — allocate 300 MiB anonymous memory
+          # in the guest to push available below deflate threshold (192 MiB).
+          # After inflate stabilizes (~1438 MiB), guest has ~476 MiB available.
+          # 300 MiB alloc drops available to ~176 MiB < 192 MiB threshold.
+          # Trailing `# BALLOON_ALLOC_MARKER` is a unique string pkill can
+          # match on to terminate the guest-side allocator below.
+          echo "--- Test 2: balloon deflate under memory pressure ---"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c 'import ctypes,time; b=bytearray(300*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(120)  # BALLOON_ALLOC_MARKER' &
+          ALLOC_PID=$!
+
+          # Wait for balloon to deflate (actual_mib decreases)
+          DEFLATED=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            if [ "$ACTUAL" -lt "$INFLATE_MIB" ]; then
+              DEFLATED=1
+              break
+            fi
+            sleep 2
+          done
+          [ "$DEFLATED" -eq 1 ] || fail "balloon did not deflate: actual_mib=$ACTUAL (was $INFLATE_MIB)"
+          DEFLATE_MIB=$ACTUAL
+          echo "PASS: balloon deflated from ${INFLATE_MIB} to ${DEFLATE_MIB} MiB"
+
+          # Test 3: re-inflate after pressure released — kill the host-side
+          # exec first (prevents further output), then kill the guest-side
+          # allocator. The host kill does NOT propagate to the guest process
+          # because vsock-guest spawns it independently.
+          echo "--- Test 3: balloon re-inflate after pressure release ---"
+          kill $ALLOC_PID 2>/dev/null || true
+          wait $ALLOC_PID 2>/dev/null || true
+
+          # Verify VM survived the memory pressure test
+          vm_alive || fail "VM crashed during memory pressure test"
+
+          # Kill guest-side allocator — balloon has already deflated (Test 2
+          # passed), so guest has ~250 MiB available, enough for pkill exec.
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- pkill -f BALLOON_ALLOC_MARKER 2>/dev/null || true
+
+          # Wait for balloon to re-inflate past midpoint between deflate and original inflate
+          MIDPOINT=$(( (INFLATE_MIB + DEFLATE_MIB) / 2 ))
+          REINFLATED=0
+          for i in $(seq 1 30); do
+            ACTUAL=$(balloon_mib)
+            if [ "$ACTUAL" -gt "$MIDPOINT" ]; then
+              REINFLATED=1
+              break
+            fi
+            sleep 2
+          done
+          [ "$REINFLATED" -eq 1 ] || fail "balloon did not re-inflate enough: actual_mib=$ACTUAL (midpoint=$MIDPOINT, was $DEFLATE_MIB)"
+          echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${ACTUAL} MiB (midpoint=${MIDPOINT})"
+
+          # Stop transient service
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          trap - EXIT
+
+          echo "=== Balloon test passed ==="
+          REMOTE_SCRIPT
+
+  runner-upgrade-local:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Run upgrade test
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+          GROUP="vm0/upgrade-${JOB_REF}"
+
+          echo "=== Generating configs for runner A and B ==="
+          for SUFFIX in upgrade-a upgrade-b; do
+            # shellcheck disable=SC2029
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+              --profile vm0/default \
+              --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+              --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+              --name ${JOB_REF}-${SUFFIX} \
+              --group ${GROUP} \
+              --runner-dirname ${JOB_REF}-${SUFFIX} \
+              --max-concurrent 2 \
+              --api-url https://not-a-real-server.test \
+              --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+          done
+
+          echo "=== Running upgrade test ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" "${GROUP}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2; GROUP=$3
+          RUNNER_DIR_A="/var/lib/vm0-runner/runners/${JOB_REF}-upgrade-a"
+          RUNNER_DIR_B="/var/lib/vm0-runner/runners/${JOB_REF}-upgrade-b"
+          SVC_A="${JOB_REF}-upgrade-a"
+          SVC_B="${JOB_REF}-upgrade-b"
+
+          FAILED=0
+          fail() { FAILED=1; echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup: uninstalling services ---"
+            sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force 2>/dev/null || true
+            if [ "$FAILED" -ne 0 ]; then
+              echo "--- Cleanup: dumping logs (test failed) ---"
+              journalctl --unit "vm0-runner-${SVC_A}" --lines 50 --no-pager 2>/dev/null || true
+              journalctl --unit "vm0-runner-${SVC_B}" --lines 50 --no-pager 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          # Pre-cleanup: uninstall leftover services from previous CI runs
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force 2>/dev/null || true
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force 2>/dev/null || true
+
+          # 1. Install runner A
+          echo "--- Installing runner A ---"
+          sudo "$BIN_DIR/runner" service install --name "$SVC_A" \
+            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # 2. Submit job 1 (background, long-running) → only A running
+          echo "--- Submit job 1 (only A, long-running) ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 12 && echo job1' &
+          SUBMIT1_PID=$!
+
+          # 3. Install runner B while job 1 still in-flight on A
+          echo "--- Installing runner B ---"
+          sudo "$BIN_DIR/runner" service install --name "$SVC_B" \
+            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # 4. Submit job 2 (background, long-running) → A and B compete
+          echo "--- Submit job 2 (A and B compete, long-running) ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 12 && echo job2' &
+          SUBMIT2_PID=$!
+
+          # 5. Drain A while jobs may be in-flight
+          echo "--- Draining runner A ---"
+          sudo "$BIN_DIR/runner" service drain --name "$SVC_A"
+
+          # 6. Verify both jobs complete despite drain
+          echo "--- Waiting for job 1 ---"
+          wait $SUBMIT1_PID || fail "Job 1 failed"
+          echo "--- Waiting for job 2 ---"
+          wait $SUBMIT2_PID || fail "Job 2 failed"
+
+          # 7. Uninstall A (systemctl stop blocks until drain finishes)
+          echo "--- Uninstalling runner A ---"
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force
+
+          # 8. Submit job 3 → only B is left
+          echo "--- Submit job 3 (only B) ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo job3' || fail "Job 3 failed"
+
+          # 9. Drain and uninstall B
+          echo "--- Draining runner B ---"
+          sudo "$BIN_DIR/runner" service drain --name "$SVC_B"
+          echo "--- Uninstalling runner B ---"
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force
+          trap - EXIT
+
+          echo "=== Upgrade test passed ==="
+          REMOTE_SCRIPT
+
+  runner-keep-alive:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test VM keep-alive across conversation turns
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --name ${JOB_REF}-keepalive \
+            --group vm0/keepalive-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-keepalive \
+            --max-concurrent 2 \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running keep-alive test ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-keepalive"
+          SVC="${JOB_REF}-keepalive"
+          GROUP="vm0/keepalive-${JOB_REF}"
+          SESSION_ID="e2e-keepalive-test-session"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+          }
+          trap cleanup EXIT
+
+          # Clean up any residual transient unit from a previous CI run.
+          # stop() returns Ok when no service exists, so no need for || true.
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+
+          # Start transient runner service
+          echo "--- Starting runner ---"
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # Turn 1: submit job with session ID and sandboxReuse flag — creates a marker file in guest
+          echo "--- Turn 1: create marker file ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+            --session-id "$SESSION_ID" \
+            --feature-flag sandboxReuse=true \
+            --prompt 'touch /tmp/keepalive-marker && echo turn1-done' \
+            || fail "Turn 1 failed"
+
+          # Turn 2: submit job with same session ID and flag — should reuse the VM.
+          # If VM was reused, the marker file from turn 1 still exists (exit 0).
+          # If a new VM was created, the file is missing and test exits non-zero.
+          echo "--- Turn 2: verify marker file persists (VM reused) ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+            --session-id "$SESSION_ID" \
+            --feature-flag sandboxReuse=true \
+            --prompt 'test -f /tmp/keepalive-marker' \
+            || fail "Turn 2: marker file not found — VM was not reused"
+          echo "PASS: Turn 2 completed (VM reused, filesystem persisted)"
+
+          # Turn 3: submit with a DIFFERENT session — should create a new VM.
+          # The marker file must NOT exist in the new VM (session isolation).
+          echo "--- Turn 3: different session creates new VM ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+            --session-id "different-session" \
+            --feature-flag sandboxReuse=true \
+            --prompt 'test ! -f /tmp/keepalive-marker' \
+            || fail "Turn 3: marker file found — session isolation broken"
+          echo "PASS: Turn 3 completed (new VM for different session)"
+
+          # Regression gate for sandbox_id/run_id conflation (#9552):
+          # at this point the runner has parked idle VMs whose FC workspace
+          # names (= sandbox_id) are divorced from any active run_id.
+          # `runner doctor --name <svc>` must still report 0 warnings.
+          # Scope to this CI run's runner name so that unrelated runners
+          # sharing the metal host don't contaminate the check.
+          echo "--- runner doctor --name $SVC (expect 0 warnings) ---"
+          DOCTOR_OUT=$(sudo "$BIN_DIR/runner" doctor --name "$SVC" 2>&1 || true)
+          echo "$DOCTOR_OUT"
+          if ! echo "$DOCTOR_OUT" | grep -q '^0 warning(s) found$'; then
+            fail "runner doctor reported warnings with parked idle VMs — regression for #9552"
+          fi
+          echo "PASS: runner doctor clean with parked VMs"
+
+          # Stop transient service (drains idle pool)
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          trap - EXIT
+
+          echo "=== Keep-alive test passed ==="
+          REMOTE_SCRIPT
+
+  ci-gate-crates:
+    runs-on: ubuntu-latest
+    needs:
+      - detect-release
+      - detect
+      - check
+      - mitm-addon-test
+      - runner-build
+      - runner-benchmark
+      - runner-exec
+      - runner-drain-resume
+      - runner-balloon
+      - runner-upgrade-local
+      - runner-keep-alive
+      - nbd-cow-test
+    # Always run so the gate reports an explicit result (not "skipped").
+    if: always()
+    steps:
+      - name: Validate CI results
+        env:
+          IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
+        run: |
+          # Auto-pass for release-please PRs, commits, and merge queue entries
+          if [[ "$IS_RELEASE" == "true" ]]; then
+            echo "✅ Release-please — skipping CI gate"
+            exit 0
+          fi
+          echo "::group::CI Gate Results"
+          FAILED=0
+
+          check_result() {
+            local job="$1" result="$2" allow_skip="$3"
+            if [ "$result" = "success" ]; then
+              echo "✅ $job: $result"
+            elif [ "$allow_skip" = "true" ] && [ "$result" = "skipped" ]; then
+              echo "⏭️ $job: $result (allowed)"
+            elif [ "$allow_skip" = "informational" ]; then
+              echo "ℹ️ $job: $result (informational, not blocking)"
+            else
+              if [ "$allow_skip" = "true" ]; then
+                echo "::error::$job: expected success or skipped, got $result"
+              else
+                echo "::error::$job: expected success, got $result"
+              fi
+              FAILED=1
+            fi
+          }
+
+          # Must-succeed: only 'success' is acceptable
+          check_result "detect" "${{ needs.detect.result }}" ""
+
+          # May-skip: only run when relevant crates change
+          check_result "check" "${{ needs.check.result }}" "true"
+          check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
+          check_result "runner-build" "${{ needs.runner-build.result }}" "true"
+          check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
+          check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
+          check_result "runner-drain-resume" "${{ needs.runner-drain-resume.result }}" "true"
+          check_result "runner-balloon" "${{ needs.runner-balloon.result }}" "true"
+          check_result "runner-upgrade-local" "${{ needs.runner-upgrade-local.result }}" "true"
+          check_result "runner-keep-alive" "${{ needs.runner-keep-alive.result }}" "true"
+          check_result "nbd-cow-test" "${{ needs.nbd-cow-test.result }}" "true"
+
+          echo "::endgroup::"
+          exit $FAILED
+
+  runner-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [runner-build, runner-benchmark, runner-exec, runner-cancel, runner-drain-resume, runner-balloon, runner-upgrade-local, runner-keep-alive]
+    if: ${{ always() && needs.runner-build.result != 'skipped' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Ansible
+        run: pip3 install ansible-core
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Cleanup
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+        run: |
+          cd ansible
+          ansible-playbook \
+            -i "${HOST}," \
+            playbooks/cleanup-crates-runner.yml \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v || true

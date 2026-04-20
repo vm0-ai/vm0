@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 166 166" fill="none">
+  <!-- W&B logo mark — gold dots pattern, official color #FCBC32 -->
+  <!-- Top row -->
+  <circle cx="17" cy="11" r="11" fill="#FCBC32"/>
+  <circle cx="83" cy="11" r="7" fill="#FCBC32"/>
+  <circle cx="149" cy="11" r="11" fill="#FCBC32"/>
+  <!-- Second row -->
+  <circle cx="17" cy="53" r="17" fill="#FCBC32"/>
+  <circle cx="83" cy="53" r="11" fill="#FCBC32"/>
+  <circle cx="149" cy="53" r="11" fill="#FCBC32"/>
+  <!-- Third row -->
+  <circle cx="17" cy="96" r="11" fill="#FCBC32"/>
+  <circle cx="83" cy="96" r="17" fill="#FCBC32"/>
+  <circle cx="149" cy="96" r="11" fill="#FCBC32"/>
+  <!-- Fourth row -->
+  <circle cx="17" cy="135" r="17" fill="#FCBC32"/>
+  <circle cx="83" cy="155" r="7" fill="#FCBC32"/>
+  <circle cx="149" cy="139" r="11" fill="#FCBC32"/>
+</svg>

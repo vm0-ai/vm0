@@ -1,0 +1,201 @@
+/**
+ * Format a date string as relative time (e.g., "in 2h", "3d ago")
+ */
+export function formatRelativeTime(dateStr: string | null): string {
+  if (!dateStr) return "-";
+
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffAbs = Math.abs(diffMs);
+
+  const minutes = Math.floor(diffAbs / (1000 * 60));
+  const hours = Math.floor(diffAbs / (1000 * 60 * 60));
+  const days = Math.floor(diffAbs / (1000 * 60 * 60 * 24));
+
+  const isPast = diffMs < 0;
+
+  if (days > 0) {
+    return isPast ? `${days}d ago` : `in ${days}d`;
+  } else if (hours > 0) {
+    return isPast ? `${hours}h ago` : `in ${hours}h`;
+  } else if (minutes > 0) {
+    return isPast ? `${minutes}m ago` : `in ${minutes}m`;
+  } else {
+    return isPast ? "just now" : "soon";
+  }
+}
+
+/**
+ * Format a date string with both absolute and relative time
+ * e.g., "2025-01-14 09:00 (in 2h)"
+ * Uses local timezone, but doesn't include timezone in output (shown separately)
+ */
+export function formatDateTime(dateStr: string | null): string {
+  if (!dateStr) return "-";
+
+  const date = new Date(dateStr);
+
+  // Format: YYYY-MM-DD HH:MM (no seconds, no timezone - shown separately)
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  const formatted = `${year}-${month}-${day} ${hours}:${minutes}`;
+  const relative = formatRelativeTime(dateStr);
+
+  return `${formatted} (${relative})`;
+}
+
+/**
+ * Frequency type for schedule wizard
+ */
+export type ScheduleFrequency =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "once"
+  | "loop";
+
+/**
+ * Generate cron expression from user-friendly inputs
+ * @param frequency - Schedule frequency type
+ * @param time - Time in HH:MM format (24-hour)
+ * @param day - Day of week (0-6, Sun=0) for weekly, or day of month (1-31) for monthly
+ * @returns Cron expression string
+ */
+export function generateCronExpression(
+  frequency: Exclude<ScheduleFrequency, "once" | "loop">,
+  time: string,
+  day?: number,
+): string {
+  const [hourStr, minuteStr] = time.split(":");
+  const hour = parseInt(hourStr ?? "0", 10);
+  const minute = parseInt(minuteStr ?? "0", 10);
+
+  switch (frequency) {
+    case "daily":
+      return `${minute} ${hour} * * *`;
+    case "weekly":
+      return `${minute} ${hour} * * ${day ?? 1}`;
+    case "monthly":
+      return `${minute} ${hour} ${day ?? 1} * *`;
+  }
+}
+
+/**
+ * Detect system timezone using Intl API
+ * @returns IANA timezone identifier (e.g., "America/New_York")
+ */
+export function detectTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/**
+ * Validate time format (HH:MM, 24-hour)
+ * @param time - Time string to validate
+ * @returns true if valid, error message if invalid
+ */
+export function validateTimeFormat(time: string): boolean | string {
+  const match = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return "Invalid format. Use HH:MM (e.g., 09:00)";
+  }
+
+  const hour = parseInt(match[1]!, 10);
+  const minute = parseInt(match[2]!, 10);
+
+  if (hour < 0 || hour > 23) {
+    return "Hour must be 0-23";
+  }
+  if (minute < 0 || minute > 59) {
+    return "Minute must be 0-59";
+  }
+  if (minute % 5 !== 0) {
+    return "Minute must be a multiple of 5 (0, 5, 10, ..., 55)";
+  }
+
+  return true;
+}
+
+/**
+ * Validate date format (YYYY-MM-DD)
+ * @param date - Date string to validate
+ * @returns true if valid, error message if invalid
+ */
+export function validateDateFormat(date: string): boolean | string {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return "Invalid format. Use YYYY-MM-DD (e.g., 2025-01-15)";
+  }
+
+  const year = parseInt(match[1]!, 10);
+  const month = parseInt(match[2]!, 10);
+  const day = parseInt(match[3]!, 10);
+
+  if (year < 2000 || year > 2100) {
+    return "Year must be between 2000 and 2100";
+  }
+  if (month < 1 || month > 12) {
+    return "Month must be 1-12";
+  }
+  if (day < 1 || day > 31) {
+    return "Day must be 1-31";
+  }
+
+  // Validate the date is actually valid (e.g., not Feb 30)
+  const testDate = new Date(year, month - 1, day);
+  if (
+    testDate.getFullYear() !== year ||
+    testDate.getMonth() !== month - 1 ||
+    testDate.getDate() !== day
+  ) {
+    return "Invalid date";
+  }
+
+  return true;
+}
+
+/**
+ * Get tomorrow's date in local timezone as YYYY-MM-DD
+ * @returns Date string in YYYY-MM-DD format
+ */
+export function getTomorrowDateLocal(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+  const day = String(tomorrow.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Get current time in local timezone as HH:MM
+ * @returns Time string in HH:MM format
+ */
+export function getCurrentTimeLocal(): string {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+/**
+ * Convert a human-readable datetime string to ISO format
+ * Supports formats: "YYYY-MM-DD HH:MM" or full ISO string
+ * @param dateTimeStr - DateTime string (e.g., "2025-01-15 14:30")
+ * @returns ISO format string (e.g., "2025-01-15T14:30:00.000Z")
+ */
+export function toISODateTime(dateTimeStr: string): string {
+  // If already in ISO format, return as-is
+  if (dateTimeStr.includes("T") && dateTimeStr.endsWith("Z")) {
+    return dateTimeStr;
+  }
+
+  // Convert "YYYY-MM-DD HH:MM" to ISO
+  const isoStr = dateTimeStr.replace(" ", "T") + ":00";
+  const date = new Date(isoStr);
+  return date.toISOString();
+}

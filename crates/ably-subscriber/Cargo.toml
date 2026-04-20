@@ -1,0 +1,28 @@
+[package]
+name = "ably-subscriber"
+version = "0.7.2"
+edition.workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+futures-util = { workspace = true }
+reqwest = { workspace = true }
+rmp-serde = { workspace = true }
+rmpv = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
+tokio-tungstenite = { workspace = true, features = ["connect", "rustls-tls-native-roots"] }
+tracing = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+hmac = { workspace = true }
+httpmock = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "net"] }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

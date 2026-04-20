@@ -1,0 +1,212 @@
+import { command, computed, state } from "ccstate";
+import { onRef, resetSignal } from "../utils.ts";
+import { detachedNavigateTo$ } from "../route.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+import { navigateToChat$ } from "../zero-page/zero-nav.ts";
+import {
+  currentChatThreadId$,
+  chatThreads$,
+  reloadChatThreads$,
+} from "../agent-chat.ts";
+import {
+  chatMessagesContract,
+  chatThreadsContract,
+  chatThreadByIdContract,
+  type ModelSelectionRequest,
+  type PagedChatMessage,
+} from "@vm0/core";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+
+export {
+  chatThreads$,
+  currentChatThread$,
+  reloadChatThreads$,
+} from "../agent-chat.ts";
+
+export {
+  zeroChatAttachments$,
+  uploadZeroAttachment$,
+  removeZeroAttachment$,
+  zeroDragOver$,
+  setZeroDragOver$,
+  canSendZeroChat$,
+  type ZeroChatAttachment,
+} from "../zero-page/chat-draft.ts";
+
+// ---------------------------------------------------------------------------
+// Re-export paged message types from @vm0/core
+// ---------------------------------------------------------------------------
+
+export type { PagedChatMessage } from "@vm0/core";
+
+/** A group of consecutive messages with the same role. */
+export interface GroupedChatMessageGroup {
+  beginMessageId: string;
+  role: "user" | "assistant";
+  messages: PagedChatMessage[];
+}
+
+// ---------------------------------------------------------------------------
+// Thread creation
+// ---------------------------------------------------------------------------
+
+async function createChatThread(
+  createClient: ZeroClientFactory,
+  agentId: string,
+  title?: string,
+): Promise<{ id: string; title: string | null }> {
+  const client = createClient(chatThreadsContract);
+  const result = await accept(
+    client.create({ body: { agentId, ...(title ? { title } : {}) } }),
+    [201],
+  );
+  return { id: result.body.id, title: result.body.title };
+}
+
+// ---------------------------------------------------------------------------
+// Talk-page send signal
+// ---------------------------------------------------------------------------
+
+/**
+ * Signal for talk-page sends that must survive page navigation.
+ *
+ * The talk page navigates from `/agents/:id/chat` to `/chats/:id` on send,
+ * which aborts the page-level signal.  This dedicated signal lets the
+ * talk page pass a cancellable AbortSignal without coupling to the page
+ * lifecycle.  It is reset each time `startNewZeroSession$` fires (which
+ * is called before every talk-page send), so stale controllers are
+ * cleaned up automatically.
+ */
+export const resetTalkSendSignal$ = resetSignal();
+
+// ---------------------------------------------------------------------------
+// Session lifecycle
+// ---------------------------------------------------------------------------
+
+export const startNewZeroSession$ = command(({ set }) => {
+  set(resetTalkSendSignal$);
+});
+
+export const createNewChatThread$ = command(
+  async (
+    { get, set },
+    agentComposeId: string | null,
+    _signal: AbortSignal,
+  ): Promise<string | null> => {
+    const resolvedComposeId =
+      agentComposeId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
+
+    if (!resolvedComposeId) {
+      toast.error("No agent available for new chat session");
+      return null;
+    }
+
+    set(startNewZeroSession$);
+
+    const createClient = get(zeroClient$);
+    const thread = await createChatThread(createClient, resolvedComposeId);
+
+    set(reloadChatThreads$);
+    return thread.id;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Send new thread message (used by agent talk page)
+// ---------------------------------------------------------------------------
+
+/**
+ * Send the first message in a new or threadless chat. Returns the threadId.
+ * Used by the agent talk page which navigates to the thread after sending.
+ *
+ * `modelSelection` comes from the composer's per-run model picker and is
+ * always provided — `null` stores "no override" (inherit agent/org default)
+ * on the newly created thread; a non-null object sets the thread override.
+ */
+export const sendNewThreadMessage$ = command(
+  async (
+    { get, set },
+    agentId: string,
+    prompt: string,
+    modelSelection: ModelSelectionRequest | null,
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    if (!prompt.trim()) {
+      return null;
+    }
+
+    const client = get(zeroClient$)(chatMessagesContract);
+    const result = await accept(
+      client.send({
+        body: {
+          agentId,
+          prompt,
+          hasTextContent: prompt.trim().length > 0,
+          clientMessageId: crypto.randomUUID(),
+          modelSelection,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+
+    set(reloadChatThreads$);
+    return result.body.threadId;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Delete thread
+// ---------------------------------------------------------------------------
+
+export const deleteChatThread$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const threads = await get(chatThreads$);
+    signal.throwIfAborted();
+
+    const client = get(zeroClient$)(chatThreadByIdContract);
+    await accept(client.delete({ params: { id: threadId } }), [204]);
+    signal.throwIfAborted();
+
+    toast.success("Chat deleted");
+
+    if (get(currentChatThreadId$) === threadId) {
+      const idx = threads.findIndex((t) => {
+        return t.id === threadId;
+      });
+      const remaining = threads.filter((t) => {
+        return t.id !== threadId;
+      });
+      if (remaining.length === 0) {
+        set(detachedNavigateTo$, "/");
+      } else {
+        const nextThread = remaining[idx] ?? remaining[remaining.length - 1];
+        set(navigateToChat$, nextThread.id);
+      }
+    }
+
+    set(reloadChatThreads$);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Composer local UI state
+// ---------------------------------------------------------------------------
+
+const internalComposerFileInput$ = state<HTMLElement | null>(null);
+
+export const composerFileInput$ = computed((get) => {
+  return get(internalComposerFileInput$);
+});
+
+export const setComposerFileInput$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      set(internalComposerFileInput$, null);
+    });
+    set(internalComposerFileInput$, el);
+  }),
+);

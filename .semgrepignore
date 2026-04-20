@@ -1,0 +1,10 @@
+# Development scripts — hardcoded commands with execSync, not user-controlled input
+turbo/scripts/rebuild-snapshots.ts
+turbo/scripts/rebuild-snapshots-from-db.ts
+
+# Devcontainer Dockerfile — remoteUser in devcontainer.json handles non-root execution
+docker/toolchain/Dockerfile
+
+# Firewall configs — placeholder tokens intentionally mimic real formats for proxy replacement
+turbo/packages/firewalls-generator/src/
+turbo/packages/core/src/firewalls/*.generated.ts

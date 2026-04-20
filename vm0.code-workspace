@@ -1,0 +1,52 @@
+{
+  "folders": [
+    {
+      "path": ".",
+      "name": "root",
+    },
+    {
+      "path": "turbo",
+    },
+    {
+      "path": "crates",
+    },
+    {
+      "path": "e2e",
+    },
+    {
+      "path": "docs",
+    },
+    {
+      "path": ".github",
+    },
+    {
+      "path": ".claude",
+    },
+    {
+      "path": ".devcontainer",
+    },
+    {
+      "path": "scripts",
+    },
+    {
+      "path": "bin",
+    },
+    {
+      "path": "ansible",
+    },
+  ],
+  "extensions": {
+    "recommendations": [
+      "esbenp.prettier-vscode",
+      "anthropic.claude-code",
+      "github.vscode-github-actions",
+    ],
+  },
+  "settings": {
+    "claudeCode.useTerminal": true,
+    "claudeCode.initialPermissionMode": "bypassPermissions",
+    "claudeCode.allowDangerouslySkipPermissions": true,
+    "claudeCode.disableLoginPrompt": false,
+    "claudeCode.hideOnboarding": true,
+  },
+}

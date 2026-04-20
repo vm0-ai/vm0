@@ -1,0 +1,1931 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1756181739566,
+      "tag": "0000_real_sabretooth",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1763365789017,
+      "tag": "0001_huge_blue_shield",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1763434219021,
+      "tag": "0002_nifty_jane_foster",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1763438704060,
+      "tag": "0003_low_korg",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1763453838653,
+      "tag": "0004_windy_shen",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1763453900000,
+      "tag": "0005_replace_apikey_with_userid",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1763453901000,
+      "tag": "0006_drop_api_keys_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1763453902000,
+      "tag": "0007_add_userid_to_agent_runtimes",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1763453903000,
+      "tag": "0008_rename_runtime_to_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1763453904000,
+      "tag": "0009_add_name_to_agent_configs",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1763745898379,
+      "tag": "0010_add_checkpoints_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1763790473547,
+      "tag": "0011_shocking_red_shift",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1763796089536,
+      "tag": "0012_mysterious_onslaught",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1763821845951,
+      "tag": "0013_tearful_skaar",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1763967798025,
+      "tag": "0014_clean_pandemic",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1763984363842,
+      "tag": "0015_solid_star_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1764139680000,
+      "tag": "0016_rename_volumes_to_storages",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1764139681000,
+      "tag": "0017_rename_volume_snapshots_to_artifact_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1764139682000,
+      "tag": "0018_add_type_to_storages",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1764400000000,
+      "tag": "0019_restructure_checkpoints",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1764500000000,
+      "tag": "0020_add_agent_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1764600000000,
+      "tag": "0021_add_template_vars_to_agent_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1764700000000,
+      "tag": "0022_rename_dynamic_vars_to_template_vars",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1764800000000,
+      "tag": "0023_add_volume_versions_to_checkpoints",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1764900000000,
+      "tag": "0024_storage_version_sha256",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1765000000000,
+      "tag": "0025_add_blobs_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1765100000000,
+      "tag": "0026_rename_agent_configs_to_agent_composes",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1765200000000,
+      "tag": "0027_agent_compose_versioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1765300000000,
+      "tag": "0028_add_user_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1765400000000,
+      "tag": "0029_add_last_heartbeat_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1765500000000,
+      "tag": "0030_add_images_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1765600000000,
+      "tag": "0031_add_sandbox_telemetry",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1765700000000,
+      "tag": "0032_storage_type_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1765800000000,
+      "tag": "0033_secrets_via_cli",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1765900000000,
+      "tag": "0034_storage_name_256",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1766000000000,
+      "tag": "0035_revert_storage_name_256",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1766100000000,
+      "tag": "0036_storage_name_256",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1766200000000,
+      "tag": "0037_add_scopes_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1766300000000,
+      "tag": "0038_add_scope_id_to_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1766400000000,
+      "tag": "0039_expand_e2b_alias",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1766500000000,
+      "tag": "0040_add_scope_id_to_images",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1766600000000,
+      "tag": "0041_optional_artifact_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1766700000000,
+      "tag": "0042_add_image_version_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1766800000000,
+      "tag": "0043_add_compose_version_to_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1766900000000,
+      "tag": "0044_add_session_history_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1767000000000,
+      "tag": "0045_create_default_scopes_for_existing_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1767100000000,
+      "tag": "0046_add_scope_id_to_agent_composes",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1767200000000,
+      "tag": "0047_add_secret_names",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1767300000000,
+      "tag": "0048_drop_secrets_column",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1767400000000,
+      "tag": "0049_create_runner_job_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1767500000000,
+      "tag": "0050_add_agent_schedules",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1767600000000,
+      "tag": "0051_add_performance_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1767700000000,
+      "tag": "0052_add_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1767800000000,
+      "tag": "0053_add_schedule_id_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1767900000000,
+      "tag": "0054_add_model_providers",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1768000000000,
+      "tag": "0055_drop_scope_display_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1768100000000,
+      "tag": "0056_remove_openai_api_key_providers",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1768200000000,
+      "tag": "0057_add_schedule_retry_started_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1768300000000,
+      "tag": "0058_add_selected_model_to_model_providers",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1768400000000,
+      "tag": "0059_add_slack_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1768500000000,
+      "tag": "0060_add_auth_method_to_model_providers",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1768600000000,
+      "tag": "0061_add_scope_id_to_storages",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1768700000000,
+      "tag": "0062_update_slack_thread_sessions_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1768800000000,
+      "tag": "0063_slack_bindings_orphan_support",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1768900000000,
+      "tag": "0064_rename_credentials_to_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1769000000000,
+      "tag": "0065_add_variables",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1769100000000,
+      "tag": "0066_add_agent_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1769200000000,
+      "tag": "0067_isolate_secrets_by_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1769300000000,
+      "tag": "0068_add_compose_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1769400000000,
+      "tag": "0069_create_connectors_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1769500000000,
+      "tag": "0070_create_connector_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1769600000000,
+      "tag": "0071_simplify_agent_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1769700000000,
+      "tag": "0072_add_dm_welcome_sent",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1769800000000,
+      "tag": "0073_add_usage_daily",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1769900000000,
+      "tag": "0074_add_slack_compose_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1770000000000,
+      "tag": "0075_add_last_processed_message_ts",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1770100000000,
+      "tag": "0076_enforce_single_slack_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1770200000000,
+      "tag": "0077_add_schedule_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1770300000000,
+      "tag": "0078_drop_stale_slack_binding_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1770400000000,
+      "tag": "0079_allow_null_agent_compose_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1770500000000,
+      "tag": "0080_workspace_agent_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1770600000000,
+      "tag": "0081_add_agent_run_events_local",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1770700000000,
+      "tag": "0082_add_agent_run_callbacks",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1770800000000,
+      "tag": "0083_add_user_timezone",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1770900000000,
+      "tag": "0084_add_email_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1771000000000,
+      "tag": "0085_add_email_reply_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1771100000000,
+      "tag": "0086_add_notify_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1771200000000,
+      "tag": "0087_add_notify_slack",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1771300000000,
+      "tag": "0088_align_schema_with_drizzle",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1771300000001,
+      "tag": "0089_naive_darkstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1772272093259,
+      "tag": "0090_remove_nango_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1772292516753,
+      "tag": "0091_robust_khan",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1772350171999,
+      "tag": "0092_right_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1772426991114,
+      "tag": "0093_adorable_silvermane",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1772440050126,
+      "tag": "0094_nice_brother_voodoo",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1772446292808,
+      "tag": "0095_smart_reavers",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1772512427472,
+      "tag": "0096_quick_elektra",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1772514864230,
+      "tag": "0097_public_lorna_dane",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1772524641807,
+      "tag": "0098_majestic_thor_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1772598190600,
+      "tag": "0099_slippery_sunset_bain",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1772598515368,
+      "tag": "0100_github_installation_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1772601676707,
+      "tag": "0101_chemical_terror",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1772606887912,
+      "tag": "0102_github_user_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1772698746421,
+      "tag": "0103_scope_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1772698746422,
+      "tag": "0104_steep_devos",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1772703622916,
+      "tag": "0105_friendly_excalibur",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1772716800000,
+      "tag": "0106_add_compose_jobs_user_active_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1772729278144,
+      "tag": "0107_majestic_green_goblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1772775700211,
+      "tag": "0108_right_glorian",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1772788391669,
+      "tag": "0109_clean_gwen_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1772877185741,
+      "tag": "0110_woozy_hemingway",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1773033686755,
+      "tag": "0111_wooden_gambit",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1773244800000,
+      "tag": "0112_add_scope_tier_max",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1773244800001,
+      "tag": "0113_handy_galactus",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1773400000000,
+      "tag": "0114_repair_skipped_migrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1773400000001,
+      "tag": "0115_mixed_sir_ram",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1773400000002,
+      "tag": "0116_gifted_meggan",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1773400000003,
+      "tag": "0117_typical_starjammers",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1773400000004,
+      "tag": "0118_dark_gravity",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1773400000005,
+      "tag": "0119_foamy_dark_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1773400000006,
+      "tag": "0120_talented_elektra",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1773400000007,
+      "tag": "0121_sturdy_magdalene",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1773400000008,
+      "tag": "0122_big_black_cat",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1773400000009,
+      "tag": "0123_rare_longshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1773400000010,
+      "tag": "0124_dark_quasimodo",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1773400000020,
+      "tag": "0125_org_members_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1773400000021,
+      "tag": "0126_parallel_wildside",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1773400000030,
+      "tag": "0127_user_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1773400000031,
+      "tag": "0128_overrated_roxanne_simpson",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1773400000040,
+      "tag": "0129_rename_clerk_org_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1773400000050,
+      "tag": "0130_gdpr_export_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1773400000060,
+      "tag": "0131_familiar_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1773400000070,
+      "tag": "0132_broken_callisto",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1773400000071,
+      "tag": "0133_noisy_union_jack",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1773400000080,
+      "tag": "0134_rename_export_jobs_org_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1773400000090,
+      "tag": "0135_slack_org_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1773400000100,
+      "tag": "0136_volume_org_user_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1773400000110,
+      "tag": "0137_add_pinned_agent_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1773400000120,
+      "tag": "0138_email_suppressions",
+      "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1773400541600,
+      "tag": "0139_smooth_speed",
+      "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1773420787438,
+      "tag": "0140_email_thread_session_org_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1773454510654,
+      "tag": "0141_round_blue_shield",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1773559262139,
+      "tag": "0142_sharp_crusher_hogan",
+      "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1773637739953,
+      "tag": "0143_skinny_champions",
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1773642430405,
+      "tag": "0144_parallel_silver_fox",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1773647917692,
+      "tag": "0145_robust_sage",
+      "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1773648606281,
+      "tag": "0146_clever_princess_powerful",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1773650787446,
+      "tag": "0147_drop_old_slack_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1773719424137,
+      "tag": "0148_massive_doctor_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1773721926626,
+      "tag": "0149_heavy_sebastian_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1773721926627,
+      "tag": "0150_mature_retro_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1773800000000,
+      "tag": "0151_add_needs_reconnect",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1773800000001,
+      "tag": "0152_even_trauma",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1773800000002,
+      "tag": "0153_usage_daily_add_org_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1773801094870,
+      "tag": "0154_early_outlaw_kid",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1773802647989,
+      "tag": "0155_amazing_doomsday",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1774051200000,
+      "tag": "0156_replace_turns_with_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1774051200001,
+      "tag": "0157_migrate_user_model_providers_to_org",
+      "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1774051200002,
+      "tag": "0158_material_blue_blade",
+      "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1774051200003,
+      "tag": "0159_cool_dark_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1774051200004,
+      "tag": "0160_common_doctor_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "when": 1774051200005,
+      "tag": "0161_create_zero_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1774051200006,
+      "tag": "0162_lying_vulcan",
+      "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1774051200007,
+      "tag": "0163_add_org_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1774051200008,
+      "tag": "0164_drop_org_cache_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1774051200009,
+      "tag": "0165_multi_result_credit_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1774051200010,
+      "tag": "0166_nasty_joystick",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1774051200011,
+      "tag": "0167_create_org_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1774051200012,
+      "tag": "0168_last_loners",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1774051200013,
+      "tag": "0169_same_shockwave",
+      "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1774051200014,
+      "tag": "0170_vm0_api_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1774051200015,
+      "tag": "0171_add_trigger_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1774051200016,
+      "tag": "0172_sparkling_texas_twister",
+      "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1774051200017,
+      "tag": "0173_rename_org_to_org_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1774051200018,
+      "tag": "0174_drop_org_compat_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1774051200019,
+      "tag": "0175_sudden_baron_zemo",
+      "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1774071909702,
+      "tag": "0176_wealthy_mystique",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1774105076742,
+      "tag": "0177_lively_clint_barton",
+      "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1774235257946,
+      "tag": "0178_jittery_moondragon",
+      "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1774241074994,
+      "tag": "0179_rename_tier_max_to_team",
+      "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1774243821855,
+      "tag": "0180_faulty_rhino",
+      "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1774254182400,
+      "tag": "0181_add_schedule_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 182,
+      "version": "7",
+      "when": 1774258215464,
+      "tag": "0182_lame_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1774260401763,
+      "tag": "0183_powerful_captain_midlands",
+      "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1774263581054,
+      "tag": "0184_add_member_credit_cap",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1774267891710,
+      "tag": "0185_safe_rogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1774283087704,
+      "tag": "0186_ordinary_blue_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1774310400000,
+      "tag": "0187_add_firewall_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1774322025620,
+      "tag": "0188_fresh_matthew_murdock",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1774396800000,
+      "tag": "0189_amazing_yellowjacket",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1774483200000,
+      "tag": "0190_add_connectors_to_zero_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1774569600000,
+      "tag": "0191_rename_zero_agent_id_to_agent_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1774656000000,
+      "tag": "0192_email_thread_sessions_composeid_to_agentid",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1774742400000,
+      "tag": "0193_add_slack_channel_id_to_schedules",
+      "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1774828800000,
+      "tag": "0194_org_metadata_default_agent_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1774828800001,
+      "tag": "0195_drop_global_notify_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1774828800002,
+      "tag": "0196_zero_agents_use_compose_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1774828800003,
+      "tag": "0197_fk_schedules_email_org_to_composes",
+      "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1774828800004,
+      "tag": "0198_add_performance_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1774828800005,
+      "tag": "0199_zero_runs_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1774828800006,
+      "tag": "0200_zero_runs_schedule_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1774828800007,
+      "tag": "0201_abnormal_iceman",
+      "breakpoints": true
+    },
+    {
+      "idx": 202,
+      "version": "7",
+      "when": 1774828800008,
+      "tag": "0202_hesitant_the_call",
+      "breakpoints": true
+    },
+    {
+      "idx": 203,
+      "version": "7",
+      "when": 1774828800009,
+      "tag": "0203_add_cancel_at_period_end",
+      "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1774828800010,
+      "tag": "0204_round_bushwacker",
+      "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1774828800011,
+      "tag": "0205_powerful_adam_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1774828800012,
+      "tag": "0206_fix_credit_expires_null_invoice_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1774828800013,
+      "tag": "0207_slack_org_bot_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1774860042088,
+      "tag": "0208_wakeful_moira_mactaggert",
+      "breakpoints": true
+    },
+    {
+      "idx": 209,
+      "version": "7",
+      "when": 1774860302809,
+      "tag": "0209_add_zero_skills",
+      "breakpoints": true
+    },
+    {
+      "idx": 210,
+      "version": "7",
+      "when": 1774927812944,
+      "tag": "0210_unify_notification_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1774933076341,
+      "tag": "0211_tearful_talisman",
+      "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1774940000000,
+      "tag": "0212_rename_slack_channel_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1774940000001,
+      "tag": "0213_big_meteorite",
+      "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "when": 1774940000002,
+      "tag": "0214_loud_synch",
+      "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "when": 1774940000003,
+      "tag": "0215_add_firewall_access_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1775013793527,
+      "tag": "0216_public_jack_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1775100000000,
+      "tag": "0217_backfill_vm0_model_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1775100000001,
+      "tag": "0218_drop_schedule_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1775200000000,
+      "tag": "0219_add_zero_agents_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1775200000001,
+      "tag": "0220_device_codes_replace_org_slug_with_org_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1775200000002,
+      "tag": "0221_fine_silver_samurai",
+      "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1775200000003,
+      "tag": "0222_flashy_wonder_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1775242064952,
+      "tag": "0223_equal_taskmaster",
+      "breakpoints": true
+    },
+    {
+      "idx": 224,
+      "version": "7",
+      "when": 1775300000000,
+      "tag": "0224_add_firewall_access_request_action",
+      "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1775558858000,
+      "tag": "0225_open_ben_urich",
+      "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1775566239911,
+      "tag": "0226_peaceful_boom_boom",
+      "breakpoints": true
+    },
+    {
+      "idx": 227,
+      "version": "7",
+      "when": 1775569675710,
+      "tag": "0227_add_capture_network_bodies_remaining",
+      "breakpoints": true
+    },
+    {
+      "idx": 228,
+      "version": "7",
+      "when": 1775624053065,
+      "tag": "0228_youthful_gargoyle",
+      "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "when": 1775624054065,
+      "tag": "0229_rename_firewall_to_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1775900000001,
+      "tag": "0230_fix_model_id_format",
+      "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "when": 1775900000002,
+      "tag": "0231_puzzling_annihilus",
+      "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1775900000003,
+      "tag": "0232_gorgeous_wind_dancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1775900000004,
+      "tag": "0233_famous_rick_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 234,
+      "version": "7",
+      "when": 1775900000005,
+      "tag": "0234_lazy_the_hunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 235,
+      "version": "7",
+      "when": 1775900000006,
+      "tag": "0235_medical_snowbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1775900000007,
+      "tag": "0236_backfill_starter_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1775900000008,
+      "tag": "0237_amusing_sasquatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1775900100000,
+      "tag": "0238_rare_clea",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1775900100001,
+      "tag": "0239_silly_whizzer",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1775900100002,
+      "tag": "0240_condemned_ben_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1775900200000,
+      "tag": "0241_backfill_insights_team_usage_userid",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1775900300000,
+      "tag": "0242_overjoyed_nocturne",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1775900400000,
+      "tag": "0243_lazy_overlord",
+      "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1775900500000,
+      "tag": "0244_faulty_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1775900600000,
+      "tag": "0245_unique_annihilus",
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1775900700000,
+      "tag": "0246_wonderful_sauron",
+      "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1775900800000,
+      "tag": "0247_nebulous_micromacro",
+      "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1775900800001,
+      "tag": "0248_spotty_arclight",
+      "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1775900800002,
+      "tag": "0249_drop_slack_event_dedup",
+      "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1775900800003,
+      "tag": "0250_fancy_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 251,
+      "version": "7",
+      "when": 1776053629024,
+      "tag": "0251_polite_radioactive_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1776061423163,
+      "tag": "0252_wide_captain_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1776061423164,
+      "tag": "0253_green_darkstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 254,
+      "version": "7",
+      "when": 1776066396657,
+      "tag": "0254_chat_threads_source_schedule_run_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1776278400000,
+      "tag": "0255_rename_voiceio_to_audioio",
+      "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1776278400001,
+      "tag": "0256_late_boomerang",
+      "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1776278400002,
+      "tag": "0257_update_starter_credits_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1776278400003,
+      "tag": "0258_amusing_daredevil",
+      "breakpoints": true
+    },
+    {
+      "idx": 259,
+      "version": "7",
+      "when": 1776278400004,
+      "tag": "0259_flowery_vampiro",
+      "breakpoints": true
+    },
+    {
+      "idx": 260,
+      "version": "7",
+      "when": 1776278400005,
+      "tag": "0260_imessage_user_links_and_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1776278400006,
+      "tag": "0261_chat_messages_refactor",
+      "breakpoints": true
+    },
+    {
+      "idx": 262,
+      "version": "7",
+      "when": 1776300609567,
+      "tag": "0262_amazing_fat_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 263,
+      "version": "7",
+      "when": 1776310805286,
+      "tag": "0263_neat_tana_nile",
+      "breakpoints": true
+    },
+    {
+      "idx": 264,
+      "version": "7",
+      "when": 1776315282104,
+      "tag": "0264_spooky_fat_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 265,
+      "version": "7",
+      "when": 1776343534771,
+      "tag": "0265_right_joseph",
+      "breakpoints": true
+    },
+    {
+      "idx": 266,
+      "version": "7",
+      "when": 1776407453753,
+      "tag": "0266_clear_stale_current_period_end",
+      "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1776412341038,
+      "tag": "0267_slack_user_agent_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1776418202609,
+      "tag": "0268_great_madelyne_pryor",
+      "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1776508169836,
+      "tag": "0269_chat_message_read_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1776562597119,
+      "tag": "0270_simple_ultron",
+      "breakpoints": true
+    },
+    {
+      "idx": 271,
+      "version": "7",
+      "when": 1776571541090,
+      "tag": "0271_gifted_vulcan",
+      "breakpoints": true
+    },
+    {
+      "idx": 272,
+      "version": "7",
+      "when": 1776585129659,
+      "tag": "0272_fresh_betty_brant",
+      "breakpoints": true
+    },
+    {
+      "idx": 273,
+      "version": "7",
+      "when": 1776592685970,
+      "tag": "0273_hot_wendigo",
+      "breakpoints": true
+    },
+    {
+      "idx": 274,
+      "version": "7",
+      "when": 1776603350996,
+      "tag": "0274_freezing_human_cannonball",
+      "breakpoints": true
+    }
+  ]
+}

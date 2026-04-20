@@ -1,0 +1,11 @@
+[package]
+name = "vsock-guest"
+version = "0.10.2"
+edition.workspace = true
+
+[dependencies]
+libc.workspace = true
+vsock-proto.workspace = true
+
+[lints]
+workspace = true

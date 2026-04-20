@@ -1,0 +1,95 @@
+# Build VM0 Runner (Rust)
+#
+# This playbook prepares a new version of the Rust-based VM0 runner on
+# production metal instances **without starting the service**. It copies the
+# binary, downloads dependencies, builds the default rootfs/snapshot, and
+# writes the per-version config file. The systemd service is installed by
+# the companion `promote-runner.yml` in the promote phase — this lets the
+# heavy `runner build` step run in parallel with other production builds
+# without cutting traffic over.
+#
+# Idempotent: safe to re-run for the same version (e.g. after a failed deploy).
+#
+# Usage:
+#   ansible-playbook -i "host1,host2," playbooks/build-runner.yml \
+#     -e "ansible_user=ubuntu" \
+#     -e "official_runner_secret=xxx" \
+#     -e "api_url=https://www.vm0.ai" \
+#     -e "runner_version=0.3.0"
+#
+# Required Variables:
+#   - runner_version: Semantic version of the runner being built
+#   - official_runner_secret: Runner authentication secret (baked into config)
+#   - api_url: vm0 API URL (baked into config)
+
+- name: Build VM0 Runner
+  hosts: all
+  become: true
+
+  vars:
+    runner_name: "v{{ runner_version }}"
+    runner_group: vm0/production
+    data_dir: /var/lib/vm0-runner
+    bin_dir: "{{ data_dir }}/bin/{{ runner_name }}"
+    runner_dir: "{{ data_dir }}/runners/{{ runner_name }}"
+
+  tasks:
+    # ========================================
+    # Phase 1: Deploy binaries
+    # ========================================
+    - name: Ensure bin directory exists
+      file:
+        path: "{{ bin_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy runner binary (guest binaries are embedded)
+      copy:
+        src: "{{ playbook_dir }}/../../crates/target/aarch64-unknown-linux-musl/release/runner"
+        dest: "{{ bin_dir }}/"
+        mode: '0755'
+
+    # ========================================
+    # Phase 2: Setup + Build
+    # ========================================
+    - name: Download dependencies (Firecracker, kernel, mitmproxy)
+      command: "{{ bin_dir }}/runner setup"
+
+    - name: Build default rootfs and snapshot
+      command: >
+        {{ bin_dir }}/runner build
+        --profile vm0/default
+      environment:
+        # R2 credentials so `runner build` can pull the rootfs.ext4 from the
+        # shared image cache instead of rebuilding it from scratch (~3-5 min
+        # saved per deploy).  Only rootfs is cached; the snapshot is always
+        # created locally because it contains host-specific state.  Host CA
+        # is swapped in via inject-ca.sh after download.  Without these, R2
+        # download is skipped and the local build path runs unchanged.
+        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
+        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
+        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
+        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
+      register: default_build_output
+
+    - name: Parse default build hashes
+      set_fact:
+        default_rootfs_hash: "{{ default_build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
+        default_snapshot_hash: "{{ default_build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
+
+    # ========================================
+    # Phase 3a: Configure (no service install)
+    # ========================================
+    # Writes runner.yaml to a per-version directory. Does not touch any
+    # running service — the promote phase is responsible for systemd install.
+    - name: Generate runner config
+      command: >
+        {{ bin_dir }}/runner config
+        --profile vm0/default
+        --rootfs-hash {{ default_rootfs_hash }}
+        --snapshot-hash {{ default_snapshot_hash }}
+        --name {{ runner_name }}
+        --group {{ runner_group }}
+        --runner-dirname {{ runner_name }}
+        --api-url {{ api_url }}
+        --token vm0_official_{{ official_runner_secret }}

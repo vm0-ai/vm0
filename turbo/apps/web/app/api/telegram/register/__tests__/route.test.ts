@@ -1,0 +1,238 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { HttpResponse } from "msw";
+import { POST } from "../route";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers";
+import { server } from "../../../../../src/mocks/server";
+import { http } from "../../../../../src/__tests__/msw";
+
+const context = testContext();
+
+const TEST_BOT_TOKEN = "123456:ABC-test-token";
+
+function telegramGetMe(botId: string, username: string) {
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/getMe`,
+    () => {
+      return HttpResponse.json({
+        ok: true,
+        result: {
+          id: Number(botId),
+          is_bot: true,
+          first_name: "Bot",
+          username,
+        },
+      });
+    },
+  );
+}
+
+function telegramGetMeFail() {
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/getMe`,
+    () => {
+      return HttpResponse.json(
+        { ok: false, description: "Unauthorized" },
+        { status: 401 },
+      );
+    },
+  );
+}
+
+function telegramSetWebhook(succeed = true) {
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/setWebhook`,
+    () => {
+      return succeed
+        ? HttpResponse.json({ ok: true, result: true })
+        : HttpResponse.json(
+            { ok: false, description: "Webhook failed" },
+            { status: 400 },
+          );
+    },
+  );
+}
+
+function telegramSetMyCommands() {
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/setMyCommands`,
+    () => {
+      return HttpResponse.json({ ok: true, result: true });
+    },
+  );
+}
+
+function registerRequest(body: Record<string, unknown>) {
+  return new Request("http://localhost:3000/api/telegram/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Generate a unique numeric bot ID for test isolation */
+function testBotId(): string {
+  return String(Date.now() + Math.floor(Math.random() * 100000));
+}
+
+describe("POST /api/telegram/register", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await POST(registerRequest({ botToken: TEST_BOT_TOKEN }));
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 400 when botToken is missing", async () => {
+    await context.setupUser();
+
+    const response = await POST(registerRequest({}));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 400 when bot token is invalid", async () => {
+    await context.setupUser();
+
+    const handler = telegramGetMeFail();
+    server.use(handler.handler);
+
+    const response = await POST(registerRequest({ botToken: TEST_BOT_TOKEN }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toContain("Invalid bot token");
+  });
+
+  it("creates installation and sets webhook on valid token", async () => {
+    await context.setupUser();
+
+    const botId = testBotId();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+
+    const getMeHandler = telegramGetMe(botId, `bot_${botId}`);
+    const setWebhookHandler = telegramSetWebhook(true);
+    const setCommandsHandler = telegramSetMyCommands();
+    server.use(
+      getMeHandler.handler,
+      setWebhookHandler.handler,
+      setCommandsHandler.handler,
+    );
+
+    const response = await POST(
+      registerRequest({ botToken: TEST_BOT_TOKEN, defaultAgentId: composeId }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.botId).toBe(botId);
+    expect(body.botUsername).toBe(`bot_${botId}`);
+    expect(body.webhookUrl).toContain("/api/telegram/webhook/");
+    expect(body.id).toBeDefined();
+
+    expect(getMeHandler.mocked).toHaveBeenCalledTimes(1);
+    expect(setWebhookHandler.mocked).toHaveBeenCalledTimes(1);
+    expect(setCommandsHandler.mocked).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 409 when bot is already registered", async () => {
+    await context.setupUser();
+
+    const botId = testBotId();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+
+    const getMeHandler = telegramGetMe(botId, `dup_bot_${botId}`);
+    const setWebhookHandler = telegramSetWebhook(true);
+    const setCommandsHandler = telegramSetMyCommands();
+    server.use(
+      getMeHandler.handler,
+      setWebhookHandler.handler,
+      setCommandsHandler.handler,
+    );
+
+    // First registration succeeds
+    const first = await POST(
+      registerRequest({ botToken: TEST_BOT_TOKEN, defaultAgentId: composeId }),
+    );
+    expect(first.status).toBe(201);
+
+    // Second registration returns conflict
+    const second = await POST(
+      registerRequest({ botToken: TEST_BOT_TOKEN, defaultAgentId: composeId }),
+    );
+    const body = await second.json();
+
+    expect(second.status).toBe(409);
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.message).toContain("/connect");
+  });
+
+  it("returns 400 when no default agent is available", async () => {
+    await context.setupUser();
+
+    const botId = testBotId();
+    const getMeHandler = telegramGetMe(botId, `noagent_bot_${botId}`);
+    server.use(getMeHandler.handler);
+
+    // No defaultAgentId in body and VM0_DEFAULT_AGENT env var not set
+    const response = await POST(registerRequest({ botToken: TEST_BOT_TOKEN }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toContain("No default agent specified");
+  });
+
+  it("returns 404 when defaultAgentId references a nonexistent agent", async () => {
+    await context.setupUser();
+
+    const botId = testBotId();
+    const getMeHandler = telegramGetMe(botId, `ghost_bot_${botId}`);
+    server.use(getMeHandler.handler);
+
+    const response = await POST(
+      registerRequest({
+        botToken: TEST_BOT_TOKEN,
+        defaultAgentId: "00000000-0000-0000-0000-000000000000",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe("NOT_FOUND");
+    expect(body.error.message).toContain("Agent not found");
+  });
+
+  it("rolls back installation when webhook registration fails", async () => {
+    await context.setupUser();
+
+    const botId = testBotId();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+
+    const getMeHandler = telegramGetMe(botId, `fail_bot_${botId}`);
+    const setWebhookHandler = telegramSetWebhook(false);
+    server.use(getMeHandler.handler, setWebhookHandler.handler);
+
+    const response = await POST(
+      registerRequest({ botToken: TEST_BOT_TOKEN, defaultAgentId: composeId }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error.code).toBe("BAD_GATEWAY");
+  });
+});

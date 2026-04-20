@@ -1,0 +1,222 @@
+# Changelog
+
+## [0.16.8](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.7...guest-init-v0.16.8) (2026-04-17)
+
+## [0.16.7](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.6...guest-init-v0.16.7) (2026-04-17)
+
+## [0.16.6](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.5...guest-init-v0.16.6) (2026-04-14)
+
+## [0.16.5](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.4...guest-init-v0.16.5) (2026-04-14)
+
+## [0.16.4](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.3...guest-init-v0.16.4) (2026-04-14)
+
+## [0.16.3](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.2...guest-init-v0.16.3) (2026-04-13)
+
+## [0.16.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.1...guest-init-v0.16.2) (2026-04-12)
+
+## [0.16.1](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.0...guest-init-v0.16.1) (2026-04-12)
+
+## [0.16.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.15.2...guest-init-v0.16.0) (2026-04-09)
+
+
+### Features
+
+* **phone:** add webhook signature verification for call_ended events ([#8624](https://github.com/vm0-ai/vm0/issues/8624)) ([528e8a4](https://github.com/vm0-ai/vm0/commit/528e8a45c50588c98eb49b996f7846af56437842))
+
+## [0.15.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.15.1...guest-init-v0.15.2) (2026-04-04)
+
+
+### Performance Improvements
+
+* **runner:** replace docker build with debootstrap for rootfs creation ([#8042](https://github.com/vm0-ai/vm0/issues/8042)) ([41e932a](https://github.com/vm0-ai/vm0/commit/41e932aacb06a8a10234b1eb5219f90e84135917))
+
+## [0.15.1](https://github.com/vm0-ai/vm0/compare/guest-init-v0.15.0...guest-init-v0.15.1) (2026-04-03)
+
+
+### Refactoring
+
+* centralize /etc/environment in build-rootfs.sh ([#7825](https://github.com/vm0-ai/vm0/issues/7825)) ([fbe263b](https://github.com/vm0-ai/vm0/commit/fbe263bcdbb5eac69be6583711589be82830af32))
+
+## [0.15.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.7...guest-init-v0.15.0) (2026-03-29)
+
+
+### Features
+
+* **guest-init:** use kernel root= boot arg instead of pivot_root ([#7106](https://github.com/vm0-ai/vm0/issues/7106)) ([b373849](https://github.com/vm0-ai/vm0/commit/b373849cb331296ae7665704edd400548d67c2a5))
+* **sandbox-fc:** replace guest-side overlayfs with host-side dm-snapshot cow ([#6521](https://github.com/vm0-ai/vm0/issues/6521)) ([8f6a118](https://github.com/vm0-ai/vm0/commit/8f6a1185bfd6dd4604687662f3d03be6076ea71f))
+
+## [0.14.7](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.6...guest-init-v0.14.7) (2026-03-26)
+
+
+### Bug Fixes
+
+* suppress npm upgrade notices in sandbox environment ([#6994](https://github.com/vm0-ai/vm0/issues/6994)) ([2338c2c](https://github.com/vm0-ai/vm0/commit/2338c2c34932f44103cf7b74a682bbe41671b1e5)), closes [#6970](https://github.com/vm0-ai/vm0/issues/6970)
+
+## [0.14.6](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.5...guest-init-v0.14.6) (2026-03-20)
+
+## [0.14.5](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.4...guest-init-v0.14.5) (2026-03-19)
+
+## [0.14.4](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.3...guest-init-v0.14.4) (2026-03-07)
+
+
+### Bug Fixes
+
+* **guest-init:** set correct env vars for sudo and user sessions ([#3892](https://github.com/vm0-ai/vm0/issues/3892)) ([a1f46e3](https://github.com/vm0-ai/vm0/commit/a1f46e3204f6f897f793118f97a3731d2b370bb3))
+
+## [0.14.3](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.2...guest-init-v0.14.3) (2026-03-06)
+
+## [0.14.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.1...guest-init-v0.14.2) (2026-03-05)
+
+
+### Bug Fixes
+
+* **guest-init:** configure aggressive tcp keepalive to detect dead connections ([#3673](https://github.com/vm0-ai/vm0/issues/3673)) ([6bf5cb9](https://github.com/vm0-ai/vm0/commit/6bf5cb927da3202dbfb0f0f968f1e3942ed18d0d)), closes [#3670](https://github.com/vm0-ai/vm0/issues/3670)
+
+## [0.14.1](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.0...guest-init-v0.14.1) (2026-03-04)
+
+## [0.14.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.13.0...guest-init-v0.14.0) (2026-03-04)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.13.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.12.3...guest-init-v0.13.0) (2026-03-03)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.12.3](https://github.com/vm0-ai/vm0/compare/guest-init-v0.12.2...guest-init-v0.12.3) (2026-03-02)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.12.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.12.1...guest-init-v0.12.2) (2026-03-02)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.12.1](https://github.com/vm0-ai/vm0/compare/guest-init-v0.12.0...guest-init-v0.12.1) (2026-03-01)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.12.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.11.0...guest-init-v0.12.0) (2026-03-01)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.10.0...guest-init-v0.11.0) (2026-03-01)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.10.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.9.0...guest-init-v0.10.0) (2026-03-01)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.8.5...guest-init-v0.9.0) (2026-03-01)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.8.5](https://github.com/vm0-ai/vm0/compare/guest-init-v0.8.4...guest-init-v0.8.5) (2026-02-28)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.8.4](https://github.com/vm0-ai/vm0/compare/guest-init-v0.8.3...guest-init-v0.8.4) (2026-02-27)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.8.3](https://github.com/vm0-ai/vm0/compare/guest-init-v0.8.2...guest-init-v0.8.3) (2026-02-27)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.8.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.8.1...guest-init-v0.8.2) (2026-02-27)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.8.1](https://github.com/vm0-ai/vm0/compare/guest-init-v0.8.0...guest-init-v0.8.1) (2026-02-26)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.7.0...guest-init-v0.8.0) (2026-02-25)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.1.5...guest-init-v0.7.0) (2026-02-25)
+
+
+### Miscellaneous Chores
+
+* **guest-init:** Synchronize runner-guest versions
+
+## [0.1.5](https://github.com/vm0-ai/vm0/compare/guest-init-v0.1.4...guest-init-v0.1.5) (2026-02-23)
+
+
+### Bug Fixes
+
+* **vsock-guest:** handle echild race with pid 1 zombie reaper ([#3118](https://github.com/vm0-ai/vm0/issues/3118)) ([985f349](https://github.com/vm0-ai/vm0/commit/985f349134b981d6123fe26ee79f991ec56ceb59))
+
+## [0.1.4](https://github.com/vm0-ai/vm0/compare/guest-init-v0.1.3...guest-init-v0.1.4) (2026-02-23)
+
+
+### Bug Fixes
+
+* **vsock-guest:** handle echild race with pid 1 zombie reaper ([#3118](https://github.com/vm0-ai/vm0/issues/3118)) ([985f349](https://github.com/vm0-ai/vm0/commit/985f349134b981d6123fe26ee79f991ec56ceb59))
+
+## [0.1.3](https://github.com/vm0-ai/vm0/compare/guest-init-v0.1.2...guest-init-v0.1.3) (2026-02-22)
+
+
+### Bug Fixes
+
+* **vsock-guest:** handle echild race with pid 1 zombie reaper ([#3118](https://github.com/vm0-ai/vm0/issues/3118)) ([985f349](https://github.com/vm0-ai/vm0/commit/985f349134b981d6123fe26ee79f991ec56ceb59))
+
+## [0.1.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.1.1...guest-init-v0.1.2) (2026-02-22)
+
+
+### Bug Fixes
+
+* **vsock-guest:** handle echild race with pid 1 zombie reaper ([#3118](https://github.com/vm0-ai/vm0/issues/3118)) ([985f349](https://github.com/vm0-ai/vm0/commit/985f349134b981d6123fe26ee79f991ec56ceb59))
+
+## [0.1.1](https://github.com/vm0-ai/vm0/compare/guest-init-v0.1.0...guest-init-v0.1.1) (2026-02-22)
+
+
+### Bug Fixes
+
+* **vsock-guest:** handle echild race with pid 1 zombie reaper ([#3118](https://github.com/vm0-ai/vm0/issues/3118)) ([985f349](https://github.com/vm0-ai/vm0/commit/985f349134b981d6123fe26ee79f991ec56ceb59))

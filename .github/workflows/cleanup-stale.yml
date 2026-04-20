@@ -1,0 +1,538 @@
+name: Cleanup Stale Resources
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # Daily at 3:00 AM UTC
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Dry-run mode (no actual deletions)'
+        type: boolean
+        default: false
+
+env:
+  DRY_RUN: ${{ inputs.dry-run || false }}
+
+jobs:
+  cleanup-neon-branches:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    steps:
+      - name: Install neonctl
+        run: npm install -g neonctl@2.15.0
+
+      - name: Cleanup Stale Neon Branches
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+
+          DELETED=0
+          SKIPPED=0
+
+          # Get all preview branches
+          BRANCHES=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r '.[] | select(.name | startswith("preview/")) | .name')
+
+          for branch in $BRANCHES; do
+            # Skip staging (main branch deployment)
+            if [ "$branch" = "preview/staging" ]; then
+              echo "Skipping $branch (staging)"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            # Extract PR number from preview/pr-{number}
+            PR_NUMBER=$(echo "$branch" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
+            if [ -n "$PR_NUMBER" ]; then
+
+              # Check PR state via GitHub API
+              PR_STATE=$(curl -sf -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" | jq -r '.state')
+
+              if [ "$PR_STATE" = "open" ]; then
+                echo "Keeping $branch - PR #$PR_NUMBER is open"
+                SKIPPED=$((SKIPPED + 1))
+              else
+                if [ "$DRY_RUN" = "true" ]; then
+                  echo "[DRY-RUN] Would delete $branch (PR #$PR_NUMBER state: $PR_STATE)"
+                else
+                  echo "Deleting $branch (PR #$PR_NUMBER state: $PR_STATE)"
+                  neonctl branches delete "$branch" --project-id "$NEON_PROJECT_ID"
+                fi
+                DELETED=$((DELETED + 1))
+              fi
+            else
+              echo "Skipping $branch (unknown format)"
+              SKIPPED=$((SKIPPED + 1))
+            fi
+          done
+
+          echo ""
+          echo "=== Neon Cleanup Summary ==="
+          echo "Deleted: $DELETED"
+          echo "Skipped: $SKIPPED"
+
+  cleanup-github-deployments:
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+      pull-requests: read
+    steps:
+      - name: Cleanup Stale Deployments
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const dryRun = '${{ env.DRY_RUN }}' === 'true';
+            let deleted = 0, skipped = 0;
+
+            // Get all open PRs (for lookup)
+            const openPRs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            const openPRNumbers = new Set(openPRs.map(pr => pr.number));
+            const openBranches = new Set(openPRs.map(pr => pr.head.ref));
+
+            // Get all deployments
+            const deployments = await github.paginate(github.rest.repos.listDeployments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            // Group main/staging deployments by environment to keep only latest
+            const mainStagingByEnv = new Map();
+
+            // Helper to delete a deployment
+            async function deleteDeployment(deployment, reason) {
+              if (dryRun) {
+                console.log(`[DRY-RUN] Would delete deployment ${deployment.id} (${deployment.environment}) - ${reason}`);
+              } else {
+                // Mark as inactive first (required by GitHub API)
+                await github.rest.repos.createDeploymentStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.id,
+                  state: 'inactive',
+                  description: reason
+                });
+
+                await github.rest.repos.deleteDeployment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.id
+                });
+
+                console.log(`Deleted deployment ${deployment.id} (${deployment.environment}) - ${reason}`);
+              }
+              deleted++;
+            }
+
+            for (const deployment of deployments) {
+              const env = deployment.environment || '';
+
+              // Only process preview deployments
+              if (!env.includes('/preview/')) {
+                continue;
+              }
+
+              // Extract info from environment name
+              const match = env.match(/\/preview\/(.+)$/);
+              if (!match) continue;
+
+              const identifier = match[1];
+
+              // Handle main/staging deployments - collect for later processing
+              if (identifier === 'main' || identifier === 'staging') {
+                if (!mainStagingByEnv.has(env)) {
+                  mainStagingByEnv.set(env, []);
+                }
+                mainStagingByEnv.get(env).push(deployment);
+                continue;
+              }
+
+              let shouldDelete = false;
+              let reason = '';
+
+              // Check if it's a PR-based deployment (pr-123 format)
+              const prMatch = identifier.match(/^pr-(\d+)$/);
+              if (prMatch) {
+                const prNumber = parseInt(prMatch[1]);
+                if (!openPRNumbers.has(prNumber)) {
+                  shouldDelete = true;
+                  reason = `PR #${prNumber} is not open`;
+                }
+              } else {
+                // Branch-based deployment
+                if (!openBranches.has(identifier)) {
+                  shouldDelete = true;
+                  reason = `branch ${identifier} has no open PR`;
+                }
+              }
+
+              if (!shouldDelete) {
+                skipped++;
+                continue;
+              }
+
+              await deleteDeployment(deployment, `Stale cleanup - ${reason}`);
+            }
+
+            // Process main/staging deployments - keep only the latest per environment
+            for (const [env, envDeployments] of mainStagingByEnv) {
+              // Sort by created_at descending (newest first)
+              envDeployments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+              // Keep the first (newest), delete the rest
+              const [newest, ...older] = envDeployments;
+              console.log(`Keeping latest ${env} deployment: ${newest.id} (created: ${newest.created_at})`);
+              skipped++;
+
+              for (const oldDeployment of older) {
+                await deleteDeployment(oldDeployment, `Stale cleanup - older ${env} deployment`);
+              }
+            }
+
+            console.log('');
+            console.log('=== Deployment Cleanup Summary ===');
+            console.log(`Deleted: ${deleted}`);
+            console.log(`Skipped: ${skipped}`);
+
+  cleanup-metal-runners:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check if cleanup needed
+        id: check
+        env:
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOSTS" ]; then
+            echo "Metal secrets not available, skipping runner cleanup"
+            echo "should-cleanup=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should-cleanup=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Find recently closed PRs
+        if: steps.check.outputs.should-cleanup == 'true'
+        id: prs
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+            // Fetch first page only — sorted by updated desc, 100 is enough for 2 days
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100
+            });
+            const recent = pulls
+              .filter(pr => pr.closed_at && pr.closed_at >= since)
+              .map(pr => pr.number);
+            console.log(`Found ${recent.length} PRs closed since ${since}: ${recent.join(', ')}`);
+            core.setOutput('numbers', JSON.stringify(recent));
+            core.setOutput('has-prs', recent.length > 0 ? 'true' : 'false');
+
+      - name: Install Ansible
+        if: steps.check.outputs.should-cleanup == 'true' && steps.prs.outputs.has-prs == 'true'
+        run: pip3 install ansible-core
+
+      - name: Setup SSH via Cloudflare Tunnel
+        if: steps.check.outputs.should-cleanup == 'true' && steps.prs.outputs.has-prs == 'true'
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Cleanup stale runners
+        if: steps.check.outputs.should-cleanup == 'true' && steps.prs.outputs.has-prs == 'true'
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          PR_NUMBERS: ${{ steps.prs.outputs.numbers }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+        run: |
+          cd ansible
+          CLEANED=0
+          FAILED=0
+
+          for PR_NUMBER in $(echo "$PR_NUMBERS" | jq -r '.[]'); do
+            echo "--- Cleaning up runners for PR #${PR_NUMBER} ---"
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[DRY-RUN] Would cleanup turbo runner pr-${PR_NUMBER}"
+              echo "[DRY-RUN] Would cleanup crates runner pr-${PR_NUMBER}-test"
+              CLEANED=$((CLEANED + 1))
+              continue
+            fi
+
+            PR_FAILED=0
+
+            # Cleanup turbo runner
+            if ! ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/cleanup-turbo-runner.yml \
+              -e "ansible_user=${METAL_USER}" \
+              -e "job_ref=pr-${PR_NUMBER}" \
+              -v; then
+              echo "::warning::Turbo runner cleanup failed for pr-${PR_NUMBER}"
+              PR_FAILED=1
+            fi
+
+            # Cleanup crates runner
+            if ! ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/cleanup-crates-runner.yml \
+              -e "ansible_user=${METAL_USER}" \
+              -e "job_ref=pr-${PR_NUMBER}-test" \
+              -v; then
+              echo "::warning::Crates runner cleanup failed for pr-${PR_NUMBER}-test"
+              PR_FAILED=1
+            fi
+
+            if [ "$PR_FAILED" -eq 1 ]; then
+              FAILED=$((FAILED + 1))
+            else
+              CLEANED=$((CLEANED + 1))
+            fi
+          done
+
+          echo ""
+          echo "=== Metal Runner Cleanup Summary ==="
+          echo "Cleaned: $CLEANED"
+          echo "Failures: $FAILED"
+
+  cleanup-clerk-test-users:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Find recently closed PRs
+        id: prs
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100
+            });
+            const recent = pulls
+              .filter(pr => pr.closed_at && pr.closed_at >= since)
+              .map(pr => pr.number);
+            console.log(`Found ${recent.length} PRs closed since ${since}: ${recent.join(', ')}`);
+            core.setOutput('numbers', JSON.stringify(recent));
+            core.setOutput('has-prs', recent.length > 0 ? 'true' : 'false');
+
+      - name: Delete stale Clerk test users for closed PRs
+        if: steps.prs.outputs.has-prs == 'true'
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          PR_NUMBERS: ${{ steps.prs.outputs.numbers }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+        run: |
+          set -eu
+
+          DELETED=0
+          SKIPPED=0
+
+          for PR_NUMBER in $(echo "$PR_NUMBERS" | jq -r '.[]'); do
+            JOB_REF="pr-${PR_NUMBER}"
+            echo "--- Searching for test users matching ${JOB_REF}+clerk_test ---"
+
+            USERS=$(curl -sS -X GET "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+              -H "Content-Type: application/json")
+
+            while read -r user; do
+              USER_ID=$(echo "$user" | jq -r '.id')
+              EMAIL=$(echo "$user" | jq -r '.email_addresses[0].email_address // "unknown"')
+
+              # Verify email actually matches this PR (Clerk query is fuzzy)
+              if [[ "$EMAIL" != "${JOB_REF}+clerk_test"* ]]; then
+                echo "Skipping $USER_ID ($EMAIL) — does not match ${JOB_REF}"
+                SKIPPED=$((SKIPPED + 1))
+                continue
+              fi
+
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "[DRY-RUN] Would delete $USER_ID ($EMAIL)"
+              else
+                echo "Deleting $USER_ID ($EMAIL)"
+                if ! curl -sS -X DELETE "https://api.clerk.com/v1/users/${USER_ID}" \
+                  -H "Authorization: Bearer ${CLERK_SECRET_KEY}"; then
+                  echo "::warning::Failed to delete user $USER_ID ($EMAIL)"
+                fi
+              fi
+              DELETED=$((DELETED + 1))
+            done < <(echo "$USERS" | jq -c '.[]' 2>/dev/null)
+          done
+
+          echo ""
+          echo "=== Clerk Test User Cleanup Summary ==="
+          echo "Deleted: $DELETED"
+          echo "Skipped: $SKIPPED"
+
+  cleanup-clerk-empty-orgs:
+    runs-on: ubuntu-latest
+    needs: cleanup-clerk-test-users
+    steps:
+      - name: Delete Clerk organizations with no members
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+        run: |
+          set -eu
+
+          DELETED=0
+          SKIPPED=0
+          OFFSET=0
+          LIMIT=100
+
+          # Collect all org IDs first
+          ORG_IDS=()
+          ORG_NAMES=()
+          TOTAL=$(curl -sS -X GET "https://api.clerk.com/v1/organizations?limit=1" \
+            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" | jq '.total_count')
+
+          echo "Total organizations: $TOTAL"
+
+          while [ "$OFFSET" -lt "$TOTAL" ]; do
+            ORGS=$(curl -sS -X GET "https://api.clerk.com/v1/organizations?limit=${LIMIT}&offset=${OFFSET}" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
+
+            while read -r org; do
+              ORG_IDS+=("$(echo "$org" | jq -r '.id')")
+              ORG_NAMES+=("$(echo "$org" | jq -r '.name')")
+            done < <(echo "$ORGS" | jq -c '.data[]')
+
+            OFFSET=$((OFFSET + LIMIT))
+          done
+
+          echo "Fetched ${#ORG_IDS[@]} organizations, checking memberships..."
+
+          for i in "${!ORG_IDS[@]}"; do
+            ORG_ID="${ORG_IDS[$i]}"
+            ORG_NAME="${ORG_NAMES[$i]}"
+
+            MEMBER_COUNT=$(curl -sS -X GET "https://api.clerk.com/v1/organizations/${ORG_ID}/memberships?limit=1" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" | jq '.total_count')
+
+            if [ "$MEMBER_COUNT" -gt 0 ]; then
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[DRY-RUN] Would delete org ${ORG_ID} (${ORG_NAME})"
+            else
+              echo "Deleting org ${ORG_ID} (${ORG_NAME})"
+              if ! curl -sS -X DELETE "https://api.clerk.com/v1/organizations/${ORG_ID}" \
+                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null; then
+                echo "::warning::Failed to delete org ${ORG_ID} (${ORG_NAME})"
+              fi
+            fi
+            DELETED=$((DELETED + 1))
+          done
+
+          echo ""
+          echo "=== Clerk Empty Org Cleanup Summary ==="
+          echo "Deleted: $DELETED"
+          echo "Skipped (has members): $SKIPPED"
+
+  cleanup-git-branches:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Cleanup Stale Git Branches
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const dryRun = '${{ env.DRY_RUN }}' === 'true';
+            let deleted = 0, skipped = 0;
+
+            // Get all branches
+            const branches = await github.paginate(github.rest.repos.listBranches, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            for (const branch of branches) {
+              const branchName = branch.name;
+
+              // Skip protected branch
+              if (branchName === 'main') {
+                continue;
+              }
+
+              // Check for open PRs with this branch as head
+              const openPRs = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branchName}`,
+                state: 'open',
+                per_page: 1
+              });
+
+              if (openPRs.data.length > 0) {
+                skipped++;
+                continue;
+              }
+
+              // Check for closed PRs (only delete if a closed PR exists)
+              const closedPRs = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branchName}`,
+                state: 'closed',
+                per_page: 1
+              });
+
+              if (closedPRs.data.length === 0) {
+                // No PR exists - skip (might be a direct push)
+                skipped++;
+                continue;
+              }
+
+              const closedPR = closedPRs.data[0];
+
+              if (dryRun) {
+                console.log(`[DRY-RUN] Would delete branch ${branchName} (closed PR #${closedPR.number})`);
+              } else {
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${branchName}`
+                });
+                console.log(`Deleted branch ${branchName} (closed PR #${closedPR.number})`);
+              }
+              deleted++;
+            }
+
+            console.log('');
+            console.log('=== Git Branch Cleanup Summary ===');
+            console.log(`Deleted: ${deleted}`);
+            console.log(`Skipped: ${skipped}`);

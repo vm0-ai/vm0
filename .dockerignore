@@ -1,0 +1,15 @@
+.git
+.github
+.certs
+.docker
+crates
+ansible
+e2e
+docs
+bin
+scripts
+**/node_modules
+turbo/.turbo
+**/.next
+**/dist
+**/.cache

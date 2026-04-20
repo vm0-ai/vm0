@@ -1,0 +1,32 @@
+{
+  "name": "@vm0/core",
+  "version": "8.208.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@vm0/eslint-config": "workspace:*",
+    "@vm0/typescript-config": "workspace:*",
+    "eslint": "^9.34.0",
+    "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "0.21.1",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.4"
+  },
+  "dependencies": {
+    "@ts-rest/core": "3.53.0-rc.1",
+    "yaml": "^2.8.1",
+    "zod": "^4.3.6"
+  }
+}

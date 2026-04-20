@@ -1,0 +1,77 @@
+{
+  "name": "vm0",
+  "private": true,
+  "scripts": {
+    "postinstall": "pnpm -F @vm0/firewalls-generator generate",
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:auth": "bash ../scripts/dev-auth.sh",
+    "lint": "turbo run lint --concurrency=1",
+    "format": "prettier --write --ignore-unknown .",
+    "check-types": "turbo run check-types --concurrency=1",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:perf": "VITEST_PERF=1 vitest --run",
+    "profile-tests": "bash scripts/profile-tests.sh",
+    "knip": "knip",
+    "knip:fix": "knip --fix --allow-remove-files",
+    "knip:production": "knip --production --strict",
+    "e2b:cli:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts",
+    "dev:status": "bash scripts/dev-server-check.sh",
+    "runner": "bash ../scripts/dev-runner.sh deploy",
+    "runner:local": "bash ../scripts/dev-runner.sh deploy-local",
+    "runner:submit": "bash ../scripts/dev-runner.sh submit",
+    "runner:exec": "bash ../scripts/dev-runner.sh exec",
+    "runner:remove": "bash ../scripts/dev-runner.sh remove"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "@vitest/ui": "^4.1.4",
+    "@vm0/firewalls-generator": "workspace:*",
+    "dotenv-cli": "^11.0.0",
+    "e2b": "^2.10.3",
+    "knip": "^5.63.1",
+    "prettier": "^3.6.2",
+    "tsx": "^4.21.0",
+    "turbo": "^2.9.6",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.4"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "react-native",
+        "@solana/web3.js",
+        "fastestsmallesttextencoderdecoder"
+      ]
+    },
+    "overrides": {
+      "fast-xml-parser": ">=5.5.7",
+      "glob": ">=10.5.0",
+      "tar": ">=7.5.7",
+      "@isaacs/brace-expansion": ">=5.0.1",
+      "brace-expansion": ">=5.0.5",
+      "axios": ">=1.15.0",
+      "follow-redirects": ">=1.16.0",
+      "dompurify": ">=3.3.2",
+      "js-yaml": ">=4.1.1",
+      "lodash": ">=4.18.0",
+      "lodash-es": ">=4.18.0",
+      "mdast-util-to-hast": ">=13.2.1",
+      "minimatch": ">=10.2.3",
+      "@esbuild-kit/core-utils>esbuild": "^0.25.4",
+      "flatted": ">=3.4.2",
+      "picomatch": ">=4.0.4",
+      "yaml": ">=2.8.3",
+      "smol-toml": ">=1.6.1",
+      "@opentelemetry/instrumentation": ">=0.213.0",
+      "zod": "4.3.6"
+    }
+  },
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

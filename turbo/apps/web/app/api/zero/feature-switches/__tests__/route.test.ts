@@ -1,0 +1,114 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { GET, POST } from "../route";
+import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+import { testContext } from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+
+vi.mock("@axiomhq/logging");
+
+const context = testContext();
+
+const BASE_URL = "http://localhost:3000/api/zero/feature-switches";
+
+function getRequest() {
+  return createTestRequest(BASE_URL);
+}
+
+function postRequest(switches: Record<string, boolean>) {
+  return createTestRequest(BASE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ switches }),
+  });
+}
+
+describe("GET /api/zero/feature-switches", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await GET(getRequest());
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should return empty switches for new user", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const response = await GET(getRequest());
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.switches).toEqual({});
+  });
+});
+
+describe("POST /api/zero/feature-switches", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await POST(postRequest({ voiceChat: true }));
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should create new switches", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const response = await POST(postRequest({ voiceChat: true }));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.switches).toEqual({ voiceChat: true });
+  });
+
+  it("should merge with existing switches", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    await POST(postRequest({ voiceChat: true }));
+    const response = await POST(postRequest({ lab: false }));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.switches).toEqual({ voiceChat: true, lab: false });
+  });
+
+  it("should override existing switch values", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    await POST(postRequest({ voiceChat: true }));
+    const response = await POST(postRequest({ voiceChat: false }));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.switches).toEqual({ voiceChat: false });
+  });
+
+  it("should return updated switches on subsequent GET", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    await POST(postRequest({ voiceChat: true, lab: false }));
+
+    const response = await GET(getRequest());
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.switches).toEqual({ voiceChat: true, lab: false });
+  });
+});

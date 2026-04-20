@@ -1,0 +1,749 @@
+//! Process discovery via `/proc` scanning and status.json helpers.
+//!
+//! Shared between `doctor`, `kill`, and `exec` commands. All cmdline
+//! parsers are pure functions testable without a running system.
+
+use std::path::{Path, PathBuf};
+
+// ---------------------------------------------------------------------------
+// Info structs
+// ---------------------------------------------------------------------------
+
+/// Info extracted from a runner process cmdline.
+pub struct RunnerProcessInfo {
+    pub pid: u32,
+    pub config_path: PathBuf,
+    pub subcommand: String,
+}
+
+/// Info extracted from a firecracker process cmdline.
+pub struct FirecrackerProcessInfo {
+    pub pid: u32,
+    pub ppid: Option<u32>,
+    /// The sandbox identity, derived from the workspace dir basename
+    /// (`/proc/{pid}/cwd` = `{base_dir}/workspaces/{sandbox_id}/`). After
+    /// sandbox reuse this is stable across successive run_ids.
+    pub sandbox_id: String,
+    pub base_dir: Option<PathBuf>,
+}
+
+/// Info extracted from a mitmdump process cmdline.
+pub struct MitmproxyProcessInfo {
+    pub pid: u32,
+    pub ppid: Option<u32>,
+    pub port: u16,
+}
+
+/// Info extracted from a dnsmasq process cmdline.
+pub struct DnsmasqProcessInfo {
+    pub pid: u32,
+    pub port: u16,
+}
+
+/// All discovered process info from a single `/proc` scan.
+pub struct DiscoveredProcesses {
+    pub runners: Vec<RunnerProcessInfo>,
+    pub firecrackers: Vec<FirecrackerProcessInfo>,
+    pub mitmdumps: Vec<MitmproxyProcessInfo>,
+    pub dnsmasqs: Vec<DnsmasqProcessInfo>,
+}
+
+// ---------------------------------------------------------------------------
+// Pure parsers — unit-testable without a running system
+// ---------------------------------------------------------------------------
+
+/// Parse a runner cmdline for `start`/`benchmark` subcommand and `--config` path.
+///
+/// Returns `(config_path, subcommand)` or `None` if the cmdline doesn't match.
+fn parse_runner_cmdline(cmdline: &str) -> Option<(PathBuf, String)> {
+    let tokens: Vec<&str> = cmdline.split_whitespace().collect();
+
+    // Must have "start" or "benchmark" subcommand
+    let subcmd_pos = tokens
+        .iter()
+        .position(|&t| t == "start" || t == "benchmark")?;
+    let subcmd = (*tokens.get(subcmd_pos)?).to_string();
+
+    // Must have "--config" (or "-c") followed by a path
+    let config_pos = tokens.iter().position(|&t| t == "--config" || t == "-c")?;
+    let config_path = *tokens.get(config_pos + 1)?;
+
+    Some((PathBuf::from(config_path), subcmd))
+}
+
+/// Check if a cmdline belongs to a firecracker process.
+///
+/// Looks at the binary name (first token) — the run ID and base directory
+/// are resolved from `/proc/{pid}/cwd` instead of argument parsing,
+/// since our sandbox always sets `current_dir` to the workspace.
+fn is_firecracker_cmdline(cmdline: &str) -> bool {
+    let binary = cmdline.split_whitespace().next().unwrap_or("");
+    Path::new(binary).file_name().and_then(|n| n.to_str()) == Some("firecracker")
+}
+
+/// Parse a mitmdump cmdline for the listen port.
+///
+/// Identifies our mitmdump by `vm0_proxy_registry_path=` and extracts
+/// the `--listen-port` value.
+fn parse_mitmdump_cmdline(cmdline: &str) -> Option<u16> {
+    let tokens: Vec<&str> = cmdline.split_whitespace().collect();
+    // Must be our mitmdump (has vm0_proxy_registry_path)
+    if !tokens
+        .iter()
+        .any(|t| t.starts_with("vm0_proxy_registry_path="))
+    {
+        return None;
+    }
+    // Extract --listen-port value
+    let pos = tokens.iter().position(|&t| t == "--listen-port")?;
+    tokens.get(pos + 1)?.parse().ok()
+}
+
+/// Parse a dnsmasq cmdline for the listen port.
+///
+/// Identifies dnsmasq by binary name and extracts the `--port` value.
+fn parse_dnsmasq_cmdline(cmdline: &str) -> Option<u16> {
+    let tokens: Vec<&str> = cmdline.split_whitespace().collect();
+    let binary = tokens.first()?;
+    if !binary.ends_with("dnsmasq") {
+        return None;
+    }
+    let pos = tokens.iter().position(|&t| t == "--port")?;
+    tokens.get(pos + 1)?.parse().ok()
+}
+
+// ---------------------------------------------------------------------------
+// /proc helpers
+// ---------------------------------------------------------------------------
+
+/// Read `/proc/{pid}/cmdline`, replacing NUL separators with spaces.
+async fn read_cmdline(pid: u32) -> Option<String> {
+    let path = format!("/proc/{pid}/cmdline");
+    let mut bytes = tokio::fs::read(&path).await.ok()?;
+    if bytes.is_empty() {
+        return None;
+    }
+    for b in &mut bytes {
+        if *b == 0 {
+            *b = b' ';
+        }
+    }
+    let s = String::from_utf8_lossy(&bytes);
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+/// Read `/proc/{pid}/status` and extract the PPid field.
+async fn read_ppid(pid: u32) -> Option<u32> {
+    let path = format!("/proc/{pid}/status");
+    let content = tokio::fs::read_to_string(&path).await.ok()?;
+    for line in content.lines() {
+        if let Some(val) = line.strip_prefix("PPid:\t") {
+            return val.trim().parse().ok();
+        }
+    }
+    None
+}
+
+/// Parse the process group ID from `/proc/{pid}/stat` content.
+///
+/// Format: `pid (comm) state ppid pgrp ...`
+/// The comm field may contain spaces and parentheses, so we find the
+/// last `)` to skip past it reliably.
+fn parse_pgid_from_stat(content: &str) -> Option<u32> {
+    let after_comm = content.rsplit_once(')')?.1;
+    let mut fields = after_comm.split_whitespace();
+    let _state = fields.next()?;
+    let _ppid = fields.next()?;
+    let pgrp = fields.next()?;
+    pgrp.parse().ok()
+}
+
+/// Read `/proc/{pid}/stat` and extract the process group ID (field 5).
+pub async fn read_pgid(pid: u32) -> Option<u32> {
+    let path = format!("/proc/{pid}/stat");
+    let content = tokio::fs::read_to_string(&path).await.ok()?;
+    parse_pgid_from_stat(&content)
+}
+
+/// Read `/proc/{pid}/cwd` symlink to get the process working directory.
+async fn read_cwd(pid: u32) -> Option<PathBuf> {
+    let link = format!("/proc/{pid}/cwd");
+    tokio::fs::read_link(&link).await.ok()
+}
+
+/// Read `/proc/{pid}/cgroup` and extract the systemd unit name (cgroup v2).
+///
+/// Example content: `0::/system.slice/vm0-runner-v0.2.0.service\n`
+/// Returns `Some("vm0-runner-v0.2.0")` for the above.
+pub async fn read_service_unit(pid: u32) -> Option<String> {
+    let path = format!("/proc/{pid}/cgroup");
+    let content = tokio::fs::read_to_string(&path).await.ok()?;
+    for line in content.lines() {
+        // cgroup v2 format: "0::/<slice>/<unit>.service"
+        // cgroup v1 format: "<id>:<controller>:/<slice>/<unit>.service"
+        let path_part = line.rsplit_once(':')?.1;
+        let basename = path_part.rsplit('/').next()?;
+        if let Some(unit) = basename.strip_suffix(".service") {
+            return Some(unit.to_string());
+        }
+    }
+    None
+}
+
+/// Scan `/proc` for all process cmdlines.
+///
+/// Returns `(pid, cmdline)` pairs for every readable process.
+async fn scan_proc_cmdlines() -> Vec<(u32, String)> {
+    let mut result = Vec::new();
+    let mut entries = match tokio::fs::read_dir("/proc").await {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!("scan_proc_cmdlines: cannot read /proc: {e}");
+            return result;
+        }
+    };
+    loop {
+        let entry = match entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(e) => {
+                tracing::warn!("scan_proc_cmdlines: read entry in /proc: {e}");
+                continue;
+            }
+        };
+        let name = entry.file_name();
+        let Some(name_str) = name.to_str() else {
+            continue;
+        };
+        let Ok(pid) = name_str.parse::<u32>() else {
+            continue;
+        };
+        if let Some(cmdline) = read_cmdline(pid).await {
+            result.push((pid, cmdline));
+        }
+    }
+    result
+}
+
+/// Extract sandbox_id and base_dir from a firecracker workspace CWD.
+///
+/// CWD is `{base_dir}/workspaces/{sandbox_id}/`, so:
+/// - `sandbox_id` is the last component
+/// - `base_dir` is the grandparent of `workspaces`
+fn parse_workspace_cwd(cwd: &Path) -> Option<(String, PathBuf)> {
+    let sandbox_id = cwd.file_name()?.to_string_lossy().into_owned();
+    let workspaces_dir = cwd.parent()?;
+    if workspaces_dir.file_name().and_then(|n| n.to_str()) == Some("workspaces") {
+        let base_dir = workspaces_dir.parent()?.to_path_buf();
+        Some((sandbox_id, base_dir))
+    } else {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Discovery — single /proc scan, dispatches to all parsers
+// ---------------------------------------------------------------------------
+
+/// Scan `/proc` once and discover all runner, firecracker, and mitmdump processes.
+pub async fn discover_all() -> DiscoveredProcesses {
+    let procs = scan_proc_cmdlines().await;
+
+    let mut runners = Vec::new();
+    let mut firecrackers = Vec::new();
+    let mut mitmdumps = Vec::new();
+    let mut dnsmasqs = Vec::new();
+
+    for (pid, cmdline) in &procs {
+        if let Some((config_path, subcommand)) = parse_runner_cmdline(cmdline) {
+            runners.push(RunnerProcessInfo {
+                pid: *pid,
+                config_path,
+                subcommand,
+            });
+        }
+        if is_firecracker_cmdline(cmdline) {
+            firecrackers.push(*pid);
+        }
+        if let Some(port) = parse_mitmdump_cmdline(cmdline) {
+            mitmdumps.push((*pid, port));
+        }
+        if let Some(port) = parse_dnsmasq_cmdline(cmdline) {
+            dnsmasqs.push(DnsmasqProcessInfo { pid: *pid, port });
+        }
+    }
+
+    // Resolve sandbox_id + base_dir + ppid from CWD for firecracker processes
+    let mut fc_infos = Vec::with_capacity(firecrackers.len());
+    for pid in firecrackers {
+        let cwd_info = read_cwd(pid)
+            .await
+            .and_then(|cwd| parse_workspace_cwd(&cwd));
+        let ppid = read_ppid(pid).await;
+        let (sandbox_id, base_dir) = match cwd_info {
+            Some((id, bd)) => (id, Some(bd)),
+            None => (format!("pid-{pid}"), None),
+        };
+        fc_infos.push(FirecrackerProcessInfo {
+            pid,
+            ppid,
+            sandbox_id,
+            base_dir,
+        });
+    }
+
+    // Resolve ppid for mitmdump processes
+    let mut mitm_infos = Vec::with_capacity(mitmdumps.len());
+    for (pid, port) in mitmdumps {
+        let ppid = read_ppid(pid).await;
+        mitm_infos.push(MitmproxyProcessInfo { pid, ppid, port });
+    }
+
+    DiscoveredProcesses {
+        runners,
+        firecrackers: fc_infos,
+        mitmdumps: mitm_infos,
+        dnsmasqs,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Orphan detection
+// ---------------------------------------------------------------------------
+
+/// Walk the ppid chain from `pid` upward to determine if it's an orphan.
+///
+/// Firecracker is not a direct child of the runner — the spawn chain is
+/// `runner → sudo → ip netns exec → sudo -u → firecracker`, so checking
+/// only the immediate ppid is insufficient. This function walks up the
+/// process tree until it either finds a runner PID (not orphan) or reaches
+/// PID 1 / init (orphan).
+///
+/// Returns `false` (not orphan) when the ppid chain cannot be read, to
+/// avoid false positives.
+pub async fn is_orphan(pid: u32, runner_pids: &[u32]) -> bool {
+    let mut current = pid;
+    // Max depth prevents infinite loops from circular pid references.
+    for _ in 0..16 {
+        let Some(ppid) = read_ppid(current).await else {
+            return false; // can't read → don't flag
+        };
+        if runner_pids.contains(&ppid) {
+            return false;
+        }
+        if ppid <= 1 {
+            return true; // reached init → orphaned
+        }
+        current = ppid;
+    }
+    false // max depth reached → don't flag
+}
+
+// ---------------------------------------------------------------------------
+// status.json helpers (shared by kill, exec, and potentially others)
+// ---------------------------------------------------------------------------
+
+/// Load only the `base_dir` field from a runner config YAML (best-effort).
+///
+/// Read / parse failures log at `warn` level and return `None` so a single
+/// broken runner config doesn't stop resolution for the rest.
+pub(crate) async fn load_base_dir(config_path: &Path) -> Option<PathBuf> {
+    #[derive(serde::Deserialize)]
+    struct ConfigShape {
+        base_dir: PathBuf,
+    }
+    let content = match tokio::fs::read_to_string(config_path).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(path = %config_path.display(), error = %e, "skipping runner: cannot read config");
+            return None;
+        }
+    };
+    let shape: ConfigShape = match serde_yaml_ng::from_str(&content) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(path = %config_path.display(), error = %e, "skipping runner: cannot parse config");
+            return None;
+        }
+    };
+    if shape.base_dir.is_absolute() {
+        Some(shape.base_dir)
+    } else {
+        config_path.parent().map(|p| p.join(&shape.base_dir))
+    }
+}
+
+/// Read `{base_dir}/status.json` and extract `(run_id, sandbox_id)` for
+/// every active run. Returns `None` if the file is missing or unparseable
+/// (logs at `warn` level so the operator sees the miss immediately).
+pub(crate) async fn read_active_runs(base_dir: &Path) -> Option<Vec<(String, String)>> {
+    #[derive(serde::Deserialize)]
+    struct StatusShape {
+        #[serde(default)]
+        active_runs: Vec<ActiveRunShape>,
+    }
+    #[derive(serde::Deserialize)]
+    struct ActiveRunShape {
+        run_id: String,
+        sandbox_id: String,
+    }
+    let path = base_dir.join("status.json");
+    let content = match tokio::fs::read_to_string(&path).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "skipping runner: cannot read status.json");
+            return None;
+        }
+    };
+    let shape: StatusShape = match serde_json::from_str(&content) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "skipping runner: cannot parse status.json");
+            return None;
+        }
+    };
+    Some(
+        shape
+            .active_runs
+            .into_iter()
+            .map(|r| (r.run_id, r.sandbox_id))
+            .collect(),
+    )
+}
+
+/// Result of collecting `(run_id, sandbox_id)` pairs from runners.
+pub(crate) struct ActiveRunMappings {
+    pub entries: Vec<(String, String)>,
+    /// How many runners were discovered on the host.
+    pub runners_total: usize,
+    /// How many runners had unreadable configs or status files.
+    pub runners_failed: usize,
+}
+
+/// Collect all `(run_id, sandbox_id)` pairs from every reachable runner's
+/// `status.json`. Used by `kill --run` and `exec --run` to translate a
+/// user-supplied run_id into the sandbox_id that identifies the FC.
+pub(crate) async fn collect_active_run_mappings(
+    runners: &[RunnerProcessInfo],
+) -> ActiveRunMappings {
+    let mut entries = Vec::new();
+    let mut failed = 0usize;
+    for runner in runners {
+        let Some(base_dir) = load_base_dir(&runner.config_path).await else {
+            failed += 1;
+            continue;
+        };
+        match read_active_runs(&base_dir).await {
+            Some(runs) => entries.extend(runs),
+            None => failed += 1,
+        }
+    }
+    ActiveRunMappings {
+        entries,
+        runners_total: runners.len(),
+        runners_failed: failed,
+    }
+}
+
+/// Given a `run_id` prefix, find the unique matching `sandbox_id` from
+/// collected status entries.
+///
+/// Returns the `sandbox_id` on unique match. Errors on empty or ambiguous.
+/// When no match is found and some runners were unreadable, the error
+/// message includes a diagnostic hint so the operator knows why.
+pub(crate) fn resolve_run_to_sandbox(
+    input: &str,
+    mappings: &ActiveRunMappings,
+) -> crate::error::RunnerResult<String> {
+    use crate::error::RunnerError;
+
+    if input.is_empty() {
+        return Err(RunnerError::Config("run id must not be empty".into()));
+    }
+
+    let mut matching: Vec<&(String, String)> = mappings
+        .entries
+        .iter()
+        .filter(|(rid, _)| rid.starts_with(input))
+        .collect();
+    matching.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    matching.dedup();
+
+    match matching.as_slice() {
+        [(_, sandbox_id)] => Ok(sandbox_id.clone()),
+        [] => {
+            let mut msg = format!("no active run matches '{input}'");
+            if mappings.runners_failed > 0 {
+                msg.push_str(&format!(
+                    " ({} of {} runner(s) had unreadable config/status — \
+                     check warnings above)",
+                    mappings.runners_failed, mappings.runners_total,
+                ));
+            } else if mappings.runners_total == 0 {
+                msg.push_str(" (no runner processes found on this host)");
+            }
+            Err(RunnerError::Config(msg))
+        }
+        _ => {
+            let lines: Vec<String> = matching
+                .iter()
+                .map(|(rid, sid)| format!("run={rid} sandbox={sid}"))
+                .collect();
+            Err(RunnerError::Config(format!(
+                "ambiguous run prefix '{input}', matches: [{}]",
+                lines.join(", ")
+            )))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- Runner parser tests --
+
+    #[test]
+    fn parse_runner_start_cmdline() {
+        let cmdline = "/var/lib/vm0-runner/bin/runner start --config /data/runner-01/config.yaml";
+        let (config, subcmd) = parse_runner_cmdline(cmdline).unwrap();
+        assert_eq!(config, Path::new("/data/runner-01/config.yaml"));
+        assert_eq!(subcmd, "start");
+    }
+
+    #[test]
+    fn parse_runner_benchmark_cmdline() {
+        let cmdline = "/usr/local/bin/runner benchmark --config /etc/runner/bench.yaml";
+        let (config, subcmd) = parse_runner_cmdline(cmdline).unwrap();
+        assert_eq!(config, Path::new("/etc/runner/bench.yaml"));
+        assert_eq!(subcmd, "benchmark");
+    }
+
+    #[test]
+    fn parse_runner_short_config_flag() {
+        let cmdline = "runner start -c /data/runner.yaml";
+        let (config, subcmd) = parse_runner_cmdline(cmdline).unwrap();
+        assert_eq!(config, Path::new("/data/runner.yaml"));
+        assert_eq!(subcmd, "start");
+    }
+
+    #[test]
+    fn parse_runner_no_config_returns_none() {
+        assert!(parse_runner_cmdline("runner start").is_none());
+    }
+
+    #[test]
+    fn parse_runner_no_subcommand_returns_none() {
+        assert!(parse_runner_cmdline("runner --config /data/config.yaml").is_none());
+    }
+
+    #[test]
+    fn parse_runner_empty_cmdline() {
+        assert!(parse_runner_cmdline("").is_none());
+    }
+
+    // -- Firecracker identification tests --
+
+    #[test]
+    fn is_firecracker_bare_name() {
+        assert!(is_firecracker_cmdline(
+            "firecracker --api-sock /run/vm0/sock/abc/api.sock"
+        ));
+    }
+
+    #[test]
+    fn is_firecracker_full_path() {
+        assert!(is_firecracker_cmdline(
+            "/var/lib/vm0-runner/firecracker/v1.10.1/firecracker --no-api"
+        ));
+    }
+
+    #[test]
+    fn is_firecracker_not_runner() {
+        assert!(!is_firecracker_cmdline(
+            "runner start --config /data/config.yaml"
+        ));
+    }
+
+    #[test]
+    fn is_firecracker_empty() {
+        assert!(!is_firecracker_cmdline(""));
+    }
+
+    // -- Mitmdump parser tests --
+
+    #[test]
+    fn parse_mitmdump_listen_port() {
+        let cmdline = "mitmdump --mode transparent --listen-port 8080 --set vm0_proxy_registry_path=/data/runner-01/proxy-registry.json";
+        assert_eq!(parse_mitmdump_cmdline(cmdline), Some(8080));
+    }
+
+    #[test]
+    fn parse_mitmdump_no_registry_returns_none() {
+        assert!(parse_mitmdump_cmdline("mitmdump --mode transparent --listen-port 8080").is_none());
+    }
+
+    #[test]
+    fn parse_mitmdump_no_listen_port_returns_none() {
+        let cmdline = "mitmdump --set vm0_proxy_registry_path=/data/proxy-registry.json";
+        assert!(parse_mitmdump_cmdline(cmdline).is_none());
+    }
+
+    // -- Dnsmasq parser tests --
+
+    #[test]
+    fn parse_dnsmasq_port() {
+        let cmdline = "dnsmasq --no-daemon --no-resolv --port 5353 --server 8.8.8.8";
+        assert_eq!(parse_dnsmasq_cmdline(cmdline), Some(5353));
+    }
+
+    #[test]
+    fn parse_dnsmasq_not_dnsmasq_returns_none() {
+        assert!(parse_dnsmasq_cmdline("mitmdump --port 5353").is_none());
+    }
+
+    #[test]
+    fn parse_dnsmasq_no_port_returns_none() {
+        assert!(parse_dnsmasq_cmdline("dnsmasq --no-daemon").is_none());
+    }
+
+    // -- CWD workspace parsing --
+
+    #[test]
+    fn parse_workspace_cwd_valid() {
+        let cwd = Path::new("/data/runner-01/workspaces/550e8400");
+        let (sandbox_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(sandbox_id, "550e8400");
+        assert_eq!(base_dir, Path::new("/data/runner-01"));
+    }
+
+    #[test]
+    fn parse_workspace_cwd_uuid() {
+        let cwd = Path::new("/data/r1/workspaces/550e8400-e29b-41d4-a716-446655440000");
+        let (sandbox_id, base_dir) = parse_workspace_cwd(cwd).unwrap();
+        assert_eq!(sandbox_id, "550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(base_dir, Path::new("/data/r1"));
+    }
+
+    #[test]
+    fn parse_workspace_cwd_non_workspace() {
+        assert!(parse_workspace_cwd(Path::new("/tmp/something")).is_none());
+    }
+
+    // -- PGID parsing --
+
+    #[test]
+    fn parse_pgid_simple() {
+        // Real /proc/pid/stat: "1234 (firecracker) S 1200 1100 1100 ..."
+        let stat = "1234 (firecracker) S 1200 1100 1100 0 0 0";
+        assert_eq!(parse_pgid_from_stat(stat), Some(1100));
+    }
+
+    #[test]
+    fn parse_pgid_comm_with_spaces() {
+        // comm can contain spaces
+        let stat = "5678 (Web Content) S 100 200 200 0 0 0";
+        assert_eq!(parse_pgid_from_stat(stat), Some(200));
+    }
+
+    #[test]
+    fn parse_pgid_comm_with_parens() {
+        // comm can contain parentheses — last ')' is the delimiter
+        let stat = "9999 (foo (bar)) S 500 600 600 0 0 0";
+        assert_eq!(parse_pgid_from_stat(stat), Some(600));
+    }
+
+    #[test]
+    fn parse_pgid_empty() {
+        assert!(parse_pgid_from_stat("").is_none());
+    }
+
+    #[test]
+    fn parse_pgid_truncated() {
+        // Missing pgrp field
+        let stat = "1234 (cmd) S 100";
+        assert!(parse_pgid_from_stat(stat).is_none());
+    }
+
+    // -- load_base_dir / read_active_runs / resolve_run_to_sandbox ----------
+
+    #[tokio::test]
+    async fn load_base_dir_absolute() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("runner.yaml");
+        std::fs::write(&config, "base_dir: /data/runner-01\nname: test\n").unwrap();
+        let bd = load_base_dir(&config).await.unwrap();
+        assert_eq!(bd, Path::new("/data/runner-01"));
+    }
+
+    #[tokio::test]
+    async fn load_base_dir_relative() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("runner.yaml");
+        std::fs::write(&config, "base_dir: ./data\nname: test\n").unwrap();
+        let bd = load_base_dir(&config).await.unwrap();
+        assert_eq!(bd, dir.path().join("./data"));
+    }
+
+    #[tokio::test]
+    async fn load_base_dir_missing_file() {
+        let result = load_base_dir(Path::new("/no/such/config.yaml")).await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn load_base_dir_malformed_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("runner.yaml");
+        std::fs::write(&config, "not: valid: yaml: [[[").unwrap();
+        assert!(load_base_dir(&config).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_normal() {
+        let dir = tempfile::tempdir().unwrap();
+        let status = r#"{
+            "mode": "running",
+            "active_runs": [
+                {"run_id": "R1", "sandbox_id": "S1"},
+                {"run_id": "R2", "sandbox_id": "S2"}
+            ],
+            "started_at": "2026-01-01T00:00:00.000Z"
+        }"#;
+        std::fs::write(dir.path().join("status.json"), status).unwrap();
+        let runs = read_active_runs(dir.path()).await.unwrap();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(runs[0], ("R1".into(), "S1".into()));
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_missing_field_defaults_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        // status.json without active_runs field — serde(default) kicks in
+        std::fs::write(dir.path().join("status.json"), r#"{"mode":"running"}"#).unwrap();
+        let runs = read_active_runs(dir.path()).await.unwrap();
+        assert!(runs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_active_runs(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_active_runs_malformed_json() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("status.json"), "not json").unwrap();
+        assert!(read_active_runs(dir.path()).await.is_none());
+    }
+}

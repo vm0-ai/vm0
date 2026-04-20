@@ -1,0 +1,43 @@
+name: "Vercel Setup"
+description: "Install Vercel CLI and configure project settings"
+
+inputs:
+  vercel-token:
+    description: "Vercel authentication token"
+    required: true
+  vercel-org-id:
+    description: "Vercel organization ID"
+    required: true
+  vercel-project-id:
+    description: "Vercel project ID"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Vercel CLI
+      shell: bash
+      run: |
+        # Check if Vercel CLI is installed, install if not
+        if ! command -v vercel &> /dev/null; then
+          echo "Vercel CLI not found, installing..."
+          npm install -g vercel@latest
+        else
+          echo "Vercel CLI already installed"
+        fi
+
+        # Output Vercel version
+        echo "Vercel CLI version:"
+        vercel --version
+
+    - name: Prepare Vercel configuration
+      shell: bash
+      env:
+        VERCEL_TOKEN: ${{ inputs.vercel-token }}
+        VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+        VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+      run: |
+        # Initialize Vercel project configuration
+        mkdir -p .vercel
+        echo "{\"orgId\":\"${VERCEL_ORG_ID}\",\"projectId\":\"${VERCEL_PROJECT_ID}\"}" > .vercel/project.json
+        vercel pull --token="${VERCEL_TOKEN}"

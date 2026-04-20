@@ -1,0 +1,86 @@
+{
+    "changelog-sections": [
+        {"type": "feat", "section": "Features"},
+        {"type": "fix", "section": "Bug Fixes"},
+        {"type": "deps", "section": "Dependencies"},
+        {"type": "ci", "section": "CI"},
+        {"type": "chore", "hidden": true},
+        {"type": "docs", "section": "Documentation"},
+        {"type": "style", "hidden": true},
+        {"type": "refactor", "section": "Refactoring"},
+        {"type": "perf", "section": "Performance Improvements"},
+        {"type": "test", "hidden": true},
+        {"type": "build", "hidden": true},
+        {"type": "revert", "hidden": true}
+    ],
+    "packages": {
+        "turbo/packages/core": {
+            "release-type": "node"
+        },
+        "turbo/apps/cli": {
+            "release-type": "node"
+        },
+        "turbo/apps/web": {
+            "release-type": "node"
+        },
+        "turbo/apps/platform": {
+            "release-type": "node"
+        },
+        "crates/ably-subscriber": {
+            "release-type": "rust"
+        },
+        "crates/nbd-cow": {
+            "release-type": "rust"
+        },
+        "crates/guest-agent": {
+            "release-type": "rust"
+        },
+        "crates/guest-common": {
+            "release-type": "rust"
+        },
+        "crates/guest-download": {
+            "release-type": "rust"
+        },
+        "crates/guest-init": {
+            "release-type": "rust"
+        },
+        "crates/guest-mock-claude": {
+            "release-type": "rust"
+        },
+        "crates/guest-reseed": {
+            "release-type": "rust"
+        },
+        "crates/runner": {
+            "release-type": "rust",
+            "component": "runner-rs"
+        },
+        "crates/sandbox": {
+            "release-type": "rust"
+        },
+        "crates/sandbox-fc": {
+            "release-type": "rust"
+        },
+        "crates/vsock-guest": {
+            "release-type": "rust"
+        },
+        "crates/vsock-host": {
+            "release-type": "rust"
+        },
+        "crates/vsock-proto": {
+            "release-type": "rust"
+        },
+        "crates/vsock-test": {
+            "release-type": "rust"
+        }
+    },
+    "plugins": [
+        {
+            "type": "node-workspace",
+            "alwaysLinkLocal": true
+        },
+        {
+            "type": "cargo-workspace",
+            "cargoWorkspacePath": "crates"
+        }
+    ]
+}

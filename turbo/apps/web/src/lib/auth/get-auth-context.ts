@@ -1,0 +1,285 @@
+import { eq, and, gt } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
+import type { OrgRole, ZeroCapability } from "@vm0/core";
+import { cliTokens } from "../../db/schema/cli-tokens";
+import {
+  isSandboxToken,
+  isPatToken,
+  verifySandboxToken,
+  verifyZeroToken,
+  verifyCliToken,
+} from "./sandbox-token";
+import { getMemberRole } from "./org-membership-cache";
+import { logger } from "../shared/logger";
+
+const log = logger("auth:user");
+
+/**
+ * Authentication context returned by getAuthContext.
+ */
+export type AuthContext = {
+  userId: string;
+  orgId?: string;
+  orgRole?: OrgRole;
+  sessionClaims?: Record<string, unknown>;
+  capabilities?: readonly ZeroCapability[];
+  runId?: string;
+};
+
+/**
+ * Get the full authentication context from CLI token or Clerk session.
+ * Returns null if not authenticated.
+ *
+ * By default, sandbox JWT tokens are rejected. Pass `options.requiredCapability`
+ * to accept sandbox tokens that include the specified capability, or
+ * `options.acceptAnySandboxCapability` to accept tokens with any capability.
+ */
+export async function getAuthContext(
+  authHeader?: string,
+  options?: {
+    requiredCapability?: ZeroCapability;
+    acceptAnySandboxCapability?: boolean;
+  },
+): Promise<AuthContext | null> {
+  // Check Bearer token prefixes first (fast, no external calls)
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.substring(7); // Remove "Bearer "
+
+    // Check for PAT token (vm0_pat_ prefix — CLI personal access tokens)
+    if (isPatToken(token)) {
+      const cliAuth = verifyCliToken(token);
+      if (cliAuth) {
+        const resolved = await resolveCliTokenFromDb(cliAuth);
+        if (!resolved) return null;
+        if (resolved.orgId) {
+          const membership = await getMemberRole(
+            resolved.orgId,
+            resolved.userId,
+          );
+          if (!membership) {
+            // User no longer a member — omit orgId to force resolveOrg rejection
+            return { userId: resolved.userId };
+          }
+          return {
+            userId: resolved.userId,
+            orgId: resolved.orgId,
+            orgRole: membership.role,
+          };
+        }
+        return { userId: resolved.userId, orgId: resolved.orgId };
+      }
+      return null;
+    }
+
+    if (isSandboxToken(token)) {
+      // TODO: Remove vm0_sandbox_ CLI backward compat after transition (~June 2026)
+      // Try CLI JWT (backward compat: old vm0_sandbox_ prefix with scope "cli")
+      const cliAuth = verifyCliToken(token);
+      if (cliAuth) {
+        const resolved = await resolveCliTokenFromDb(cliAuth);
+        if (!resolved) return null;
+        // Resolve org role so downstream admin checks work correctly
+        if (resolved.orgId) {
+          const membership = await getMemberRole(
+            resolved.orgId,
+            resolved.userId,
+          );
+          if (!membership) {
+            // User no longer a member — omit orgId to force resolveOrg rejection
+            return { userId: resolved.userId };
+          }
+          return {
+            userId: resolved.userId,
+            orgId: resolved.orgId,
+            orgRole: membership.role,
+          };
+        }
+        return { userId: resolved.userId, orgId: resolved.orgId };
+      }
+      return authenticateSandboxToken(token, options);
+    }
+  }
+
+  // Fall back to Clerk session auth
+  return getClerkSessionAuth();
+}
+
+/** Authenticate a sandbox-prefixed token (sandbox or zero scope). */
+async function authenticateSandboxToken(
+  token: string,
+  options?: {
+    requiredCapability?: ZeroCapability;
+    acceptAnySandboxCapability?: boolean;
+  },
+): Promise<AuthContext | null> {
+  // Without any sandbox opt-in, reject sandbox tokens (existing behavior)
+  if (!options?.requiredCapability && !options?.acceptAnySandboxCapability) {
+    log.debug("Rejected sandbox JWT token on normal API endpoint");
+    return null;
+  }
+
+  // Try sandbox token first
+  const sandboxAuth = verifySandboxToken(token);
+  if (sandboxAuth) {
+    return resolveSandboxAuth(sandboxAuth, options);
+  }
+
+  // Try zero token (scope: "zero")
+  const zeroAuth = verifyZeroToken(token);
+  if (zeroAuth) {
+    const result = resolveZeroAuth(zeroAuth, options);
+    if (result && result.orgId) {
+      const membership = await getMemberRole(result.orgId, result.userId);
+      if (!membership) {
+        // User no longer a member — omit orgId (same pattern as CLI JWT path)
+        return { userId: result.userId, runId: result.runId };
+      }
+      return { ...result, orgRole: membership.role };
+    }
+    return result;
+  }
+
+  log.debug("Invalid or expired sandbox/zero token");
+  return null;
+}
+
+function resolveSandboxAuth(
+  sandboxAuth: {
+    userId: string;
+    runId: string;
+  },
+  options: {
+    requiredCapability?: ZeroCapability;
+    acceptAnySandboxCapability?: boolean;
+  },
+): AuthContext | null {
+  if (options.acceptAnySandboxCapability) {
+    return {
+      userId: sandboxAuth.userId,
+      runId: sandboxAuth.runId,
+    };
+  }
+
+  // Sandbox tokens no longer carry capabilities — requiredCapability
+  // checks always fail. Zero routes should use ZERO_TOKEN instead.
+  log.debug(
+    `Sandbox token cannot satisfy required capability: ${options.requiredCapability}`,
+  );
+  return null;
+}
+
+function resolveZeroAuth(
+  zeroAuth: {
+    userId: string;
+    runId: string;
+    orgId: string;
+    capabilities: readonly ZeroCapability[];
+  },
+  options: {
+    requiredCapability?: ZeroCapability;
+    acceptAnySandboxCapability?: boolean;
+  },
+): AuthContext | null {
+  if (options.acceptAnySandboxCapability) {
+    return {
+      userId: zeroAuth.userId,
+      runId: zeroAuth.runId,
+      orgId: zeroAuth.orgId,
+      capabilities: [...zeroAuth.capabilities],
+    };
+  }
+
+  const hasCap = zeroAuth.capabilities.some((cap) => {
+    return cap === options.requiredCapability;
+  });
+  if (!hasCap) {
+    log.debug(
+      `Zero token missing required capability: ${options.requiredCapability}`,
+    );
+    return null;
+  }
+
+  return {
+    userId: zeroAuth.userId,
+    runId: zeroAuth.runId,
+    orgId: zeroAuth.orgId,
+    capabilities: [...zeroAuth.capabilities],
+  };
+}
+
+/**
+ * Resolve CLI JWT auth by checking DB revocation and updating lastUsedAt.
+ * Shared by getAuthContext and getRunnerAuth to avoid duplicating the
+ * DB lookup + expiry check + lastUsedAt update logic.
+ *
+ * Returns { userId, orgId } on success, or null if the token is revoked/expired.
+ */
+export async function resolveCliTokenFromDb(cliAuth: {
+  userId: string;
+  orgId: string;
+  tokenId: string;
+}): Promise<{ userId: string; orgId: string } | null> {
+  const [record] = await globalThis.services.db
+    .select()
+    .from(cliTokens)
+    .where(
+      and(
+        eq(cliTokens.id, cliAuth.tokenId),
+        gt(cliTokens.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  if (!record) {
+    log.debug("CLI JWT token revoked or expired in DB");
+    return null;
+  }
+
+  // Update last used timestamp (non-blocking)
+  globalThis.services.db
+    .update(cliTokens)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(cliTokens.id, cliAuth.tokenId))
+    .catch((err) => {
+      return log.error("Failed to update token lastUsedAt:", err);
+    });
+
+  return {
+    userId: cliAuth.userId,
+    orgId: cliAuth.orgId,
+  };
+}
+
+/** Extract AuthContext from Clerk session, or null if not authenticated. */
+async function getClerkSessionAuth(): Promise<AuthContext | null> {
+  const authResult = await auth();
+  if (!authResult.userId) return null;
+
+  return {
+    userId: authResult.userId,
+    orgId: authResult.orgId ?? undefined,
+    orgRole: authResult.orgRole
+      ? authResult.orgRole === "org:admin"
+        ? "admin"
+        : "member"
+      : undefined,
+    sessionClaims: authResult.sessionClaims as
+      | Record<string, unknown>
+      | undefined,
+  };
+}
+
+/**
+ * Get the current user ID from CLI token or Clerk session.
+ * Returns null if not authenticated.
+ */
+export async function getUserId(
+  authHeader?: string,
+  options?: {
+    requiredCapability?: ZeroCapability;
+    acceptAnySandboxCapability?: boolean;
+  },
+): Promise<string | null> {
+  const ctx = await getAuthContext(authHeader, options);
+  return ctx?.userId ?? null;
+}

@@ -1,0 +1,1720 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { gzipSync } from "node:zlib";
+import { POST, GET as listAgents } from "../route";
+import { GET, PUT, PATCH, DELETE } from "../[id]/route";
+import {
+  GET as getInstructions,
+  PUT as putInstructions,
+} from "../[id]/instructions/route";
+import {
+  createTestRequest,
+  createTestCliToken,
+  createTestCompose,
+  createTestRun,
+  createTestOrgModelProvider,
+  createTestSandboxToken,
+  createTestVolume,
+  findTestStorageByName,
+  findTestRunRecord,
+  findTestCreditUsage,
+  insertTestCreditUsageForRun,
+  insertTestSandboxTelemetry,
+  findTestSandboxTelemetry,
+  createTestSchedule,
+  enableTestSchedule,
+  createTestSessionWithConversation,
+  setDefaultAgentByComposeId,
+  clearOrgMembersCacheEntry,
+  insertOrgMembersCacheEntry,
+  createTestTarFile,
+  createTestZeroSkill,
+} from "../../../../../src/__tests__/api-test-helpers";
+import {
+  insertTestSlackOrgInstallation,
+  insertTestSlackOrgConnection,
+  insertTestSlackOrgThreadSession,
+} from "../../../../../src/__tests__/db-test-seeders/slack";
+import { getTestComposeVersionContent } from "../../../../../src/__tests__/db-test-assertions/agents";
+import { getInstructionsStorageName } from "@vm0/core";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { generateZeroToken } from "../../../../../src/lib/auth/sandbox-token";
+import { POST as runSchedule } from "../../schedules/run/route";
+import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
+
+const context = testContext();
+
+let user: UserContext;
+let testCliToken: string;
+
+function postAgent(body: Record<string, unknown>, token: string) {
+  return POST(
+    createTestRequest(`http://localhost:3000/api/zero/agents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+function getAgent(name: string, token: string) {
+  return GET(
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  );
+}
+
+function putAgent(name: string, body: Record<string, unknown>, token: string) {
+  return PUT(
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+function patchAgent(
+  name: string,
+  body: Record<string, unknown>,
+  token: string,
+) {
+  return PATCH(
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+function listAgentsReq(token: string) {
+  return listAgents(
+    createTestRequest(`http://localhost:3000/api/zero/agents`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  );
+}
+
+function deleteAgent(name: string, token: string) {
+  return DELETE(
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  );
+}
+
+function getAgentInstructions(name: string, token: string) {
+  return getInstructions(
+    createTestRequest(
+      `http://localhost:3000/api/zero/agents/${name}/instructions`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    ),
+  );
+}
+
+function putAgentInstructions(
+  name: string,
+  body: { content: string },
+  token: string,
+) {
+  return putInstructions(
+    createTestRequest(
+      `http://localhost:3000/api/zero/agents/${name}/instructions`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      },
+    ),
+  );
+}
+
+describe("Zero Agents API", () => {
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+    testCliToken = await createTestCliToken(user.userId);
+  });
+
+  describe("POST /api/zero/agents", () => {
+    it("should create an agent", async () => {
+      const response = await postAgent({}, testCliToken);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.agentId).toBeTruthy();
+      expect(data.ownerId).toBe(user.userId);
+      expect(data.description).toBeNull();
+      expect(data.displayName).toBeNull();
+      expect(data.sound).toBeNull();
+    });
+
+    it("should create an agent with metadata", async () => {
+      const response = await postAgent(
+        {
+          displayName: "My Agent",
+          description: "A helpful agent",
+          sound: "professional",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.displayName).toBe("My Agent");
+      expect(data.description).toBe("A helpful agent");
+      expect(data.sound).toBe("professional");
+    });
+
+    it("should create an agent with connector env var templates in compose", async () => {
+      const response = await postAgent({}, testCliToken);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+
+      // Verify compose content includes connector env var templates
+      const content = await getTestComposeVersionContent(data.agentId);
+      const agents = content?.agents as Record<
+        string,
+        { environment: Record<string, string> }
+      >;
+      const agentEnv = Object.values(agents)[0]!.environment;
+
+      // Base env vars present
+      expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
+      expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
+      // GA connector env vars present (GitHub is GA, not behind feature flag)
+      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
+      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
+    });
+
+    it("should create an agent with custom skills persisted in response", async () => {
+      await createTestZeroSkill(user.orgId, "my-skill");
+      await createTestZeroSkill(user.orgId, "data-tool");
+
+      const response = await postAgent(
+        { customSkills: ["my-skill", "data-tool"] },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.customSkills).toEqual(["my-skill", "data-tool"]);
+
+      // Custom skill volumes are no longer in compose — they are injected
+      // as additionalVolumes at run creation time
+      const content = await getTestComposeVersionContent(data.agentId);
+      expect(content?.volumes).toBeUndefined();
+    });
+
+    it("should reject non-existent custom skill names", async () => {
+      const response = await postAgent(
+        { customSkills: ["does-not-exist"] },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("does-not-exist");
+      expect(data.error.message).toContain("not found");
+    });
+
+    it("should reject connector type names as custom skills", async () => {
+      const response = await postAgent(
+        { customSkills: ["github"] },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("github");
+      expect(data.error.message).toContain("connector");
+    });
+
+    it("should return 401 without auth", async () => {
+      mockClerk({ userId: null });
+
+      const response = await postAgent({}, "no-token");
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe("GET /api/zero/agents/:name", () => {
+    it("should return created agent", async () => {
+      // Create an agent first
+      const createResponse = await postAgent(
+        {
+          displayName: "Test Agent",
+          description: "Test description",
+          sound: "friendly",
+        },
+        testCliToken,
+      );
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+
+      // Get the agent
+      const response = await getAgent(created.agentId, testCliToken);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.agentId).toBe(created.agentId);
+      expect(data.ownerId).toBe(user.userId);
+      expect(data.displayName).toBe("Test Agent");
+      expect(data.description).toBe("Test description");
+      expect(data.sound).toBe("friendly");
+    });
+
+    it("should return 404 for unknown agent", async () => {
+      const response = await getAgent(
+        "00000000-0000-0000-0000-000000000000",
+        testCliToken,
+      );
+
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+  });
+
+  describe("PUT /api/zero/agents/:name", () => {
+    it("should update agent metadata", async () => {
+      // Create an agent first
+      const createResponse = await postAgent(
+        { displayName: "Original" },
+        testCliToken,
+      );
+      const created = await createResponse.json();
+
+      // Update the agent
+      const response = await putAgent(
+        created.agentId,
+        {
+          displayName: "Updated Name",
+          description: "Updated description",
+          sound: "casual",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.ownerId).toBe(user.userId);
+      expect(data.displayName).toBe("Updated Name");
+      expect(data.description).toBe("Updated description");
+      expect(data.sound).toBe("casual");
+    });
+
+    it("should preserve metadata on update without metadata fields", async () => {
+      // Create agent with metadata
+      const createResponse = await postAgent(
+        {
+          displayName: "My Agent",
+          description: "A helpful agent",
+          sound: "professional",
+        },
+        testCliToken,
+      );
+      const created = await createResponse.json();
+
+      // Update with no metadata fields
+      const updateResponse = await putAgent(created.agentId, {}, testCliToken);
+      expect(updateResponse.status).toBe(200);
+
+      // Verify metadata is preserved
+      const getRes = await getAgent(created.agentId, testCliToken);
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+      expect(fetched.displayName).toBe("My Agent");
+      expect(fetched.description).toBe("A helpful agent");
+      expect(fetched.sound).toBe("professional");
+    });
+
+    it("should rebuild compose with connector env var templates", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        { displayName: "Refreshed" },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+
+      const content = await getTestComposeVersionContent(created.agentId);
+      const agents = content?.agents as Record<
+        string,
+        { environment: Record<string, string> }
+      >;
+      const agentEnv = Object.values(agents)[0]!.environment;
+
+      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
+      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
+      expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
+      expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
+    });
+
+    it("should update custom skills and persist them", async () => {
+      await createTestZeroSkill(user.orgId, "my-skill");
+      await createTestZeroSkill(user.orgId, "data-tool");
+
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        { customSkills: ["my-skill", "data-tool"] },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+
+      // Verify skills are persisted
+      const getRes = await getAgent(created.agentId, testCliToken);
+      const fetched = await getRes.json();
+      expect(fetched.customSkills).toEqual(["my-skill", "data-tool"]);
+
+      // Custom skill volumes are no longer in compose
+      const content = await getTestComposeVersionContent(created.agentId);
+      expect(content?.volumes).toBeUndefined();
+    });
+
+    it("should preserve existing custom skills when not provided in update", async () => {
+      await createTestZeroSkill(user.orgId, "my-skill");
+
+      // Create with custom skills
+      const created = await (
+        await postAgent({ customSkills: ["my-skill"] }, testCliToken)
+      ).json();
+
+      // Update without customSkills field
+      const response = await putAgent(
+        created.agentId,
+        { displayName: "Updated" },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+
+      // Verify skills are preserved
+      const getRes = await getAgent(created.agentId, testCliToken);
+      const fetched = await getRes.json();
+      expect(fetched.customSkills).toEqual(["my-skill"]);
+    });
+
+    it("should reject non-existent custom skill names on update", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        { customSkills: ["does-not-exist"] },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("does-not-exist");
+      expect(data.error.message).toContain("not found");
+    });
+
+    it("should reject connector type names as custom skills on update", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        { customSkills: ["github"] },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("github");
+      expect(data.error.message).toContain("connector");
+    });
+
+    it("should return 404 for unknown agent", async () => {
+      const response = await putAgent(
+        "00000000-0000-0000-0000-000000000000",
+        {},
+        testCliToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe("GET /api/zero/agents/:name/instructions", () => {
+    it("should return null content when no instructions uploaded", async () => {
+      const createResponse = await postAgent({}, testCliToken);
+      const created = await createResponse.json();
+
+      const response = await getAgentInstructions(
+        created.agentId,
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.content).toBeNull();
+    });
+
+    it("should return 404 for unknown agent", async () => {
+      const response = await getAgentInstructions(
+        "00000000-0000-0000-0000-000000000000",
+        testCliToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe("PUT /api/zero/agents/:name/instructions", () => {
+    it("should update instructions and return agent response", async () => {
+      const createResponse = await postAgent({}, testCliToken);
+      const created = await createResponse.json();
+
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# Updated Instructions\nBe helpful." },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.agentId).toBe(created.agentId);
+    });
+
+    it("should rebuild compose with connector env var templates", async () => {
+      const createResponse = await postAgent({}, testCliToken);
+      const created = await createResponse.json();
+
+      // Update instructions
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# New instructions" },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+
+      // Verify compose was rebuilt with connector env var templates
+      const content = await getTestComposeVersionContent(created.agentId);
+      const agents = content?.agents as Record<
+        string,
+        { environment: Record<string, string> }
+      >;
+      const agentEnv = Object.values(agents)[0]!.environment;
+
+      // GA connector env vars should be present (GitHub is GA)
+      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
+      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
+      // Base env vars still present
+      expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
+      expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
+    });
+
+    it("should preserve custom skills after instructions update", async () => {
+      await createTestZeroSkill(user.orgId, "my-skill");
+
+      const createResponse = await postAgent(
+        { customSkills: ["my-skill"] },
+        testCliToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# Updated instructions" },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+
+      // Verify skills still in agent record
+      const getRes = await getAgent(created.agentId, testCliToken);
+      const fetched = await getRes.json();
+      expect(fetched.customSkills).toEqual(["my-skill"]);
+
+      // Custom skill volumes are no longer in compose
+      const content = await getTestComposeVersionContent(created.agentId);
+      expect(content?.volumes).toBeUndefined();
+    });
+
+    it("should return 404 for unknown agent", async () => {
+      const response = await putAgentInstructions(
+        "00000000-0000-0000-0000-000000000000",
+        { content: "# Instructions" },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe("round-trip verification", () => {
+    it("should read back agent data after POST via GET", async () => {
+      const createRes = await postAgent(
+        {
+          displayName: "Round Trip Agent",
+          description: "test description",
+          sound: "friendly",
+        },
+        testCliToken,
+      );
+      expect(createRes.status).toBe(201);
+      const created = await createRes.json();
+
+      const getRes = await getAgent(created.agentId, testCliToken);
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+
+      expect(fetched).toStrictEqual(created);
+    });
+
+    it("should read back updated agent data after PUT via GET", async () => {
+      const created = await (
+        await postAgent({ displayName: "Original" }, testCliToken)
+      ).json();
+
+      await putAgent(
+        created.agentId,
+        {
+          displayName: "Updated Name",
+          description: "new desc",
+          sound: "casual",
+        },
+        testCliToken,
+      );
+
+      const getRes = await getAgent(created.agentId, testCliToken);
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+
+      expect(fetched.displayName).toBe("Updated Name");
+      expect(fetched.description).toBe("new desc");
+      expect(fetched.sound).toBe("casual");
+    });
+
+    it("should reflect deleted agent in list", async () => {
+      const created = await (
+        await postAgent({ displayName: "To Delete" }, testCliToken)
+      ).json();
+
+      await deleteAgent(created.agentId, testCliToken);
+
+      const listResponse = await listAgentsReq(testCliToken);
+      const data = await listResponse.json();
+      expect(
+        data.find((a: { agentId: string }) => {
+          return a.agentId === created.agentId;
+        }),
+      ).toBeUndefined();
+    });
+
+    it("should read back instructions content after PUT via GET", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const instructionsContent = "# My Instructions\nBe helpful.";
+      await putAgentInstructions(
+        created.agentId,
+        { content: instructionsContent },
+        testCliToken,
+      );
+
+      // Mock S3 downloads to return what was uploaded
+      const canonicalFilename = "CLAUDE.md";
+      context.mocks.s3.downloadManifest.mockResolvedValueOnce({
+        version: "a".repeat(64),
+        createdAt: new Date().toISOString(),
+        totalSize: instructionsContent.length,
+        fileCount: 1,
+        files: [
+          {
+            path: canonicalFilename,
+            hash: "b".repeat(64),
+            size: instructionsContent.length,
+          },
+        ],
+      });
+      context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
+        gzipSync(
+          createTestTarFile(
+            canonicalFilename,
+            Buffer.from(instructionsContent, "utf-8"),
+          ),
+        ),
+      );
+
+      const getRes = await getAgentInstructions(created.agentId, testCliToken);
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+
+      expect(fetched.content).toBe(instructionsContent);
+    });
+  });
+
+  describe("sandbox token (VM0_TOKEN) access", () => {
+    it("should reject GET /api/zero/agents/:name with sandbox token (sandbox tokens have no capabilities)", async () => {
+      // Given — create an agent via POST
+      const createResponse = await postAgent(
+        {
+          displayName: "Sandbox Access Agent",
+          description: "Agent accessible via sandbox token",
+          sound: "professional",
+        },
+        testCliToken,
+      );
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+
+      // When — create a run for this agent, then generate a sandbox token
+      await createTestOrgModelProvider("anthropic-api-key", "test-key");
+      const { runId } = await createTestRun(created.agentId, "test prompt");
+
+      // Reset Clerk so sandbox token is the only auth path
+      mockClerk({ userId: null });
+
+      const sandboxToken = await createTestSandboxToken(user.userId, runId);
+
+      // Use the sandbox token to GET the agent — should be rejected
+      const response = await getAgent(created.agentId, sandboxToken);
+
+      // Then — sandbox tokens can no longer satisfy requiredCapability
+      expect(response.status).toBe(403);
+    });
+
+    it("sandbox token cannot create agent", async () => {
+      await insertOrgMembersCacheEntry({
+        userId: user.userId,
+        orgId: user.orgId,
+        role: "admin",
+      });
+
+      mockClerk({ userId: null, orgId: user.orgId });
+      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
+
+      const response = await postAgent({ connectors: [] }, sandboxToken);
+      expect(response.status).toBe(403);
+    });
+
+    it("sandbox token cannot update agent", async () => {
+      mockClerk({ userId: null });
+      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
+
+      const response = await putAgent(
+        "00000000-0000-0000-0000-000000000000",
+        { connectors: [] },
+        sandboxToken,
+      );
+      expect(response.status).toBe(403);
+    });
+
+    it("sandbox token cannot get instructions", async () => {
+      mockClerk({ userId: null });
+      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
+
+      const response = await getAgentInstructions(
+        "00000000-0000-0000-0000-000000000000",
+        sandboxToken,
+      );
+      expect(response.status).toBe(403);
+    });
+
+    it("sandbox token cannot update instructions", async () => {
+      mockClerk({ userId: null });
+      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
+
+      const response = await putAgentInstructions(
+        "00000000-0000-0000-0000-000000000000",
+        { content: "# Instructions" },
+        sandboxToken,
+      );
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe("GET /api/zero/agents", () => {
+    it("should return empty array when no agents exist", async () => {
+      const response = await listAgentsReq(testCliToken);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toStrictEqual([]);
+    });
+
+    it("should return list with created agent", async () => {
+      const created = await (
+        await postAgent(
+          {
+            displayName: "Listed Agent",
+            description: "desc",
+            sound: "friendly",
+          },
+          testCliToken,
+        )
+      ).json();
+
+      const response = await listAgentsReq(testCliToken);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toHaveLength(1);
+      expect(data[0].agentId).toBe(created.agentId);
+      expect(data[0].ownerId).toBe(user.userId);
+      expect(data[0].displayName).toBe("Listed Agent");
+      expect(data[0].description).toBe("desc");
+      expect(data[0].sound).toBe("friendly");
+    });
+
+    it("should return 401 without auth", async () => {
+      mockClerk({ userId: null });
+      const response = await listAgentsReq("no-token");
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe("PATCH /api/zero/agents/:name", () => {
+    it("should update metadata fields", async () => {
+      const created = await (
+        await postAgent(
+          { displayName: "Original", sound: "professional" },
+          testCliToken,
+        )
+      ).json();
+
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Updated", description: "New desc", sound: "casual" },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Updated");
+      expect(data.description).toBe("New desc");
+      expect(data.sound).toBe("casual");
+      expect(data.agentId).toBe(created.agentId);
+      expect(data.ownerId).toBe(user.userId);
+    });
+
+    it("should preserve other fields on partial update", async () => {
+      const created = await (
+        await postAgent(
+          {
+            displayName: "My Agent",
+            description: "A helpful agent",
+            sound: "professional",
+          },
+          testCliToken,
+        )
+      ).json();
+
+      // Only update displayName
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "New Name" },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("New Name");
+      // Other fields preserved
+      expect(data.description).toBe("A helpful agent");
+      expect(data.sound).toBe("professional");
+    });
+
+    it("should return 404 for unknown agent", async () => {
+      const response = await patchAgent(
+        "00000000-0000-0000-0000-000000000000",
+        { displayName: "X" },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should return 401 without auth", async () => {
+      mockClerk({ userId: null });
+      const response = await patchAgent(
+        "00000000-0000-4000-8000-000000000001",
+        { displayName: "X" },
+        "no-token",
+      );
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe("avatarUrl CRUD", () => {
+    it("should set avatarUrl via PATCH and persist it", async () => {
+      const created = await (
+        await postAgent({ displayName: "AvatarBot" }, testCliToken)
+      ).json();
+
+      const patchRes = await patchAgent(
+        created.agentId,
+        { avatarUrl: "preset:2" },
+        testCliToken,
+      );
+      expect(patchRes.status).toBe(200);
+      const patched = await patchRes.json();
+      expect(patched.avatarUrl).toBe("preset:2");
+
+      // Verify GET returns the same value
+      const getRes = await getAgent(created.agentId, testCliToken);
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+      expect(fetched.avatarUrl).toBe("preset:2");
+    });
+
+    it("should clear avatarUrl by setting null", async () => {
+      const created = await (
+        await postAgent({ displayName: "ClearBot" }, testCliToken)
+      ).json();
+
+      // Set avatar first
+      await patchAgent(
+        created.agentId,
+        { avatarUrl: "https://example.com/avatar.png" },
+        testCliToken,
+      );
+
+      // Clear it
+      const clearRes = await patchAgent(
+        created.agentId,
+        { avatarUrl: null },
+        testCliToken,
+      );
+      expect(clearRes.status).toBe(200);
+      const cleared = await clearRes.json();
+      expect(cleared.avatarUrl).toBeNull();
+    });
+
+    it("should preserve avatarUrl on unrelated partial update", async () => {
+      const created = await (
+        await postAgent({ displayName: "KeepBot" }, testCliToken)
+      ).json();
+
+      // Set avatar
+      await patchAgent(
+        created.agentId,
+        { avatarUrl: "preset:4" },
+        testCliToken,
+      );
+
+      // Update only displayName — avatarUrl should be preserved
+      const patchRes = await patchAgent(
+        created.agentId,
+        { displayName: "Renamed" },
+        testCliToken,
+      );
+      expect(patchRes.status).toBe(200);
+      const patched = await patchRes.json();
+      expect(patched.displayName).toBe("Renamed");
+      expect(patched.avatarUrl).toBe("preset:4");
+    });
+  });
+
+  describe("DELETE /api/zero/agents/:name", () => {
+    it("should delete an agent and return 204", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await deleteAgent(created.agentId, testCliToken);
+      expect(response.status).toBe(204);
+    });
+
+    it("should return 404 on GET after delete", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      await deleteAgent(created.agentId, testCliToken);
+
+      const getResponse = await getAgent(created.agentId, testCliToken);
+      expect(getResponse.status).toBe(404);
+    });
+
+    it("should return 404 for nonexistent agent", async () => {
+      const response = await deleteAgent(
+        "00000000-0000-0000-0000-000000000000",
+        testCliToken,
+      );
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should delete agent with linked Slack thread sessions", async () => {
+      // Create an agent
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      // Create an agent session linked to this compose
+      const session = await createTestSessionWithConversation(
+        user.userId,
+        created.agentId,
+      );
+
+      // Set up Slack infrastructure
+      const orgId = `org_${user.userId.slice(-8)}`;
+      const slackWorkspaceId = `T-ws-${user.userId.slice(-8)}`;
+      await insertTestSlackOrgInstallation({
+        slackWorkspaceId,
+        slackWorkspaceName: "Test Workspace",
+        orgId,
+        installedByUserId: user.userId,
+      });
+      const connection = await insertTestSlackOrgConnection({
+        slackUserId: `U-${user.userId.slice(-8)}`,
+        slackWorkspaceId,
+        vm0UserId: user.userId,
+      });
+
+      // Link Slack thread session to the agent session
+      await insertTestSlackOrgThreadSession({
+        connectionId: connection.id,
+        agentSessionId: session.id,
+      });
+
+      // Delete the agent — this would fail with FK constraint before the fix
+      const response = await deleteAgent(created.agentId, testCliToken);
+      expect(response.status).toBe(204);
+
+      // Verify agent is gone
+      const getResponse = await getAgent(created.agentId, testCliToken);
+      expect(getResponse.status).toBe(404);
+    });
+
+    it("should clean up instructions storage when agent is deleted", async () => {
+      const agentName = `cleanup-${user.userId.slice(-8)}`;
+      const { composeId } = await createTestCompose(agentName);
+
+      // Create instructions volume for the agent
+      const instructionsName = getInstructionsStorageName(agentName);
+      await createTestVolume(instructionsName);
+
+      // Verify volume exists
+      const storageBefore = await findTestStorageByName(
+        user.orgId,
+        instructionsName,
+      );
+      expect(storageBefore).toBeDefined();
+
+      // Mock S3 listing
+      context.mocks.s3.listS3Objects.mockResolvedValueOnce([
+        {
+          key: `${storageBefore!.s3Prefix}/v1/archive.tar.gz`,
+          size: 1024,
+        },
+      ]);
+
+      // Delete agent via zero agents API
+      const response = await deleteAgent(composeId, testCliToken);
+      expect(response.status).toBe(204);
+
+      // Verify instructions storage cleaned up
+      const storageAfter = await findTestStorageByName(
+        user.orgId,
+        instructionsName,
+      );
+      expect(storageAfter).toBeUndefined();
+
+      // Verify S3 cleanup called
+      expect(context.mocks.s3.deleteS3Objects).toHaveBeenCalled();
+    });
+
+    it("should return 409 when agent has running runs", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      // Create a running run for this agent
+      await seedTestRun(user.userId, created.agentId, {
+        status: "running",
+      });
+
+      // Try to delete — should get 409
+      const response = await deleteAgent(created.agentId, testCliToken);
+      expect(response.status).toBe(409);
+      const data = await response.json();
+      expect(data.error.code).toBe("CONFLICT");
+    });
+
+    it("should delete runs and preserve credit_usage on agent deletion", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const { runId } = await seedTestRun(user.userId, created.agentId, {
+        status: "completed",
+      });
+
+      const { id: creditId } = await insertTestCreditUsageForRun({
+        runId,
+        orgId: user.orgId,
+        userId: user.userId,
+        status: "processed",
+        creditsCharged: 100,
+      });
+
+      const response = await deleteAgent(created.agentId, testCliToken);
+      expect(response.status).toBe(204);
+
+      const run = await findTestRunRecord(runId);
+      expect(run).toBeUndefined();
+
+      const credit = await findTestCreditUsage(creditId);
+      expect(credit).toBeDefined();
+      expect(credit!.creditsCharged).toBe(100);
+      expect(credit!.status).toBe("processed");
+    });
+
+    it("should cascade-delete run data when agent is deleted", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const { runId } = await seedTestRun(user.userId, created.agentId, {
+        status: "completed",
+      });
+
+      await insertTestSandboxTelemetry({ runId });
+
+      const response = await deleteAgent(created.agentId, testCliToken);
+      expect(response.status).toBe(204);
+
+      const run = await findTestRunRecord(runId);
+      expect(run).toBeUndefined();
+
+      const telemetry = await findTestSandboxTelemetry(runId);
+      expect(telemetry).toBeUndefined();
+    });
+
+    it("should return 401 without auth", async () => {
+      mockClerk({ userId: null });
+      const response = await deleteAgent(
+        "00000000-0000-4000-8000-000000000001",
+        "no-token",
+      );
+      expect(response.status).toBe(401);
+    });
+
+    it("should reject agent run token (agent:delete is agent-excluded)", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      await insertOrgMembersCacheEntry({
+        userId: user.userId,
+        orgId: user.orgId,
+        role: "admin",
+      });
+
+      // Switch to zero token auth (agent run) — no Clerk session
+      mockClerk({ userId: null });
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
+
+      const response = await deleteAgent(created.agentId, token);
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.message).toBe(
+        "Missing required capability: agent:delete",
+      );
+    });
+  });
+
+  describe("invalid UUID handling", () => {
+    it("GET should return 400 for invalid UUID", async () => {
+      const response = await getAgent("abc", testCliToken);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("PUT should return 400 for invalid UUID", async () => {
+      const response = await putAgent("not-a-uuid", {}, testCliToken);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("PATCH should return 400 for invalid UUID", async () => {
+      const response = await patchAgent(
+        "not-a-uuid",
+        { displayName: "X" },
+        testCliToken,
+      );
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("DELETE should return 400 for invalid UUID", async () => {
+      const response = await deleteAgent("not-a-uuid", testCliToken);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("GET instructions should return 400 for invalid UUID", async () => {
+      const response = await getAgentInstructions("not-a-uuid", testCliToken);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("PUT instructions should return 400 for invalid UUID", async () => {
+      const response = await putAgentInstructions(
+        "not-a-uuid",
+        { content: "# test" },
+        testCliToken,
+      );
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+  });
+
+  describe("owner/admin permission restriction", () => {
+    it("should allow owner to patch default agent metadata even as member", async () => {
+      // Create agent as admin — user becomes the owner
+      const created = await (
+        await postAgent({ displayName: "Default" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      // Owner can update their own agent even without admin role
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Owner Updated" },
+        memberToken,
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Owner Updated");
+    });
+
+    it("should allow owner to update default agent instructions even as member", async () => {
+      const created = await (
+        await postAgent({ displayName: "Default" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# Owner updated instructions" },
+        memberToken,
+      );
+      expect(response.status).toBe(200);
+    });
+
+    it("should allow admin to patch default agent metadata", async () => {
+      const created = await (
+        await postAgent({ displayName: "Default" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Admin can still update
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Updated by Admin" },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Updated by Admin");
+    });
+
+    it("should allow owner to patch own non-default agent as member", async () => {
+      // Create agent — user is the owner
+      const created = await (
+        await postAgent({ displayName: "My Agent" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      // Owner can update their own agent
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Owner Updated" },
+        memberToken,
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Owner Updated");
+    });
+
+    it("should allow owner to PUT-update default agent as member", async () => {
+      const created = await (
+        await postAgent({ displayName: "Default" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      const response = await putAgent(
+        created.agentId,
+        { displayName: "Owner PUT Update" },
+        memberToken,
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Owner PUT Update");
+    });
+
+    it("should allow owner to delete default agent as member", async () => {
+      const created = await (
+        await postAgent({ displayName: "Default" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      const response = await deleteAgent(created.agentId, memberToken);
+      expect(response.status).toBe(204);
+    });
+
+    it("should return 403 when non-owner member patches agent", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Owned Agent" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B as a non-owner member of the same org
+      const otherUser = await context.setupUser({ prefix: "non-owner" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: otherUser.userId, orgId, orgRole: "org:member" });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        orgId,
+      );
+
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Hacked" },
+        otherToken,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 when non-owner member PUT-updates agent", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Owned Agent" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B as a non-owner member of the same org
+      const otherUser = await context.setupUser({ prefix: "non-owner" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: otherUser.userId, orgId, orgRole: "org:member" });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        orgId,
+      );
+
+      const response = await putAgent(
+        created.agentId,
+        { displayName: "Hacked via PUT" },
+        otherToken,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 when non-owner member updates agent instructions", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Owned Agent" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B as a non-owner member of the same org
+      const otherUser = await context.setupUser({ prefix: "non-owner" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: otherUser.userId, orgId, orgRole: "org:member" });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        orgId,
+      );
+
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# Hacked instructions" },
+        otherToken,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 when non-owner member deletes agent", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Owned Agent" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B as a non-owner member of the same org
+      const otherUser = await context.setupUser({ prefix: "non-owner" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: otherUser.userId, orgId, orgRole: "org:member" });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        orgId,
+      );
+
+      const response = await deleteAgent(created.agentId, otherToken);
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should allow admin to update agent owned by another user", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Admin Owned" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B and make them an admin of the same org
+      const adminUser = await context.setupUser({ prefix: "other-admin" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: adminUser.userId,
+        role: "admin",
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: adminUser.userId, orgId, orgRole: "org:admin" });
+      const adminToken = await createTestCliToken(
+        adminUser.userId,
+        undefined,
+        orgId,
+      );
+
+      // Admin B can update agent owned by User A
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Admin B Updated" },
+        adminToken,
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Admin B Updated");
+    });
+  });
+
+  describe("model selection validation", () => {
+    it("should reject PUT with modelProviderId from a different org", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        {
+          modelProviderId: "00000000-0000-4000-8000-000000000001",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("not found in this org");
+    });
+
+    it("should reject PATCH with modelProviderId from a different org", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await patchAgent(
+        created.agentId,
+        {
+          modelProviderId: "00000000-0000-4000-8000-000000000001",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("not found in this org");
+    });
+
+    it("should reject PUT with model not in provider allowlist", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        {
+          modelProviderId: provider.id,
+          selectedModel: "gpt-4-not-a-claude-model",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("gpt-4-not-a-claude-model");
+      expect(data.error.message).toContain("not available");
+    });
+
+    it("should reject PATCH with model not in provider allowlist", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await patchAgent(
+        created.agentId,
+        {
+          modelProviderId: provider.id,
+          selectedModel: "gpt-4-not-a-claude-model",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.message).toContain("gpt-4-not-a-claude-model");
+      expect(data.error.message).toContain("not available");
+    });
+
+    it("should accept PUT with valid modelProviderId and model", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await putAgent(
+        created.agentId,
+        {
+          modelProviderId: provider.id,
+          selectedModel: "claude-sonnet-4-6",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.modelProviderId).toBe(provider.id);
+      expect(data.selectedModel).toBe("claude-sonnet-4-6");
+    });
+
+    it("should accept PATCH with valid modelProviderId and model", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const response = await patchAgent(
+        created.agentId,
+        {
+          modelProviderId: provider.id,
+          selectedModel: "claude-sonnet-4-6",
+        },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.modelProviderId).toBe(provider.id);
+      expect(data.selectedModel).toBe("claude-sonnet-4-6");
+    });
+
+    it("should accept PUT with null modelProviderId to clear override", async () => {
+      const provider = await createTestOrgModelProvider(
+        "anthropic-api-key",
+        "test-key",
+      );
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      // Set provider first
+      await putAgent(
+        created.agentId,
+        { modelProviderId: provider.id, selectedModel: "claude-sonnet-4-6" },
+        testCliToken,
+      );
+
+      // Clear it
+      const response = await putAgent(
+        created.agentId,
+        { modelProviderId: null, selectedModel: null },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.modelProviderId).toBeNull();
+      expect(data.selectedModel).toBeNull();
+    });
+  });
+
+  describe("schedule run integration", () => {
+    it("should execute schedule for agent created via POST /api/zero/agents", async () => {
+      // Regression: serverSideCompose was called without instructions param,
+      // so agent-instructions storage was never created. Schedule runs then
+      // failed with "Storage agent-instructions@<id> not found".
+      await createTestOrgModelProvider("anthropic-api-key", "test-key");
+
+      // 1. Create agent via POST /api/zero/agents
+      const createResponse = await postAgent(
+        { displayName: "Schedule Bug Agent" },
+        testCliToken,
+      );
+      expect(createResponse.status).toBe(201);
+      const agent = await createResponse.json();
+
+      // 2. Create and enable a schedule
+      const schedule = await createTestSchedule(agent.agentId, "zero-api-run", {
+        cronExpression: "0 9 * * *",
+        prompt: "Scheduled run",
+      });
+      await enableTestSchedule(agent.agentId, "zero-api-run");
+
+      // 3. Execute the schedule — should succeed
+      const response = await runSchedule(
+        createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduleId: schedule.id }),
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.runId).toBeDefined();
+    });
+  });
+});

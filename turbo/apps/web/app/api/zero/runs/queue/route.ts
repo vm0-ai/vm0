@@ -1,0 +1,37 @@
+import {
+  createHandler,
+  createSafeErrorHandler,
+  tsr,
+} from "../../../../../src/lib/ts-rest-handler";
+import { zeroRunsQueueContract, orgTierSchema } from "@vm0/core";
+import { initServices } from "../../../../../src/lib/init-services";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
+import { getRunQueueStatus } from "../../../../../src/lib/zero/zero-run-queue-service";
+
+const router = tsr.router(zeroRunsQueueContract, {
+  getQueue: async ({ headers }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent-run:read",
+    });
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    const { org } = await resolveOrg(authCtx);
+    const orgTier = orgTierSchema.parse(org.tier);
+
+    const result = await getRunQueueStatus(userId, org.orgId, orgTier);
+    return { status: 200 as const, body: result };
+  },
+});
+
+const handler = createHandler(zeroRunsQueueContract, router, {
+  errorHandler: createSafeErrorHandler("zero-runs:queue"),
+});
+
+export { handler as GET };

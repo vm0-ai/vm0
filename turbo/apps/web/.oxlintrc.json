@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
+  "extends": ["../../.oxlintrc.json"],
+  "rules": {
+    "no-restricted-imports": [
+      "deny",
+      {
+        "paths": [
+          {
+            "name": "next/headers",
+            "message": "Use authHeader parameter instead of headers() from next/headers. See issue #1591."
+          }
+        ]
+      }
+    ]
+  }
+}

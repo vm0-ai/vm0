@@ -1,0 +1,63 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as os from "node:os";
+import { getInstructionsStorageName } from "../domain/github-skills";
+import { directUpload } from "./direct-upload";
+import { getInstructionsFilename } from "@vm0/core";
+
+interface StorageUploadResult {
+  name: string;
+  versionId: string;
+  action: "created" | "deduplicated";
+}
+
+/**
+ * Upload instructions file as a volume
+ *
+ * @param agentName - Name of the agent (used for storage name)
+ * @param instructionsFilePath - Path to the instructions file (e.g., AGENTS.md)
+ * @param basePath - Base path for resolving relative paths
+ * @param framework - Framework name for determining canonical filename
+ * @returns Upload result with storage name and version
+ */
+export async function uploadInstructions(
+  agentName: string,
+  instructionsFilePath: string,
+  basePath: string,
+  framework?: string,
+): Promise<StorageUploadResult> {
+  // Normalize agent name to lowercase to match server's normalization behavior
+  // Server normalizes agent names to lowercase when storing compose configs
+  const storageName = getInstructionsStorageName(agentName.toLowerCase());
+
+  // Resolve file path relative to base path
+  const absolutePath = path.isAbsolute(instructionsFilePath)
+    ? instructionsFilePath
+    : path.join(basePath, instructionsFilePath);
+
+  // Read the instructions file
+  const content = await fs.readFile(absolutePath, "utf8");
+
+  // Create a temporary directory with the file
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-instructions-"));
+  const instructionsDir = path.join(tmpDir, "instructions");
+  await fs.mkdir(instructionsDir);
+
+  // Write file with framework-specific name (e.g., CLAUDE.md for claude-code)
+  const filename = getInstructionsFilename(framework);
+  await fs.writeFile(path.join(instructionsDir, filename), content);
+
+  try {
+    // Use direct upload (bypasses Vercel 4.5MB limit)
+    const result = await directUpload(storageName, "volume", instructionsDir);
+
+    return {
+      name: storageName,
+      versionId: result.versionId,
+      action: result.deduplicated ? "deduplicated" : "created",
+    };
+  } finally {
+    // Clean up temp directory
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+}

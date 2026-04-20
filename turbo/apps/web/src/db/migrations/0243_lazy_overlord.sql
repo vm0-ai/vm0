@@ -1,0 +1,1 @@
+ALTER TABLE "slack_org_thread_sessions" DROP COLUMN "last_processed_message_ts";

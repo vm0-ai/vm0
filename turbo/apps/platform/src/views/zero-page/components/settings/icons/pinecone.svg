@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Pinecone brand mark: stylized pine cone -->
+  <rect width="100" height="100" rx="20" fill="#0CE881"/>
+  <!-- Pine cone body: stacked diamond scales -->
+  <!-- Top point -->
+  <polygon points="50,12 56,22 50,26 44,22" fill="#0B1F0E"/>
+  <!-- Row 2 -->
+  <polygon points="44,22 50,26 50,32 38,32 38,26" fill="#0D2810"/>
+  <polygon points="56,22 62,26 62,32 50,32 50,26" fill="#0D2810"/>
+  <!-- Row 3 -->
+  <polygon points="38,32 50,32 50,40 32,40 32,36" fill="#0F3214"/>
+  <polygon points="50,32 62,32 68,36 68,40 50,40" fill="#0F3214"/>
+  <!-- Row 4 -->
+  <polygon points="32,40 50,40 50,48 26,48 26,44" fill="#123C18"/>
+  <polygon points="50,40 68,40 74,44 74,48 50,48" fill="#123C18"/>
+  <!-- Row 5 -->
+  <polygon points="26,48 50,48 50,56 24,56 24,52" fill="#14461C"/>
+  <polygon points="50,48 74,48 76,52 76,56 50,56" fill="#14461C"/>
+  <!-- Row 6 tapers -->
+  <polygon points="24,56 50,56 50,62 28,62 26,58" fill="#165020"/>
+  <polygon points="50,56 76,56 74,58 72,62 50,62" fill="#165020"/>
+  <!-- Bottom taper -->
+  <polygon points="28,62 50,62 50,70 34,70 30,66" fill="#185A24"/>
+  <polygon points="50,62 72,62 70,66 66,70 50,70" fill="#185A24"/>
+  <!-- Stem -->
+  <rect x="45" y="70" width="10" height="18" rx="4" fill="#0B1F0E"/>
+</svg>

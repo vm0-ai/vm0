@@ -1,0 +1,941 @@
+/* Import Noto Sans and JetBrains Mono from Google Fonts - must be first */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+@import "tailwindcss";
+@import "@vm0/ui/styles/globals.css";
+
+@plugin "@tailwindcss/typography";
+@custom-variant pointer-coarse (@media (pointer: coarse));
+
+/* Include @vm0/ui components in Tailwind's content scanning */
+@source "../../../../../packages/ui/src/**/*.tsx";
+
+@theme {
+  /* Font families */
+  --font-family-sans:
+    "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --font-family-mono:
+    "JetBrains Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
+
+  /* Sidebar colors - using tokens for dark mode support */
+  --color-sidebar: hsl(var(--gray-0));
+  --color-sidebar-foreground: hsl(var(--gray-950));
+  --color-sidebar-border: hsl(var(--gray-200));
+  --color-sidebar-active: hsl(var(--primary) / 0.95);
+  --color-sidebar-primary: hsl(var(--white));
+  --color-sidebar-accent: hsl(var(--gray-100));
+}
+
+/* Landing tagline carousel: smooth vertical fade-in */
+@keyframes zero-tagline-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.zero-tagline-animate-in {
+  animation: zero-tagline-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Shimmer text effect for active/thinking states */
+@keyframes zero-shimmer {
+  0% {
+    background-position: 100% center;
+  }
+  100% {
+    background-position: -100% center;
+  }
+}
+.zero-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted-foreground) / 0.8) 0%,
+    hsl(var(--muted-foreground) / 0.8) 35%,
+    hsl(var(--foreground)) 48%,
+    hsl(var(--foreground)) 52%,
+    hsl(var(--muted-foreground) / 0.8) 65%,
+    hsl(var(--muted-foreground) / 0.8) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: zero-shimmer 3.5s linear infinite;
+}
+
+/* Inline streaming indicator: staggered dot-trail pulse wave */
+@keyframes zero-dot-trail {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.75);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.zero-dot-trail-item {
+  animation: zero-dot-trail 1.2s ease-in-out infinite;
+}
+
+/* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
+.zero-app {
+  --zero-card-radius: 0.75rem;
+  --zero-card-border: hsl(var(--border));
+  --zero-card-shadow: 0 1px 3px hsl(220 12% 20% / 0.08);
+}
+
+/* Search bar / text input (matches form inputs: white surface in light theme) */
+.zero-app .zero-search-input {
+  background-color: hsl(var(--input));
+  border-color: hsl(var(--border));
+}
+.zero-app .zero-search-input::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+.zero-app .zero-search-input:focus-within {
+  border-color: hsl(var(--primary));
+  outline: none;
+}
+
+/* Pill/tag (e.g. status badge, "Super agent") */
+.zero-app .zero-pill {
+  background-color: hsl(var(--gray-0));
+  border: 0.7px solid hsl(var(--gray-400));
+  color: hsl(var(--muted-foreground));
+}
+
+/* Monochrome SVG icons (e.g. connector marks as <img>): invert in dark mode.
+   Scoped to [data-theme="dark"] only—not .zero-app—so portaled popovers/dropdowns still match. */
+:where([data-theme="dark"]) .zero-icon-mono {
+  filter: invert(1);
+}
+
+/* Switch track: ensure visibility against card background in dark mode */
+:where([data-theme="dark"])
+  .zero-app
+  button[role="switch"][data-state="unchecked"] {
+  background-color: hsl(var(--gray-400));
+}
+
+/* Form inputs: match card border, preserve focus ring */
+.zero-app .zero-form-border {
+  border: 0.7px solid hsl(var(--gray-400));
+}
+.zero-app .zero-form-border:focus {
+  border-color: hsl(var(--primary));
+}
+
+/* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
+.zero-border {
+  border: 0.7px solid hsl(var(--gray-400));
+}
+.zero-border-t {
+  border-top: 0.7px solid hsl(var(--gray-400));
+}
+.zero-border-r {
+  border-right: 0.7px solid hsl(var(--gray-300));
+}
+.zero-border-dashed {
+  border: 0.7px dashed hsl(var(--gray-400));
+}
+.zero-border-dashed-t {
+  border-top: 0.7px dashed hsl(var(--gray-400));
+}
+
+/* Role / status badge: pill with 0.7px border on neutral background */
+.zero-badge {
+  border: 0.7px solid hsl(var(--gray-400));
+  background-color: hsl(var(--gray-0));
+}
+
+/* Zero chip-style gray (tone options, skill tags, Add skill) */
+.zero-app .zero-chip {
+  background-color: hsl(var(--gray-50));
+  border: 0.7px solid hsl(var(--gray-400));
+}
+.zero-app .zero-chip:hover {
+  background-color: hsl(var(--gray-100));
+  border-color: hsl(var(--gray-400));
+}
+
+/* Zero tabs (e.g. All agents / For you / For team) */
+.zero-app .zero-tabs {
+  background-color: hsl(var(--gray-100));
+}
+.zero-app .zero-tabs [role="tab"] {
+  background-color: transparent;
+  color: hsl(var(--muted-foreground));
+}
+.zero-app .zero-tabs [role="tab"]:hover {
+  color: hsl(var(--foreground));
+}
+.zero-app .zero-tabs [role="tab"].bg-background {
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+  box-shadow:
+    0 1px 2px hsl(220 12% 20% / 0.06),
+    0 1px 3px hsl(220 12% 20% / 0.08);
+}
+:where([data-theme="dark"]) .zero-app .zero-tabs {
+  background-color: hsl(var(--gray-200));
+}
+:where([data-theme="dark"]) .zero-app .zero-tabs [role="tab"].bg-background {
+  background-color: hsl(var(--gray-400));
+  box-shadow:
+    0 1px 3px hsl(0 0% 0% / 0.3),
+    0 2px 6px hsl(0 0% 0% / 0.2);
+}
+
+/* View toggle (list/gallery): track like zero-tabs, selected segment like white card */
+.zero-app .zero-view-toggle {
+  background-color: hsl(var(--gray-100));
+  border: 0.7px solid hsl(var(--gray-400));
+}
+.zero-app .zero-view-toggle .zero-view-toggle-selected {
+  background-color: hsl(var(--card));
+  box-shadow: var(--zero-card-shadow);
+}
+
+/* Zero left nav */
+.zero-nav {
+  --color-sidebar: hsl(var(--gray-0));
+  --color-sidebar-accent: hsl(var(--muted));
+  --color-sidebar-active: hsl(var(--primary) / 0.95);
+  --color-sidebar-border: hsl(var(--gray-200));
+  --color-divider: hsl(var(--divider));
+}
+:where([data-theme="dark"]) .zero-nav {
+  --color-sidebar: hsl(240 5% 8%);
+  --color-sidebar-accent: hsl(var(--gray-100));
+  --color-sidebar-primary: #ffffff;
+}
+
+/* Morandi outline buttons */
+.zero-app .zero-btn-morandi {
+  background-color: hsl(var(--gray-50));
+  border: 0.7px solid hsl(var(--gray-400));
+  color: hsl(var(--foreground));
+}
+.zero-app .zero-btn-morandi:hover {
+  background-color: hsl(var(--gray-100));
+  border-color: hsl(var(--gray-400));
+}
+
+/* Morandi cards (e.g. suggested prompts) */
+.zero-app .zero-card-morandi {
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+}
+.zero-app .zero-card-morandi:hover {
+  background-color: hsl(var(--gray-50));
+  border-color: hsl(var(--gray-200));
+}
+
+/* White card: shared border, radius (all white cards except chat bubbles) */
+.zero-app .zero-card {
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+  transition: background-color 0.15s;
+}
+.zero-app .zero-card.cursor-pointer {
+  border-color: hsl(var(--gray-400));
+  box-shadow: var(--zero-card-shadow);
+}
+.zero-app .zero-card.cursor-pointer:hover {
+  background-color: hsl(var(--gray-0));
+}
+
+/* Onboarding modal footer: frosted glass */
+.zero-onboarding-footer,
+.zero-app .zero-onboarding-footer {
+  border-top: 1px solid hsl(var(--border) / 0.6);
+  background: hsl(var(--background) / 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Zero onboarding dialogs: hide close button (portaled to body, so no .zero-app ancestor) */
+.zero-onboarding-dialog button[aria-label="Close"] {
+  display: none !important;
+}
+
+/* All onboarding steps: same dotted gray as homepage chat (zero-workspace-bg) */
+.zero-onboarding-dialog,
+.zero-app .zero-onboarding-dialog {
+  background-color: hsl(var(--background));
+  background-image: radial-gradient(
+    circle at center,
+    hsl(var(--foreground) / 0.06) 1px,
+    transparent 1px
+  );
+  background-size: 14px 14px;
+}
+.dark .zero-onboarding-dialog,
+.dark .zero-app .zero-onboarding-dialog,
+[data-theme="dark"] .zero-onboarding-dialog,
+[data-theme="dark"] .zero-app .zero-onboarding-dialog {
+  background-color: hsl(var(--background));
+  background-image: radial-gradient(
+    circle at center,
+    hsl(var(--foreground) / 0.05) 1px,
+    transparent 1px
+  );
+  background-size: 14px 14px;
+}
+
+/* Same as .zero-card but less rounded (more rectangular), e.g. account dropdown / profile card */
+.zero-app .zero-card-rectangle {
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+}
+
+/* Instructions/content card: uses .zero-card style */
+.zero-app .zero-card-white {
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+}
+
+/* Instructions/feature cards: cool gray gradient */
+.zero-app .zero-card-cool {
+  background: linear-gradient(
+    to bottom right,
+    hsl(var(--gray-50) / 0.98),
+    hsl(var(--gray-0)),
+    hsl(var(--gray-50) / 0.95)
+  );
+  border-color: hsl(var(--divider));
+  box-shadow: 0 1px 3px hsl(var(--border) / 0.06);
+}
+
+/* Message bubble (e.g. Meet Zero tone samples) */
+.zero-app .zero-bubble-cool {
+  background-color: hsl(var(--gray-100) / 0.95);
+  color: hsl(var(--foreground));
+}
+
+/* Chat: user message bubble */
+.zero-app .zero-chat-bubble-user {
+  background-color: hsl(var(--gray-100));
+  color: hsl(var(--foreground));
+}
+:where([data-theme="dark"]) .zero-app .zero-chat-bubble-user {
+  background-color: hsl(var(--gray-200));
+}
+
+/* Chat: assistant (Zero) message bubble */
+.zero-app .zero-chat-bubble-assistant {
+  background-color: transparent;
+  border: none;
+}
+
+/* Composer / input card (white, light border — “Just ask” / chat input) */
+.zero-app .zero-composer {
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
+}
+
+/* Chat: outline buttons inside dialogue */
+.zero-app .zero-chat-btn {
+  background-color: hsl(var(--gray-50));
+  border: 0.7px solid hsl(var(--gray-400));
+  color: hsl(var(--foreground));
+}
+.zero-app .zero-chat-btn:hover {
+  background-color: hsl(var(--gray-100));
+  border-color: hsl(var(--gray-400));
+}
+
+/* Lighter icons and "Recent dialogue" label; other styles unchanged */
+.zero-nav svg {
+  opacity: 0.7;
+}
+.zero-nav .zero-nav-recent-label {
+  opacity: 1;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--font-family-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code,
+  pre {
+    font-family: var(--font-family-mono);
+  }
+
+  /* Global scrollbar styling */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  *:hover {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 3px;
+  }
+
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.2);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.3);
+  }
+
+  /* Clerk subscription drawer header styling */
+  .cl-drawerHeader {
+    background-color: hsl(
+      var(--gray-50)
+    ) !important; /* sidebar color (gray-50) */
+    border-bottom: 0.7px solid hsl(var(--gray-400)) !important; /* border token (gray-200) */
+  }
+}
+
+/* Global selection color */
+::selection {
+  background-color: hsl(var(--primary-200));
+  color: hsl(var(--foreground));
+}
+
+/* ==========================================================================
+   Markdown Preview — full theme override for @uiw/react-markdown-preview.
+   We set data-color-mode on the wrapper (via React prop) so the library's
+   [data-color-mode] selectors activate. Then we override with the same
+   selector pattern (same specificity, later source order wins).
+   ========================================================================== */
+
+/* --- Color Variables (Light) -------------------------------------------- */
+[data-color-mode*="light"] .wmde-markdown,
+.wmde-markdown[data-color-mode*="light"] {
+  --color-fg-default: hsl(var(--foreground));
+  --color-fg-muted: hsl(var(--muted-foreground));
+  --color-fg-subtle: hsl(var(--gray-600));
+  --color-canvas-default: transparent;
+  --color-canvas-subtle: hsl(var(--gray-50));
+  --color-border-default: hsl(var(--border));
+  --color-border-muted: hsl(var(--border));
+  --color-neutral-muted: hsl(var(--gray-100));
+  --color-accent-fg: hsl(var(--primary-700));
+  --color-accent-emphasis: hsl(var(--primary-700));
+  --color-attention-subtle: hsl(var(--primary-50));
+  --color-attention-fg: hsl(var(--primary-800));
+  --color-attention-emphasis: hsl(var(--primary-800));
+  --color-danger-fg: hsl(var(--destructive));
+  --color-danger-emphasis: hsl(var(--destructive));
+  --color-success-fg: #2a7a4b;
+  --color-success-emphasis: #2a7a4b;
+  --color-done-fg: #6a5acd;
+  --color-done-emphasis: #6a5acd;
+  --color-copied-active-bg: hsl(var(--gray-400));
+
+  /* Syntax — muted earth tones on cool-neutral background */
+  --color-prettylights-syntax-comment: hsl(var(--gray-600));
+  --color-prettylights-syntax-constant: #6a5acd;
+  --color-prettylights-syntax-entity: #7c5cbf;
+  --color-prettylights-syntax-storage-modifier-import: hsl(var(--foreground));
+  --color-prettylights-syntax-entity-tag: #2a7a4b;
+  --color-prettylights-syntax-keyword: #b35a00;
+  --color-prettylights-syntax-string: #4a6fa5;
+  --color-prettylights-syntax-variable: hsl(var(--gray-800));
+  --color-prettylights-syntax-string-regexp: #2a7a4b;
+  --color-prettylights-syntax-brackethighlighter-unmatched: hsl(
+    var(--destructive)
+  );
+  --color-prettylights-syntax-brackethighlighter-angle: hsl(var(--gray-600));
+  --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
+  --color-prettylights-syntax-constant-other-reference-link: #4a6fa5;
+  --color-prettylights-syntax-meta-diff-range: #6a5acd;
+  --color-prettylights-syntax-markup-heading: hsl(var(--primary-800));
+  --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
+  --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
+  --color-prettylights-syntax-markup-deleted-text: #8b2020;
+  --color-prettylights-syntax-markup-deleted-bg: #fce8e8;
+  --color-prettylights-syntax-markup-inserted-text: #2a7a4b;
+  --color-prettylights-syntax-markup-inserted-bg: #e6f6ed;
+  --color-prettylights-syntax-markup-changed-text: #b35a00;
+  --color-prettylights-syntax-markup-changed-bg: hsl(var(--primary-50));
+  --color-prettylights-syntax-markup-list: #b35a00;
+}
+
+/* --- Color Variables (Dark) --------------------------------------------- */
+[data-color-mode*="dark"] .wmde-markdown,
+.wmde-markdown[data-color-mode*="dark"] {
+  --color-fg-default: hsl(var(--foreground));
+  --color-fg-muted: hsl(var(--muted-foreground));
+  --color-fg-subtle: hsl(var(--gray-600));
+  --color-canvas-default: transparent;
+  --color-canvas-subtle: hsl(var(--gray-100));
+  --color-border-default: hsl(var(--border));
+  --color-border-muted: hsl(var(--border));
+  --color-neutral-muted: hsl(var(--gray-200));
+  --color-accent-fg: hsl(var(--primary-900));
+  --color-accent-emphasis: hsl(var(--primary-700));
+  --color-attention-subtle: hsl(var(--primary-100));
+  --color-attention-fg: hsl(var(--primary-900));
+  --color-attention-emphasis: hsl(var(--primary-700));
+  --color-danger-fg: hsl(var(--destructive));
+  --color-danger-emphasis: hsl(var(--destructive));
+  --color-success-fg: #7dba97;
+  --color-success-emphasis: #7dba97;
+  --color-done-fg: #b8a0d8;
+  --color-done-emphasis: #b8a0d8;
+  --color-copied-active-bg: hsl(var(--gray-400));
+
+  /* Syntax — softer tones for dark backgrounds */
+  --color-prettylights-syntax-comment: hsl(var(--gray-600));
+  --color-prettylights-syntax-constant: #d4976c;
+  --color-prettylights-syntax-entity: #b8a0d8;
+  --color-prettylights-syntax-storage-modifier-import: hsl(var(--foreground));
+  --color-prettylights-syntax-entity-tag: #7dba97;
+  --color-prettylights-syntax-keyword: #d4976c;
+  --color-prettylights-syntax-string: #8aabcc;
+  --color-prettylights-syntax-variable: hsl(var(--gray-900));
+  --color-prettylights-syntax-string-regexp: #7dba97;
+  --color-prettylights-syntax-brackethighlighter-unmatched: hsl(
+    var(--destructive)
+  );
+  --color-prettylights-syntax-brackethighlighter-angle: hsl(var(--gray-600));
+  --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
+  --color-prettylights-syntax-constant-other-reference-link: #8aabcc;
+  --color-prettylights-syntax-meta-diff-range: #b8a0d8;
+  --color-prettylights-syntax-markup-heading: hsl(var(--primary-900));
+  --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
+  --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
+  --color-prettylights-syntax-markup-deleted-text: #e8a0a0;
+  --color-prettylights-syntax-markup-deleted-bg: hsl(var(--gray-200));
+  --color-prettylights-syntax-markup-inserted-text: #7dba97;
+  --color-prettylights-syntax-markup-inserted-bg: hsl(var(--gray-200));
+  --color-prettylights-syntax-markup-changed-text: #d4976c;
+  --color-prettylights-syntax-markup-changed-bg: hsl(var(--gray-200));
+  --color-prettylights-syntax-markup-list: #d4976c;
+}
+
+/* --- Spacing ------------------------------------------------------------ */
+.wmde-markdown p {
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.wmde-markdown h1,
+.wmde-markdown h2,
+.wmde-markdown h3,
+.wmde-markdown h4,
+.wmde-markdown h5,
+.wmde-markdown h6 {
+  margin-top: 20px;
+  margin-bottom: 6px;
+}
+
+.wmde-markdown blockquote,
+.wmde-markdown table,
+.wmde-markdown pre,
+.wmde-markdown details {
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.wmde-markdown ul,
+.wmde-markdown ol,
+.wmde-markdown dl {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.wmde-markdown > :first-child {
+  margin-top: 0;
+}
+
+.wmde-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.wmde-markdown li > p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* --- Headings ----------------------------------------------------------- */
+.wmde-markdown h1 {
+  font-size: 16px;
+  padding-bottom: 0;
+  border-bottom: none;
+  font-weight: 600;
+}
+
+.wmde-markdown h2 {
+  font-size: 15px;
+  padding-bottom: 0;
+  border-bottom: none;
+  font-weight: 600;
+}
+
+.wmde-markdown h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.wmde-markdown h4 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wmde-markdown h5 {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wmde-markdown h6 {
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+
+/* --- Links -------------------------------------------------------------- */
+.wmde-markdown a {
+  color: hsl(216 70% 45%);
+  text-decoration: none;
+  overflow-wrap: break-word;
+}
+
+.wmde-markdown a:hover {
+  text-decoration: underline;
+  color: hsl(216 75% 38%);
+}
+
+:where([data-theme="dark"]) .wmde-markdown a {
+  color: hsl(216 65% 62%);
+}
+
+:where([data-theme="dark"]) .wmde-markdown a:hover {
+  color: hsl(216 70% 70%);
+}
+
+/* --- Blockquote --------------------------------------------------------- */
+.wmde-markdown blockquote {
+  padding-left: 10px;
+  color: hsl(var(--muted-foreground));
+  border-left: 3px solid hsl(var(--gray-300));
+}
+
+/* --- Lists -------------------------------------------------------------- */
+.wmde-markdown ul,
+.wmde-markdown ol {
+  padding-left: 8px;
+}
+
+.wmde-markdown ul ul,
+.wmde-markdown ol ul,
+.wmde-markdown ul ol,
+.wmde-markdown ol ol {
+  padding-left: 6px;
+}
+
+.wmde-markdown ul {
+  list-style-type: disc;
+  padding-left: 20px;
+}
+
+.wmde-markdown ol {
+  list-style-type: decimal;
+  padding-left: 24px;
+}
+
+.wmde-markdown ul ul {
+  list-style-type: circle;
+  padding-left: 18px;
+}
+
+.wmde-markdown ol ol {
+  list-style-type: lower-alpha;
+  padding-left: 22px;
+}
+
+/* --- Horizontal Rule ---------------------------------------------------- */
+.wmde-markdown hr {
+  background-color: hsl(var(--border));
+  border-bottom-color: hsl(var(--border));
+}
+
+.zero-chat-bubble-assistant .wmde-markdown hr {
+  display: none;
+}
+
+/* --- Mark / highlight --------------------------------------------------- */
+.wmde-markdown mark {
+  background-color: hsl(var(--primary-100));
+  color: hsl(var(--foreground));
+}
+
+/* --- Tables ------------------------------------------------------------- */
+.wmde-markdown table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  display: table;
+  overflow: hidden;
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: 8px;
+}
+
+.wmde-markdown table th,
+.wmde-markdown table td {
+  border: none;
+  padding: 8px 12px;
+  text-align: left;
+  color: hsl(var(--foreground));
+}
+
+.wmde-markdown table th {
+  font-weight: 600;
+  background-color: hsl(var(--gray-100));
+}
+
+.wmde-markdown table tr {
+  border: none;
+  background-color: transparent;
+}
+
+.wmde-markdown table tr:nth-child(2n) {
+  background-color: hsl(var(--gray-100) / 0.5);
+}
+
+/* --- Inline Code -------------------------------------------------------- */
+.wmde-markdown code,
+.wmde-markdown tt {
+  background-color: hsl(var(--gray-100));
+  color: hsl(var(--foreground));
+  border-radius: 4px;
+  overflow-wrap: break-word;
+}
+
+/* --- Code Blocks -------------------------------------------------------- */
+.wmde-markdown pre {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: 8px;
+}
+
+.wmde-markdown pre code,
+.wmde-markdown pre tt {
+  background-color: transparent;
+  border: 0;
+}
+
+/* Code block scrollbar */
+.wmde-markdown pre > code::-webkit-scrollbar-thumb {
+  background: hsl(var(--gray-400));
+}
+
+/* --- Code Block Copy Button --------------------------------------------- */
+.wmde-markdown pre .copied {
+  background: hsl(var(--gray-200));
+  color: hsl(var(--muted-foreground));
+  border-radius: 6px;
+}
+
+.wmde-markdown pre:hover .copied:hover {
+  background: hsl(var(--gray-300));
+  color: hsl(var(--foreground));
+}
+
+.wmde-markdown pre:hover .copied:active,
+.wmde-markdown pre .copied.active {
+  background: hsl(var(--gray-400));
+  color: hsl(var(--foreground));
+}
+
+/* --- KBD ---------------------------------------------------------------- */
+.wmde-markdown kbd {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--gray-50));
+  border-color: hsl(var(--gray-300));
+  box-shadow: inset 0 -1px 0 hsl(var(--gray-300));
+}
+
+/* --- Alerts ------------------------------------------------------------- */
+.wmde-markdown .markdown-alert {
+  border-left-color: hsl(var(--border));
+}
+
+.wmde-markdown .markdown-alert.markdown-alert-note {
+  border-left-color: hsl(var(--primary-600));
+}
+
+.wmde-markdown .markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: hsl(var(--primary-700));
+}
+
+/* Details/summary animation */
+details > summary {
+  transition: color 0.15s ease;
+}
+
+details > summary > span:first-child {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+details[open] > summary > span:first-child {
+  transform: rotate(90deg);
+}
+
+/* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
+   Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
+/* Document card body: serif for reading */
+/* Document card (gallery): same border, radius as .zero-card so it matches other white cards */
+.zero-app .zero-doc-card {
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: var(--zero-card-radius);
+  background-color: hsl(var(--card));
+  box-shadow: var(--zero-card-shadow);
+}
+
+.zero-app .zero-doc-card-content {
+  font-family: Georgia, "Times New Roman", "SimSun", serif;
+  background-color: hsl(var(--gray-0));
+  border-top-color: hsl(var(--border));
+}
+
+/* Fade text to 30% opacity at bottom edge (no grey gradient overlay) */
+/* Only the last ~2 lines fade to 30% opacity */
+/* Activity table header divider */
+.zero-app .zero-activity-header {
+  border-bottom-color: hsl(var(--divider));
+}
+
+.zero-app .zero-doc-card-fade {
+  mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 88%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0%,
+    black 88%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+}
+
+.zero-workspace-bg {
+  position: relative;
+  z-index: 0;
+}
+
+.zero-workspace-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-color: hsl(var(--background));
+  background-image: radial-gradient(
+    ellipse 120% 80% at 50% -20%,
+    hsl(var(--background-50) / 0.5),
+    transparent 50%
+  );
+  background-size: 100% 100%;
+}
+
+.dark .zero-workspace-bg::before,
+[data-theme="dark"] .zero-workspace-bg::before {
+  background-image: radial-gradient(
+    ellipse 100% 70% at 50% 0%,
+    hsl(var(--background-50) / 0.4),
+    transparent 48%
+  );
+  background-size: 100% 100%;
+}
+
+/* --- Tiptap Instructions Editor ---------------------------------------- */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  height: 0;
+}
+
+.tiptap:focus {
+  outline: none;
+}
+
+/* Dashed vertical connector line for tool-call timelines */
+.zero-dashed-line {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 2px,
+    hsl(var(--border) / 0.6) 2px,
+    hsl(var(--border) / 0.6) 5px
+  );
+}
+
+/* Sheet / side drawer animations */
+@keyframes sheet-slide-in-right {
+  0% {
+    transform: translateX(100%);
+  }
+  70% {
+    transform: translateX(-2%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-slide-out-right {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.sheet-content[data-side="right"][data-state="open"] {
+  animation: sheet-slide-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.sheet-content[data-side="right"][data-state="closed"] {
+  animation: sheet-slide-out-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}

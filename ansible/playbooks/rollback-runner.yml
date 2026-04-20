@@ -1,0 +1,471 @@
+# Rollback VM0 Runner (Rust) — Downgrade to a Previously-Deployed Version
+#
+# This playbook switches a host from its currently-active runner version to a
+# target version. The target version's per-version bin dir and config are
+# typically already on disk — preserved by `runner gc --keep-latest 6` that
+# runs at the tail of every promote (the `--protect-version` flag pins the
+# version being promoted; older versions stay until they're pushed out of
+# the 6-slot window):
+#
+#   /var/lib/vm0-runner/bin/v{runner_version}/runner
+#   /var/lib/vm0-runner/runners/v{runner_version}/runner.yaml
+#
+# Phase 5 mirrors build-runner.yml on the install path: always runs
+# `runner setup` + `runner build` + `runner config` (each is idempotent and
+# cheap when state is current — happy path adds ~2-5s per host). This
+# guarantees the post-rollback host state matches a fresh promote, and
+# normalizes any drift in runner.yaml. The binary download is the only
+# conditional step — it fires only if the per-version bin dir was evicted
+# by gc (6+ newer releases since).
+#
+# The install path (Phase 5 + 6) is skipped entirely when the target is
+# already Running on the host — either because it was the live version
+# at Phase 1, or because Phase 3's SIGUSR2 resume brought it back from
+# Draining. In those cases only Phase 7/8 run (reconcile non-target
+# runners + gc + final doctor).
+#
+# Usage:
+#   ansible-playbook -i "host1,host2," playbooks/rollback-runner.yml \
+#     -e "ansible_user=ubuntu" \
+#     -e "runner_version=0.81.0" \
+#     -e "rollback_mode=graceful"
+#
+# Required Variables:
+#   - runner_version: Semantic version to roll back TO (e.g. 0.81.0)
+#   - rollback_mode: graceful | emergency
+#       graceful  — `runner service drain` (SIGUSR1). Active jobs finish
+#                   naturally (bounded by JOB_TIMEOUT=2h).
+#       emergency — `runner service stop --force` (SIGTERM via systemctl).
+#                   Active jobs are cancelled mid-run. The runner still runs
+#                   its shutdown path, so Firecracker VMs are destroyed
+#                   cleanly — no orphan cleanup required. Worst-case wait
+#                   is TimeoutStopSec=5min before systemd escalates to
+#                   SIGKILL (only matters if the runner is wedged).
+#
+# Conditionally Required (Phase 5 consumes them only on the install path —
+# skipped when target is already Running. CI callers cannot predict the
+# target state a priori, so they should always pass these; the "conditional"
+# qualifier only matters for manual invocations against a known-Running
+# target where the variables can legitimately be omitted):
+#   - official_runner_secret: Runner auth secret, baked into runner.yaml by
+#                             `runner config`.
+#   - api_url: vm0 API URL, baked into runner.yaml.
+#
+# Conditionally Required (binary fallback only — ignored when the target
+# bin dir survives on the host, which is the common case):
+#   - github_token: GitHub API token for downloading the release binary if
+#                   the repo is private. Omit for public repos.
+#
+# Optional Variables:
+#   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
+#   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
+#       Passed to `runner build` (speeds up rootfs cache hit on fresh hosts)
+#       and to `runner gc` (R2-side cache cleanup). If omitted, local-only
+#       behavior is used in both cases.
+
+- name: Rollback VM0 Runner
+  hosts: all
+  become: true
+
+  vars:
+    runner_name: "v{{ runner_version }}"
+    runner_group: vm0/production
+    data_dir: /var/lib/vm0-runner
+    bin_dir: "{{ data_dir }}/bin/{{ runner_name }}"
+    runner_dir: "{{ data_dir }}/runners/{{ runner_name }}"
+
+  tasks:
+    # ========================================
+    # Phase 0: Input validation
+    # ========================================
+    #
+    # Typos like rollback_mode=greaceful silently no-op both Phase 7 drain
+    # branches, leaving the fleet in a mixed-version state while the play
+    # reports success. Catch that upfront.
+    # Semver regex is enforced at the workflow layer too (rollback-runner.yml
+    # Validate target_version format), but we re-check here as defense in
+    # depth for direct `ansible-playbook` invocations: `runner_version`
+    # flows into systemd unit names and `command:` tasks (Ansible splits
+    # on whitespace), so a malformed value containing spaces or shell
+    # metachars could inject extra CLI flags.
+    - name: Validate required inputs
+      assert:
+        that:
+          - runner_version is defined and runner_version | length > 0
+          - runner_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+          - rollback_mode is defined and rollback_mode in ["graceful", "emergency"]
+        fail_msg: >-
+          Missing or invalid inputs. Required: `runner_version` in semver
+          form (e.g. 0.81.0, no leading v) and `rollback_mode` (graceful |
+          emergency). Got
+          runner_version='{{ runner_version | default('<undefined>') }}',
+          rollback_mode='{{ rollback_mode | default('<undefined>') }}'.
+
+    # ========================================
+    # Phase 1: Probe target service state
+    # ========================================
+    #
+    # Combine systemctl's ActiveState with the runner's own status.json mode
+    # into a single `target_state` fact, one of:
+    #
+    #   running   — target is already live (log + skip install; Phase 7/8 still run)
+    #   draining  — SIGUSR1 was sent; process is soft-draining, resumable
+    #   stopping  — irreversible teardown committed; about to exit
+    #   stopped   — teardown finished; process about to exit
+    #   inactive  — unit is not active (fresh-start path)
+    #
+    # Subsequent phases dispatch on `target_state` and short-circuit at the
+    # first sufficient action.
+    - name: Probe target ActiveState
+      command: systemctl show vm0-runner-{{ runner_name }}.service --property=ActiveState --value
+      register: tgt_active
+      changed_when: false
+
+    # Retry to absorb the narrow window where systemd has marked the unit
+    # active but StatusTracker hasn't yet flushed its first status.json
+    # (proxy/dns port allocation + initial fact collection). If the file
+    # is still missing after retries, fail loudly rather than silently
+    # falling back — an active unit without a readable status is a
+    # degraded state, not a `running` target.
+    - name: Read target status.json
+      slurp:
+        src: "{{ runner_dir }}/status.json"
+      register: tgt_status_raw
+      when: tgt_active.stdout == "active"
+      retries: 5
+      delay: 1
+      until: tgt_status_raw is not failed
+
+    - name: Resolve target_state
+      set_fact:
+        target_state: >-
+          {%- if tgt_active.stdout != "active" -%}
+            inactive
+          {%- else -%}
+            {{ (tgt_status_raw.content | b64decode | from_json).mode }}
+          {%- endif -%}
+
+    - name: Reject unknown target mode
+      fail:
+        msg: >-
+          Target v{{ runner_version }} is active but status.json reports
+          unknown mode '{{ target_state }}'. Refusing to proceed — manual
+          inspection required.
+      when:
+        - tgt_active.stdout == "active"
+        - target_state not in ["running", "draining", "stopping", "stopped"]
+
+    # ========================================
+    # Phase 2: target_state=running → log only
+    # ========================================
+    #
+    # This phase is observability-only. It does NOT set skip_install and does
+    # NOT end_host. The actual "skip install" decision lives at the tail of
+    # Phase 3 (the "Mark install as not needed — target is running" task),
+    # which fires for both this case and the resume-to-Running case so the
+    # two flows converge on the same set_fact.
+    #
+    # We do NOT end_host because fleet drift (e.g. a previous rollback
+    # partially succeeded and left a non-target version also live on this
+    # host) requires Phase 7 to run for convergence.
+    - name: Report target already running
+      when: target_state == "running"
+      debug:
+        msg: >-
+          Runner v{{ runner_version }} is already running on this host —
+          skipping install; Phase 7/8 will reconcile any non-target drift.
+
+    # ========================================
+    # Phase 3: target_state=draining → SIGUSR2 resume (best-effort)
+    # ========================================
+    #
+    # Try to flip mode back to Running. The existing process's signal handler
+    # does it in-place (discover / Ably / proxy / factories stayed alive —
+    # see start.rs:521-598). `resume` also re-enables the unit for reboot.
+    #
+    # Race caveat: the runner may have auto-transitioned Draining→Stopping
+    # (start.rs:543-551) between our Phase 1 status.json read and SIGUSR2
+    # arrival. In that case Rust `service resume`'s preflight rejects with
+    # "already shutting down" (service.rs:729-739), or the signal handler
+    # drops SIGUSR2 because mode != Draining (start.rs:1430-1432). We
+    # tolerate the resume command's non-zero exit and re-probe status.json
+    # to learn the actual post-signal state, then update target_state so
+    # downstream phases re-dispatch correctly:
+    #   - resume won     → target_state=running → skip_install=true, go to P7/8
+    #   - race lost      → target_state=stopping/stopped → P4 waits, P5/6 install
+    # Either way P7 (drain non-target) and P8 (gc + doctor) always run.
+    # Only set skip_install once we confirm mode is running.
+    - name: Attempt resume from Draining
+      when: target_state == "draining"
+      command: "{{ bin_dir }}/runner service resume --name {{ runner_name }}"
+      failed_when: false
+
+    - name: Re-read target status.json after resume
+      when: target_state == "draining"
+      slurp:
+        src: "{{ runner_dir }}/status.json"
+      register: tgt_status_after_resume
+      retries: 10
+      delay: 1
+      until: >-
+        tgt_status_after_resume is not failed
+        and (tgt_status_after_resume.content | b64decode | from_json).mode
+            in ["running", "stopping", "stopped"]
+
+    - name: Update target_state after resume
+      when: target_state == "draining"
+      set_fact:
+        target_state: "{{ (tgt_status_after_resume.content | b64decode | from_json).mode }}"
+
+    # Confluence point for two flows that both end at target=Running:
+    #   (a) Phase 1 saw mode=running already → target_state never changed,
+    #       Phase 2 only logged, this task sets skip_install.
+    #   (b) Phase 1 saw mode=draining → Phase 3 sent SIGUSR2 and re-read
+    #       status.json; if the re-read settled on "running", the preceding
+    #       "Update target_state" flipped target_state here, and this task
+    #       fires. If instead the race was lost and mode settled on
+    #       stopping/stopped, target_state is now "stopping"/"stopped" and
+    #       this task is skipped, falling through to Phase 4 + install.
+    - name: Mark install as not needed — target is running
+      when: target_state == "running"
+      set_fact:
+        skip_install: true
+
+    # ========================================
+    # Phase 4: target_state ∈ {stopping, stopped} → wait for inactive
+    # ========================================
+    #
+    # Draining→Stopping has committed; teardown is irreversible. Wait for
+    # systemd to mark the unit inactive (bounded by shutdown overhead —
+    # seconds, not minutes on the nominal path, since active jobs no
+    # longer gate teardown), then fall through to the normal install
+    # path.
+    #
+    # Retry budget is 60 × 2s = 120s, deliberately larger than nominal
+    # teardown (a few seconds) so FC-VM cleanup variance doesn't flake
+    # the rollback. Still shorter than systemd's TimeoutStopSec=5min;
+    # if shutdown wedges past 120s, fail here rather than block the
+    # rollback for another 3 minutes — the operator can SSH in and
+    # SIGKILL.
+    - name: Wait for target to go inactive
+      when: target_state in ["stopping", "stopped"]
+      command: systemctl is-active --quiet vm0-runner-{{ runner_name }}.service
+      register: wait_inactive
+      retries: 60
+      delay: 2
+      until: wait_inactive.rc != 0
+      # systemctl is-active returns 0 when active, non-zero when inactive.
+      # We WANT non-zero — override ansible's default "rc != 0 is failure"
+      # so intermediate retries don't get marked failed, and so that retry
+      # exhaustion (final rc == 0) surfaces correctly as a timeout failure.
+      failed_when: wait_inactive.rc == 0
+      changed_when: false
+
+    # ========================================
+    # Phase 5: Prepare target artifacts (install path only)
+    # ========================================
+    #
+    # Skipped when skip_install=true (either target was already running at
+    # Phase 1, or Phase 3 resume brought it back from Draining).
+    #
+    # On the install path, we mirror build-runner.yml exactly: always run
+    # `runner setup` + `runner build` + `runner config`. Each is idempotent
+    # and cheap when state is already current:
+    #   - `runner setup`   — no-op if FC / kernel / mitmproxy already present
+    #   - `runner build`   — cache hit on content-addressed rootfs/snapshot
+    #                        hashes; just stats local / R2 cache
+    #   - `runner config`  — rewrites runner.yaml with deterministic content
+    #
+    # Unconditional re-run (vs "regenerate only if missing") guarantees the
+    # host ends in the same canonical state as a fresh promote, and catches
+    # silent drift like a manually-edited runner.yaml. Happy-path cost on
+    # pre-populated hosts is ~2-5s per host.
+    #
+    # The only conditional step is binary download: the binary is content-
+    # identical across invocations (deterministic build output), so
+    # re-downloading on every rollback is pure waste.
+    - name: Probe target binary
+      when: not (skip_install | default(false))
+      stat:
+        path: "{{ bin_dir }}/runner"
+      register: tgt_bin
+
+    - name: Download target runner binary if missing
+      when:
+        - not (skip_install | default(false))
+        - not (tgt_bin.stat.exists and tgt_bin.stat.executable)
+      block:
+        - name: Ensure bin directory exists
+          file:
+            path: "{{ bin_dir }}"
+            state: directory
+            mode: "0755"
+
+        # Pre-compute headers as a proper dict fact so `get_url` receives
+        # a real dict rather than an inline Jinja-to-dict string coercion
+        # (the inline form works on recent Ansible but has been brittle on
+        # older 2.9-2.11 releases). Empty dict when no token is provided —
+        # uniformly handled by `get_url` without the nested-omit fragility.
+        - name: Prepare download headers
+          set_fact:
+            download_headers: "{{ {'Authorization': 'token ' + github_token} if (github_token is defined and github_token | length > 0) else {} }}"
+
+        # Release asset naming matches release-please.yml's upload step
+        # (runner-rs-v{version} tag, runner-v{version}-aarch64-linux asset).
+        - name: Download runner binary from GitHub Release
+          get_url:
+            url: "https://github.com/vm0-ai/vm0/releases/download/runner-rs-{{ runner_name }}/runner-{{ runner_name }}-aarch64-linux"
+            dest: "{{ bin_dir }}/runner"
+            mode: "0755"
+            headers: "{{ download_headers }}"
+
+    - name: Verify artifact-regen inputs are provided
+      when: not (skip_install | default(false))
+      assert:
+        that:
+          - official_runner_secret is defined and official_runner_secret | length > 0
+          - api_url is defined and api_url | length > 0
+        fail_msg: >-
+          Install path requires `official_runner_secret` and `api_url`
+          (always consumed by `runner config`). Provide them via -e.
+
+    # Always runs on install path. Idempotent — downloads Firecracker /
+    # kernel / mitmproxy to /opt/firecracker/ only on first run per host;
+    # subsequent invocations verify and return immediately.
+    - name: Download runner dependencies
+      when: not (skip_install | default(false))
+      command: "{{ bin_dir }}/runner setup"
+
+    # Always runs on install path. Content-addressed by hash of embedded
+    # guests + recipe; if target's rootfs/snapshot are already on disk at
+    # the matching hash path, this returns in ~1s. If R2 creds are passed,
+    # remote cache can satisfy a local miss in seconds instead of rebuilding.
+    - name: Rebuild default rootfs and snapshot
+      when: not (skip_install | default(false))
+      command: >
+        {{ bin_dir }}/runner build
+        --profile vm0/default
+      environment:
+        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
+        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
+        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
+        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
+      register: default_build_output
+
+    - name: Parse default build hashes
+      when: not (skip_install | default(false))
+      set_fact:
+        default_rootfs_hash: "{{ default_build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
+        default_snapshot_hash: "{{ default_build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
+
+    # Always runs on install path. Rewrites runner.yaml deterministically;
+    # output is byte-identical to the original build-runner.yml generation
+    # so re-run produces no effective change, but normalizes any drift.
+    - name: Write runner config
+      when: not (skip_install | default(false))
+      command: >
+        {{ bin_dir }}/runner config
+        --profile vm0/default
+        --rootfs-hash {{ default_rootfs_hash }}
+        --snapshot-hash {{ default_snapshot_hash }}
+        --name {{ runner_name }}
+        --group {{ runner_group }}
+        --runner-dirname {{ runner_name }}
+        --api-url {{ api_url }}
+        --token vm0_official_{{ official_runner_secret }}
+
+    # ========================================
+    # Phase 6: Install target service + verify health (install path only)
+    # ========================================
+    #
+    # Rewrites the unit file, daemon-reloads, and `enable --now` starts the
+    # unit. A fresh process initializes mode=Running (StatusTracker::new
+    # hard-codes it; status.json is an export, not a control input).
+    - name: Install and start target runner service
+      when: not (skip_install | default(false))
+      command: >
+        {{ bin_dir }}/runner service install
+        --name {{ runner_name }}
+        --config {{ runner_dir }}/runner.yaml
+        {% if sentry_dsn is defined and sentry_dsn %}
+        --env SENTRY_DSN={{ sentry_dsn }}
+        {% endif %}
+
+    - name: Verify target runner health
+      when: not (skip_install | default(false))
+      command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
+
+    # ========================================
+    # Phase 7: Transition non-target runners out
+    # ========================================
+    #
+    # `rollback_mode` selects the policy. Both branches go through the runner
+    # CLI so the runner's own shutdown path runs — FC VMs are torn down
+    # cleanly in either case; emergency differs from graceful only in how
+    # the currently-running jobs are treated.
+    #
+    #   graceful  — `runner service drain` (SIGUSR1). Active jobs finish
+    #               naturally (bounded by JOB_TIMEOUT=2h). Default — use
+    #               when the bad version isn't actively harming users.
+    #   emergency — `runner service stop --force` (SIGTERM via systemctl).
+    #               Active jobs are cancelled mid-run; Firecracker VMs are
+    #               still destroyed cleanly by the runner's shutdown code.
+    #               Worst-case wait is TimeoutStopSec=5min before systemd
+    #               escalates to SIGKILL (only hit if the runner is wedged).
+    #               Use during active incidents where continuing to serve
+    #               the bad version is worse than the cost of aborting
+    #               in-flight user tasks.
+    #
+    # Both branches shell out to `{{ bin_dir }}/runner`. On the
+    # skip_install path, Phase 5/6 were skipped so no prior task has
+    # touched the binary — assert it exists so a host where gc evicted
+    # the target (yet somehow still has the unit active) surfaces a
+    # clear error instead of a confusing "No such file or directory".
+    - name: Assert target binary present before drain/stop
+      stat:
+        path: "{{ bin_dir }}/runner"
+      register: tgt_bin_precheck
+      failed_when: not (tgt_bin_precheck.stat.exists and tgt_bin_precheck.stat.executable)
+
+    - name: Find running runner services
+      shell: >
+        systemctl list-units 'vm0-runner-*.service' --state=running
+        --plain --no-legend | awk '{print $1}'
+        | sed 's/^vm0-runner-//;s/\.service$//'
+      register: running_runners
+      changed_when: false
+
+    # `failed_when: false` tolerates non-zero exits from individual
+    # runners — e.g. a runner already in `draining` (operator pre-drained
+    # it) rejects a second `service drain` with non-zero; a runner mid-
+    # teardown rejects `service stop`. We don't want one stuck unit to
+    # abort the fleet-wide rollback; Phase 8's final `runner doctor` on
+    # the target is the real convergence check. Per-item errors are
+    # still visible in Ansible's per-host log.
+    - name: Drain non-target runners (graceful)
+      command: "{{ bin_dir }}/runner service drain --name {{ item }}"
+      loop: "{{ running_runners.stdout_lines | default([]) }}"
+      when: item != runner_name and rollback_mode == "graceful"
+      failed_when: false
+
+    - name: Stop non-target runners (emergency)
+      command: "{{ bin_dir }}/runner service stop --name {{ item }} --force"
+      loop: "{{ running_runners.stdout_lines | default([]) }}"
+      when: item != runner_name and rollback_mode == "emergency"
+      failed_when: false
+
+    # ========================================
+    # Phase 8: Garbage collect + final health check
+    # ========================================
+    #
+    # gc respects `--protect-version` so the rollback target is never swept.
+    - name: Garbage collect old artifacts
+      command: "{{ bin_dir }}/runner gc --keep-latest 6 --protect-version {{ runner_name }}"
+      environment:
+        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
+        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
+        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
+        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
+
+    - name: Verify runner health after cleanup
+      command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"

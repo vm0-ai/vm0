@@ -1,0 +1,17 @@
+[package]
+name = "sandbox"
+version = "0.12.2"
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,129 @@
+/**
+ * Shared grammar for a single host/path segment used across firewall
+ * base URL validation, permission rule path validation, and runtime URL
+ * matching.
+ *
+ * Grammar mirrors crates/runner/mitm-addon/src/matching.py::parse_segment —
+ * keep both implementations in lockstep. Any change to accepted or rejected
+ * forms must land in both languages at once.
+ *
+ * Accepted forms:
+ *   - Plain literal (no braces).
+ *   - `{name}`                  pure parameter.
+ *   - `{name}suffix`            parameter + literal suffix.
+ *   - `prefix{name}`            literal prefix + parameter.
+ *   - `prefix{name}suffix`      literal prefix + parameter + literal suffix.
+ *   - Parameter names may carry a trailing `+` or `*` for greedy matching;
+ *     greedy is only valid in positions the caller allows (leftmost host
+ *     segment, or last rule-path segment). Greedy names must NOT appear in
+ *     mixed segments — that combination is reserved.
+ *
+ * Rejected forms (error kind with a specific reason):
+ *   - `{}` / `prefix{}suffix`   empty parameter name.
+ *   - `{a}{b}`                  adjacent parameters in one segment.
+ *   - `{a}.{b}`                 literal-separated parameters in one segment.
+ *   - `{name` / `name}`         unbalanced brace.
+ *   - `{<malformed>}`           invalid parameter name characters.
+ *
+ * Match-time semantics for mixed segments (carried by `param` result):
+ *   - The runtime segment must startsWith(prefix) AND endsWith(suffix)
+ *     AND length > prefix.length + suffix.length (middle must be non-empty).
+ *   - Captured value is the middle slice.
+ */
+
+const ERROR_HINT =
+  'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"';
+
+type SegmentParseResult =
+  | { kind: "literal"; value: string }
+  | {
+      kind: "param";
+      prefix: string;
+      name: string;
+      suffix: string;
+      greedy: "" | "+" | "*";
+    }
+  | { kind: "error"; reason: string };
+
+export function parseSegment(seg: string): SegmentParseResult {
+  const openCount = countChar(seg, "{");
+  const closeCount = countChar(seg, "}");
+
+  if (openCount === 0 && closeCount === 0) {
+    return { kind: "literal", value: seg };
+  }
+  if (openCount !== closeCount) {
+    return {
+      kind: "error",
+      reason: `unbalanced brace in segment "${seg}" — ${ERROR_HINT}`,
+    };
+  }
+
+  const open1 = seg.indexOf("{");
+  const close1 = seg.indexOf("}");
+  if (close1 < open1) {
+    return {
+      kind: "error",
+      reason: `unbalanced brace in segment "${seg}" — ${ERROR_HINT}`,
+    };
+  }
+
+  if (openCount >= 2) {
+    const open2 = seg.indexOf("{", close1 + 1);
+    if (close1 + 1 === open2) {
+      return {
+        kind: "error",
+        reason: `adjacent parameters in segment "${seg}" — only one parameter per segment is allowed; ${ERROR_HINT}`,
+      };
+    }
+    return {
+      kind: "error",
+      reason: `literal-separated parameters in segment "${seg}" — only one parameter per segment is allowed; ${ERROR_HINT}`,
+    };
+  }
+
+  const prefix = seg.slice(0, open1);
+  const content = seg.slice(open1 + 1, close1);
+  const suffix = seg.slice(close1 + 1);
+
+  if (
+    prefix.includes("{") ||
+    prefix.includes("}") ||
+    suffix.includes("{") ||
+    suffix.includes("}")
+  ) {
+    return {
+      kind: "error",
+      reason: `unbalanced brace in segment "${seg}" — ${ERROR_HINT}`,
+    };
+  }
+
+  // Strip optional trailing greedy marker BEFORE emptiness check so that
+  // `{+}` / `{*}` report "empty parameter name", matching legacy behavior.
+  let greedy: "" | "+" | "*" = "";
+  let name = content;
+  if (content.length > 0) {
+    const last = content[content.length - 1]!;
+    if (last === "+" || last === "*") {
+      greedy = last;
+      name = content.slice(0, -1);
+    }
+  }
+
+  if (name.length === 0) {
+    return {
+      kind: "error",
+      reason: `empty parameter name in segment "${seg}" — ${ERROR_HINT}`,
+    };
+  }
+
+  return { kind: "param", prefix, name, suffix, greedy };
+}
+
+function countChar(s: string, ch: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === ch) n++;
+  }
+  return n;
+}

@@ -1,0 +1,84 @@
+import * as Sentry from "@sentry/react";
+
+// Initialize Sentry synchronously so that global error/unhandledrejection
+// handlers are installed before the app bootstraps. Errors during bootstrap
+// (route resolution, signal evaluation) would be missed with deferred init.
+export function initSentry(): void {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+
+    // Only enable when DSN is configured
+    enabled: !!import.meta.env.VITE_SENTRY_DSN,
+
+    // Set environment (Vercel provides VITE_VERCEL_ENV in builds)
+    environment: import.meta.env.VITE_VERCEL_ENV,
+
+    // Set app tag to identify this app in Sentry
+    initialScope: {
+      tags: {
+        app: "platform",
+      },
+    },
+
+    // Disable tracing - only error tracking is needed
+    tracesSampleRate: 0,
+
+    // Filter out expected errors
+    beforeSend(event) {
+      // Filter out 4xx client errors that are expected
+      const statusCode = event.contexts?.response?.status_code;
+      if (
+        typeof statusCode === "number" &&
+        statusCode >= 400 &&
+        statusCode < 500
+      ) {
+        return null;
+      }
+      return event;
+    },
+
+    // Ignore common client-side errors
+    ignoreErrors: [
+      // Network errors
+      "Failed to fetch",
+      "NetworkError",
+      "Load failed",
+      // User navigation
+      "AbortError",
+      // Browser extensions
+      "ResizeObserver loop",
+      // Clerk SDK - session cleared by Mobile Safari ITP (third-party noise)
+      "Unable to authenticate the request",
+      // 401 responses thrown by accept() — fetch$/zeroClient$ already route
+      // these to clerk.redirectToSignIn(), so the ApiError rejection is an
+      // expected side effect of the in-flight redirect, not a real failure.
+      "Not authenticated",
+      "Authentication required",
+      // Expected API errors surfaced as toasts — not actionable in Sentry
+      "Credits depleted",
+      "Insufficient credits",
+      // Third-party scripts (we don't use axios — any AxiosError is external noise)
+      "AxiosError",
+    ],
+
+    // Filter out errors from browser extension and third-party scripts
+    denyUrls: [
+      /inpage\.js/,
+      /chrome-extension:\/\//,
+      /moz-extension:\/\//,
+      // Termly compliance/cookie consent script
+      /app\.termly\.io/,
+      /resource-blocker/,
+    ],
+  });
+}
+
+export function setSentryUser(userId: string) {
+  Sentry.setUser({ id: userId });
+}
+
+export function clearSentryUser() {
+  Sentry.setUser(null);
+}
+
+export { Sentry };

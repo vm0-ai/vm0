@@ -1,0 +1,1 @@
+ALTER TABLE "email_thread_sessions" ADD COLUMN "org_id" varchar(255);

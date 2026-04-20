@@ -1,0 +1,101 @@
+# Provision Runner Host Dependencies
+#
+# Idempotent playbook that installs all system-level dependencies required by
+# the VM0 runner on runner hosts. Safe to run repeatedly — all tasks use
+# idempotent operations (apt state=present, group append, chmod).
+#
+# Usage:
+#   ansible-playbook -i "host1,host2," playbooks/provision-runner.yml \
+#     -e "ansible_user=ubuntu"
+
+- name: Provision runner host dependencies
+  hosts: all
+
+  tasks:
+    - name: Wait for apt lock to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+      become: true
+      changed_when: false
+
+    - name: Install system packages
+      apt:
+        name:
+          - squashfs-tools
+          - e2fsprogs
+          - openssl
+          - iproute2
+          - iptables
+          - procps
+          - dnsmasq
+          - debootstrap
+        state: present
+        update_cache: true
+      become: true
+
+    - name: Disable system dnsmasq (runner manages its own instance)
+      systemd:
+        name: dnsmasq
+        enabled: false
+        state: stopped
+      become: true
+
+    - name: Add user to kvm group
+      user:
+        name: "{{ ansible_user }}"
+        groups:
+          - kvm
+        append: true
+      become: true
+      register: group_change
+
+    - name: Ensure /dev/kvm is accessible
+      file:
+        path: /dev/kvm
+        mode: '0666'
+      become: true
+
+    # Write options BEFORE enabling auto-load so that a reboot between
+    # these tasks never loads the module with the kernel default nbds_max.
+    - name: Persist nbd module options across reboots
+      copy:
+        dest: /etc/modprobe.d/nbd.conf
+        content: "options nbd nbds_max=4096\n"
+        mode: '0644'
+      become: true
+
+    - name: Persist nbd module across reboots
+      copy:
+        dest: /etc/modules-load.d/nbd.conf
+        content: "nbd\n"
+        mode: '0644'
+      become: true
+
+    - name: Load nbd kernel module with correct nbds_max
+      shell: |
+        WANT=4096
+        if [ ! -d /sys/module/nbd ]; then
+          modprobe nbd nbds_max=$WANT
+        elif [ "$(cat /sys/module/nbd/parameters/nbds_max)" != "$WANT" ]; then
+          # Module loaded with wrong nbds_max (e.g., kernel default 16 after
+          # reboot before ansible ran). Reload only if no devices are in use.
+          if ! grep -q '^[0-9]' /sys/block/nbd*/pid 2>/dev/null; then
+            modprobe -r nbd && modprobe nbd nbds_max=$WANT
+          else
+            echo "WARNING: nbd module has wrong nbds_max but devices are in use, skipping reload"
+          fi
+        fi
+      become: true
+      changed_when: false
+      register: nbd_load
+
+    - name: Warn if nbd module reload was skipped
+      debug:
+        msg: "{{ nbd_load.stdout }}"
+      when: nbd_load.stdout | default('') | length > 0
+
+    # When groups change, the current SSH session still has the old group list.
+    # Reset the connection so subsequent playbooks (build-runner) pick up the
+    # new membership.
+    - name: Reset SSH connection to pick up new group membership
+      meta: reset_connection
+      when: group_change.changed

@@ -1,0 +1,743 @@
+use std::collections::BTreeMap;
+use std::fs::File;
+use std::os::unix::fs::FileExt;
+use std::path::{Path, PathBuf};
+
+use bitvec::prelude::*;
+
+use crate::error::{NbdCowError, Result};
+
+// Bitmap serialization assumes usize == u64 (bitvec stores usize words).
+const _: () = assert!(
+    std::mem::size_of::<usize>() == 8,
+    "nbd-cow requires a 64-bit target"
+);
+
+/// COW (Copy-on-Write) layer with write buffering.
+///
+/// Reads check: write buffer -> dirty COW file -> base image.
+/// Writes accumulate in an in-memory buffer that is flushed to the COW file
+/// when the buffer exceeds the flush threshold.
+pub struct CowLayer {
+    /// Read-only base image file.
+    base_fd: File,
+    /// Path for the sparse COW file (created on first flush).
+    cow_path: std::path::PathBuf,
+    /// Open file handle for the COW file (lazily opened on first flush).
+    cow_fd: Option<File>,
+    /// 1 bit per block: set if the block has been written (and flushed to COW file).
+    dirty: BitVec,
+    /// Pending writes: block index -> block data.
+    write_buffer: BTreeMap<u64, Vec<u8>>,
+    /// Current buffer usage in bytes.
+    buffer_bytes: usize,
+    /// Flush when buffer_bytes exceeds this threshold.
+    flush_threshold: usize,
+    /// Block size in bytes.
+    block_size: usize,
+    /// Total device size in bytes.
+    size: u64,
+}
+
+impl CowLayer {
+    /// Create a new COW layer.
+    ///
+    /// If a bitmap sidecar file (`{cow_path}.bitmap`) exists, the dirty bitmap
+    /// is restored from it and the COW file is opened eagerly. This enables
+    /// snapshot restore: a previous `save_bitmap()` + `destroy_keep_cow()` cycle
+    /// preserves the COW state, and a subsequent `new()` with the same paths
+    /// picks it up automatically.
+    ///
+    /// `base_path`: read-only base image file
+    /// `cow_path`: path for the sparse COW file (created on first flush)
+    /// `size`: total device size in bytes
+    /// `block_size`: block size (typically 4096)
+    /// `flush_threshold`: flush write buffer when it exceeds this size in bytes
+    pub fn new(
+        base_path: &Path,
+        cow_path: &Path,
+        size: u64,
+        block_size: usize,
+        flush_threshold: usize,
+    ) -> Result<Self> {
+        assert!(block_size > 0, "block_size must be positive");
+        debug_assert!(
+            size.is_multiple_of(block_size as u64),
+            "device size ({size}) must be a multiple of block_size ({block_size})"
+        );
+        let base_fd = File::open(base_path)?;
+        let num_blocks = (size as usize).div_ceil(block_size);
+
+        // Auto-detect restore mode: load bitmap if sidecar file exists.
+        let bitmap_path = bitmap_path_for(cow_path);
+        let dirty = if bitmap_path.exists() {
+            let bv = Self::load_bitmap(&bitmap_path, num_blocks)?;
+            tracing::info!(dirty_blocks = bv.count_ones(), "restored dirty bitmap");
+            bv
+        } else {
+            bitvec![0; num_blocks]
+        };
+
+        // If bitmap has dirty bits, COW file must already exist — open it eagerly.
+        let cow_fd = if dirty.count_ones() > 0 {
+            Some(
+                File::options()
+                    .read(true)
+                    .write(true)
+                    .open(cow_path)
+                    .map_err(|e| {
+                        NbdCowError::Io(std::io::Error::other(format!(
+                            "dirty bitmap present but COW file cannot be opened: {e}"
+                        )))
+                    })?,
+            )
+        } else {
+            None
+        };
+
+        Ok(Self {
+            base_fd,
+            cow_path: cow_path.to_path_buf(),
+            cow_fd,
+            dirty,
+            write_buffer: BTreeMap::new(),
+            buffer_bytes: 0,
+            flush_threshold,
+            block_size,
+            size,
+        })
+    }
+
+    /// Read `buf.len()` bytes starting at `offset`.
+    ///
+    /// Read path: write buffer -> COW file (if dirty) -> base image.
+    pub fn read(&self, offset: u64, buf: &mut [u8]) -> Result<()> {
+        self.check_bounds(offset, buf.len() as u64)?;
+
+        let mut pos = 0usize;
+        while pos < buf.len() {
+            let current_offset = offset + pos as u64;
+            let block_idx = current_offset / self.block_size as u64;
+            let block_offset = (current_offset % self.block_size as u64) as usize;
+            let remaining_in_block = self.block_size - block_offset;
+            let to_read = remaining_in_block.min(buf.len() - pos);
+
+            let dest = buf.get_mut(pos..pos + to_read).ok_or_else(|| {
+                NbdCowError::Io(std::io::Error::other("slice out of bounds in read"))
+            })?;
+
+            // Check write buffer first
+            if let Some(block_data) = self.write_buffer.get(&block_idx) {
+                let src = block_data
+                    .get(block_offset..block_offset + to_read)
+                    .ok_or_else(|| {
+                        NbdCowError::Io(std::io::Error::other("block_data slice out of bounds"))
+                    })?;
+                dest.copy_from_slice(src);
+            } else if self.is_dirty(block_idx) {
+                // Read from COW file
+                if let Some(ref cow_fd) = self.cow_fd {
+                    cow_fd.read_exact_at(dest, current_offset)?;
+                } else {
+                    return Err(NbdCowError::Io(std::io::Error::other(
+                        "dirty bit set but COW file not open",
+                    )));
+                }
+            } else {
+                // Read from base image
+                self.base_fd.read_exact_at(dest, current_offset)?;
+            }
+
+            pos += to_read;
+        }
+
+        Ok(())
+    }
+
+    /// Write `data` at `offset`. Returns `true` if the buffer needs flushing.
+    pub fn write(&mut self, offset: u64, data: &[u8]) -> Result<bool> {
+        self.check_bounds(offset, data.len() as u64)?;
+
+        let mut pos = 0usize;
+        while pos < data.len() {
+            let current_offset = offset + pos as u64;
+            let block_idx = current_offset / self.block_size as u64;
+            let block_offset = (current_offset % self.block_size as u64) as usize;
+            let remaining_in_block = self.block_size - block_offset;
+            let to_write = remaining_in_block.min(data.len() - pos);
+
+            if !self.write_buffer.contains_key(&block_idx) {
+                let full_block = self.read_full_block(block_idx)?;
+                self.write_buffer.insert(block_idx, full_block);
+            }
+            let block_data = self
+                .write_buffer
+                .get_mut(&block_idx)
+                .ok_or_else(|| NbdCowError::Io(std::io::Error::other("missing buffer entry")))?;
+
+            let dest_slice = block_data
+                .get_mut(block_offset..block_offset + to_write)
+                .ok_or_else(|| {
+                    NbdCowError::Io(std::io::Error::other("block_data dest slice out of bounds"))
+                })?;
+            let src_slice = data.get(pos..pos + to_write).ok_or_else(|| {
+                NbdCowError::Io(std::io::Error::other("data src slice out of bounds"))
+            })?;
+            dest_slice.copy_from_slice(src_slice);
+
+            pos += to_write;
+        }
+
+        // Recalculate buffer bytes
+        self.buffer_bytes = self.write_buffer.len() * self.block_size;
+
+        Ok(self.buffer_bytes >= self.flush_threshold)
+    }
+
+    /// Flush the write buffer to the COW file.
+    ///
+    /// BTreeMap iterates in key order, giving sequential I/O for free.
+    /// On I/O failure, unwritten blocks are restored to the buffer so no data is lost.
+    pub fn flush(&mut self) -> Result<()> {
+        if self.write_buffer.is_empty() {
+            return Ok(());
+        }
+
+        self.ensure_cow_fd()?;
+
+        // Take ownership; on failure we put unwritten blocks back.
+        let blocks: Vec<(u64, Vec<u8>)> =
+            std::mem::take(&mut self.write_buffer).into_iter().collect();
+
+        let block_size = self.block_size;
+        for (i, entry) in blocks.iter().enumerate() {
+            let offset = entry.0 * block_size as u64;
+            if let Some(ref cow_fd) = self.cow_fd
+                && let Err(e) = cow_fd.write_all_at(&entry.1, offset)
+            {
+                // Restore unwritten blocks back to the buffer
+                for (idx, buf) in blocks.into_iter().skip(i) {
+                    self.write_buffer.insert(idx, buf);
+                }
+                self.buffer_bytes = self.write_buffer.len() * self.block_size;
+                return Err(e.into());
+            }
+            self.set_dirty(entry.0);
+        }
+
+        self.buffer_bytes = 0;
+        Ok(())
+    }
+
+    /// Flush and fsync the COW file.
+    pub fn sync(&mut self) -> Result<()> {
+        self.flush()?;
+        if let Some(ref cow_fd) = self.cow_fd {
+            cow_fd.sync_all()?;
+        }
+        Ok(())
+    }
+
+    /// Number of dirty blocks (flushed to COW file).
+    pub fn dirty_block_count(&self) -> usize {
+        self.dirty.count_ones()
+    }
+
+    /// Number of blocks in the write buffer (not yet flushed).
+    pub fn buffered_block_count(&self) -> usize {
+        self.write_buffer.len()
+    }
+
+    /// Current write buffer size in bytes.
+    pub fn buffer_bytes(&self) -> usize {
+        self.buffer_bytes
+    }
+
+    fn check_bounds(&self, offset: u64, length: u64) -> Result<()> {
+        if offset.saturating_add(length) > self.size {
+            return Err(NbdCowError::OutOfBounds {
+                offset,
+                length,
+                device_size: self.size,
+            });
+        }
+        Ok(())
+    }
+
+    fn is_dirty(&self, block_idx: u64) -> bool {
+        debug_assert!(
+            (block_idx as usize) < self.dirty.len(),
+            "block_idx {block_idx} out of range (max {})",
+            self.dirty.len()
+        );
+        self.dirty
+            .get(block_idx as usize)
+            .as_deref()
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn set_dirty(&mut self, block_idx: u64) {
+        debug_assert!(
+            (block_idx as usize) < self.dirty.len(),
+            "block_idx {block_idx} out of range (max {})",
+            self.dirty.len()
+        );
+        if let Some(mut bit) = self.dirty.get_mut(block_idx as usize) {
+            *bit = true;
+        }
+    }
+
+    /// Read a full block, preferring COW file if dirty, otherwise base image.
+    fn read_full_block(&self, block_idx: u64) -> Result<Vec<u8>> {
+        let mut buf = vec![0u8; self.block_size];
+        let offset = block_idx * self.block_size as u64;
+
+        if self.is_dirty(block_idx) {
+            if let Some(ref cow_fd) = self.cow_fd {
+                cow_fd.read_exact_at(&mut buf, offset)?;
+                return Ok(buf);
+            }
+            return Err(NbdCowError::Io(std::io::Error::other(
+                "dirty bit set but COW file not open",
+            )));
+        }
+
+        self.base_fd.read_exact_at(&mut buf, offset)?;
+        Ok(buf)
+    }
+
+    fn ensure_cow_fd(&mut self) -> Result<()> {
+        if self.cow_fd.is_none() {
+            let fd = File::options()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&self.cow_path)?;
+            self.cow_fd = Some(fd);
+        }
+        Ok(())
+    }
+
+    /// Save the dirty bitmap to a file.
+    ///
+    /// Format: `[u64 num_blocks LE] [u64 words as LE bytes]`.
+    /// Uses u64 words for portability (not platform-dependent usize).
+    pub(crate) fn save_bitmap(&self, path: &Path) -> Result<()> {
+        let num_blocks = self.dirty.len() as u64;
+        let raw = self.dirty.as_raw_slice();
+        let mut data = Vec::with_capacity(8 + raw.len() * 8);
+        data.extend_from_slice(&num_blocks.to_le_bytes());
+        for word in raw {
+            data.extend_from_slice(&(*word as u64).to_le_bytes());
+        }
+        // Crash-safe bitmap swap: write tmp → fsync(tmp) → rename → fsync(dir).
+        // Two fsyncs, each covering a different guarantee:
+        //   - fsync(tmp): makes the bitmap bytes durable on the inode.
+        //   - fsync(dir): makes the rename's dir-entry update durable. Without
+        //     this, rename(2) returns after journaling the entry but the update
+        //     may not hit disk until the FS's next commit (~5s on ext4
+        //     data=ordered). A crash in that window can leave the bitmap path
+        //     pointing at the old file (or absent), while the COW data file —
+        //     already fsynced by CowLayer::sync — is durable. The resulting
+        //     bitmap/COW divergence silently corrupts reads on the next restore:
+        //     dirty bits disagree with actual COW content, reads fall through
+        //     to stale base-image bytes.
+        //
+        // Open the parent dir fd up front so a malformed path (no parent) fails
+        // before any FS mutation, and hold it across the rename so the final
+        // fsync targets a stable inode.
+        let parent = path.parent().ok_or_else(|| {
+            NbdCowError::Io(std::io::Error::other(format!(
+                "bitmap path has no parent directory: {}",
+                path.display()
+            )))
+        })?;
+        let dir_fd = File::open(parent)?;
+        let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
+        if let Err(e) = File::create(&tmp_path).and_then(|f| {
+            f.write_all_at(&data, 0)?;
+            f.sync_all()
+        }) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(e.into());
+        }
+        if let Err(e) = std::fs::rename(&tmp_path, path) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(e.into());
+        }
+        dir_fd.sync_all()?;
+        Ok(())
+    }
+
+    /// Load a dirty bitmap from a file.
+    ///
+    /// Returns an error if the block count doesn't match `expected_blocks`
+    /// or if the file is truncated.
+    fn load_bitmap(path: &Path, expected_blocks: usize) -> Result<BitVec> {
+        let data = std::fs::read(path)?;
+        if data.len() < 8 {
+            return Err(NbdCowError::Io(std::io::Error::other(
+                "bitmap file too short for header",
+            )));
+        }
+        let header: [u8; 8] = data
+            .get(..8)
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap header too short")))?
+            .try_into()
+            .map_err(|_| NbdCowError::Io(std::io::Error::other("bitmap header parse error")))?;
+        let num_blocks = u64::from_le_bytes(header) as usize;
+        if num_blocks != expected_blocks {
+            return Err(NbdCowError::Io(std::io::Error::other(format!(
+                "bitmap block count mismatch: file has {num_blocks}, expected {expected_blocks}"
+            ))));
+        }
+        let bitmap_bytes = data
+            .get(8..)
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap data missing")))?;
+        let expected_words = num_blocks.div_ceil(64);
+        let expected_data_len = expected_words * 8;
+        if bitmap_bytes.len() < expected_data_len {
+            return Err(NbdCowError::Io(std::io::Error::other(format!(
+                "bitmap data truncated: got {} bytes, expected {expected_data_len}",
+                bitmap_bytes.len()
+            ))));
+        }
+        let mut words: Vec<usize> = Vec::with_capacity(expected_words);
+        for i in 0..expected_words {
+            let offset = i * 8;
+            let word_bytes: [u8; 8] = bitmap_bytes
+                .get(offset..offset + 8)
+                .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap word out of bounds")))?
+                .try_into()
+                .map_err(|_| NbdCowError::Io(std::io::Error::other("bitmap word parse error")))?;
+            words.push(u64::from_le_bytes(word_bytes) as usize);
+        }
+        let mut bv = BitVec::from_vec(words);
+        bv.truncate(num_blocks);
+        Ok(bv)
+    }
+}
+
+/// Compute the bitmap sidecar path for a given COW file path.
+///
+/// Convention: `{cow_path}.bitmap` (e.g., `cow.img.bitmap`).
+pub fn bitmap_path_for(cow_path: &Path) -> PathBuf {
+    let mut name = cow_path.as_os_str().to_os_string();
+    name.push(".bitmap");
+    PathBuf::from(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write as IoWrite;
+    use tempfile::NamedTempFile;
+
+    fn create_base_image(data: &[u8]) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(data).unwrap();
+        f.flush().unwrap();
+        f
+    }
+
+    fn make_cow(
+        base: &NamedTempFile,
+        cow_file: &NamedTempFile,
+        size: u64,
+        flush_threshold: usize,
+    ) -> CowLayer {
+        CowLayer::new(base.path(), cow_file.path(), size, 4096, flush_threshold).unwrap()
+    }
+
+    #[test]
+    fn read_from_base_when_no_writes() {
+        let base = create_base_image(&vec![0xAA; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xAA));
+
+        cow.read(4096, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xAA));
+    }
+
+    #[test]
+    fn write_then_read_returns_written_data() {
+        let base = create_base_image(&vec![0x00; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+
+        cow.write(0, &vec![0xBB; 4096]).unwrap();
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xBB));
+
+        // Second block still reads from base
+        cow.read(4096, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0x00));
+    }
+
+    #[test]
+    fn partial_block_write() {
+        let base = create_base_image(&vec![0xAA; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        cow.write(100, &[0xFF; 10]).unwrap();
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf[..100].iter().all(|&b| b == 0xAA));
+        assert!(buf[100..110].iter().all(|&b| b == 0xFF));
+        assert!(buf[110..].iter().all(|&b| b == 0xAA));
+    }
+
+    #[test]
+    fn flush_writes_to_cow_file() {
+        let base = create_base_image(&vec![0x00; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+
+        cow.write(0, &vec![0xCC; 4096]).unwrap();
+        assert_eq!(cow.buffered_block_count(), 1);
+
+        cow.flush().unwrap();
+        assert_eq!(cow.buffered_block_count(), 0);
+        assert_eq!(cow.dirty_block_count(), 1);
+
+        // Data should still be readable (now from COW file)
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xCC));
+    }
+
+    #[test]
+    fn buffer_threshold_triggers_flush_signal() {
+        let base = create_base_image(&vec![0x00; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        // Threshold: 1 block (4096 bytes)
+        let mut cow = make_cow(&base, &cow_file, 8192, 4096);
+
+        let needs_flush = cow.write(0, &vec![0xDD; 4096]).unwrap();
+        assert!(needs_flush, "should signal flush when threshold reached");
+    }
+
+    #[test]
+    fn out_of_bounds_error() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        let mut buf = vec![0u8; 4096];
+        let err = cow.read(4096, &mut buf);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn write_after_flush_overwrites_dirty_block() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        // Write and flush
+        cow.write(0, &vec![0xAA; 4096]).unwrap();
+        cow.flush().unwrap();
+        assert_eq!(cow.dirty_block_count(), 1);
+
+        // Overwrite the same block (now in COW file, not buffer)
+        cow.write(0, &vec![0xBB; 4096]).unwrap();
+        assert_eq!(cow.buffered_block_count(), 1);
+
+        // Read should return the latest write (from buffer)
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xBB));
+
+        // Flush again and read — should still be 0xBB
+        cow.flush().unwrap();
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xBB));
+    }
+
+    #[test]
+    fn zero_length_read_write() {
+        let base = create_base_image(&vec![0xAA; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        // Zero-length read and write should succeed as no-ops
+        cow.read(0, &mut []).unwrap();
+        cow.write(0, &[]).unwrap();
+        assert_eq!(cow.buffered_block_count(), 0);
+
+        // Also at end of device
+        cow.read(4096, &mut []).unwrap();
+        cow.write(4096, &[]).unwrap();
+    }
+
+    #[test]
+    fn sync_without_writes() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        // Sync with no writes should be a no-op (no COW file created)
+        cow.sync().unwrap();
+        assert_eq!(cow.dirty_block_count(), 0);
+        assert_eq!(cow.buffered_block_count(), 0);
+    }
+
+    #[test]
+    fn cross_block_read_write() {
+        let base = create_base_image(&vec![0xAA; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+
+        cow.write(4090, &[0xEE; 100]).unwrap();
+
+        let mut buf = vec![0u8; 100];
+        cow.read(4090, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xEE));
+        assert_eq!(cow.buffered_block_count(), 2);
+    }
+
+    #[test]
+    fn bitmap_save_load_round_trip() {
+        let base = create_base_image(&vec![0x00; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+
+        // Write to block 0, flush to set dirty bit
+        cow.write(0, &vec![0xAA; 4096]).unwrap();
+        cow.flush().unwrap();
+        assert_eq!(cow.dirty_block_count(), 1);
+
+        // Save bitmap
+        let bitmap_file = NamedTempFile::new().unwrap();
+        cow.save_bitmap(bitmap_file.path()).unwrap();
+
+        // Load bitmap and verify
+        let loaded = CowLayer::load_bitmap(bitmap_file.path(), 2).unwrap();
+        assert_eq!(loaded.count_ones(), 1);
+        assert!(loaded[0]); // block 0 is dirty
+        assert!(!loaded[1]); // block 1 is clean
+    }
+
+    #[test]
+    fn bitmap_load_wrong_block_count_errors() {
+        let base = create_base_image(&vec![0x00; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+
+        let bitmap_file = NamedTempFile::new().unwrap();
+        cow.save_bitmap(bitmap_file.path()).unwrap();
+
+        // Try to load with wrong block count
+        let result = CowLayer::load_bitmap(bitmap_file.path(), 999);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bitmap_load_truncated_data_errors() {
+        let bitmap_file = NamedTempFile::new().unwrap();
+
+        // Write header claiming 128 blocks but no bitmap data
+        let num_blocks: u64 = 128;
+        std::fs::write(bitmap_file.path(), num_blocks.to_le_bytes()).unwrap();
+
+        let result = CowLayer::load_bitmap(bitmap_file.path(), 128);
+        assert!(result.is_err());
+
+        // Write header + partial data (less than needed)
+        let mut data = num_blocks.to_le_bytes().to_vec();
+        data.extend_from_slice(&[0u8; 4]); // only 4 bytes, need 128/64*8 = 16
+        std::fs::write(bitmap_file.path(), &data).unwrap();
+
+        let result = CowLayer::load_bitmap(bitmap_file.path(), 128);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bitmap_save_rejects_path_without_parent() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        // `/` has no parent. The function must reject it before touching the FS
+        // so callers can't accidentally skip the parent-dir fsync durability
+        // guarantee by passing a degenerate path.
+        let err = cow.save_bitmap(Path::new("/")).unwrap_err();
+        assert!(matches!(err, NbdCowError::Io(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn bitmap_empty_round_trip() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        let bitmap_file = NamedTempFile::new().unwrap();
+        cow.save_bitmap(bitmap_file.path()).unwrap();
+
+        let loaded = CowLayer::load_bitmap(bitmap_file.path(), 1).unwrap();
+        assert_eq!(loaded.count_ones(), 0);
+    }
+
+    #[test]
+    fn create_with_existing_bitmap_restores_dirty_state() {
+        let base_data = vec![0x00; 8192];
+        let base = create_base_image(&base_data);
+        let cow_file = NamedTempFile::new().unwrap();
+
+        // Phase 1: write, flush, save bitmap
+        {
+            let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+            cow.write(0, &vec![0xBB; 4096]).unwrap();
+            cow.flush().unwrap();
+            let bitmap_path = bitmap_path_for(cow_file.path());
+            cow.save_bitmap(&bitmap_path).unwrap();
+        }
+
+        // Phase 2: create new CowLayer with same paths — bitmap auto-loaded
+        let cow2 = CowLayer::new(base.path(), cow_file.path(), 8192, 4096, 1024 * 1024).unwrap();
+        assert_eq!(
+            cow2.dirty_block_count(),
+            1,
+            "dirty bitmap should be restored"
+        );
+
+        // Read block 0 — should come from COW file, not base
+        let mut buf = vec![0u8; 4096];
+        cow2.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xBB), "restored data should match");
+
+        // Read block 1 — should come from base
+        cow2.read(4096, &mut buf).unwrap();
+        assert!(
+            buf.iter().all(|&b| b == 0x00),
+            "unmodified block should read from base"
+        );
+
+        // Cleanup bitmap file
+        let _ = std::fs::remove_file(bitmap_path_for(cow_file.path()));
+    }
+
+    #[test]
+    fn create_without_bitmap_starts_fresh() {
+        let base = create_base_image(&vec![0xAA; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+
+        // No bitmap file exists — should start with empty dirty set
+        let cow = CowLayer::new(base.path(), cow_file.path(), 4096, 4096, 1024 * 1024).unwrap();
+        assert_eq!(cow.dirty_block_count(), 0);
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xAA));
+    }
+}

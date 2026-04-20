@@ -1,0 +1,1565 @@
+name: release-please
+
+on:
+  workflow_run:
+    workflows: ["Turbo"]
+    branches: ["main"]
+    types:
+      - completed
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  packages: write
+  checks: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
+      web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
+      app_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
+      runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
+      runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
+      web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
+      app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
+      cli_version: ${{ steps.release.outputs['turbo/apps/cli--version'] }}
+    steps:
+      - uses: vm0-ai/release-please-action@vm0
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Create ci-gate check runs on release PR head commit.
+      # GITHUB_TOKEN pushes don't trigger pull_request events, so the CI
+      # workflows never run on the new commit. The Checks API with GITHUB_TOKEN
+      # produces check runs with integration_id 15368 (GitHub Actions),
+      # satisfying the required_status_checks ruleset.
+      - name: Pass ci-gate checks for release PR
+        if: ${{ steps.release.outputs.releases_created != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_HEAD=$(gh pr view release-please--branches--main --repo "${{ github.repository }}" --json headRefOid --jq .headRefOid 2>/dev/null || echo "")
+          if [ -z "$PR_HEAD" ]; then
+            echo "No release PR found, skipping"
+            exit 0
+          fi
+          for gate in ci-gate-turbo ci-gate-crates ci-gate-security; do
+            gh api repos/${{ github.repository }}/check-runs -X POST \
+              -f name="$gate" \
+              -f head_sha="$PR_HEAD" \
+              -f status="completed" \
+              -f conclusion="success" \
+              -f "output[title]=Release PR — CI skipped" \
+              -f "output[summary]=Release-please PRs only contain version bumps and changelogs."
+            echo "✅ Created $gate check run on $PR_HEAD"
+          done
+
+  # Run database migrations in production (always runs as a gate for all deploy jobs)
+  migrate-production:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Install neonctl
+        run: npm install -g neonctl@2.15.0
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Database Migration* starting..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* starting...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Get Production Database URL
+        id: get-db-url
+        run: |
+          # Get the main branch database URL (production)
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+
+      - name: Run Production Migrations
+        run: |
+          cd turbo && pnpm -F web db:migrate
+        env:
+          DATABASE_URL: ${{ steps.get-db-url.outputs.database-url }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Database Migration* ✅ Migration completed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Database Migration* ❌ Migration failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Build web app production deployment (Staged - prod-eligible, not serving traffic)
+  build-web-production:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Install neonctl
+        run: npm install -g neonctl@2.15.0
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Web App* building staged production deployment..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Get Production Database URL
+        id: get-db-url
+        run: |
+          # Get the main branch database URL (production)
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+
+      - name: Build Web Staged Production Deployment
+        id: deploy
+        uses: ./.github/actions/vercel-deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
+          environment: production
+          deployment-env: web
+          prebuilt: "true"
+          skip-domain: "true"
+          skip-start: "true"
+          skip-finish: "true"
+          environment-variables: |
+            DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
+            VM0_API_URL=${{ vars.VM0_API_URL }}
+            BLOG_BASE_URL=https://www.vm0.ai
+            STRAPI_URL=${{ vars.STRAPI_URL }}
+            CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
+            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            E2B_API_KEY=${{ secrets.E2B_API_KEY }}
+            R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
+            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
+            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
+            R2_USER_STORAGES_BUCKET_NAME=${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+            SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
+            AXIOM_TOKEN_SESSIONS=${{ secrets.AXIOM_TOKEN_SESSIONS }}
+            AXIOM_TOKEN_TELEMETRY=${{ secrets.AXIOM_TOKEN_TELEMETRY }}
+            AXIOM_DATASET_SUFFIX=prod
+            CRON_SECRET=${{ secrets.CRON_SECRET }}
+            OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
+            RUNNER_DEFAULT_GROUP=vm0/production
+            ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+            VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
+            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
+            CONCURRENT_RUN_LIMIT_CAP=10
+            CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
+            SLACK_CLIENT_ID=${{ vars.SLACK_CLIENT_ID }}
+            SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
+            SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
+            SLACK_REDIRECT_BASE_URL=${{ vars.SLACK_REDIRECT_BASE_URL }}
+            PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
+            SENTRY_DSN_WEB=${{ secrets.SENTRY_DSN_WEB }}
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_WEB }}
+            GH_OAUTH_CLIENT_ID=${{ vars.GH_OAUTH_CLIENT_ID }}
+            GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+            NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
+            NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+            GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+            GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+            MICROSOFT_OAUTH_CLIENT_ID=${{ vars.MICROSOFT_OAUTH_CLIENT_ID }}
+            MICROSOFT_OAUTH_CLIENT_SECRET=${{ secrets.MICROSOFT_OAUTH_CLIENT_SECRET }}
+            LINEAR_OAUTH_CLIENT_ID=${{ vars.LINEAR_OAUTH_CLIENT_ID }}
+            LINEAR_OAUTH_CLIENT_SECRET=${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
+            FIGMA_OAUTH_CLIENT_ID=${{ vars.FIGMA_OAUTH_CLIENT_ID }}
+            FIGMA_OAUTH_CLIENT_SECRET=${{ secrets.FIGMA_OAUTH_CLIENT_SECRET }}
+            DEEL_OAUTH_CLIENT_ID=${{ vars.DEEL_OAUTH_CLIENT_ID }}
+            DEEL_OAUTH_CLIENT_SECRET=${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
+            DOCUSIGN_OAUTH_CLIENT_ID=${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
+            DOCUSIGN_OAUTH_CLIENT_SECRET=${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
+            DROPBOX_OAUTH_CLIENT_ID=${{ vars.DROPBOX_OAUTH_CLIENT_ID }}
+            DROPBOX_OAUTH_CLIENT_SECRET=${{ secrets.DROPBOX_OAUTH_CLIENT_SECRET }}
+            NEON_OAUTH_CLIENT_ID=${{ vars.NEON_OAUTH_CLIENT_ID }}
+            NEON_OAUTH_CLIENT_SECRET=${{ secrets.NEON_OAUTH_CLIENT_SECRET }}
+            REDDIT_OAUTH_CLIENT_ID=${{ vars.REDDIT_OAUTH_CLIENT_ID }}
+            REDDIT_OAUTH_CLIENT_SECRET=${{ secrets.REDDIT_OAUTH_CLIENT_SECRET }}
+            STRAVA_OAUTH_CLIENT_ID=${{ vars.STRAVA_OAUTH_CLIENT_ID }}
+            STRAVA_OAUTH_CLIENT_SECRET=${{ secrets.STRAVA_OAUTH_CLIENT_SECRET }}
+            X_OAUTH_CLIENT_ID=${{ vars.X_OAUTH_CLIENT_ID }}
+            X_OAUTH_CLIENT_SECRET=${{ secrets.X_OAUTH_CLIENT_SECRET }}
+            VERCEL_OAUTH_CLIENT_ID=${{ vars.VERCEL_OAUTH_CLIENT_ID }}
+            VERCEL_OAUTH_CLIENT_SECRET=${{ secrets.VERCEL_OAUTH_CLIENT_SECRET }}
+            VERCEL_INTEGRATION_SLUG=${{ vars.VERCEL_INTEGRATION_SLUG }}
+            SENTRY_OAUTH_CLIENT_ID=${{ vars.SENTRY_OAUTH_CLIENT_ID }}
+            SENTRY_OAUTH_CLIENT_SECRET=${{ secrets.SENTRY_OAUTH_CLIENT_SECRET }}
+            INTERVALS_ICU_OAUTH_CLIENT_ID=${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
+            INTERVALS_ICU_OAUTH_CLIENT_SECRET=${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
+            SUPABASE_OAUTH_CLIENT_ID=${{ vars.SUPABASE_OAUTH_CLIENT_ID }}
+            SUPABASE_OAUTH_CLIENT_SECRET=${{ secrets.SUPABASE_OAUTH_CLIENT_SECRET }}
+            XERO_OAUTH_CLIENT_ID=${{ vars.XERO_OAUTH_CLIENT_ID }}
+            MONDAY_OAUTH_CLIENT_ID=${{ vars.MONDAY_OAUTH_CLIENT_ID }}
+            MONDAY_OAUTH_APP_ID=${{ vars.MONDAY_OAUTH_APP_ID }}
+            XERO_OAUTH_CLIENT_SECRET=${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
+            MONDAY_OAUTH_CLIENT_SECRET=${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
+            WEBFLOW_OAUTH_CLIENT_ID=${{ vars.WEBFLOW_OAUTH_CLIENT_ID }}
+            WEBFLOW_OAUTH_CLIENT_SECRET=${{ secrets.WEBFLOW_OAUTH_CLIENT_SECRET }}
+            CANVA_OAUTH_CLIENT_ID=${{ vars.CANVA_OAUTH_CLIENT_ID }}
+            CANVA_OAUTH_CLIENT_SECRET=${{ secrets.CANVA_OAUTH_CLIENT_SECRET }}
+            HUBSPOT_OAUTH_CLIENT_ID=${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
+            HUBSPOT_OAUTH_CLIENT_SECRET=${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
+            CLOSE_OAUTH_CLIENT_ID=${{ vars.CLOSE_OAUTH_CLIENT_ID }}
+            CLOSE_OAUTH_CLIENT_SECRET=${{ secrets.CLOSE_OAUTH_CLIENT_SECRET }}
+            META_ADS_OAUTH_CLIENT_ID=${{ vars.META_ADS_OAUTH_CLIENT_ID }}
+            META_ADS_OAUTH_CLIENT_SECRET=${{ secrets.META_ADS_OAUTH_CLIENT_SECRET }}
+            AHREFS_OAUTH_CLIENT_ID=${{ vars.AHREFS_OAUTH_CLIENT_ID }}
+            AHREFS_OAUTH_CLIENT_SECRET=${{ secrets.AHREFS_OAUTH_CLIENT_SECRET }}
+            AIRTABLE_OAUTH_CLIENT_ID=${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
+            AIRTABLE_OAUTH_CLIENT_SECRET=${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
+            TODOIST_OAUTH_CLIENT_ID=${{ vars.TODOIST_OAUTH_CLIENT_ID }}
+            TODOIST_OAUTH_CLIENT_SECRET=${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
+            ASANA_OAUTH_CLIENT_ID=${{ vars.ASANA_OAUTH_CLIENT_ID }}
+            ASANA_OAUTH_CLIENT_SECRET=${{ secrets.ASANA_OAUTH_CLIENT_SECRET }}
+            POSTHOG_OAUTH_CLIENT_ID=${{ vars.POSTHOG_OAUTH_CLIENT_ID }}
+            POSTHOG_OAUTH_CLIENT_SECRET=${{ secrets.POSTHOG_OAUTH_CLIENT_SECRET }}
+            MERCURY_OAUTH_CLIENT_ID=${{ vars.MERCURY_OAUTH_CLIENT_ID }}
+            MERCURY_OAUTH_CLIENT_SECRET=${{ secrets.MERCURY_OAUTH_CLIENT_SECRET }}
+            SPOTIFY_OAUTH_CLIENT_ID=${{ vars.SPOTIFY_OAUTH_CLIENT_ID }}
+            SPOTIFY_OAUTH_CLIENT_SECRET=${{ secrets.SPOTIFY_OAUTH_CLIENT_SECRET }}
+            STRIPE_OAUTH_CLIENT_ID=${{ vars.STRIPE_OAUTH_CLIENT_ID }}
+            STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
+            STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
+            STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
+            CLERK_WEBHOOK_SIGNING_SECRET=${{ secrets.CLERK_WEBHOOK_SIGNING_SECRET }}
+            ZERO_PRICE=${{ secrets.ZERO_PRICE }}
+            AGENTPHONE_API_KEY=${{ secrets.AGENTPHONE_API_KEY }}
+            PLAIN_API_KEY=${{ secrets.PLAIN_API_KEY }}
+            NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
+            NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
+            APP_URL=https://app.vm0.ai
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
+            RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
+            VM0_DEFAULT_AGENT=${{ vars.VM0_DEFAULT_AGENT }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            GITHUB_APP_SLUG=${{ vars.VM0_GITHUB_APP_SLUG }}
+            GITHUB_APP_ID=${{ vars.VM0_GITHUB_APP_ID }}
+            GITHUB_APP_CLIENT_ID=${{ vars.VM0_GITHUB_APP_CLIENT_ID }}
+            GITHUB_APP_CLIENT_SECRET=${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
+            GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
+            GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Web App* ✅ Staged build ready (not yet serving)"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Web App* ❌ Staged build failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Promote web staged deployment to production (traffic switch)
+  promote-web-production:
+    needs: [release-please, migrate-production, build-web-production]
+    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    outputs:
+      deployment_url: ${{ needs.build-web-production.outputs.deployment_url }}
+      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: web/production
+          ref: ${{ github.ref }}
+          desc: Promoting web staged deployment to production
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Web App* promoting staged deployment to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Promote Web Deployment
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
+          deployment-url: ${{ needs.build-web-production.outputs.deployment_url }}
+
+      - name: Resolve Vercel dashboard URL
+        id: vercel-dashboard
+        if: ${{ needs.build-web-production.outputs.deployment_url != '' }}
+        uses: ./.github/actions/vercel-dashboard-url
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          deployment-url: ${{ needs.build-web-production.outputs.deployment_url }}
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.vercel-dashboard.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Web App* ✅ Promoted to production"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Web App* ❌ Promote failed — DB at new schema, traffic on old code"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Web App* ❌ Promote failed — DB at new schema, traffic on old code\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Build app (Vite SPA) production deployment (Staged)
+  build-app-production:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.app_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*App* building staged production deployment..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Build App Staged Production Deployment
+        id: deploy
+        uses: ./.github/actions/vercel-deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
+          environment: production
+          deployment-env: app
+          prebuilt: "true"
+          skip-domain: "true"
+          skip-start: "true"
+          skip-finish: "true"
+          environment-variables: |
+            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
+            VITE_API_URL=https://www.vm0.ai
+            VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
+            VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
+            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ✅ Staged build ready (not yet serving)"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ❌ Staged build failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Promote app staged deployment to production (traffic switch)
+  promote-app-production:
+    needs: [release-please, migrate-production, build-app-production, promote-web-production]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.app_release_created == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    outputs:
+      deployment_url: ${{ needs.build-app-production.outputs.deployment_url }}
+      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
+    permissions:
+      contents: read
+      deployments: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: app/production
+          ref: ${{ github.ref }}
+          desc: Promoting app staged deployment to production
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*App* promoting staged deployment to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Promote App Deployment
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
+          deployment-url: ${{ needs.build-app-production.outputs.deployment_url }}
+
+      - name: Resolve Vercel dashboard URL
+        id: vercel-dashboard
+        if: ${{ needs.build-app-production.outputs.deployment_url != '' }}
+        uses: ./.github/actions/vercel-dashboard-url
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          deployment-url: ${{ needs.build-app-production.outputs.deployment_url }}
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.vercel-dashboard.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ✅ Promoted to production"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ❌ Promote failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Update rollback dashboard issue after deployments
+  update-rollback-dashboard:
+    needs: [release-please, promote-web-production, promote-app-production, promote-runner-production]
+    if: >-
+      always() &&
+      (needs.promote-web-production.result == 'success' ||
+       needs.promote-app-production.result == 'success' ||
+       needs.promote-runner-production.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect migration safety
+        id: migration-safety
+        env:
+          WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
+        run: |
+          if [ -z "$WEB_VERSION" ]; then
+            echo "indicator=safe" >> "$GITHUB_OUTPUT"
+            echo "details=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CURRENT_TAG="web-v${WEB_VERSION}"
+
+          # Find previous web tag
+          PREV_TAG=$(git tag --list 'web-v*' --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -1)
+
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$CURRENT_TAG" ]; then
+            echo "indicator=safe" >> "$GITHUB_OUTPUT"
+            echo "details=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Find new migration files
+          NEW_MIGRATIONS=$(git diff --name-only "$PREV_TAG".."$CURRENT_TAG" -- turbo/apps/web/src/db/migrations/ | grep '\.sql$' || true)
+
+          if [ -z "$NEW_MIGRATIONS" ]; then
+            echo "indicator=safe" >> "$GITHUB_OUTPUT"
+            echo "details=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check for destructive operations
+          DESTRUCTIVE=false
+          FILENAMES=""
+          for FILE in $NEW_MIGRATIONS; do
+            BASENAME=$(basename "$FILE")
+            FILENAMES="${FILENAMES:+$FILENAMES, }$BASENAME"
+            if git show "$CURRENT_TAG:$FILE" 2>/dev/null | grep -qiE 'DROP\s+(COLUMN|TABLE|INDEX)|RENAME\s+(COLUMN|TABLE)|ALTER.*DROP'; then
+              DESTRUCTIVE=true
+            fi
+          done
+
+          # Check for major version bump
+          PREV_MAJOR=$(echo "$PREV_TAG" | sed 's/web-v//' | cut -d. -f1)
+          CURR_MAJOR=$(echo "$WEB_VERSION" | cut -d. -f1)
+
+          if [ "$DESTRUCTIVE" = true ]; then
+            SAFETY="destructive"
+          elif [ "$PREV_MAJOR" != "$CURR_MAJOR" ]; then
+            SAFETY="major"
+          else
+            SAFETY="migration"
+          fi
+
+          echo "indicator=$SAFETY" >> "$GITHUB_OUTPUT"
+          echo "details=$FILENAMES" >> "$GITHUB_OUTPUT"
+
+      - name: Build dashboard entry
+        id: entry
+        env:
+          WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
+          APP_VERSION: ${{ needs.release-please.outputs.app_version }}
+          RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          WEB_RESULT: ${{ needs.promote-web-production.result }}
+          APP_RESULT: ${{ needs.promote-app-production.result }}
+          RUNNER_RESULT: ${{ needs.promote-runner-production.result }}
+          WEB_DASHBOARD_URL: ${{ needs.promote-web-production.outputs.vercel_dashboard_url }}
+          APP_DASHBOARD_URL: ${{ needs.promote-app-production.outputs.vercel_dashboard_url }}
+          SAFETY: ${{ steps.migration-safety.outputs.indicator }}
+          MIGRATION_FILES: ${{ steps.migration-safety.outputs.details }}
+          RUNNER_ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-runner.yml
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+
+          # Build title parts
+          TITLE_PARTS=""
+          if [ "$WEB_RESULT" = "success" ] && [ -n "$WEB_VERSION" ]; then
+            TITLE_PARTS="web v${WEB_VERSION}"
+          fi
+          if [ "$APP_RESULT" = "success" ] && [ -n "$APP_VERSION" ]; then
+            TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }app v${APP_VERSION}"
+          fi
+          if [ "$RUNNER_RESULT" = "success" ] && [ -n "$RUNNER_VERSION" ]; then
+            TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }runner v${RUNNER_VERSION}"
+          fi
+
+          # Web/app migration-safety indicator (applies to web+app rollbacks)
+          case "$SAFETY" in
+            destructive)
+              INDICATOR="🔴 **Warning: destructive migration** ($MIGRATION_FILES)"
+              ;;
+            major)
+              INDICATOR="🔴 **Warning: major version bump**"
+              ;;
+            migration)
+              INDICATOR="🟡 **Warning: includes migration** ($MIGRATION_FILES)"
+              ;;
+            *)
+              INDICATOR="🟢 Safe to rollback"
+              ;;
+          esac
+
+          # Helper: append a row, handling empty ROWS without a leading newline.
+          append_row() {
+            if [ -n "$ROWS" ]; then
+              ROWS="${ROWS}
+          $1"
+            else
+              ROWS="$1"
+            fi
+          }
+
+          # Build table rows
+          ROWS=""
+          if [ -n "$WEB_VERSION" ]; then
+            if [ "$WEB_RESULT" = "success" ] && [ -n "$WEB_DASHBOARD_URL" ]; then
+              append_row "| web | v${WEB_VERSION} | [Rollback in Vercel](${WEB_DASHBOARD_URL}) |"
+            elif [ "$WEB_RESULT" = "success" ]; then
+              append_row "| web | v${WEB_VERSION} | _URL unavailable_ |"
+            else
+              append_row "| web | v${WEB_VERSION} | ❌ Deploy failed |"
+            fi
+          fi
+
+          if [ -n "$APP_VERSION" ]; then
+            if [ "$APP_RESULT" = "success" ] && [ -n "$APP_DASHBOARD_URL" ]; then
+              append_row "| app | v${APP_VERSION} | [Rollback in Vercel](${APP_DASHBOARD_URL}) |"
+            elif [ "$APP_RESULT" = "success" ]; then
+              append_row "| app | v${APP_VERSION} | _URL unavailable_ |"
+            else
+              append_row "| app | v${APP_VERSION} | ❌ Deploy failed |"
+            fi
+          fi
+
+          # Runner row. Link points to the rollback-runner.yml workflow
+          # dispatch page; operator pastes the adjacent version (without
+          # the leading `v`) into `target_version` and picks
+          # `rollback_mode` / `confirmed_compatible` manually.
+          if [ -n "$RUNNER_VERSION" ]; then
+            if [ "$RUNNER_RESULT" = "success" ]; then
+              append_row "| runner-rs | v${RUNNER_VERSION} | [Rollback workflow](${RUNNER_ROLLBACK_URL}) |"
+            else
+              append_row "| runner-rs | v${RUNNER_VERSION} | ❌ Deploy failed |"
+            fi
+          fi
+
+          # Build full entry.
+          # - The migration-safety INDICATOR only describes web migrations
+          #   (see Detect migration safety step), so suppress it for release
+          #   cycles with no web/app changes — otherwise a runner-only
+          #   release would print a misleading "🟢 Safe to rollback".
+          # - Runner has no auto-computed compatibility indicator. We print
+          #   a static advisory whenever the release includes runner so the
+          #   operator doesn't silently treat runner rollbacks the same as
+          #   web/app (which are Vercel-level atomic flips). Deliberately
+          #   NOT naming specific compat surfaces — that would encourage a
+          #   checklist mindset and miss cases the list doesn't anticipate.
+          {
+            echo "### ${DATE} — ${TITLE_PARTS}"
+            if [ -n "$WEB_VERSION" ] || [ -n "$APP_VERSION" ]; then
+              echo "${INDICATOR}"
+            fi
+            if [ -n "$RUNNER_VERSION" ]; then
+              echo "⚠️ **Runner rollback needs manual diff review.** The \`confirmed_compatible\` input gates it."
+            fi
+            echo "| Component | Version | Rollback |"
+            echo "|-----------|---------|----------|"
+            echo "${ROWS}"
+          } > /tmp/dashboard-entry.md
+
+      - name: Update rollback dashboard issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ vars.ROLLBACK_ISSUE_NUMBER }}
+        run: |
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "ROLLBACK_ISSUE_NUMBER not set, skipping dashboard update"
+            exit 0
+          fi
+
+          # Fetch current issue body
+          BODY=$(gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" --jq '.body')
+
+          # Insert new entry after start sentinel using file-based approach
+          # This avoids awk -v issues with multi-line strings containing backslashes or special chars
+          UPDATED_BODY=$(echo "$BODY" | awk '
+            /<!-- ROLLBACK_ENTRIES_START -->/ {
+              print
+              while ((getline line < "/tmp/dashboard-entry.md") > 0) print line
+              close("/tmp/dashboard-entry.md")
+              next
+            }
+            { print }
+          ')
+
+          # Trim to 20 entries (count ### headers between sentinels)
+          TRIMMED_BODY=$(echo "$UPDATED_BODY" | awk '
+            BEGIN { in_section=0; entry_count=0; skip=0 }
+            /<!-- ROLLBACK_ENTRIES_START -->/ { in_section=1; print; next }
+            /<!-- ROLLBACK_ENTRIES_END -->/ { in_section=0; print; next }
+            in_section && /^### / {
+              entry_count++
+              if (entry_count > 20) { skip=1 } else { skip=0 }
+            }
+            in_section && skip { next }
+            { print }
+          ')
+
+          # Remove the placeholder text if present
+          TRIMMED_BODY=$(echo "$TRIMMED_BODY" | grep -v '_No deployments recorded yet._')
+
+          # Update issue
+          gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" \
+            -X PATCH \
+            -f body="$TRIMMED_BODY"
+
+          echo "Updated rollback dashboard issue #${ISSUE_NUMBER}"
+
+  publish-npm:
+    needs: [release-please, migrate-production]
+    if: ${{ needs.release-please.outputs.cli_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*CLI* publishing to npm..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*CLI* publishing to npm...\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install pnpm
+        run: npm install -g pnpm@latest
+
+      - name: Install dependencies
+        run: cd turbo && pnpm install --frozen-lockfile
+
+      - name: Use latest npm for OIDC support
+        run: npm install -g npm@latest
+
+      - name: Build CLI
+        run: cd turbo && pnpm --filter @vm0/cli build
+        env:
+          DEFAULT_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLI }}
+
+      - name: Publish to npm with OIDC
+        run: cd turbo/apps/cli/dist && npm publish --access public
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*CLI* ✅ Published successfully"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*CLI* ✅ Published successfully\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n📦 <https://www.npmjs.com/package/@vm0/cli/v/${{ needs.release-please.outputs.cli_version }}|View on npm>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*CLI* ❌ Publish failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*CLI* ❌ Publish failed\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Resolve repo-level R2 vars for the shared image cache bucket.
+  # Must run WITHOUT `environment:` so vars/secrets resolve to repo-level
+  # (dev bucket), not the production-scoped user-storage bucket.
+  resolve-image-cache:
+    runs-on: ubuntu-latest
+    needs: [release-please]
+    if: needs.release-please.outputs.runner_rs_release_created == 'true'
+    outputs:
+      r2-account-id: ${{ steps.resolve.outputs.r2-account-id }}
+      r2-access-key-id: ${{ steps.resolve.outputs.r2-access-key-id }}
+      r2-secret-access-key: ${{ steps.resolve.outputs.r2-secret-access-key }}
+      r2-bucket: ${{ steps.resolve.outputs.r2-bucket }}
+    steps:
+      - id: resolve
+        env:
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          # Borrow an existing repo-level-only secret as the symmetric
+          # encryption passphrase.  GRAFANA_CLOUD_API_KEY exists at repo
+          # level but NOT in the "production" environment, so both this
+          # job (no environment) and build-runner-production /
+          # promote-runner-production (environment: production, falls
+          # back to repo level) resolve it to the same
+          # value.  Because it is a registered secret GitHub masks it as
+          # *** in all logs, keeping the passphrase invisible.
+          PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GitHub redacts raw secret values AND their base64 encodings
+          # from job outputs, so we AES-encrypt them before writing.
+          # The ciphertext does not match any registered secret and
+          # passes through unredacted.
+          {
+            echo "r2-account-id=$R2_ACCOUNT_ID"
+            echo "r2-access-key-id=$(echo -n "$R2_ACCESS_KEY_ID" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$PASSPHRASE" -a -A)"
+            echo "r2-secret-access-key=$(echo -n "$R2_SECRET_ACCESS_KEY" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$PASSPHRASE" -a -A)"
+            echo "r2-bucket=$R2_BUCKET"
+          } >> "$GITHUB_OUTPUT"
+
+  # Build runner: compile binary, upload to GitHub Release, stage on
+  # metal hosts (provision OS + monitoring + `runner build`
+  # rootfs/snapshot). This job does not flip traffic — the systemd
+  # service is still running the previous version. Runs in parallel
+  # with build-web / build-app, only waits on release-please.
+  build-runner-production:
+    needs: [release-please, resolve-image-cache]
+    if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
+    permissions:
+      contents: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: aarch64-musl-release
+          save-if: false
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Runner RS* building staged production deployment..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      # IMPORTANT: these compile settings (--release, default linker, no
+      # custom RUSTFLAGS) must match crates.yml / turbo.yml so rootfs_hash is
+      # identical across pipelines and R2 cache hits on deploy. See #9192.
+      - name: Cross-compile guest binaries for ARM64
+        run: |
+          cd crates
+          cargo build --release --target aarch64-unknown-linux-musl \
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
+
+      - name: Cross-compile runner with embedded guests for ARM64
+        run: |
+          cd crates
+          GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
+          GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
+          GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
+          GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
+          GUEST_RESEED_PATH=target/aarch64-unknown-linux-musl/release/guest-reseed \
+            cargo build --release --target aarch64-unknown-linux-musl -p runner
+
+      - name: Upload runner binary to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+        run: |
+          TAG="runner-rs-v${VERSION}"
+          ASSET_NAME="runner-v${VERSION}-aarch64-linux"
+          ASSET_PATH="crates/target/aarch64-unknown-linux-musl/release/runner"
+
+          # Get the release ID from the tag
+          RELEASE_ID=$(curl -sfL \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+            | jq -r '.id')
+
+          # Delete existing asset with the same name (--clobber equivalent)
+          EXISTING=$(curl -sfL \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
+            | jq -r --arg name "${ASSET_NAME}" '.[] | select(.name==$name) | .id') || true
+          for aid in $EXISTING; do
+            curl -sfL -X DELETE \
+              -H "Authorization: token ${GH_TOKEN}" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/assets/${aid}"
+          done
+
+          # Upload binary
+          curl -sfL \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@${ASSET_PATH}" \
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      # Decrypt R2 secrets from resolve-image-cache.  The secrets were
+      # AES-encrypted with GRAFANA_CLOUD_API_KEY (a repo-level-only
+      # secret) to bypass GitHub's job-output redaction.  The same
+      # secret is available here because the "production" environment
+      # does not define it, so GitHub falls back to the repo-level
+      # value.  The passphrase appears as *** in logs (registered
+      # secret); the ciphertext is visible but useless without it.
+      - name: Decrypt R2 image cache credentials
+        env:
+          _PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          _ENC_AK: ${{ needs.resolve-image-cache.outputs.r2-access-key-id }}
+          _ENC_SK: ${{ needs.resolve-image-cache.outputs.r2-secret-access-key }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          AK=$(echo -n "$_ENC_AK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          SK=$(echo -n "$_ENC_SK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          if [ -z "$AK" ] || [ -z "$SK" ]; then
+            echo "::error::R2 credential decryption produced empty values"
+            exit 1
+          fi
+          {
+            echo "R2_ACCESS_KEY_ID=$AK"
+            echo "R2_SECRET_ACCESS_KEY=$SK"
+          } >> "$GITHUB_ENV"
+
+      - name: Stage runner on production hosts with Ansible
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          API_URL: ${{ vars.VM0_API_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          # R2 image cache credentials — from resolve-image-cache job (repo-level,
+          # not production-scoped) so the runner uses the same bucket as CI.
+          # R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY come from $GITHUB_ENV
+          # (decoded in previous step).
+          R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
+        run: |
+          cd ansible
+          ansible-playbook \
+            -i "${AWS_METAL_RUNNER_HOSTS}," \
+            playbooks/provision-runner.yml \
+            -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+            -v
+          if [ -n "${GRAFANA_CLOUD_API_KEY}" ]; then
+            ansible-playbook \
+              -i "${AWS_METAL_RUNNER_HOSTS}," \
+              playbooks/provision-monitoring.yml \
+              -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+              -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
+              -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
+              -e "grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY}" \
+              -e "env_label=prod" \
+              -v
+          fi
+          ansible-playbook \
+            -i "${AWS_METAL_RUNNER_HOSTS}," \
+            playbooks/build-runner.yml \
+            -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+            -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
+            -e "api_url=${API_URL}" \
+            -e "runner_version=${RUNNER_VERSION}" \
+            -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
+            -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
+            -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
+            -e "r2_bucket=${R2_USER_STORAGES_BUCKET_NAME:-}" \
+            -v
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ✅ Staged build ready (not yet serving)"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ❌ Staged build failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Promote runner: install systemd service (traffic cutover), drain
+  # old runners, garbage-collect old artifacts, global health check.
+  # Waits for build-runner-production plus migrate-production and
+  # promote-web-production so the new runner only serves traffic after
+  # the schema and API it targets are live. Host-level prep
+  # (provision-runner, provision-monitoring) already ran in build.
+  promote-runner-production:
+    needs: [release-please, migrate-production, promote-web-production, resolve-image-cache, build-runner-production]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.runner_rs_release_created == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Runner RS* promoting staged deployment to production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      # Same decrypt as build; needed here so `runner gc` (inside
+      # promote-runner.yml) can sweep stale image cache objects in R2.
+      - name: Decrypt R2 image cache credentials
+        env:
+          _PASSPHRASE: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          _ENC_AK: ${{ needs.resolve-image-cache.outputs.r2-access-key-id }}
+          _ENC_SK: ${{ needs.resolve-image-cache.outputs.r2-secret-access-key }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          AK=$(echo -n "$_ENC_AK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          SK=$(echo -n "$_ENC_SK" | openssl enc -aes-128-cbc -pbkdf2 -pass "pass:$_PASSPHRASE" -d -a -A)
+          if [ -z "$AK" ] || [ -z "$SK" ]; then
+            echo "::error::R2 credential decryption produced empty values"
+            exit 1
+          fi
+          {
+            echo "R2_ACCESS_KEY_ID=$AK"
+            echo "R2_SECRET_ACCESS_KEY=$SK"
+          } >> "$GITHUB_ENV"
+
+      - name: Promote runner on production hosts with Ansible
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
+          RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+          R2_ACCOUNT_ID: ${{ needs.resolve-image-cache.outputs.r2-account-id }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ needs.resolve-image-cache.outputs.r2-bucket }}
+        run: |
+          cd ansible
+          ansible-playbook \
+            -i "${AWS_METAL_RUNNER_HOSTS}," \
+            playbooks/promote-runner.yml \
+            -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
+            -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
+            -e "runner_version=${RUNNER_VERSION}" \
+            -e "r2_account_id=${R2_ACCOUNT_ID:-}" \
+            -e "r2_access_key_id=${R2_ACCESS_KEY_ID:-}" \
+            -e "r2_secret_access_key=${R2_SECRET_ACCESS_KEY:-}" \
+            -e "r2_bucket=${R2_USER_STORAGES_BUCKET_NAME:-}" \
+            -v
+
+      - name: Global health check (non-blocking)
+        id: global-doctor
+        if: ${{ success() }}
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+        run: |
+          RUNNER_BIN="/var/lib/vm0-runner/bin/v${RUNNER_VERSION}/runner"
+          has_warnings=false
+          for host in $(echo "$AWS_METAL_RUNNER_HOSTS" | tr ',' ' '); do
+            [ -z "$host" ] && continue
+            # shellcheck disable=SC2029
+            if ! ssh "${AWS_METAL_RUNNER_USER}@${host}" "sudo ${RUNNER_BIN} doctor" 2>&1; then
+              has_warnings=true
+            fi
+          done
+          echo "has_warnings=${has_warnings}" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings != 'true' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ✅ Promoted to production"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+
+      - name: Notify Slack - Success with warnings
+        if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings == 'true' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ⚠️ Promoted with warnings"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ⚠️ Promoted with warnings\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ❌ Promote failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Build E2B templates to production account
+  # Uses production environment E2B_API_KEY secret
+  build-e2b-template-production:
+    needs: [release-please, migrate-production]
+    # Build when any release is created
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Build E2B templates
+        working-directory: turbo
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: |
+          pnpm e2b:cli:build
+
+      - name: Build summary
+        run: echo "✅ E2B templates built successfully (production account)"
+
+  # Generate Software Bill of Materials (SBOM) for CASA compliance (CASA-DEP-003)
+  sbom:
+    needs: [release-please, migrate-production]
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Generate Node.js SBOM
+        working-directory: turbo
+        run: npx @cyclonedx/cdxgen -o sbom-node.json --spec-version 1.5
+
+      - name: Generate Rust SBOM
+        working-directory: crates
+        run: npx @cyclonedx/cdxgen -o sbom-rust.json --spec-version 1.5
+
+      - name: Merge SBOMs
+        run: |
+          node <<'MERGE_SCRIPT'
+          const fs = require("fs");
+          const node = JSON.parse(fs.readFileSync("turbo/sbom-node.json", "utf8"));
+          const rust = JSON.parse(fs.readFileSync("crates/sbom-rust.json", "utf8"));
+          const seen = new Set();
+          const components = [];
+          for (const c of [...(node.components || []), ...(rust.components || [])]) {
+            const key = c.purl || c["bom-ref"] || JSON.stringify(c);
+            if (!seen.has(key)) { seen.add(key); components.push(c); }
+          }
+          const merged = { ...node, components };
+          const deps = [...(node.dependencies || []), ...(rust.dependencies || [])];
+          if (deps.length) merged.dependencies = deps;
+          fs.writeFileSync("sbom.json", JSON.stringify(merged, null, 2));
+          console.log("Merged SBOM: " + components.length + " components (" + (node.components || []).length + " Node.js + " + (rust.components || []).length + " Rust)");
+          MERGE_SCRIPT
+
+      - name: Upload SBOM as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: sbom.json
+

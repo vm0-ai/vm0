@@ -1,0 +1,59 @@
+[package]
+name = "runner"
+version = "0.86.2"
+edition.workspace = true
+
+[dependencies]
+ably-subscriber = { workspace = true }
+sandbox = { workspace = true }
+nbd-cow = { workspace = true }
+sandbox-fc = { workspace = true }
+
+async-trait = { workspace = true }
+aws-sdk-s3 = { workspace = true, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
+base64 = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true, features = ["serde", "now"] }
+clap = { workspace = true, features = ["derive", "env"] }
+nix = { workspace = true, features = ["user", "signal", "fs", "process"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal", "time", "fs", "net", "io-util"] }
+tokio-util = { workspace = true, features = ["io", "io-util"] }
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true }
+flate2 = { workspace = true }
+reqwest = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+tar = { workspace = true }
+tempfile = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+sentry = { workspace = true, features = ["panic"] }
+which = { workspace = true }
+zstd = { workspace = true, features = ["zstdmt"] }
+
+# These dev-dependencies exist solely for release-please version tracking:
+# cargo-workspace plugin includes dev-dependencies in its dependency graph,
+# so runner-rs gets auto-bumped when any guest crate version changes.
+[dev-dependencies]
+# `test-util` feature exposes `with_test_defaults_v2()` on `aws_sdk_s3::Config`,
+# which `aws_smithy_mocks::mock_client!` needs. Feature applies only to the
+# test build — no impact on the production binary.
+aws-sdk-s3 = { workspace = true, features = ["test-util"] }
+aws-smithy-mocks = { workspace = true }
+guest-agent = { workspace = true }
+guest-download = { workspace = true }
+guest-init = { workspace = true }
+guest-mock-claude = { workspace = true }
+guest-reseed = { workspace = true }
+httpmock = { workspace = true }
+sandbox-mock = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

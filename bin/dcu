@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -eu
+
+VM0_WORKSPACES="${VM0_WORKSPACES:-$HOME/workspaces}"
+FOLDER="$VM0_WORKSPACES/$1"
+
+(cd "$FOLDER" && git pull)
+npx @devcontainers/cli up --workspace-folder "$FOLDER" \
+    --dotfiles-repository $VM0_DOTFILES \
+    --remove-existing-container

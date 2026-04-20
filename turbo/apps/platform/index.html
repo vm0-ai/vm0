@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Zero</title>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Zero" />
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#19191b"
+      media="(prefers-color-scheme: dark)"
+    />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <script>
+      // Inline theme detection — mirrors signals/theme.ts resolveTheme() + applyTheme()
+      (function () {
+        var p = localStorage.getItem("theme");
+        var t =
+          p === "dark" || p === "light"
+            ? p
+            : window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        document.documentElement.dataset.theme = t;
+        if (t === "dark") document.documentElement.classList.add("dark");
+      })();
+    </script>
+    <script type="module" src="/src/main.ts" defer></script>
+    <script>
+      function __initPlausible() {
+        var url = "%VITE_PLAUSIBLE_SCRIPT_URL%";
+        if (url && url.indexOf("plausible") !== -1) {
+          var s = document.createElement("script");
+          s.async = true;
+          s.src = url;
+          document.head.appendChild(s);
+          ((window.plausible =
+            window.plausible ||
+            function () {
+              (plausible.q = plausible.q || []).push(arguments);
+            }),
+            (plausible.init =
+              plausible.init ||
+              function (i) {
+                plausible.o = i || {};
+              }));
+          plausible.init({
+            transformRequest: function (payload) {
+              payload.u = payload.u.replace(
+                /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+                "/:id",
+              );
+              return payload;
+            },
+          });
+        }
+      }
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(__initPlausible, { timeout: 3000 });
+      } else {
+        setTimeout(__initPlausible, 100);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <style>
+        body {
+          margin: 0;
+        }
+        .sk {
+          height: 100dvh;
+          background: #fdfdfe;
+        }
+        [data-theme="dark"] .sk {
+          background: #19191b;
+        }
+      </style>
+      <div class="sk"></div>
+    </div>
+    <script
+      src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
+      integrity="sha384-PeueJ613SmtgegJQz/JL0K6uh1Q5Q4os+b/FZsvK9GoMFvyFlyBv8FiP62B3rilT"
+      crossorigin="anonymous"
+      defer
+    ></script>
+  </body>
+</html>

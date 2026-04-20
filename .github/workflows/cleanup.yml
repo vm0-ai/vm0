@@ -1,0 +1,190 @@
+name: Cleanup Resources
+
+on:
+  pull_request_target:
+    types: [closed]
+
+concurrency:
+  group: ${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cleanup-runner:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check if cleanup needed
+        id: check
+        env:
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOSTS" ]; then
+            echo "Metal secrets not available, skipping runner cleanup"
+            echo "should-cleanup=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should-cleanup=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Ansible
+        if: steps.check.outputs.should-cleanup == 'true'
+        run: pip3 install ansible-core
+
+      - name: Setup SSH via Cloudflare Tunnel
+        if: steps.check.outputs.should-cleanup == 'true'
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Cleanup turbo runner on all metal hosts
+        if: steps.check.outputs.should-cleanup == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+        run: |
+          cd ansible
+          JOB_REF="pr-${PR_NUMBER}"
+          if ! ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-turbo-runner.yml \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v; then
+            echo "::warning::Turbo runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
+          fi
+
+      - name: Cleanup crates runner on all metal hosts
+        if: steps.check.outputs.should-cleanup == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+        run: |
+          cd ansible
+          JOB_REF="pr-${PR_NUMBER}-test"
+          if ! ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-crates-runner.yml \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v; then
+            echo "::warning::Crates runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
+          fi
+
+  cleanup-database:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Delete Neon Branch
+        uses: ./.github/actions/neon-branch
+        with:
+          neon-api-key: ${{ secrets.NEON_API_KEY }}
+          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
+          branch-name: "pr-${{ github.event.pull_request.number }}"
+          action: "cleanup"
+
+  cleanup-test-users:
+    # Delete Clerk test users created by e2e browser tests for this PR
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete test users from Clerk
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          JOB_REF="pr-${PR_NUMBER}"
+          echo "Searching for test users with email matching ${JOB_REF}+clerk_test"
+          USERS=$(curl -sS -X GET "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
+            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+            -H "Content-Type: application/json")
+
+          while read -r user; do
+            USER_ID=$(echo "$user" | jq -r '.id')
+            EMAIL=$(echo "$user" | jq -r '.email_addresses[0].email_address // "unknown"')
+
+            # Verify email actually matches this PR (Clerk query is fuzzy)
+            if [[ "$EMAIL" != "${JOB_REF}+clerk_test"* ]]; then
+              echo "Skipping $USER_ID ($EMAIL) — does not match ${JOB_REF}"
+              continue
+            fi
+
+            echo "Deleting $USER_ID ($EMAIL)"
+            if ! curl -sS -X DELETE "https://api.clerk.com/v1/users/${USER_ID}" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}"; then
+              echo "::warning::Failed to delete user $USER_ID ($EMAIL)"
+            fi
+          done < <(echo "$USERS" | jq -c '.[]' 2>/dev/null)
+
+  cleanup-deployments:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+    steps:
+      - name: Delete PR Deployments
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const branchName = context.payload.pull_request.head.ref;
+            const sha = context.payload.pull_request.head.sha;
+            const prNumber = context.payload.pull_request.number;
+            const jobRef = `pr-${prNumber}`;
+
+            console.log(`Cleaning up deployments for branch: ${branchName}, sha: ${sha}, job-ref: ${jobRef}`);
+
+            // Get all deployments and filter by branch name
+            const allDeployments = await github.rest.repos.listDeployments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            // Filter deployments that belong to this PR
+            const branchDeployments = allDeployments.data.filter(deployment => {
+              return deployment.ref === branchName ||
+                     deployment.ref === `refs/heads/${branchName}` ||
+                     deployment.ref === sha ||
+                     deployment.environment?.includes(`preview/${branchName}`) ||
+                     deployment.environment?.includes(`preview/${jobRef}`);
+            });
+
+            console.log(`Found ${branchDeployments.length} deployments to delete`);
+
+            // Delete each deployment (must mark as inactive first)
+            for (const deployment of branchDeployments) {
+              console.log(`Deleting deployment ${deployment.id} (${deployment.environment})`);
+
+              // Step 1: Mark as inactive
+              await github.rest.repos.createDeploymentStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                deployment_id: deployment.id,
+                state: 'inactive',
+                description: 'PR closed - cleaning up'
+              });
+
+              // Step 2: Delete the deployment
+              try {
+                await github.rest.repos.deleteDeployment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  deployment_id: deployment.id
+                });
+                console.log(`Successfully deleted deployment ${deployment.id}`);
+              } catch (error) {
+                console.error(`Failed to delete deployment ${deployment.id}: ${error.message}`);
+              }
+            }

@@ -1,0 +1,1 @@
+ALTER TABLE "zero_agents" ADD COLUMN "unknown_permission_policies" jsonb;
