@@ -1961,6 +1961,13 @@
       "when": 1776681922381,
       "tag": "0279_cold_mulholland_black",
       "breakpoints": true
+    },
+    {
+      "idx": 280,
+      "version": "7",
+      "when": 1776685570378,
+      "tag": "0280_curved_solo",
+      "breakpoints": true
     }
   ]
 }
