@@ -77,17 +77,27 @@ export async function createAgentSession(
 }
 
 /**
- * Update an existing agent session's conversation reference
+ * Update an existing agent session's conversation reference. Optional
+ * artifactName/memoryName let the checkpoint webhook record the per-run
+ * snapshot fields on sessions that were created eagerly at run insertion
+ * (when those names were not yet known).
  */
 export async function updateAgentSession(
   id: string,
   conversationId: string,
+  options?: { artifactName?: string; memoryName?: string },
 ): Promise<AgentSessionData> {
   const [session] = await globalThis.services.db
     .update(agentSessions)
     .set({
       conversationId,
       updatedAt: new Date(),
+      ...(options?.artifactName !== undefined
+        ? { artifactName: options.artifactName }
+        : {}),
+      ...(options?.memoryName !== undefined
+        ? { memoryName: options.memoryName }
+        : {}),
     })
     .where(eq(agentSessions.id, id))
     .returning();

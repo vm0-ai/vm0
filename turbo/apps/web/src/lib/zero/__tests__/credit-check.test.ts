@@ -48,6 +48,7 @@ describe("credit check (infra queue path)", () => {
       agentComposeVersionId: versionId,
       prompt: "Credit check test",
       orgId: user.orgId,
+      composeId,
       ...overrides,
     };
   }
@@ -255,6 +256,7 @@ describe("model provider check (queue dispatch path)", () => {
       agentComposeVersionId: compose.versionId,
       prompt: "Queued no provider",
       orgId: user.orgId,
+      composeId: compose.composeId,
       vars: { ZERO_AGENT_ID: agentId },
       agentName,
     });

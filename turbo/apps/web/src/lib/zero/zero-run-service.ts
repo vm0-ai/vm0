@@ -259,6 +259,7 @@ interface ZeroRunRecordResult {
   runId: string;
   status: RunStatus;
   createdAt: Date;
+  sessionId: string;
   /** Undefined when run was enqueued (concurrency limit) — dispatch already deferred via queue */
   record?: CreateRunRecordResult;
   runParams?: CreateRunParams;
@@ -482,7 +483,7 @@ async function createZeroRunRecord(
     userId: params.userId,
     agentComposeVersionId: resolved.agentComposeVersionId,
     prompt: params.prompt,
-    composeId: resolved.composeId,
+    composeId: preloadedCompose.compose.id,
     sessionId: params.sessionId,
     appendSystemPrompt,
     modelProvider: params.modelProvider,
@@ -531,7 +532,21 @@ async function createZeroRunRecord(
         sql`SELECT pg_advisory_xact_lock(hashtext(${resolved.orgId}))`,
       );
       await checkRunConcurrencyLimit(resolved.orgId, orgTier, tx);
-      return insertRunRecord(tx, runParams);
+      return insertRunRecord(tx, {
+        userId: runParams.userId,
+        orgId: resolved.orgId,
+        agentComposeId: preloadedCompose.compose.id,
+        agentComposeVersionId: runParams.agentComposeVersionId,
+        prompt: runParams.prompt,
+        appendSystemPrompt: runParams.appendSystemPrompt,
+        vars: runParams.vars,
+        secrets: runParams.secrets,
+        additionalVolumes: runParams.additionalVolumes,
+        resumedFromCheckpointId: runParams.resumedFromCheckpointId,
+        sessionId: runParams.sessionId,
+        artifactName: runParams.artifactName,
+        memoryName: runParams.memoryName,
+      });
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
@@ -546,6 +561,7 @@ async function createZeroRunRecord(
         runId: queueResult.runId,
         status: queueResult.status,
         createdAt: queueResult.createdAt,
+        sessionId: queueResult.sessionId,
       };
     }
     throw error;
@@ -571,6 +587,7 @@ async function createZeroRunRecord(
     runId: run.id,
     status: "pending",
     createdAt: run.createdAt,
+    sessionId: run.sessionId,
     record,
     runParams,
     orgId: resolved.orgId,
@@ -673,6 +690,7 @@ export interface CreateZeroRunResult {
   runId: string;
   status: RunStatus;
   createdAt: Date;
+  sessionId: string;
 }
 
 /**
@@ -708,6 +726,7 @@ export async function createZeroRun(
     runId: result.runId,
     status: result.status,
     createdAt: result.createdAt,
+    sessionId: result.sessionId,
   };
 }
 

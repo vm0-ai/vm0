@@ -185,14 +185,25 @@ export async function createCheckpoint(
     | undefined;
 
   let agentSession;
-  if (run.continuedFromSessionId) {
-    // Continue: update existing session's conversation reference
+  if (run.sessionId) {
+    // New path: session was pre-created at run insertion (common case post-deploy).
+    // Bind the conversation and record any per-run snapshot fields that were
+    // not known at insertion time (e.g., memoryName from the runtime snapshot).
+    agentSession = await updateAgentSession(run.sessionId, conversation.id, {
+      artifactName: artifactSnapshot?.artifactName,
+      memoryName: memorySnapshot?.memoryName,
+    });
+  } else if (run.continuedFromSessionId) {
+    // Legacy continuation in flight at deploy time: pre-existing session gets
+    // its conversation reference updated.
     agentSession = await updateAgentSession(
       run.continuedFromSessionId,
       conversation.id,
     );
   } else {
-    // New run: always create a new session (with artifact/memory name if present)
+    // Legacy first-run created by old web before this deploy. Create the
+    // session now AND backfill agent_runs.session_id so downstream consumers
+    // (and the Release 2 migration) see a populated value.
     agentSession = await createAgentSession({
       userId: run.userId,
       orgId: run.orgId,
@@ -201,6 +212,10 @@ export async function createCheckpoint(
       memoryName: memorySnapshot?.memoryName,
       conversationId: conversation.id,
     });
+    await globalThis.services.db
+      .update(agentRuns)
+      .set({ sessionId: agentSession.id })
+      .where(eq(agentRuns.id, run.id));
   }
 
   log.debug(`Agent session updated/created: ${agentSession.id}`);

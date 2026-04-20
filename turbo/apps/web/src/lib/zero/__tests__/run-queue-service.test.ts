@@ -47,6 +47,7 @@ describe("run-queue-service", () => {
       agentComposeVersionId: versionId,
       prompt: "Queue test",
       orgId: user.orgId,
+      composeId,
       ...overrides,
     };
   }

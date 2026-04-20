@@ -754,6 +754,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         agentComposeVersionId: versionId,
         prompt: "Queued run",
         orgId: qUser.orgId,
+        composeId,
       });
       expect(run2.status).toBe("queued");
 

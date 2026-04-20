@@ -6,6 +6,9 @@ import {
   createTestRun,
   createTestSandboxToken,
   findTestCheckpoint,
+  findTestRunRecord,
+  getTestAgentSessionWithConversation,
+  createTestAgentSession,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
@@ -638,6 +641,147 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(snapshot.additionalVolumes).toEqual([
         { name: "my-vol", versionId: "v1.0", mountPath: "/mnt" },
       ]);
+    });
+  });
+
+  describe("Session Resolution", () => {
+    // Branch A: run already has sessionId (eager creation path)
+    it("should bind conversation to the pre-created session", async () => {
+      // testRunId was created via createTestRun in beforeEach — the eager path
+      // already populated session_id on that run.
+      const runBefore = await findTestRunRecord(testRunId);
+      expect(runBefore?.sessionId).toBeTruthy();
+      const preCreatedSessionId = runBefore!.sessionId!;
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "branch-a-session",
+            cliAgentSessionHistoryHash: sha256("branch-a"),
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        agentSessionId: string;
+        conversationId: string;
+      };
+
+      // Webhook returns the same session id that was pre-created
+      expect(body.agentSessionId).toBe(preCreatedSessionId);
+
+      // Session now references the new conversation
+      const session =
+        await getTestAgentSessionWithConversation(preCreatedSessionId);
+      expect(session?.conversationId).toBe(body.conversationId);
+
+      // run.sessionId unchanged
+      const runAfter = await findTestRunRecord(testRunId);
+      expect(runAfter?.sessionId).toBe(preCreatedSessionId);
+    });
+
+    // Branch B: legacy continuation pre-deploy — continuedFromSessionId set, sessionId unset
+    it("should reuse continuedFromSessionId for legacy continuation runs", async () => {
+      // Pre-create a session and seed a run that continues from it WITHOUT
+      // populating sessionId (simulates an in-flight continuation at deploy time).
+      const priorSession = await createTestAgentSession(
+        user.userId,
+        testComposeId,
+      );
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+        continuedFromSessionId: priorSession.id,
+      });
+
+      const runBefore = await findTestRunRecord(runId);
+      expect(runBefore?.sessionId).toBeNull();
+      expect(runBefore?.continuedFromSessionId).toBe(priorSession.id);
+
+      const token = await createTestSandboxToken(user.userId, runId);
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "branch-b-session",
+            cliAgentSessionHistoryHash: sha256("branch-b"),
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        agentSessionId: string;
+        conversationId: string;
+      };
+
+      expect(body.agentSessionId).toBe(priorSession.id);
+
+      const session = await getTestAgentSessionWithConversation(
+        priorSession.id,
+      );
+      expect(session?.conversationId).toBe(body.conversationId);
+    });
+
+    // Branch C: legacy first-run pre-deploy — neither sessionId nor continuedFromSessionId set
+    it("should create a new session and backfill run.sessionId", async () => {
+      const { runId } = await seedTestRun(user.userId, testComposeId, {
+        status: "running",
+      });
+
+      const runBefore = await findTestRunRecord(runId);
+      expect(runBefore?.sessionId).toBeNull();
+      expect(runBefore?.continuedFromSessionId).toBeNull();
+
+      const token = await createTestSandboxToken(user.userId, runId);
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "branch-c-session",
+            cliAgentSessionHistoryHash: sha256("branch-c"),
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        agentSessionId: string;
+        conversationId: string;
+      };
+
+      expect(body.agentSessionId).toBeTruthy();
+
+      // Run.sessionId was backfilled to the newly created session
+      const runAfter = await findTestRunRecord(runId);
+      expect(runAfter?.sessionId).toBe(body.agentSessionId);
+
+      const session = await getTestAgentSessionWithConversation(
+        body.agentSessionId,
+      );
+      expect(session?.conversationId).toBe(body.conversationId);
     });
   });
 });

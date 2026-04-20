@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
+import { agentSessions } from "../../db/schema/agent-session";
 import { zeroRuns } from "../../db/schema/zero-run";
 import {
   agentComposeVersions,
@@ -89,6 +90,13 @@ export async function enqueueRun(
   // Org context is required from caller
   const orgId = params.orgId;
 
+  // composeId must be present on the zero path (resolved before enqueue).
+  // Without it we cannot stamp agent_sessions.agent_compose_id.
+  if (!params.composeId) {
+    throw new Error("enqueueRun requires params.composeId to be set");
+  }
+  const agentComposeId = params.composeId;
+
   // Encrypt the full CreateRunParams for later replay
   const paramsJson = JSON.stringify(params);
   const encryptedParams = encryptSecretsMap(
@@ -96,10 +104,34 @@ export async function enqueueRun(
     env().SECRETS_ENCRYPTION_KEY,
   );
 
-  // Insert agent_runs + queue entry atomically to prevent orphaned records
+  // Insert agent_runs + queue entry atomically to prevent orphaned records.
+  // Eagerly create the agent_sessions row too so sessionId is known on the
+  // POST response even for queued runs (same promise as synchronous runs).
   const expiresAt = new Date(Date.now() + QUEUE_TTL_MS);
 
   const run = await globalThis.services.db.transaction(async (tx) => {
+    let sessionId: string;
+    if (params.sessionId) {
+      sessionId = params.sessionId;
+    } else {
+      const [newSession] = await tx
+        .insert(agentSessions)
+        .values({
+          userId,
+          orgId,
+          agentComposeId,
+          artifactName: params.artifactName,
+          memoryName: params.memoryName,
+          conversationId: null,
+        })
+        .returning({ id: agentSessions.id });
+
+      if (!newSession) {
+        throw new Error("Failed to create queued agent session");
+      }
+      sessionId = newSession.id;
+    }
+
     const [inserted] = await tx
       .insert(agentRuns)
       .values({
@@ -113,6 +145,7 @@ export async function enqueueRun(
         secretNames: params.secrets ? Object.keys(params.secrets) : null,
         resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
         continuedFromSessionId: params.sessionId ?? null,
+        sessionId,
         lastHeartbeatAt: new Date(),
       })
       .returning();
@@ -130,7 +163,7 @@ export async function enqueueRun(
       expiresAt,
     });
 
-    return inserted;
+    return { ...inserted, sessionId };
   });
 
   log.debug(`Enqueued run ${run.id} for user ${userId}`);
@@ -139,6 +172,7 @@ export async function enqueueRun(
     runId: run.id,
     status: "queued",
     createdAt: run.createdAt,
+    sessionId: run.sessionId,
   };
 }
 

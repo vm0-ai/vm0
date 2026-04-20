@@ -345,6 +345,7 @@ const router = tsr.router(runsMainContract, {
         return insertRunRecord(tx, {
           userId,
           orgId: org.orgId,
+          agentComposeId: compose.id,
           agentComposeVersionId: composeMeta.agentComposeVersionId,
           prompt: body.prompt,
           appendSystemPrompt: body.appendSystemPrompt,
@@ -353,6 +354,8 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
+          artifactName: resolved.artifactName ?? body.artifactName,
+          memoryName: resolved.memoryName ?? body.memoryName,
         });
       });
       const transactionTime = Date.now();
@@ -427,6 +430,7 @@ const router = tsr.router(runsMainContract, {
               | "failed"
               | "timeout",
             sandboxId: dispatchResult.sandboxId,
+            sessionId: run.sessionId,
             createdAt: run.createdAt.toISOString(),
           },
         };

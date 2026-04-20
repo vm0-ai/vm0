@@ -1,6 +1,7 @@
 import { eq, and, or } from "drizzle-orm";
 import { env } from "../../../env";
 import { agentRuns } from "../../../db/schema/agent-run";
+import { agentSessions } from "../../../db/schema/agent-session";
 import { transitionRunStatus, dispatchTerminalSideEffects } from "./run-status";
 import {
   agentComposeVersions,
@@ -139,6 +140,7 @@ export interface CreateRunResult {
   status: RunStatus;
   sandboxId?: string;
   createdAt: Date;
+  sessionId: string;
 }
 
 /**
@@ -405,6 +407,7 @@ export interface CreateRunRecordResult {
 interface InsertRunParams {
   userId: string;
   orgId: string;
+  agentComposeId: string;
   agentComposeVersionId: string;
   prompt: string;
   appendSystemPrompt?: string;
@@ -418,17 +421,43 @@ interface InsertRunParams {
   }>;
   resumedFromCheckpointId?: string;
   sessionId?: string;
+  artifactName?: string;
+  memoryName?: string;
 }
 
 /**
  * Pure INSERT into agent_runs within an existing transaction.
- * No business logic — caller is responsible for authorization,
- * validation, and concurrency checks.
+ * For new runs, also creates the agent_sessions row in the same tx so
+ * sessionId is known on the first POST response. For continuations, reuses
+ * the caller-supplied sessionId. No business logic — caller is responsible
+ * for authorization, validation, and concurrency checks.
  */
 export async function insertRunRecord(
   tx: Database,
   params: InsertRunParams,
-): Promise<{ id: string; createdAt: Date }> {
+): Promise<{ id: string; createdAt: Date; sessionId: string }> {
+  let sessionId: string;
+  if (params.sessionId) {
+    sessionId = params.sessionId;
+  } else {
+    const [newSession] = await tx
+      .insert(agentSessions)
+      .values({
+        userId: params.userId,
+        orgId: params.orgId,
+        agentComposeId: params.agentComposeId,
+        artifactName: params.artifactName,
+        memoryName: params.memoryName,
+        conversationId: null,
+      })
+      .returning({ id: agentSessions.id });
+
+    if (!newSession) {
+      throw new Error("Failed to create agent session");
+    }
+    sessionId = newSession.id;
+  }
+
   const [newRun] = await tx
     .insert(agentRuns)
     .values({
@@ -443,6 +472,7 @@ export async function insertRunRecord(
       additionalVolumes: params.additionalVolumes ?? null,
       resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
       continuedFromSessionId: params.sessionId ?? null,
+      sessionId,
       lastHeartbeatAt: new Date(),
     })
     .returning();
@@ -451,7 +481,7 @@ export async function insertRunRecord(
     throw new Error("Failed to create run record");
   }
 
-  return newRun;
+  return { id: newRun.id, createdAt: newRun.createdAt, sessionId };
 }
 
 /**
