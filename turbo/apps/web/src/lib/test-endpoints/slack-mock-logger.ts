@@ -31,9 +31,18 @@ export async function logSlackMockCall(
         // leave bodyJson null
       }
     } else {
+      // Slack WebClient posts form-encoded bodies even for methods with
+      // nested payloads (blocks are JSON-encoded into a single form
+      // field). Materialize the form body as an object too so BATS
+      // assertions can read `.bodyJson.text` uniformly.
       const params = new URLSearchParams(rawBody);
       teamId = params.get("team_id");
       channelId = params.get("channel_id") ?? params.get("channel");
+      const parsed: Record<string, unknown> = {};
+      params.forEach((value, key) => {
+        parsed[key] = value;
+      });
+      bodyJson = parsed;
     }
 
     initServices();
