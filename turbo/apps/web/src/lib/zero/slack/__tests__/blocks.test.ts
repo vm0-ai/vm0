@@ -245,9 +245,11 @@ describe("buildAgentResponseMessage", () => {
     const testCases: [string, string][] = [
       ["claude-opus-4-7", "Claude Opus 4.7"],
       ["claude-sonnet-4-6", "Claude Sonnet 4.6"],
-      ["claude-haiku-4-5-20250501", "Claude Haiku 20250501"],
-      ["gemini-2-5-flash", "Gemini 2.5 flash"],
-      ["MiniMax-Text-01", "MiniMax Text 01"],
+      ["claude-haiku-4-5", "Claude Haiku 4.5"],
+      ["MiniMax-M2.7", "MiniMax M2.7"],
+      ["glm-5.1", "GLM-5.1"],
+      ["kimi-k2.5", "Kimi K2.5"],
+      ["deepseek-chat", "DeepSeek Chat"],
       ["unknown-model", "unknown-model"],
     ];
 

@@ -423,48 +423,39 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
 
 /**
  * Convert a raw model ID to a user-friendly display name.
- *
- * Examples:
- *   "claude-opus-4-7"          → "Claude Opus 4.7"
- *   "claude-sonnet-4-6"         → "Claude Sonnet 4.6"
- *   "claude-haiku-4-5-20250501" → "Claude Haiku 20250501"
- *   "gemini-2-5-flash"          → "Gemini 2.5 flash"
- *   "MiniMax-Text-01"           → "MiniMax Text 01"
- *   "unknown-model"             → "unknown-model" (passthrough)
+ * Only handles the models that actually appear in the UI — all others pass through unchanged.
  */
 export function modelIdToDisplayName(modelId: string): string {
-  const id = modelId.toLowerCase();
-
-  // Claude models: "claude-opus-4-7" → "Claude Opus 4.7"
-  const claudeMatch = id.match(/^claude-(opus|sonnet|haiku|opus-4-7|sonnet-4-6|haiku-4-5)-(.*)$/);
-  if (claudeMatch) {
-    const model = claudeMatch[1]!.replace(/-/g, " ");
-    const suffix = claudeMatch[2];
-    return suffix ? `Claude ${model} ${suffix}` : `Claude ${model}`;
-  }
-
-  // Gemini: "gemini-2-5-flash" → "Gemini 2.5 Flash"
-  const geminiMatch = id.match(/^gemini-(.+)$/);
-  if (geminiMatch) {
-    const parts = geminiMatch[1]!.split("-");
-    return "Gemini " + parts.join(".");
-  }
-
-  // GLM: "glm-4-9b-20250619" → "GLM 4.9B"
-  const glmMatch = id.match(/^glm-(.+)$/);
-  if (glmMatch) {
-    const parts = glmMatch[1]!.replace(/([a-z])([A-Z])/g, "$1 $2").split("-");
-    return "GLM " + parts.join(".");
-  }
-
-  // MiniMax: "MiniMax-Text-01" → "MiniMax Text 01"
-  if (id.startsWith("minimax")) {
-    const rest = id.slice(7).replace(/-/g, " ");
-    return rest ? `MiniMax ${rest}` : "MiniMax";
-  }
-
-  // Passthrough for unknown models
-  return modelId;
+  const MODEL_LABELS: Record<string, string> = {
+    // Anthropic (claude-code-oauth-token, anthropic-api-key, vm0)
+    "claude-sonnet-4-6": "Claude Sonnet 4.6",
+    "claude-opus-4-6": "Claude Opus 4.6",
+    "claude-opus-4-7": "Claude Opus 4.7",
+    "claude-haiku-4-5": "Claude Haiku 4.5",
+    // DeepSeek
+    "deepseek-chat": "DeepSeek Chat",
+    // MiniMax
+    "MiniMax-M2.7": "MiniMax M2.7",
+    "MiniMax-M2.1": "MiniMax M2.1",
+    // Kimi / Moonshot
+    "kimi-k2.5": "Kimi K2.5",
+    "kimi-k2-thinking": "Kimi K2 Thinking",
+    "kimi-k2-thinking-turbo": "Kimi K2 Thinking Turbo",
+    // GLM / ZhipuAI
+    "glm-5.1": "GLM-5.1",
+    "glm-5": "GLM-5",
+    "glm-4.7": "GLM-4.7",
+    "glm-4.5-air": "GLM-4.5 Air",
+    // OpenRouter / Vercel AI Gateway
+    "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
+    "anthropic/claude-opus-4.6": "Claude Opus 4.6",
+    "anthropic/claude-sonnet-4.5": "Claude Sonnet 4.5",
+    "anthropic/claude-opus-4.5": "Claude Opus 4.5",
+    "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
+    "minimax/minimax-m2.5": "MiniMax M2.5",
+    "zai/glm-5-turbo": "GLM-5 Turbo",
+  };
+  return MODEL_LABELS[modelId] ?? modelId;
 }
 
 /**
