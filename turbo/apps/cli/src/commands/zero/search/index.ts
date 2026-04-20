@@ -13,6 +13,27 @@ Available sources:
 Usage: zero search <query> --source <logs|chat|slack> [flags]
 Run 'zero search --help' for all flags.`;
 
+export function buildSlackRecipe(query: string): string {
+  const encoded = encodeURIComponent(query);
+  return `The \`slack\` source does not call Slack from this CLI. Run the
+following inside an agent sandbox that has $SLACK_TOKEN available:
+
+  curl -H "Authorization: Bearer $SLACK_TOKEN" \\
+    "https://slack.com/api/search.messages?query=${encoded}"
+
+If you don't have $SLACK_TOKEN, check the connector status:
+  zero connector status slack
+
+To verify the token and network policy end-to-end:
+  zero doctor check-connector --env-name SLACK_TOKEN
+
+Slack API docs: https://api.slack.com/methods/search.messages
+
+Note: CLI-local flags (--limit, --since, -A/-B/-C) are ignored for the
+slack source. Pass equivalents to Slack's API via count= / highlight=
+query parameters instead.`;
+}
+
 interface SearchOptions {
   source: string[];
   agent?: string;
@@ -43,10 +64,10 @@ async function runChatSource(
 }
 
 async function runSlackSource(
-  _query: string,
+  query: string,
   _options: SearchOptions,
 ): Promise<void> {
-  throw new Error("zero search --source slack: not yet implemented");
+  console.log(buildSlackRecipe(query));
 }
 
 export const zeroSearchCommand = new Command()
