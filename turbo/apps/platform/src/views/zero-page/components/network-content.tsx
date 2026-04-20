@@ -188,15 +188,9 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
   );
   addField(
     out,
-    "Permission Rule",
+    "Firewall",
     entry.firewall_name,
     formatValue(entry.firewall_name),
-  );
-  addField(
-    out,
-    "Connector Ref",
-    entry.firewall_ref,
-    formatValue(entry.firewall_ref),
   );
   addField(
     out,

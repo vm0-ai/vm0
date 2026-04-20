@@ -382,7 +382,6 @@ const networkLogEntrySchema = z.object({
   response_size: z.number().optional(),
   firewall_base: z.string().optional(),
   firewall_name: z.string().optional(),
-  firewall_ref: z.string().optional(),
   firewall_permission: z.string().optional(),
   firewall_rule_match: z.string().optional(),
   firewall_params: z.record(z.string(), z.string()).optional(),

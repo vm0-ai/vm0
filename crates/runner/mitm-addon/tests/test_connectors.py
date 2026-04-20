@@ -4321,8 +4321,8 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_ref_absent_allows(self):
-        """Ref not in networkPolicies → fully permissive."""
+    def test_name_absent_allows(self):
+        """Name not in networkPolicies → fully permissive."""
         policies = {}  # github not in map
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
@@ -4343,7 +4343,7 @@ class TestThreeLevelMatching:
         assert result is None
 
     def test_none_network_policies_allows_all(self):
-        """None networkPolicies → empty map → absent refs are fully permissive."""
+        """None networkPolicies → empty map → absent names are fully permissive."""
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "GET",
@@ -4440,8 +4440,8 @@ class TestThreeLevelMatching:
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ("repo-read", "repo-admin")
 
-    def test_multi_firewall_different_refs(self, headers):
-        """Two firewalls with different refs, each with own policies."""
+    def test_multi_firewall_different_names(self, headers):
+        """Two firewalls with different names, each with own policies."""
         fws = [
             {
                 "name": "github",
@@ -4502,8 +4502,8 @@ class TestThreeLevelMatching:
         assert result.match_info["name"] == "slack"
         assert result.match_info["permission"] == ""
 
-    def test_different_unknown_policy_per_ref(self, headers):
-        """unknownPolicy differs per ref — github strict, slack permissive."""
+    def test_different_unknown_policy_per_name(self, headers):
+        """unknownPolicy differs per firewall name — github strict, slack permissive."""
         fws = [
             {
                 "name": "github",
@@ -4617,8 +4617,8 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_ref_absent_from_policies_allows(self, headers):
-        """Firewall ref not in networkPolicies → fully permissive."""
+    def test_name_absent_from_policies_allows(self, headers):
+        """Firewall name not in networkPolicies → fully permissive."""
         fws = _wrap_firewalls(
             [
                 {
@@ -4641,7 +4641,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallAllow)
 
-        # Unknown endpoint also allowed (ref absent → fully permissive)
+        # Unknown endpoint also allowed (name absent → fully permissive)
         result = matching.match_firewall_request(
             "https://api.github.com/users/octocat",
             "GET",

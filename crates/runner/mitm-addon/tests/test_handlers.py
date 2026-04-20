@@ -1670,9 +1670,8 @@ class TestErrorHandler:
 
         entry = json.loads(Path(log_path).read_text().strip())
         assert entry["firewall_base"] == "https://slack.com/api"
-        # `firewall_ref` is an Axiom-compat alias sourced from firewall_name
-        assert entry["firewall_ref"] == "slack"
         assert entry["firewall_name"] == "slack"
+        assert "firewall_ref" not in entry
         assert entry["firewall_permission"] == "chat:write"
         assert entry["firewall_rule_match"] == "POST /chat.postMessage"
         assert entry["error"] == "timed out"

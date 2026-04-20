@@ -36,7 +36,7 @@ interface AxiomNetworkRow {
   _time: string;
   runId: string;
   host: string;
-  firewall_ref: string;
+  firewall_name: string;
   firewall_permission: string;
   action: string;
 }
@@ -124,15 +124,15 @@ function getLocalToday(
 const permissionLabelCache = new Map<string, string>();
 
 function getPermissionLabel(
-  firewallRef: string,
+  firewallName: string,
   permissionName: string,
 ): string {
-  const key = `${firewallRef}:${permissionName}`;
+  const key = `${firewallName}:${permissionName}`;
   const cached = permissionLabelCache.get(key);
   if (cached) return cached;
 
-  if (isFirewallConnectorType(firewallRef)) {
-    const config = getConnectorFirewall(firewallRef);
+  if (isFirewallConnectorType(firewallName)) {
+    const config = getConnectorFirewall(firewallName);
     for (const api of config.apis) {
       if (!api.permissions) continue;
       for (const perm of api.permissions) {
@@ -236,7 +236,7 @@ function aggregateNetworkDataPerUser(
   const userNetworkMap = new Map<string, UserNetworkData>();
 
   for (const row of networkRows) {
-    if (!isFirewallConnectorType(row.firewall_ref)) continue;
+    if (!isFirewallConnectorType(row.firewall_name)) continue;
 
     const info = runIdToInfo.get(row.runId);
     if (!info) continue;
@@ -251,7 +251,7 @@ function aggregateNetworkDataPerUser(
     }
     const userData = userNetworkMap.get(key)!;
 
-    const connectorKey = row.firewall_ref;
+    const connectorKey = row.firewall_name;
     const svc = userData.serviceMap.get(connectorKey) ?? {
       calls: 0,
       agentNames: new Set<string>(),
@@ -263,14 +263,14 @@ function aggregateNetworkDataPerUser(
     if (row.firewall_permission || row.action === "DENY") {
       const hasPerm = !!row.firewall_permission;
       const permKey = hasPerm
-        ? `${row.firewall_ref}:${row.firewall_permission}`
-        : row.firewall_ref;
+        ? `${row.firewall_name}:${row.firewall_permission}`
+        : row.firewall_name;
       const label = hasPerm
-        ? getPermissionLabel(row.firewall_ref, row.firewall_permission)
-        : row.firewall_ref;
+        ? getPermissionLabel(row.firewall_name, row.firewall_permission)
+        : row.firewall_name;
       const perm = userData.permMap.get(permKey) ?? {
         label,
-        connectorType: row.firewall_ref,
+        connectorType: row.firewall_name,
         allowed: 0,
         denied: 0,
         agentNames: new Set<string>(),
@@ -677,8 +677,8 @@ async function processWindowGroup(
 
   const apl = `['${dataset}']
 | where _time >= datetime("${startIso}") and _time < datetime("${endIso}")
-| where isnotnull(firewall_ref) and firewall_ref != ""
-| project runId, host, firewall_ref, firewall_permission, action
+| where isnotnull(firewall_name) and firewall_name != ""
+| project runId, host, firewall_name, firewall_permission, action
 | limit 100000`;
 
   let networkRows: AxiomNetworkRow[] = [];
