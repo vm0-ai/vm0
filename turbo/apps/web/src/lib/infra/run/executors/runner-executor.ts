@@ -33,15 +33,13 @@ export async function executeRunnerJob(
   context: PreparedContext,
 ): Promise<ExecutorResult> {
   // Record api_to_dispatch metric
-  if (context.apiStartTime) {
-    recordSandboxOperation({
-      sandboxType: "runner",
-      actionType: "api_to_executor",
-      durationMs: Date.now() - context.apiStartTime,
-      success: true,
-      runId: context.runId,
-    });
-  }
+  recordSandboxOperation({
+    sandboxType: "runner",
+    actionType: "api_to_executor",
+    durationMs: Date.now() - context.apiStartTime,
+    success: true,
+    runId: context.runId,
+  });
 
   const runnerGroup = context.runnerGroup;
   const profile = context.experimentalProfile ?? DEFAULT_PROFILE;
@@ -156,7 +154,7 @@ function buildStoredContext(
     experimentalProfile: profile,
     debugNoMockClaude: context.debugNoMockClaude || undefined,
     captureNetworkBodies: context.captureNetworkBodies || undefined,
-    apiStartTime: context.apiStartTime ?? undefined,
+    apiStartTime: context.apiStartTime,
     userTimezone: context.userTimezone ?? undefined,
     memoryName: context.memoryName ?? undefined,
     featureFlags: context.featureFlags ?? undefined,

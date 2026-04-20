@@ -123,6 +123,7 @@ async function resolveTrigger(
  */
 export async function handleInboundEmailTrigger(
   event: InboundEmailEvent,
+  apiStartTime: number,
 ): Promise<HandlerResult> {
   const { email_id: emailId, to, from: senderEmail, subject } = event.data;
 
@@ -207,6 +208,7 @@ export async function handleInboundEmailTrigger(
       userId,
       agentId,
       prompt,
+      apiStartTime,
       callbackPayload: {
         senderEmail,
         agentId,

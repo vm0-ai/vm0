@@ -45,6 +45,7 @@ const log = logger("telegram:mention");
 export async function handleTelegramMention(
   update: TelegramHandlerUpdate,
   installationId: string,
+  apiStartTime: number,
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
   const message = update.message;
@@ -153,6 +154,7 @@ export async function handleTelegramMention(
     prompt: enrichedPrompt,
     threadContext: executionContext,
     userId: userLink.vm0UserId,
+    apiStartTime,
     callbackContext: {
       installationId,
       chatId,

@@ -164,6 +164,7 @@ export async function dispatchPreparationRun(
   preparationId: string,
   userId: string,
   agentId: string,
+  apiStartTime: number,
   options?: { mode?: "chat" | "meeting"; prompt?: string },
 ): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
@@ -185,6 +186,7 @@ export async function dispatchPreparationRun(
       prompt,
       appendSystemPrompt,
       preparationId,
+      apiStartTime,
     }),
   );
 

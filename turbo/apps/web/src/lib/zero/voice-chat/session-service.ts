@@ -144,6 +144,7 @@ export async function dispatchSlowBrain(
   orgId: string,
   userId: string,
   agentId: string,
+  apiStartTime: number,
   options?: { mode?: "chat" | "meeting"; prompt?: string },
 ): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
@@ -175,6 +176,7 @@ export async function dispatchSlowBrain(
       prompt,
       appendSystemPrompt,
       sessionId: session.id,
+      apiStartTime,
     }),
   );
 
@@ -228,11 +230,14 @@ export async function writeCachedPreparationEvents(
 // Observation-Only Slow-Brain Dispatch
 // ---------------------------------------------------------------------------
 
-export async function dispatchObservationSlowBrain(session: {
-  id: string;
-  userId: string;
-  agentId: string;
-}): Promise<CreateZeroRunResult> {
+export async function dispatchObservationSlowBrain(
+  session: {
+    id: string;
+    userId: string;
+    agentId: string;
+  },
+  apiStartTime: number,
+): Promise<CreateZeroRunResult> {
   const db = globalThis.services.db;
   const appendSystemPrompt = buildVoiceChatObservationOnlyPrompt(session.id);
   const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Preparation is complete. Start observing the conversation.`;
@@ -244,6 +249,7 @@ export async function dispatchObservationSlowBrain(session: {
       prompt,
       appendSystemPrompt,
       sessionId: session.id,
+      apiStartTime,
     }),
   );
 

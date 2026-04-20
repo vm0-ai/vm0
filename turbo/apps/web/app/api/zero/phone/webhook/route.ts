@@ -122,6 +122,7 @@ function extractCallData(body: Record<string, unknown>): {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const apiStartTime = Date.now();
   initServices();
 
   const parsed = webhookBodySchema.safeParse(
@@ -161,7 +162,7 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     after(() => {
-      return handleMessageReceived(messageData);
+      return handleMessageReceived(messageData, apiStartTime);
     });
     return new Response("OK", { status: 200 });
   }
@@ -203,17 +204,20 @@ export async function POST(request: Request): Promise<Response> {
   });
 
   after(() => {
-    return handleCallEnded({
-      callId,
-      agentId,
-      fromNumber,
-      toNumber: toNumber ?? "",
-      direction,
-      channel,
-      durationSeconds,
-      transcript,
-      summary,
-    });
+    return handleCallEnded(
+      {
+        callId,
+        agentId,
+        fromNumber,
+        toNumber: toNumber ?? "",
+        direction,
+        channel,
+        durationSeconds,
+        transcript,
+        summary,
+      },
+      apiStartTime,
+    );
   });
 
   return new Response("OK", { status: 200 });

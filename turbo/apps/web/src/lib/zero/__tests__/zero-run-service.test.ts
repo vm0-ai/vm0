@@ -54,6 +54,7 @@ describe("createZeroRun() — service-only parameters", () => {
       prompt: "Hello, world!",
       agentId,
       triggerSource: "web" as TriggerSource,
+      apiStartTime: Date.now(),
       ...overrides,
     };
   }
@@ -316,6 +317,7 @@ describe("createZeroRun() — service-only parameters", () => {
         agentId: resumeAgentId,
         sessionId: session.id,
         triggerSource: "web",
+        apiStartTime: Date.now(),
       });
 
       const resumedRun = await findTestRunRecord(resumed.runId);
@@ -345,6 +347,7 @@ describe("createZeroRun() — service-only parameters", () => {
         prompt: "test prompt",
         agentId,
         triggerSource: "web",
+        apiStartTime: Date.now(),
       });
 
       const zeroRun = await findTestZeroRun(result.runId);
@@ -360,6 +363,7 @@ describe("createZeroRun() — service-only parameters", () => {
           prompt: "test",
           agentId,
           triggerSource,
+          apiStartTime: Date.now(),
         });
 
         const zeroRun = await findTestZeroRun(result.runId);

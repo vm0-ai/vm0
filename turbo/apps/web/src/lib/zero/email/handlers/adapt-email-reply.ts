@@ -7,6 +7,7 @@ interface EmailReplyTriggerContext {
   agentId: string;
   sessionId: string;
   prompt: string;
+  apiStartTime: number;
   callbackPayload: {
     emailThreadSessionId: string;
     inboundEmailId: string;
@@ -27,6 +28,7 @@ export function adaptEmailReplyTrigger(
     prompt: ctx.prompt,
     appendSystemPrompt: buildIntegrationPrompt("Email"),
     triggerSource: "email",
+    apiStartTime: ctx.apiStartTime,
     callbacks: [
       {
         url: `${getApiUrl()}/api/zero/email/callbacks/reply`,

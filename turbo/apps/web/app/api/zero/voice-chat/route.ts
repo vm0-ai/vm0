@@ -34,6 +34,7 @@ const bodySchema = z
 const log = logger("api:zero:voice-chat");
 
 export async function POST(request: Request) {
+  const apiStartTime = Date.now();
   initServices();
 
   const authCtx = await getAuthContext(
@@ -96,10 +97,13 @@ export async function POST(request: Request) {
         session.id,
         preparation.directiveContent,
       );
-      const run = await dispatchObservationSlowBrain({
-        ...session,
-        agentId,
-      });
+      const run = await dispatchObservationSlowBrain(
+        {
+          ...session,
+          agentId,
+        },
+        apiStartTime,
+      );
 
       return NextResponse.json({
         session: {
@@ -113,10 +117,17 @@ export async function POST(request: Request) {
       });
     }
 
-    const run = await dispatchSlowBrain(session, org.orgId, userId, agentId, {
-      mode,
-      prompt,
-    });
+    const run = await dispatchSlowBrain(
+      session,
+      org.orgId,
+      userId,
+      agentId,
+      apiStartTime,
+      {
+        mode,
+        prompt,
+      },
+    );
 
     return NextResponse.json({
       session: {

@@ -33,6 +33,7 @@ const bodySchema = z
 const log = logger("api:zero:voice-chat:prepare");
 
 export async function POST(request: Request) {
+  const apiStartTime = Date.now();
   initServices();
 
   const authCtx = await getAuthContext(
@@ -112,10 +113,16 @@ export async function POST(request: Request) {
       mode,
       prompt,
     );
-    const run = await dispatchPreparationRun(preparation.id, userId, agentId, {
-      mode: mode as "chat" | "meeting",
-      prompt,
-    });
+    const run = await dispatchPreparationRun(
+      preparation.id,
+      userId,
+      agentId,
+      apiStartTime,
+      {
+        mode: mode as "chat" | "meeting",
+        prompt,
+      },
+    );
 
     return NextResponse.json({
       preparation: {

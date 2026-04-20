@@ -498,6 +498,7 @@ export async function dispatchQueuedZeroRun(
       agentCompose: composeContent,
       runId,
       agentName: params.agentName,
+      apiStartTime,
     });
 
     // Update zero_runs with resolved model fields before dispatch so metadata
@@ -556,6 +557,7 @@ export async function dispatchQueuedZeroRun(
       runId,
       agentCompose: composeContent,
       continuedFromSessionId: params.sessionId,
+      apiStartTime,
     });
 
     await buildAndDispatchRun({

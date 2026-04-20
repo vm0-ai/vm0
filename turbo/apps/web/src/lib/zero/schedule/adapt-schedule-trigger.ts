@@ -16,6 +16,7 @@ interface ScheduleTriggerContext {
   timezone: string;
   modelProviderId?: string | null;
   selectedModel?: string | null;
+  apiStartTime: number;
 }
 
 export function adaptScheduleTrigger(
@@ -28,6 +29,7 @@ export function adaptScheduleTrigger(
     appendSystemPrompt: ctx.appendSystemPrompt,
     scheduleId: ctx.scheduleId,
     triggerSource: "schedule",
+    apiStartTime: ctx.apiStartTime,
     callbacks: buildScheduleCallbacks(ctx),
     modelProviderId: ctx.modelProviderId ?? undefined,
     selectedModelOverride: ctx.selectedModel ?? undefined,
