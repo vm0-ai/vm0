@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "../route";
 import { seedRedemptionCode } from "../../../../../src/__tests__/db-test-seeders/redemption-codes";
 import {
@@ -93,11 +93,6 @@ describe("POST /api/zero/redemption-codes (mint)", () => {
   );
 
   describe("EXTRA_STAFF_USER_IDS env override", () => {
-    afterEach(() => {
-      vi.unstubAllEnvs();
-      reloadEnv();
-    });
-
     it("allows minting for a non-staff user whose id is in EXTRA_STAFF_USER_IDS", async () => {
       const { userId } = await setupNonStaffOrg();
       vi.stubEnv("EXTRA_STAFF_USER_IDS", `some-other-user, ${userId} ,another`);
@@ -220,11 +215,6 @@ describe("GET /api/zero/redemption-codes (list)", () => {
   });
 
   describe("EXTRA_STAFF_USER_IDS env override", () => {
-    afterEach(() => {
-      vi.unstubAllEnvs();
-      reloadEnv();
-    });
-
     it("allows listing for a non-staff user whose id is in EXTRA_STAFF_USER_IDS", async () => {
       const { userId } = await setupNonStaffOrg();
       vi.stubEnv("EXTRA_STAFF_USER_IDS", `some-other-user, ${userId} ,another`);
