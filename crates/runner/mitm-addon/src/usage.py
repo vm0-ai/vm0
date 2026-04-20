@@ -287,7 +287,14 @@ def _post_webhook_with_retry(
     log_type: str,
     max_retries: int = 1,
 ) -> None:
-    """POST with retry.  Swallows all exceptions after final attempt."""
+    """POST with retry.
+
+    Swallows retryable network errors (``URLError``, ``OSError``,
+    ``TimeoutError``) after the final attempt.  Non-retryable errors
+    (``TypeError`` from a non-serializable payload, etc.) are logged
+    once via :func:`log_proxy_entry` and re-raised so callers see them
+    instead of silently losing the report.
+    """
     try:
         _do_post_webhook_attempts(
             url, sandbox_token, payload, proxy_log_path, log_type, max_retries
