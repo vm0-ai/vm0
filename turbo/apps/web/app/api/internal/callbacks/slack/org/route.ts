@@ -16,6 +16,7 @@ import {
   setThreadStatus,
   fetchSlackUserInfo,
 } from "../../../../../../src/lib/zero/slack/client";
+import type { WebClient } from "@slack/web-api";
 import { buildAgentResponseMessage } from "../../../../../../src/lib/zero/slack/blocks";
 import { extractAllRunOutputs } from "../../../../../../src/lib/infra/run/extract-run-output";
 import {
@@ -50,6 +51,39 @@ function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
 
 function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
+}
+
+/**
+ * Look up the Slack user's display name for the `Sent from X` footer.
+ * Returns undefined when the connection has no linked slackUserId or the
+ * users.info call returns no usable name.
+ */
+async function resolveSlackUserName(
+  client: WebClient,
+  connectionId: string,
+): Promise<string | undefined> {
+  const [connection] = await globalThis.services.db
+    .select({ slackUserId: slackOrgConnections.slackUserId })
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.id, connectionId))
+    .limit(1);
+  if (!connection?.slackUserId) return undefined;
+  const userInfo = await fetchSlackUserInfo(client, connection.slackUserId);
+  return userInfo?.name;
+}
+
+/**
+ * Look up the run's selected model ID for the footer attribution.
+ */
+async function resolveSelectedModel(
+  runId: string,
+): Promise<string | undefined> {
+  const [zeroRun] = await globalThis.services.db
+    .select({ selectedModel: zeroRuns.selectedModel })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  return zeroRun?.selectedModel ?? undefined;
 }
 
 /**
@@ -207,11 +241,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .where(eq(agentRuns.id, runId))
     .limit(1);
 
-  const [zeroRun] = await globalThis.services.db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
+  const selectedModel = await resolveSelectedModel(runId);
 
   const overrides = await loadFeatureSwitchOverrides(
     runContext?.orgId,
@@ -231,19 +261,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     payload.agentId,
   );
 
-  // Look up the Slack user's display name for the footer attribution
-  let slackUserName: string | undefined;
-  const [connection] = await globalThis.services.db
-    .select({ slackUserId: slackOrgConnections.slackUserId })
-    .from(slackOrgConnections)
-    .where(eq(slackOrgConnections.id, payload.connectionId))
-    .limit(1);
-  if (connection?.slackUserId) {
-    const userInfo = await fetchSlackUserInfo(client, connection.slackUserId);
-    if (userInfo?.name) {
-      slackUserName = userInfo.name;
-    }
-  }
+  const slackUserName = await resolveSlackUserName(
+    client,
+    payload.connectionId,
+  );
 
   // Post each result as a separate Slack reply (in order)
   for (let i = 0; i < allOutputs.length; i++) {
@@ -257,7 +278,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl, triggeredBy, zeroRun?.selectedModel, slackUserName),
+      blocks: buildAgentResponseMessage(
+        responseText,
+        logsUrl,
+        triggeredBy,
+        selectedModel,
+        slackUserName,
+      ),
     });
   }
 

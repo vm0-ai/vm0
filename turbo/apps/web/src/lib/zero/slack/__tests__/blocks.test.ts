@@ -272,9 +272,17 @@ describe("buildAgentResponseMessage", () => {
     ];
 
     for (const [input, expected] of testCases) {
-      const blocks = buildAgentResponseMessage("text", undefined, undefined, input);
-      const contextBlocks = blocks.filter((b) => b.type === "context");
-      const text = (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text;
+      const blocks = buildAgentResponseMessage(
+        "text",
+        undefined,
+        undefined,
+        input,
+      );
+      const contextBlocks = blocks.filter((b) => {
+        return b.type === "context";
+      });
+      const text = (contextBlocks[0] as { elements: { text: string }[] })
+        .elements[0]!.text;
       expect(text).toBe(expected);
     }
   });

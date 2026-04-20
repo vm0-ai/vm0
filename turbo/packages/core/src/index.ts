@@ -13,3 +13,4 @@ export * from "./instructions-frontmatter";
 export * from "./firewall-loader";
 export * from "./firewalls";
 export * from "./timezone";
+export * from "./model-display-name";

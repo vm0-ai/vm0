@@ -1,4 +1,5 @@
 import type { Block, KnownBlock, View, MarkdownBlock } from "@slack/web-api";
+import { getModelDisplayName } from "@vm0/core";
 import { getAppUrl } from "../url";
 
 /**
@@ -422,43 +423,6 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
 }
 
 /**
- * Convert a raw model ID to a user-friendly display name.
- * Only handles the models that actually appear in the UI — all others pass through unchanged.
- */
-export function modelIdToDisplayName(modelId: string): string {
-  const MODEL_LABELS: Record<string, string> = {
-    // Anthropic (claude-code-oauth-token, anthropic-api-key, vm0)
-    "claude-sonnet-4-6": "Claude Sonnet 4.6",
-    "claude-opus-4-6": "Claude Opus 4.6",
-    "claude-opus-4-7": "Claude Opus 4.7",
-    "claude-haiku-4-5": "Claude Haiku 4.5",
-    // DeepSeek
-    "deepseek-chat": "DeepSeek Chat",
-    // MiniMax
-    "MiniMax-M2.7": "MiniMax M2.7",
-    "MiniMax-M2.1": "MiniMax M2.1",
-    // Kimi / Moonshot
-    "kimi-k2.5": "Kimi K2.5",
-    "kimi-k2-thinking": "Kimi K2 Thinking",
-    "kimi-k2-thinking-turbo": "Kimi K2 Thinking Turbo",
-    // GLM / ZhipuAI
-    "glm-5.1": "GLM-5.1",
-    "glm-5": "GLM-5",
-    "glm-4.7": "GLM-4.7",
-    "glm-4.5-air": "GLM-4.5 Air",
-    // OpenRouter / Vercel AI Gateway
-    "anthropic/claude-sonnet-4.6": "Claude Sonnet 4.6",
-    "anthropic/claude-opus-4.6": "Claude Opus 4.6",
-    "anthropic/claude-sonnet-4.5": "Claude Sonnet 4.5",
-    "anthropic/claude-opus-4.5": "Claude Opus 4.5",
-    "anthropic/claude-haiku-4.5": "Claude Haiku 4.5",
-    "minimax/minimax-m2.5": "MiniMax M2.5",
-    "zai/glm-5-turbo": "GLM-5 Turbo",
-  };
-  return MODEL_LABELS[modelId] ?? modelId;
-}
-
-/**
  * Build an agent response message with optional logs link
  *
  * @param content - The agent's response content
@@ -498,7 +462,7 @@ export function buildAgentResponseMessage(
   if (modelName || slackUserName) {
     const parts: string[] = [];
     if (slackUserName) parts.push(`Sent from ${slackUserName}`);
-    if (modelName) parts.push(modelIdToDisplayName(modelName));
+    if (modelName) parts.push(getModelDisplayName(modelName));
     blocks.push(...buildFooterBlocks(parts.join(" · ")));
   }
 
