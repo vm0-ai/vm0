@@ -141,7 +141,6 @@ export function throwIfAbort(e: unknown) {
  * Re-throws abort errors; swallows parse errors and returns `fallback`.
  */
 export function jsonParseOr<T>(value: string, fallback: T): T {
-  // eslint-disable-next-line no-restricted-syntax -- centralised JSON.parse guard for untrusted data
   try {
     return JSON.parse(value) as T;
   } catch (error) {
@@ -155,7 +154,6 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
  * Use for prefetch or fire-and-forget operations where failure is acceptable.
  */
 export async function bestEffort(p: Promise<unknown>): Promise<void> {
-  // eslint-disable-next-line no-restricted-syntax -- centralised best-effort guard
   try {
     await p;
   } catch (error) {
@@ -190,7 +188,6 @@ export async function setLoop(
       );
     }
 
-    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
     try {
       const done = await loopBody(signal);
       if (done) {
@@ -246,7 +243,6 @@ export async function raceUnderSignal<T>(
     signal.addEventListener("abort", onOuterAbort, { once: true });
   }
   const promises = tasks(controller.signal);
-  // eslint-disable-next-line no-restricted-syntax -- finally-cleanup must run regardless of which task wins or whether the outer signal aborts
   try {
     return await Promise.race(promises);
   } finally {

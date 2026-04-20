@@ -14,16 +14,6 @@ import {
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 
-vi.mock("signal-timers", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("signal-timers")>();
-  return {
-    ...mod,
-    delay: () => {
-      return Promise.resolve();
-    },
-  };
-});
-
 const context = testContext();
 
 function makeGithubConnectedResponse(): ConnectorListResponse {
