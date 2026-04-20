@@ -1940,6 +1940,13 @@
       "when": 1776671042476,
       "tag": "0276_bumpy_slyde",
       "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1776674095697,
+      "tag": "0277_thick_sphinx",
+      "breakpoints": true
     }
   ]
 }
