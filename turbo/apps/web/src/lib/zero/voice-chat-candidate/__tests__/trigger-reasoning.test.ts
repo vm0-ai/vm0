@@ -120,6 +120,9 @@ describe("triggerReasoning", () => {
     expect(row.context).toBeNull();
     expect(row.contextVersion).toBe(0);
     expect(row.reasoningStatus).toBe("idle");
+    // lastReasoningAt is bumped on both success and failure branches so
+    // operators can distinguish "ticks running but failing" from "no tick ran".
+    expect(row.lastReasoningAt).not.toBeNull();
 
     const items = await readVoiceChatCandidateItems(sessionId);
     const systemNotes = items.filter((i) => {

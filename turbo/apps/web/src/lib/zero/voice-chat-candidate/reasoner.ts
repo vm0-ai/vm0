@@ -44,8 +44,9 @@ export async function callReasoner(
     controller.abort();
   }, TIMEOUT_MS);
 
+  let response: Response;
   try {
-    const response = await fetch(BASE_URL, {
+    response = await fetch(BASE_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
@@ -62,27 +63,36 @@ export async function callReasoner(
       }),
       signal: controller.signal,
     });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => {
-        return "unknown error";
-      });
-      log.warn(`reasoner request failed: ${response.status} ${text}`);
-      return null;
-    }
-
-    const data = (await response.json()) as OpenRouterResponse;
-    const content = data.choices[0]?.message?.content?.trim();
-    if (!content) {
-      log.warn("reasoner returned empty content");
-      return null;
-    }
-
-    return content;
   } catch (err) {
-    log.warn("reasoner fetch failed", err);
-    return null;
+    // Narrow catch: only the two runtime conditions that fetch itself can
+    // produce and that we explicitly want to recover from — AbortError from
+    // our 30s timeout and TypeError from network failures. Anything else
+    // (programmer bugs, unexpected runtime errors) must fail fast.
+    if (err instanceof DOMException && err.name === "AbortError") {
+      log.warn("reasoner fetch aborted (timeout)");
+      return null;
+    }
+    if (err instanceof TypeError) {
+      log.warn("reasoner network error", err);
+      return null;
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
+
+  if (!response.ok) {
+    const text = await response.text();
+    log.warn(`reasoner request failed: ${response.status} ${text}`);
+    return null;
+  }
+
+  const data = (await response.json()) as OpenRouterResponse;
+  const content = data.choices[0]?.message?.content?.trim();
+  if (!content) {
+    log.warn("reasoner returned empty content");
+    return null;
+  }
+
+  return content;
 }

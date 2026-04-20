@@ -165,7 +165,7 @@ export async function triggerReasoning(sessionId: string): Promise<void> {
     }
     await db
       .update(featureCandidateVoiceChatSessions)
-      .set({ reasoningStatus: "idle" })
+      .set({ reasoningStatus: "idle", lastReasoningAt: new Date() })
       .where(eq(featureCandidateVoiceChatSessions.id, sessionId));
   }
 
