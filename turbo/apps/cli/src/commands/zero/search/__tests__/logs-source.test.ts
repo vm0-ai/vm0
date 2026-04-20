@@ -45,7 +45,7 @@ async function capture(
   const spy = vi
     .spyOn(console, "log")
     .mockImplementation((...args: unknown[]) => {
-      lines.push(args.map((a) => String(a)).join(" "));
+      lines.push(args.map(String).join(" "));
     });
   try {
     await cmd.parseAsync(argv);
