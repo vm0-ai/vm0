@@ -816,6 +816,45 @@ impl VsockHost {
 }
 
 #[cfg(test)]
+impl VsockHost {
+    /// Test-only: deterministically await the `Connected → Closed` transition
+    /// without relying on a wall-clock sleep. Subscribes to the same
+    /// `exit_notify` signal that [`Shared::close`] fires on exit, and re-checks
+    /// state under the same lock that `close` holds, so no transition is
+    /// missed.
+    ///
+    /// Note that `exit_notify` also fires on `MSG_PROCESS_EXIT`; those wake
+    /// this helper early but it re-checks state and re-parks if still
+    /// `Connected`.
+    async fn wait_until_closed(&self, timeout: Duration) -> io::Result<()> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let notified = self.shared.exit_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            if matches!(
+                &*self.shared.state.lock().unwrap_or_else(|e| e.into_inner()),
+                ConnectionState::Closed { .. }
+            ) {
+                return Ok(());
+            }
+
+            tokio::select! {
+                biased;
+                _ = notified => {}
+                _ = tokio::time::sleep_until(deadline) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "wait_until_closed: reader did not transition to Closed in time",
+                    ));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -1396,10 +1435,13 @@ mod tests {
 
         let host = host_from_stream(host_stream).await.unwrap();
 
-        // Wait for reader to detect close.
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Deterministically wait for reader to detect EOF and transition state
+        // to Closed — no wall-clock sleep, driven by `exit_notify`.
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
 
-        // This should fail quickly (via write error or is_closed check),
+        // This should fail quickly (via write error or Closed short-circuit),
         // NOT wait for the 5s exec timeout.
         let start = Instant::now();
         let err = host.exec("echo hi", 5000, &[], false).await.unwrap_err();
@@ -1435,8 +1477,11 @@ mod tests {
 
         let host = host_from_stream(host_stream).await.unwrap();
 
-        // Wait for reader to observe EOF and transition state to `Closed`.
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Deterministically wait for reader to observe EOF and transition
+        // state to Closed — driven by `exit_notify`, no wall-clock sleep.
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         let start = Instant::now();
         let err = host
@@ -1669,10 +1714,12 @@ mod tests {
             .unwrap();
         assert_eq!(pid, 111);
 
-        // Let the reader observe EOF and run `close()` so the subsequent
-        // `wait_for_exit` definitely hits the `Closed` arm rather than the
-        // `Connected` arm.
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Deterministically wait for reader to observe EOF and run `close()`
+        // so the subsequent `wait_for_exit` definitely hits the `Closed` arm
+        // rather than the `Connected` arm — driven by `exit_notify`.
+        host.wait_until_closed(Duration::from_secs(5))
+            .await
+            .unwrap();
 
         let event = host
             .wait_for_exit(pid, Duration::from_secs(5))
