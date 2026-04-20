@@ -6,4 +6,8 @@ linker = "aarch64-linux-musl-gcc"
 # in its specs file, so the binary fails to exec on Ubuntu hosts that
 # only ship the glibc loader. The binary has no `.dynamic` section, so
 # the interpreter was never needed at runtime anyway.
-rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=-Wl,--no-dynamic-linker", "-C", "link-arg=-fuse-ld=mold"]
+rustflags = [
+  "-C", "target-feature=+crt-static",
+  "-C", "link-arg=-Wl,--no-dynamic-linker",
+  "-C", "link-arg=-fuse-ld=mold",
+]
