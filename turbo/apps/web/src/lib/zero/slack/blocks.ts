@@ -422,17 +422,65 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
 }
 
 /**
+ * Convert a raw model ID to a user-friendly display name.
+ *
+ * Examples:
+ *   "claude-opus-4-7"          → "Claude Opus 4.7"
+ *   "claude-sonnet-4-6"         → "Claude Sonnet 4.6"
+ *   "claude-haiku-4-5-20250501" → "Claude Haiku 20250501"
+ *   "gemini-2-5-flash"          → "Gemini 2.5 flash"
+ *   "MiniMax-Text-01"           → "MiniMax Text 01"
+ *   "unknown-model"             → "unknown-model" (passthrough)
+ */
+export function modelIdToDisplayName(modelId: string): string {
+  const id = modelId.toLowerCase();
+
+  // Claude models: "claude-opus-4-7" → "Claude Opus 4.7"
+  const claudeMatch = id.match(/^claude-(opus|sonnet|haiku|opus-4-7|sonnet-4-6|haiku-4-5)-(.*)$/);
+  if (claudeMatch) {
+    const model = claudeMatch[1]!.replace(/-/g, " ");
+    const suffix = claudeMatch[2];
+    return suffix ? `Claude ${model} ${suffix}` : `Claude ${model}`;
+  }
+
+  // Gemini: "gemini-2-5-flash" → "Gemini 2.5 Flash"
+  const geminiMatch = id.match(/^gemini-(.+)$/);
+  if (geminiMatch) {
+    const parts = geminiMatch[1]!.split("-");
+    return "Gemini " + parts.join(".");
+  }
+
+  // GLM: "glm-4-9b-20250619" → "GLM 4.9B"
+  const glmMatch = id.match(/^glm-(.+)$/);
+  if (glmMatch) {
+    const parts = glmMatch[1]!.replace(/([a-z])([A-Z])/g, "$1 $2").split("-");
+    return "GLM " + parts.join(".");
+  }
+
+  // MiniMax: "MiniMax-Text-01" → "MiniMax Text 01"
+  if (id.startsWith("minimax")) {
+    const rest = id.slice(7).replace(/-/g, " ");
+    return rest ? `MiniMax ${rest}` : "MiniMax";
+  }
+
+  // Passthrough for unknown models
+  return modelId;
+}
+
+/**
  * Build an agent response message with optional logs link
  *
  * @param content - The agent's response content
  * @param logsUrl - Optional URL to the run logs
  * @param triggeredBy - Optional attribution text shown as a separate context block below a divider
+ * @param modelName - Optional raw model ID shown as "Powered by <friendly name>"
  * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
   content: string,
   logsUrl?: string,
   triggeredBy?: string,
+  modelName?: string,
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
 
@@ -452,6 +500,10 @@ export function buildAgentResponseMessage(
 
   if (triggeredBy) {
     blocks.push(...buildFooterBlocks(triggeredBy));
+  }
+
+  if (modelName) {
+    blocks.push(...buildFooterBlocks(`Powered by ${modelIdToDisplayName(modelName)}`));
   }
 
   return blocks;

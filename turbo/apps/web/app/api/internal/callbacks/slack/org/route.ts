@@ -5,6 +5,7 @@ import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
 import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
@@ -204,6 +205,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .where(eq(agentRuns.id, runId))
     .limit(1);
 
+  const [zeroRun] = await globalThis.services.db
+    .select({ selectedModel: zeroRuns.selectedModel })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+
   const overrides = await loadFeatureSwitchOverrides(
     runContext?.orgId,
     runContext?.userId,
@@ -234,7 +241,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl, triggeredBy),
+      blocks: buildAgentResponseMessage(responseText, logsUrl, triggeredBy, zeroRun?.selectedModel),
     });
   }
 

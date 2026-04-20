@@ -223,6 +223,41 @@ describe("buildAgentResponseMessage", () => {
       (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
     ).toContain("Audit");
   });
+
+  it("should add powered-by footer when modelName is provided", () => {
+    const blocks = buildAgentResponseMessage(
+      "Response text",
+      undefined,
+      undefined,
+      "claude-opus-4-7",
+    );
+
+    const contextBlocks = blocks.filter((b) => {
+      return b.type === "context";
+    });
+    expect(contextBlocks).toHaveLength(1);
+    expect(
+      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
+    ).toBe("Powered by Claude Opus 4.7");
+  });
+
+  it("should convert model IDs to friendly names", () => {
+    const testCases: [string, string][] = [
+      ["claude-opus-4-7", "Claude Opus 4.7"],
+      ["claude-sonnet-4-6", "Claude Sonnet 4.6"],
+      ["claude-haiku-4-5-20250501", "Claude Haiku 20250501"],
+      ["gemini-2-5-flash", "Gemini 2.5 flash"],
+      ["MiniMax-Text-01", "MiniMax Text 01"],
+      ["unknown-model", "unknown-model"],
+    ];
+
+    for (const [input, expected] of testCases) {
+      const blocks = buildAgentResponseMessage("text", undefined, undefined, input);
+      const contextBlocks = blocks.filter((b) => b.type === "context");
+      const text = (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text;
+      expect(text).toBe(`Powered by ${expected}`);
+    }
+  });
 });
 
 describe("buildFooterBlocks", () => {
