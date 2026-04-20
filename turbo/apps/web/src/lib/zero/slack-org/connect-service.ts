@@ -13,6 +13,7 @@ import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { createSlackClient, postMessage } from "../slack/client";
 import { buildSuccessMessage, buildWelcomeMessage } from "../slack/blocks";
 import { logger } from "../../shared/logger";
+import { publishOrgAdminSignal } from "../realtime";
 
 const log = logger("slack-org:connect");
 
@@ -114,6 +115,9 @@ export async function adminConnect(params: {
     userId,
   });
 
+  // Notify every admin on the Slack settings page.
+  await publishOrgAdminSignal(orgId, "slack:changed");
+
   return { connection: finalConnection, installation };
 }
 
@@ -192,6 +196,8 @@ export async function memberConnect(params: {
     userId,
   });
 
+  await publishOrgAdminSignal(orgId, "slack:changed");
+
   return { connection: finalConnection };
 }
 
@@ -225,7 +231,10 @@ export async function cleanupWorkspaceInstallation(
   const db = globalThis.services.db;
 
   const [installation] = await db
-    .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+    .select({
+      slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
+      orgId: slackOrgInstallations.orgId,
+    })
     .from(slackOrgInstallations)
     .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId))
     .limit(1);
@@ -245,6 +254,11 @@ export async function cleanupWorkspaceInstallation(
     .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
 
   log.info("Cleaned up workspace installation", { workspaceId });
+
+  if (installation.orgId) {
+    await publishOrgAdminSignal(installation.orgId, "slack:changed");
+  }
+
   return true;
 }
 

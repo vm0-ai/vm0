@@ -3,6 +3,7 @@ import { agentRuns } from "../../db/schema/agent-run";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
 import { transitionRunStatus } from "../infra/run/run-status";
 import { notFound, badRequest } from "../shared/errors";
+import { publishOrgSignal } from "./realtime";
 
 /**
  * Result of a successful run cancellation, used to dispatch side effects.
@@ -66,6 +67,9 @@ export async function cancelRun(
   if (!cancelled) {
     throw badRequest(`Run cannot be cancelled: status has already changed`);
   }
+
+  // Notify all org members whose queue view should refresh.
+  await publishOrgSignal(run.orgId, "queue:changed");
 
   return {
     runId,

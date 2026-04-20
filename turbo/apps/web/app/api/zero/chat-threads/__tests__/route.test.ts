@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import {
   createTestRequest,
@@ -14,7 +14,6 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { mockAblyPublish } from "../../../../../src/__tests__/ably-mock";
-import { reloadEnv } from "../../../../../src/env";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { addTestRunToThread } from "../../../../../src/__tests__/db-test-seeders/agents";
 
@@ -616,8 +615,6 @@ describe("chat-threads - threadListChanged realtime signal", () => {
   let testComposeId: string;
 
   beforeEach(async () => {
-    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-    reloadEnv();
     context.setupMocks();
     await context.setupUser();
     mockAblyPublish.mockClear();

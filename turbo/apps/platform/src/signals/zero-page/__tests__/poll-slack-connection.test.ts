@@ -1,14 +1,11 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { createDeferredPromise } from "../../utils.ts";
-import {
-  pollSlackConnection$,
-  setSlackPollIntervalMs$,
-} from "../zero-slack.ts";
+import { pollSlackConnection$ } from "../zero-slack.ts";
 import { zeroIntegrationsSlackContract } from "@vm0/core";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 
 const context = testContext();
 
@@ -22,6 +19,9 @@ function setup() {
 
 const alwaysConnected = () => {
   return true;
+};
+const alwaysDisconnected = () => {
+  return false;
 };
 const connectedOnThirdCall = (n: number) => {
   return n >= 3;
@@ -56,11 +56,6 @@ function mockSlackEndpoint(getIsConnected: (callCount: number) => boolean) {
 }
 
 describe("pollSlackConnection$", () => {
-  beforeEach(() => {
-    // Use a zero poll interval so tests run fast without fake timers.
-    context.store.set(setSlackPollIntervalMs$, 0);
-  });
-
   it("should return immediately when already connected", async () => {
     const counter = mockSlackEndpoint(alwaysConnected);
 
@@ -68,51 +63,37 @@ describe("pollSlackConnection$", () => {
 
     await context.store.set(pollSlackConnection$, context.signal);
 
-    // Setup fetches slack status once (counter already registered), then
-    // pollSlackConnection$ sees isConnected and returns without polling. Total: 1 fetch.
+    // Initial slackOrgData$ read sees isConnected=true and returns without
+    // subscribing. Total: 1 fetch.
     expect(counter.count).toBe(1);
   });
 
-  it("should poll until connected and show success toast", async () => {
-    // Return connected on the 3rd call
+  it("should subscribe and re-check on slack:changed events until connected", async () => {
     const counter = mockSlackEndpoint(connectedOnThirdCall);
 
     await setup();
 
-    await context.store.set(pollSlackConnection$, context.signal);
+    const pollPromise = context.store.set(pollSlackConnection$, context.signal);
 
-    // Called at least 3 times: initial check + polls until connected on 3rd call
+    // Wait until setAblyLoop$ has run the body once and subscribed. Initial
+    // slackOrgData$ read is call #1; setAblyLoop$ body runs immediately as
+    // call #2 (still disconnected).
+    await vi.waitFor(() => {
+      expect(counter.count).toBeGreaterThanOrEqual(2);
+      expect(hasSubscription("slack:changed")).toBeTruthy();
+    });
+
+    // Fire the Ably event — loop body re-runs as call #3 and sees connected.
+    triggerAblyEvent("slack:changed");
+
+    await pollPromise;
+
     expect(counter.count).toBeGreaterThanOrEqual(3);
   });
 
-  it("should stop polling when signal is aborted", async () => {
+  it("should stop subscribing when signal is aborted", async () => {
     const abortController = new AbortController();
-    const deferred = createDeferredPromise<void>(context.signal);
-    let callCount = 0;
-    server.use(
-      mockApi(zeroIntegrationsSlackContract.getStatus, async ({ respond }) => {
-        callCount++;
-        // The second call is the first real poll — block it and abort the controller
-        if (callCount === 2) {
-          abortController.abort();
-          deferred.resolve();
-          await deferred.promise;
-        }
-        return respond(200, {
-          isConnected: false,
-          isInstalled: true,
-          workspaceName: "Test Workspace",
-          isAdmin: false,
-          agentOrgSlug: null,
-          environment: {
-            requiredSecrets: [],
-            requiredVars: [],
-            missingSecrets: [],
-            missingVars: [],
-          },
-        });
-      }),
-    );
+    const counter = mockSlackEndpoint(alwaysDisconnected);
 
     await setup();
 
@@ -121,9 +102,14 @@ describe("pollSlackConnection$", () => {
       abortController.signal,
     );
 
-    await expect(pollPromise).rejects.toThrow();
+    // Wait until the subscription is registered (body already ran once).
+    await vi.waitFor(() => {
+      expect(hasSubscription("slack:changed")).toBeTruthy();
+    });
 
-    // Should have polled at least once before abort
-    expect(callCount).toBeGreaterThanOrEqual(2);
+    abortController.abort();
+
+    await expect(pollPromise).rejects.toThrow();
+    expect(counter.count).toBeGreaterThanOrEqual(2);
   });
 });

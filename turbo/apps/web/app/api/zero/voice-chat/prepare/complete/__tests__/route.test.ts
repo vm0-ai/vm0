@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -13,7 +13,6 @@ import {
 import { getTestZeroAgentId } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 import { POST } from "../route";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
-import { reloadEnv } from "../../../../../../../src/env";
 import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
 
 const context = testContext();
@@ -134,8 +133,6 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
   });
 
   it("should publish user-scoped voice:prep signal after completion", async () => {
-    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-    reloadEnv();
     const { token } = await setupPreparationWithRun();
 
     const response = await POST(

@@ -55,6 +55,7 @@ import {
   checkModelProviderConfigured,
 } from "./zero-run-service";
 import { logger } from "../shared/logger";
+import { publishOrgSignal } from "./realtime";
 import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
 
 const log = logger("zero:run-queue-service");
@@ -135,6 +136,9 @@ export async function enqueueRun(
 
   log.debug(`Enqueued run ${run.id} for user ${userId}`);
 
+  // Notify all org members whose queue view should refresh.
+  await publishOrgSignal(orgId, "queue:changed");
+
   return {
     runId: run.id,
     status: "queued",
@@ -169,40 +173,48 @@ export async function drainOrgQueue(
   const db = globalThis.services.db;
   const encryptionKey = env().SECRETS_ENCRYPTION_KEY;
 
-  for (;;) {
-    // Single transaction: advisory lock → concurrency check → dequeue → status update
-    const dequeued = await dequeueNextAtomic(db, orgId);
-    if (!dequeued) return; // Queue empty, entry skipped, or concurrency full
+  let anyTransition = false;
+  try {
+    for (;;) {
+      // Single transaction: advisory lock → concurrency check → dequeue → status update
+      const dequeued = await dequeueNextAtomic(db, orgId);
+      if (!dequeued) return; // Queue empty, entry skipped, or concurrency full
+      anyTransition = true;
 
-    // Decrypt CreateRunParams (outside transaction — no lock held)
-    const decryptedMap = decryptSecretsMap(
-      dequeued.encryptedParams,
-      encryptionKey,
-    );
-    if (!decryptedMap?.__params) {
-      log.error(`Failed to decrypt params for queued run ${dequeued.runId}`);
-      await markQueuedRunFailed(
-        dequeued.runId,
-        "Failed to decrypt queued run params",
+      // Decrypt CreateRunParams (outside transaction — no lock held)
+      const decryptedMap = decryptSecretsMap(
+        dequeued.encryptedParams,
+        encryptionKey,
       );
-      continue; // Try next entry
+      if (!decryptedMap?.__params) {
+        log.error(`Failed to decrypt params for queued run ${dequeued.runId}`);
+        await markQueuedRunFailed(
+          dequeued.runId,
+          "Failed to decrypt queued run params",
+        );
+        continue; // Try next entry
+      }
+
+      const params: CreateRunParams = JSON.parse(decryptedMap.__params);
+
+      // Dispatch the run (compose loading, authorization, execution)
+      try {
+        await dispatch(dequeued.runId, params);
+        log.debug(`Queued run ${dequeued.runId} dispatched successfully`);
+        return; // Successfully dispatched — done
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        log.error(
+          `Failed to dispatch queued run ${dequeued.runId}: ${errorMessage}`,
+        );
+        await markQueuedRunFailed(dequeued.runId, errorMessage);
+        continue; // Try next entry
+      }
     }
-
-    const params: CreateRunParams = JSON.parse(decryptedMap.__params);
-
-    // Dispatch the run (compose loading, authorization, execution)
-    try {
-      await dispatch(dequeued.runId, params);
-      log.debug(`Queued run ${dequeued.runId} dispatched successfully`);
-      return; // Successfully dispatched — done
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      log.error(
-        `Failed to dispatch queued run ${dequeued.runId}: ${errorMessage}`,
-      );
-      await markQueuedRunFailed(dequeued.runId, errorMessage);
-      continue; // Try next entry
+  } finally {
+    if (anyTransition) {
+      await publishOrgSignal(orgId, "queue:changed");
     }
   }
 }

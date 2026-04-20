@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { POST as markRead } from "../route";
 import { POST as createThread } from "../../../route";
 import {
@@ -14,7 +14,6 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
-import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
 
@@ -248,9 +247,6 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
   });
 
   it("publishes Ably signal on mark-read", async () => {
-    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-    reloadEnv();
-
     await markRead(
       createTestRequest(
         `http://localhost:3000/api/zero/chat-threads/${threadId}/mark-read`,

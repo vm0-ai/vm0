@@ -43,13 +43,6 @@ const router = tsr.router(runnerRealtimeTokenContract, {
     // Generate Ably token for this runner group's channel
     const tokenRequest = await generateRunnerGroupToken(group);
 
-    if (!tokenRequest) {
-      return createErrorResponse(
-        "INTERNAL_SERVER_ERROR",
-        "Realtime service unavailable",
-      );
-    }
-
     return {
       status: 200 as const,
       body: tokenRequest,

@@ -3,7 +3,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroIntegrationsSlackContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { setLoop } from "../utils.ts";
+import { awaitRealtimeReady$, setAblyLoop$ } from "../realtime.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ZeroSlack");
@@ -52,13 +52,13 @@ export const disconnectSlackOrg$ = command(
     signal.throwIfAborted();
     toast.success("Disconnected from Slack");
     set(reloadSlackOrg$);
-    // Re-start polling so the card picks up when the user re-connects
-    // via the OAuth tab.
+    // Re-start the Ably subscription so the card picks up when the user
+    // re-connects via the OAuth tab.
     set(pollSlackConnection$, signal).catch((error: unknown) => {
       if (error instanceof Error && error.name === "AbortError") {
         return;
       }
-      L.error("Re-poll after disconnect failed", error);
+      L.error("Re-subscribe after disconnect failed", error);
     });
   },
 );
@@ -73,42 +73,36 @@ export const uninstallSlackOrg$ = command(
   },
 );
 
-const slackPollIntervalMs$ = state(3000);
-
-export const setSlackPollIntervalMs$ = command(({ set }, ms: number) => {
-  set(slackPollIntervalMs$, ms);
-});
-
 /**
- * Poll Slack connection status until connected or aborted.
- * Used on the works page so that after the user completes OAuth in another tab
- * the UI updates automatically without a manual refresh.
+ * Subscribe to Slack connection changes until connected or aborted.
+ * Used on the works page so that after the user completes OAuth in another
+ * tab, the UI updates automatically without a manual refresh. Reconnect
+ * signals are fanned out only to org admins (connect/disconnect is an
+ * admin-only action).
  */
 export const pollSlackConnection$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    // Already connected — nothing to poll.
+    // Already connected — nothing to wait for.
     const current = await get(slackOrgData$);
     signal.throwIfAborted();
     if (current.isConnected) {
       return;
     }
 
-    await setLoop(
-      async (signal: AbortSignal) => {
-        set(reloadSlackOrg$);
+    await set(awaitRealtimeReady$, signal);
+    signal.throwIfAborted();
 
-        const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-        const result = await accept(
-          client.getStatus({
-            fetchOptions: { signal },
-          }),
-          [200],
-        );
-        return result.body.isConnected;
-      },
-      3000,
-      signal,
-    );
+    const onSlackChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+      set(reloadSlackOrg$);
+      const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+      const result = await accept(
+        client.getStatus({ fetchOptions: { signal: sig } }),
+        [200],
+      );
+      return result.body.isConnected;
+    });
+
+    await set(setAblyLoop$, "slack:changed", onSlackChanged$, signal);
 
     toast.success("Slack connected successfully");
   },

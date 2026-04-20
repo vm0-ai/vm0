@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../route";
 import {
   createTestCompose,
@@ -11,7 +11,6 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { createSignedCallbackRequest } from "../../../../../../src/__tests__/api-test-helpers/callbacks";
-import { reloadEnv } from "../../../../../../src/env";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
@@ -59,8 +58,6 @@ describe("POST /api/internal/event-consumers/chat-assistant", () => {
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("chat-assistant"));
     agentComposeId = compose.composeId;
-    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-    reloadEnv();
   });
 
   function createEventConsumerRequest(body: unknown) {

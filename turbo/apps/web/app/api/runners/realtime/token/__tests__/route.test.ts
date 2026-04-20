@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import type { NextRequest } from "next/server";
 import { POST } from "../route";
 import {
@@ -10,7 +10,6 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockAblyCreateTokenRequest } from "../../../../../../src/__tests__/ably-mock";
-import { reloadEnv } from "../../../../../../src/env";
 
 const context = testContext();
 
@@ -127,8 +126,6 @@ describe("POST /api/runners/realtime/token", () => {
 
   describe("Success (200)", () => {
     it("should return Ably TokenRequest for official runner with vm0 group", async () => {
-      vi.stubEnv("ABLY_API_KEY", "test-api-key");
-      reloadEnv();
       const token = `vm0_official_${OFFICIAL_RUNNER_SECRET}`;
 
       const response = await POST(
@@ -143,8 +140,6 @@ describe("POST /api/runners/realtime/token", () => {
     });
 
     it("should return Ably TokenRequest for user runner with vm0 group", async () => {
-      vi.stubEnv("ABLY_API_KEY", "test-api-key");
-      reloadEnv();
       const token = await createTestCliToken(user.userId);
 
       const response = await POST(
@@ -158,25 +153,10 @@ describe("POST /api/runners/realtime/token", () => {
     });
   });
 
-  describe("Ably not configured (500)", () => {
-    it("should return 500 when ABLY_API_KEY is not set", async () => {
-      const token = `vm0_official_${OFFICIAL_RUNNER_SECRET}`;
-
-      const response = await POST(
-        makeRequest({ group: "vm0/production" }, `Bearer ${token}`),
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data.error.message).toContain("Realtime service unavailable");
-    });
-
+  describe("Token generation failures (500)", () => {
     it("should return 500 when Ably token generation fails", async () => {
-      vi.stubEnv("ABLY_API_KEY", "test-api-key");
-      reloadEnv();
       const token = `vm0_official_${OFFICIAL_RUNNER_SECRET}`;
 
-      // Make the shared mock reject for the next call
       mockAblyCreateTokenRequest.mockRejectedValueOnce(
         new Error("Token gen failed"),
       );
@@ -186,8 +166,6 @@ describe("POST /api/runners/realtime/token", () => {
       );
       const data = await response.json();
 
-      // Exception propagates to createHandler's error handler which returns
-      // a generic 500 message (no defensive catch in generateRunnerGroupToken)
       expect(response.status).toBe(500);
       expect(data.error.message).toContain("An internal error occurred");
     });

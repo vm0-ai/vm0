@@ -5,9 +5,14 @@
  * channel that records subscribe/unsubscribe calls. Test code can call
  * `triggerAblyEvent(topic)` to fire all callbacks registered for a topic,
  * simulating a server-side publish.
+ *
+ * `triggerAblyReconnect()` fires a second `connected` event on every
+ * Realtime instance so tests can exercise the reconnect-replay path in
+ * `setupRealtime$`.
  */
 
 type Callback = (message: { name: string; data: null }) => void;
+type ConnectionListener = () => void;
 
 const subscriptions = new Map<string, Set<Callback>>();
 
@@ -24,9 +29,10 @@ export function triggerAblyEvent(topic: string): void {
   }
 }
 
-/** Reset all subscriptions between tests. */
+/** Reset all subscriptions and mock connection state between tests. */
 export function resetAblySubscriptions(): void {
   subscriptions.clear();
+  connectedListeners.clear();
 }
 
 /** Debug: check if a topic has active subscriptions. */
@@ -34,6 +40,20 @@ export function hasSubscription(topic: string): boolean {
   const cbs = subscriptions.get(topic);
   return cbs !== undefined && cbs.size > 0;
 }
+
+/**
+ * Fire a `connected` event on every active Realtime instance to simulate
+ * Ably re-establishing the connection after a network blip. Exercised by
+ * `setupRealtime$`'s `connection.on("connected")` registry walk so every
+ * active `setAblyLoop$` subscriber refetches state.
+ */
+export function triggerAblyReconnect(): void {
+  for (const listener of connectedListeners) {
+    listener();
+  }
+}
+
+const connectedListeners = new Set<ConnectionListener>();
 
 const fakeChannel = {
   // Mirror real Ably: subscribe is async (server roundtrip) and the server
@@ -61,10 +81,15 @@ const fakeChannel = {
 export class Realtime {
   auth = { clientId: "test-user-123" };
   connection = {
-    once(event: string, callback: () => void) {
+    once(event: string, callback: ConnectionListener) {
       if (event === "connected") {
         // Immediately fire connected
         queueMicrotask(callback);
+      }
+    },
+    on(event: string, callback: ConnectionListener) {
+      if (event === "connected") {
+        connectedListeners.add(callback);
       }
     },
   };

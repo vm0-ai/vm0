@@ -226,6 +226,37 @@ export async function setLoop(
   }
 }
 
+/**
+ * Run `tasks` in parallel against a child signal and return the first one
+ * that settles. When that happens, the child signal aborts so the losers
+ * clean up promptly; their rejections are swallowed. If the outer signal
+ * aborts first, all tasks reject with AbortError.
+ */
+export async function raceUnderSignal<T>(
+  signal: AbortSignal,
+  tasks: (childSignal: AbortSignal) => readonly Promise<T>[],
+): Promise<T> {
+  const controller = new AbortController();
+  const onOuterAbort = () => {
+    controller.abort(signal.reason);
+  };
+  if (signal.aborted) {
+    onOuterAbort();
+  } else {
+    signal.addEventListener("abort", onOuterAbort, { once: true });
+  }
+  const promises = tasks(controller.signal);
+  // eslint-disable-next-line no-restricted-syntax -- finally-cleanup must run regardless of which task wins or whether the outer signal aborts
+  try {
+    return await Promise.race(promises);
+  } finally {
+    signal.removeEventListener("abort", onOuterAbort);
+    controller.abort();
+    // Swallow the losers' AbortError rejections from the cancellation.
+    await Promise.allSettled(promises);
+  }
+}
+
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
   const controller$ = state<AbortController | undefined>(undefined);
 

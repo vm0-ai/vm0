@@ -10,8 +10,7 @@ export const togetherFirewall = {
   name: "together",
   description: "Together AI",
   placeholders: {
-    TOGETHER_TOKEN:
-      "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",
+    TOGETHER_TOKEN: "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",
   },
   apis: [
     {

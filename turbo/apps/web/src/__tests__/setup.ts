@@ -48,6 +48,8 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");
     // AgentPhone integration
     vi.stubEnv("AGENTPHONE_API_KEY", "test-agentphone-api-key");
+    // Realtime pub/sub (Ably) — required env; tests use a mocked Ably client
+    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     // App UI URL
