@@ -79,6 +79,7 @@ export const zeroRedemptionCodesRedeemContract = c.router({
       200: redeemResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      429: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Redeem a code for credits",

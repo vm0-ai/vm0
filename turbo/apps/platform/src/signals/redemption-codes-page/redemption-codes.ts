@@ -1,8 +1,5 @@
 import { command, computed, state } from "ccstate";
-import {
-  zeroRedemptionCodesMintContract,
-  zeroRedemptionCodesRedeemContract,
-} from "@vm0/core";
+import { zeroRedemptionCodesMintContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -18,13 +15,6 @@ export const mintedCodes$ = computed((get) => {
 });
 
 // Form inputs kept as ccstate state (direct export is linted; wrap with accessors).
-const internalRedeemInput$ = state("");
-export const redeemInput$ = computed((get) => {
-  return get(internalRedeemInput$);
-});
-export const setRedeemInput$ = command(({ set }, value: string) => {
-  set(internalRedeemInput$, value);
-});
 
 const internalMintCreditsInput$ = state("10000");
 export const mintCreditsInput$ = computed((get) => {
@@ -55,19 +45,6 @@ export const mintCodes$ = command(
     const result = await accept(Promise.resolve(response), [200]);
     signal.throwIfAborted();
     set(internalMintedCodes$, result.body.codes);
-    return result.body;
-  },
-);
-
-export const redeemCode$ = command(
-  async ({ get, set }, code: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroRedemptionCodesRedeemContract);
-    signal.throwIfAborted();
-    const response = await client.redeem({ body: { code } });
-    signal.throwIfAborted();
-    const result = await accept(Promise.resolve(response), [200]);
-    signal.throwIfAborted();
-    set(internalRedeemInput$, "");
     return result.body;
   },
 );

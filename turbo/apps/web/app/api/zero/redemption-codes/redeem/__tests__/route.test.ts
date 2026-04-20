@@ -38,14 +38,14 @@ async function setupUserAndOrg() {
   return { userId, orgId: `org_mock_${userId}` };
 }
 
-/** Generate a fresh, unique test code in XXXX-XXXX shape. */
+/** Generate a fresh, unique test code in VM0-XXXX-XXXX shape. */
 function uniqueCode(tag: string): string {
   const suffix = uniqueId(tag)
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 8)
     .padEnd(8, "X");
-  return `${suffix.slice(0, 4)}-${suffix.slice(4, 8)}`;
+  return `VM0-${suffix.slice(0, 4)}-${suffix.slice(4, 8)}`;
 }
 
 describe("POST /api/zero/redemption-codes/redeem", () => {
@@ -55,8 +55,14 @@ describe("POST /api/zero/redemption-codes/redeem", () => {
 
   it("returns 401 when not authenticated", async () => {
     mockClerk({ userId: null });
-    const response = await POST(createRedeemRequest({ code: "AAAA-BBBB" }));
+    const response = await POST(createRedeemRequest({ code: "VM0-AAAA-BBBB" }));
     expect(response.status).toBe(401);
+  });
+
+  it("returns 400 for a code missing the VM0- prefix", async () => {
+    await setupUserAndOrg();
+    const response = await POST(createRedeemRequest({ code: "ABCD-EFGH" }));
+    expect(response.status).toBe(400);
   });
 
   it("returns 400 for an unknown code", async () => {
@@ -128,5 +134,41 @@ describe("POST /api/zero/redemption-codes/redeem", () => {
       createRedeemRequest({ code: `  ${code.toLowerCase()}  ` }),
     );
     expect(response.status).toBe(200);
+  });
+
+  it("rate-limits after too many failed attempts (429)", async () => {
+    await setupUserAndOrg();
+
+    // 10 distinct invalid codes — each one hits the UPDATE path and fails,
+    // each failure is recorded in redemption_code_attempts.
+    for (let i = 0; i < 10; i++) {
+      const response = await POST(
+        createRedeemRequest({ code: uniqueCode(`rl-${String(i)}`) }),
+      );
+      expect(response.status).toBe(400);
+    }
+
+    const throttled = await POST(
+      createRedeemRequest({ code: uniqueCode("rl-throttle") }),
+    );
+    expect(throttled.status).toBe(429);
+  });
+
+  it("bad-prefix codes do not consume rate-limit budget", async () => {
+    const { orgId } = await setupUserAndOrg();
+    await setOrgCredits(orgId, 0);
+
+    // 20 bad-prefix attempts — these are rejected before rate-limit check.
+    for (let i = 0; i < 20; i++) {
+      const response = await POST(createRedeemRequest({ code: "BAD-CODE" }));
+      expect(response.status).toBe(400);
+    }
+
+    // A fresh valid code should still redeem (no throttle): if bad-prefix
+    // attempts had been counted, we'd already be locked out at 11.
+    const code = uniqueCode("pbp");
+    await seedRedemptionCode({ code, creditsPerCode: 250 });
+    const valid = await POST(createRedeemRequest({ code }));
+    expect(valid.status).toBe(200);
   });
 });

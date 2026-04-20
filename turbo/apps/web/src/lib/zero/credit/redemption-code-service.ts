@@ -5,11 +5,12 @@
  * Authorization (staff-only mint) is enforced at the API route; this module
  * only deals with persistence and the atomic single-use guarantee.
  */
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, count, eq, gt, gte, isNull } from "drizzle-orm";
 import { redemptionCodes } from "../../../db/schema/redemption-codes";
+import { redemptionCodeAttempts } from "../../../db/schema/redemption-code-attempts";
 import { orgMetadata } from "../../../db/schema/org-metadata";
 import { generateCode } from "../../shared/crypto/generate-code";
-import { badRequest } from "../../shared/errors";
+import { badRequest, tooManyRequests } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { grantOrgCredits } from "../org/org-service";
 import { createExpiresRecord } from "./credit-expires-service";
@@ -21,6 +22,71 @@ const REDEMPTION_VALIDITY_MS = 365 * 24 * 60 * 60 * 1000;
 
 /** Maximum number of distinct codes we'll try when hitting PK collisions. */
 const MAX_COLLISION_RETRIES = 5;
+
+/**
+ * Mandatory prefix for every vm0 redemption code. Serves two purposes:
+ *   - user-facing recognition ("is this a vm0 code?"),
+ *   - a cheap first-pass reject during redeem so bogus inputs never touch
+ *     the DB and never consume per-user rate-limit budget.
+ * Kept separate from the random suffix so the suffix alone still carries
+ * the full entropy of `generateCode()`.
+ */
+const REDEMPTION_CODE_PREFIX = "VM0";
+
+function formatCode(randomSuffix: string): string {
+  return `${REDEMPTION_CODE_PREFIX}-${randomSuffix}`;
+}
+
+/** Short, log-safe representation of a code (keeps the prefix, masks the rest). */
+function redactCode(): string {
+  return `${REDEMPTION_CODE_PREFIX}-****-****`;
+}
+
+// ---------------------------------------------------------------------------
+// Rate limiting (redeem-only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-user rate limit on the redeem endpoint. Keys on `user_id` — a hostile
+ * caller can only spin up new users at the rate Clerk onboarding allows,
+ * which is a much narrower channel than unlimited redeem attempts.
+ */
+const REDEEM_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const REDEEM_RATE_LIMIT_MAX_FAILURES = 10;
+
+async function assertRedeemRateLimit(userId: string): Promise<void> {
+  const db = globalThis.services.db;
+  const since = new Date(Date.now() - REDEEM_RATE_LIMIT_WINDOW_MS);
+  const [row] = await db
+    .select({ failures: count() })
+    .from(redemptionCodeAttempts)
+    .where(
+      and(
+        eq(redemptionCodeAttempts.userId, userId),
+        eq(redemptionCodeAttempts.success, false),
+        gte(redemptionCodeAttempts.attemptedAt, since),
+      ),
+    );
+  const failures = row?.failures ?? 0;
+  if (failures >= REDEEM_RATE_LIMIT_MAX_FAILURES) {
+    log.warn("redemption code rate limit hit", {
+      userId,
+      failuresInWindow: failures,
+      windowMs: REDEEM_RATE_LIMIT_WINDOW_MS,
+    });
+    throw tooManyRequests(
+      "Too many failed redemption attempts. Please wait before trying again.",
+    );
+  }
+}
+
+async function recordRedeemAttempt(
+  userId: string,
+  success: boolean,
+): Promise<void> {
+  const db = globalThis.services.db;
+  await db.insert(redemptionCodeAttempts).values({ userId, success });
+}
 
 interface MintRedemptionCodesOptions {
   orgId: string;
@@ -56,7 +122,7 @@ export async function mintRedemptionCodes(
       let attemptsUsed = 0;
       for (let attempt = 0; attempt < MAX_COLLISION_RETRIES; attempt++) {
         attemptsUsed = attempt + 1;
-        const code = generateCode();
+        const code = formatCode(generateCode());
         const rows = await tx
           .insert(redemptionCodes)
           .values({
@@ -129,56 +195,76 @@ export async function redeemRedemptionCode(
   if (!normalizedCode) {
     throw badRequest("Redemption code is required");
   }
+  // Format gate: bogus inputs (wrong prefix) never touch the DB and never
+  // consume rate-limit budget. Unified error string with the downstream path
+  // so existence vs. format is not leaked.
+  if (!normalizedCode.startsWith(`${REDEMPTION_CODE_PREFIX}-`)) {
+    throw badRequest("Code is invalid, already redeemed, or expired");
+  }
+
+  // Rate-limit check happens before any DB write to the codes table so that
+  // a throttled caller cannot observe single-use state or credit grants.
+  await assertRedeemRateLimit(opts.userId);
 
   const db = globalThis.services.db;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + REDEMPTION_VALIDITY_MS);
 
-  const result = await db.transaction(async (tx) => {
-    const claimed = await tx
-      .update(redemptionCodes)
-      .set({
-        redeemedAt: now,
-        redeemedByOrgId: opts.orgId,
-        redeemedByUserId: opts.userId,
-      })
-      .where(
-        and(
-          eq(redemptionCodes.code, normalizedCode),
-          isNull(redemptionCodes.redeemedAt),
-          gt(redemptionCodes.expiresAt, now),
-        ),
-      )
-      .returning({ creditsPerCode: redemptionCodes.creditsPerCode });
+  let result: RedeemRedemptionCodeResult;
+  try {
+    result = await db.transaction(async (tx) => {
+      const claimed = await tx
+        .update(redemptionCodes)
+        .set({
+          redeemedAt: now,
+          redeemedByOrgId: opts.orgId,
+          redeemedByUserId: opts.userId,
+        })
+        .where(
+          and(
+            eq(redemptionCodes.code, normalizedCode),
+            isNull(redemptionCodes.redeemedAt),
+            gt(redemptionCodes.expiresAt, now),
+          ),
+        )
+        .returning({ creditsPerCode: redemptionCodes.creditsPerCode });
 
-    const row = claimed[0];
-    if (!row) {
-      throw badRequest("Code is invalid, already redeemed, or expired");
-    }
+      const row = claimed[0];
+      if (!row) {
+        throw badRequest("Code is invalid, already redeemed, or expired");
+      }
 
-    await grantOrgCredits(tx, opts.orgId, row.creditsPerCode);
-    await createExpiresRecord(tx, opts.orgId, {
-      source: "redemption",
-      stripeInvoiceId: `redemption:${normalizedCode}`,
-      amount: row.creditsPerCode,
-      expiresAt,
+      await grantOrgCredits(tx, opts.orgId, row.creditsPerCode);
+      await createExpiresRecord(tx, opts.orgId, {
+        source: "redemption",
+        stripeInvoiceId: `redemption:${normalizedCode}`,
+        amount: row.creditsPerCode,
+        expiresAt,
+      });
+
+      const [balance] = await tx
+        .select({ credits: orgMetadata.credits })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, opts.orgId));
+
+      return {
+        credits: row.creditsPerCode,
+        newBalance: balance?.credits ?? row.creditsPerCode,
+      };
     });
+  } catch (err) {
+    // Every failed call (bad code, already redeemed, expired) counts toward
+    // the per-user rate limit budget — this is the attack surface we care about.
+    await recordRedeemAttempt(opts.userId, false);
+    throw err;
+  }
 
-    const [balance] = await tx
-      .select({ credits: orgMetadata.credits })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, opts.orgId));
-
-    return {
-      credits: row.creditsPerCode,
-      newBalance: balance?.credits ?? row.creditsPerCode,
-    };
-  });
+  await recordRedeemAttempt(opts.userId, true);
 
   log.info("redemption code redeemed", {
     orgId: opts.orgId,
     userId: opts.userId,
-    code: normalizedCode,
+    code: redactCode(),
     credits: result.credits,
   });
 

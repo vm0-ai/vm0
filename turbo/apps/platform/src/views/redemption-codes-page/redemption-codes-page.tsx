@@ -2,18 +2,14 @@ import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { FeatureSwitchKey } from "@vm0/core";
 import { Button, CopyButton, Input } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   mintCodes$,
   mintCreditsInput$,
   mintQuantityInput$,
   mintedCodes$,
-  redeemCode$,
-  redeemInput$,
   setMintCreditsInput$,
   setMintQuantityInput$,
-  setRedeemInput$,
 } from "../../signals/redemption-codes-page/redemption-codes.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { copyToClipboard$ } from "../../signals/zero-page/clipboard.ts";
@@ -31,68 +27,17 @@ export function RedemptionCodesPage() {
             Redemption Codes
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Redeem a code for credits, or (staff only) mint new codes to hand
-            out.
+            Staff-only: mint new codes to hand out.
           </p>
         </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
         <div className="mx-auto max-w-[900px] flex flex-col gap-6">
-          <RedeemSection />
           {canMint && <MintSection />}
         </div>
       </div>
     </div>
-  );
-}
-
-function RedeemSection() {
-  const code = useGet(redeemInput$);
-  const setCode = useSet(setRedeemInput$);
-  const [redeemLoadable, redeem] = useLoadableSet(redeemCode$);
-  const pageSignal = useGet(pageSignal$);
-
-  const inFlight = redeemLoadable.state === "loading";
-
-  const handleRedeem = () => {
-    const trimmed = code.trim();
-    if (!trimmed) {
-      return;
-    }
-    detach(
-      (async () => {
-        const result = await redeem(trimmed, pageSignal);
-        toast.success(
-          `Added ${result.credits.toLocaleString()} credits. New balance: ${result.newBalance.toLocaleString()}`,
-        );
-      })(),
-      Reason.DomCallback,
-      "redeemCode",
-    );
-  };
-
-  return (
-    <section className="zero-card p-4 flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">Redeem a code</h2>
-      <div className="flex gap-2">
-        <Input
-          value={code}
-          onChange={(e) => {
-            setCode(e.target.value);
-          }}
-          placeholder="XXXX-XXXX"
-          disabled={inFlight}
-          className="font-mono"
-        />
-        <Button
-          onPointerDown={handleRedeem}
-          disabled={inFlight || code.trim().length === 0}
-        >
-          {inFlight ? "Redeeming…" : "Redeem"}
-        </Button>
-      </div>
-    </section>
   );
 }
 
