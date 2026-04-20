@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.270.0](https://github.com/vm0-ai/vm0/compare/web-v12.269.0...web-v12.270.0) (2026-04-20)
+
+
+### Features
+
+* **connector:** add nano-banana platform-managed connector skeleton ([#9889](https://github.com/vm0-ai/vm0/issues/9889)) ([3bec579](https://github.com/vm0-ai/vm0/commit/3bec5793f167abcbc635987c606461552f95d38c))
+
+
+### Bug Fixes
+
+* **chat:** restore structured attach-files flow for web chat uploads ([#10264](https://github.com/vm0-ai/vm0/issues/10264)) ([1962608](https://github.com/vm0-ai/vm0/commit/196260877aaaec02d0403232d19b132f28107ccc))
+* **seo:** make / return 200 by rewriting in middleware instead of skipping it ([#10281](https://github.com/vm0-ai/vm0/issues/10281)) ([f23d0f7](https://github.com/vm0-ai/vm0/commit/f23d0f71285b4c19d630f94000fcdffc71005f20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.212.0
+
 ## [12.269.0](https://github.com/vm0-ai/vm0/compare/web-v12.268.0...web-v12.269.0) (2026-04-20)
 
 

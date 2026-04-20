@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.87.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.87.0...runner-rs-v0.87.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **runner:** clarify stderr tracing init doc comment ([#10280](https://github.com/vm0-ai/vm0/issues/10280)) ([3e4f553](https://github.com/vm0-ai/vm0/commit/3e4f5531716430384f15910bfe55fbda43d1e283))
+
 ## [0.87.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.4...runner-rs-v0.87.0) (2026-04-20)
 
 
