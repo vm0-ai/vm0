@@ -90,7 +90,7 @@ describe("zero onboarding - step 2: choose tools", () => {
     // Should reach step 2 (choose tools) — search input is the structural anchor
     await waitFor(() => {
       expect(
-        screen.getByPlaceholderText("Search connectors..."),
+        screen.getByPlaceholderText("Find connectors..."),
       ).toBeInTheDocument();
     });
   });
@@ -239,7 +239,7 @@ describe("step-specific content renders (AGENT-D-057)", () => {
         screen.getByTestId("onboarding-step-select-connectors"),
       ).toBeInTheDocument();
       expect(
-        screen.getByPlaceholderText("Search connectors..."),
+        screen.getByPlaceholderText("Find connectors..."),
       ).toBeInTheDocument();
     });
   });
@@ -382,7 +382,7 @@ describe("connector search input filters list (AGENT-D-065)", () => {
       ).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText("Search connectors...");
+    const searchInput = screen.getByPlaceholderText("Find connectors...");
     await user.type(searchInput, "GitHub");
 
     await waitFor(() => {

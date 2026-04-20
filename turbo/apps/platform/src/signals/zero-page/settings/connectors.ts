@@ -36,6 +36,8 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
+  /** Lowercase aliases/keywords used by connector search (from CONNECTOR_TYPES). */
+  tags: readonly string[];
   connected: boolean;
   connector: ConnectorResponse | null;
   /** Auth methods available for this connector (considering feature flags). */
@@ -46,6 +48,38 @@ export interface ConnectorTypeWithStatus {
   scopeMismatch: boolean;
   /** True if OAuth token refresh failed and user needs to reconnect. */
   needsReconnect: boolean;
+}
+
+/**
+ * Case-insensitive substring match across label, type, helpText, and tags.
+ * Returns true when `search` is empty, so callers can use it directly as a filter.
+ */
+export function matchesConnectorSearch(
+  search: string,
+  connector: {
+    label: string;
+    type: string;
+    helpText?: string;
+    tags?: readonly string[];
+  },
+): boolean {
+  const needle = search.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  if (connector.label.toLowerCase().includes(needle)) {
+    return true;
+  }
+  if (connector.type.toLowerCase().includes(needle)) {
+    return true;
+  }
+  if (connector.helpText?.toLowerCase().includes(needle)) {
+    return true;
+  }
+  if (connector.tags?.some((t) => t.toLowerCase().includes(needle))) {
+    return true;
+  }
+  return false;
 }
 
 export const allConnectorTypes$ = computed(async (get) => {
@@ -83,6 +117,7 @@ export const allConnectorTypes$ = computed(async (get) => {
         type,
         label: isExperimental ? `[Experimental] ${config.label}` : config.label,
         helpText: config.helpText,
+        tags: config.tags ?? [],
         connected: connector !== null,
         connector,
         availableAuthMethods,

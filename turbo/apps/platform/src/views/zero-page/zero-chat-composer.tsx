@@ -68,6 +68,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
+  matchesConnectorSearch,
   selectedConnectorType$,
   setSelectedConnectorType$,
   justConnectedTypes$,
@@ -160,6 +161,8 @@ interface ZeroChatComposerProps {
 interface ComposerConnectorItem {
   type: string;
   label: string;
+  helpText: string;
+  tags: readonly string[];
   connected: boolean;
   added: boolean;
 }
@@ -216,11 +219,9 @@ function AddConnectorsDialog({
 }) {
   const search = useGet(addDialogSearch$);
   const setSearch = useSet(setAddDialogSearch$);
-  const filtered = search.trim()
-    ? unconnected.filter((item) => {
-        return item.label.toLowerCase().includes(search.toLowerCase());
-      })
-    : unconnected;
+  const filtered = unconnected.filter((item) => {
+    return matchesConnectorSearch(search, item);
+  });
 
   return (
     <Dialog
@@ -241,7 +242,7 @@ function AddConnectorsDialog({
         <div className="shrink-0">
           <Input
             type="text"
-            placeholder="Search connectors..."
+            placeholder="Find connectors..."
             value={search}
             onChange={(e) => {
               return setSearch(e.target.value);
@@ -342,7 +343,7 @@ function ConnectorsPopoverButton({
   const visibleConnectors =
     showSearch && search.trim()
       ? sorted.filter((c) => {
-          return c.label.toLowerCase().includes(search.toLowerCase());
+          return matchesConnectorSearch(search, c);
         })
       : sorted.slice(0, 20);
 
@@ -390,7 +391,7 @@ function ConnectorsPopoverButton({
               <div className="px-3 py-1 border-b border-border/50">
                 <input
                   type="text"
-                  placeholder="Search connectors..."
+                  placeholder="Find connectors..."
                   value={search}
                   onChange={(e) => {
                     return setSearch(e.target.value);
@@ -740,6 +741,8 @@ export function ZeroChatComposer({
     return {
       type: c.type,
       label: c.label,
+      helpText: c.helpText,
+      tags: c.tags,
       connected: c.connected || optimisticConnected.has(c.type),
       added: addedSet.has(c.type),
     };

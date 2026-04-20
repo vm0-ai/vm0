@@ -327,7 +327,7 @@ describe("zero chat composer - add connectors dialog", () => {
     await user.click(addButton);
 
     const searchInput = await waitFor(() => {
-      return screen.getByPlaceholderText("Search connectors...");
+      return screen.getByPlaceholderText("Find connectors...");
     });
 
     // Before filtering: GitHub should be visible

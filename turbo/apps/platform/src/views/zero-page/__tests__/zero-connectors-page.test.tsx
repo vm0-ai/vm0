@@ -28,9 +28,7 @@ describe("connectors page", () => {
         screen.getByRole("heading", { name: "Connectors" }),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.getByPlaceholderText("Search connectors"),
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Find connectors")).toBeInTheDocument();
   });
 
   it("shows available connectors when none are connected", async () => {
@@ -65,7 +63,7 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText("Search connectors");
+    const searchInput = screen.getByPlaceholderText("Find connectors");
     await fill(searchInput, "github");
 
     await waitFor(() => {
@@ -82,7 +80,7 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText("Search connectors");
+    const searchInput = screen.getByPlaceholderText("Find connectors");
     await fill(searchInput, "nonexistent-connector-xyz");
 
     await waitFor(() => {

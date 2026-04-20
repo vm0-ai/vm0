@@ -34,6 +34,7 @@ import {
   permissionDialogType$,
   setPermissionDialogType$,
   isStandaloneMode,
+  matchesConnectorSearch,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
@@ -290,15 +291,8 @@ export function ZeroConnectorsPage() {
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
 
-  const searchLower = search.toLowerCase();
   const filtered = allConnectors.filter((c) => {
-    if (!searchLower) {
-      return true;
-    }
-    return (
-      c.label.toLowerCase().includes(searchLower) ||
-      c.type.toLowerCase().includes(searchLower)
-    );
+    return matchesConnectorSearch(search, c);
   });
 
   const connected = filtered.filter((c) => {
@@ -396,7 +390,7 @@ export function ZeroConnectorsPage() {
               />
               <input
                 type="text"
-                placeholder="Search connectors"
+                placeholder="Find connectors"
                 value={search}
                 onChange={(e) => {
                   return setSearch(e.target.value);
