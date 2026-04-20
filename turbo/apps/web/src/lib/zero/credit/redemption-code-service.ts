@@ -53,7 +53,9 @@ export async function mintRedemptionCodes(
   await db.transaction(async (tx) => {
     for (let i = 0; i < quantity; i++) {
       let inserted = false;
+      let attemptsUsed = 0;
       for (let attempt = 0; attempt < MAX_COLLISION_RETRIES; attempt++) {
+        attemptsUsed = attempt + 1;
         const code = generateCode();
         const rows = await tx
           .insert(redemptionCodes)
@@ -67,12 +69,26 @@ export async function mintRedemptionCodes(
           .onConflictDoNothing()
           .returning({ code: redemptionCodes.code });
         if (rows.length > 0) {
+          if (attempt > 0) {
+            log.warn("redemption code PK collision recovered", {
+              orgId,
+              userId,
+              attempts: attemptsUsed,
+            });
+          }
           minted.push({ code, creditsPerCode, expiresAt });
           inserted = true;
           break;
         }
       }
       if (!inserted) {
+        log.error("redemption code PK collision retries exhausted", {
+          orgId,
+          userId,
+          attempts: attemptsUsed,
+          quantityRequested: quantity,
+          mintedBeforeFailure: minted.length,
+        });
         throw new Error(
           "Failed to generate a unique redemption code after retries",
         );
