@@ -25,6 +25,7 @@ export const ROUTES = {
   phone: "/phone",
   lab: "/_/lab",
   voiceChat: "/voice-chat",
+  voiceChatCandidate: "/voice-chat-candidate",
   insights: "/insights",
   usage: "/_/usage",
   internalConnectorLogos: "/__internal-connector-logos",

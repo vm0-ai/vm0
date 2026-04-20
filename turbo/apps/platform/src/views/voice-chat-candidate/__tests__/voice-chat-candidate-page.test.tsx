@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { createStore } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import type { ReactElement } from "react";
@@ -10,16 +10,58 @@ import {
   VoiceCandidateUserBubble,
   VoiceCandidateAssistantBubble,
 } from "../voice-chat-candidate-bubbles.tsx";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 function renderWithStore(element: ReactElement) {
   const store = createStore();
   return render(<StoreProvider value={store}>{element}</StoreProvider>);
 }
 
-// Note: full page rendering (feature-gate, start button, connected-state UI)
-// depends on the /voice-chat-candidate route being registered — that's the
-// responsibility of sibling issue #10315. Page-level render tests will ship
-// alongside the route wiring in that PR.
+const pageContext = testContext();
+
+// ---------------------------------------------------------------------------
+// VCC-001: page-level render with feature disabled
+// ---------------------------------------------------------------------------
+
+describe("voice-chat-candidate page - feature disabled (VCC-001)", () => {
+  it("shows not-available message when voiceChat feature switch is off", async () => {
+    detachedSetupPage({
+      context: pageContext,
+      path: "/voice-chat-candidate",
+    });
+    // `findBy*` auto-waits; `.resolves` satisfies jest-prefer-expect-resolves.
+    await expect(
+      screen.findByText(/not available for your account/i),
+    ).resolves.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VCC-002: page-level render with feature enabled — idle state
+// ---------------------------------------------------------------------------
+
+describe("voice-chat-candidate page - idle state quick chat (VCC-002)", () => {
+  it("start voice chat button is enabled when voiceChat is on and an agent is available", async () => {
+    detachedSetupPage({
+      context: pageContext,
+      path: "/voice-chat-candidate",
+      featureSwitches: { voiceChat: true },
+    });
+
+    // Mirrors sibling VC-003 (voice-chat-page.test.tsx): waitFor retries the
+    // compound predicate (button exists AND is enabled) across render cycles.
+    const btn = await waitFor(() => {
+      const el = screen.getAllByRole("button").find((b) => {
+        return /start voice chat/i.test(b.textContent ?? "");
+      });
+      expect(el).toBeDefined();
+      expect(el).not.toBeDisabled();
+      return el;
+    });
+    expect(btn).toBeInTheDocument();
+  });
+});
 
 describe("voice-candidate-item-bubble dispatcher", () => {
   const SESSION_ID = "11111111-1111-4111-8111-111111111111";
