@@ -292,6 +292,7 @@ const pagedChatMessageSchema = z.object({
   runId: z.string().optional(),
   error: z.string().optional(),
   status: z.string().optional(),
+  attachFiles: z.array(resolvedAttachFileSchema).optional(),
   createdAt: z.string(),
 });
 

@@ -411,6 +411,43 @@ describe("chat-d-063: download link renders for file attachment", () => {
       expect(link?.getAttribute("href")).toBe(fileUrl);
     });
   });
+
+  it("renders a download anchor from the structured attachFiles field", async () => {
+    const fileUrl = "https://example.com/spec.pdf";
+    const filename = "spec.pdf";
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Please review",
+          createdAt: "2026-03-10T00:00:00Z",
+          attachFiles: [
+            {
+              id: "file-struct-1",
+              filename,
+              contentType: "application/pdf",
+              size: 4096,
+              url: fileUrl,
+            },
+          ],
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    await waitFor(() => {
+      const link = document.querySelector<HTMLAnchorElement>(
+        `a[download="${filename}"]`,
+      );
+      expect(link).toBeInTheDocument();
+      expect(link?.getAttribute("href")).toBe(fileUrl);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

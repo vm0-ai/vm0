@@ -20,6 +20,7 @@ import {
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   zeroRunsCancelContract,
+  type AttachFile,
   type ModelSelectionRequest,
   type PersistedAttachment,
   type PagedChatMessage,
@@ -192,13 +193,20 @@ function createComposerFileInput() {
   return { composerFileInput$, setComposerFileInput$ };
 }
 
+interface PreparedUserMessage {
+  prompt: string;
+  attachFiles: AttachFile[] | undefined;
+  attachments: PagedChatMessage["attachFiles"];
+  hasTextContent: boolean;
+}
+
 function createPrepareUserMessage(draft: DraftSignals) {
   return command(
     async (
       { get },
       prompt: string,
       signal: AbortSignal,
-    ): Promise<{ fullPrompt: string; hasTextContent: boolean } | null> => {
+    ): Promise<PreparedUserMessage | null> => {
       const allAttachments = get(draft.attachments$);
       const allInfos = await Promise.all(
         allAttachments.map((a) => {
@@ -226,18 +234,46 @@ function createPrepareUserMessage(draft: DraftSignals) {
         return null;
       }
 
-      const attachmentLines = ready.map((r) => {
-        return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`;
-      });
-
+      // User prompt is clean text only — file description blocks are appended
+      // server-side via buildFullPrompt so the agent gets the [Web file] [ID]
+      // format it knows how to download with `zero web download-file`.
+      // When the user sends only files with no text, use a placeholder so the
+      // contract's min(1) validation passes.
       const trimmedPrompt = prompt.trim();
-      const fullPrompt = trimmedPrompt
-        ? attachmentLines.length > 0
-          ? `${trimmedPrompt}\n\n${attachmentLines.join("\n")}`
-          : trimmedPrompt
-        : attachmentLines.join("\n");
+      const finalPrompt =
+        trimmedPrompt || (ready.length > 0 ? "(see attached files)" : "");
 
-      return { fullPrompt, hasTextContent: trimmedPrompt.length > 0 };
+      const attachFiles: AttachFile[] | undefined =
+        ready.length > 0
+          ? ready.map((r) => {
+              return {
+                id: r.info.id,
+                filename: r.attachment.filename,
+                contentType: r.attachment.contentType,
+                size: r.attachment.size,
+              };
+            })
+          : undefined;
+
+      const attachments: PagedChatMessage["attachFiles"] =
+        ready.length > 0
+          ? ready.map((r) => {
+              return {
+                id: r.info.id,
+                filename: r.attachment.filename,
+                contentType: r.attachment.contentType,
+                size: r.attachment.size,
+                url: r.info.url,
+              };
+            })
+          : undefined;
+
+      return {
+        prompt: finalPrompt,
+        attachFiles,
+        attachments,
+        hasTextContent: trimmedPrompt.length > 0,
+      };
     },
   );
 }
@@ -818,7 +854,7 @@ interface SendMessageDeps {
   threadData$: Computed<Promise<ChatThread | null>>;
   draft: DraftSignals;
   prepareUserMessage$: Command<
-    Promise<{ fullPrompt: string; hasTextContent: boolean } | null>,
+    Promise<PreparedUserMessage | null>,
     [string, AbortSignal]
   >;
   cancelDraftSync$: Command<void, []>;
@@ -868,7 +904,8 @@ function createSendMessage(deps: SendMessageDeps) {
       set(insertOptimisticMessage$, {
         id: clientMessageId,
         role: "user",
-        content: result.fullPrompt,
+        content: result.prompt,
+        attachFiles: result.attachments,
         createdAt: new Date().toISOString(),
       });
       animationFrame(
@@ -885,11 +922,12 @@ function createSendMessage(deps: SendMessageDeps) {
           client.send({
             body: {
               agentId,
-              prompt: result.fullPrompt,
+              prompt: result.prompt,
               threadId: threadId,
               hasTextContent: result.hasTextContent,
               clientMessageId,
               modelSelection,
+              attachFiles: result.attachFiles,
             },
             fetchOptions: { signal },
           }),
