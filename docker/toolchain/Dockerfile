@@ -68,11 +68,11 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 # arm64 host uses apt's musl-dev which ships /usr/bin/aarch64-linux-musl-gcc
 # as a wrapper around gnu gcc + a musl-gcc.specs file that switches
 # include paths to musl headers; the gnu gcc is pulled in transitively
-# via musl-dev's Depends.
-#
-# NOTE: crates/.cargo/config.toml still sets linker to aarch64-linux-gnu-gcc.
-# It is swapped to aarch64-linux-musl-gcc in a follow-up PR that also bumps
-# the workflow image tag to pick up this toolchain.
+# via musl-dev's Depends. That wrapper unconditionally passes
+# `-dynamic-linker /lib/ld-musl-aarch64.so.1` to the linker even under
+# `-static`, so runner and guest targets pass `-Wl,--no-dynamic-linker`
+# via crates/.cargo/config.toml to keep the fully-static output working
+# on Ubuntu hosts that don't ship the musl loader.
 ARG MUSL_CROSS_VERSION=2025.08-1
 ARG MUSL_CROSS_SHA256=defba831ffa1175236f137069333e21ed46d4d19feb5080a90cf248b6fc2cb08
 ENV PATH="/opt/aarch64--musl--stable-${MUSL_CROSS_VERSION}/bin:${PATH}"
