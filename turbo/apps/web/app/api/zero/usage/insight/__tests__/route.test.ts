@@ -461,4 +461,47 @@ describe("GET /api/zero/usage/insight", () => {
     expect(chat?.threadTitle).toBe("Test Chat Thread");
     expect(chat?.credits).toBe(200);
   });
+
+  it("top-100 truncation — overflow with creditsCharged=0 still reports correct otherCount", async () => {
+    const { userId, orgId } = await context.user;
+    const { composeId } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose"),
+      orgId,
+    });
+
+    // Seed 105 schedules where the 5 overflow items have creditsCharged = 0
+    for (let i = 0; i < 105; i++) {
+      const scheduleId = await seedTestSchedule({
+        agentId: composeId,
+        userId,
+        orgId,
+      });
+
+      const { runId } = await seedTestRun(userId, composeId, {
+        triggerSource: "schedule",
+        scheduleId,
+        status: "completed",
+      });
+
+      // Top-100 items have credits 6..105; overflow items 1..5 have creditsCharged = 0
+      // so all overflow rows have zero credits — this is the regression case.
+      await insertTestCreditUsageForRun({
+        runId,
+        orgId,
+        userId,
+        creditsCharged: i < 5 ? 0 : i + 1,
+        status: "processed",
+      });
+    }
+
+    const response = await GET(
+      makeRequest({ range: "28d", groupBy: "source", tz: "UTC" }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as UsageInsightResponse;
+
+    expect(data.schedules.length).toBe(100);
+    expect(data.scheduleOtherCount).toBe(5);
+  });
 });

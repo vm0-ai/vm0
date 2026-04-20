@@ -4,6 +4,36 @@ import { zeroClient$ } from "../api-client.ts";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import { accept } from "../../lib/accept.ts";
 
+// --- Chart tooltip / width state (used by UsageInsightBarChart) ---
+
+export interface ChartTooltipData {
+  x: number;
+  y: number;
+  ts: string;
+  values: { label: string; value: number; color: string }[];
+}
+
+const internalChartTooltip$ = state<ChartTooltipData | null>(null);
+const internalChartWidth$ = state(600);
+
+export const chartTooltip$ = computed((get) => {
+  return get(internalChartTooltip$);
+});
+
+export const chartWidth$ = computed((get) => {
+  return get(internalChartWidth$);
+});
+
+export const setChartTooltip$ = command(
+  ({ set }, data: ChartTooltipData | null) => {
+    set(internalChartTooltip$, data);
+  },
+);
+
+export const setChartWidth$ = command(({ set }, width: number) => {
+  set(internalChartWidth$, width);
+});
+
 export type InsightRange = "24h" | "7d" | "28d";
 export type InsightGroupBy = "source" | "agent";
 export type InsightMetric = "credits" | "tokens";
