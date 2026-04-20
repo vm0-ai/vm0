@@ -79,7 +79,7 @@ describe("GET /api/zero/usage/daily", () => {
 
   it("returns daily credit totals in total mode", async () => {
     const { userId, orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),
@@ -123,7 +123,7 @@ describe("GET /api/zero/usage/daily", () => {
 
   it("returns per-member breakdown in member mode", async () => {
     const { orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),
@@ -164,7 +164,7 @@ describe("GET /api/zero/usage/daily", () => {
 
   it("filters by dateFrom and dateTo query params", async () => {
     const { userId, orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),
@@ -220,7 +220,7 @@ describe("GET /api/zero/usage/daily", () => {
 
   it("excludes pending records", async () => {
     const { userId, orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),
