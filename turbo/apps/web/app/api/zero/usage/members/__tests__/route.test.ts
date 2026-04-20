@@ -84,7 +84,7 @@ describe("GET /api/zero/usage/members", () => {
 
   it("returns aggregated usage for single user with processed records", async () => {
     const { userId, orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),
@@ -132,7 +132,7 @@ describe("GET /api/zero/usage/members", () => {
 
   it("returns separate aggregation for multiple users", async () => {
     const { orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),
@@ -177,7 +177,7 @@ describe("GET /api/zero/usage/members", () => {
 
   it("excludes pending records from aggregation", async () => {
     const { userId, orgId } = await context.user;
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus"),
