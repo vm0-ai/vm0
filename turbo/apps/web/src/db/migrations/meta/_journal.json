@@ -1933,6 +1933,13 @@
       "when": 1776656378108,
       "tag": "0275_fresh_songbird",
       "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1776671042476,
+      "tag": "0276_bumpy_slyde",
+      "breakpoints": true
     }
   ]
 }
