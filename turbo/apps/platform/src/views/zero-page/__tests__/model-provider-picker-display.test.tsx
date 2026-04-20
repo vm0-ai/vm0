@@ -32,8 +32,6 @@ import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-swit
 
 const context = testContext();
 
-const AGENT_ID = "agent-detail-id";
-
 function setupMockAgent() {
   setMockTeam([
     {
@@ -46,7 +44,7 @@ function setupMockAgent() {
       updatedAt: "2024-01-01T00:00:00Z",
     },
     {
-      id: AGENT_ID,
+      id: "agent-detail-id",
       displayName: "My Agent",
       description: "A helpful agent",
       sound: "professional",
@@ -116,8 +114,10 @@ describe("model-provider-picker - display with null value", () => {
     await openProfileTab(user);
 
     await waitFor(() => {
-      // The trigger label should show "Claude Opus 4.6", not the placeholder
-      expect(screen.getByText("Claude Opus 4.6")).toBeInTheDocument();
+      // The trigger aria-label should reflect the default model, not the placeholder
+      expect(
+        screen.getByRole("combobox", { name: "Claude Opus 4.6" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -146,7 +146,9 @@ describe("model-provider-picker - display with null value", () => {
 
     await waitFor(() => {
       // anthropic-api-key defaultModel is "claude-sonnet-4-6" → "Claude Sonnet 4.6"
-      expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
+      expect(
+        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -156,7 +158,6 @@ describe("model-provider-picker - display with null value", () => {
     const user = userEvent.setup();
     setupMockAgent();
     setMockFeatureSwitches({ [FeatureSwitchKey.ModelProviderSelection]: true });
-    resetMockOrgModelProviders();
     setMockOrgModelProviders([
       {
         id: "00000000-0000-4000-a000-000000000003",
@@ -175,7 +176,9 @@ describe("model-provider-picker - display with null value", () => {
     await openProfileTab(user);
 
     await waitFor(() => {
-      expect(screen.getByText("Inherit from org default")).toBeInTheDocument();
+      expect(
+        screen.getByRole("combobox", { name: "Inherit from org default" }),
+      ).toBeInTheDocument();
     });
   });
 });

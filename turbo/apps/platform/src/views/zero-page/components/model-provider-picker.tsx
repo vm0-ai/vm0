@@ -98,6 +98,7 @@ function formatMultiplier(multiplier: number): string {
 interface TriggerLabelProps {
   providers: ModelProviderResponse[];
   value: ModelProviderSelection | null;
+  defaultModelName: string | null;
   placeholder: string;
   compact: boolean;
 }
@@ -105,16 +106,40 @@ interface TriggerLabelProps {
 function TriggerLabel({
   providers,
   value,
+  defaultModelName,
   placeholder,
   compact,
 }: TriggerLabelProps) {
   if (!value) {
-    const defaultModel = resolveDefaultModel(providers);
-    if (!defaultModel) {
+    if (!defaultModelName) {
       return <span>{placeholder}</span>;
     }
+    const displayName = getModelDisplayName(defaultModelName);
+    if (compact) {
+      return <span className="truncate">{displayName}</span>;
+    }
+    const defaultProvider = providers.find((p) => {
+      return p.isDefault;
+    });
+    if (!defaultProvider) {
+      return <span className="truncate">{displayName}</span>;
+    }
+    const multiplier =
+      defaultProvider.type === "vm0"
+        ? getVm0ModelMultiplier(defaultModelName)
+        : undefined;
     return (
-      <span className="truncate">{getModelDisplayName(defaultModel)}</span>
+      <span className="flex items-center gap-1.5 min-w-0">
+        <span className="truncate">{displayName}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          · {getUILabel(defaultProvider.type)}
+        </span>
+        {multiplier !== undefined && (
+          <span className="shrink-0 rounded border border-border/60 bg-muted/50 px-1 text-[10px] font-medium tabular-nums text-muted-foreground">
+            {formatMultiplier(multiplier)}
+          </span>
+        )}
+      </span>
     );
   }
   const displayName = getModelDisplayName(value.selectedModel);
@@ -202,11 +227,15 @@ export function ModelProviderPicker({
         onChange(decodeValue(raw));
       }}
     >
-      <SelectTrigger className={cn("h-9 w-full", triggerClassName)}>
-        <SelectValue placeholder={placeholder} aria-label={triggerAriaLabel}>
+      <SelectTrigger
+        aria-label={triggerAriaLabel}
+        className={cn("h-9 w-full", triggerClassName)}
+      >
+        <SelectValue placeholder={placeholder}>
           <TriggerLabel
             providers={providers}
             value={value}
+            defaultModelName={defaultModelName}
             placeholder={placeholder}
             compact={compactTrigger}
           />
