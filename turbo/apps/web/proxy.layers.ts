@@ -74,6 +74,7 @@ const intlMiddleware = createIntlMiddleware({
   defaultLocale,
   localePrefix: "always",
   localeDetection: true,
+  alternateLinks: false,
 });
 
 // ---------------------------------------------------------------------------
