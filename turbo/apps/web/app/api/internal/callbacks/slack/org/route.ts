@@ -6,7 +6,6 @@ import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secr
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
-import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
 import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
@@ -14,9 +13,7 @@ import {
   createSlackClient,
   postMessage,
   setThreadStatus,
-  fetchSlackUserInfo,
 } from "../../../../../../src/lib/zero/slack/client";
-import type { WebClient } from "@slack/web-api";
 import { buildAgentResponseMessage } from "../../../../../../src/lib/zero/slack/blocks";
 import { extractAllRunOutputs } from "../../../../../../src/lib/infra/run/extract-run-output";
 import {
@@ -51,25 +48,6 @@ function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
 
 function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
-}
-
-/**
- * Look up the Slack user's display name for the `Sent from X` footer.
- * Returns undefined when the connection has no linked slackUserId or the
- * users.info call returns no usable name.
- */
-async function resolveSlackUserName(
-  client: WebClient,
-  connectionId: string,
-): Promise<string | undefined> {
-  const [connection] = await globalThis.services.db
-    .select({ slackUserId: slackOrgConnections.slackUserId })
-    .from(slackOrgConnections)
-    .where(eq(slackOrgConnections.id, connectionId))
-    .limit(1);
-  if (!connection?.slackUserId) return undefined;
-  const userInfo = await fetchSlackUserInfo(client, connection.slackUserId);
-  return userInfo?.name;
 }
 
 /**
@@ -261,11 +239,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     payload.agentId,
   );
 
-  const slackUserName = await resolveSlackUserName(
-    client,
-    payload.connectionId,
-  );
-
   // Post each result as a separate Slack reply (in order)
   for (let i = 0; i < allOutputs.length; i++) {
     const output = allOutputs[i]!;
@@ -283,7 +256,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         logsUrl,
         triggeredBy,
         selectedModel,
-        slackUserName,
       ),
     });
   }
