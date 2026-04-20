@@ -57,6 +57,7 @@ import {
   currentChatThreadSignals$,
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
+import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -682,13 +683,13 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
   // over from messages sent before #10243 split the flows. Use the structured
   // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
-  // `(see attached files)` is the server-side placeholder stored when the
+  // `ATTACH_ONLY_PLACEHOLDER` is the server-side placeholder stored when the
   // user sent only files with no typed text — strip it so the bubble shows
   // just the attachments.
   const strippedContent =
     message.attachFiles &&
     message.attachFiles.length > 0 &&
-    cleanContent.trim() === "(see attached files)"
+    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
   const displayContent = strippedContent.replace(/\n/g, "  \n");
