@@ -15,10 +15,15 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import {
+  chatThreadsContract,
+  chatThreadByIdContract,
+  chatThreadMessagesContract,
+} from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { threadListChanged } from "../../../mocks/mock-helpers.ts";
@@ -40,11 +45,11 @@ interface ThreadFixture {
 
 function mockAPIs(threadsRef: { current: ThreadFixture[] }) {
   server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: threadsRef.current });
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, { threads: threadsRef.current });
     }),
-    http.get("*/api/zero/chat-threads/:id", ({ params }) => {
-      return HttpResponse.json({
+    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
         id: params.id,
         title: null,
         agentId: DEFAULT_AGENT_ID,
@@ -55,8 +60,8 @@ function mockAPIs(threadsRef: { current: ThreadFixture[] }) {
         updatedAt: "2026-03-10T00:00:00Z",
       });
     }),
-    http.get("*/api/zero/chat-threads/:id/messages", () => {
-      return HttpResponse.json({ messages: [], hasMore: false });
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [] });
     }),
   );
 }

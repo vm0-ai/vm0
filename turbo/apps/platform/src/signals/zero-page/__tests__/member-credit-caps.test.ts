@@ -119,8 +119,9 @@ describe("creditsMemberList$", () => {
 
   it("should throw when API returns non-OK for credit cap fetch", async () => {
     setupUsageMembers([memberA()]);
-    // Keep raw http.get for 500 since it's not in the contract's defined responses
     server.use(
+      // mockApi cannot be used here: 500 is not declared in zeroMemberCreditCapContract.get responses,
+      // so this raw handler is the only way to simulate a server error for this test.
       http.get("*/api/zero/org/members/credit-cap", () => {
         return HttpResponse.json(
           {

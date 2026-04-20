@@ -40,8 +40,9 @@ function clearMediaDevices() {
 }
 
 function mockSttEndpoint(text = "transcribed text") {
-  // raw http override: multipart FormData body is out of scope for mockApi (Phase 0 of #9707)
   server.use(
+    // mockApi cannot be used here: /api/zero/voice-io/stt has no ts-rest contract
+    // (accepts multipart FormData audio body), so raw http is the only option.
     http.post("*/api/zero/voice-io/stt", () => {
       return HttpResponse.json({ text });
     }),
