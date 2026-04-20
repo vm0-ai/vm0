@@ -763,6 +763,10 @@ mod tests {
     // reproduce partial-success-then-fail at arbitrary index, which is the
     // scenario the recovery logic protects against.
 
+    // Returns the two `NamedTempFile` handles alongside the `CowLayer` so the
+    // caller must bind them (as `_base`, `_cow_file`, etc.) to keep the backing
+    // files alive for the test's duration. Discarding them with `_` would drop
+    // the files mid-test and silently break reads.
     fn seed_cow_with_writes(blocks: &[(u64, u8)]) -> (NamedTempFile, NamedTempFile, CowLayer) {
         // 8-block device = 32KB. All tests use at most 4 distinct blocks.
         let base = create_base_image(&vec![0x00; 8 * 4096]);
@@ -907,10 +911,12 @@ mod tests {
     #[test]
     fn flush_ensure_cow_fd_failure_preserves_buffer() {
         let base = create_base_image(&vec![0x00; 8 * 4096]);
-        // Parent directory does not exist — ensure_cow_fd's File::open fails ENOENT.
-        let bad_cow_path = std::path::Path::new("/nonexistent-dir-for-nbd-cow-test/cow.bin");
+        // Derive a path under a tempdir whose child subdir we never create —
+        // ensure_cow_fd's File::open then fails ENOENT regardless of host FS state.
+        let tmp = tempfile::tempdir().unwrap();
+        let bad_cow_path = tmp.path().join("missing-subdir").join("cow.bin");
         let mut cow =
-            CowLayer::new(base.path(), bad_cow_path, 8 * 4096, 4096, 1024 * 1024).unwrap();
+            CowLayer::new(base.path(), &bad_cow_path, 8 * 4096, 4096, 1024 * 1024).unwrap();
 
         cow.write(0, &vec![0xEE; 4096]).unwrap();
         cow.write(4096, &vec![0xDD; 4096]).unwrap();
@@ -932,6 +938,7 @@ mod tests {
     #[test]
     fn flush_with_dev_full_preserves_buffer() {
         if !std::path::Path::new("/dev/full").exists() {
+            eprintln!("skip flush_with_dev_full_preserves_buffer: /dev/full not available");
             return;
         }
         let base = create_base_image(&vec![0x00; 8 * 4096]);
