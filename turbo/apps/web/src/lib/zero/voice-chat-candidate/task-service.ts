@@ -11,7 +11,7 @@ import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat-candidate:task");
 
-export type SpawnRun = () => Promise<CreateZeroRunResult>;
+export type SpawnRun = (taskId: string) => Promise<CreateZeroRunResult>;
 
 type TaskRow = typeof featureCandidateVoiceChatTasks.$inferSelect;
 type ItemRow = typeof featureCandidateVoiceChatItems.$inferSelect;
@@ -41,7 +41,7 @@ export async function createVoiceChatCandidateTask(params: {
     throw new Error("Failed to insert voice-chat-candidate task");
   }
 
-  const result = await params.spawnRun();
+  const result = await params.spawnRun(inserted.id);
 
   const nextStatus = result.status === "queued" ? "queued" : "pending";
   const [updated] = await db

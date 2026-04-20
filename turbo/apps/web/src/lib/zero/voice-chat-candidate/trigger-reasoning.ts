@@ -204,7 +204,7 @@ async function drainPending(sessionId: string): Promise<void> {
   }
 }
 
-async function resolveAgentSystemPrompt(
+export async function resolveAgentSystemPrompt(
   agentId: string | null,
 ): Promise<string> {
   if (!agentId) return "";
