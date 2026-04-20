@@ -17,8 +17,15 @@ import { createExpiresRecord } from "./credit-expires-service";
 
 const log = logger("service:redemption-code");
 
-/** 1-year default validity for both the code itself and the granted credits. */
-const REDEMPTION_VALIDITY_MS = 365 * 24 * 60 * 60 * 1000;
+/**
+ * 30-day default validity for both the code itself and the granted credits.
+ * Set on mint to cap how long an unredeemed code stays usable, and re-used
+ * on redeem as the expiry of the resulting credit grant. Keeping the same
+ * window for both keeps accounting simple: an unredeemed code and a redeemed
+ * one never outlive each other by more than 30 days, so staff don't need a
+ * long-tail view of outstanding grants.
+ */
+const REDEMPTION_VALIDITY_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Maximum number of distinct codes we'll try when hitting PK collisions. */
 const MAX_COLLISION_RETRIES = 5;
