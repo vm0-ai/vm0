@@ -9,15 +9,14 @@ import {
 } from "../select";
 
 describe("SelectItem", () => {
-  const originalNodeEnv = process.env.NODE_ENV;
+  let errSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    process.env.NODE_ENV = originalNodeEnv;
   });
 
   it("renders items with non-empty values", () => {
@@ -38,7 +37,6 @@ describe("SelectItem", () => {
   });
 
   it("skips items with empty string value without throwing", () => {
-    process.env.NODE_ENV = "development";
     expect(() => {
       render(
         <Select defaultValue="ok" open>
@@ -57,9 +55,7 @@ describe("SelectItem", () => {
     expect(listbox.getByText("Good")).toBeInTheDocument();
   });
 
-  it("logs a dev-only error when value is empty", () => {
-    process.env.NODE_ENV = "development";
-    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("logs an error when value is empty so prod observability is preserved", () => {
     render(
       <Select defaultValue="ok" open>
         <SelectTrigger>

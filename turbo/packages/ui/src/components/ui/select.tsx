@@ -6,8 +6,6 @@ import { IconCheck, IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 
 import { cn } from "../../lib/utils";
 
-declare const process: { env: { NODE_ENV?: string } };
-
 const Select = SelectPrimitive.Root;
 
 const SelectGroup = SelectPrimitive.Group;
@@ -133,11 +131,12 @@ const SelectItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
 >(({ className, children, value, ...props }, ref) => {
   if (value === "") {
-    if (process.env.NODE_ENV !== "production") {
-      console.error(
-        '[@vm0/ui] <SelectItem> received an empty string `value`; skipping render to avoid Radix invariant crash. Use a non-empty sentinel such as "all" instead.',
-      );
-    }
+    // Log in every environment so the upstream data defect stays discoverable
+    // in production monitoring (via browser devtools or console-capturing error
+    // reporters) instead of being silently swallowed.
+    console.error(
+      '[@vm0/ui] <SelectItem> received an empty string `value`; skipping render to avoid Radix invariant crash. Use a non-empty sentinel such as "all" instead.',
+    );
     return null;
   }
   return (
