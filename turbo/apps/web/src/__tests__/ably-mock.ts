@@ -33,3 +33,6 @@ import type { Mock } from "vitest";
  */
 export const mockAblyPublish: Mock = vi.fn().mockResolvedValue(undefined);
 export const mockAblyCreateTokenRequest: Mock = vi.fn();
+export const mockAblyChannelsGet: Mock = vi
+  .fn()
+  .mockReturnValue({ publish: mockAblyPublish });

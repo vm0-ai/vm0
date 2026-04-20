@@ -273,7 +273,7 @@ vi.mock("@axiomhq/logging", () => {
 // Uses shared spy instances from ably-mock.ts so test files can import
 // mockAblyPublish / mockAblyCreateTokenRequest without repeating vi.mock.
 vi.mock("ably", async () => {
-  const { mockAblyPublish, mockAblyCreateTokenRequest } =
+  const { mockAblyPublish, mockAblyCreateTokenRequest, mockAblyChannelsGet } =
     await import("./ably-mock");
   return {
     default: {
@@ -281,7 +281,7 @@ vi.mock("ably", async () => {
         return {
           auth: { createTokenRequest: mockAblyCreateTokenRequest },
           channels: {
-            get: vi.fn().mockReturnValue({ publish: mockAblyPublish }),
+            get: mockAblyChannelsGet,
           },
         };
       }),

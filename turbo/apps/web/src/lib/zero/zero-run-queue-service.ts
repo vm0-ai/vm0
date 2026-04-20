@@ -173,6 +173,13 @@ export async function drainOrgQueue(
   const db = globalThis.services.db;
   const encryptionKey = env().SECRETS_ENCRYPTION_KEY;
 
+  // anyTransition is set to true only after dequeueNextAtomic() returns a non-null
+  // result, meaning at least one run was successfully dequeued and transitioned to
+  // "pending". The outer try/finally guarantees publishOrgSignal() fires exactly once
+  // after all iterations complete (or after an unexpected throw). An unexpected throw
+  // from dequeueNextAtomic() or decryptSecretsMap() would only reach the finally block
+  // with anyTransition=true if a prior loop iteration had already dequeued a run, so
+  // the signal is always accurate: it fires only when real state has changed.
   let anyTransition = false;
   try {
     for (;;) {
