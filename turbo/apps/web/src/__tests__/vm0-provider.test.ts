@@ -5,6 +5,7 @@ import {
   createTestOrg,
   insertVm0ApiKeys,
   getTestVm0ApiKey,
+  insertOrgDefaultModelProvider,
 } from "./api-test-helpers";
 import { testContext, uniqueId } from "./test-helpers";
 import { mockClerk } from "./clerk-mock";
@@ -14,6 +15,7 @@ import {
   getVm0ApiModel,
   VM0_MODEL_TO_PROVIDER,
 } from "@vm0/core";
+import { resolveModelProviderSecrets } from "../lib/zero/context/resolve-model-provider";
 
 const context = testContext();
 
@@ -156,6 +158,12 @@ describe("VM0 managed model provider", () => {
       }).toThrow('Unknown VM0 model "unknown-model"');
     });
 
+    it("should throw for unknown models in getVm0ApiModel", () => {
+      expect(() => {
+        return getVm0ApiModel("unknown-model");
+      }).toThrow('Unknown VM0 model "unknown-model"');
+    });
+
     it("should have all VM0 provider models mapped", () => {
       const vm0Models = [
         "claude-opus-4-7",
@@ -170,6 +178,36 @@ describe("VM0 managed model provider", () => {
         expect(VM0_MODEL_TO_PROVIDER[model]).toBeDefined();
       }
       expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toHaveLength(vm0Models.length);
+    });
+  });
+
+  describe("glm-5.1 openrouter routing integration", () => {
+    it("should inject z-ai/glm-5.1 as ANTHROPIC_MODEL when resolving vm0 glm-5.1 provider", async () => {
+      const userId = uniqueId("glm-route");
+      const { orgId } = await setupOrg(userId, "org:admin", uniqueId("glm"));
+
+      await insertOrgDefaultModelProvider(orgId, "vm0", "glm-5.1");
+      await insertVm0ApiKeys([
+        {
+          vendor: "openrouter",
+          model: "z-ai/glm-5.1",
+          apiKey: "sk-or-v1-glmtestkey",
+          label: "glm-5.1 test key",
+        },
+      ]);
+
+      const result = await resolveModelProviderSecrets(
+        orgId,
+        "claude-code",
+        false,
+      );
+
+      expect(result.resolvedModelProvider).toBe("vm0");
+      expect(result.concreteProviderType).toBe("openrouter-api-key");
+      expect(result.selectedModel).toBe("glm-5.1");
+      // The apiModel override must flow through to ANTHROPIC_MODEL — this is the core fix
+      expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe("z-ai/glm-5.1");
+      expect(result.secrets?.OPENROUTER_API_KEY).toBeDefined();
     });
   });
 });
