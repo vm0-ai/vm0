@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -11,6 +11,7 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { seedUserFeatureSwitches } from "../../../../../src/__tests__/db-test-seeders/feature-switches";
 import { listRedemptionCodesByCreator } from "../../../../../src/__tests__/db-test-assertions/redemption-codes";
+import { reloadEnv } from "../../../../../src/env";
 
 /**
  * Known staff org id (hash `afce210e` lives in STAFF_ORG_ID_HASHES).
@@ -89,6 +90,43 @@ describe("POST /api/zero/redemption-codes (mint)", () => {
       expect(data.error.code).toBe("FORBIDDEN");
     },
   );
+
+  describe("EXTRA_STAFF_USER_IDS env override", () => {
+    const original = process.env.EXTRA_STAFF_USER_IDS;
+
+    afterEach(() => {
+      if (original === undefined) {
+        delete process.env.EXTRA_STAFF_USER_IDS;
+      } else {
+        process.env.EXTRA_STAFF_USER_IDS = original;
+      }
+      reloadEnv();
+    });
+
+    it("allows minting for a non-staff user whose id is in EXTRA_STAFF_USER_IDS", async () => {
+      const { userId } = await setupNonStaffOrg();
+      process.env.EXTRA_STAFF_USER_IDS = `some-other-user, ${userId} ,another`;
+      reloadEnv();
+
+      const response = await POST(
+        createMintRequest({ creditsPerCode: 100, quantity: 1 }),
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("still 403 when the user id is not listed", async () => {
+      await setupNonStaffOrg();
+      process.env.EXTRA_STAFF_USER_IDS = "some-other-user,another";
+      reloadEnv();
+
+      const response = await POST(
+        createMintRequest({ creditsPerCode: 100, quantity: 1 }),
+      );
+
+      expect(response.status).toBe(403);
+    });
+  });
 
   it("mints codes for a staff org", async () => {
     const { userId, orgId } = await setupStaffOrg();
