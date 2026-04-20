@@ -64,6 +64,9 @@ export const addZeroConnector$ = command(
   async ({ get, set }, name: string, signal: AbortSignal) => {
     const current = await get(seededConnectors$);
     signal.throwIfAborted();
+    if (current.includes(name)) {
+      return;
+    }
     await set(syncConnectorsToCompose$, [...current, name], signal);
   },
 );
