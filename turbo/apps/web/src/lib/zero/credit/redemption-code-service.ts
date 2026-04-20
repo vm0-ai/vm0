@@ -6,7 +6,6 @@
  * only deals with persistence and the atomic single-use guarantee.
  */
 import { and, count, eq, gt, gte, isNull } from "drizzle-orm";
-import { env } from "../../../env";
 import { redemptionCodes } from "../../../db/schema/redemption-codes";
 import { redemptionCodeAttempts } from "../../../db/schema/redemption-code-attempts";
 import { orgMetadata } from "../../../db/schema/org-metadata";
@@ -55,22 +54,7 @@ function redactCode(): string {
 const REDEEM_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const REDEEM_RATE_LIMIT_MAX_FAILURES = 10;
 
-/**
- * Rate-limit enforcement is skipped in local dev (`NODE_ENV=development` with
- * no `VERCEL_ENV`) so engineers can iterate on the redeem flow without getting
- * locked out after 10 failures. Preview and production always enforce.
- * Test runs use `NODE_ENV=test`, so the integration tests that exercise the
- * limit still fire — do not widen this guard to include `test`.
- */
-function isRedeemRateLimitEnforced(): boolean {
-  const { NODE_ENV, VERCEL_ENV } = env();
-  return !(NODE_ENV === "development" && !VERCEL_ENV);
-}
-
 async function assertRedeemRateLimit(userId: string): Promise<void> {
-  if (!isRedeemRateLimitEnforced()) {
-    return;
-  }
   const db = globalThis.services.db;
   const since = new Date(Date.now() - REDEEM_RATE_LIMIT_WINDOW_MS);
   const [row] = await db
