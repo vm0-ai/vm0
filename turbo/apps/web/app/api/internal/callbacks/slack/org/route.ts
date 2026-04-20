@@ -6,6 +6,7 @@ import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secr
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
+import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
 import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
@@ -13,6 +14,7 @@ import {
   createSlackClient,
   postMessage,
   setThreadStatus,
+  fetchSlackUserInfo,
 } from "../../../../../../src/lib/zero/slack/client";
 import { buildAgentResponseMessage } from "../../../../../../src/lib/zero/slack/blocks";
 import { extractAllRunOutputs } from "../../../../../../src/lib/infra/run/extract-run-output";
@@ -229,6 +231,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     payload.agentId,
   );
 
+  // Look up the Slack user's display name for the footer attribution
+  let slackUserName: string | undefined;
+  const [connection] = await globalThis.services.db
+    .select({ slackUserId: slackOrgConnections.slackUserId })
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.id, payload.connectionId))
+    .limit(1);
+  if (connection?.slackUserId) {
+    const userInfo = await fetchSlackUserInfo(client, connection.slackUserId);
+    if (userInfo?.name) {
+      slackUserName = userInfo.name;
+    }
+  }
+
   // Post each result as a separate Slack reply (in order)
   for (let i = 0; i < allOutputs.length; i++) {
     const output = allOutputs[i]!;
@@ -241,7 +257,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl, triggeredBy, zeroRun?.selectedModel),
+      blocks: buildAgentResponseMessage(responseText, logsUrl, triggeredBy, zeroRun?.selectedModel, slackUserName),
     });
   }
 

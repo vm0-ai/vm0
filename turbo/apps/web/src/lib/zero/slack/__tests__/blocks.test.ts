@@ -238,7 +238,25 @@ describe("buildAgentResponseMessage", () => {
     expect(contextBlocks).toHaveLength(1);
     expect(
       (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
-    ).toBe("Powered by Claude Opus 4.7");
+    ).toBe("Claude Opus 4.7");
+  });
+
+  it("should combine slackUserName and modelName with · separator", () => {
+    const blocks = buildAgentResponseMessage(
+      "Response text",
+      undefined,
+      undefined,
+      "claude-opus-4-7",
+      "Alice",
+    );
+
+    const contextBlocks = blocks.filter((b) => {
+      return b.type === "context";
+    });
+    expect(contextBlocks).toHaveLength(1);
+    expect(
+      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
+    ).toBe("Sent from Alice · Claude Opus 4.7");
   });
 
   it("should convert model IDs to friendly names", () => {
@@ -257,7 +275,7 @@ describe("buildAgentResponseMessage", () => {
       const blocks = buildAgentResponseMessage("text", undefined, undefined, input);
       const contextBlocks = blocks.filter((b) => b.type === "context");
       const text = (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text;
-      expect(text).toBe(`Powered by ${expected}`);
+      expect(text).toBe(expected);
     }
   });
 });

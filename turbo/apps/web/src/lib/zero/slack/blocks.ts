@@ -464,7 +464,8 @@ export function modelIdToDisplayName(modelId: string): string {
  * @param content - The agent's response content
  * @param logsUrl - Optional URL to the run logs
  * @param triggeredBy - Optional attribution text shown as a separate context block below a divider
- * @param modelName - Optional raw model ID shown as "Powered by <friendly name>"
+ * @param modelName - Optional raw model ID shown alongside modelName in footer
+ * @param slackUserName - Optional Slack display name shown alongside modelName in footer
  * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
@@ -472,6 +473,7 @@ export function buildAgentResponseMessage(
   logsUrl?: string,
   triggeredBy?: string,
   modelName?: string,
+  slackUserName?: string,
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
 
@@ -493,8 +495,11 @@ export function buildAgentResponseMessage(
     blocks.push(...buildFooterBlocks(triggeredBy));
   }
 
-  if (modelName) {
-    blocks.push(...buildFooterBlocks(`Powered by ${modelIdToDisplayName(modelName)}`));
+  if (modelName || slackUserName) {
+    const parts: string[] = [];
+    if (slackUserName) parts.push(`Sent from ${slackUserName}`);
+    if (modelName) parts.push(modelIdToDisplayName(modelName));
+    blocks.push(...buildFooterBlocks(parts.join(" · ")));
   }
 
   return blocks;
