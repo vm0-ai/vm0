@@ -204,7 +204,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Runner RS* ✅ Rolled back to v${{ inputs.target_version }} (${{ inputs.rollback_mode }})\n⏱️ `${{ steps.duration.outputs.text }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ inputs.target_version }}|View Release>\n\n⚠️ Remember to land a `revert` PR on main so the next release doesn't re-ship the bad version."
+                  text: "*Runner RS* ✅ Rolled back to v${{ inputs.target_version }} (${{ inputs.rollback_mode }})\n⏱️ `${{ steps.duration.outputs.text }}`\n👤 Triggered by: `${{ github.actor }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ inputs.target_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
