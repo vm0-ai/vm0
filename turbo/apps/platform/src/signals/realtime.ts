@@ -79,6 +79,8 @@ export const setupRealtime$ = command(
     signal.throwIfAborted();
 
     const ably = new Realtime({
+      // Ably TokenRequest is single-use — see lib/ably-auth.ts for why
+      // every invocation must fetch a freshly-signed request.
       authCallback: createAblyAuthCallback(client, signal),
       autoConnect: true,
       disconnectedRetryTimeout: 5000,
