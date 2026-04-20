@@ -6,10 +6,13 @@ import {
   setGroupBy$,
   metric$,
   setMetric$,
+  detailTab$,
+  setDetailTab$,
   usageInsightAsync$,
   type InsightRange,
   type InsightGroupBy,
   type InsightMetric,
+  type InsightDetailTab,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import {
   Select,
@@ -17,11 +20,14 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from "@vm0/ui";
 import { UsageInsightBarChart } from "./usage-insight-bar-chart.tsx";
 import { UsageInsightSchedulesTable } from "./usage-insight-schedules-table.tsx";
 import { UsageInsightChatsTable } from "./usage-insight-chats-table.tsx";
-import { UsageInsightChannels } from "./usage-insight-channels.tsx";
+import { UsageInsightTotalsBar } from "./usage-insight-totals-bar.tsx";
 
 export function UsageInsightView() {
   const range = useGet(range$);
@@ -30,6 +36,8 @@ export function UsageInsightView() {
   const setGroupBy = useSet(setGroupBy$);
   const metric = useGet(metric$);
   const setMetric = useSet(setMetric$);
+  const detailTab = useGet(detailTab$);
+  const setDetailTab = useSet(setDetailTab$);
   const loadable = useLoadable(usageInsightAsync$);
 
   const isLoading = loadable.state === "loading";
@@ -46,6 +54,10 @@ export function UsageInsightView() {
 
   const handleMetricChange = (val: string) => {
     setMetric(val as InsightMetric);
+  };
+
+  const handleDetailTabChange = (val: string) => {
+    setDetailTab(val as InsightDetailTab);
   };
 
   return (
@@ -85,6 +97,16 @@ export function UsageInsightView() {
         </div>
       </div>
 
+      {/* Totals bar (100% stacked) */}
+      {data && (
+        <UsageInsightTotalsBar
+          data={data}
+          metric={metric}
+          groupBy={groupBy}
+          range={range}
+        />
+      )}
+
       {/* Chart */}
       {isLoading && !data && (
         <div className="h-[220px] animate-pulse bg-muted/20 rounded-xl" />
@@ -106,13 +128,24 @@ export function UsageInsightView() {
         />
       )}
 
-      {/* Detail sections */}
+      {/* Detail tabs: Schedules / Chats */}
       {data && (
-        <>
-          <UsageInsightChannels data={data} metric={metric} />
-          <UsageInsightSchedulesTable data={data} metric={metric} />
-          <UsageInsightChatsTable data={data} metric={metric} />
-        </>
+        <Tabs
+          value={detailTab}
+          onValueChange={handleDetailTabChange}
+          className="flex flex-col gap-3"
+        >
+          <TabsList>
+            <TabsTrigger value="schedules">Schedules</TabsTrigger>
+            <TabsTrigger value="chats">Chats</TabsTrigger>
+          </TabsList>
+          {detailTab === "schedules" && (
+            <UsageInsightSchedulesTable data={data} metric={metric} />
+          )}
+          {detailTab === "chats" && (
+            <UsageInsightChatsTable data={data} metric={metric} />
+          )}
+        </Tabs>
       )}
     </div>
   );

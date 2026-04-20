@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUsageInsight } from "../../../mocks/handlers/api-usage-insight.ts";
@@ -58,6 +59,21 @@ describe("/_/usage page", () => {
     await waitFor(() => {
       expect(screen.getByText("My Schedule")).toBeInTheDocument();
     });
-    expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
+
+    const scheduleLink = screen.getByText("My Schedule").closest("a");
+    expect(scheduleLink?.getAttribute("href")).toBe("/schedules/s1");
+
+    const user = userEvent.setup();
+    const chatsTab = screen.getAllByRole("tab").find((el) => {
+      return /Chats/.test(el.textContent ?? "");
+    });
+    await user.click(chatsTab!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
+    });
+
+    const chatLink = screen.getByText("Chat with Agent").closest("a");
+    expect(chatLink?.getAttribute("href")).toBe("/chats/t1");
   });
 });
