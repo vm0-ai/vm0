@@ -89,6 +89,34 @@ export const overrideFeatureSwitch$ = command(
   },
 );
 
+// The localStorage override is an optimistic buffer that bridges the gap
+// between a user toggle and the DB confirming the write. Once the sync
+// settles (success, HTTP error, or abort) the keys must be stripped so
+// `featureSwitch$` falls through to DB truth; otherwise a silently-dropped
+// DB write leaves a permanent phantom state that only the frontend sees.
+const clearFeatureSwitchLocalKeys$ = command(({ get, set }, keys: string[]) => {
+  const current = get(get$);
+  if (!current) {
+    return;
+  }
+  const parsed = jsonParseOr<Partial<Record<string, boolean>>>(current, {});
+  let changed = false;
+  for (const key of keys) {
+    if (key in parsed) {
+      delete parsed[key];
+      changed = true;
+    }
+  }
+  if (!changed) {
+    return;
+  }
+  if (Object.keys(parsed).length === 0) {
+    set(clear$);
+  } else {
+    set(set$, JSON.stringify(parsed));
+  }
+});
+
 export const syncFeatureSwitchToDB$ = command(
   async (
     { get, set },
@@ -97,11 +125,18 @@ export const syncFeatureSwitchToDB$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroFeatureSwitchesContract);
-    signal.throwIfAborted();
-    await accept(client.update({ body: { switches: overrides } }), [200]);
-    signal.throwIfAborted();
-    set(internalReload$, (v) => {
-      return v + 1;
+
+    const work = async () => {
+      signal.throwIfAborted();
+      await accept(client.update({ body: { switches: overrides } }), [200]);
+      signal.throwIfAborted();
+    };
+
+    await work().finally(() => {
+      set(clearFeatureSwitchLocalKeys$, Object.keys(overrides));
+      set(internalReload$, (v) => {
+        return v + 1;
+      });
     });
   },
 );
@@ -125,3 +160,4 @@ export const resetFeatureSwitchOverrides$ = command(
 );
 
 export const setFeatureSwitchLocalStorage$ = set$;
+export const getFeatureSwitchLocalStorage$ = get$;
