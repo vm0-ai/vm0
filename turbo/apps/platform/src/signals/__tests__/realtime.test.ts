@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { command, createStore } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/core";
 import { setAblyLoop$, setupRealtime$ } from "../realtime.ts";
+import { clearAllDetached } from "../utils.ts";
 import {
   triggerAblyEvent,
   triggerAblyReauth,
@@ -139,6 +140,45 @@ describe("setupRealtime$ authCallback", () => {
     expect(secondHistory[1]).not.toStrictEqual(firstBody);
 
     controller.abort();
+  });
+
+  it("skips auth forwarding when signal aborts mid-flight", async () => {
+    const store = createStore();
+    const controller = new AbortController();
+    server.use(...apiRealtimeHandlers);
+    mockUser(
+      { id: "test-user-123", fullName: "Test User" },
+      { token: "test-token" },
+    );
+
+    await store.set(setupRealtime$, controller.signal);
+
+    // Teardown sequence: setupRealtime$'s abort listener fires ably.close.
+    // Any in-flight authCallback fetch is collateral — its AbortError
+    // must not surface to Ably's callback as a spurious "failed" event.
+    controller.abort();
+
+    // With the abort guard in place, the authCallback short-circuits in
+    // its catch branch and Ably's callback is never invoked — the mock's
+    // invokeAuthCallback promise then stays pending. Without the guard,
+    // the AbortError would be forwarded and the promise would reject.
+    let reauthOutcome: "pending" | "resolved" | "rejected" = "pending";
+    triggerAblyReauth()
+      .then(() => {
+        reauthOutcome = "resolved";
+      })
+      .catch(() => {
+        reauthOutcome = "rejected";
+      });
+
+    // Await the detach'd IIFE inside the authCallback, then drain a few
+    // microtasks so any resolution propagates through the mock.
+    await clearAllDetached();
+    for (let i = 0; i < 5; i++) {
+      await Promise.resolve();
+    }
+
+    expect(reauthOutcome).toBe("pending");
   });
 
   it("forwards endpoint errors to ably's callback on renewal", async () => {
