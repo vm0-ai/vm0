@@ -1229,6 +1229,56 @@ mod tests {
         assert_eq!(event.stderr, b"error");
     }
 
+    /// When a `spawn_watch` request is answered with `MSG_ERROR`, the
+    /// pre-registered `pending_stdout` entry must be removed via the
+    /// `drop_pending_stdout` closure. Assert the error surfaces with the
+    /// guest-provided message AND that a follow-up successful `spawn_watch`
+    /// can still run — proving no stale state lingers.
+    #[tokio::test]
+    async fn test_spawn_watch_error_response_cleans_up() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            // First spawn_watch: reply with MSG_ERROR.
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            let err_payload = vsock_proto::encode_error("no such command");
+            let err_resp = vsock_proto::encode(MSG_ERROR, msgs[0].seq, &err_payload).unwrap();
+            guest.write_all(&err_resp).await.unwrap();
+
+            // Second spawn_watch: happy path with pid=222.
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            let ok_payload = vsock_proto::encode_spawn_watch_result(222);
+            let ok_resp =
+                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &ok_payload).unwrap();
+            guest.write_all(&ok_resp).await.unwrap();
+
+            let mut discard = [0u8; 1];
+            let _ = guest.read(&mut discard).await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+
+        let err = host
+            .spawn_watch("bad-cmd", 0, &[], false, None)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("no such command"));
+
+        let (pid, _stdout_rx) = host
+            .spawn_watch("good-cmd", 0, &[], false, None)
+            .await
+            .unwrap();
+        assert_eq!(pid, 222);
+    }
+
     #[tokio::test]
     async fn test_shutdown() {
         let (host_stream, mut guest) = make_pair();
@@ -1302,6 +1352,46 @@ mod tests {
         assert!(
             start.elapsed() < Duration::from_secs(1),
             "request should fail immediately, took {:?}",
+            start.elapsed()
+        );
+    }
+
+    /// `spawn_watch` has its own `Closed` short-circuit at the `pending_stdout`
+    /// insert point, separate from `request_raw`. Exercise it: after the
+    /// connection has closed, a subsequent `spawn_watch` must fail fast with
+    /// a connection error and must not leak the stdout channel it would have
+    /// pre-registered.
+    #[tokio::test]
+    async fn test_spawn_watch_after_close_returns_immediately() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+            drop(guest);
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+
+        // Wait for reader to observe EOF and transition state to `Closed`.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let start = Instant::now();
+        let err = host
+            .spawn_watch("long-running", 0, &[], false, None)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                err.kind(),
+                io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe
+            ),
+            "expected ConnectionReset or BrokenPipe, got {:?}",
+            err.kind()
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "spawn_watch should fail immediately, took {:?}",
             start.elapsed()
         );
     }
@@ -1473,6 +1563,63 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    }
+
+    /// An exit event cached in `ConnectionState::Connected { exits, .. }` must
+    /// survive the `Connected → Closed` transition in `close()` and remain
+    /// retrievable by a `wait_for_exit` call made AFTER the connection has
+    /// closed. Regression guard: if a future refactor replaces the `exits`
+    /// field in `Closed { exits }` with an empty map, this test fails.
+    #[tokio::test]
+    async fn test_wait_for_exit_returns_cached_event_after_close() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+
+            // Send SPAWN_WATCH_RESULT + PROCESS_EXIT together, then close the
+            // socket. The reader processes both messages synchronously in one
+            // for-loop iteration, then sees EOF on the next read and calls
+            // close() which transitions state to `Closed { exits }` while
+            // preserving the cached exit event.
+            let result_payload = vsock_proto::encode_spawn_watch_result(111);
+            let result =
+                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &result_payload).unwrap();
+            let exit_payload = vsock_proto::encode_process_exit(111, 3, b"cached-output", b"err");
+            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, 0, &exit_payload).unwrap();
+
+            let mut combined = result;
+            combined.extend_from_slice(&exit_msg);
+            guest.write_all(&combined).await.unwrap();
+            drop(guest);
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (pid, _stdout_rx) = host
+            .spawn_watch("quick-exit", 0, &[], false, None)
+            .await
+            .unwrap();
+        assert_eq!(pid, 111);
+
+        // Let the reader observe EOF and run `close()` so the subsequent
+        // `wait_for_exit` definitely hits the `Closed` arm rather than the
+        // `Connected` arm.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let event = host
+            .wait_for_exit(pid, Duration::from_secs(5))
+            .await
+            .expect("cached exit event must survive the Connected → Closed transition");
+        assert_eq!(event.pid, 111);
+        assert_eq!(event.exit_code, 3);
+        assert_eq!(event.stdout, b"cached-output");
+        assert_eq!(event.stderr, b"err");
     }
 
     /// Host-side deadline fires when the guest never sends process_exit.
