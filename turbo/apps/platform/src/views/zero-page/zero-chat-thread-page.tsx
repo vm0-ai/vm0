@@ -450,7 +450,7 @@ const THINKING_PHRASES = [
   "Chasing electrons...",
   "Summoning an answer...",
   "On it...",
-];
+] as const;
 
 // Deterministic hash so each turn gets a stable phrase seeded from the
 // last group's id — variety across turns without mutable timer state.
