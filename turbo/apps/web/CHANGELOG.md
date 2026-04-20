@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.267.0](https://github.com/vm0-ai/vm0/compare/web-v12.266.0...web-v12.267.0) (2026-04-20)
+
+
+### Features
+
+* **slack:** add Powered by model footer to agent messages ([#10156](https://github.com/vm0-ai/vm0/issues/10156)) ([b7d399d](https://github.com/vm0-ai/vm0/commit/b7d399d06f542cf38d1e217961f75e4b5be87192))
+
+
+### Bug Fixes
+
+* **web:** strip self-signed token on non-api paths to keep clerk running ([#10214](https://github.com/vm0-ai/vm0/issues/10214)) ([9493c0e](https://github.com/vm0-ai/vm0/commit/9493c0e9932d646019195e61ba107ab882419738)), closes [#10164](https://github.com/vm0-ai/vm0/issues/10164)
+
+
+### Refactoring
+
+* **core:** split audio i/o feature switch into input and output flags ([#10209](https://github.com/vm0-ai/vm0/issues/10209)) ([f6670cd](https://github.com/vm0-ai/vm0/commit/f6670cd9b1bfc7d6bb21cd66b505749d60c968b2)), closes [#10207](https://github.com/vm0-ai/vm0/issues/10207)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.210.0
+
 ## [12.266.0](https://github.com/vm0-ai/vm0/compare/web-v12.265.0...web-v12.266.0) (2026-04-20)
 
 

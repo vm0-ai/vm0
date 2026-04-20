@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.210.0](https://github.com/vm0-ai/vm0/compare/core-v8.209.1...core-v8.210.0) (2026-04-20)
+
+
+### Features
+
+* enable OrgCustomConnectors feature flag by default ([#10157](https://github.com/vm0-ai/vm0/issues/10157)) ([#10161](https://github.com/vm0-ai/vm0/issues/10161)) ([397c6d9](https://github.com/vm0-ai/vm0/commit/397c6d998dc52c6341decf66dca5a7742512774a))
+* **slack:** add Powered by model footer to agent messages ([#10156](https://github.com/vm0-ai/vm0/issues/10156)) ([b7d399d](https://github.com/vm0-ai/vm0/commit/b7d399d06f542cf38d1e217961f75e4b5be87192))
+
+
+### Refactoring
+
+* **core:** split audio i/o feature switch into input and output flags ([#10209](https://github.com/vm0-ai/vm0/issues/10209)) ([f6670cd](https://github.com/vm0-ai/vm0/commit/f6670cd9b1bfc7d6bb21cd66b505749d60c968b2)), closes [#10207](https://github.com/vm0-ai/vm0/issues/10207)
+
 ## [8.209.1](https://github.com/vm0-ai/vm0/compare/core-v8.209.0...core-v8.209.1) (2026-04-20)
 
 

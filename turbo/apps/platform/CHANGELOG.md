@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.265.0](https://github.com/vm0-ai/vm0/compare/app-v0.264.0...app-v0.265.0) (2026-04-20)
+
+
+### Features
+
+* **slack:** add Powered by model footer to agent messages ([#10156](https://github.com/vm0-ai/vm0/issues/10156)) ([b7d399d](https://github.com/vm0-ai/vm0/commit/b7d399d06f542cf38d1e217961f75e4b5be87192))
+
+
+### Bug Fixes
+
+* **platform:** silence expected 404 agent-not-found errors in sentry ([#10208](https://github.com/vm0-ai/vm0/issues/10208)) ([854f608](https://github.com/vm0-ai/vm0/commit/854f608d8d68f3176399197dd51deaf886f50c60)), closes [#10167](https://github.com/vm0-ai/vm0/issues/10167)
+
+
+### Refactoring
+
+* **core:** split audio i/o feature switch into input and output flags ([#10209](https://github.com/vm0-ai/vm0/issues/10209)) ([f6670cd](https://github.com/vm0-ai/vm0/commit/f6670cd9b1bfc7d6bb21cd66b505749d60c968b2)), closes [#10207](https://github.com/vm0-ai/vm0/issues/10207)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.210.0
+
 ## [0.264.0](https://github.com/vm0-ai/vm0/compare/app-v0.263.0...app-v0.264.0) (2026-04-20)
 
 
