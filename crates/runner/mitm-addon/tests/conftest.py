@@ -76,6 +76,7 @@ def real_flow():
         port: int = 443,
         path: str = "/",
         method: str = "GET",
+        scheme: str = "https",
         request_body: bytes | None = None,
         request_headers: http.Headers | None = None,
         request_content_type: str | None = None,
@@ -95,7 +96,7 @@ def real_flow():
                 pairs.insert(0, ("Content-Type", request_content_type))
             req_headers = _headers(*pairs)
         req = tutils.treq(
-            scheme=b"https",
+            scheme=scheme.encode(),
             method=method.encode(),
             host=host.encode(),
             port=port,

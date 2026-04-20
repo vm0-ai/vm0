@@ -2,8 +2,6 @@
 
 import json
 
-from mitmproxy.test import tflow, tutils
-
 from logging_utils import log_proxy_entry
 from url_utils import get_original_url
 
@@ -13,9 +11,8 @@ class TestGetOriginalUrl:
         flow = real_flow(host="example.com", port=443)
         assert get_original_url(flow) == "https://example.com/"
 
-    def test_http_default_port(self):
-        # real_flow hardcodes scheme=https; build a cleartext flow directly.
-        flow = tflow.tflow(req=tutils.treq(scheme=b"http", host=b"example.com", port=80, path=b"/"))
+    def test_http_default_port(self, real_flow):
+        flow = real_flow(host="example.com", port=80, scheme="http")
         assert get_original_url(flow) == "http://example.com/"
 
     def test_https_non_standard_port(self, real_flow):

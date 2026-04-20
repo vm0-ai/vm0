@@ -402,9 +402,14 @@ def response(flow: http.HTTPFlow) -> None:
     start_time = _request_start_times.pop(flow.id, None)
     latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
 
-    # Get stored info
+    # Get stored info. ``original_url`` fallback uses the same
+    # reconstructor as the request handler so unregistered-VM flows
+    # (where the request handler returned early and never populated
+    # metadata) produce consistent URLs — not mitmproxy's
+    # ``pretty_url``, which reads the Host-header port and drops
+    # non-default destination ports (see #10082).
     run_id = flow.metadata.get("vm_run_id", "")
-    original_url = flow.metadata.get("original_url", flow.request.pretty_url)
+    original_url = flow.metadata.get("original_url") or get_original_url(flow)
     firewall_action = flow.metadata.get("firewall_action", "ALLOW")
 
     # Calculate sizes
@@ -510,7 +515,7 @@ def error(flow: http.HTTPFlow) -> None:
         return
 
     latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
-    original_url = flow.metadata.get("original_url", flow.request.pretty_url)
+    original_url = flow.metadata.get("original_url") or get_original_url(flow)
     firewall_action = flow.metadata.get("firewall_action", "ALLOW")
 
     try:

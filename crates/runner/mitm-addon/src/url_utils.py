@@ -32,15 +32,15 @@ def get_original_url(flow: http.HTTPFlow) -> str:
     return f"{scheme}://{host_with_port}{path}"
 
 
-def build_rewrite_url(resolved_base: str, match_info: dict, orig_url: str) -> str:
+def build_rewrite_url(resolved_base: str, match_info: dict, orig_query: str) -> str:
     """Build the final URL for auth.base URL rewriting.
 
     Combines the resolved base URL (with credentials in path), the relative
     path from the firewall match, and query strings from both base and
-    original request.
+    original request. ``orig_query`` is the raw query string of the
+    incoming request (no leading ``?``).
     """
     base_parsed = urllib.parse.urlparse(resolved_base)
-    orig_parsed = urllib.parse.urlparse(orig_url)
 
     # Append rel_path to the base path portion
     rel_path = match_info.get("rel_path", "/")
@@ -50,8 +50,8 @@ def build_rewrite_url(resolved_base: str, match_info: dict, orig_url: str) -> st
     qs_parts: list[str] = []
     if base_parsed.query:
         qs_parts.append(base_parsed.query)
-    if orig_parsed.query:
-        qs_parts.append(orig_parsed.query)
+    if orig_query:
+        qs_parts.append(orig_query)
     merged_qs = "&".join(qs_parts)
 
     return urllib.parse.urlunparse(

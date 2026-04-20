@@ -2086,7 +2086,7 @@ class TestBuildRewriteUrl:
         url = url_utils.build_rewrite_url(
             "https://discord.com/api/webhooks/123/abc",
             {"rel_path": "/"},
-            "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
+            "",
         )
         assert url == "https://discord.com/api/webhooks/123/abc"
 
@@ -2094,7 +2094,7 @@ class TestBuildRewriteUrl:
         url = url_utils.build_rewrite_url(
             "https://example.com/base",
             {"rel_path": "/a/b/c"},
-            "https://firewall-placeholder.vm3.ai/hook",
+            "",
         )
         assert url == "https://example.com/base/a/b/c"
 
@@ -2102,7 +2102,7 @@ class TestBuildRewriteUrl:
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=secret",
             {"rel_path": "/"},
-            "https://firewall-placeholder.vm3.ai/hook",
+            "",
         )
         assert url == "https://example.com/hook?token=secret"
 
@@ -2110,7 +2110,7 @@ class TestBuildRewriteUrl:
         url = url_utils.build_rewrite_url(
             "https://example.com/hook",
             {"rel_path": "/"},
-            "https://firewall-placeholder.vm3.ai/hook?",
+            "",
         )
         assert url == "https://example.com/hook"
 
@@ -2118,7 +2118,7 @@ class TestBuildRewriteUrl:
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=abc",
             {"rel_path": "/sub"},
-            "https://firewall-placeholder.vm3.ai/hook/sub?extra=1",
+            "extra=1",
         )
         assert url == "https://example.com/hook/sub?token=abc&extra=1"
 
@@ -2126,7 +2126,7 @@ class TestBuildRewriteUrl:
         url = url_utils.build_rewrite_url(
             "https://example.com/hook/",
             {"rel_path": "/sub"},
-            "https://firewall-placeholder.vm3.ai/hook/sub",
+            "",
         )
         assert url == "https://example.com/hook/sub"
 
@@ -2134,7 +2134,7 @@ class TestBuildRewriteUrl:
         url = url_utils.build_rewrite_url(
             "https://example.com/hook",
             {},
-            "https://firewall-placeholder.vm3.ai/hook",
+            "",
         )
         assert url == "https://example.com/hook"
 
