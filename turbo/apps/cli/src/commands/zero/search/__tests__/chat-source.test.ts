@@ -38,6 +38,9 @@ describe("zero search --source chat", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
+    // Clear any prior spy call history before each test so assertions only
+    // see calls made by the current case.
+    vi.clearAllMocks();
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     // Commander retains collector state across parseAsync calls on the
@@ -46,9 +49,8 @@ describe("zero search --source chat", () => {
   });
 
   afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
+    // Restore stubbed env vars so state never bleeds across test files.
+    vi.unstubAllEnvs();
   });
 
   it("renders chat search results grouped by thread", async () => {

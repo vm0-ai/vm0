@@ -304,6 +304,15 @@ const chatSearchResultSchema = z.object({
   contextAfter: z.array(chatSearchMessageSchema),
 });
 
+/**
+ * `hasMore` indicates that the server truncated the result set at `limit`.
+ * There is intentionally no cursor/offset: `limit` is capped at 50 (see the
+ * query schema below) and chat-message search is a lookup tool, not a bulk
+ * export. Callers that hit `hasMore=true` should narrow the query (add
+ * `agent`, `since`, or a more specific `keyword`) rather than paginate. If
+ * genuine pagination is ever needed, introduce `nextCursor` here — the
+ * contract has no external consumers yet, so adding it later is safe.
+ */
 const chatSearchResponseSchema = z.object({
   results: z.array(chatSearchResultSchema),
   hasMore: z.boolean(),

@@ -18,6 +18,7 @@ import {
   isNull,
   lt,
 } from "drizzle-orm";
+import { z } from "zod";
 import {
   createHandler,
   createSafeErrorHandler,
@@ -53,11 +54,18 @@ interface ChatMessageRow {
   runId: string | null;
 }
 
+/**
+ * Narrow the DB `role` column (stored as free-form `text`) to the contract's
+ * `"user" | "assistant"` enum at runtime. Throws on unexpected values so the
+ * caller never receives a malformed response.
+ */
+const chatRoleSchema = z.enum(["user", "assistant"]);
+
 function toChatMessage(row: ChatMessageRow): ChatSearchMessage {
   return {
     messageId: row.messageId,
     chatThreadId: row.chatThreadId,
-    role: row.role as "user" | "assistant",
+    role: chatRoleSchema.parse(row.role),
     content: row.content ?? "",
     createdAt: row.createdAt.toISOString(),
     sequenceNumber: row.sequenceNumber,
