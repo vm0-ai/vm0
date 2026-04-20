@@ -28,9 +28,11 @@ import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   currentChatThreadId$,
   currentChatAgentId$,
-  currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
-import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import {
+  AgentAvatarImg,
+  useChatThreadsTitleLabels,
+} from "./zero-sidebar-shared.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   pendingDeleteThreadId$,
@@ -57,13 +59,11 @@ export function ZeroChatListPage() {
       : null;
 
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const displayName = useLastLoadable(currentChatAgentDisplayName$);
-  const displayNameStr =
-    displayName.state === "hasData" ? (displayName.data ?? "Zero") : "Zero";
-
   const features = useLastResolved(featureSwitch$);
   const unifyChatThreads =
     features?.[FeatureSwitchKey.UnifyChatThreads] ?? false;
+
+  const { titleLabel, searchPlaceholder } = useChatThreadsTitleLabels();
 
   const selectedRecentId = useGet(currentChatThreadId$);
   const navigateToChat = useSet(navigateToChat$);
@@ -74,13 +74,6 @@ export function ZeroChatListPage() {
 
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);
-
-  const titleLabel = unifyChatThreads
-    ? "Chats"
-    : `Chats with ${displayNameStr}`;
-  const searchPlaceholder = unifyChatThreads
-    ? "Search chats"
-    : `Search chats with ${displayNameStr}`;
 
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm

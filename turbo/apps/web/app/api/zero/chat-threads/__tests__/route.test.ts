@@ -553,6 +553,29 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(thread.running).toBe(true);
   });
 
+  it("returns agent.id and agent.avatarUrl for scoped (agentId query) requests", async () => {
+    await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Scoped agent" }),
+      }),
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads).toHaveLength(1);
+    expect(data.threads[0].agent).toBeDefined();
+    expect(data.threads[0].agent.id).toBe(testComposeId);
+    expect(data.threads[0].agent).toHaveProperty("avatarUrl");
+  });
+
   it("reports running=false when all runs reach terminal states", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {

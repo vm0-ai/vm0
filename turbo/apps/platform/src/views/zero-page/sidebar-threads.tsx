@@ -13,7 +13,10 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
-import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import {
+  AgentAvatarImg,
+  useChatThreadsTitleLabels,
+} from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -40,7 +43,6 @@ import {
 import {
   currentChatAgentId$,
   currentChatThreadId$,
-  currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
 import {
   navigateToChat$,
@@ -245,19 +247,6 @@ function ChatThreads() {
       </Dialog>
     </>
   );
-}
-
-function useChatThreadsTitleLabels() {
-  const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
-  const features = useLastResolved(featureSwitch$);
-  const unify = features?.[FeatureSwitchKey.UnifyChatThreads] ?? false;
-  return {
-    titleLabel: unify ? "Chats" : `Chats with ${agentDisplayName}`,
-    searchPlaceholder: unify
-      ? "Search chats"
-      : `Search chat with ${agentDisplayName}`,
-    newChatAriaLabel: unify ? "New chat" : `New chat with ${agentDisplayName}`,
-  };
 }
 
 function ChatThreadsTitle() {
