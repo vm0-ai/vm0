@@ -13,7 +13,7 @@ import { isUUID } from "../../run/shared";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-interface SearchOptions {
+export interface LogsSearchCliOptions {
   afterContext?: string;
   beforeContext?: string;
   context?: string;
@@ -41,7 +41,7 @@ function formatRunHeader(
   return `── Run ${runId} (${agentName}, ${time}) ──────────`;
 }
 
-function parseContextOptions(options: SearchOptions): {
+function parseContextOptions(options: LogsSearchCliOptions): {
   before: number;
   after: number;
 } {
@@ -128,6 +128,48 @@ function renderResults(response: LogsSearchResponse): void {
   }
 }
 
+export async function runLogsSearch(
+  keyword: string,
+  options: LogsSearchCliOptions,
+): Promise<void> {
+  const { before, after } = parseContextOptions(options);
+
+  if (options.run && !isUUID(options.run)) {
+    console.error(
+      chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),
+    );
+    console.error(chalk.dim("  Run: zero logs list    to find run IDs"));
+    process.exit(1);
+  }
+
+  const since = options.since
+    ? parseTime(options.since)
+    : Date.now() - SEVEN_DAYS_MS;
+  const limit = parseLimit(options.limit);
+
+  const response = await searchZeroLogs({
+    keyword,
+    agent: options.agent,
+    runId: options.run,
+    since,
+    limit,
+    before,
+    after,
+  });
+
+  if (response.results.length === 0) {
+    console.log(chalk.dim("No matches found"));
+    console.log(
+      chalk.dim(
+        "  Try a broader search with --since 30d or a different keyword",
+      ),
+    );
+    return;
+  }
+
+  renderResults(response);
+}
+
 export const searchCommand = new Command()
   .name("search")
   .description("Search agent events across runs")
@@ -148,42 +190,7 @@ Examples:
   zero logs search "failed" --since 30d --limit 50`,
   )
   .action(
-    withErrorHandler(async (keyword: string, options: SearchOptions) => {
-      const { before, after } = parseContextOptions(options);
-
-      if (options.run && !isUUID(options.run)) {
-        console.error(
-          chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),
-        );
-        console.error(chalk.dim("  Run: zero logs list    to find run IDs"));
-        process.exit(1);
-      }
-
-      const since = options.since
-        ? parseTime(options.since)
-        : Date.now() - SEVEN_DAYS_MS;
-      const limit = parseLimit(options.limit);
-
-      const response = await searchZeroLogs({
-        keyword,
-        agent: options.agent,
-        runId: options.run,
-        since,
-        limit,
-        before,
-        after,
-      });
-
-      if (response.results.length === 0) {
-        console.log(chalk.dim("No matches found"));
-        console.log(
-          chalk.dim(
-            "  Try a broader search with --since 30d or a different keyword",
-          ),
-        );
-        return;
-      }
-
-      renderResults(response);
+    withErrorHandler(async (keyword: string, options: LogsSearchCliOptions) => {
+      await runLogsSearch(keyword, options);
     }),
   );
