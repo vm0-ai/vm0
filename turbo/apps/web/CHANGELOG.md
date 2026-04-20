@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.268.0](https://github.com/vm0-ai/vm0/compare/web-v12.267.0...web-v12.268.0) (2026-04-20)
+
+
+### Features
+
+* **web:** add user_behavior_count table and service ([#10226](https://github.com/vm0-ai/vm0/issues/10226)) ([3dac320](https://github.com/vm0-ai/vm0/commit/3dac3202637f20e1203de84634a6f1621440fb6c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.210.1
+
 ## [12.267.0](https://github.com/vm0-ai/vm0/compare/web-v12.266.0...web-v12.267.0) (2026-04-20)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.265.1](https://github.com/vm0-ai/vm0/compare/app-v0.265.0...app-v0.265.1) (2026-04-20)
+
+
+### Refactoring
+
+* **connectors:** remove org custom connectors feature switch ([#10229](https://github.com/vm0-ai/vm0/issues/10229)) ([a5e1b60](https://github.com/vm0-ai/vm0/commit/a5e1b601bcef3f4d0eaa20e959c28b04cffa9131))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.210.1
+
 ## [0.265.0](https://github.com/vm0-ai/vm0/compare/app-v0.264.0...app-v0.265.0) (2026-04-20)
 
 
