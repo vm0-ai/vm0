@@ -24,6 +24,7 @@ import {
   allConnectorTypes$,
   connectConnector$,
   connectorsSearch$,
+  disconnectConnector$,
   setConnectorsSearch$,
   selectedConnectorType$,
   setSelectedConnectorType$,
@@ -34,9 +35,9 @@ import {
   permissionDialogType$,
   setPermissionDialogType$,
   isStandaloneMode,
+  matchesConnectorSearch,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
-import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
@@ -272,7 +273,7 @@ export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
-  const disconnect = useSet(deleteConnector$);
+  const disconnect = useSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
   const selectedType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
@@ -290,15 +291,8 @@ export function ZeroConnectorsPage() {
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
 
-  const searchLower = search.toLowerCase();
   const filtered = allConnectors.filter((c) => {
-    if (!searchLower) {
-      return true;
-    }
-    return (
-      c.label.toLowerCase().includes(searchLower) ||
-      c.type.toLowerCase().includes(searchLower)
-    );
+    return matchesConnectorSearch(search, c);
   });
 
   const connected = filtered.filter((c) => {
@@ -321,7 +315,7 @@ export function ZeroConnectorsPage() {
     if (
       (ct &&
         ct.availableAuthMethods.length === 1 &&
-        ct.availableAuthMethods[0] === "api-token") ||
+        ct.availableAuthMethods[0] !== "oauth") ||
       isGoogleOAuthConnector(type)
     ) {
       setSelected(type);
@@ -396,7 +390,7 @@ export function ZeroConnectorsPage() {
               />
               <input
                 type="text"
-                placeholder="Search connectors"
+                placeholder="Find connectors"
                 value={search}
                 onChange={(e) => {
                   return setSearch(e.target.value);

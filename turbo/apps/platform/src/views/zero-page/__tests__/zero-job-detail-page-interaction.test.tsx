@@ -224,10 +224,10 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Click search button to activate search
-    await user.click(screen.getByLabelText("Search connectors"));
+    await user.click(screen.getByLabelText("Find connectors"));
 
     // Type search query
-    const searchInput = screen.getByPlaceholderText("Search connectors...");
+    const searchInput = screen.getByPlaceholderText("Find connectors...");
     await user.type(searchInput, "sla");
 
     // Only Slack should be visible
@@ -250,8 +250,8 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Activate search and filter
-    await user.click(screen.getByLabelText("Search connectors"));
-    const searchInput = screen.getByPlaceholderText("Search connectors...");
+    await user.click(screen.getByLabelText("Find connectors"));
+    const searchInput = screen.getByPlaceholderText("Find connectors...");
     await user.type(searchInput, "git");
 
     await waitFor(() => {

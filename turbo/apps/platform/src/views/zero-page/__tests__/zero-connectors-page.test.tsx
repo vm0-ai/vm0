@@ -28,9 +28,7 @@ describe("connectors page", () => {
         screen.getByRole("heading", { name: "Connectors" }),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.getByPlaceholderText("Search connectors"),
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Find connectors")).toBeInTheDocument();
   });
 
   it("shows available connectors when none are connected", async () => {
@@ -65,7 +63,7 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText("Search connectors");
+    const searchInput = screen.getByPlaceholderText("Find connectors");
     await fill(searchInput, "github");
 
     await waitFor(() => {
@@ -82,12 +80,52 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText("Search connectors");
+    const searchInput = screen.getByPlaceholderText("Find connectors");
     await fill(searchInput, "nonexistent-connector-xyz");
 
     await waitFor(() => {
       expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
     });
+  });
+
+  it("matches connectors by tag keyword", async () => {
+    // GitHub declares tags: ["gh", "gh_api_key", "git", "vcs", "scm", "repos"].
+    // "vcs" is not in the GitHub label/type/helpText, so a match on "vcs"
+    // exercises the tags match path specifically.
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText("Find connectors");
+    await fill(searchInput, "vcs");
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+    // Slack's label, type, helpText, and tags do not contain "vcs".
+    expect(screen.queryByText("Slack")).not.toBeInTheDocument();
+  });
+
+  it("matches connectors by helpText (description) keyword", async () => {
+    // Axiom's helpText contains "query logs" but neither its label ("Axiom")
+    // nor its type ("axiom") contains "logs", so matching on "logs"
+    // exercises the helpText match path specifically.
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Axiom")).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText("Find connectors");
+    await fill(searchInput, "logs");
+
+    await waitFor(() => {
+      expect(screen.getByText("Axiom")).toBeInTheDocument();
+    });
+    // GitHub's label, type, helpText, and tags do not contain "logs".
+    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
   it("shows loading toast then success toast on disconnect", async () => {

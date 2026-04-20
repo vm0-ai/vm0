@@ -317,6 +317,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "user falls back to the org default agent with no footer. Staff-only during the " +
       "rollout window defined by `enabledOrgIdHashes`.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ModelProviderSelection]: {
     maintainer: "ethan@vm0.ai",
@@ -331,6 +332,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Show redeem-code gift icon and dialog in the agent chat page header",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.NanoBananaConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Show the Nano Banana (Google Gemini image generation) platform-managed connector",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

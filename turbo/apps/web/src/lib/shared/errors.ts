@@ -65,6 +65,12 @@ interface ProviderIncompatibleError extends ApiErrorBase {
   readonly code: "PROVIDER_INCOMPATIBLE";
 }
 
+interface RunNotCancellableError extends ApiErrorBase {
+  readonly name: "RunNotCancellableError";
+  readonly statusCode: 400;
+  readonly code: "RUN_NOT_CANCELLABLE";
+}
+
 interface NoModelProviderError extends ApiErrorBase {
   readonly name: "NoModelProviderError";
   readonly statusCode: 422;
@@ -155,6 +161,14 @@ export function providerIncompatible(
   return error;
 }
 
+export function runNotCancellable(message: string): RunNotCancellableError {
+  const error = new Error(message) as RunNotCancellableError;
+  (error as { name: string }).name = "RunNotCancellableError";
+  (error as { statusCode: number }).statusCode = 400;
+  (error as { code: string }).code = "RUN_NOT_CANCELLABLE";
+  return error;
+}
+
 export function noModelProvider(
   message = "No model provider configured. Run 'zero org model-provider setup' to configure one, or add environment variables to your vm0.yaml.",
 ): NoModelProviderError {
@@ -201,6 +215,10 @@ export function isInsufficientCredits(
 
 export function isNoModelProvider(e: unknown): e is NoModelProviderError {
   return e instanceof Error && e.name === "NoModelProviderError";
+}
+
+export function isRunNotCancellable(e: unknown): e is RunNotCancellableError {
+  return e instanceof Error && e.name === "RunNotCancellableError";
 }
 
 export function isApiError(e: unknown): e is ApiErrorBase {

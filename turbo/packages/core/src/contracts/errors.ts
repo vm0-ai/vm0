@@ -10,6 +10,10 @@ export const ApiError = {
   FORBIDDEN: { status: 403 as const, code: "FORBIDDEN" },
   NOT_FOUND: { status: 404 as const, code: "NOT_FOUND" },
   CONFLICT: { status: 409 as const, code: "CONFLICT" },
+  RUN_NOT_CANCELLABLE: {
+    status: 400 as const,
+    code: "RUN_NOT_CANCELLABLE",
+  },
   INSUFFICIENT_CREDITS: {
     status: 402 as const,
     code: "INSUFFICIENT_CREDITS",

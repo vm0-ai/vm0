@@ -89,6 +89,7 @@ import {
 } from "../../signals/zero-page/settings/permissions.ts";
 import {
   allConnectorTypes$,
+  matchesConnectorSearch,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -446,11 +447,9 @@ function JobPermissionsTab({
   const connectedConnectors = allConnectors.filter((c) => {
     return c.connected;
   });
-  const filteredConnectors = search
-    ? connectedConnectors.filter((c) => {
-        return c.label.toLowerCase().includes(search.toLowerCase());
-      })
-    : connectedConnectors;
+  const filteredConnectors = connectedConnectors.filter((c) => {
+    return matchesConnectorSearch(search, c);
+  });
   const addedSet = new Set(addedConnectors);
 
   const handleToggle = (type: string, checked: boolean) => {
@@ -547,7 +546,7 @@ function JobPermissionsTab({
                       return el?.focus();
                     }}
                     type="text"
-                    placeholder="Search connectors..."
+                    placeholder="Find connectors..."
                     value={search}
                     onChange={(e) => {
                       return setSearch(e.target.value);
@@ -580,7 +579,7 @@ function JobPermissionsTab({
                     return setSearchActive(true);
                   }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  aria-label="Search connectors"
+                  aria-label="Find connectors"
                 >
                   <IconSearch size={14} stroke={1.5} />
                 </button>

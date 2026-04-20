@@ -18,12 +18,14 @@ import { createTestRequest } from "./core";
 export {
   createTestUserConnector,
   insertTestConnectorSecret,
+  insertTestPlatformConnector,
   createTestConnectorSession,
 } from "../db-test-seeders/connectors";
 
 export {
   findTestConnectorSecret,
   findTestConnectorTokenExpiresAt,
+  countPlatformConnectorRows,
 } from "../db-test-assertions/connectors";
 
 // ---------------------------------------------------------------------------

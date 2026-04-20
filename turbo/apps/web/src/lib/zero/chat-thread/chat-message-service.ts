@@ -221,6 +221,7 @@ export async function getMessagesSince(
     createdAt: Date;
     runStatus: string | null;
     runError: string | null;
+    attachFiles: ChatMessageAttachFiles | null;
   }>
 > {
   const db = globalThis.services.db;
@@ -235,6 +236,7 @@ export async function getMessagesSince(
     createdAt: chatMessages.createdAt,
     runStatus: agentRuns.status,
     runError: agentRuns.error,
+    attachFiles: chatMessages.attachFiles,
   };
 
   if (sinceId === undefined) {

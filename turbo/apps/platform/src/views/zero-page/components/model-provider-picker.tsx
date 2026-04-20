@@ -12,6 +12,7 @@ import {
 } from "@vm0/ui";
 import {
   areProvidersCompatible,
+  getDefaultModel,
   getModelDisplayName,
   getModels,
   MODEL_PROVIDER_TYPES,
@@ -19,9 +20,27 @@ import {
   type ModelProviderType,
 } from "@vm0/core";
 import {
+  getUIDefaultModel,
   getUILabel,
   getVm0ModelMultiplier,
 } from "./settings/provider-ui-config";
+
+function resolveDefaultModel(
+  providers: ModelProviderResponse[],
+): string | null {
+  const defaultProvider = providers.find((p) => {
+    return p.isDefault;
+  });
+  if (!defaultProvider) {
+    return null;
+  }
+  return (
+    defaultProvider.selectedModel ??
+    getUIDefaultModel(defaultProvider.type) ??
+    getDefaultModel(defaultProvider.type) ??
+    null
+  );
+}
 
 export interface ModelProviderSelection {
   modelProviderId: string;
@@ -79,6 +98,7 @@ function formatMultiplier(multiplier: number): string {
 interface TriggerLabelProps {
   providers: ModelProviderResponse[];
   value: ModelProviderSelection | null;
+  defaultModelName: string | null;
   placeholder: string;
   compact: boolean;
 }
@@ -86,11 +106,41 @@ interface TriggerLabelProps {
 function TriggerLabel({
   providers,
   value,
+  defaultModelName,
   placeholder,
   compact,
 }: TriggerLabelProps) {
   if (!value) {
-    return <span>{placeholder}</span>;
+    if (!defaultModelName) {
+      return <span>{placeholder}</span>;
+    }
+    const displayName = getModelDisplayName(defaultModelName);
+    if (compact) {
+      return <span className="truncate">{displayName}</span>;
+    }
+    const defaultProvider = providers.find((p) => {
+      return p.isDefault;
+    });
+    if (!defaultProvider) {
+      return <span className="truncate">{displayName}</span>;
+    }
+    const multiplier =
+      defaultProvider.type === "vm0"
+        ? getVm0ModelMultiplier(defaultModelName)
+        : undefined;
+    return (
+      <span className="flex items-center gap-1.5 min-w-0">
+        <span className="truncate">{displayName}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          · {getUILabel(defaultProvider.type)}
+        </span>
+        {multiplier !== undefined && (
+          <span className="shrink-0 rounded border border-border/60 bg-muted/50 px-1 text-[10px] font-medium tabular-nums text-muted-foreground">
+            {formatMultiplier(multiplier)}
+          </span>
+        )}
+      </span>
+    );
   }
   const displayName = getModelDisplayName(value.selectedModel);
   if (compact) {
@@ -163,6 +213,13 @@ export function ModelProviderPicker({
       return a.isVm0 ? -1 : 1;
     });
 
+  const defaultModelName = resolveDefaultModel(providers);
+  const triggerAriaLabel = value
+    ? getModelDisplayName(value.selectedModel)
+    : defaultModelName !== null
+      ? getModelDisplayName(defaultModelName)
+      : placeholder;
+
   return (
     <Select
       value={encodeValue(value)}
@@ -170,16 +227,15 @@ export function ModelProviderPicker({
         onChange(decodeValue(raw));
       }}
     >
-      <SelectTrigger className={cn("h-9 w-full", triggerClassName)}>
-        <SelectValue
-          placeholder={placeholder}
-          aria-label={
-            value ? getModelDisplayName(value.selectedModel) : placeholder
-          }
-        >
+      <SelectTrigger
+        aria-label={triggerAriaLabel}
+        className={cn("h-9 w-full", triggerClassName)}
+      >
+        <SelectValue placeholder={placeholder}>
           <TriggerLabel
             providers={providers}
             value={value}
+            defaultModelName={defaultModelName}
             placeholder={placeholder}
             compact={compactTrigger}
           />
@@ -209,12 +265,12 @@ export function ModelProviderPicker({
                     value={`${group.provider.id}::${model}`}
                     disabled={group.incompatible}
                   >
-                    <span className="flex items-center justify-between gap-3 w-full">
+                    <span className="flex items-center gap-3 w-full">
                       <span className="truncate">
                         {getModelDisplayName(model)}
                       </span>
                       {multiplier !== undefined && (
-                        <span className="shrink-0 rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                        <span className="ml-auto shrink-0 rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
                           {formatMultiplier(multiplier)}
                         </span>
                       )}

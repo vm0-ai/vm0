@@ -270,6 +270,8 @@ describe("sandbox-token", () => {
         "chat-message:write",
         "chat-message:read",
         "connector:read",
+        "file:read",
+        "file:write",
       ]);
       expect(auth?.capabilities).not.toContain("agent-run:write");
       expect(auth?.capabilities).not.toContain("computer-use:write");
@@ -296,7 +298,19 @@ describe("sandbox-token", () => {
         "connector:read",
         "computer-use:write",
         "voice-chat:write",
+        "file:read",
+        "file:write",
       ]);
+    });
+
+    it("should include file:read and file:write capabilities by default", async () => {
+      mockIsFeatureEnabled.mockReturnValue(false);
+
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const auth = verifyZeroToken(token);
+
+      expect(auth?.capabilities).toContain("file:read");
+      expect(auth?.capabilities).toContain("file:write");
     });
 
     it("should exclude agent-excluded capabilities from zero tokens", async () => {

@@ -27,6 +27,7 @@ import {
   insertTestGithubUserLink,
   insertTestTelegramInstallation,
   insertTestTelegramUserLink,
+  insertTestPlatformConnector,
 } from "../../../../__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../__tests__/db-test-seeders/email";
 import {
@@ -323,6 +324,10 @@ describe("deleteUserData", () => {
     await createTestConnectorSession(userId, "github");
     await insertTestComposeJob({ userId });
 
+    // Platform connector enablement — separate table from OAuth, must also
+    // be cascaded on user deletion.
+    await insertTestPlatformConnector(orgId, userId, "nano-banana");
+
     // Membership
     await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
     await insertOrgMembersEntry({ orgId, userId });
@@ -342,6 +347,7 @@ describe("deleteUserData", () => {
       "secrets",
       "model_providers",
       "connectors",
+      "user_platform_connectors",
       "variables",
       "usage_daily",
       "export_jobs",

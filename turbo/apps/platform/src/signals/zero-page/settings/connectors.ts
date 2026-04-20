@@ -6,6 +6,7 @@ import {
   hasRequiredScopes,
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
+  zeroPlatformConnectorContract,
   zeroSecretsContract,
   zeroVariablesContract,
   type ConnectorListResponse,
@@ -13,7 +14,11 @@ import {
   type ConnectorResponse,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
-import { connectors$, reloadConnectors$ } from "../../external/connectors.ts";
+import {
+  connectors$,
+  deleteConnector$,
+  reloadConnectors$,
+} from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { jsonParseOr, setLoop } from "../../utils.ts";
@@ -36,6 +41,8 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
+  /** Lowercase aliases/keywords used by connector search (from CONNECTOR_TYPES). */
+  tags: readonly string[];
   connected: boolean;
   connector: ConnectorResponse | null;
   /** Auth methods available for this connector (considering feature flags). */
@@ -46,6 +53,42 @@ export interface ConnectorTypeWithStatus {
   scopeMismatch: boolean;
   /** True if OAuth token refresh failed and user needs to reconnect. */
   needsReconnect: boolean;
+}
+
+/**
+ * Case-insensitive substring match across label, type, helpText, and tags.
+ * Returns true when `search` is empty, so callers can use it directly as a filter.
+ */
+export function matchesConnectorSearch(
+  search: string,
+  connector: {
+    label: string;
+    type: string;
+    helpText?: string;
+    tags?: readonly string[];
+  },
+): boolean {
+  const needle = search.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  if (connector.label.toLowerCase().includes(needle)) {
+    return true;
+  }
+  if (connector.type.toLowerCase().includes(needle)) {
+    return true;
+  }
+  if (connector.helpText?.toLowerCase().includes(needle)) {
+    return true;
+  }
+  if (
+    connector.tags?.some((t) => {
+      return t.toLowerCase().includes(needle);
+    })
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export const allConnectorTypes$ = computed(async (get) => {
@@ -60,29 +103,40 @@ export const allConnectorTypes$ = computed(async (get) => {
   const items = (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
       const flag = CONNECTOR_TYPES[type].featureFlag;
-      const oauthEnabled = !flag || !!features?.[flag];
-      const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
-      // Connector visible if OAuth is enabled OR it has an api-token method
-      return oauthEnabled || hasApiToken;
+      const flagEnabled = !flag || !!features?.[flag];
+      const methods = CONNECTOR_TYPES[type].authMethods;
+      const hasOauth = "oauth" in methods;
+      const hasApiToken = "api-token" in methods;
+      const hasPlatform = "platform" in methods;
+      // Connector visible if:
+      //  - the feature flag (if any) allows it AND an OAuth or platform method exists, or
+      //  - it has an api-token method (api-token is always available regardless of flag).
+      return (flagEnabled && (hasOauth || hasPlatform)) || hasApiToken;
     })
     .map((type) => {
       const config = CONNECTOR_TYPES[type];
       const connector = connectorMap.get(type) ?? null;
       const flag = CONNECTOR_TYPES[type].featureFlag;
-      const oauthEnabled = !flag || !!features?.[flag];
+      const flagEnabled = !flag || !!features?.[flag];
+      const hasOauth = "oauth" in config.authMethods;
       const hasApiToken = "api-token" in config.authMethods;
+      const hasPlatform = "platform" in config.authMethods;
       const availableAuthMethods: string[] = [];
-      if (oauthEnabled && "oauth" in config.authMethods) {
+      if (flagEnabled && hasOauth) {
         availableAuthMethods.push("oauth");
       }
       if (hasApiToken) {
         availableAuthMethods.push("api-token");
+      }
+      if (flagEnabled && hasPlatform) {
+        availableAuthMethods.push("platform");
       }
       const isExperimental = !!flag && !hasApiToken;
       return {
         type,
         label: isExperimental ? `[Experimental] ${config.label}` : config.label,
         helpText: config.helpText,
+        tags: config.tags ?? [],
         connected: connector !== null,
         connector,
         availableAuthMethods,
@@ -209,6 +263,36 @@ export const setTokenFormSubmitting$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Enable a platform-supplied connector (no credentials; POST the enable request)
+// ---------------------------------------------------------------------------
+
+export const enablePlatformConnector$ = command(
+  async ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroPlatformConnectorContract);
+    await accept(
+      client.create({
+        params: { type },
+        body: {},
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalJustConnectedTypes$, (prev) => {
+      return new Set([...prev, type]);
+    });
+    set(reloadConnectors$);
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.delete(type);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+    toast.success(`${CONNECTOR_TYPES[type].label} enabled`, {
+      id: `connector-connected-${type}`,
+    });
+    set(internalPermissionDialogType$, type);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Submit API token command
 // ---------------------------------------------------------------------------
 
@@ -275,6 +359,28 @@ const internalJustConnectedTypes$ = state<Set<string>>(new Set());
 export const justConnectedTypes$ = computed((get) => {
   return get(internalJustConnectedTypes$);
 });
+
+/**
+ * Disconnect a connector and clear its optimistic "just connected" flag.
+ *
+ * Without this cleanup, a connector that was connected earlier in the session
+ * stays in the Connected section of /connectors after disconnect because the
+ * optimistic override in allConnectorTypes$ wins over the fresh
+ * `connected = false` from the API (regression #10272).
+ */
+export const disconnectConnector$ = command(
+  async ({ set }, type: ConnectorType, signal: AbortSignal): Promise<void> => {
+    await set(deleteConnector$, type, signal);
+    set(internalJustConnectedTypes$, (prev) => {
+      if (!prev.has(type)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(type);
+      return next;
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Post-connect permission dialog state

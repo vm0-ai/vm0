@@ -6,7 +6,10 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { generateZeroToken } from "../../../../../../src/lib/auth/sandbox-token";
+import {
+  generateZeroToken,
+  generateSandboxToken,
+} from "../../../../../../src/lib/auth/sandbox-token";
 
 const URL = "http://localhost:3000/api/zero/web/download-file";
 
@@ -33,6 +36,19 @@ describe("GET /api/zero/web/download-file", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(`${URL}?file_id=abc`, { method: "GET" });
+    const response = await GET(request as never);
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 401 for sandbox token without file:read capability", async () => {
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-1");
+
+    const request = createTestRequest(`${URL}?file_id=abc`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    });
     const response = await GET(request as never);
 
     expect(response.status).toBe(401);

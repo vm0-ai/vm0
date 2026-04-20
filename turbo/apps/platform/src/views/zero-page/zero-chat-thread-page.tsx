@@ -57,6 +57,7 @@ import {
   currentChatThreadSignals$,
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
+import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -227,6 +228,7 @@ export function ZeroChatThreadPageInner({
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -290,6 +292,7 @@ export function ZeroChatThreadPageInner({
       </div>
 
       <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
+      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
     </div>
   );
 }
@@ -675,19 +678,44 @@ function PagedUserGroup({ group }: { group: GroupedChatMessageGroup }) {
 
 function PagedUserMessage({ message }: { message: PagedChatMessage }) {
   const content = message.content ?? "";
+  // Two attachment sources coexist: the structured `attachFiles` field
+  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
+  // over from messages sent before #10243 split the flows. Use the structured
+  // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
-  const displayContent = cleanContent.replace(/\n/g, "  \n");
-  const lightboxUrl = useGet(attachmentLightboxUrl$);
+  // `ATTACH_ONLY_PLACEHOLDER` is the server-side placeholder stored when the
+  // user sent only files with no typed text — strip it so the bubble shows
+  // just the attachments.
+  const strippedContent =
+    message.attachFiles &&
+    message.attachFiles.length > 0 &&
+    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
+      ? ""
+      : cleanContent;
+  const displayContent = strippedContent.replace(/\n/g, "  \n");
   const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
+  const openLightbox = (url: string) => {
+    setLightboxUrl(url);
+  };
 
-  const allAttachments = parsed.map((p) => {
-    return {
-      filename: p.filename,
-      url: p.url,
-      isImage: isImageFilename(p.filename),
-      isVideo: isVideoFilename(p.filename),
-    };
-  });
+  const allAttachments =
+    message.attachFiles && message.attachFiles.length > 0
+      ? message.attachFiles.map((f) => {
+          return {
+            filename: f.filename,
+            url: f.url,
+            isImage: isImageFilename(f.filename),
+            isVideo: isVideoFilename(f.filename),
+          };
+        })
+      : parsed.map((p) => {
+          return {
+            filename: p.filename,
+            url: p.url,
+            isImage: isImageFilename(p.filename),
+            isVideo: isVideoFilename(p.filename),
+          };
+        });
 
   return (
     <div data-role="user">
@@ -697,7 +725,11 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
             {displayContent && (
               <div className="px-4 py-3">
-                <Markdown source={displayContent} />
+                <Markdown
+                  source={displayContent}
+                  mediaPreview
+                  onImageClick={openLightbox}
+                />
               </div>
             )}
             {allAttachments.length > 0 && (
@@ -750,7 +782,6 @@ function PagedUserMessage({ message }: { message: PagedChatMessage }) {
           </div>
         </div>
       </div>
-      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
     </div>
   );
 }
@@ -792,6 +823,11 @@ function PagedAssistantGroup({
 }
 
 function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
+  const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
+  const openLightbox = (url: string) => {
+    setLightboxUrl(url);
+  };
+
   if (message.error) {
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
@@ -803,7 +839,11 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
   if (message.content) {
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-        <Markdown source={message.content} />
+        <Markdown
+          source={message.content}
+          mediaPreview
+          onImageClick={openLightbox}
+        />
       </div>
     );
   }

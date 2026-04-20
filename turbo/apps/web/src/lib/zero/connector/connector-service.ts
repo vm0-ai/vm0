@@ -9,6 +9,7 @@ import {
   getApiTokenFieldsByType,
 } from "@vm0/core";
 import { connectors } from "../../../db/schema/connector";
+import { userPlatformConnectors } from "../../../db/schema/user-platform-connector";
 import { secrets } from "../../../db/schema/secret";
 import { variables } from "../../../db/schema/variable";
 import { notFound, badRequest } from "../../shared/errors";
@@ -43,6 +44,29 @@ function parseConnectorType(type: string): ConnectorType {
 function getSecretNameForConnector(type: ConnectorType): string {
   if (type === "computer") return "COMPUTER_CONNECTOR_AUTHTOKEN";
   return PROVIDER_HANDLERS[type].getSecretName();
+}
+
+/**
+ * Map a user_platform_connectors row to the shared ConnectorResponse shape.
+ * Platform connectors carry no OAuth identity, scopes, or refresh state,
+ * so those fields are always null/false.
+ */
+function platformRowToResponse(
+  row: { id: string; createdAt: Date; updatedAt: Date },
+  type: ConnectorType,
+): ConnectorResponse {
+  return {
+    id: row.id,
+    type,
+    authMethod: "platform",
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    needsReconnect: false,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }
 
 /**
@@ -87,8 +111,9 @@ export async function getApiTokenConnectorTypes(
 
 /**
  * List all connectors for an org.
- * Returns OAuth connectors from DB plus derived api-token connectors
- * based on user secrets that match api-token required secret names.
+ * Merges three sources: OAuth rows from `connectors`, platform rows from
+ * `user_platform_connectors`, and api-token connectors derived from user
+ * secrets that match api-token required secret names.
  */
 export async function listConnectors(
   orgId: string,
@@ -96,8 +121,7 @@ export async function listConnectors(
 ): Promise<ConnectorResponse[]> {
   const db = globalThis.services.db;
 
-  // Query OAuth connectors from DB and derive api-token types in parallel
-  const [dbResult, derivedTypes] = await Promise.all([
+  const [oauthRows, platformRows, derivedTypes] = await Promise.all([
     db
       .select({
         id: connectors.id,
@@ -112,25 +136,43 @@ export async function listConnectors(
         updatedAt: connectors.updatedAt,
       })
       .from(connectors)
-      .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)))
-      .orderBy(connectors.type),
+      .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId))),
+    db
+      .select({
+        id: userPlatformConnectors.id,
+        type: userPlatformConnectors.type,
+        createdAt: userPlatformConnectors.createdAt,
+        updatedAt: userPlatformConnectors.updatedAt,
+      })
+      .from(userPlatformConnectors)
+      .where(
+        and(
+          eq(userPlatformConnectors.orgId, orgId),
+          eq(userPlatformConnectors.userId, userId),
+        ),
+      ),
     getApiTokenConnectorTypes(orgId, userId),
   ]);
 
-  const dbConnectors: ConnectorResponse[] = dbResult.map((row) => {
-    return {
-      id: row.id,
-      type: parseConnectorType(row.type),
-      authMethod: row.authMethod,
-      externalId: row.externalId,
-      externalUsername: row.externalUsername,
-      externalEmail: row.externalEmail,
-      oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
-      needsReconnect: row.needsReconnect,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
-  });
+  const dbConnectors: ConnectorResponse[] = [
+    ...oauthRows.map((row) => {
+      return {
+        id: row.id,
+        type: parseConnectorType(row.type),
+        authMethod: row.authMethod,
+        externalId: row.externalId,
+        externalUsername: row.externalUsername,
+        externalEmail: row.externalEmail,
+        oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
+        needsReconnect: row.needsReconnect,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    }),
+    ...platformRows.map((row) => {
+      return platformRowToResponse(row, parseConnectorType(row.type));
+    }),
+  ];
 
   // DB record takes precedence over derived
   const dbTypeSet = new Set(
@@ -163,7 +205,8 @@ export async function listConnectors(
 
 /**
  * Get a specific connector by type.
- * Returns DB record for OAuth connectors, or derived response for api-token
+ * Returns the DB record for OAuth (from `connectors`) or platform (from
+ * `user_platform_connectors`), or a derived response for api-token
  * connectors whose required user secrets are all present.
  */
 export async function getConnector(
@@ -171,31 +214,50 @@ export async function getConnector(
   userId: string,
   type: ConnectorType,
 ): Promise<ConnectorResponse | null> {
-  const result = await globalThis.services.db
-    .select({
-      id: connectors.id,
-      type: connectors.type,
-      authMethod: connectors.authMethod,
-      externalId: connectors.externalId,
-      externalUsername: connectors.externalUsername,
-      externalEmail: connectors.externalEmail,
-      oauthScopes: connectors.oauthScopes,
-      needsReconnect: connectors.needsReconnect,
-      createdAt: connectors.createdAt,
-      updatedAt: connectors.updatedAt,
-    })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, orgId),
-        eq(connectors.userId, userId),
-        eq(connectors.type, type),
-      ),
-    )
-    .limit(1);
+  const db = globalThis.services.db;
 
-  if (result[0]) {
-    const row = result[0];
+  const [oauthResult, platformResult] = await Promise.all([
+    db
+      .select({
+        id: connectors.id,
+        type: connectors.type,
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        needsReconnect: connectors.needsReconnect,
+        createdAt: connectors.createdAt,
+        updatedAt: connectors.updatedAt,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, orgId),
+          eq(connectors.userId, userId),
+          eq(connectors.type, type),
+        ),
+      )
+      .limit(1),
+    db
+      .select({
+        id: userPlatformConnectors.id,
+        createdAt: userPlatformConnectors.createdAt,
+        updatedAt: userPlatformConnectors.updatedAt,
+      })
+      .from(userPlatformConnectors)
+      .where(
+        and(
+          eq(userPlatformConnectors.orgId, orgId),
+          eq(userPlatformConnectors.userId, userId),
+          eq(userPlatformConnectors.type, type),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  if (oauthResult[0]) {
+    const row = oauthResult[0];
     return {
       id: row.id,
       type: parseConnectorType(row.type),
@@ -208,6 +270,10 @@ export async function getConnector(
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
+  }
+
+  if (platformResult[0]) {
+    return platformRowToResponse(platformResult[0], type);
   }
 
   // Check if type supports api-token and all required fields exist
@@ -389,6 +455,41 @@ export async function upsertOAuthConnector(
 }
 
 /**
+ * Enable a platform-supplied connector. Idempotent: a duplicate enable is a
+ * no-op (same unique tuple conflict on user_platform_connectors). Credentials
+ * are never stored here — the firewall injects platform-level auth at proxy
+ * time. Kept in its own table so the `connectors` table stays OAuth-shaped;
+ * future platform connectors can gain quota / billing columns without
+ * polluting the OAuth schema.
+ */
+export async function createPlatformConnector(
+  orgId: string,
+  userId: string,
+  type: ConnectorType,
+): Promise<ConnectorResponse> {
+  const db = globalThis.services.db;
+  const [row] = await db
+    .insert(userPlatformConnectors)
+    .values({ orgId, userId, type })
+    .onConflictDoUpdate({
+      target: [
+        userPlatformConnectors.orgId,
+        userPlatformConnectors.userId,
+        userPlatformConnectors.type,
+      ],
+      set: { updatedAt: new Date() },
+    })
+    .returning();
+
+  if (!row) {
+    throw new Error("Failed to upsert platform connector");
+  }
+  log.debug("platform connector enabled", { connectorId: row.id, type });
+
+  return platformRowToResponse(row, type);
+}
+
+/**
  * Best-effort revocation of an OAuth provider's remote token/grant.
  * Looks up the connector's handler, reads the access token from DB,
  * and calls the handler's revokeToken method if available.
@@ -437,8 +538,12 @@ export async function revokeConnectorToken(
 
 /**
  * Delete a connector and its associated secrets.
- * For OAuth connectors: deletes DB record + connector-type secrets.
- * For api-token connectors (no DB record): deletes user secrets matching required api-token secret names.
+ * - OAuth connectors: revoke remote token (best-effort), delete DB row +
+ *   connector-type secrets (access + refresh).
+ * - Platform connectors: delete the `user_platform_connectors` row only —
+ *   no secrets, no remote revoke.
+ * - API-token connectors (no DB row): delete user secrets/variables that
+ *   match the api-token requirement for this type.
  */
 export async function deleteConnector(
   orgId: string,
@@ -446,8 +551,9 @@ export async function deleteConnector(
   type: ConnectorType,
 ): Promise<void> {
   const db = globalThis.services.db;
+  let deleted = false;
 
-  // Check if connector exists in DB (OAuth connectors)
+  // Check if connector exists in `connectors` (OAuth) table
   const [existing] = await db
     .select({ id: connectors.id, authMethod: connectors.authMethod })
     .from(connectors)
@@ -500,8 +606,29 @@ export async function deleteConnector(
     }
 
     log.debug("connector deleted", { orgId, type });
-    return;
+    deleted = true;
   }
+
+  // Platform row lives in a separate table. Always attempt deletion so a
+  // stray row (e.g. from historical data or a race where both auth methods
+  // were written) cannot linger after the OAuth branch above cleaned the
+  // primary record.
+  const platformDeleted = await db
+    .delete(userPlatformConnectors)
+    .where(
+      and(
+        eq(userPlatformConnectors.orgId, orgId),
+        eq(userPlatformConnectors.userId, userId),
+        eq(userPlatformConnectors.type, type),
+      ),
+    )
+    .returning({ id: userPlatformConnectors.id });
+  if (platformDeleted.length > 0) {
+    log.debug("platform connector deleted", { orgId, type });
+    deleted = true;
+  }
+
+  if (deleted) return;
 
   // No DB record — check if type supports api-token and delete secrets + variables
   const fields = getApiTokenFieldsByType(type);

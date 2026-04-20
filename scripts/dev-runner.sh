@@ -87,8 +87,15 @@ cmd_deploy() {
   log "Running setup..."
   ssh_cmd "$RUNNER_BIN setup"
 
+  # R2 creds passed as sudo args so they survive sudo's env scrub. Empty
+  # values are treated as "unset" by r2_cache.rs, matching
+  # ansible/playbooks/build-runner.yml's R2 env block. Applied to both
+  # `gc` (sweeps shared R2 objects older than 7d) and `build` (pulls
+  # cached rootfs instead of rebuilding ~3-5min locally).
+  R2_ENV="R2_ACCOUNT_ID='${R2_ACCOUNT_ID:-}' R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID:-}' R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY:-}' R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME:-}'"
+
   # Clean up old images (keep 3 most recent deploys)
-  ssh_cmd "$RUNNER_BIN gc --keep-latest 3"
+  ssh_cmd "sudo $R2_ENV $REMOTE_BIN_DIR/runner gc --keep-latest 3"
 
   # Build unified image (rootfs + snapshot)
   PROFILES=("vm0/default")
@@ -97,7 +104,7 @@ cmd_deploy() {
   for PROFILE in "${PROFILES[@]}"; do
     log "Building $PROFILE..."
     BUILD_LOG=$(mktemp)
-    ssh_cmd "$RUNNER_BIN build --profile $PROFILE" | tee "$BUILD_LOG"
+    ssh_cmd "sudo $R2_ENV $REMOTE_BIN_DIR/runner build --profile $PROFILE" | tee "$BUILD_LOG"
     ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
     SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
     rm -f "$BUILD_LOG"

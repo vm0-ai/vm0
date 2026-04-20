@@ -147,7 +147,7 @@ describe("chat-d-018: add dialog with search filtering", () => {
     await user.click(addButton);
 
     const searchInput = await waitFor(() => {
-      return screen.getByPlaceholderText("Search connectors...");
+      return screen.getByPlaceholderText("Find connectors...");
     });
     expect(searchInput).toBeInTheDocument();
 

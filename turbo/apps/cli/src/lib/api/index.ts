@@ -149,6 +149,9 @@ export {
 // Domain modules - Zero Logs
 export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
 
+// Domain modules - Zero Chat
+export { searchZeroChat } from "./domains/zero-chat";
+
 // Domain modules - Logs
 export {
   getSystemLog,
@@ -194,4 +197,4 @@ export {
 export { completeVoiceChatPreparation } from "./domains/zero-voice-chat-prepare";
 
 // Domain modules - Web
-export { downloadWebFile } from "./domains/web";
+export { downloadWebFile, uploadWebFile } from "./domains/web";
