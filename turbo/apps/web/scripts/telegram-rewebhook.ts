@@ -1,8 +1,7 @@
 #!/usr/bin/env tsx
 
-import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
 import { telegramInstallations } from "../src/db/schema/telegram-installation";
+import { initServices } from "../src/lib/init-services";
 import { decryptSecretValue } from "../src/lib/shared/crypto/secrets-encryption";
 import { setWebhook } from "../src/lib/zero/telegram/client";
 import { buildTelegramWebhookUrl } from "../src/lib/zero/telegram/webhook-url";
@@ -33,16 +32,12 @@ function parseArgs(argv: string[]): Args {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  const databaseUrl = process.env.DATABASE_URL;
-  const secretsKey = process.env.SECRETS_ENCRYPTION_KEY;
-  const apiUrl = process.env.VM0_API_URL;
+  initServices();
+  const { db, env, pool } = globalThis.services;
+  const apiUrl = env.VM0_API_URL;
+  const secretsKey = env.SECRETS_ENCRYPTION_KEY;
 
-  if (!databaseUrl) throw new Error("DATABASE_URL is required");
-  if (!secretsKey) throw new Error("SECRETS_ENCRYPTION_KEY is required");
   if (!apiUrl) throw new Error("VM0_API_URL is required");
-
-  const sql = postgres(databaseUrl, { max: 1 });
-  const db = drizzle(sql);
 
   const rows = await db
     .select({
@@ -58,7 +53,7 @@ async function main(): Promise<void> {
       const url = buildTelegramWebhookUrl(apiUrl, row.telegramBotId);
       console.log(`[dry-run] would setWebhook ${row.telegramBotId} → ${url}`);
     }
-    await sql.end();
+    await pool.end();
     return;
   }
 
@@ -78,7 +73,7 @@ async function main(): Promise<void> {
   }
 
   console.log(`Done. succeeded=${succeeded} failed=${failed}`);
-  await sql.end();
+  await pool.end();
 
   if (failed > 0) process.exitCode = 1;
 }

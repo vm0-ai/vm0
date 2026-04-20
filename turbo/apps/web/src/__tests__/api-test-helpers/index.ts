@@ -155,6 +155,7 @@ export {
   countTestTelegramMessages,
   countTelegramUserLinkRows,
   findTestTelegramUserLinksByVm0UserId,
+  findTestTelegramInstallationsByOwner,
   telegramUserLinkExists,
   telegramThreadSessionExists,
 } from "./telegram";

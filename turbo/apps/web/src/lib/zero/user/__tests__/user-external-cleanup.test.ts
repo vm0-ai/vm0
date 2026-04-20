@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { HttpResponse } from "msw";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   insertTestGitHubUserLink,
   insertTestGitHubInstallation,
   createTestTelegramInstallation,
+  createTelegramInstallationForCompose,
   findTestGitHubUserLinksByVm0UserId,
+  findTestTelegramInstallationsByOwner,
   findTestTelegramUserLinksByVm0UserId,
 } from "../../../../__tests__/api-test-helpers";
 import {
@@ -13,6 +16,8 @@ import {
   insertTestSlackOrgThreadSession,
 } from "../../../../__tests__/db-test-seeders/slack";
 import { findTestSlackOrgConnectionsByVm0UserId } from "../../../../__tests__/db-test-assertions/slack";
+import { http } from "../../../../__tests__/msw";
+import { server } from "../../../../mocks/server";
 import { cleanupUserExternalServices } from "../user-external-cleanup";
 
 const context = testContext();
@@ -70,6 +75,55 @@ describe("cleanupUserExternalServices", () => {
     await cleanupUserExternalServices(userId);
 
     const after = await findTestTelegramUserLinksByVm0UserId(userId);
+    expect(after).toHaveLength(0);
+  });
+
+  it("deletes owned telegram installations and deregisters webhooks", async () => {
+    const compose = await context.createAgentCompose(userId);
+    const botToken = `owned-bot-token-${uniqueId("t")}`;
+    await createTelegramInstallationForCompose(compose.id, userId, botToken);
+
+    const telegramHandler = http.post(
+      `https://api.telegram.org/bot${botToken}/deleteWebhook`,
+      () => {
+        return HttpResponse.json({ ok: true, result: true });
+      },
+    );
+    server.use(telegramHandler.handler);
+
+    // Verify installation exists before cleanup
+    const before = await findTestTelegramInstallationsByOwner(userId);
+    expect(before).toHaveLength(1);
+
+    await cleanupUserExternalServices(userId);
+
+    // Webhook deregistration attempted
+    expect(telegramHandler.mocked).toHaveBeenCalledTimes(1);
+
+    // Installation row deleted (cascades user links, thread sessions, messages)
+    const after = await findTestTelegramInstallationsByOwner(userId);
+    expect(after).toHaveLength(0);
+  });
+
+  it("deletes owned telegram installations even when deleteWebhook fails", async () => {
+    const compose = await context.createAgentCompose(userId);
+    const botToken = `owned-fail-token-${uniqueId("t")}`;
+    await createTelegramInstallationForCompose(compose.id, userId, botToken);
+
+    const failHandler = http.post(
+      `https://api.telegram.org/bot${botToken}/deleteWebhook`,
+      () => {
+        return HttpResponse.error();
+      },
+    );
+    server.use(failHandler.handler);
+
+    await cleanupUserExternalServices(userId);
+
+    expect(failHandler.mocked).toHaveBeenCalledTimes(1);
+
+    // DB row is still deleted despite the Telegram API failure
+    const after = await findTestTelegramInstallationsByOwner(userId);
     expect(after).toHaveLength(0);
   });
 
