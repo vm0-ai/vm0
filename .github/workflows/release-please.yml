@@ -390,9 +390,13 @@ jobs:
                   text: "*Web App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Promote web staged deployment to production (traffic switch).
-  # Gates on all component builds — if any build fails, no component is
-  # promoted, so production never lands in a partial-release state
-  # (e.g. new web schema live while build-app failed and app/runner still old).
+  # Also acts as the atomic-release gate: if any component build fails,
+  # no component promotes, so production never lands in a partial-release
+  # state (e.g. new web schema live while build-app failed and app/runner
+  # still old). promote-app needs build-app directly, but promote-runner
+  # does NOT need build-app — the gate propagates to promote-runner via
+  # GHA's failure() ancestor-transitivity through this job. Do not relax
+  # these needs without reworking the promote-runner side.
   # build-app and build-runner may be skipped when their release didn't fire
   # this cycle; `!failure() && !cancelled()` lets the job proceed in that case.
   promote-web-production:
@@ -1340,6 +1344,11 @@ jobs:
   # promote-web-production so the new runner only serves traffic after
   # the schema and API it targets are live. Host-level prep
   # (provision-runner, provision-monitoring) already ran in build.
+  # promote-web-production also serves as the atomic-release gate —
+  # if build-app or any sibling build failed, promote-web is skipped and
+  # its failure cascades here via GHA's failure() ancestor-transitivity,
+  # blocking runner promotion too. Keep promote-web in needs so this
+  # cross-component gate stays intact.
   promote-runner-production:
     needs: [release-please, migrate-production, promote-web-production, resolve-image-cache, build-runner-production]
     if: >-
