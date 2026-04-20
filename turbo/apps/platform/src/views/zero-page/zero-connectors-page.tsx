@@ -24,6 +24,7 @@ import {
   allConnectorTypes$,
   connectConnector$,
   connectorsSearch$,
+  disconnectConnector$,
   setConnectorsSearch$,
   selectedConnectorType$,
   setSelectedConnectorType$,
@@ -36,7 +37,6 @@ import {
   isStandaloneMode,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
-import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
@@ -272,7 +272,7 @@ export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
-  const disconnect = useSet(deleteConnector$);
+  const disconnect = useSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
   const selectedType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);

@@ -13,7 +13,11 @@ import {
   type ConnectorResponse,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
-import { connectors$, reloadConnectors$ } from "../../external/connectors.ts";
+import {
+  connectors$,
+  deleteConnector$,
+  reloadConnectors$,
+} from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { jsonParseOr, setLoop } from "../../utils.ts";
@@ -275,6 +279,28 @@ const internalJustConnectedTypes$ = state<Set<string>>(new Set());
 export const justConnectedTypes$ = computed((get) => {
   return get(internalJustConnectedTypes$);
 });
+
+/**
+ * Disconnect a connector and clear its optimistic "just connected" flag.
+ *
+ * Without this cleanup, a connector that was connected earlier in the session
+ * stays in the Connected section of /connectors after disconnect because the
+ * optimistic override in allConnectorTypes$ wins over the fresh
+ * `connected = false` from the API (regression #10272).
+ */
+export const disconnectConnector$ = command(
+  async ({ set }, type: ConnectorType, signal: AbortSignal): Promise<void> => {
+    await set(deleteConnector$, type, signal);
+    set(internalJustConnectedTypes$, (prev) => {
+      if (!prev.has(type)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(type);
+      return next;
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Post-connect permission dialog state
