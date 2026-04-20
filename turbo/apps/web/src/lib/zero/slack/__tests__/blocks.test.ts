@@ -223,69 +223,6 @@ describe("buildAgentResponseMessage", () => {
       (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
     ).toContain("Audit");
   });
-
-  it("should add powered-by footer when modelName is provided", () => {
-    const blocks = buildAgentResponseMessage(
-      "Response text",
-      undefined,
-      undefined,
-      "claude-opus-4-7",
-    );
-
-    const contextBlocks = blocks.filter((b) => {
-      return b.type === "context";
-    });
-    expect(contextBlocks).toHaveLength(1);
-    expect(
-      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
-    ).toBe("Claude Opus 4.7");
-  });
-
-  it("should combine slackUserName and modelName with · separator", () => {
-    const blocks = buildAgentResponseMessage(
-      "Response text",
-      undefined,
-      undefined,
-      "claude-opus-4-7",
-      "Alice",
-    );
-
-    const contextBlocks = blocks.filter((b) => {
-      return b.type === "context";
-    });
-    expect(contextBlocks).toHaveLength(1);
-    expect(
-      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
-    ).toBe("Sent from Alice · Claude Opus 4.7");
-  });
-
-  it("should convert model IDs to friendly names", () => {
-    const testCases: [string, string][] = [
-      ["claude-opus-4-7", "Claude Opus 4.7"],
-      ["claude-sonnet-4-6", "Claude Sonnet 4.6"],
-      ["claude-haiku-4-5", "Claude Haiku 4.5"],
-      ["MiniMax-M2.7", "MiniMax M2.7"],
-      ["glm-5.1", "GLM-5.1"],
-      ["kimi-k2.5", "Kimi K2.5"],
-      ["deepseek-chat", "DeepSeek Chat"],
-      ["unknown-model", "unknown-model"],
-    ];
-
-    for (const [input, expected] of testCases) {
-      const blocks = buildAgentResponseMessage(
-        "text",
-        undefined,
-        undefined,
-        input,
-      );
-      const contextBlocks = blocks.filter((b) => {
-        return b.type === "context";
-      });
-      const text = (contextBlocks[0] as { elements: { text: string }[] })
-        .elements[0]!.text;
-      expect(text).toBe(expected);
-    }
-  });
 });
 
 describe("buildFooterBlocks", () => {

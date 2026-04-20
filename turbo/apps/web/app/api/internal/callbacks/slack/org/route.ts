@@ -194,16 +194,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         SECRETS_ENCRYPTION_KEY,
       );
       const slackClient = createSlackClient(token);
-      try {
-        await setThreadStatus(
-          slackClient,
-          payload.channelId,
-          payload.threadTs,
-          "is thinking...",
-        );
-      } catch (err) {
-        log.debug("Failed to refresh thread status", { runId, error: err });
-      }
+      // Fire-and-forget: setStatus is a UI hint; failure must not abort the 200 response
+      // that acknowledges the progress notification to the dispatcher.
+      setThreadStatus(
+        slackClient,
+        payload.channelId,
+        payload.threadTs,
+        "is thinking...",
+      ).catch((err: unknown) => {
+        log.warn("Failed to set thinking thread status", { runId, error: err });
+      });
     }
 
     return NextResponse.json({ success: true });
@@ -299,12 +299,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await saveRunSummary(runId, "slack", runContext.prompt, combinedOutput);
   }
 
-  // Clear assistant thinking status
-  try {
-    await setThreadStatus(client, payload.channelId, payload.threadTs, "");
-  } catch (err) {
-    log.debug("Failed to clear thread status", { runId, error: err });
-  }
+  // Fire-and-forget: clearing the status is a UI hint; failure must not affect
+  // the 200 response that acknowledges successful message delivery to the dispatcher.
+  setThreadStatus(client, payload.channelId, payload.threadTs, "").catch(
+    (err: unknown) => {
+      log.warn("Failed to clear thread status", { runId, error: err });
+    },
+  );
 
   log.debug("Slack org callback processed successfully", { runId });
   return NextResponse.json({ success: true });
