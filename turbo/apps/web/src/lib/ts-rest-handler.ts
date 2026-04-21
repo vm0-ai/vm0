@@ -90,7 +90,11 @@ export function createSafeErrorHandler(
 
     // Application errors with explicit status codes (BadRequest, NotFound, etc.)
     if (isApiError(err)) {
-      log.error(`${routeName} error:`, err);
+      if (err.statusCode >= 500) {
+        log.error(`${routeName} error:`, err);
+      } else {
+        log.warn(`${routeName} client error:`, err);
+      }
       return TsRestResponse.fromJson(
         { error: { message: err.message, code: err.code } },
         { status: err.statusCode },
