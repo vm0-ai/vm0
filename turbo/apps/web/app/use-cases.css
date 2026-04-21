@@ -26,7 +26,7 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .uc-filter-label {
@@ -146,7 +146,7 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   font-size: 12px;
   font-weight: 600;
   color: #ffffff;
@@ -261,7 +261,7 @@
 .uc-connector-badge {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   width: 36px;
   height: 36px;
   border-radius: 8px;
