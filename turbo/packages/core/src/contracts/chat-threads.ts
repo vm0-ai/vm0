@@ -33,7 +33,23 @@ const persistedAttachmentSchema = z.object({
 const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
+  /**
+   * @deprecated Use `agent.id` instead. Will be removed in #10284 once every
+   * consumer reads `agent.id` and the UnifyChatThreads flag has fully rolled out.
+   * Kept temporarily so existing fixtures still parse during the rollout window.
+   */
   agentId: z.string(),
+  /**
+   * Owning agent snapshot. Always emitted by the server; kept optional on the
+   * schema so older fixtures that predate the unified-list rollout still
+   * validate until they are migrated (tracked in #10284).
+   */
+  agent: z
+    .object({
+      id: z.string(),
+      avatarUrl: z.string().nullable(),
+    })
+    .optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   /**
@@ -153,13 +169,15 @@ export const chatThreadsContract = c.router({
     path: "/api/zero/chat-threads",
     headers: authHeadersSchema,
     query: z.object({
-      agentId: z.string().min(1, "agentId is required"),
+      agentId: z.string().min(1).optional(),
     }),
     responses: {
       200: z.object({ threads: z.array(chatThreadListItemSchema) }),
       401: apiErrorSchema,
+      404: apiErrorSchema,
     },
-    summary: "List chat threads for an agent",
+    summary:
+      "List chat threads. When agentId is omitted, returns every thread the caller owns scoped by orgId.",
   },
 });
 
@@ -282,6 +300,71 @@ export const chatMessagesContract = c.router({
 });
 
 /**
+ * Single chat message in a search result.
+ * `content` is guaranteed non-null because the search route filters out
+ * placeholder rows where content is NULL.
+ */
+const chatSearchMessageSchema = z.object({
+  messageId: z.string(),
+  chatThreadId: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  createdAt: z.string(),
+  sequenceNumber: z.number().nullable(),
+  runId: z.string().nullable(),
+});
+
+const chatSearchResultSchema = z.object({
+  chatThreadId: z.string(),
+  agentName: z.string(),
+  matchedMessage: chatSearchMessageSchema,
+  contextBefore: z.array(chatSearchMessageSchema),
+  contextAfter: z.array(chatSearchMessageSchema),
+});
+
+/**
+ * `hasMore` indicates that the server truncated the result set at `limit`.
+ * There is intentionally no cursor/offset: `limit` is capped at 50 (see the
+ * query schema below) and chat-message search is a lookup tool, not a bulk
+ * export. Callers that hit `hasMore=true` should narrow the query (add
+ * `agent`, `since`, or a more specific `keyword`) rather than paginate. If
+ * genuine pagination is ever needed, introduce `nextCursor` here — the
+ * contract has no external consumers yet, so adding it later is safe.
+ */
+const chatSearchResponseSchema = z.object({
+  results: z.array(chatSearchResultSchema),
+  hasMore: z.boolean(),
+});
+
+/**
+ * Chat search contract (GET /api/zero/chat/search)
+ * Searches chat messages within the caller's own threads in the caller's org.
+ * Authorization is enforced at the DB query level via userId + orgId filters.
+ */
+export const chatSearchContract = c.router({
+  search: {
+    method: "GET",
+    path: "/api/zero/chat/search",
+    headers: authHeadersSchema,
+    query: z.object({
+      keyword: z.string().min(1),
+      agent: z.string().optional(),
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(50).default(20),
+      before: z.coerce.number().min(0).max(10).default(0),
+      after: z.coerce.number().min(0).max(10).default(0),
+    }),
+    responses: {
+      200: chatSearchResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Search chat messages within caller's org (zero proxy)",
+  },
+});
+
+/**
  * Paginated chat messages contract (/api/zero/chat-threads/:threadId/messages)
  * Cursor-based pagination using message UUID as sinceId.
  */
@@ -292,6 +375,7 @@ const pagedChatMessageSchema = z.object({
   runId: z.string().optional(),
   error: z.string().optional(),
   status: z.string().optional(),
+  attachFiles: z.array(resolvedAttachFileSchema).optional(),
   createdAt: z.string(),
 });
 
@@ -321,6 +405,10 @@ export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
+export type ChatSearchContract = typeof chatSearchContract;
+export type ChatSearchResponse = z.infer<typeof chatSearchResponseSchema>;
+export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
+export type ChatSearchMessage = z.infer<typeof chatSearchMessageSchema>;
 
 export {
   chatThreadListItemSchema,

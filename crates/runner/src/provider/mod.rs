@@ -13,8 +13,10 @@ pub use api::ApiProvider;
 pub use local::LocalProvider;
 pub(crate) use local::{JobRequest, JobResponse};
 
+use sandbox::SandboxId;
+
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 
 /// Abstraction over job lifecycle — discovery, claiming, and completion reporting.
 ///
@@ -49,8 +51,20 @@ pub trait JobProvider: Send + Sync {
 
     /// Report job completion. Called concurrently from spawned executor tasks.
     ///
+    /// `sandbox_id` is the VM the run executed against (reused or freshly
+    /// allocated). `reuse_result` describes the sandbox-reuse decision made
+    /// before the run started. Both are `Option` so non-runner callers
+    /// (tests, future transports) can omit them.
+    ///
     /// Implementations manage auth tokens and retry logic internally.
-    async fn complete(&self, run_id: RunId, exit_code: i32, error: Option<&str>);
+    async fn complete(
+        &self,
+        run_id: RunId,
+        exit_code: i32,
+        error: Option<&str>,
+        sandbox_id: Option<SandboxId>,
+        reuse_result: Option<SandboxReuseResult>,
+    );
 
     /// Report runner state to the server. Fire-and-forget — failures are
     /// logged but do not affect runner operation.

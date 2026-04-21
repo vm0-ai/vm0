@@ -14,6 +14,10 @@ import {
 } from "@tabler/icons-react";
 import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
+  AgentAvatarImg,
+  useChatThreadsTitleLabels,
+} from "./zero-sidebar-shared.tsx";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -39,7 +43,6 @@ import {
 import {
   currentChatAgentId$,
   currentChatThreadId$,
-  currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
 import {
   navigateToChat$,
@@ -63,11 +66,13 @@ function ChatThreadItem({
   isSelected,
   onSelect,
   showReadIndicator,
+  showAgentAvatar,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
   onSelect?: (id: string) => void;
   showReadIndicator: boolean;
+  showAgentAvatar: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const isUnread = showReadIndicator && !session.isRead;
@@ -109,6 +114,13 @@ function ChatThreadItem({
           <span
             className="shrink-0 h-2 w-2 rounded-full bg-primary"
             aria-label="Unread"
+          />
+        )}
+        {showAgentAvatar && (
+          <AgentAvatarImg
+            name={session.agent?.id ?? session.agentId}
+            alt=""
+            className="h-4 w-4 shrink-0 rounded-full object-cover object-top"
           />
         )}
         <span className="truncate min-w-0 flex-1">
@@ -155,6 +167,8 @@ function ChatThreads() {
   const features = useLastResolved(featureSwitch$);
   const showReadIndicator =
     features?.[FeatureSwitchKey.ChatThreadReadIndicator] ?? false;
+  const unifyChatThreads =
+    features?.[FeatureSwitchKey.UnifyChatThreads] ?? false;
   const searchTerm = useGet(sidebarSearchTerm$);
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredChatThreads = trimmedTerm
@@ -196,6 +210,7 @@ function ChatThreads() {
             isSelected={currentChatThreadId === session.id}
             onSelect={onRecentSelect}
             showReadIndicator={showReadIndicator}
+            showAgentAvatar={unifyChatThreads}
           />
         );
       })}
@@ -240,8 +255,8 @@ function ChatThreadsTitle() {
     useLoadableSet(createNewChatThread$);
   const setExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
-
-  const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
+  const { titleLabel, searchPlaceholder, newChatAriaLabel } =
+    useChatThreadsTitleLabels();
   const newChatDisabled = creatingLoadable.state === "loading";
   const navigateToChat = useSet(navigateToChat$);
   const onNewChat = () => {
@@ -255,7 +270,6 @@ function ChatThreadsTitle() {
     );
     setExpanded(false);
   };
-
   const searchOpen = useGet(threadSearchOpen$);
   const setSearchOpen = useSet(setThreadSearchOpen$);
   const searchTerm = useGet(sidebarSearchTerm$);
@@ -276,7 +290,7 @@ function ChatThreadsTitle() {
         onChange={(e) => {
           return setSearchTerm(e.target.value);
         }}
-        placeholder={`Search chat with ${agentDisplayName}`}
+        placeholder={searchPlaceholder}
         autoFocus
         className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus:outline-none"
       />
@@ -302,7 +316,7 @@ function ChatThreadsTitle() {
       }}
     >
       <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
-        Chats with {agentDisplayName}
+        {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <IconChevronRight
             size={12}
@@ -344,7 +358,7 @@ function ChatThreadsTitle() {
                 }}
                 disabled={newChatDisabled}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                aria-label={`New chat with ${agentDisplayName}`}
+                aria-label={newChatAriaLabel}
               >
                 <IconPlus size={15} stroke={2.5} />
               </button>

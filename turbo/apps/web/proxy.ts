@@ -123,6 +123,13 @@ export default async function middleware(
     authHeader?.startsWith("Bearer " + SANDBOX_TOKEN_PREFIX) ||
     authHeader?.startsWith("Bearer " + PAT_TOKEN_PREFIX);
 
+  // v1 API surface authenticates exclusively via Clerk-issued API Keys
+  // (verified server-side). Bypass Clerk middleware entirely so its session
+  // detection never touches the opaque Bearer tokens it cannot parse.
+  if (request.nextUrl.pathname.startsWith("/api/v1/")) {
+    return NextResponse.next();
+  }
+
   // Self-signed tokens (sandbox, PAT) are only consumed by /api/* endpoints.
   // Bypass Clerk for those paths so it doesn't try to parse the non-JWT token.
   // For non-API paths (pages, bot/scanner traffic), strip the header before

@@ -18,7 +18,7 @@ import {
   DialogTitle,
   Skeleton,
 } from "@vm0/ui";
-import type { ChatThreadListItem } from "@vm0/core";
+import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
   chatThreads$,
   deleteChatThread$,
@@ -28,10 +28,12 @@ import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   currentChatThreadId$,
   currentChatAgentId$,
-  currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
-import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
-import { subagents$ } from "../../signals/agent.ts";
+import {
+  AgentAvatarImg,
+  useChatThreadsTitleLabels,
+} from "./zero-sidebar-shared.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
@@ -57,12 +59,11 @@ export function ZeroChatListPage() {
       : null;
 
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const subagentsLoadable = useLastLoadable(subagents$);
-  const subagents =
-    subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
-  const displayName = useLastLoadable(currentChatAgentDisplayName$);
-  const displayNameStr =
-    displayName.state === "hasData" ? (displayName.data ?? "Zero") : "Zero";
+  const features = useLastResolved(featureSwitch$);
+  const unifyChatThreads =
+    features?.[FeatureSwitchKey.UnifyChatThreads] ?? false;
+
+  const { titleLabel, searchPlaceholder } = useChatThreadsTitleLabels();
 
   const selectedRecentId = useGet(currentChatThreadId$);
   const navigateToChat = useSet(navigateToChat$);
@@ -74,33 +75,12 @@ export function ZeroChatListPage() {
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);
 
-  // Filter sessions by current agent
-  const subagentIds = new Set(
-    subagents.map((a) => {
-      return a.id;
-    }),
-  );
-  const agentSessions = currentChatAgentId
-    ? recentSessions.filter((s) => {
-        return s.agentId === currentChatAgentId;
-      })
-    : recentSessions.filter((s) => {
-        return !subagentIds.has(s.agentId);
-      });
-
-  const matchedAgent = subagents.find((a) => {
-    return a.id === currentChatAgentId;
-  });
-  const agentLabel = currentChatAgentId
-    ? (matchedAgent?.displayName ?? matchedAgent?.id ?? displayNameStr)
-    : displayNameStr;
-
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm
-    ? agentSessions.filter((s) => {
+    ? recentSessions.filter((s) => {
         return (s.title ?? "").toLowerCase().includes(trimmedTerm);
       })
-    : agentSessions;
+    : recentSessions;
 
   const onNewChat = () => {
     detach(
@@ -122,12 +102,14 @@ export function ZeroChatListPage() {
       {/* Header */}
       <div className="shrink-0 px-4 pt-4 pb-2">
         <div className="flex items-center gap-3 mb-3">
-          <AgentAvatarImg
-            name={currentChatAgentId ?? ""}
-            alt=""
-            className="h-8 w-8 rounded-full object-cover object-top"
-          />
-          <h1 className="text-lg font-semibold">Chats with {agentLabel}</h1>
+          {!unifyChatThreads && (
+            <AgentAvatarImg
+              name={currentChatAgentId ?? ""}
+              alt=""
+              className="h-8 w-8 rounded-full object-cover object-top"
+            />
+          )}
+          <h1 className="text-lg font-semibold">{titleLabel}</h1>
         </div>
 
         {/* Search */}
@@ -143,7 +125,7 @@ export function ZeroChatListPage() {
             onChange={(e) => {
               return setSearchTerm(e.target.value);
             }}
-            placeholder={`Search chats with ${agentLabel}`}
+            placeholder={searchPlaceholder}
             className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
           {searchTerm && (
@@ -183,6 +165,7 @@ export function ZeroChatListPage() {
           searchTerm={searchTerm}
           selectedRecentId={selectedRecentId}
           onRecentSelect={onRecentSelect}
+          showAgentAvatar={unifyChatThreads}
         />
       </div>
     </div>
@@ -196,6 +179,7 @@ function ChatList({
   searchTerm,
   selectedRecentId,
   onRecentSelect,
+  showAgentAvatar,
 }: {
   loading: boolean;
   error: string | null;
@@ -203,6 +187,7 @@ function ChatList({
   searchTerm: string;
   selectedRecentId: string | null;
   onRecentSelect: (id: string) => void;
+  showAgentAvatar: boolean;
 }) {
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -259,6 +244,7 @@ function ChatList({
               onDelete={() => {
                 return setPendingDeleteThreadId(session.id);
               }}
+              showAgentAvatar={showAgentAvatar}
             />
           );
         })}
@@ -304,11 +290,13 @@ function ChatListItem({
   isSelected,
   onSelect,
   onDelete,
+  showAgentAvatar,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
   onSelect: (id: string) => void;
   onDelete: () => void;
+  showAgentAvatar: boolean;
 }) {
   return (
     <div className="group relative">
@@ -328,6 +316,13 @@ function ChatListItem({
             : "text-foreground hover:bg-accent/50"
         }`}
       >
+        {showAgentAvatar && (
+          <AgentAvatarImg
+            name={session.agent?.id ?? session.agentId}
+            alt=""
+            className="h-6 w-6 shrink-0 rounded-full object-cover object-top"
+          />
+        )}
         <span className="truncate min-w-0 flex-1">
           {session.title ?? "New chat"}
         </span>

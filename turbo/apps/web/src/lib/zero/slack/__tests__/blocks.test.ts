@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
-import type { SectionBlock, ActionsBlock, MarkdownBlock } from "@slack/web-api";
+import type { SectionBlock, ActionsBlock } from "@slack/web-api";
 import {
   buildAppHomeView,
   buildErrorMessage,
   buildLoginPromptMessage,
   buildHelpMessage,
   buildSuccessMessage,
-  buildAgentResponseMessage,
   buildFooterBlocks,
 } from "../blocks";
 
@@ -111,154 +110,6 @@ describe("buildSuccessMessage", () => {
     expect((blocks[0] as SectionBlock).text?.text).toContain(
       ":white_check_mark:",
     );
-  });
-});
-
-describe("buildAgentResponseMessage", () => {
-  it("should use markdown block type for agent content", () => {
-    const blocks = buildAgentResponseMessage("Hello **world**");
-
-    const markdownBlock = blocks.find((b) => {
-      return b.type === "markdown";
-    });
-    expect(markdownBlock).toBeDefined();
-    expect((markdownBlock as MarkdownBlock).text).toBe("Hello **world**");
-  });
-
-  it("should pass raw markdown without conversion", () => {
-    const content = "## Header\n\n| Col1 | Col2 |\n|------|------|\n| a | b |";
-    const blocks = buildAgentResponseMessage(content);
-
-    const markdownBlock = blocks.find((b) => {
-      return b.type === "markdown";
-    }) as MarkdownBlock;
-    expect(markdownBlock.text).toBe(content);
-  });
-
-  it("should include context block with logs url when provided", () => {
-    const blocks = buildAgentResponseMessage(
-      "Response text",
-      "https://app.vm0.ai/audit/123",
-    );
-
-    const contextBlock = blocks.find((b) => {
-      return b.type === "context";
-    });
-    expect(contextBlock).toBeDefined();
-    expect(contextBlock).toMatchObject({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: expect.stringContaining("Audit"),
-        },
-      ],
-    });
-  });
-
-  it("should truncate content exceeding 12000 characters", () => {
-    const longContent = "x".repeat(13000);
-    const blocks = buildAgentResponseMessage(longContent);
-
-    const markdownBlock = blocks.find((b) => {
-      return b.type === "markdown";
-    }) as MarkdownBlock;
-    expect(markdownBlock.text.length).toBeLessThanOrEqual(12000);
-    expect(markdownBlock.text).toContain("Message too long to view in Slack.");
-  });
-
-  it("should not truncate content under 12000 characters", () => {
-    const content = "x".repeat(11000);
-    const blocks = buildAgentResponseMessage(content);
-
-    const markdownBlock = blocks.find((b) => {
-      return b.type === "markdown";
-    }) as MarkdownBlock;
-    expect(markdownBlock.text).toBe(content);
-  });
-
-  it("renders triggeredBy as a context block with no divider (weakened footer)", () => {
-    const blocks = buildAgentResponseMessage(
-      "Response text",
-      "https://app.vm0.ai/activity/run-123",
-      "Sent via my-agent",
-    );
-
-    // Should have: markdown, audit context, attribution context — no divider
-    const dividerBlocks = blocks.filter((b) => {
-      return b.type === "divider";
-    });
-    expect(dividerBlocks).toHaveLength(0);
-
-    const contextBlocks = blocks.filter((b) => {
-      return b.type === "context";
-    });
-    expect(contextBlocks).toHaveLength(2);
-
-    // First context: audit link only
-    const auditText = (contextBlocks[0] as { elements: { text: string }[] })
-      .elements[0]!.text;
-    expect(auditText).toContain("Audit");
-    expect(auditText).not.toContain("Sent via");
-
-    // Second context: attribution (no divider above)
-    const attrText = (contextBlocks[1] as { elements: { text: string }[] })
-      .elements[0]!.text;
-    expect(attrText).toBe("Sent via my-agent");
-  });
-
-  it("combines triggeredBy and model into one context block joined by ·", () => {
-    const blocks = buildAgentResponseMessage(
-      "Response text",
-      undefined,
-      "Sent via my-agent",
-      "claude-sonnet-4-6",
-    );
-
-    const dividerBlocks = blocks.filter((b) => {
-      return b.type === "divider";
-    });
-    expect(dividerBlocks).toHaveLength(0);
-
-    const contextBlocks = blocks.filter((b) => {
-      return b.type === "context";
-    });
-    expect(contextBlocks).toHaveLength(1);
-    expect(
-      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
-    ).toBe("Sent via my-agent · Claude Sonnet 4.6");
-  });
-
-  it("renders model-only attribution when triggeredBy is absent", () => {
-    const blocks = buildAgentResponseMessage(
-      "Response text",
-      undefined,
-      undefined,
-      "claude-sonnet-4-6",
-    );
-
-    const contextBlocks = blocks.filter((b) => {
-      return b.type === "context";
-    });
-    expect(contextBlocks).toHaveLength(1);
-    expect(
-      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
-    ).toBe("Claude Sonnet 4.6");
-  });
-
-  it("adds no attribution block when neither triggeredBy nor modelName is provided", () => {
-    const blocks = buildAgentResponseMessage(
-      "Response text",
-      "https://app.vm0.ai/activity/run-123",
-    );
-
-    const contextBlocks = blocks.filter((b) => {
-      return b.type === "context";
-    });
-    expect(contextBlocks).toHaveLength(1);
-    expect(
-      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
-    ).toContain("Audit");
   });
 });
 

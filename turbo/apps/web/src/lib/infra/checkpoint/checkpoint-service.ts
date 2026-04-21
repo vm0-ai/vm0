@@ -4,7 +4,7 @@ import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { conversations } from "../../../db/schema/conversation";
 import { checkpoints } from "../../../db/schema/checkpoint";
 import { notFound } from "../../shared/errors";
-import { createAgentSession, updateAgentSession } from "../agent-session";
+import { updateAgentSession } from "../agent-session";
 import { registerSessionHistoryBlob } from "../session-history";
 import { logger } from "../../shared/logger";
 import type {
@@ -173,9 +173,10 @@ export async function createCheckpoint(
 
   log.debug(`Checkpoint created successfully: ${checkpoint.id}`);
 
-  // Resolve agent session
-  // For session continuations, update the existing session's conversation reference.
-  // For new runs, always create a new session (with artifact name if present).
+  // Bind the pre-created agent session (always populated since #10323 made
+  // agent_runs.session_id NOT NULL) to this conversation and record per-run
+  // snapshot fields that were not known when the session was created eagerly
+  // at run insertion.
   const artifactSnapshot = request.artifactSnapshot as
     | ArtifactSnapshot
     | undefined;
@@ -184,24 +185,14 @@ export async function createCheckpoint(
     | VolumeVersionsSnapshot
     | undefined;
 
-  let agentSession;
-  if (run.continuedFromSessionId) {
-    // Continue: update existing session's conversation reference
-    agentSession = await updateAgentSession(
-      run.continuedFromSessionId,
-      conversation.id,
-    );
-  } else {
-    // New run: always create a new session (with artifact/memory name if present)
-    agentSession = await createAgentSession({
-      userId: run.userId,
-      orgId: run.orgId,
-      agentComposeId: version.composeId,
+  const agentSession = await updateAgentSession(
+    run.sessionId,
+    conversation.id,
+    {
       artifactName: artifactSnapshot?.artifactName,
       memoryName: memorySnapshot?.memoryName,
-      conversationId: conversation.id,
-    });
-  }
+    },
+  );
 
   log.debug(`Agent session updated/created: ${agentSession.id}`);
 

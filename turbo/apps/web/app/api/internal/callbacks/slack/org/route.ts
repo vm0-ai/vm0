@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
+import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
+import { slackOrgThreadSessions } from "../../../../../../src/db/schema/slack-org-thread-session";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
-import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
+import {
+  isFeatureEnabled,
+  FeatureSwitchKey,
+  getModelDisplayName,
+} from "@vm0/core";
 import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
 import {
@@ -22,6 +28,7 @@ import {
   getWorkspaceAgent,
   resolveDefaultComposeId,
 } from "../../../../../../src/lib/zero/slack-org/handlers/shared";
+import { getOrgDefaultModelProvider } from "../../../../../../src/lib/zero/model-provider/model-provider-service";
 import { env } from "../../../../../../src/env";
 import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { saveRunSummary } from "../../../../../../src/lib/zero/run-summary";
@@ -50,9 +57,7 @@ function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
 }
 
-/**
- * Look up the run's selected model ID for the footer attribution.
- */
+/** Look up the run's selected model ID. */
 async function resolveSelectedModel(
   runId: string,
 ): Promise<string | undefined> {
@@ -65,22 +70,123 @@ async function resolveSelectedModel(
 }
 
 /**
- * When the run came from a non-default agent, produce the `Sent via X` footer
- * text so users know which agent answered. Returns undefined for default-agent
- * replies, missing orgId, or unknown compose — keeping the existing output
- * byte-for-byte identical to today in those cases.
+ * Look up the Slack user mention (`<@U123>`) for the connection that
+ * triggered this run. The callback payload's `connectionId` always points at
+ * the user who @mentioned the agent.
  */
-async function resolveTriggeredByFooter(
-  orgId: string | undefined,
-  composeId: string | undefined,
+async function resolveReplyToMention(
+  connectionId: string,
 ): Promise<string | undefined> {
-  if (!orgId || !composeId) return undefined;
+  const [row] = await globalThis.services.db
+    .select({ slackUserId: slackOrgConnections.slackUserId })
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.id, connectionId))
+    .limit(1);
+  return row?.slackUserId ? `<@${row.slackUserId}>` : undefined;
+}
+
+/**
+ * Count distinct Slack users who've triggered the agent in this thread.
+ *
+ * Each Slack user has their own `slack_org_connections` row, and mentioning
+ * the agent writes one `slack_org_thread_sessions` row keyed on
+ * (connectionId, channelId, threadTs). Counting distinct connections for a
+ * given (workspace, channel, thread) tells us how many humans are in the
+ * conversation. Scoped to `workspaceId` in case channel IDs collide across
+ * workspaces.
+ *
+ * The current run's session is written before this runs, so the current user
+ * is already counted.
+ */
+async function countThreadMentioners(
+  workspaceId: string,
+  channelId: string,
+  threadTs: string,
+): Promise<number> {
+  const [row] = await globalThis.services.db
+    .select({
+      count: sql<number>`count(distinct ${slackOrgThreadSessions.connectionId})::int`,
+    })
+    .from(slackOrgThreadSessions)
+    .innerJoin(
+      slackOrgConnections,
+      eq(slackOrgThreadSessions.connectionId, slackOrgConnections.id),
+    )
+    .where(
+      and(
+        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
+        eq(slackOrgThreadSessions.slackChannelId, channelId),
+        eq(slackOrgThreadSessions.slackThreadTs, threadTs),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
+/**
+ * Produce `Responded by <agent>` when the run came from a non-default agent,
+ * so users can tell which agent answered in an org with several. Returns
+ * undefined for the default agent, missing compose, or unknown compose.
+ */
+async function resolveRespondedByLabel(
+  orgId: string,
+  composeId: string,
+): Promise<string | undefined> {
   const orgDefaultComposeId = await resolveDefaultComposeId(orgId);
   if (composeId === orgDefaultComposeId) return undefined;
   const agent = await getWorkspaceAgent(composeId);
   if (!agent) return undefined;
-  const label = agent.displayName ?? agent.name;
-  return `Sent via ${label}`;
+  return `Responded by ${agent.displayName ?? agent.name}`;
+}
+
+/**
+ * Return the model display name when the run used a non-default model, else
+ * undefined. Comparison is against the org's default `claude-code` provider's
+ * `selectedModel` — Slack agents are claude-code today, so a single framework
+ * lookup covers all current callers. If the org has no default model
+ * configured, any `selectedModel` counts as non-default.
+ */
+async function resolveModelIfNonDefault(
+  orgId: string,
+  selectedModel: string | undefined,
+): Promise<string | undefined> {
+  if (!selectedModel) return undefined;
+  const defaultProvider = await getOrgDefaultModelProvider(
+    orgId,
+    "claude-code",
+  );
+  if (defaultProvider?.selectedModel === selectedModel) return undefined;
+  return getModelDisplayName(selectedModel);
+}
+
+/**
+ * Assemble the agent-reply footer. Returns `undefined` when no hint applies —
+ * the response renders with no footer at all. Parts joined by ` · `, ordered
+ * "who responded · to whom · with which model".
+ */
+async function resolveFooterText(
+  orgId: string,
+  payload: SlackOrgCallbackPayload,
+  selectedModel: string | undefined,
+): Promise<string | undefined> {
+  const [respondedBy, mentionerCount, modelLabel] = await Promise.all([
+    resolveRespondedByLabel(orgId, payload.agentId),
+    countThreadMentioners(
+      payload.workspaceId,
+      payload.channelId,
+      payload.threadTs,
+    ),
+    resolveModelIfNonDefault(orgId, selectedModel),
+  ]);
+
+  const parts: string[] = [];
+  if (respondedBy) parts.push(respondedBy);
+  if (mentionerCount > 2) {
+    const replyTo = await resolveReplyToMention(payload.connectionId);
+    if (replyTo) parts.push(`Reply to ${replyTo}`);
+  }
+  if (modelLabel) parts.push(modelLabel);
+
+  return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 function buildResponseText(
@@ -231,13 +337,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     overrides,
   });
 
-  // Resolve session
+  // Save session before computing the footer so `countThreadMentioners`
+  // includes the current user.
   await saveOrgThreadSession(payload, runId, status);
 
-  const triggeredBy = await resolveTriggeredByFooter(
-    runContext?.orgId,
-    payload.agentId,
-  );
+  const footerText = runContext?.orgId
+    ? await resolveFooterText(runContext.orgId, payload, selectedModel)
+    : undefined;
 
   // Post each result as a separate Slack reply (in order)
   for (let i = 0; i < allOutputs.length; i++) {
@@ -251,12 +357,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(
-        responseText,
-        logsUrl,
-        triggeredBy,
-        selectedModel,
-      ),
+      blocks: buildAgentResponseMessage(responseText, logsUrl, footerText),
     });
   }
 

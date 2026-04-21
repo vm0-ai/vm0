@@ -55,7 +55,7 @@ export async function createTestRun(
     permissionPolicies?: Record<string, Record<string, string>>;
     triggerSource?: string;
   },
-): Promise<{ runId: string; status: string }> {
+): Promise<{ runId: string; status: string; sessionId?: string }> {
   const request = createTestRequest("http://localhost:3000/api/agent/runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

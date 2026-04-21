@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { inArray, and, or, lt } from "drizzle-orm";
+import { NextResponse, after } from "next/server";
+import { inArray, and, or, lt, eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
@@ -7,13 +7,23 @@ import {
   voiceChatSessions,
   voiceChatEvents,
 } from "../../../../src/db/schema/voice-chat";
+import { featureCandidateVoiceChatSessions } from "../../../../src/db/schema/voice-chat-candidate";
 import { deleteExpiredPreparations } from "../../../../src/lib/zero/voice-chat/preparation-service";
+import { triggerReasoning } from "../../../../src/lib/zero/voice-chat-candidate/trigger-reasoning";
+import { publishUserSignal } from "../../../../src/lib/infra/realtime/client";
+
+export const maxDuration = 60;
 
 const log = logger("cron:voice-chat-cleanup");
 
 const STALE_HEARTBEAT_MS = 2 * 60 * 1000; // 2 minutes
 const MAX_SESSION_DURATION_MS = 60 * 60 * 1000; // 60 minutes
 const PREPARATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const CANDIDATE_STALE_HEARTBEAT_MS = 2 * 60 * 1000; // 2 minutes
+const CANDIDATE_MAX_SESSION_MS = 30 * 60 * 1000; // 30 minutes
+const CANDIDATE_REASONER_STUCK_MS = 5 * 60 * 1000; // 5 minutes
+const CANDIDATE_BATCH_LIMIT = 50;
 
 export async function GET(request: Request): Promise<Response> {
   initServices();
@@ -61,9 +71,114 @@ export async function GET(request: Request): Promise<Response> {
   // Clean up expired preparations (>24h)
   const expiredPreps = await deleteExpiredPreparations(PREPARATION_TTL_MS);
 
+  // === voice-chat-candidate session cleanup ===
+  // LIMIT 50 per tick caps worst-case runtime under catastrophic backlog.
+  const candidateStaleThreshold = new Date(
+    now.getTime() - CANDIDATE_STALE_HEARTBEAT_MS,
+  );
+  const candidateTimeoutThreshold = new Date(
+    now.getTime() - CANDIDATE_MAX_SESSION_MS,
+  );
+
+  const staleCandidateIds = globalThis.services.db
+    .select({ id: featureCandidateVoiceChatSessions.id })
+    .from(featureCandidateVoiceChatSessions)
+    .where(
+      and(
+        eq(featureCandidateVoiceChatSessions.status, "active"),
+        or(
+          lt(
+            featureCandidateVoiceChatSessions.lastHeartbeatAt,
+            candidateStaleThreshold,
+          ),
+          lt(
+            featureCandidateVoiceChatSessions.createdAt,
+            candidateTimeoutThreshold,
+          ),
+        ),
+      ),
+    )
+    .limit(CANDIDATE_BATCH_LIMIT);
+
+  // Belt-and-braces: the outer status='active' predicate guards against a
+  // concurrent status change landing between subselect eval and row lock
+  // under READ COMMITTED.
+  const timedOutCandidates = await globalThis.services.db
+    .update(featureCandidateVoiceChatSessions)
+    .set({ status: "timeout", endedAt: now })
+    .where(
+      and(
+        eq(featureCandidateVoiceChatSessions.status, "active"),
+        inArray(featureCandidateVoiceChatSessions.id, staleCandidateIds),
+      ),
+    )
+    .returning({
+      id: featureCandidateVoiceChatSessions.id,
+      userId: featureCandidateVoiceChatSessions.userId,
+    });
+
+  for (const row of timedOutCandidates) {
+    after(() => {
+      return publishUserSignal([row.userId], `voice-chat-candidate:${row.id}`);
+    });
+  }
+
+  if (timedOutCandidates.length > 0) {
+    log.info("Voice chat candidate cleanup completed", {
+      cleaned: timedOutCandidates.length,
+    });
+  }
+
+  // === voice-chat-candidate reasoner stuck recovery ===
+  // LIMIT 50 per tick caps worst-case runtime under catastrophic backlog.
+  const reasonerStuckThreshold = new Date(
+    now.getTime() - CANDIDATE_REASONER_STUCK_MS,
+  );
+
+  const stuckReasonerIds = globalThis.services.db
+    .select({ id: featureCandidateVoiceChatSessions.id })
+    .from(featureCandidateVoiceChatSessions)
+    .where(
+      and(
+        eq(featureCandidateVoiceChatSessions.reasoningStatus, "running"),
+        lt(
+          featureCandidateVoiceChatSessions.lastReasoningAt,
+          reasonerStuckThreshold,
+        ),
+      ),
+    )
+    .limit(CANDIDATE_BATCH_LIMIT);
+
+  // Belt-and-braces: predicates repeated on the UPDATE itself so a concurrent
+  // Reasoner flipping idle→running between subselect eval and row lock under
+  // READ COMMITTED cannot get its status reset out from under it.
+  const recoveredReasoners = await globalThis.services.db
+    .update(featureCandidateVoiceChatSessions)
+    .set({ reasoningStatus: "idle" })
+    .where(
+      and(
+        eq(featureCandidateVoiceChatSessions.reasoningStatus, "running"),
+        lt(
+          featureCandidateVoiceChatSessions.lastReasoningAt,
+          reasonerStuckThreshold,
+        ),
+        inArray(featureCandidateVoiceChatSessions.id, stuckReasonerIds),
+      ),
+    )
+    .returning({ id: featureCandidateVoiceChatSessions.id });
+
+  for (const row of recoveredReasoners) {
+    log.warn("Candidate reasoner stuck-reset", { sessionId: row.id });
+    after(() => {
+      return triggerReasoning(row.id);
+    });
+  }
+
   return NextResponse.json({
     success: true,
     cleaned: result.length,
     preparationsCleaned: expiredPreps.length,
+    candidateCleaned: timedOutCandidates.length,
+    reasonerReset: recoveredReasoners.length,
   });
 }

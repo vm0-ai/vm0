@@ -81,6 +81,16 @@ export interface VoiceChatCallbackPayload {
   sessionId: string;
 }
 
+/**
+ * Consumed by the Wave 5 callback route /api/internal/callbacks/voice-chat-candidate
+ * (Epic #10297, sub-issue #10311). Declared here ahead of the route handler so
+ * the contract and service layers that land in Wave 1–4 can import it.
+ * @public
+ */
+export interface VoiceChatCandidateCallbackPayload {
+  taskId: string;
+}
+
 export interface VoiceChatPrepareCallbackPayload {
   preparationId: string;
 }

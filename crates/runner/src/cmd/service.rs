@@ -283,13 +283,20 @@ fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, content)
         .map_err(|e| RunnerError::Internal(format!("write {}: {e}", tmp.display())))?;
-    std::fs::rename(&tmp, path).map_err(|e| {
+    let result = std::fs::rename(&tmp, path).map_err(|e| {
         RunnerError::Internal(format!(
             "rename {} -> {}: {e}",
             tmp.display(),
             path.display()
         ))
-    })
+    });
+    // Unlike short-lived dirs elsewhere in the crate, unit files live in
+    // /etc/systemd/system/ which no GC path sweeps, and the staged content
+    // contains Environment= secrets.
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// Check whether a systemd unit is active (running or activating).
@@ -316,6 +323,49 @@ async fn get_service_pid(unit: &str) -> RunnerResult<Option<u32>> {
     match pid_str.parse::<u32>() {
         Ok(0) | Err(_) => Ok(None),
         Ok(pid) => Ok(Some(pid)),
+    }
+}
+
+/// Outcome of attempting to signal a systemd unit's main process.
+///
+/// The `AlreadyGone` variant collapses two distinct races into a single
+/// state so callers can encode one policy instead of two:
+///
+/// 1. `systemctl show --property=MainPID` read `0` — the runner either
+///    exited, or systemd is mid-transition and has cleared MainPID.
+/// 2. MainPID resolved to a live value but `kill(2)` returned `ESRCH`
+///    because the process exited in the ~µs window before signal delivery.
+///
+/// Either way the signal was not delivered, and the cause is the same:
+/// the runner is no longer around to receive it. `Sent` carries the PID
+/// so callers can keep the pre-refactor `info!(…, pid, …)` structured
+/// field in their journald logs.
+enum ServiceSignalOutcome {
+    Sent { pid: u32 },
+    AlreadyGone,
+}
+
+/// Send `sig` to the main process of `unit`, tolerating the race between
+/// MainPID lookup and signal delivery.
+///
+/// Callers decide the policy for `AlreadyGone`: `drain` continues to
+/// `systemctl disable` (the unit file must still be rewritten so the
+/// service does not restart on reboot), while `resume` surfaces an error
+/// matching its preflight "not active" branch — a runner that has exited
+/// cannot be resumed.
+async fn signal_service_main(
+    unit: &str,
+    sig: nix::sys::signal::Signal,
+) -> RunnerResult<ServiceSignalOutcome> {
+    let Some(pid) = get_service_pid(unit).await? else {
+        return Ok(ServiceSignalOutcome::AlreadyGone);
+    };
+    let raw_pid =
+        i32::try_from(pid).map_err(|_| RunnerError::Internal(format!("PID {pid} out of range")))?;
+    match nix::sys::signal::kill(nix::unistd::Pid::from_raw(raw_pid), sig) {
+        Ok(()) => Ok(ServiceSignalOutcome::Sent { pid }),
+        Err(nix::errno::Errno::ESRCH) => Ok(ServiceSignalOutcome::AlreadyGone),
+        Err(e) => Err(RunnerError::Internal(format!("{sig:?} to PID {pid}: {e}"))),
     }
 }
 
@@ -679,19 +729,17 @@ async fn drain(args: ServiceDrainArgs) -> RunnerResult<()> {
         return Ok(());
     }
 
-    let pid = get_service_pid(&unit)
-        .await?
-        .ok_or_else(|| RunnerError::Internal(format!("{unit} has no main PID")))?;
-
-    // Send SIGUSR1 to enter drain mode
-    let raw_pid =
-        i32::try_from(pid).map_err(|_| RunnerError::Internal(format!("PID {pid} out of range")))?;
-    nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(raw_pid),
-        nix::sys::signal::Signal::SIGUSR1,
-    )
-    .map_err(|e| RunnerError::Internal(format!("SIGUSR1 to PID {pid}: {e}")))?;
-    info!(unit = %unit, pid, "sent SIGUSR1 (drain)");
+    // `is_unit_active` above can race against the runner exiting on its own:
+    // by the time we read MainPID or call `kill`, the process may be gone.
+    // Both outcomes ("live, signal delivered" and "already gone") must still
+    // run `systemctl disable` below so the unit does not auto-start at the
+    // next boot.
+    match signal_service_main(&unit, nix::sys::signal::Signal::SIGUSR1).await? {
+        ServiceSignalOutcome::Sent { pid } => info!(unit = %unit, pid, "sent SIGUSR1 (drain)"),
+        ServiceSignalOutcome::AlreadyGone => {
+            info!(unit = %unit, "runner already exited; drain signal not needed");
+        }
+    }
 
     // Disable so it won't restart on reboot. The SIGUSR1 has already been
     // delivered, so a disable failure is a partial-success condition — the
@@ -739,18 +787,23 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
         )));
     }
 
-    let pid = get_service_pid(&unit)
-        .await?
-        .ok_or_else(|| RunnerError::Internal(format!("{unit} has no main PID")))?;
-
-    let raw_pid =
-        i32::try_from(pid).map_err(|_| RunnerError::Internal(format!("PID {pid} out of range")))?;
-    nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(raw_pid),
-        nix::sys::signal::Signal::SIGUSR2,
-    )
-    .map_err(|e| RunnerError::Internal(format!("SIGUSR2 to PID {pid}: {e}")))?;
-    info!(unit = %unit, pid, "sent SIGUSR2 (resume)");
+    // Same race as in `drain`: the runner can exit after the preflight
+    // `is_unit_active` check but before we deliver SIGUSR2. Unlike drain,
+    // there is no useful cleanup left once the runner is gone — resume is
+    // meaningless — so surface the same "not active" error the preflight
+    // branch above already returns.
+    match signal_service_main(&unit, nix::sys::signal::Signal::SIGUSR2).await? {
+        ServiceSignalOutcome::Sent { pid } => info!(unit = %unit, pid, "sent SIGUSR2 (resume)"),
+        ServiceSignalOutcome::AlreadyGone => {
+            info!(
+                unit = %unit,
+                "runner exited between preflight and signal; refusing resume",
+            );
+            return Err(RunnerError::Internal(format!(
+                "{unit} is not active — cannot resume an inactive runner"
+            )));
+        }
+    }
 
     // Re-enable so the unit restarts on reboot (undoes the disable from drain).
     // Use `enable` (not `--now`) — the service is already running. SIGUSR2
@@ -1083,6 +1136,21 @@ mod tests {
         write_unit_file(&path, "content").unwrap();
         let tmp = path.with_extension("tmp");
         assert!(!tmp.exists(), "tmp file must be consumed by rename");
+    }
+
+    #[test]
+    fn write_unit_file_cleans_up_tmp_on_rename_failure() {
+        // Rename fails when the target path is an existing directory
+        // (EISDIR). Verifies the staged `.tmp` — which may contain
+        // Environment= secrets — is removed so it doesn't persist in
+        // /etc/systemd/system/.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("target.service");
+        std::fs::create_dir(&path).unwrap();
+        let result = write_unit_file(&path, "secret=xyz");
+        assert!(result.is_err(), "rename onto existing dir must fail");
+        let tmp = path.with_extension("tmp");
+        assert!(!tmp.exists(), "tmp file must be cleaned up on failure");
     }
 
     // -----------------------------------------------------------------

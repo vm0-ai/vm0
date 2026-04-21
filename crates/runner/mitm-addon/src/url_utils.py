@@ -7,6 +7,11 @@ import urllib.parse
 
 from mitmproxy import http
 
+# Well-known IANA ports for HTTP and HTTPS.  When the connection uses the
+# default port for its scheme we omit ``:port`` from the reconstructed URL.
+_HTTP_DEFAULT_PORT = 80
+_HTTPS_DEFAULT_PORT = 443
+
 
 def get_original_url(flow: http.HTTPFlow) -> str:
     """Reconstruct the original target URL from the request.
@@ -23,7 +28,9 @@ def get_original_url(flow: http.HTTPFlow) -> str:
     host = flow.request.pretty_host
     port = flow.request.port
 
-    if (scheme == "https" and port != 443) or (scheme == "http" and port != 80):
+    if (scheme == "https" and port != _HTTPS_DEFAULT_PORT) or (
+        scheme == "http" and port != _HTTP_DEFAULT_PORT
+    ):
         host_with_port = f"{host}:{port}"
     else:
         host_with_port = host

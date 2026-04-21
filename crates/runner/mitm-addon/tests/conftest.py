@@ -46,6 +46,8 @@ def _reset_module_state() -> None:
     mitm_addon._registry_cache_key = (0, 0)
     auth._firewall_header_cache.clear()
     auth._cache_locks.clear()
+    auth._force_refresh_markers.clear()
+    auth._last_force_refresh_at.clear()
 
 
 def _headers(*pairs: tuple[str, str]) -> http.Headers:

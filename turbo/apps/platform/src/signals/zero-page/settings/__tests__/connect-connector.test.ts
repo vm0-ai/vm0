@@ -7,24 +7,13 @@ import {
   permissionDialogType$,
   pollingConnectorType$,
   submitApiToken$,
-  STANDALONE_POLLING_TIMEOUT_MS,
 } from "../connectors.ts";
-import { createDeferredPromise } from "../../../utils.ts";
+import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
 import {
   type ConnectorListResponse,
   zeroConnectorsMainContract,
 } from "@vm0/core";
 import { mockApi } from "../../../../mocks/msw-contract.ts";
-
-vi.mock("signal-timers", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("signal-timers")>();
-  return {
-    ...mod,
-    delay: () => {
-      return Promise.resolve();
-    },
-  };
-});
 
 const context = testContext();
 
@@ -71,24 +60,18 @@ function mockMatchMedia(standalone: boolean) {
 }
 
 describe("connectConnector$", () => {
-  it("detects connector via API polling while popup is open", async () => {
+  it("detects connector via connector:changed Ably event", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
     let pollCount = 0;
-    const secondPollDeferred = createDeferredPromise<void>(context.signal);
-    let deferredResolved = false;
     server.use(
       mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
         pollCount++;
         if (pollCount <= 1) {
           return respond(200, makeEmptyConnectorResponse());
-        }
-        if (!deferredResolved) {
-          deferredResolved = true;
-          secondPollDeferred.resolve();
         }
         return respond(200, makeGithubConnectorResponse());
       }),
@@ -100,24 +83,30 @@ describe("connectConnector$", () => {
       context.signal,
     );
 
-    await secondPollDeferred.promise;
+    // Wait for initial fetch + subscribe.
+    await vi.waitFor(() => {
+      expect(pollCount).toBeGreaterThanOrEqual(1);
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+
+    // Simulate the OAuth callback publishing the signal.
+    triggerAblyEvent("connector:changed");
+
     const result = await connectPromise;
 
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(2);
-
-    const polling = context.store.get(pollingConnectorType$);
-    expect(polling).toBeNull();
+    expect(context.store.get(pollingConnectorType$)).toBeNull();
   });
 
-  it("keeps polling on reconnect until updatedAt changes", async () => {
+  it("keeps subscribing on reconnect until updatedAt changes", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
     // Existing connector with a stable updatedAt simulates the pre-reconnect
-    // state; the poll loop should not exit until the updatedAt changes.
+    // state; the loop should not exit until the updatedAt changes.
     const initialUpdatedAt = "2026-01-01T00:00:00.000Z";
     const initialResponse: ConnectorListResponse = {
       ...makeGithubConnectorResponse(),
@@ -136,9 +125,9 @@ describe("connectConnector$", () => {
     server.use(
       mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
         pollCount++;
-        // First poll captures initialUpdatedAt; second poll still shows the
-        // stale value (OAuth callback not yet complete); third poll reflects
-        // the completed reconnect with a new updatedAt.
+        // First fetch captures initialUpdatedAt; second fetch still shows
+        // the stale value (OAuth callback not yet complete); third fetch
+        // reflects the completed reconnect with a new updatedAt.
         if (pollCount <= 2) {
           return respond(200, initialResponse);
         }
@@ -155,14 +144,29 @@ describe("connectConnector$", () => {
       }),
     );
 
-    const result = await context.store.set(
+    const connectPromise = context.store.set(
       connectConnector$,
       "github",
       context.signal,
     );
 
+    await vi.waitFor(() => {
+      expect(pollCount).toBeGreaterThanOrEqual(1);
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+
+    // First event: still stale.
+    triggerAblyEvent("connector:changed");
+    await vi.waitFor(() => {
+      expect(pollCount).toBeGreaterThanOrEqual(2);
+    });
+
+    // Second event: reconnect completed — updatedAt changed.
+    triggerAblyEvent("connector:changed");
+
+    const result = await connectPromise;
+
     expect(result).toBeTruthy();
-    // One capture poll + one stale poll + one fresh poll.
     expect(pollCount).toBeGreaterThanOrEqual(3);
     expect(context.store.get(pollingConnectorType$)).toBeNull();
     expect(context.store.get(permissionDialogType$)).toBe("github");
@@ -174,30 +178,33 @@ describe("connectConnector$", () => {
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
-    let pollCount = 0;
     server.use(
       mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
-        pollCount++;
-        if (pollCount >= 2) {
-          mockWindow.closed = true;
-        }
         return respond(200, makeEmptyConnectorResponse());
       }),
     );
 
-    const result = await context.store.set(
+    const connectPromise = context.store.set(
       connectConnector$,
       "github",
       context.signal,
     );
 
-    expect(result).toBeFalsy();
+    await vi.waitFor(() => {
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
 
-    const polling = context.store.get(pollingConnectorType$);
-    expect(polling).toBeNull();
+    // User closes the OAuth popup; watchPopupClosed detects it on its
+    // next tick and wins the race against the Ably subscription.
+    mockWindow.closed = true;
+
+    const result = await connectPromise;
+
+    expect(result).toBeFalsy();
+    expect(context.store.get(pollingConnectorType$)).toBeNull();
   });
 
-  it("sets permissionDialogType$ after successful OAuth connection", async () => {
+  it("sets permissionDialogType$ after connector appears", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
@@ -209,7 +216,20 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await context.store.set(connectConnector$, "github", context.signal);
+    const connectPromise = context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
+    );
+
+    // Initial fetch snapshots the existing updatedAt. The appearance happens
+    // via a second fetch triggered by the Ably event.
+    await vi.waitFor(() => {
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+    triggerAblyEvent("connector:changed");
+
+    await connectPromise;
 
     expect(context.store.get(permissionDialogType$)).toBe("github");
   });
@@ -220,18 +240,25 @@ describe("connectConnector$", () => {
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
-    let pollCount = 0;
     server.use(
       mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
-        pollCount++;
-        if (pollCount >= 1) {
-          mockWindow.closed = true;
-        }
         return respond(200, makeEmptyConnectorResponse());
       }),
     );
 
-    await context.store.set(connectConnector$, "github", context.signal);
+    const connectPromise = context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
+    );
+
+    await vi.waitFor(() => {
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+
+    mockWindow.closed = true;
+
+    await connectPromise;
 
     expect(context.store.get(permissionDialogType$)).toBeNull();
   });
@@ -248,26 +275,30 @@ describe("connectConnector$", () => {
       }),
     );
 
-    const result = await context.store.set(
+    const connectPromise = context.store.set(
       connectConnector$,
       "github",
       context.signal,
     );
 
-    // Connector was found via polling — flow completed successfully
+    await vi.waitFor(() => {
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+    triggerAblyEvent("connector:changed");
+
+    const result = await connectPromise;
+
     expect(result).toBeTruthy();
     expect(context.store.get(pollingConnectorType$)).toBeNull();
     expect(context.store.get(permissionDialogType$)).toBe("github");
   });
 
-  it("polls after connector appears following multiple poll cycles in standalone mode", async () => {
+  it("handles multiple fetch cycles in standalone mode", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     mockMatchMedia(true);
     vi.spyOn(window, "open").mockReturnValue(null);
 
-    // First two polls return empty; third returns the connector,
-    // simulating the user completing OAuth in external Safari then returning.
     let pollCount = 0;
     server.use(
       mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
@@ -279,51 +310,29 @@ describe("connectConnector$", () => {
       }),
     );
 
-    const result = await context.store.set(
+    const connectPromise = context.store.set(
       connectConnector$,
       "github",
       context.signal,
     );
+
+    await vi.waitFor(() => {
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+    // First Ably event: still empty.
+    triggerAblyEvent("connector:changed");
+    await vi.waitFor(() => {
+      expect(pollCount).toBeGreaterThanOrEqual(2);
+    });
+    // Second Ably event: connector appears.
+    triggerAblyEvent("connector:changed");
+
+    const result = await connectPromise;
 
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(3);
     expect(context.store.get(pollingConnectorType$)).toBeNull();
     expect(context.store.get(permissionDialogType$)).toBe("github");
-  });
-
-  it("exits polling after timeout in standalone mode", async () => {
-    detachedSetupPage({ context, path: "/", withoutRender: true });
-
-    mockMatchMedia(true);
-    vi.spyOn(window, "open").mockReturnValue(null);
-
-    // First Date.now() call sets startTime inside connectConnector$; all
-    // subsequent calls return a value past the timeout threshold so the
-    // very first polling iteration exits immediately.
-    const realNow = Date.now();
-    let firstCall = true;
-    vi.spyOn(Date, "now").mockImplementation(() => {
-      if (firstCall) {
-        firstCall = false;
-        return realNow;
-      }
-      return realNow + STANDALONE_POLLING_TIMEOUT_MS + 1;
-    });
-
-    server.use(
-      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
-        return respond(200, makeEmptyConnectorResponse());
-      }),
-    );
-
-    const result = await context.store.set(
-      connectConnector$,
-      "github",
-      context.signal,
-    );
-
-    expect(result).toBeFalsy();
-    expect(context.store.get(pollingConnectorType$)).toBeNull();
   });
 });
 

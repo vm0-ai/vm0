@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { waitFor } from "@testing-library/react";
 import { testContext } from "./test-helpers";
 import { detachedSetupPage } from "../../__tests__/page-helper";
+import { getMockFeatureSwitches } from "../../mocks/handlers/api-feature-switches";
 
 const context = testContext();
 
@@ -74,6 +75,20 @@ describe("global feature switches", () => {
 
     await waitFor(() => {
       expect(window._vm0?.featureSwitches.dummy).toBeFalsy();
+    });
+  });
+
+  it("should write through to server when setter used", async () => {
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    await waitFor(() => {
+      expect(window._vm0?.featureSwitches).toBeDefined();
+    });
+
+    window._vm0!.featureSwitches.dummy = false;
+
+    await waitFor(() => {
+      expect(getMockFeatureSwitches()).toMatchObject({ dummy: false });
     });
   });
 });

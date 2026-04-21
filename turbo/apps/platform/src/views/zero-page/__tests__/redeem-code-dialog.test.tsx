@@ -13,9 +13,11 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey, zeroRedemptionCodesRedeemContract } from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { server } from "../../../mocks/server.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 
@@ -75,7 +77,9 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    expect(screen.getByPlaceholderText("Enter code")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX"),
+    ).toBeInTheDocument();
     expect(getButtonByText("Redeem")).toBeDisabled();
   });
 
@@ -93,7 +97,7 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await user.click(giftButton);
 
     const input = await waitFor(() => {
-      return screen.getByPlaceholderText("Enter code");
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
     });
 
     await user.type(input, "   ");
@@ -101,6 +105,81 @@ describe("redeem-code dialog interaction (RC-002)", () => {
 
     await user.type(input, "CODE123");
     expect(getButtonByText("Redeem")).toBeEnabled();
+  });
+
+  it("calls the redeem endpoint with the entered code and closes the dialog on success (RC-003)", async () => {
+    const user = userEvent.setup();
+
+    let capturedBody: unknown;
+    server.use(
+      mockApi(zeroRedemptionCodesRedeemContract.redeem, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, { credits: 2500, newBalance: 2500 });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.RedeemCode]: true },
+    });
+
+    const giftButton = await waitFor(() => {
+      return screen.getByLabelText("Redeem code");
+    });
+    await user.click(giftButton);
+
+    const input = await waitFor(() => {
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
+    });
+    await user.type(input, "VM0-ABCD-EFGH");
+
+    await user.click(getButtonByText("Redeem"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(capturedBody).toStrictEqual({ code: "VM0-ABCD-EFGH" });
+  });
+
+  it("keeps the dialog open and surfaces the error message on a 400 (RC-004)", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      mockApi(zeroRedemptionCodesRedeemContract.redeem, ({ respond }) => {
+        return respond(400, {
+          error: {
+            message: "Code is invalid, already redeemed, or expired",
+            code: "BAD_REQUEST",
+          },
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.RedeemCode]: true },
+    });
+
+    const giftButton = await waitFor(() => {
+      return screen.getByLabelText("Redeem code");
+    });
+    await user.click(giftButton);
+
+    const input = await waitFor(() => {
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
+    });
+    await user.type(input, "VM0-BADD-BADD");
+    await user.click(getButtonByText("Redeem"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/invalid, already redeemed, or expired/i),
+      ).toBeInTheDocument();
+    });
+    // Dialog stays open so the user can retry.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("clears the input after closing via Cancel and reopening", async () => {
@@ -117,7 +196,7 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await user.click(giftButton);
 
     const input = (await waitFor(() => {
-      return screen.getByPlaceholderText("Enter code");
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
     })) as HTMLInputElement;
     await user.type(input, "CODE123");
     expect(input.value).toBe("CODE123");
@@ -131,7 +210,7 @@ describe("redeem-code dialog interaction (RC-002)", () => {
     await user.click(screen.getByLabelText("Redeem code"));
 
     const reopenedInput = (await waitFor(() => {
-      return screen.getByPlaceholderText("Enter code");
+      return screen.getByPlaceholderText("VM0-XXXX-XXXX-XXXX-XXXX");
     })) as HTMLInputElement;
     expect(reopenedInput.value).toBe("");
   });

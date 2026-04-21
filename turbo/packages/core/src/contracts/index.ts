@@ -146,6 +146,7 @@ export {
   type StoragesListContract,
 } from "./storages";
 export {
+  sandboxReuseResultSchema,
   webhookEventsContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
@@ -158,6 +159,7 @@ export {
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
+  type SandboxReuseResult,
   type WebhookEventsContract,
   type WebhookCompleteContract,
   type WebhookCheckpointsContract,
@@ -264,6 +266,7 @@ export {
   VM0_MODEL_TO_PROVIDER,
   getVm0ConcreteProviderType,
   getVm0Vendor,
+  getVm0ApiModel,
   getVm0VisibleModels,
 } from "./model-providers";
 export {
@@ -289,6 +292,7 @@ export {
   chatThreadMarkReadContract,
   chatMessagesContract,
   chatThreadMessagesContract,
+  chatSearchContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
   modelSelectionRequestSchema,
@@ -304,6 +308,10 @@ export {
   type ChatThreadMarkReadContract,
   type ChatMessagesContract,
   type ChatThreadMessagesContract,
+  type ChatSearchContract,
+  type ChatSearchResponse,
+  type ChatSearchResult,
+  type ChatSearchMessage,
   type ChatThreadListItem,
   type ChatThreadDetail,
   type PagedChatMessage,
@@ -311,6 +319,18 @@ export {
   type AttachFile,
   type ResolvedAttachFile,
 } from "./chat-threads";
+export {
+  chatThreadV1GetContract,
+  chatThreadV1MessagesContract,
+  chatThreadV1SendContract,
+  chatThreadV1Schema,
+  chatMessageV1Schema,
+  type ChatThreadV1GetContract,
+  type ChatThreadV1MessagesContract,
+  type ChatThreadV1SendContract,
+  type ChatThreadV1,
+  type ChatMessageV1,
+} from "./chat-threads-v1";
 export {
   runnersPollContract,
   runnersJobClaimContract,
@@ -585,6 +605,7 @@ export {
 export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
+  zeroPlatformConnectorContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsSearchContract,
   zeroConnectorSessionsContract,
@@ -593,6 +614,7 @@ export {
   type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
+  type ZeroPlatformConnectorContract,
   type ZeroConnectorScopeDiffContract,
   type ZeroConnectorsSearchContract,
   type ZeroConnectorSessionsContract,
@@ -824,6 +846,21 @@ export {
   type ZeroComputerUseHostContract,
 } from "./zero-computer-use";
 export {
+  zeroRedemptionCodesMintContract,
+  zeroRedemptionCodesRedeemContract,
+  zeroRedemptionCodesListContract,
+  MAX_CREDITS_PER_CODE,
+  MAX_QUANTITY_PER_MINT,
+  type ZeroRedemptionCodesMintContract,
+  type ZeroRedemptionCodesRedeemContract,
+  type ZeroRedemptionCodesListContract,
+  type MintRedemptionCodesRequest,
+  type MintRedemptionCodesResponse,
+  type RedeemRedemptionCodeRequest,
+  type RedeemRedemptionCodeResponse,
+  type ListRedemptionCodesResponse,
+} from "./zero-redemption-codes";
+export {
   zeroInsightsContract,
   zeroInsightsRangeContract,
   type ZeroInsightsContract,
@@ -868,6 +905,29 @@ export {
   type ZeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,
 } from "./zero-voice-io-quota";
+export {
+  zeroVoiceChatCandidateContract,
+  voiceChatCandidateSessionStatusSchema,
+  voiceChatCandidateItemRoleSchema,
+  voiceChatCandidateTaskStatusSchema,
+  voiceChatCandidateReasoningStatusSchema,
+  voiceChatCandidateSessionSchema,
+  voiceChatCandidateItemSchema,
+  voiceChatCandidateTaskSchema,
+  type ZeroVoiceChatCandidateContract,
+  type VoiceChatCandidateSessionStatus,
+  type VoiceChatCandidateItemRole,
+  type VoiceChatCandidateTaskStatus,
+  type VoiceChatCandidateReasoningStatus,
+  type VoiceChatCandidateSession,
+  type VoiceChatCandidateItem,
+  type VoiceChatCandidateTask,
+  type VoiceChatCandidateTokenBody,
+  type VoiceChatCandidateTokenResponse,
+  type CreateVoiceChatCandidateSessionBody,
+  type AppendVoiceChatCandidateItemBody,
+  type CreateVoiceChatCandidateTaskBody,
+} from "./zero-voice-chat-candidate";
 export {
   tasksContract,
   taskItemSchema,

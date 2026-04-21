@@ -10,6 +10,15 @@ from graphql_fields import extract_field_paths
 
 _SEGMENT_ERROR_HINT = 'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"'
 
+# A segment with two or more ``{`` braces contains more than one parameter,
+# which the grammar rejects — detected once here rather than scattering the
+# literal ``2`` across the parser.
+_MULTI_PARAM_BRACE_COUNT = 2
+
+# Firewall rules are encoded as ``"METHOD path"`` — a single-whitespace-split
+# yields exactly two tokens.  Rows that fail this shape are malformed.
+_RULE_TOKEN_COUNT = 2
+
 
 def parse_segment(seg: str) -> dict:
     """Parse a single host or path segment into literal / param / error.
@@ -43,7 +52,7 @@ def parse_segment(seg: str) -> dict:
             "reason": f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
         }
 
-    if open_count >= 2:
+    if open_count >= _MULTI_PARAM_BRACE_COUNT:
         open2 = seg.find("{", close1 + 1)
         if close1 + 1 == open2:
             return {
@@ -491,10 +500,10 @@ def _collect_field_patterns(
     for perm in permissions:
         for rule_str in perm.get("rules", []):
             parts = rule_str.split(" ", 1)
-            if len(parts) != 2:
+            if len(parts) != _RULE_TOKEN_COUNT:
                 continue
             rule_method = parts[0].upper()
-            if rule_method != "ANY" and rule_method != method:
+            if rule_method not in ("ANY", method):
                 continue
             gql = parse_graphql_rule(parts[1])
             if gql is None:
@@ -694,11 +703,11 @@ def match_firewall_request(
                 perm_name = perm.get("name", "")
                 for rule_str in perm.get("rules", []):
                     parts = rule_str.split(" ", 1)
-                    if len(parts) != 2:
+                    if len(parts) != _RULE_TOKEN_COUNT:
                         continue
                     rule_method = parts[0].upper()
                     rest = parts[1]
-                    if rule_method != "ANY" and rule_method != upper_method:
+                    if rule_method not in ("ANY", upper_method):
                         continue
 
                     # Check for GraphQL suffix

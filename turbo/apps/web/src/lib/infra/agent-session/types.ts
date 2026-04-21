@@ -20,18 +20,6 @@ export interface AgentSessionData {
 }
 
 /**
- * Input for creating a new agent session
- */
-export interface CreateAgentSessionInput {
-  userId: string;
-  orgId: string;
-  agentComposeId: string;
-  artifactName?: string;
-  memoryName?: string;
-  conversationId?: string;
-}
-
-/**
  * Agent session with related data for continue operations
  */
 export interface AgentSessionWithConversation extends AgentSessionData {

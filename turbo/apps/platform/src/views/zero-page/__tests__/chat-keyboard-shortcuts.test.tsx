@@ -136,6 +136,63 @@ describe("chat page keyboard shortcuts", () => {
     });
   });
 
+  it("mod+shift+up on the first thread uses agent.id when present (not agentId)", async () => {
+    const user = userEvent.setup();
+    // The thread carries both agentId (legacy) and agent.id (preferred).
+    // The escape navigation must use agent.id, not agentId.
+    const AGENT_ID_FROM_OBJECT = "a2222222-0000-4000-a000-000000000002";
+    server.use(
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, {
+          threads: [
+            {
+              id: "thread-agent-obj",
+              title: "With agent object",
+              agentId: AGENT_ID,
+              agent: { id: AGENT_ID_FROM_OBJECT, avatarUrl: null },
+              createdAt: "2026-03-10T00:00:00Z",
+              updatedAt: "2026-03-10T00:00:00Z",
+              isRead: true,
+              isArchived: false,
+              running: false,
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          id: "thread-agent-obj",
+          title: "With agent object",
+          agentId: AGENT_ID,
+          chatMessages: [],
+          latestSessionId: null,
+          activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, { messages: [] });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-agent-obj" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send a message to start the conversation/i),
+      ).toBeInTheDocument();
+    });
+
+    await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID_FROM_OBJECT}/chat`);
+    });
+  });
+
   it("mod+shift+down is a no-op on the last thread", async () => {
     const user = userEvent.setup();
     mockThreadList([

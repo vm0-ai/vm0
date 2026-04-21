@@ -57,11 +57,14 @@ import * as phoneUserLinkSchema from "./schema/phone-user-link";
 import * as phoneThreadSessionSchema from "./schema/phone-thread-session";
 import * as pendingOutboundCallSchema from "./schema/pending-outbound-call";
 import * as voiceChatSchema from "./schema/voice-chat";
+import * as voiceChatCandidateSchema from "./schema/voice-chat-candidate";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as chatMessageSchema from "./schema/chat-message";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
+import * as redemptionCodesSchema from "./schema/redemption-codes";
+import * as redemptionCodeAttemptsSchema from "./schema/redemption-code-attempts";
 
 export const schema = {
   ...userSchema,
@@ -123,9 +126,12 @@ export const schema = {
   ...phoneThreadSessionSchema,
   ...pendingOutboundCallSchema,
   ...voiceChatSchema,
+  ...voiceChatCandidateSchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
   ...chatMessageSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorSecretSchema,
+  ...redemptionCodesSchema,
+  ...redemptionCodeAttemptsSchema,
 };

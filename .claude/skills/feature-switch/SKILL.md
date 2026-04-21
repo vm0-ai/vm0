@@ -146,10 +146,11 @@ const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
 
 ## Override Layers
 
-The client-side evaluation has three layers (lowest to highest priority):
+Evaluation has two layers (lowest to highest priority):
 
-1. **Core registry** — static config in source code
-2. **Clerk unsafeMetadata** — per-user persistent overrides (set via Lab page)
-3. **localStorage** — per-device overrides (set via `window._vm0.featureSwitches.myFeature = true`)
+1. **Core registry** — static config in source code, evaluated against `userId` / `email` / `orgId` hashes.
+2. **Per-user DB overrides** — row in `user_feature_switches` keyed by `(orgId, userId)`. Written via the Lab page toggles or `window._vm0.featureSwitches.myFeature = true` (both call `POST /api/zero/feature-switches`). Cleared via the Lab page "Reset all" button (`DELETE /api/zero/feature-switches`).
 
-Server-side evaluation only uses Layer 1 (core registry).
+The same two-layer resolution applies on the server: route handlers that call `isFeatureEnabled(..., { userId, orgId, overrides })` pass overrides loaded via `loadFeatureSwitchOverrides(orgId, userId)`.
+
+There is **no** client-only layer. `window._vm0.featureSwitches` requires auth and persists across refreshes; there is no device-local override.

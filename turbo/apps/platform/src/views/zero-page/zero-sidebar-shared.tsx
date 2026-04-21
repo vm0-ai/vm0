@@ -1,8 +1,29 @@
 import { useLastResolved } from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/core";
 import { agents$ } from "../../signals/agent.ts";
+import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { resolveAvatarUrl, resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { getAvatarPresets } from "./zero-avatars.ts";
+
+/**
+ * Returns label/placeholder strings that vary based on the UnifyChatThreads
+ * feature switch. Used by both the sidebar thread list and the full chat-list
+ * page so the two surfaces stay in sync without duplicating the logic.
+ */
+export function useChatThreadsTitleLabels() {
+  const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
+  const features = useLastResolved(featureSwitch$);
+  const unify = features?.[FeatureSwitchKey.UnifyChatThreads] ?? false;
+  return {
+    titleLabel: unify ? "Chats" : `Chats with ${agentDisplayName}`,
+    searchPlaceholder: unify
+      ? "Search chats"
+      : `Search chat with ${agentDisplayName}`,
+    newChatAriaLabel: unify ? "New chat" : `New chat with ${agentDisplayName}`,
+  };
+}
 
 /**
  * Fallback preset config used when the agent hasn't loaded yet or has no avatar.

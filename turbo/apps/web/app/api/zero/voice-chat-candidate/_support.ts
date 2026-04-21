@@ -1,0 +1,123 @@
+import { NextResponse } from "next/server";
+import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
+import { z } from "zod";
+import {
+  featureCandidateVoiceChatItems,
+  featureCandidateVoiceChatSessions,
+  featureCandidateVoiceChatTasks,
+} from "../../../../src/db/schema/voice-chat-candidate";
+import type { AuthContext } from "../../../../src/lib/auth/get-auth-context";
+import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
+
+export const createVoiceChatCandidateSessionBodySchema = z.object({
+  agentId: z.uuid(),
+});
+
+export const appendVoiceChatCandidateItemBodySchema = z.object({
+  role: z.enum(["user", "assistant", "task_result", "system_note"]),
+  content: z.string(),
+  realtimeItemId: z.string().min(1),
+});
+
+export const createVoiceChatCandidateTaskBodySchema = z.object({
+  prompt: z.string().min(1),
+  callId: z.string().min(1),
+});
+
+export const voiceChatCandidateTokenBodySchema = z
+  .object({ model: z.string().optional() })
+  .optional();
+
+type SessionRow = typeof featureCandidateVoiceChatSessions.$inferSelect;
+type ItemRow = typeof featureCandidateVoiceChatItems.$inferSelect;
+type TaskRow = typeof featureCandidateVoiceChatTasks.$inferSelect;
+
+export function serializeVoiceChatCandidateSession(session: SessionRow) {
+  return {
+    id: session.id,
+    orgId: session.orgId,
+    userId: session.userId,
+    agentId: session.agentId,
+    mode: "chat" as const,
+    status: session.status,
+    context: session.context,
+    contextSeq: session.contextSeq,
+    contextVersion: session.contextVersion,
+    createdAt: session.createdAt.toISOString(),
+    lastHeartbeatAt: session.lastHeartbeatAt.toISOString(),
+    endedAt: session.endedAt ? session.endedAt.toISOString() : null,
+  };
+}
+
+export function serializeVoiceChatCandidateItem(item: ItemRow) {
+  return {
+    id: item.id,
+    sessionId: item.sessionId,
+    seq: item.seq,
+    role: item.role,
+    content: item.content,
+    taskId: item.taskId,
+    realtimeItemId: item.realtimeItemId,
+    createdAt: item.createdAt.toISOString(),
+  };
+}
+
+export function serializeVoiceChatCandidateTask(task: TaskRow) {
+  return {
+    id: task.id,
+    sessionId: task.sessionId,
+    runId: task.runId,
+    callId: task.callId,
+    prompt: task.prompt,
+    status: task.status,
+    result: task.result,
+    error: task.error,
+    createdAt: task.createdAt.toISOString(),
+    startedAt: task.startedAt ? task.startedAt.toISOString() : null,
+    finishedAt: task.finishedAt ? task.finishedAt.toISOString() : null,
+  };
+}
+
+// Reuse existing VoiceChat feature switch per epic decision — the candidate
+// tree intentionally has no dedicated flag.
+export async function isVoiceChatCandidateEnabled(
+  authCtx: AuthContext,
+): Promise<boolean> {
+  const overrides = await loadFeatureSwitchOverrides(
+    authCtx.orgId,
+    authCtx.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.VoiceChat, {
+    orgId: authCtx.orgId,
+    userId: authCtx.userId,
+    overrides,
+  });
+}
+
+export function unauthorizedResponse(): Response {
+  return NextResponse.json(
+    { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+    { status: 401 },
+  );
+}
+
+export function forbiddenResponse(): Response {
+  return NextResponse.json(
+    { error: { message: "Voice chat is not enabled", code: "FORBIDDEN" } },
+    { status: 403 },
+  );
+}
+
+export function notFoundResponse(message: string): Response {
+  return NextResponse.json(
+    { error: { message, code: "NOT_FOUND" } },
+    { status: 404 },
+  );
+}
+
+export function badRequestResponse(message: string): Response {
+  return NextResponse.json(
+    { error: { message, code: "BAD_REQUEST" } },
+    { status: 400 },
+  );
+}

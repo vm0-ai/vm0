@@ -1,5 +1,72 @@
 # Changelog
 
+## [12.273.0](https://github.com/vm0-ai/vm0/compare/web-v12.272.0...web-v12.273.0) (2026-04-20)
+
+
+### Features
+
+* **db:** add feature_candidate_voice_chat_* tables + migration ([#10319](https://github.com/vm0-ai/vm0/issues/10319)) ([ea9e88d](https://github.com/vm0-ai/vm0/commit/ea9e88d17af821cff1a5b40db7e268990d634308)), closes [#10305](https://github.com/vm0-ai/vm0/issues/10305)
+
+
+### Bug Fixes
+
+* **firewall:** force-refresh oauth token when provider returns 401 ([#9860](https://github.com/vm0-ai/vm0/issues/9860)) ([#10294](https://github.com/vm0-ai/vm0/issues/10294)) ([96fcb01](https://github.com/vm0-ai/vm0/commit/96fcb01248e71bf5ce2ed24d7b6bfafd3ba1394f))
+
+## [12.272.0](https://github.com/vm0-ai/vm0/compare/web-v12.271.0...web-v12.272.0) (2026-04-20)
+
+
+### Features
+
+* **platform:** add unifyChatThreads feature switch ([#10162](https://github.com/vm0-ai/vm0/issues/10162)) ([#10276](https://github.com/vm0-ai/vm0/issues/10276)) ([03a1c0a](https://github.com/vm0-ai/vm0/commit/03a1c0a3ac15f305e8fea907f52208750bdb4f1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.214.0
+
+## [12.271.0](https://github.com/vm0-ai/vm0/compare/web-v12.270.0...web-v12.271.0) (2026-04-20)
+
+
+### Features
+
+* **api:** add v1 chat-threads endpoints gated by clerk api keys ([#10225](https://github.com/vm0-ai/vm0/issues/10225)) ([bd6d7a3](https://github.com/vm0-ai/vm0/commit/bd6d7a3322cd6c064d8184826d00d0e0d7dd96e1))
+* **runs:** eagerly create agent session at run insertion ([#10290](https://github.com/vm0-ai/vm0/issues/10290)) ([345b309](https://github.com/vm0-ai/vm0/commit/345b309d9dad267f6ca343caebac0e7928ece0be)), closes [#10249](https://github.com/vm0-ai/vm0/issues/10249)
+* **web:** persist sandbox reuse result on agent runs ([#10291](https://github.com/vm0-ai/vm0/issues/10291)) ([6a42ee9](https://github.com/vm0-ai/vm0/commit/6a42ee9b1fdd2670ae101bddf48da3a1e470a62c)), closes [#10233](https://github.com/vm0-ai/vm0/issues/10233)
+
+
+### Refactoring
+
+* **platform:** replace queue polling with realtime signals ([#10277](https://github.com/vm0-ai/vm0/issues/10277)) ([f4cc455](https://github.com/vm0-ai/vm0/commit/f4cc455fde74f079358cb0a2e6f0596ed2216e0c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.213.0
+
+## [12.270.0](https://github.com/vm0-ai/vm0/compare/web-v12.269.0...web-v12.270.0) (2026-04-20)
+
+
+### Features
+
+* **connector:** add nano-banana platform-managed connector skeleton ([#9889](https://github.com/vm0-ai/vm0/issues/9889)) ([3bec579](https://github.com/vm0-ai/vm0/commit/3bec5793f167abcbc635987c606461552f95d38c))
+
+
+### Bug Fixes
+
+* **chat:** restore structured attach-files flow for web chat uploads ([#10264](https://github.com/vm0-ai/vm0/issues/10264)) ([1962608](https://github.com/vm0-ai/vm0/commit/196260877aaaec02d0403232d19b132f28107ccc))
+* **seo:** make / return 200 by rewriting in middleware instead of skipping it ([#10281](https://github.com/vm0-ai/vm0/issues/10281)) ([f23d0f7](https://github.com/vm0-ai/vm0/commit/f23d0f71285b4c19d630f94000fcdffc71005f20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.212.0
+
 ## [12.269.0](https://github.com/vm0-ai/vm0/compare/web-v12.268.0...web-v12.269.0) (2026-04-20)
 
 

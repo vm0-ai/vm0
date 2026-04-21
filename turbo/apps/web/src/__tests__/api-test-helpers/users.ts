@@ -20,6 +20,7 @@ export {
   insertTestVoiceChatSession,
   insertTestVoiceChatPreparation,
 } from "../db-test-seeders/users";
+export { insertTestVoiceChatCandidateSession } from "../db-test-seeders/voice-chat-candidate";
 
 // Re-exports: read-only assertions
 export {
@@ -30,6 +31,11 @@ export {
   getTestVoiceChatEvents,
   getTestVoiceChatPreparation,
 } from "../db-test-assertions/users";
+export {
+  getTestVoiceChatCandidateSession,
+  countTestVoiceChatCandidateSessionsByStatus,
+  countTestVoiceChatCandidateSessionsByReasoningStatus,
+} from "../db-test-assertions/voice-chat-candidate";
 
 /**
  * Get a VM0 API key from the pool for a vendor.

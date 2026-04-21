@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getShortcutParts,
   matchShortcut,
   processShortcut,
   type KeyboardEventLike,
@@ -80,6 +81,12 @@ describe("matchShortcut", () => {
 
   it("should match space key", () => {
     expect(matchShortcut(" ", createEvent({ key: " " }))).toBe(true);
+  });
+
+  it("should match shift+/ when event reports ? (US layout)", () => {
+    expect(
+      matchShortcut("shift+/", createEvent({ key: "?", shiftKey: true })),
+    ).toBe(true);
   });
 });
 
@@ -165,5 +172,56 @@ describe("processShortcut", () => {
     );
 
     expect(calls).toEqual(["first"]);
+  });
+});
+
+describe("getShortcutParts", () => {
+  it("renders arrow keys as symbols", () => {
+    expect(getShortcutParts("arrowup")).toEqual(["↑"]);
+    expect(getShortcutParts("arrowdown")).toEqual(["↓"]);
+    expect(getShortcutParts("arrowleft")).toEqual(["←"]);
+    expect(getShortcutParts("arrowright")).toEqual(["→"]);
+  });
+
+  it("renders enter as ⏎", () => {
+    expect(getShortcutParts("enter")).toEqual(["⏎"]);
+  });
+
+  it("renders escape as ⎋", () => {
+    expect(getShortcutParts("escape")).toEqual(["⎋"]);
+  });
+
+  it("renders space as ␣", () => {
+    expect(getShortcutParts("space")).toEqual(["␣"]);
+  });
+
+  it("renders mod as Ctrl in non-Mac environment", () => {
+    expect(getShortcutParts("mod+k")).toEqual(["Ctrl", "k"]);
+  });
+
+  it("renders shift as Shift in non-Mac environment", () => {
+    expect(getShortcutParts("shift+enter")).toEqual(["Shift", "⏎"]);
+  });
+
+  it("renders alt as Alt in non-Mac environment", () => {
+    expect(getShortcutParts("alt+f")).toEqual(["Alt", "f"]);
+  });
+
+  it("renders ctrl as Ctrl in non-Mac environment", () => {
+    expect(getShortcutParts("ctrl+c")).toEqual(["Ctrl", "c"]);
+  });
+
+  it("renders shift+/ as [Shift, /] — parseShortcut alias is match-only, not display", () => {
+    // parseShortcut maps "shift+/" → key="?" for matching purposes only.
+    // getShortcutParts is display-only and must show the literal "/" the caller wrote.
+    expect(getShortcutParts("shift+/")).toEqual(["Shift", "/"]);
+  });
+
+  it("renders combined modifier+key shortcut", () => {
+    expect(getShortcutParts("mod+shift+enter")).toEqual(["Ctrl", "Shift", "⏎"]);
+  });
+
+  it("renders plain alphabetic key without capitalisation", () => {
+    expect(getShortcutParts("j")).toEqual(["j"]);
   });
 });

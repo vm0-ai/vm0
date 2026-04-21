@@ -4,6 +4,7 @@ import { dispatchCallbacks } from "../callback";
 import { logger } from "../../shared/logger";
 import type { RunResult, RunStatus } from "./types";
 import type { Database } from "../../../types/global";
+import type { SandboxReuseResult } from "@vm0/core";
 
 const log = logger("service:run-status");
 
@@ -22,6 +23,8 @@ export async function transitionRunStatus(
     lastHeartbeatAt?: Date;
     error?: string;
     result?: RunResult;
+    sandboxId?: string;
+    sandboxReuseResult?: SandboxReuseResult;
   },
   allowedFromStatuses: RunStatus[],
   db?: Database,

@@ -5,14 +5,6 @@ const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async rewrites() {
-    return [
-      // Serve root as English without redirecting, so "/" stays indexable.
-      // A redirect would remove "/" from Google's index; a rewrite preserves it.
-      { source: "/", destination: "/en" },
-    ];
-  },
-
   async headers() {
     return [
       {

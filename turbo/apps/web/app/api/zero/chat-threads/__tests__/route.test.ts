@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import {
   createTestRequest,
@@ -14,7 +14,6 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { mockAblyPublish } from "../../../../../src/__tests__/ably-mock";
-import { reloadEnv } from "../../../../../src/env";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { addTestRunToThread } from "../../../../../src/__tests__/db-test-seeders/agents";
 
@@ -553,6 +552,29 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(thread.running).toBe(true);
   });
 
+  it("returns agent.id and agent.avatarUrl for scoped (agentId query) requests", async () => {
+    await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Scoped agent" }),
+      }),
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads).toHaveLength(1);
+    expect(data.threads[0].agent).toBeDefined();
+    expect(data.threads[0].agent.id).toBe(testComposeId);
+    expect(data.threads[0].agent).toHaveProperty("avatarUrl");
+  });
+
   it("reports running=false when all runs reach terminal states", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
@@ -612,12 +634,133 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
   });
 });
 
+describe("GET /api/zero/chat-threads - Unified list (agentId omitted)", () => {
+  let user: UserContext;
+  let composeAId: string;
+  let composeBId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const a = await createTestCompose(uniqueId("unify-a"));
+    composeAId = a.composeId;
+    const b = await createTestCompose(uniqueId("unify-b"));
+    composeBId = b.composeId;
+  });
+
+  it("returns threads for every agent in the caller's org", async () => {
+    const aCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: composeAId, title: "A thread" }),
+      }),
+    );
+    const { id: aId } = await aCreate.json();
+    const bCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: composeBId, title: "B thread" }),
+      }),
+    );
+    const { id: bId } = await bCreate.json();
+
+    const response = await GET(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads"),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const ids = data.threads.map((t: { id: string }) => {
+      return t.id;
+    });
+    expect(ids).toContain(aId);
+    expect(ids).toContain(bId);
+  });
+
+  it("returns agent.id and agent.avatarUrl for every row", async () => {
+    await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: composeAId, title: "A" }),
+      }),
+    );
+
+    const response = await GET(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads"),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads).toHaveLength(1);
+    expect(data.threads[0].agent).toBeDefined();
+    expect(data.threads[0].agent.id).toBe(composeAId);
+    // avatarUrl defaults to null for a freshly seeded zero_agents row.
+    expect(data.threads[0].agent).toHaveProperty("avatarUrl");
+  });
+
+  it("does not leak threads from another org", async () => {
+    // Thread in the caller's default org, agent A.
+    const mineCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: composeAId, title: "Mine" }),
+      }),
+    );
+    const { id: mineId } = await mineCreate.json();
+
+    // Switch to a different org and create a compose + thread there.
+    const otherOrg = await context.createAgentCompose(user.userId);
+    const otherOrgEntry = await getOrgCacheEntry(otherOrg.orgId);
+    mockClerk({
+      userId: user.userId,
+      orgId: otherOrg.orgId,
+      orgSlug: otherOrgEntry!.slug,
+      clerkOrgs: [
+        {
+          id: otherOrg.orgId,
+          slug: otherOrgEntry!.slug,
+          name: otherOrgEntry!.slug,
+        },
+      ],
+    });
+    const { composeId: otherComposeId } = await createTestCompose(
+      uniqueId("unify-other-org"),
+    );
+    const otherCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: otherComposeId, title: "Other org" }),
+      }),
+    );
+    const { id: otherId } = await otherCreate.json();
+
+    // Switch back to the original org and list unscoped.
+    mockClerk({ userId: user.userId });
+
+    const response = await GET(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads"),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const ids = data.threads.map((t: { id: string }) => {
+      return t.id;
+    });
+    expect(ids).toContain(mineId);
+    expect(ids).not.toContain(otherId);
+  });
+});
+
 describe("chat-threads - threadListChanged realtime signal", () => {
   let testComposeId: string;
 
   beforeEach(async () => {
-    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-    reloadEnv();
     context.setupMocks();
     await context.setupUser();
     mockAblyPublish.mockClear();

@@ -49,7 +49,7 @@ describe("internal connector logos - display (ORG-D-118)", () => {
     detachedSetupPage({ context, path: "/__internal-connector-logos" });
     const connectorTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
     // Verify at least one connector type and its label appears in the document
-    // (labels and type keys may appear multiple times due to icon display variants)
+    // (labels and type keys may appear multiple times due to icon display variants).
     await waitFor(() => {
       expect(
         screen.queryAllByText(CONNECTOR_TYPES[connectorTypes[0]].label).length,

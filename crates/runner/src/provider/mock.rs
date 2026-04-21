@@ -24,7 +24,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::JobProvider;
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use sandbox::SandboxId;
 
 /// Recorded completion from [`JobProvider::complete`].
 #[derive(Debug, Clone)]
@@ -32,6 +33,8 @@ pub struct Completion {
     pub run_id: RunId,
     pub exit_code: i32,
     pub error: Option<String>,
+    pub sandbox_id: Option<SandboxId>,
+    pub reuse_result: Option<SandboxReuseResult>,
 }
 
 /// Channel-driven mock provider.
@@ -210,7 +213,14 @@ impl JobProvider for MockJobProvider {
             .flatten()
     }
 
-    async fn complete(&self, run_id: RunId, exit_code: i32, error: Option<&str>) {
+    async fn complete(
+        &self,
+        run_id: RunId,
+        exit_code: i32,
+        error: Option<&str>,
+        sandbox_id: Option<SandboxId>,
+        reuse_result: Option<SandboxReuseResult>,
+    ) {
         self.completions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -218,6 +228,8 @@ impl JobProvider for MockJobProvider {
                 run_id,
                 exit_code,
                 error: error.map(String::from),
+                sandbox_id,
+                reuse_result,
             });
         // Wake all pending `wait_completion` waiters — they re-scan the vec
         // and return if their run_id is now present.

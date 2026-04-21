@@ -42,6 +42,27 @@ export async function loadFeatureSwitchOverrides(
 }
 
 /**
+ * Delete all feature switch overrides for the given org + user.
+ * After deletion, evaluations fall back to the static registry values
+ * computed from userId/orgId.
+ */
+export async function deleteUserFeatureSwitches(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  const db = globalThis.services.db;
+
+  await db
+    .delete(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, orgId),
+        eq(userFeatureSwitches.userId, userId),
+      ),
+    );
+}
+
+/**
  * Update user feature switch overrides with merge strategy.
  * Merges the provided switches with existing ones (shallow merge).
  */

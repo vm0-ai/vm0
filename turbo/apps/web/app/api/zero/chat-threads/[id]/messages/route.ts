@@ -9,6 +9,7 @@ import { getUserId } from "../../../../../../src/lib/auth/get-auth-context";
 import {
   getChatThread,
   getMessagesSince,
+  resolveAttachFileUrls,
 } from "../../../../../../src/lib/zero/chat-thread";
 import { isNotFound } from "../../../../../../src/lib/shared/errors";
 
@@ -36,24 +37,31 @@ const router = tsr.router(chatThreadMessagesContract, {
         query.limit,
       );
 
-      const messages = rows.map((row) => {
-        // Legacy placeholder rows (sequenceNumber IS NULL) fall back to runError;
-        // event-backed rows and error rows use their own error field.
-        const isLegacyPlaceholder =
-          row.sequenceNumber === null && row.content === null && !row.error;
-        const effectiveError = isLegacyPlaceholder
-          ? (row.runError ?? undefined)
-          : (row.error ?? undefined);
-        return {
-          id: row.id,
-          role: row.role as "user" | "assistant",
-          content: row.content,
-          runId: row.runId ?? undefined,
-          error: effectiveError,
-          status: row.runStatus ?? undefined,
-          createdAt: row.createdAt.toISOString(),
-        };
-      });
+      const messages = await Promise.all(
+        rows.map(async (row) => {
+          // Legacy placeholder rows (sequenceNumber IS NULL) fall back to runError;
+          // event-backed rows and error rows use their own error field.
+          const isLegacyPlaceholder =
+            row.sequenceNumber === null && row.content === null && !row.error;
+          const effectiveError = isLegacyPlaceholder
+            ? (row.runError ?? undefined)
+            : (row.error ?? undefined);
+          const attachFiles =
+            row.attachFiles && row.attachFiles.length > 0
+              ? await resolveAttachFileUrls(userId, row.attachFiles)
+              : undefined;
+          return {
+            id: row.id,
+            role: row.role as "user" | "assistant",
+            content: row.content,
+            runId: row.runId ?? undefined,
+            error: effectiveError,
+            status: row.runStatus ?? undefined,
+            attachFiles,
+            createdAt: row.createdAt.toISOString(),
+          };
+        }),
+      );
 
       return {
         status: 200 as const,

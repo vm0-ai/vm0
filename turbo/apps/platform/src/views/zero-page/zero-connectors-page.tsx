@@ -315,7 +315,7 @@ export function ZeroConnectorsPage() {
     if (
       (ct &&
         ct.availableAuthMethods.length === 1 &&
-        ct.availableAuthMethods[0] === "api-token") ||
+        ct.availableAuthMethods[0] !== "oauth") ||
       isGoogleOAuthConnector(type)
     ) {
       setSelected(type);

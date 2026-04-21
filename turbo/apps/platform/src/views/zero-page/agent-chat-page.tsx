@@ -9,6 +9,7 @@ import {
   useResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -39,6 +40,7 @@ import {
 import { FeatureSwitchKey } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
+  redeemCode$,
   redeemCodeDialogOpen$,
   redeemCodeInput$,
   setRedeemCodeDialogOpen$,
@@ -209,19 +211,51 @@ function RedeemCodeDialog() {
   const code = useGet(redeemCodeInput$);
   const setOpen = useSet(setRedeemCodeDialogOpen$);
   const setCode = useSet(setRedeemCodeInput$);
+  const [redeemLoadable, redeem] = useLoadableSet(redeemCode$);
+  const pageSignal = useGet(pageSignal$);
+
+  const inFlight = redeemLoadable.state === "loading";
+
+  const handleRedeem = () => {
+    const trimmed = code.trim();
+    if (!trimmed) {
+      return;
+    }
+    // On 4xx/5xx, `accept()` inside `redeemCode$` shows the error toast and
+    // throws an ApiError — `detach()` swallows the rejection here, so we
+    // neither re-toast nor close the dialog. On success, toast + close.
+    detach(
+      (async () => {
+        const result = await redeem(trimmed, pageSignal);
+        toast.success(
+          `Added ${result.credits.toLocaleString()} credits. New balance: ${result.newBalance.toLocaleString()}.`,
+        );
+        setOpen(false);
+      })(),
+      Reason.DomCallback,
+      "redeemCode",
+    );
+  };
 
   return (
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        return !v && setOpen(false);
+        if (inFlight) {
+          return;
+        }
+        if (!v) {
+          setOpen(false);
+        }
       }}
     >
       <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Redeem code</DialogTitle>
           <DialogDescription>
-            Enter your redemption code to claim your reward.
+            Enter the redemption code you received (format:{" "}
+            <code className="font-mono">VM0-XXXX-XXXX-XXXX-XXXX</code>) to add
+            credits to your workspace.
           </DialogDescription>
         </DialogHeader>
         <div className="py-2">
@@ -230,8 +264,15 @@ function RedeemCodeDialog() {
             onChange={(e) => {
               setCode(e.target.value);
             }}
-            placeholder="Enter code"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleRedeem();
+              }
+            }}
+            placeholder="VM0-XXXX-XXXX-XXXX-XXXX"
+            disabled={inFlight}
             autoFocus
+            className="font-mono"
             data-testid="redeem-code-input"
           />
         </div>
@@ -241,10 +282,17 @@ function RedeemCodeDialog() {
             onClick={() => {
               setOpen(false);
             }}
+            disabled={inFlight}
           >
             Cancel
           </Button>
-          <Button disabled={!code.trim()}>Redeem</Button>
+          <Button
+            onClick={handleRedeem}
+            disabled={inFlight || !code.trim()}
+            data-testid="redeem-code-submit"
+          >
+            {inFlight ? "Redeeming…" : "Redeem"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -405,7 +453,7 @@ export function AgentChatPage() {
       FeatureSwitchKey.ModelProviderSelection
     ] ?? false;
   const orgProviders = useLastResolved(orgModelProviders$);
-  const modelSelection = useGet(chatPageModelSelection$);
+  const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
   const setModelSelection = useSet(setChatPageModelSelection$);
 
   const handleSendMessage = (message: string) => {

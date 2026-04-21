@@ -1,5 +1,66 @@
 # Changelog
 
+## [0.269.1](https://github.com/vm0-ai/vm0/compare/app-v0.269.0...app-v0.269.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **platform:** prevent chat message grid overflow on long content ([#10320](https://github.com/vm0-ai/vm0/issues/10320)) ([260371e](https://github.com/vm0-ai/vm0/commit/260371e3db21bd311ff10840e70be6ea065ceed9))
+
+## [0.269.0](https://github.com/vm0-ai/vm0/compare/app-v0.268.0...app-v0.269.0) (2026-04-20)
+
+
+### Features
+
+* **platform:** add unifyChatThreads feature switch ([#10162](https://github.com/vm0-ai/vm0/issues/10162)) ([#10276](https://github.com/vm0-ai/vm0/issues/10276)) ([03a1c0a](https://github.com/vm0-ai/vm0/commit/03a1c0a3ac15f305e8fea907f52208750bdb4f1d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.214.0
+
+## [0.268.0](https://github.com/vm0-ai/vm0/compare/app-v0.267.0...app-v0.268.0) (2026-04-20)
+
+
+### Features
+
+* **api:** add v1 chat-threads endpoints gated by clerk api keys ([#10225](https://github.com/vm0-ai/vm0/issues/10225)) ([bd6d7a3](https://github.com/vm0-ai/vm0/commit/bd6d7a3322cd6c064d8184826d00d0e0d7dd96e1))
+* **platform:** add totals bar and tabbed detail sections to usage insight ([#10271](https://github.com/vm0-ai/vm0/issues/10271)) ([4ebe470](https://github.com/vm0-ai/vm0/commit/4ebe470a3c1cecf64bfc23901bd404acc0b5ea01))
+
+
+### Refactoring
+
+* **platform:** replace queue polling with realtime signals ([#10277](https://github.com/vm0-ai/vm0/issues/10277)) ([f4cc455](https://github.com/vm0-ai/vm0/commit/f4cc455fde74f079358cb0a2e6f0596ed2216e0c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.213.0
+
+## [0.267.0](https://github.com/vm0-ai/vm0/compare/app-v0.266.0...app-v0.267.0) (2026-04-20)
+
+
+### Features
+
+* **connector:** add nano-banana platform-managed connector skeleton ([#9889](https://github.com/vm0-ai/vm0/issues/9889)) ([3bec579](https://github.com/vm0-ai/vm0/commit/3bec5793f167abcbc635987c606461552f95d38c))
+
+
+### Bug Fixes
+
+* **chat:** restore structured attach-files flow for web chat uploads ([#10264](https://github.com/vm0-ai/vm0/issues/10264)) ([1962608](https://github.com/vm0-ai/vm0/commit/196260877aaaec02d0403232d19b132f28107ccc))
+* **platform:** clear just-connected flag on connector disconnect ([#10274](https://github.com/vm0-ai/vm0/issues/10274)) ([dfa0588](https://github.com/vm0-ai/vm0/commit/dfa05889ae909947fea88174788a2dd9e2f6b10e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.212.0
+
 ## [0.266.0](https://github.com/vm0-ai/vm0/compare/app-v0.265.1...app-v0.266.0) (2026-04-20)
 
 

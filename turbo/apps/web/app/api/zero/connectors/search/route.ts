@@ -40,17 +40,24 @@ const router = tsr.router(zeroConnectorsSearchContract, {
     ).flatMap((type) => {
       const config = CONNECTOR_TYPES[type];
       const flag = config.featureFlag;
-      const oauthEnabled = !flag || !!featureStates[flag];
+      const flagEnabled = !flag || !!featureStates[flag];
+      const hasOauth = "oauth" in config.authMethods;
       const hasApiToken = "api-token" in config.authMethods;
+      const hasPlatform = "platform" in config.authMethods;
 
-      if (!oauthEnabled && !hasApiToken) return [];
+      // Hidden unless the flag allows an OAuth/platform method or an api-token
+      // method exists (api-token is always available regardless of flag).
+      if (!flagEnabled && !hasApiToken) return [];
 
       const availableAuthMethods: ConnectorSearchAuthMethod[] = [];
-      if (oauthEnabled && "oauth" in config.authMethods) {
+      if (flagEnabled && hasOauth) {
         availableAuthMethods.push("oauth");
       }
       if (hasApiToken) {
         availableAuthMethods.push("api-token");
+      }
+      if (flagEnabled && hasPlatform) {
+        availableAuthMethods.push("platform");
       }
 
       const item = {

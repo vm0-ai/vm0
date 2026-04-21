@@ -7,6 +7,7 @@ import { storages } from "../../../db/schema/storage";
 import { secrets } from "../../../db/schema/secret";
 import { modelProviders } from "../../../db/schema/model-provider";
 import { connectors } from "../../../db/schema/connector";
+import { userPlatformConnectors } from "../../../db/schema/user-platform-connector";
 import { variables } from "../../../db/schema/variable";
 import { usageDaily } from "../../../db/schema/usage-daily";
 import { exportJobs } from "../../../db/schema/export-job";
@@ -90,6 +91,9 @@ export async function deleteOrgData(orgId: string): Promise<void> {
 
   // Step 3: Tables without CASCADE
   await db.delete(connectors).where(eq(connectors.orgId, orgId));
+  await db
+    .delete(userPlatformConnectors)
+    .where(eq(userPlatformConnectors.orgId, orgId));
   await db.delete(variables).where(eq(variables.orgId, orgId));
   await db.delete(usageDaily).where(eq(usageDaily.orgId, orgId));
   await db.delete(exportJobs).where(eq(exportJobs.orgId, orgId));

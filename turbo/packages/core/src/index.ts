@@ -9,6 +9,7 @@ export * from "./github-url";
 export * from "./frameworks";
 export * from "./feature-switch-key";
 export * from "./feature-switch";
+export * from "./staff-org";
 export * from "./skill-frontmatter";
 export * from "./instructions-frontmatter";
 export * from "./firewall-loader";

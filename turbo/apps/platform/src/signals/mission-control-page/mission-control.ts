@@ -132,7 +132,7 @@ export const setupMissionControlKeyboard$ = command(
         c: () => {
           set(setNewChatDialogOpen$, true);
         },
-        "shift+?": () => {
+        "shift+/": () => {
           set(setShortcutHelpOpen$, true);
         },
         y: async () => {

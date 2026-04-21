@@ -52,7 +52,11 @@ export enum FeatureSwitchKey {
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
+  ApiKeys = "apiKeys",
   ModelProviderSelection = "modelProviderSelection",
-  Vm0GlmModel = "vm0GlmModel",
+  NanoBananaConnector = "nanoBananaConnector",
   RedeemCode = "redeemCode",
+  UnifyChatThreads = "unifyChatThreads",
+  Vm0GlmModel = "vm0GlmModel",
+  RedemptionCodes = "redemptionCodes",
 }

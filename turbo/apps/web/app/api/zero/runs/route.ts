@@ -139,6 +139,7 @@ const router = tsr.router(zeroRunsMainContract, {
         body: {
           runId: result.runId,
           status: result.status,
+          sessionId: result.sessionId,
           createdAt: result.createdAt.toISOString(),
         },
       };

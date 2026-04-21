@@ -90,6 +90,8 @@ const createRunResponseSchema = z.object({
   runId: z.string(),
   status: runStatusSchema,
   sandboxId: z.string().optional(),
+  // Agent session id — eagerly created at run insertion, always present.
+  sessionId: z.string().uuid(),
   output: z.string().optional(),
   error: z.string().optional(),
   executionTimeMs: z.number().optional(),

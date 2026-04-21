@@ -202,7 +202,6 @@ export default [
   },
   // Ban try statements in production source code.
   // Use accept() for API errors, useLoadableSet for loading states.
-  // If genuinely needed (JSON.parse, clipboard, polling), add an inline eslint-disable.
   {
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/**/__tests__/**", "src/mocks/**"],
@@ -212,9 +211,18 @@ export default [
         {
           selector: "TryStatement",
           message:
-            "try statements are not allowed. Use accept() for API errors, useLoadableSet for loading states. If genuinely needed (JSON.parse, clipboard, polling), add an inline eslint-disable with justification.",
+            "try statements are not allowed. Use accept() for API errors, useLoadableSet for loading states.",
         },
       ],
+    },
+  },
+  // utils.ts is the centralised infrastructure file for try/catch patterns:
+  // JSON.parse guard, best-effort wrappers, polling with transient-error backoff,
+  // and race-under-signal finally cleanup. All try statements here are intentional.
+  {
+    files: ["src/signals/utils.ts"],
+    rules: {
+      "no-restricted-syntax": "off",
     },
   },
   {

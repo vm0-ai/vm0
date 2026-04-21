@@ -5,6 +5,8 @@ import { GET, DELETE } from "../route";
 import {
   createTestRequest,
   createTestOrg,
+  insertTestPlatformConnector,
+  countPlatformConnectorRows,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -85,6 +87,40 @@ describe("GET /api/zero/connectors/:type", () => {
   });
 });
 
+describe("GET /api/zero/connectors/:type (platform rows)", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("returns a platform connector seeded in user_platform_connectors", async () => {
+    const userId = uniqueId("zcget-pl");
+    const { orgId } = await setupOrg(userId);
+    await insertTestPlatformConnector(orgId, userId, "nano-banana");
+
+    const response = await GET(createTestRequest(connectorUrl("nano-banana")));
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.type).toBe("nano-banana");
+    expect(data.authMethod).toBe("platform");
+    expect(data.oauthScopes).toBeNull();
+    expect(data.externalId).toBeNull();
+  });
+
+  it("does not leak a platform row across orgs", async () => {
+    // Seed in org A.
+    const userA = uniqueId("zcget-xo-a");
+    const { orgId: orgA } = await setupOrg(userA);
+    await insertTestPlatformConnector(orgA, userA, "nano-banana");
+
+    // Switch to org B and GET the same type — must not see org A's row.
+    const userB = uniqueId("zcget-xo-b");
+    await setupOrg(userB);
+
+    const response = await GET(createTestRequest(connectorUrl("nano-banana")));
+    expect(response.status).toBe(404);
+  });
+});
+
 describe("DELETE /api/zero/connectors/:type", () => {
   beforeEach(() => {
     context.setupMocks();
@@ -118,5 +154,42 @@ describe("DELETE /api/zero/connectors/:type", () => {
       createTestRequest(connectorUrl("github"), { method: "DELETE" }),
     );
     expect(response.status).toBe(401);
+  });
+
+  it("should delete a platform connector and return 204", async () => {
+    const userId = uniqueId("zcdel-pl");
+    const { orgId } = await setupOrg(userId);
+    await insertTestPlatformConnector(orgId, userId, "nano-banana");
+
+    const response = await DELETE(
+      createTestRequest(connectorUrl("nano-banana"), { method: "DELETE" }),
+    );
+    expect(response.status).toBe(204);
+
+    // Subsequent GET should 404 — row gone, no residual derivation.
+    const after = await GET(createTestRequest(connectorUrl("nano-banana")));
+    expect(after.status).toBe(404);
+  });
+
+  it("clears both tables when OAuth and platform rows coexist on the same type", async () => {
+    // Data-model-wise unlikely (UI enforces single authMethod per type), but
+    // cheap to pin: DELETE must not leave the platform row behind after the
+    // OAuth branch fires. Use `github` as the carrier type — the platform
+    // table only stores varchar, so co-existence is representable at the DB
+    // level even though CONNECTOR_TYPES[github] has no platform authMethod.
+    const userId = uniqueId("zcdel-dual");
+    const { orgId } = await setupOrg(userId);
+    await context.createConnector(orgId, { userId, type: "github" });
+    await insertTestPlatformConnector(orgId, userId, "github");
+    expect(await countPlatformConnectorRows(orgId, userId, "github")).toBe(1);
+
+    const response = await DELETE(
+      createTestRequest(connectorUrl("github"), { method: "DELETE" }),
+    );
+    expect(response.status).toBe(204);
+
+    expect(await countPlatformConnectorRows(orgId, userId, "github")).toBe(0);
+    const after = await GET(createTestRequest(connectorUrl("github")));
+    expect(after.status).toBe(404);
   });
 });

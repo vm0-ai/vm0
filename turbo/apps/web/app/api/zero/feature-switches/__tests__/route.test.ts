@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { GET, POST } from "../route";
+import { GET, POST, DELETE } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -20,6 +20,10 @@ function postRequest(switches: Record<string, boolean>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ switches }),
   });
+}
+
+function deleteRequest() {
+  return createTestRequest(BASE_URL, { method: "DELETE" });
 }
 
 describe("GET /api/zero/feature-switches", () => {
@@ -110,5 +114,40 @@ describe("POST /api/zero/feature-switches", () => {
 
     expect(response.status).toBe(200);
     expect(data.switches).toEqual({ voiceChat: true, lab: false });
+  });
+});
+
+describe("DELETE /api/zero/feature-switches", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await DELETE(deleteRequest());
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should clear all overrides and subsequent GET returns empty switches", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    await POST(postRequest({ voiceChat: true, lab: false }));
+
+    const deleteResponse = await DELETE(deleteRequest());
+    const deleteData = await deleteResponse.json();
+
+    expect(deleteResponse.status).toBe(200);
+    expect(deleteData.deleted).toBe(true);
+
+    const getResponse = await GET(getRequest());
+    const getData = await getResponse.json();
+
+    expect(getResponse.status).toBe(200);
+    expect(getData.switches).toEqual({});
   });
 });

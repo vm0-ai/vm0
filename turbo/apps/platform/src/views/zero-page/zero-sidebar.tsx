@@ -21,11 +21,13 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconPlug,
   IconFlask,
+  IconFlask2,
   IconPhone,
   IconMicrophone,
   IconSparkles,
   IconLayoutDashboard,
   IconMenu2,
+  IconGift,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import {
@@ -161,6 +163,15 @@ const FOOTER_NAV = [
     featureGate: FeatureSwitchKey.VoiceChat,
   },
   {
+    id: "voiceChatCandidate",
+    activeKeys: ["voiceChatCandidate"],
+    pathname: "/voice-chat-candidate",
+    label: "Voice Chat (Candidate)",
+    icon: IconFlask2 as NavIcon,
+    iconImg: undefined,
+    featureGate: FeatureSwitchKey.VoiceChat,
+  },
+  {
     id: "missionControl",
     activeKeys: ["missionControl"],
     pathname: "/_/mission-control",
@@ -186,6 +197,15 @@ const FOOTER_NAV = [
     icon: IconChartBar as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.UsageAnalytics,
+  },
+  {
+    id: "redemptionCodes",
+    activeKeys: ["redemptionCodes"],
+    pathname: "/_/redemption-codes",
+    label: "Redemption Codes",
+    icon: IconGift as NavIcon,
+    iconImg: undefined,
+    featureGate: FeatureSwitchKey.RedemptionCodes,
   },
 ] as const satisfies readonly FooterNavItem[];
 
@@ -315,148 +335,150 @@ function SidebarNavContent() {
 
   return (
     <>
-      {/* Collapsed icon-only sidebar — desktop only, shown when sidebarOff */}
-      <aside
-        data-sidebar-off={off || undefined}
-        className="zero-nav box-border hidden data-[sidebar-off]:md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300"
-      >
-        <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground"
-                  onClick={onCollapse}
-                  aria-label="Expand sidebar"
-                >
-                  <IconLayoutSidebarLeftCollapse
-                    size={18}
-                    className="rotate-180"
-                  />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="text-xs">Expand sidebar</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+      {/* Collapsed icon-only sidebar — desktop only, only rendered when sidebarOff */}
+      {off && (
+        <aside className="zero-nav box-border md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
+          <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground"
+                    onClick={onCollapse}
+                    aria-label="Expand sidebar"
+                  >
+                    <IconLayoutSidebarLeftCollapse
+                      size={18}
+                      className="rotate-180"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="text-xs">Expand sidebar</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
 
-        <nav className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-1 pb-2 pt-0">
-          <TooltipProvider delayDuration={100}>
-            {allNavItems.map(
-              ({ id, activeKeys, pathname: navPath, label, icon: Icon }) => {
-                const isActive =
-                  activeId !== null &&
-                  (activeKeys as readonly RouteKey[]).includes(activeId);
-                return (
-                  <div key={id} className="flex w-full shrink-0 justify-center">
+          <nav className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-1 pb-2 pt-0">
+            <TooltipProvider delayDuration={100}>
+              {allNavItems.map(
+                ({ id, activeKeys, pathname: navPath, label, icon: Icon }) => {
+                  const isActive =
+                    activeId !== null &&
+                    (activeKeys as readonly RouteKey[]).includes(activeId);
+                  return (
+                    <div
+                      key={id}
+                      className="flex w-full shrink-0 justify-center"
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Link
+                            pathname={
+                              navPath as Parameters<typeof Link>[0]["pathname"]
+                            }
+                            onClick={(e) => {
+                              if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                                return;
+                              }
+                              e.preventDefault();
+                              if (id === "chat") {
+                                onSelect("chat");
+                              } else {
+                                onSelect(id);
+                              }
+                            }}
+                            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+                              isActive
+                                ? "bg-gray-200 text-gray-900"
+                                : "text-sidebar-foreground hover:bg-sidebar-accent"
+                            }`}
+                          >
+                            <span className="relative inline-flex">
+                              <Icon size={16} className="shrink-0" />
+                              {id === "works" && slackScopeMismatch && (
+                                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                              )}
+                            </span>
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p className="text-xs">{label}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  );
+                },
+              )}
+              {footerNavGated.length > 0 && (
+                <div className="flex w-full shrink-0 justify-center">
+                  <DropdownMenu>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Link
-                          pathname={
-                            navPath as Parameters<typeof Link>[0]["pathname"]
-                          }
-                          onClick={(e) => {
-                            if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                              return;
-                            }
-                            e.preventDefault();
-                            if (id === "chat") {
-                              onSelect("chat");
-                            } else {
-                              onSelect(id);
-                            }
-                          }}
-                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                            isActive
-                              ? "bg-gray-200 text-gray-900"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent"
-                          }`}
-                        >
-                          <span className="relative inline-flex">
-                            <Icon size={16} className="shrink-0" />
-                            {id === "works" && slackScopeMismatch && (
-                              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
-                            )}
-                          </span>
-                        </Link>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+                              isGatedActive
+                                ? "bg-gray-200 text-gray-900"
+                                : "text-sidebar-foreground hover:bg-sidebar-accent"
+                            }`}
+                          >
+                            <IconMenu2 size={16} className="shrink-0" />
+                          </button>
+                        </DropdownMenuTrigger>
                       </TooltipTrigger>
                       <TooltipContent side="right">
-                        <p className="text-xs">{label}</p>
+                        <p className="text-xs">More</p>
                       </TooltipContent>
                     </Tooltip>
-                  </div>
-                );
-              },
-            )}
-            {footerNavGated.length > 0 && (
-              <div className="flex w-full shrink-0 justify-center">
-                <DropdownMenu>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                            isGatedActive
-                              ? "bg-gray-200 text-gray-900"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent"
-                          }`}
-                        >
-                          <IconMenu2 size={16} className="shrink-0" />
-                        </button>
-                      </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p className="text-xs">More</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent
-                    side="right"
-                    align="end"
-                    sideOffset={8}
-                    className="w-[220px]"
-                  >
-                    {renderGatedDropdownItems()}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
-          </TooltipProvider>
-        </nav>
+                    <DropdownMenuContent
+                      side="right"
+                      align="end"
+                      sideOffset={8}
+                      className="w-[220px]"
+                    >
+                      {renderGatedDropdownItems()}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
+            </TooltipProvider>
+          </nav>
 
-        <div className="flex w-full shrink-0 flex-col items-center gap-1 pb-2 pt-1">
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  pathname="/insights"
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                      return;
-                    }
-                    e.preventDefault();
-                    onSelect("insights");
-                  }}
-                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                    activeId === "insights"
-                      ? "bg-gray-200 text-gray-900"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <IconSparkles size={16} className="shrink-0" />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="text-xs">Insights</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <AccountDropdown onAccountAction={onAccountAction} collapsed />
-        </div>
-      </aside>
+          <div className="flex w-full shrink-0 flex-col items-center gap-1 pb-2 pt-1">
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    pathname="/insights"
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                        return;
+                      }
+                      e.preventDefault();
+                      onSelect("insights");
+                    }}
+                    className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+                      activeId === "insights"
+                        ? "bg-gray-200 text-gray-900"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    }`}
+                  >
+                    <IconSparkles size={16} className="shrink-0" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="text-xs">Insights</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <AccountDropdown onAccountAction={onAccountAction} collapsed />
+          </div>
+        </aside>
+      )}
 
       {/* Expanded full sidebar — desktop default, mobile overlay when expanded */}
       <aside

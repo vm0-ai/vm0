@@ -819,6 +819,8 @@ function AgentTabContent({
   resolvedSound,
   isDefaultAgent,
   ownerId,
+  modelProviderId,
+  selectedModel,
 }: {
   activeTab: string;
   agentId: string;
@@ -828,6 +830,8 @@ function AgentTabContent({
   resolvedSound: Tone;
   isDefaultAgent: boolean;
   ownerId: string;
+  modelProviderId: string | null;
+  selectedModel: string | null;
 }) {
   const deleteAgent = useSet(deleteZeroJobAgent$);
   const nav = useSet(detachedNavigateTo$);
@@ -854,11 +858,13 @@ function AgentTabContent({
     case "profile": {
       return (
         <ZeroSettingsTab
-          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}`}
+          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${modelProviderId ?? ""}\0${selectedModel ?? ""}`}
           displayName={displayName}
           description={description}
           sound={resolvedSound}
           avatarUrl={avatarUrl}
+          modelProviderId={modelProviderId}
+          selectedModel={selectedModel}
           updateSettings$={zeroJobUpdateSettings$}
           inputId="job-agent-name"
           isDefaultAgent={isDefaultAgent}
@@ -889,6 +895,8 @@ function useAgentFields() {
     avatarUrl: source?.avatarUrl ?? null,
     resolvedSound: resolveSound(source?.sound ?? "professional"),
     ownerId: source?.ownerId ?? "",
+    modelProviderId: source?.modelProviderId ?? null,
+    selectedModel: source?.selectedModel ?? null,
   };
 }
 
@@ -959,6 +967,8 @@ export function ZeroJobDetailPage() {
           resolvedSound={fields.resolvedSound}
           isDefaultAgent={isDefaultAgent}
           ownerId={fields.ownerId}
+          modelProviderId={fields.modelProviderId}
+          selectedModel={fields.selectedModel}
         />
       </main>
     </div>

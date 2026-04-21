@@ -1,10 +1,13 @@
 """Tests for firewall subsystem: matching, caching, header injection, and HTTP fetching."""
 
+import asyncio
 import io
 import json
 import time
 import urllib.error
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
@@ -1212,7 +1215,14 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is False
         # fetch_firewall_headers wraps urllib; args-once-with pins the cache-miss contract (#9991).
         mock_fetch.assert_called_once_with(
-            encrypted, auth_templates, "tok-xyz", None, None, None, None
+            encrypted,
+            auth_templates,
+            "tok-xyz",
+            None,
+            None,
+            None,
+            None,
+            force_refresh=False,
         )
 
         # Verify the cache was populated
@@ -1332,6 +1342,54 @@ class TestGetFirewallHeaders:
 
         assert "base" not in result
         assert result["cache_hit"] is True
+
+    async def test_force_refresh_marker_triggers_forced_fetch(self, headers):
+        """When a force-refresh marker is set, the next fetch passes
+        force_refresh=True, the marker is cleared, and the consume timestamp
+        is recorded so the cooldown can suppress re-marking (#9860)."""
+        cache_key = ("run-1", "api-1")
+        auth._force_refresh_markers.add(cache_key)
+        before = time.time()
+
+        mock_fetch = AsyncMock(return_value={"headers": {"Authorization": "Bearer new"}})
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        # force_refresh kwarg must be True
+        assert mock_fetch.call_args.kwargs["force_refresh"] is True
+        # Marker cleared after consumption
+        assert cache_key not in auth._force_refresh_markers
+        # Consume timestamp recorded for cooldown enforcement
+        assert auth._last_force_refresh_at[cache_key] >= before
+
+    async def test_force_refresh_absent_passes_false(self, headers):
+        """Without a marker, fetch is called with force_refresh=False (#9860)."""
+        mock_fetch = AsyncMock(return_value={"headers": {}})
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            await auth.get_firewall_headers("run-1", "api-2", "iv:tag:data", {}, "tok-xyz")
+
+        assert mock_fetch.call_args.kwargs["force_refresh"] is False
+        # No consume timestamp written when force-refresh didn't happen
+        assert ("run-1", "api-2") not in auth._last_force_refresh_at
+
+    async def test_force_refresh_marker_ignored_on_cache_hit(self, headers):
+        """Fast-path cache hit does NOT consume the force-refresh marker —
+        marker survives until the next actual fetch (#9860)."""
+        cache_key = ("run-1", "api-1")
+        auth._firewall_header_cache[cache_key] = {
+            "headers": {"Authorization": "Bearer cached"},
+            "expiresAt": None,
+        }
+        auth._force_refresh_markers.add(cache_key)
+
+        mock_fetch = AsyncMock()
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            result = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert result["cache_hit"] is True
+        mock_fetch.assert_not_called()
+        # Marker preserved for next real fetch
+        assert cache_key in auth._force_refresh_markers
 
 
 # =========================================================================
@@ -2156,8 +2214,6 @@ class TestAuthBaseUrlRewriteEdgeCases:
         # seed the request. We parse it back into ``real_flow`` kwargs
         # rather than mutating the read-only ``Request`` properties.
         if seed_url:
-            from urllib.parse import urlparse
-
             parsed = urlparse(seed_url)
             host = parsed.hostname or "firewall-placeholder.vm3.ai"
             real_path = parsed.path or "/"
@@ -2275,7 +2331,14 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert req_headers["X-Custom"] == "injected-value"
 
     async def test_forward_failure_returns_502(self, real_flow, mitm_ctx, tmp_path):
-        """forward_request exception produces a 502 error response."""
+        """forward_request exception produces a 502 error response and marks
+        firewall_error without falling through to the success-path metadata.
+
+        Regression for #10341: the except block previously lacked a ``return``,
+        so ``auth_url_rewrite`` and a misleading ``Firewall URL rewrite`` info
+        log were emitted on failure, and ``firewall_error`` was left unset —
+        making failed rewrites indistinguishable from successful ones in
+        dashboards."""
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
             real_flow, tmp_path
         )
@@ -2288,7 +2351,18 @@ class TestAuthBaseUrlRewriteEdgeCases:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["auth_url_rewrite"] is True
+        body = json.loads(flow.response.content)
+        assert body["error"] == "url_rewrite_forward_failed"
+        # Failure must not masquerade as a successful rewrite.
+        assert "auth_url_rewrite" not in flow.metadata
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        # Success-path log line must not be written.
+        log_path = Path(vm_info["networkLogPath"])
+        log_text = await asyncio.to_thread(
+            lambda: log_path.read_text() if log_path.exists() else ""
+        )
+        assert "Firewall URL rewrite:" not in log_text
 
     async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
         """Empty string base from server is treated as absent — no URL rewrite."""

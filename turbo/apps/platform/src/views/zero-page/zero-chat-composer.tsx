@@ -41,6 +41,7 @@ import {
 } from "@vm0/ui";
 import { detach, Reason } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
+import { toggleSidebarOff$ } from "../../signals/zero-page/zero-nav.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import type { Command, Computed } from "ccstate";
 import {
@@ -185,17 +186,17 @@ function ConnectorTriggerIcons({
 }: {
   connectors: ComposerConnectorItem[];
 }) {
-  const connected = connectors
+  const enabled = connectors
     .filter((c) => {
-      return c.connected;
+      return c.added;
     })
     .slice(0, 3);
-  if (connected.length === 0) {
+  if (enabled.length === 0) {
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
     <span className="flex items-center -space-x-1.5">
-      {connected.map((c) => {
+      {enabled.map((c) => {
         return (
           <span key={c.type} className="relative shrink-0">
             <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background zero-border">
@@ -795,6 +796,7 @@ export function ZeroChatComposer({
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
+  const toggleSidebar = useSet(toggleSidebarOff$);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (window.matchMedia("(pointer: coarse)").matches) {
@@ -808,6 +810,9 @@ export function ZeroChatComposer({
         ...(sendMode === "enter" ? { enter: send } : { "mod+enter": send }),
         escape: () => {
           (e.target as HTMLElement).blur();
+        },
+        "mod+b": () => {
+          toggleSidebar();
         },
       },
       e,

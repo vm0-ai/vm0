@@ -32,7 +32,7 @@ use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, HeartbeatState};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 
 /// Initial backoff before retrying mitmproxy after a crash.
 const MITM_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
@@ -738,74 +738,78 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
                 // Check idle pool for a reusable VM (same session + same profile).
                 // Only attempt reuse when the per-job sandboxReuse flag is on.
+                // The `reuse_result` tag is paired with `reuse_entry` so every
+                // fresh-create path names the branch it came from — the server
+                // persists it on the agent_runs row for observability.
                 let reuse_enabled = context.feature_enabled(crate::types::feature_flags::SANDBOX_REUSE);
-                let reuse_entry = if reuse_enabled
-                    && let Some(session_id) = context.session_id()
-                {
-                    // Take the entry under the pool lock, then drop the lock
-                    // before any awaits — the unpark HTTP call below must not
-                    // block other take/park operations.
-                    let taken = {
-                        let mut pool = idle_pool.lock().await;
-                        pool.take(session_id)
-                    };
-                    match taken {
-                        Some(mut entry) if entry.profile_name == profile_name => {
-                            // Deflate the balloon and respawn the reactive
-                            // controller before handing the sandbox to the
-                            // job. On failure, destroy the idle entry and
-                            // fall through to a fresh create — the run
-                            // budget reservation we made above stays in
-                            // place to cover the new sandbox.
-                            match entry.sandbox.unpark().await {
-                                Ok(()) => {
-                                    info!(
-                                        run_id = %run_id,
-                                        session_id,
-                                        "reusing idle VM for session"
-                                    );
-                                    // Idle entry already holds budget — release the new reservation.
-                                    budget.release(job_vcpu, job_memory);
-                                    Some(entry)
-                                }
-                                Err(e) => {
-                                    warn!(
-                                        run_id = %run_id,
-                                        session_id,
-                                        error = %e,
-                                        "unpark failed, destroying idle VM and falling through to fresh create"
-                                    );
-                                    let b = Arc::clone(&budget);
-                                    destroy_tasks.spawn(destroy_idle_entry(entry, b));
-                                    None
+                let (reuse_entry, reuse_result): (Option<IdleEntry>, SandboxReuseResult) =
+                    if !reuse_enabled {
+                        (None, SandboxReuseResult::FeatureDisabled)
+                    } else if let Some(session_id) = context.session_id() {
+                        // Take the entry under the pool lock, then drop the
+                        // lock before any awaits — the unpark HTTP call below
+                        // must not block other take/park operations.
+                        let taken = {
+                            let mut pool = idle_pool.lock().await;
+                            pool.take(session_id)
+                        };
+                        match taken {
+                            Some(mut entry) if entry.profile_name == profile_name => {
+                                // Deflate the balloon and respawn the reactive
+                                // controller before handing the sandbox to the
+                                // job. On failure, destroy the idle entry and
+                                // fall through to a fresh create — the run
+                                // budget reservation we made above stays in
+                                // place to cover the new sandbox.
+                                match entry.sandbox.unpark().await {
+                                    Ok(()) => {
+                                        info!(
+                                            run_id = %run_id,
+                                            session_id,
+                                            "reusing idle VM for session"
+                                        );
+                                        // Idle entry already holds budget — release the new reservation.
+                                        budget.release(job_vcpu, job_memory);
+                                        (Some(entry), SandboxReuseResult::Reused)
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            run_id = %run_id,
+                                            session_id,
+                                            error = %e,
+                                            "unpark failed, destroying idle VM and falling through to fresh create"
+                                        );
+                                        let b = Arc::clone(&budget);
+                                        destroy_tasks.spawn(destroy_idle_entry(entry, b));
+                                        (None, SandboxReuseResult::UnparkFailed)
+                                    }
                                 }
                             }
+                            Some(stale) => {
+                                // Profile mismatch — destroy the stale VM.
+                                info!(
+                                    run_id = %run_id,
+                                    session_id,
+                                    old_profile = %stale.profile_name,
+                                    new_profile = %profile_name,
+                                    "idle VM profile mismatch, destroying"
+                                );
+                                let b = Arc::clone(&budget);
+                                destroy_tasks.spawn(destroy_idle_entry(stale, b));
+                                (None, SandboxReuseResult::ProfileMismatch)
+                            }
+                            None => {
+                                info!(
+                                    run_id = %run_id,
+                                    session_id,
+                                    "no idle VM found for session"
+                                );
+                                (None, SandboxReuseResult::PoolMiss)
+                            }
                         }
-                        Some(stale) => {
-                            // Profile mismatch — destroy the stale VM.
-                            info!(
-                                run_id = %run_id,
-                                session_id,
-                                old_profile = %stale.profile_name,
-                                new_profile = %profile_name,
-                                "idle VM profile mismatch, destroying"
-                            );
-                            let b = Arc::clone(&budget);
-                            destroy_tasks.spawn(destroy_idle_entry(stale, b));
-                            None
-                        }
-                        None => {
-                            info!(
-                                run_id = %run_id,
-                                session_id,
-                                "no idle VM found for session"
-                            );
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
+                    } else {
+                        (None, SandboxReuseResult::NoSessionId)
+                    };
 
                 // Determine sandbox_id after the reuse decision. On reuse,
                 // the sandbox keeps its original identity; on a fresh create,
@@ -827,7 +831,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     cancel: job_cancel,
                 };
                 spawn_job(
-                    context, sandbox_id, job_profile, reuse_entry, &spawn_ctx, &mut jobs,
+                    context,
+                    sandbox_id,
+                    job_profile,
+                    reuse_entry,
+                    reuse_result,
+                    &spawn_ctx,
+                    &mut jobs,
                 );
             }
             // Mitmproxy crash detection
@@ -1061,6 +1071,7 @@ fn spawn_job(
     sandbox_id: SandboxId,
     job_profile: JobProfile,
     reuse_entry: Option<IdleEntry>,
+    reuse_result: SandboxReuseResult,
     ctx: &SpawnContext,
     jobs: &mut JoinSet<Option<RunId>>,
 ) {
@@ -1258,7 +1269,15 @@ fn spawn_job(
         };
 
         // Structural guarantee: claim (in provider) is always paired with complete.
-        provider.complete(run_id, exit_code, err.as_deref()).await;
+        provider
+            .complete(
+                run_id,
+                exit_code,
+                err.as_deref(),
+                Some(sandbox_id),
+                Some(reuse_result),
+            )
+            .await;
         status.remove_run(run_id).await;
 
         // Release budget only if sandbox was NOT parked (parked VMs hold their budget).
@@ -3376,7 +3395,9 @@ mod tests {
         }
     }
 
-    /// Pre-populate idle pool with an entry and reserve its budget.
+    /// Pre-populate idle pool with an entry and reserve its budget. Returns
+    /// the entry's sandbox id so reuse tests can assert it propagates through
+    /// to the completion payload.
     async fn seed_idle_pool(
         pool: &SharedIdlePool,
         budget: &ResourceBudget,
@@ -3384,7 +3405,7 @@ mod tests {
         profile_name: &str,
         vcpu: u32,
         memory_mb: u32,
-    ) {
+    ) -> SandboxId {
         assert!(budget.try_reserve(vcpu, memory_mb));
         let entry = make_test_idle_entry(
             session_id,
@@ -3394,9 +3415,11 @@ mod tests {
             std::time::Instant::now(),
             Duration::from_secs(300),
         );
+        let sandbox_id = entry.sandbox_id;
         let mut guard = pool.lock().await;
         let result = guard.park(session_id.into(), entry);
         assert!(matches!(result, ParkResult::Parked));
+        sandbox_id
     }
 
     /// Poll until `budget.allocated().2` (running_count) reaches `expected`.
@@ -3571,7 +3594,8 @@ mod tests {
         let budget = Arc::clone(&config.budget);
 
         // Pre-seed: park a VM for session "sess-reuse" with matching profile.
-        seed_idle_pool(&idle_pool, &budget, "sess-reuse", "vm0/default", 2, 4096).await;
+        let seeded_sandbox_id =
+            seed_idle_pool(&idle_pool, &budget, "sess-reuse", "vm0/default", 2, 4096).await;
         assert_eq!(budget.allocated().2, 1, "seeded entry holds budget");
 
         let run_handle = tokio::spawn(run(config));
@@ -3590,7 +3614,18 @@ mod tests {
             .wait_completion(run_id, Duration::from_secs(5))
             .await;
         assert!(completion.is_some(), "job should complete");
-        assert_eq!(completion.unwrap().exit_code, 0);
+        let completion = completion.unwrap();
+        assert_eq!(completion.exit_code, 0);
+        assert_eq!(
+            completion.reuse_result,
+            Some(SandboxReuseResult::Reused),
+            "reuse_result should be Reused"
+        );
+        assert_eq!(
+            completion.sandbox_id,
+            Some(seeded_sandbox_id),
+            "reused completion should carry the seeded sandbox id"
+        );
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -3603,6 +3638,71 @@ mod tests {
             budget.allocated().2,
             1,
             "budget should remain at 1 (reused, not additive)"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 13b: Reuse-enabled job with no session reports NoSessionId
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_enabled_without_session_reports_no_session_id() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Feature on but no resume_session → NoSessionId branch.
+        let run_id = RunId::new_v4();
+        let mut ctx = minimal_context(run_id);
+        ctx.feature_flags = Some(HashMap::from([(
+            crate::types::feature_flags::SANDBOX_REUSE.to_string(),
+            true,
+        )]));
+        push_job(&env, run_id, "vm0/default", Some(ctx));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete");
+        let completion = completion.unwrap();
+        assert_eq!(completion.exit_code, 0);
+        assert_eq!(
+            completion.reuse_result,
+            Some(SandboxReuseResult::NoSessionId),
+        );
+        assert!(
+            completion.sandbox_id.is_some(),
+            "fresh create still allocates a sandbox id",
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 13c: Feature-disabled job reports FeatureDisabled
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_disabled_job_reports_feature_disabled() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+
+        let run_handle = tokio::spawn(run(config));
+
+        // minimal_context has feature_flags = None → SANDBOX_REUSE evaluates false.
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        let completion = completion.expect("job should complete");
+        assert_eq!(
+            completion.reuse_result,
+            Some(SandboxReuseResult::FeatureDisabled),
         );
 
         shutdown(&env, run_handle).await;
@@ -3637,7 +3737,17 @@ mod tests {
             .wait_completion(run_id, Duration::from_secs(5))
             .await;
         assert!(completion.is_some(), "job should complete");
-        assert_eq!(completion.unwrap().exit_code, 0);
+        let completion = completion.unwrap();
+        assert_eq!(completion.exit_code, 0);
+        assert_eq!(
+            completion.reuse_result,
+            Some(SandboxReuseResult::ProfileMismatch),
+            "reuse_result should be ProfileMismatch when profile differs"
+        );
+        assert!(
+            completion.sandbox_id.is_some(),
+            "freshly created sandbox still reports its id"
+        );
 
         // Stale VM destruction runs in a background destroy_task. Poll until
         // its budget is released rather than using a fixed sleep.
@@ -4387,8 +4497,13 @@ mod tests {
             .handle
             .wait_completion(run_id, Duration::from_secs(5))
             .await;
-        assert!(c.is_some(), "fresh-create job should still complete");
-        assert_eq!(c.unwrap().exit_code, 0);
+        let c = c.expect("fresh-create job should still complete");
+        assert_eq!(c.exit_code, 0);
+        assert_eq!(
+            c.reuse_result,
+            Some(SandboxReuseResult::UnparkFailed),
+            "completion must tag the unpark-failure branch",
+        );
 
         // After the dust settles:
         //   - unpark called exactly once (the failed take-side call);
@@ -4403,6 +4518,51 @@ mod tests {
             counter.park_call_count(),
             1,
             "expected exactly one park (the fresh-create's)"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Reuse-enabled job whose session has no idle entry reports PoolMiss
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn reuse_enabled_empty_pool_reports_pool_miss() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let idle_pool = Arc::clone(&config.idle_pool);
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Empty pool + resume_session set + feature on → PoolMiss branch.
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-missing")),
+        );
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("job should complete");
+        assert_eq!(completion.exit_code, 0);
+        assert_eq!(
+            completion.reuse_result,
+            Some(SandboxReuseResult::PoolMiss),
+            "empty-pool reuse attempt must tag PoolMiss",
+        );
+        assert!(
+            completion.sandbox_id.is_some(),
+            "fresh create still allocates a sandbox id",
+        );
+        // Sanity: no one was in the pool to begin with.
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            1,
+            "fresh-create sandbox re-parks into the pool",
         );
 
         shutdown(&env, run_handle).await;

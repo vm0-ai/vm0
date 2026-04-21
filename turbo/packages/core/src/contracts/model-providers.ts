@@ -37,6 +37,11 @@ export const VM0_ORG_SLUG = "vm0";
 interface Vm0ModelConfig {
   concreteType: string;
   vendor: string;
+  // Overrides the display-name when substituting `$model` in the concrete
+  // provider's environment mapping. Needed when the upstream API expects a
+  // different identifier than what we show to users (e.g. OpenRouter uses
+  // "z-ai/glm-5.1" while our UI shows "glm-5.1").
+  apiModel?: string;
   featureFlag?: FeatureSwitchKey;
 }
 
@@ -57,8 +62,9 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "anthropic",
   },
   "glm-5.1": {
-    concreteType: "zai-api-key",
-    vendor: "zai",
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "z-ai/glm-5.1",
     featureFlag: FeatureSwitchKey.Vm0GlmModel,
   },
   "claude-haiku-4-5": {
@@ -166,6 +172,7 @@ export const MODEL_PROVIDER_TYPES = {
       "anthropic/claude-sonnet-4.5",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-haiku-4.5",
+      "z-ai/glm-5.1",
     ] as string[],
     defaultModel: "",
   },
@@ -612,6 +619,20 @@ export function getVm0Vendor(model: string): string {
     );
   }
   return entry.vendor;
+}
+
+/**
+ * Get the upstream API model identifier for a VM0 managed model.
+ * Falls back to the display name when no override is configured.
+ */
+export function getVm0ApiModel(model: string): string {
+  const entry = VM0_MODEL_TO_PROVIDER[model];
+  if (!entry) {
+    throw new Error(
+      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
+    );
+  }
+  return entry.apiModel ?? model;
 }
 
 /**

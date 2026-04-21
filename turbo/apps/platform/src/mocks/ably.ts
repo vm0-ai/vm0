@@ -6,6 +6,10 @@
  * `triggerAblyEvent(topic)` to fire all callbacks registered for a topic,
  * simulating a server-side publish.
  *
+ * `triggerAblyReconnect()` fires a second `connected` event on every
+ * Realtime instance so tests can exercise the reconnect-replay path in
+ * `setupRealtime$`.
+ *
  * The mock also invokes the `authCallback` passed to the `Realtime`
  * constructor once on construction (simulating Ably's initial auth request)
  * and exposes `triggerAblyReauth()` + `getAuthTokenHistory()` so tests can
@@ -14,6 +18,7 @@
  */
 
 type Callback = (message: { name: string; data: null }) => void;
+type ConnectionListener = () => void;
 
 type AuthCallbackError = string | { message?: string } | null;
 type AuthCallbackToken = unknown;
@@ -75,6 +80,7 @@ export function resetAblySubscriptions(): void {
   failedListener = null;
   hasConnected = false;
   failedStateChange = null;
+  connectedListeners.clear();
 }
 
 /** Debug: check if a topic has active subscriptions. */
@@ -82,6 +88,20 @@ export function hasSubscription(topic: string): boolean {
   const cbs = subscriptions.get(topic);
   return cbs !== undefined && cbs.size > 0;
 }
+
+/**
+ * Fire a `connected` event on every active Realtime instance to simulate
+ * Ably re-establishing the connection after a network blip. Exercised by
+ * `setupRealtime$`'s `connection.on("connected")` registry walk so every
+ * active `setAblyLoop$` subscriber refetches state.
+ */
+export function triggerAblyReconnect(): void {
+  for (const listener of connectedListeners) {
+    listener();
+  }
+}
+
+const connectedListeners = new Set<ConnectionListener>();
 
 function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
   return new Promise((resolve, reject) => {
@@ -142,6 +162,11 @@ export class Realtime {
         } else {
           failedListener = callback;
         }
+      }
+    },
+    on(event: string, callback: ConnectionListener) {
+      if (event === "connected") {
+        connectedListeners.add(callback);
       }
     },
   };

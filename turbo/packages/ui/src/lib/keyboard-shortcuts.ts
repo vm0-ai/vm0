@@ -74,6 +74,13 @@ function parseShortcut(shortcut: string): ParsedShortcut {
     }
   }
 
+  // Browsers report e.key as the produced character, so "shift+/" on a US
+  // layout emits "?". Treat the physical-key form as an alias so callers can
+  // write "shift+/" (common UI convention) and still match.
+  if (shift && key === "/") {
+    key = "?";
+  }
+
   return { mod, shift, alt, key };
 }
 
@@ -146,7 +153,15 @@ export function processShortcut(
 // ---------------------------------------------------------------------------
 
 const KEY_DISPLAY_NAMES: Record<string, string> = {
-  space: "Space",
+  arrowup: "↑",
+  arrowdown: "↓",
+  arrowleft: "←",
+  arrowright: "→",
+  enter: "⏎",
+  escape: "⎋",
+  backspace: "⌫",
+  tab: "⇥",
+  space: "␣",
 };
 
 function formatKey(key: string): string {
@@ -187,7 +202,8 @@ export function getShortcutLabel(shortcut: string): string {
 
 /**
  * Returns individual key parts for rendering each as a separate element.
- * All text is lowercase. Handles `ctrl` as a distinct modifier (not `mod`).
+ * Handles `ctrl` as a distinct modifier (not `mod`). Common keys (arrows,
+ * enter, escape, etc.) are rendered as their conventional symbols.
  */
 export function getShortcutParts(shortcut: string): string[] {
   const segments = shortcut.toLowerCase().split("+");
@@ -197,16 +213,16 @@ export function getShortcutParts(shortcut: string): string[] {
   for (const segment of segments) {
     switch (segment) {
       case "mod":
-        result.push(isMac ? "⌘" : "ctrl");
+        result.push(isMac ? "⌘" : "Ctrl");
         break;
       case "ctrl":
-        result.push(isMac ? "⌃" : "ctrl");
+        result.push(isMac ? "⌃" : "Ctrl");
         break;
       case "shift":
-        result.push(isMac ? "⇧" : "shift");
+        result.push(isMac ? "⇧" : "Shift");
         break;
       case "alt":
-        result.push(isMac ? "⌥" : "alt");
+        result.push(isMac ? "⌥" : "Alt");
         break;
       default:
         key = segment;
@@ -214,7 +230,7 @@ export function getShortcutParts(shortcut: string): string[] {
   }
 
   if (key) {
-    result.push(key);
+    result.push(KEY_DISPLAY_NAMES[key] ?? key);
   }
   return result;
 }

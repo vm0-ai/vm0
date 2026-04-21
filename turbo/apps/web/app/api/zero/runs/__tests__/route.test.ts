@@ -116,6 +116,33 @@ describe("POST /api/zero/runs", () => {
       const data = await response.json();
       expect(response.status).toBe(201);
       expect(data.runId).toBeTruthy();
+      // Continuation runs should echo back the same session id (eager path)
+      expect(data.sessionId).toBe(session.id);
+    });
+
+    it("should eagerly create and return sessionId for a new zero run", async () => {
+      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "eager zero run",
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.runId).toBeTruthy();
+      expect(data.sessionId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      );
+
+      const run = await findTestRunRecord(data.runId);
+      expect(run?.sessionId).toBe(data.sessionId);
     });
 
     it("should return 403 when ZERO_TOKEN is used (agent-run:write excluded)", async () => {

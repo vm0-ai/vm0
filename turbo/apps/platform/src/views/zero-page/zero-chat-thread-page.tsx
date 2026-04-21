@@ -48,6 +48,11 @@ import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
+import {
+  chatShortcutHelpOpen$,
+  setChatShortcutHelpOpen$,
+} from "../../signals/chat-page/chat-shortcut-help.ts";
+import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 
 import type {
   GroupedChatMessageGroup,
@@ -57,12 +62,39 @@ import {
   currentChatThreadSignals$,
   type ChatThreadSignals,
 } from "../../signals/chat-page/create-chat-thread.ts";
+import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+
+const CHAT_SHORTCUT_SECTIONS = [
+  {
+    title: "Global",
+    shortcuts: [
+      { key: "shift+/", label: "Show shortcuts" },
+      { key: "mod+b", label: "Toggle sidebar" },
+    ],
+  },
+  {
+    title: "Messages",
+    shortcuts: [
+      { key: "mod+arrowup", label: "Scroll to top" },
+      { key: "mod+arrowdown", label: "Scroll to bottom" },
+      { key: "mod+shift+arrowup", label: "Previous thread" },
+      { key: "mod+shift+arrowdown", label: "Next thread" },
+    ],
+  },
+  {
+    title: "Composer",
+    shortcuts: [
+      { key: "enter", label: "Send message" },
+      { key: "escape", label: "Blur composer" },
+    ],
+  },
+] as const;
 
 function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
   const agentId = useLastResolved(thread.agentId$);
@@ -196,12 +228,24 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
 
 export function ZeroChatThreadPage() {
   const thread = useGet(currentChatThreadSignals$);
+  const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
+  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
 
   if (!thread) {
     return null;
   }
 
-  return <ZeroChatThreadPageInner thread={thread} />;
+  return (
+    <>
+      <ZeroChatThreadPageInner thread={thread} />
+      <ShortcutHelpDialog
+        open={shortcutHelpOpen}
+        onOpenChange={setShortcutHelpOpen}
+        description="Available shortcuts on this page"
+        sections={CHAT_SHORTCUT_SECTIONS}
+      />
+    </>
+  );
 }
 
 export function ZeroChatThreadPageInner({
@@ -411,7 +455,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[60%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[90%] rounded-lg" />
@@ -424,7 +468,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[45%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[85%] rounded-lg" />
@@ -502,7 +546,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
       data-role="assistant"
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
@@ -514,6 +558,13 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
             <p className="zero-shimmer-text text-xs truncate">{label}</p>
           </div>
         </div>
+      </div>
+      <div
+        aria-hidden
+        className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+      >
+        <div className="hidden @[900px]:block" />
+        <div className="flex items-center py-2 gap-1 -ml-1" />
       </div>
     </div>
   );
@@ -714,8 +765,21 @@ function PagedUserMessage({
   thread: ChatThreadSignals;
 }) {
   const content = message.content ?? "";
+  // Two attachment sources coexist: the structured `attachFiles` field
+  // (current flow) and legacy `[Attached file: ...](url)` inline lines left
+  // over from messages sent before #10243 split the flows. Use the structured
+  // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
-  const displayContent = cleanContent.replace(/\n/g, "  \n");
+  // `ATTACH_ONLY_PLACEHOLDER` is the server-side placeholder stored when the
+  // user sent only files with no typed text — strip it so the bubble shows
+  // just the attachments.
+  const strippedContent =
+    message.attachFiles &&
+    message.attachFiles.length > 0 &&
+    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
+      ? ""
+      : cleanContent;
+  const displayContent = strippedContent.replace(/\n/g, "  \n");
   const pageSignal = useGet(pageSignal$);
   const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
   const openLightbox = (url: string) => {
@@ -735,21 +799,31 @@ function PagedUserMessage({
     );
   };
 
-  const allAttachments = parsed.map((p) => {
-    return {
-      filename: p.filename,
-      url: p.url,
-      isImage: isImageFilename(p.filename),
-      isVideo: isVideoFilename(p.filename),
-    };
-  });
+  const allAttachments =
+    message.attachFiles && message.attachFiles.length > 0
+      ? message.attachFiles.map((f) => {
+          return {
+            filename: f.filename,
+            url: f.url,
+            isImage: isImageFilename(f.filename),
+            isVideo: isVideoFilename(f.filename),
+          };
+        })
+      : parsed.map((p) => {
+          return {
+            filename: p.filename,
+            url: p.url,
+            isImage: isImageFilename(p.filename),
+            isVideo: isVideoFilename(p.filename),
+          };
+        });
 
   return (
     <div data-role="user" className="group">
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {displayContent && (
               <div className="px-4 py-3">
                 <Markdown
@@ -848,7 +922,7 @@ function PagedAssistantGroup({
       data-role="assistant"
       className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
         <div className="relative flex flex-col gap-3">
           {group.messages.map((msg) => {
@@ -873,7 +947,7 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
 
   if (message.error) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         <AssistantErrorContent error={message.error} />
       </div>
     );
@@ -881,7 +955,7 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
 
   if (message.content) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         <Markdown
           source={message.content}
           mediaPreview
@@ -944,7 +1018,7 @@ function PagedGroupActions({
   };
 
   return (
-    <div className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+    <div className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
       <div className="hidden @[900px]:block" />
       <div className="flex items-center pt-2 pb-1 gap-1 -ml-1">
         {firstRunId && (

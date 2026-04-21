@@ -1,43 +1,35 @@
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { useGet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { FeatureSwitchKey, getFeatureSwitchDescriptions } from "@vm0/core";
 import { Switch, Button } from "@vm0/ui";
 import {
   featureSwitch$,
-  overrideFeatureSwitch$,
-  syncFeatureSwitchToDB$,
-  resetFeatureSwitchOverrides$,
+  setFeatureSwitch$,
+  resetFeatureSwitches$,
 } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 
 export function LabPage() {
   const features = useLastResolved(featureSwitch$);
-  const overrideLocal = useSet(overrideFeatureSwitch$);
-  const syncDB = useSet(syncFeatureSwitchToDB$);
-  const [resetLoadable, reset] = useLoadableSet(resetFeatureSwitchOverrides$);
+  const [toggleLoadable, setFeature] = useLoadableSet(setFeatureSwitch$);
+  const [resetLoadable, reset] = useLoadableSet(resetFeatureSwitches$);
   const resetting = resetLoadable.state === "loading";
+  const toggling = toggleLoadable.state === "loading";
+  const busy = resetting || toggling;
   const pageSignal = useGet(pageSignal$);
   const descriptions = getFeatureSwitchDescriptions();
 
   const handleToggle = (key: FeatureSwitchKey, checked: boolean) => {
-    const override = { [key]: checked } as Partial<
-      Record<FeatureSwitchKey, boolean>
-    >;
-    overrideLocal(override);
     detach(
-      syncDB(override, pageSignal),
+      setFeature({ [key]: checked }, pageSignal),
       Reason.DomCallback,
-      "syncFeatureSwitchToDB",
+      "setFeatureSwitch",
     );
   };
 
   const handleReset = () => {
-    detach(
-      reset(pageSignal),
-      Reason.DomCallback,
-      "resetFeatureSwitchOverrides",
-    );
+    detach(reset(pageSignal), Reason.DomCallback, "resetFeatureSwitches");
   };
 
   return (
@@ -55,7 +47,7 @@ export function LabPage() {
           <Button
             variant="outline"
             size="sm"
-            disabled={resetting}
+            disabled={busy}
             onPointerDown={handleReset}
           >
             {resetting ? "Resetting…" : "Reset all"}
@@ -87,6 +79,7 @@ export function LabPage() {
                     </div>
                     <Switch
                       checked={enabled}
+                      disabled={busy}
                       onCheckedChange={(checked) => {
                         handleToggle(key, checked);
                       }}

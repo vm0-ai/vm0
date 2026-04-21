@@ -8,6 +8,8 @@ export interface AgentDetail {
   sound: string | null;
   avatarUrl: string | null;
   permissionPolicies: FirewallPolicies | null;
+  modelProviderId: string | null;
+  selectedModel: string | null;
 }
 
 export interface AgentInstructions {

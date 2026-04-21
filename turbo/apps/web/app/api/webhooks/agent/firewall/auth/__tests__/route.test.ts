@@ -1049,6 +1049,50 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(tokenExpiresAt).not.toBeNull();
     });
 
+    it("should refresh when forceRefresh=true even if DB expiry is in the future", async () => {
+      // Regression for #9860: provider silently invalidates a token (user
+      // revoked, admin rotated) while DB tokenExpiresAt is still in the
+      // future. Mitm observes 401 and sets forceRefresh on the next fetch;
+      // the webhook must bypass the DB-expiry check and refresh regardless.
+      const futureExpiry = new Date(Date.now() + 30 * 60 * 1000);
+      await setupNotionConnector({ tokenExpiresAt: futureExpiry });
+
+      server.use(
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "force-refreshed-token",
+            refresh_token: "new-refresh-token",
+            expires_in: 3600,
+          });
+        }),
+      );
+
+      const encrypted = encryptTestSecrets({
+        NOTION_ACCESS_TOKEN: "old-notion-token",
+        NOTION_REFRESH_TOKEN: "notion-refresh-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
+            forceRefresh: true,
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe("Bearer force-refreshed-token");
+      expect(data.refreshedConnectors).toEqual(["notion"]);
+      expect(data.refreshedSecrets).toEqual(["NOTION_ACCESS_TOKEN"]);
+    });
+
     it("should return null expiresAt without secretConnectorMap", async () => {
       const encrypted = encryptTestSecrets({
         GITHUB_TOKEN: "ghp_test_token_123",

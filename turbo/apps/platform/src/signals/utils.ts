@@ -141,7 +141,6 @@ export function throwIfAbort(e: unknown) {
  * Re-throws abort errors; swallows parse errors and returns `fallback`.
  */
 export function jsonParseOr<T>(value: string, fallback: T): T {
-  // eslint-disable-next-line no-restricted-syntax -- centralised JSON.parse guard for untrusted data
   try {
     return JSON.parse(value) as T;
   } catch (error) {
@@ -155,7 +154,6 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
  * Use for prefetch or fire-and-forget operations where failure is acceptable.
  */
 export async function bestEffort(p: Promise<unknown>): Promise<void> {
-  // eslint-disable-next-line no-restricted-syntax -- centralised best-effort guard
   try {
     await p;
   } catch (error) {
@@ -190,7 +188,6 @@ export async function setLoop(
       );
     }
 
-    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
     try {
       const done = await loopBody(signal);
       if (done) {
@@ -223,6 +220,36 @@ export async function setLoop(
           })
         : delay(backoff, { signal }));
     }
+  }
+}
+
+/**
+ * Run `tasks` in parallel against a child signal and return the first one
+ * that settles. When that happens, the child signal aborts so the losers
+ * clean up promptly; their rejections are swallowed. If the outer signal
+ * aborts first, all tasks reject with AbortError.
+ */
+export async function raceUnderSignal<T>(
+  signal: AbortSignal,
+  tasks: (childSignal: AbortSignal) => readonly Promise<T>[],
+): Promise<T> {
+  const controller = new AbortController();
+  const onOuterAbort = () => {
+    controller.abort(signal.reason);
+  };
+  if (signal.aborted) {
+    onOuterAbort();
+  } else {
+    signal.addEventListener("abort", onOuterAbort, { once: true });
+  }
+  const promises = tasks(controller.signal);
+  try {
+    return await Promise.race(promises);
+  } finally {
+    signal.removeEventListener("abort", onOuterAbort);
+    controller.abort();
+    // Swallow the losers' AbortError rejections from the cancellation.
+    await Promise.allSettled(promises);
   }
 }
 

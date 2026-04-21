@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.88.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.88.0...runner-rs-v0.88.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **firewall:** force-refresh oauth token when provider returns 401 ([#9860](https://github.com/vm0-ai/vm0/issues/9860)) ([#10294](https://github.com/vm0-ai/vm0/issues/10294)) ([96fcb01](https://github.com/vm0-ai/vm0/commit/96fcb01248e71bf5ce2ed24d7b6bfafd3ba1394f))
+
+## [0.88.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.87.2...runner-rs-v0.88.0) (2026-04-20)
+
+
+### Features
+
+* **runner:** emit sandbox id and reuse result in completion payload ([#10303](https://github.com/vm0-ai/vm0/issues/10303)) ([a5699ac](https://github.com/vm0-ai/vm0/commit/a5699ac69c35971f6c419f21799a30caf9017893))
+
+
+### Bug Fixes
+
+* **runner:** tolerate runner-exit race in service drain/resume ([#10302](https://github.com/vm0-ai/vm0/issues/10302)) ([4e0be4c](https://github.com/vm0-ai/vm0/commit/4e0be4c01218fc143f01845f2370b1d40945537c))
+
+## [0.87.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.87.1...runner-rs-v0.87.2) (2026-04-20)
+
+
+### Bug Fixes
+
+* **mitm-addon:** return decompressed bytes for empty-body frames ([#10293](https://github.com/vm0-ai/vm0/issues/10293)) ([d68f78f](https://github.com/vm0-ai/vm0/commit/d68f78f4b1973bd9d40d9725477b63801bc73582))
+* **runner:** clean up stale .tmp file when systemd unit rename fails ([#10295](https://github.com/vm0-ai/vm0/issues/10295)) ([0bf5dcf](https://github.com/vm0-ai/vm0/commit/0bf5dcfb91e5778857a81deafca7a1e942ce8343))
+
+## [0.87.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.87.0...runner-rs-v0.87.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **runner:** clarify stderr tracing init doc comment ([#10280](https://github.com/vm0-ai/vm0/issues/10280)) ([3e4f553](https://github.com/vm0-ai/vm0/commit/3e4f5531716430384f15910bfe55fbda43d1e283))
+
 ## [0.87.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.86.4...runner-rs-v0.87.0) (2026-04-20)
 
 

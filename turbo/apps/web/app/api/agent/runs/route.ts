@@ -90,15 +90,16 @@ async function enforceCaptureNetworkBodiesGate(
  */
 function handleCreateRunError(error: unknown) {
   if (isApiError(error)) {
-    // Post-INSERT errors have runId attached by markRunFailed().
+    // Post-INSERT errors have runId + sessionId attached by markRunFailed().
     // Return 201 with failed status so the client can track the run.
     const dispatchError = error as RunDispatchError;
-    if (dispatchError.runId) {
+    if (dispatchError.runId && dispatchError.sessionId) {
       return {
         status: 201 as const,
         body: {
           runId: dispatchError.runId,
           status: "failed" as const,
+          sessionId: dispatchError.sessionId,
           error: error.message,
         },
       };
@@ -118,12 +119,13 @@ function handleCreateRunError(error: unknown) {
 
   // Non-API errors with runId (unexpected dispatch failures)
   const dispatchError = error as RunDispatchError;
-  if (dispatchError.runId) {
+  if (dispatchError.runId && dispatchError.sessionId) {
     return {
       status: 201 as const,
       body: {
         runId: dispatchError.runId,
         status: "failed" as const,
+        sessionId: dispatchError.sessionId,
         error: "Run failed",
       },
     };
@@ -345,6 +347,7 @@ const router = tsr.router(runsMainContract, {
         return insertRunRecord(tx, {
           userId,
           orgId: org.orgId,
+          agentComposeId: compose.id,
           agentComposeVersionId: composeMeta.agentComposeVersionId,
           prompt: body.prompt,
           appendSystemPrompt: body.appendSystemPrompt,
@@ -353,6 +356,8 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           resumedFromCheckpointId: body.checkpointId,
           sessionId: body.sessionId,
+          artifactName: resolved.artifactName ?? body.artifactName,
+          memoryName: resolved.memoryName ?? body.memoryName,
         });
       });
       const transactionTime = Date.now();
@@ -427,6 +432,7 @@ const router = tsr.router(runsMainContract, {
               | "failed"
               | "timeout",
             sandboxId: dispatchResult.sandboxId,
+            sessionId: run.sessionId,
             createdAt: run.createdAt.toISOString(),
           },
         };

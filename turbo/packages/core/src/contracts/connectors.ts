@@ -30,7 +30,25 @@ export interface ConnectorOAuthConfig {
   scopes: string[];
 }
 
-export type ConnectorAuthMethodType = "oauth" | "api-token" | "api";
+/**
+ * Connector auth method variants.
+ *
+ * - `oauth` — full OAuth 2.0 flow. Enablement stored as a DB row in
+ *   `connectors` (with scopes, external identity, token refresh metadata).
+ * - `api-token` — user supplies an API token via the UI. No DB row:
+ *   enablement is derived from the presence of required secrets/variables.
+ * - `api` — legacy placeholder; no active consumers.
+ * - `platform` — platform-supplied credentials. The user does not supply any
+ *   secret; they accept terms and the platform injects its own auth at proxy
+ *   time. Enablement is a DB row (`authMethod = "platform"`, OAuth columns
+ *   NULL) — the connector-layer analog of the `vm0` meta-provider on the
+ *   model-provider side.
+ */
+export type ConnectorAuthMethodType =
+  | "oauth"
+  | "api-token"
+  | "api"
+  | "platform";
 
 /**
  * Base configuration shape for all connector types.
@@ -4922,6 +4940,21 @@ const CONNECTOR_TYPES_DEF = {
       },
     },
     defaultAuthMethod: "api-token",
+  },
+  "nano-banana": {
+    label: "Nano Banana",
+    environmentMapping: {},
+    helpText: "Google Gemini image generation, billed to your org credits",
+    featureFlag: FeatureSwitchKey.NanoBananaConnector,
+    authMethods: {
+      platform: {
+        label: "Enable",
+        helpText:
+          "Image generations are billed to your organization's credits. By enabling, you agree that prompts and reference images are sent to the Google Gemini API.",
+        secrets: {},
+      },
+    },
+    defaultAuthMethod: "platform",
   },
 } satisfies Record<string, ConnectorConfig>;
 

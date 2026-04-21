@@ -34,10 +34,19 @@ from auth import (
     _firewall_header_cache,
     evict_stale_cache_keys,
     handle_firewall_request,
+    request_force_refresh,
 )
 from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
 from matching import FirewallAllow, FirewallBlock, match_firewall_request
 from url_utils import get_original_url
+
+# HTTP status boundaries used in response-phase classification.  Also defined
+# in ``usage.py`` for the same reason; kept local because they're RFC-fixed
+# (never drift) and factoring them out for two callers adds no value.
+_HTTP_STATUS_OK_MIN = 200  # inclusive: start of 2xx success range
+_HTTP_STATUS_REDIRECT_MIN = 300  # start of 3xx — doubles as the 2xx exclusive upper bound
+_HTTP_STATUS_UNAUTHORIZED = 401
+_HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 
 # ============================================================================
 # Addon Configuration
@@ -312,7 +321,10 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # decision.  For any billable connector flow, ``request()`` has
     # already populated ``original_url`` before ``responseheaders`` fires.
     is_x_stream = False
-    if is_billable_connector and 200 <= flow.response.status_code < 300:
+    if (
+        is_billable_connector
+        and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
+    ):
         stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
         is_x_stream = usage.is_x_stream_path(stream_path)
 
@@ -483,15 +495,25 @@ def response(flow: http.HTTPFlow) -> None:
     # Billable connector usage observation (issue #9504, stage 0).
     usage.log_connector_usage(flow, run_id)
 
-    # Invalidate firewall header cache on 401 so next request gets fresh headers
-    if flow.response and flow.response.status_code == 401 and flow.metadata.get("firewall_base"):
+    # Invalidate firewall header cache on 401 so next request gets fresh headers.
+    # Also request a force-refresh so the next /firewall/auth fetch refreshes
+    # the OAuth token regardless of DB tokenExpiresAt — the provider just told
+    # us the token is no longer valid, overriding whatever the DB believes.
+    # request_force_refresh enforces a cooldown so a persistent non-token 401
+    # can't amplify into a loop of provider OAuth refresh calls (#9860).
+    if (
+        flow.response
+        and flow.response.status_code == _HTTP_STATUS_UNAUTHORIZED
+        and flow.metadata.get("firewall_base")
+    ):
         api_id = flow.metadata.get("firewall_api_id", "")
         if api_id:
             cache_key = (run_id, api_id)
             _firewall_header_cache.pop(cache_key, None)
+            request_force_refresh(cache_key)
 
     # Log errors to per-job proxy log and mitmproxy console
-    if flow.response and flow.response.status_code >= 400:
+    if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
         log_proxy_entry(
             proxy_log_path,
             "warn",

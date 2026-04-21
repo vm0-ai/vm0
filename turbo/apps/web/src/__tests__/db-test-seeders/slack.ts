@@ -185,17 +185,24 @@ export async function insertTestSlackOrgConnection(params: {
 /**
  * @why-db-direct Thread session requires pre-existing connection ID; no API
  * creates thread sessions directly.
+ *
+ * `slackChannelId` / `slackThreadTs` default to unique values so callers who
+ * don't care get isolation. Pass explicit values to co-locate several sessions
+ * in the same thread (e.g. to simulate multiple Slack users mentioning the
+ * agent in one conversation).
  */
 export async function insertTestSlackOrgThreadSession(params: {
   connectionId: string;
   agentSessionId?: string;
+  slackChannelId?: string;
+  slackThreadTs?: string;
 }): Promise<{ id: string }> {
   const [row] = await globalThis.services.db
     .insert(slackOrgThreadSessions)
     .values({
       connectionId: params.connectionId,
-      slackChannelId: "C-test",
-      slackThreadTs: uniqueId("ts"),
+      slackChannelId: params.slackChannelId ?? "C-test",
+      slackThreadTs: params.slackThreadTs ?? uniqueId("ts"),
       ...(params.agentSessionId && { agentSessionId: params.agentSessionId }),
     })
     .returning({ id: slackOrgThreadSessions.id });

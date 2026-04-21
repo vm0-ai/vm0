@@ -9,7 +9,6 @@ import {
   uniqueId,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { reloadEnv } from "../../../../../../../src/env";
 import { mockAblyPublish } from "../../../../../../../src/__tests__/ably-mock";
 
 vi.mock("@vm0/core", async (importOriginal) => {
@@ -427,9 +426,6 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
   });
 
   it("should publish voice session signal after appending context event", async () => {
-    vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
-    reloadEnv();
-
     const session = await createSession(orgId, userId);
     const response = await POST(
       createTestRequest(contextUrl(session.id), {

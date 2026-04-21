@@ -6,6 +6,8 @@ import {
   createTestRun,
   createTestSandboxToken,
   findTestCheckpoint,
+  findTestRunRecord,
+  getTestAgentSessionWithConversation,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
@@ -638,6 +640,52 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(snapshot.additionalVolumes).toEqual([
         { name: "my-vol", versionId: "v1.0", mountPath: "/mnt" },
       ]);
+    });
+  });
+
+  describe("Session Resolution", () => {
+    // Branch A: run already has sessionId (eager creation path)
+    it("should bind conversation to the pre-created session", async () => {
+      // testRunId was created via createTestRun in beforeEach — the eager path
+      // already populated session_id on that run.
+      const runBefore = await findTestRunRecord(testRunId);
+      expect(runBefore?.sessionId).toBeTruthy();
+      const preCreatedSessionId = runBefore!.sessionId!;
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "branch-a-session",
+            cliAgentSessionHistoryHash: sha256("branch-a"),
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        agentSessionId: string;
+        conversationId: string;
+      };
+
+      // Webhook returns the same session id that was pre-created
+      expect(body.agentSessionId).toBe(preCreatedSessionId);
+
+      // Session now references the new conversation
+      const session =
+        await getTestAgentSessionWithConversation(preCreatedSessionId);
+      expect(session?.conversationId).toBe(body.conversationId);
+
+      // run.sessionId unchanged
+      const runAfter = await findTestRunRecord(testRunId);
+      expect(runAfter?.sessionId).toBe(preCreatedSessionId);
     });
   });
 });

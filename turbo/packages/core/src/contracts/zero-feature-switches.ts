@@ -25,6 +25,7 @@ export type UpdateFeatureSwitchesRequest = z.infer<
  *
  * GET: Get current user's feature switch overrides
  * POST: Update user feature switch overrides (merge strategy)
+ * DELETE: Remove all of the current user's feature switch overrides
  */
 export const zeroFeatureSwitchesContract = c.router({
   get: {
@@ -50,6 +51,18 @@ export const zeroFeatureSwitchesContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Update user feature switch overrides",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/zero/feature-switches",
+    headers: authHeadersSchema,
+    body: c.noBody(),
+    responses: {
+      200: z.object({ deleted: z.literal(true) }),
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Delete all of the current user's feature switch overrides",
   },
 });
 

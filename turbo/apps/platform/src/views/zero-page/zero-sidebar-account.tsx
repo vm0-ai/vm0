@@ -105,6 +105,7 @@ export function AccountDropdown({
   const features = useLastResolved(featureSwitch$);
   const apiBase = useGet(apiBaseForNavigation$);
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
+  const apiKeysEnabled = features?.[FeatureSwitchKey.ApiKeys] ?? false;
   const accountName = user?.fullName ?? "User";
   const accountEmail = user?.primaryEmailAddress?.emailAddress ?? "";
   const accountInitial = accountName.charAt(0).toUpperCase();
@@ -128,7 +129,12 @@ export function AccountDropdown({
       return;
     }
     if (action === "manage") {
-      detach(clerk?.openUserProfile(), Reason.DomCallback);
+      detach(
+        clerk?.openUserProfile({
+          apiKeysProps: { hide: !apiKeysEnabled },
+        }),
+        Reason.DomCallback,
+      );
       return;
     }
     onAccountAction?.(action);

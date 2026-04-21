@@ -15,6 +15,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnector$,
+  enablePlatformConnector$,
   justConnectedTypes$,
   pollingConnectorType$,
   submitApiToken$,
@@ -41,10 +42,57 @@ import {
   GoogleOAuthNotice,
 } from "./zero-directed-shared.tsx";
 
+function runDirectedConnect(params: {
+  authMethods: string[];
+  connectorType: ConnectorType;
+  agentId: string | null;
+  signal: AbortSignal;
+  connect: (type: ConnectorType, signal: AbortSignal) => Promise<unknown>;
+  enable: (type: ConnectorType, signal: AbortSignal) => Promise<unknown>;
+  authorize: (
+    type: ConnectorType,
+    agentId: string,
+    signal: AbortSignal,
+  ) => Promise<unknown>;
+  openTokenDialog: () => void;
+}): void {
+  const hasOAuth = params.authMethods.includes("oauth");
+  const hasPlatform = params.authMethods.includes("platform");
+  if (!hasOAuth && !hasPlatform) {
+    params.openTokenDialog();
+    return;
+  }
+  detach(
+    (async () => {
+      if (hasOAuth) {
+        await params.connect(params.connectorType, params.signal);
+      } else {
+        await params.enable(params.connectorType, params.signal);
+      }
+      if (params.agentId) {
+        await params.authorize(
+          params.connectorType,
+          params.agentId,
+          params.signal,
+        );
+      }
+    })(),
+    Reason.DomCallback,
+  );
+}
+
+// Only intended for trusted, source-controlled help text from
+// `CONNECTOR_TYPES[*].authMethods.*.helpText`. Do NOT feed user-supplied
+// strings into this renderer — the `[text]` and `**bold**` captures are
+// verbatim-injected and would permit HTML smuggling.
 function renderMarkdown(text: string): string {
   return text
     .replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
+      // Only http(s) URLs are turned into anchors; other schemes fall through
+      // as literal text. `"` is also excluded from the href charclass so a
+      // stray quote cannot break out of the href attribute and inject
+      // siblings like `onclick` when feeding `dangerouslySetInnerHTML`.
+      /\[([^\]]+)\]\((https?:\/\/[^)"]+)\)/g,
       '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline">$1</a>',
     )
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
@@ -179,6 +227,7 @@ function DirectedConnectCard() {
   const allLoadable = useLastLoadable(allConnectorTypes$);
   const tokenDialogOpen = useGet(tokenDialogOpen$);
   const setTokenDialogOpen = useSet(setTokenDialogOpen$);
+  const enable = useSet(enablePlatformConnector$);
 
   if (!type || !(type in CONNECTOR_TYPES)) {
     return null;
@@ -194,36 +243,26 @@ function DirectedConnectCard() {
   const isLoading =
     !justConnected.has(connectorType) && allLoadable.state === "loading";
   const allData = allLoadable.state === "hasData" ? allLoadable.data : [];
-  const isConnected =
-    justConnected.has(connectorType) ||
-    allData.some((c) => {
-      return c.type === connectorType && c.connected;
-    });
-
   const item = allData.find((c) => {
     return c.type === connectorType;
   });
-
-  const hasOAuth = item
-    ? item.availableAuthMethods.includes("oauth")
-    : "oauth" in config.authMethods;
+  const isConnected =
+    justConnected.has(connectorType) || (item?.connected ?? false);
 
   const handleConnect = () => {
-    if (hasOAuth) {
-      if (agentId) {
-        detach(
-          (async () => {
-            await connect(connectorType, signal);
-            await authorize(connectorType, agentId, signal);
-          })(),
-          Reason.DomCallback,
-        );
-      } else {
-        detach(connect(connectorType, signal), Reason.DomCallback);
-      }
-    } else {
-      setTokenDialogOpen(true);
-    }
+    runDirectedConnect({
+      authMethods:
+        item?.availableAuthMethods ?? Object.keys(config.authMethods),
+      connectorType,
+      agentId,
+      signal,
+      connect,
+      enable,
+      authorize,
+      openTokenDialog: () => {
+        return setTokenDialogOpen(true);
+      },
+    });
   };
 
   return (

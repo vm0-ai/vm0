@@ -658,6 +658,64 @@ describe("zero-job-detail signals", () => {
       // The PATCH is always sent — idempotency is handled server-side
       expect(patchCalled).toBeTruthy();
     });
+
+    it("should not include modelProviderId/selectedModel when the update omits them", async () => {
+      let capturedBody: Record<string, unknown> = {};
+
+      await setupSettings();
+
+      server.use(
+        mockApi(zeroAgentsByIdContract.updateMetadata, ({ body, respond }) => {
+          capturedBody = body as Record<string, unknown>;
+          return respond(200, mockAgentResponse());
+        }),
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, mockAgentResponse());
+        }),
+      );
+
+      await context.store.set(
+        zeroJobUpdateSettings$,
+        { displayName: "Just a rename" },
+        context.signal,
+      );
+
+      // Regression: partial updates must not clobber stored model selection
+      // with `null`. Callers that don't touch the model picker should send a
+      // payload that omits these keys entirely.
+      expect(capturedBody).not.toHaveProperty("modelProviderId");
+      expect(capturedBody).not.toHaveProperty("selectedModel");
+    });
+  });
+
+  describe("zeroJobDetail$ model provider fields", () => {
+    it("should expose modelProviderId and selectedModel from the agent response", async () => {
+      setMockSchedules([]);
+      server.use(
+        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+          return respond(200, {
+            ...mockAgentResponse(),
+            modelProviderId: "a1111111-1111-4111-a111-111111111111",
+            selectedModel: "claude-opus-4-7",
+          });
+        }),
+        mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
+          return respond(200, mockInstructions());
+        }),
+      );
+
+      detachedSetupPage({ context, path: "/", withoutRender: true });
+      context.store.set(setActiveAgent$, "my-agent");
+      const detail = await context.store.get(zeroJobDetail$);
+
+      // Regression: the AgentDetail type must preserve these fields so the
+      // profile tab can render the saved selection instead of "from org
+      // default" after a page refresh.
+      expect(detail?.modelProviderId).toBe(
+        "a1111111-1111-4111-a111-111111111111",
+      );
+      expect(detail?.selectedModel).toBe("claude-opus-4-7");
+    });
   });
 
   describe("connectors management", () => {

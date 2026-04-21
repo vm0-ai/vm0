@@ -3,9 +3,16 @@
  *
  * Provides centralized feature flag management with user-identity based overrides.
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
+ *
+ * NOT AN AUTHORIZATION BOUNDARY. Any authenticated user can self-enable any
+ * switch via `POST /api/zero/feature-switches` — overrides are read by
+ * `isFeatureEnabled` before the registry. For money-granting, credential,
+ * or privilege-escalation endpoints, gate with a hard identity check
+ * (e.g. `isStaffOrg()` from `./staff-org`) instead of this system.
  */
 
 import { FeatureSwitchKey } from "./feature-switch-key";
+import { STAFF_ORG_ID_HASHES, fnv1a } from "./identity-hash";
 
 export interface FeatureSwitch {
   readonly maintainer: string;
@@ -22,23 +29,6 @@ export interface FeatureSwitchContext {
   readonly orgId?: string;
   readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
-
-/**
- * FNV-1a 32-bit hash — fast, synchronous, no crypto API needed.
- * Returns an 8-character lowercase hex string.
- */
-function fnv1a(input: string): string {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
-}
-
-const STAFF_ORG_ID_HASHES: readonly string[] = [
-  "afce210e", // org_3ANttyrbWYJk6JKRSTRLEsbsDLe
-];
 
 /**
  * Registry of all feature switches
@@ -295,6 +285,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Expose Z.AI GLM-5.1 as a selectable model under the VM0 managed provider",
     enabled: false,
   },
+  [FeatureSwitchKey.ApiKeys]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the API Keys tab in Manage Account (Clerk UserProfile). When disabled, the tab is hidden even if API Keys are enabled in the Clerk dashboard.",
+    enabled: false,
+  },
   [FeatureSwitchKey.SlackAgentSwitch]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -311,6 +307,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "user falls back to the org default agent with no footer. Staff-only during the " +
       "rollout window defined by `enabledOrgIdHashes`.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ModelProviderSelection]: {
     maintainer: "ethan@vm0.ai",
@@ -325,6 +322,33 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Show redeem-code gift icon and dialog in the agent chat page header",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.NanoBananaConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Show the Nano Banana (Google Gemini image generation) platform-managed connector",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.UnifyChatThreads]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace the per-agent chat list with a unified Chats view that includes " +
+      "threads from every agent in the user's org (sub-agents included). " +
+      "Gates the sidebar + /chats title/placeholder/aria-label swaps, the per-row " +
+      "agent avatar render, and the unscoped request shape. New-chat creation " +
+      "still uses the current-agent fallback.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.RedemptionCodes]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show the internal /_/redemption-codes page (mint + redeem UI). " +
+      "UI-visibility gate only — the mint endpoint is independently " +
+      "protected by a STAFF_ORG_ID_HASHES identity check on the server, " +
+      "so this flag does NOT authorize minting.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

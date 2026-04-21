@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
@@ -21,6 +21,7 @@ import { sendUserPushNotifications } from "../../../../../src/lib/push/send-push
 import { saveRunSummary } from "../../../../../src/lib/zero/run-summary";
 import {
   queryAxiom,
+  flushAxiom,
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/shared/axiom";
@@ -111,40 +112,48 @@ async function loadPriorTitleContext(
 
 /**
  * Emit the `last_event_to_complete` metric for Morning Brief wrap-up
- * aggregation. Both timestamps are read from the DB in a single query so
- * the measurement is single-source-of-truth with no cross-host clock skew.
- * Filters on `sequence_number IS NOT NULL` to exclude user messages and
- * placeholder/error rows, keeping the metric grounded in real agent output.
+ * aggregation. Filters on `sequence_number IS NOT NULL` to exclude user
+ * messages and placeholder/error rows, keeping the metric grounded in
+ * real agent output.
  */
 async function recordLastEventToComplete(runId: string): Promise<void> {
-  const [row] = await globalThis.services.db
-    .select({
-      completedAt: agentRuns.completedAt,
-      lastEventAt: sql<Date | null>`(
-        SELECT MAX(${chatMessages.createdAt})
-        FROM ${chatMessages}
-        WHERE ${chatMessages.runId} = ${agentRuns.id}
-          AND ${chatMessages.role} = 'assistant'
-          AND ${chatMessages.sequenceNumber} IS NOT NULL
-      )`,
-    })
+  const [run] = await globalThis.services.db
+    .select({ completedAt: agentRuns.completedAt })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
     .limit(1);
+  if (!run?.completedAt) return;
 
-  if (!row?.completedAt || !row.lastEventAt) return;
+  const [msg] = await globalThis.services.db
+    .select({
+      lastEventAt: sql<Date | null>`MAX(${chatMessages.createdAt})`,
+    })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.runId, runId),
+        eq(chatMessages.role, "assistant"),
+        isNotNull(chatMessages.sequenceNumber),
+      ),
+    );
+  if (!msg?.lastEventAt) return;
 
   const lastEventMs =
-    row.lastEventAt instanceof Date
-      ? row.lastEventAt.getTime()
-      : new Date(row.lastEventAt).getTime();
+    msg.lastEventAt instanceof Date
+      ? msg.lastEventAt.getTime()
+      : new Date(msg.lastEventAt).getTime();
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "last_event_to_complete",
-    durationMs: Math.max(0, row.completedAt.getTime() - lastEventMs),
+    durationMs: Math.max(0, run.completedAt.getTime() - lastEventMs),
     success: true,
     runId,
   });
+  // after() runs post-response; this route isn't a ts-rest handler, so the
+  // response-boundary flush doesn't cover it. Without an explicit flush,
+  // Vercel freezes the lambda before the Axiom SDK's batch timer fires and
+  // the sample is dropped. Same pattern as event-consumers/axiom/route.ts.
+  await flushAxiom();
 }
 
 /**

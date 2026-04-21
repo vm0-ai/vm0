@@ -14,6 +14,8 @@ interface ZeroJobSettingsUpdate {
   description?: string;
   sound?: string;
   avatarUrl?: string | null;
+  modelProviderId?: string | null;
+  selectedModel?: string | null;
 }
 
 export const zeroJobUpdateSettings$ = command(
